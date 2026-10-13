@@ -11,18 +11,18 @@ Args:
     events (List): List of events to create, each with:
         - summary (str): Required. Title.
         - start_datetime (str): Required. Start time (ISO format).
-        - duration_hours/minutes (int): Duration, default 30min.
+        - end_datetime (str): Optional. End time (ISO format, same style as start). Omit for a 30min event. For all-day events this is the last day (inclusive).
         - calendar_id (str): Calendar ID, default "primary".
         - description, location, attendees: Optional.
         - is_all_day (bool): Default False.
-    confirm_immediately (bool): If True, create immediately. Default False.
 
-Returns (when confirm_immediately=True):
+Returns:
     {
         "created": true,
         "created_events": [{"index": 0, "summary": "...", "event_id": "abc123", ...}],
         "errors": [{"index": 1, "summary": "...", "error": "..."}]
     }
+    Creation is immediate; under approval gating the approval card confirms.
     Use event_id with ADD_RECURRENCE to make events recurring.
     A non-empty "errors" means only some events were created: tell the user which failed.
 """

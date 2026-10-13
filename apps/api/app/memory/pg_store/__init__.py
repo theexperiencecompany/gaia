@@ -1,7 +1,7 @@
 """Postgres storage layer for the memory engine — purely CRUD, no LLM/embeddings.
 
 Importing this package registers the memory SQLAlchemy models on the shared
-declarative ``Base``, so ``create_all`` (run when the postgresql_engine
+declarative Base, so create_all (run when the postgresql_engine
 provider initializes) creates the memory tables.
 """
 

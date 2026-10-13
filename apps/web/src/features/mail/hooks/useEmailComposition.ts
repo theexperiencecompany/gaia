@@ -11,7 +11,6 @@ import { marked } from "marked";
 import { useCallback, useState } from "react";
 import { mailApi } from "@/features/mail/api/mailApi";
 import type { EmailSuggestion } from "@/features/mail/components/EmailChip";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import type {
   EmailCompositionFormState,
@@ -142,24 +141,10 @@ export function useEmailComposition(): UseEmailCompositionReturn {
           clarityOption,
         });
 
-        if (response.content) {
-          const parsedContent = JSON.parse(response.content);
-          if (parsedContent.subject && parsedContent.body) {
-            const formattedBody = marked(
-              parsedContent.body.replace(/\n/g, "<br />"),
-            );
-            if (editor) editor.commands.setContent(formattedBody);
-            setSubject(parsedContent.subject);
-            trackEvent(ANALYTICS_EVENTS.EMAIL_AI_DRAFT_GENERATED, {
-              writing_style: overrideStyle || writingStyle,
-              content_length: contentLength,
-              has_subject: !!subject,
-              has_prompt: !!prompt,
-            });
-          } else {
-            setError("Invalid response format from server");
-            toast.error("Invalid response format from server");
-          }
+        if (response.subject && response.body) {
+          const formattedBody = marked(response.body.replace(/\n/g, "<br />"));
+          if (editor) editor.commands.setContent(formattedBody);
+          setSubject(response.subject);
         } else {
           setError("Invalid response format from server");
           toast.error("Invalid response format from server");

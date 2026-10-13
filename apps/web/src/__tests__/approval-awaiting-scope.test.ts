@@ -1,14 +1,9 @@
 /**
- * Regression test for the approval indicator leaking across conversations.
- *
- * The bug: settling an approval walked EVERY session in the stream store and
- * cleared `awaitingApproval` on all of them. With two conversations each paused
- * on their own gate, deciding one flipped the other's amber "Waiting for your
- * approval" pill to "Resuming" — the untouched conversation looked like it had
- * carried on when it was in fact still blocked on the user.
- *
- * The fix scopes the clear to one session key, so these pin that the named
- * session settles and every other session is left exactly as it was.
+ * Regression: settling an approval walked EVERY session in the stream store and
+ * cleared `awaitingApproval` on all of them — with two conversations each paused
+ * on their own gate, deciding one flipped the other's "Waiting for your approval"
+ * pill to "Resuming" while it was still blocked. Fix scopes the clear to one
+ * session key; these pin that the named session settles and others are untouched.
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { useStreamStore } from "@/stores/streamStore";

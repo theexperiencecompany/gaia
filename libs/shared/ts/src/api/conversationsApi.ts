@@ -4,6 +4,10 @@
  * Each platform implements the actual HTTP calls using its own HTTP client.
  */
 
+import type { ConversationSyncItem } from "./generated";
+
+export type { ConversationSyncItem } from "./generated";
+
 export const CONVERSATION_ENDPOINTS = {
   list: "/conversations",
   get: (conversationId: string) => `/conversations/${conversationId}`,
@@ -27,11 +31,6 @@ export const CONVERSATION_ENDPOINTS = {
 export interface ConversationListParams {
   page?: number;
   limit?: number;
-}
-
-export interface ConversationSyncItem {
-  conversation_id: string;
-  last_updated?: string;
 }
 
 export interface BatchSyncConversationsParams {

@@ -20,16 +20,16 @@ import {
 } from "../components/TriggerSettingsCard";
 import { TriggerToggleRow } from "../components/TriggerToggleRow";
 import type { TriggerSettingsProps } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
-export interface CalendarTriggerData {
+export type CalendarTriggerData = {
   trigger_name: string;
   calendar_ids: string[];
   minutes_before_start?: number;
   include_all_day?: boolean;
-}
+};
 
-export interface CalendarConfig extends TriggerConfig {
+export interface CalendarConfig extends TriggerConfigDraft {
   trigger_name?: string;
   trigger_data?: CalendarTriggerData;
 }
@@ -59,10 +59,9 @@ export function CalendarSettings({
     });
   };
 
-  // Derive the visible selection from trigger_data + the loaded calendars
-  // instead of mirroring the props into state: every mutation already persists
-  // through updateTriggerData, so this stays in sync without an adjustment
-  // effect (and shows the right value on the very first render).
+  // Derive the visible selection from trigger_data + loaded calendars instead
+  // of mirroring props into state: mutations already persist through
+  // updateTriggerData, so this stays in sync without an adjustment effect.
   const selectedCalendars = useMemo(() => {
     // Until calendars load (or without saved ids) show the default "primary".
     if (calendars.length === 0) return new Set(["primary"]);

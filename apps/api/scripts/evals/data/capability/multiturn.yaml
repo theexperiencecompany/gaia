@@ -49,7 +49,7 @@
   expected:
     category: multiturn
     communicate: ["moving date"]
-    tool_calls: [{tool: create_tracked_todo}, {tool: update_tracked_todo_canvas}]
+    tool_calls: [{tool: create_tracked_todo}, {tool: [edit, write]}]
     end_state: {tracked_todos: [{title_contains: "office move", canvas_contains: "moving date"}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:

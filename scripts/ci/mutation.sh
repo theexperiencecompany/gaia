@@ -19,14 +19,30 @@
 #                            lane runs it — the plan wired to the shards, sized
 #                            to the local CPU budget. Logs under
 #                            verify-logs/mutation/.
+#   replay <verdict|dir|shard.log> <mutant-id|file.py:LINE>
+#                            Re-apply ONE survivor's diff to a scratch copy of
+#                            apps/api and run that module's mapped tests —
+#                            killed or survived, without a lane run. mutmut's
+#                            mutant numbering depends on the diff scope and
+#                            cannot be regenerated locally, so the recorded diff
+#                            is the only way back to a named survivor. The
+#                            working tree is never touched, and that is checked.
 #
 # Env contract:
 #   matrix  none directly; delegates the diff to `changes.sh files py`.
 #   plan    GITHUB_OUTPUT (stdout-only when unset).
 #   shard   GROUP (required, compact JSON array of {module,testfiles,ranges});
-#           SHARD_LOG (shard.log), GITHUB_STEP_SUMMARY.
-#   module  MUTMUT_WORKDIR_BASE, MUTMUT_MAX_CHILDREN, MUTMUT_KEEP_WORKDIR.
+#           SHARD_LOG (shard.log), GITHUB_STEP_SUMMARY. Produces TWO things:
+#           <shard>.verdict.json beside the log — this lane's own uncapped
+#           record, what `replay` reads back — and one shared-schema verdict per
+#           module, written by `verdict.py emit` into the directory
+#           `verdict.py dir` reports (GAIA_VERDICT_DIR > $RUNNER_TEMP/verdicts >
+#           verify-logs/verdicts), which is what the quality gate consolidates.
+#   module  MUTMUT_WORKDIR_BASE, MUTMUT_MAX_CHILDREN, MUTMUT_KEEP_WORKDIR,
+#           MUTATION_VERDICT_DIR (where the module RECORD lands; the shard sets
+#           it to a scratch dir beside the log).
 #   local   MUTATION_JOBS, MUTATION_CPU_BUDGET, MUTMUT_MAX_CHILDREN.
+#   replay  none.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -36,6 +52,130 @@ source "$(dirname "$0")/lib/cpu-slots.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+_nproc() { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2; }
+
+# How many mutant workers ONE mutmut run forks, and therefore exactly how many
+# host CPU tokens the shard that drives it takes.
+#
+# Half the threads (8 on the 16-thread box), not mutmut's own os.cpu_count()
+# default and not the old nproc-2. Measured 2026-09-17: at nproc-2 = 14 a shard
+# could not fit beside another one in the then 16-token pool, so the shards ran
+# strictly one at a time while 19 listeners waited on an otherwise idle box
+# (loadavg 7). The smaller shard is also what keeps a mutant honest under load:
+# when many un-gated jobs overlapped and the loadavg reached 75, mutants started
+# hitting the then 45 s per-test timeout and one module took 138 s where it
+# takes 29 s without the overload. Eight workers is the size that measured clean
+# — two concurrent shards (16 workers) held the loadavg at 5-10 with no
+# timeouts, while four (32 workers, the GAIA_CPU_TOKENS=32 stopgap) reached
+# loadavg 34 and still timed out (run #1202, shards 1/6 and 3/6). The pool
+# default in lib/cpu-slots.sh (nproc * 3 / 2) is what limits how many overlap.
+_mutant_workers() {
+  local threads
+  threads="$(_nproc)"
+  printf '%s' "$(( threads > 1 ? threads / 2 : 1 ))"
+}
+
+# Where the disposable copies of app/ + tests/ + scripts/ live.
+#
+# tmpfs when the machine offers one: a module's tree is ~43 MB over 2100 files
+# and mutmut writes a whole mutants/ tree beside it, so on a spinning-disk or
+# busy SSD those writes, not the mutation work, set the pace. Falls back to
+# apps/api on machines without tmpfs (macOS) or when it is nearly full, so a
+# constrained box degrades in speed rather than failing. The shard base and
+# every module workdir MUST resolve here identically — `cp -al` cannot link
+# across filesystems.
+_workdir_base() {
+  if [ -n "${MUTMUT_WORKDIR_BASE:-}" ]; then
+    printf '%s' "$MUTMUT_WORKDIR_BASE"
+    return
+  fi
+  if [ -d /dev/shm ] && [ -w /dev/shm ]; then
+    # Need room for the base copy plus every live mutants/ tree; 1 GiB is a
+    # comfortable ceiling now that the per-module copies are hardlinks.
+    local free_kb
+    free_kb="$(df -Pk /dev/shm 2>/dev/null | awk 'NR==2{print $4}')"
+    if [ -n "${free_kb:-}" ] && [ "$free_kb" -gt 1048576 ]; then
+      printf '%s' /dev/shm
+      return
+    fi
+  fi
+  printf '%s' "$REPO_ROOT/apps/api"
+}
+
+# The one test tier that cannot run without live Mongo and Redis, and so the
+# one thing that decides which runner pool a shard belongs to. `plan` groups by
+# it and `shard` re-derives its own pool from it — exported rather than repeated
+# inside the planner's heredoc so the two can never disagree about what
+# "needs services" means.
+export SERVICES_TIER="tests/contracts/"
+
+# The interpreter that has mutmut and the API's test dependencies. Both the
+# mutation run and `replay` need it, and "which python" is not a question either
+# of them should answer differently.
+_venv_python() {
+  local candidate
+  for candidate in "$REPO_ROOT/.venv/bin/python" "$REPO_ROOT/apps/api/.venv/bin/python"; do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  echo "ERROR: mutation.sh — venv python not found (run nx run api:sync first)." >&2
+  return 1
+}
+
+# Where the shared lane verdicts go — ASKED, never derived.
+#
+# The answer is `verdict.py`'s to give (GAIA_VERDICT_DIR > $RUNNER_TEMP/verdicts
+# > verify-logs/verdicts), and a shell copy of that order is wrong the moment it
+# moves: the last copy defaulted to the checkout, where no runner reads, so
+# every mutation verdict would have landed somewhere the gate calls NO VERDICT.
+# One call, one answer, and a loud failure if it comes back empty — a blank
+# directory here would send `rm -rf "$VERDICT_ROOT/mutation"` at "/mutation".
+_verdict_root() {
+  local python_bin resolved
+  python_bin="$(_venv_python)" || return 1
+  resolved="$("$python_bin" "$SCRIPT_DIR/verdict.py" dir)" || {
+    echo "ERROR: mutation.sh — 'verdict.py dir' failed; cannot place the lane verdicts." >&2
+    return 1
+  }
+  if [ -z "$resolved" ]; then
+    echo "ERROR: mutation.sh — 'verdict.py dir' printed nothing." >&2
+    return 1
+  fi
+  printf '%s\n' "$resolved"
+}
+
+# `app/services/x.py` -> `app_services_x`, the record file's name. Mirrors
+# `module_slug` in lib/mutation_report.py: the shell side names the file, the
+# python side names it in the advice it prints, and they have to agree.
+_record_slug() {
+  local module="${1%.py}"
+  printf '%s\n' "${module//\//_}"
+}
+
+# This module's record — this lane's own schema, merged into the shard's
+# verdict.json and reported to the gate by `collect`. Called from cmd_module
+# only, and reads MODULE / TESTFILES / VENV_PY / WORKDIR from it: every exit
+# path of that function owes the shard a record, and threading five values
+# through each of them is how one path ends up not writing one.
+#
+#   _write_record <status> <reason> <records-tsv> <diffs-file>
+_write_record() {
+  local status="$1" reason="$2" records="$3" diffs="$4" testfiles_json
+  testfiles_json="$(printf '%s\n' "${TESTFILES[@]+"${TESTFILES[@]}"}" | python3 -c '
+import json
+import sys
+
+print(json.dumps([line for line in sys.stdin.read().splitlines() if line]))')"
+  "$VENV_PY" "$SCRIPT_DIR/lib/mutation_report.py" module \
+    --module "$MODULE" --path "apps/api/$MODULE" \
+    --module-file "$REPO_ROOT/apps/api/$MODULE" \
+    --records "$records" --diffs "$diffs" \
+    --testfiles "$testfiles_json" --status "$status" --reason "$reason" \
+    --out "${MUTATION_VERDICT_DIR:-$WORKDIR}/$(_record_slug "$MODULE").json" >&2
+}
 
 # Emit the mutation-check matrix: every changed app module + its test file.
 #
@@ -100,40 +240,84 @@ cmd_plan() {
 import json
 import os
 
-# Match the matrix's max-parallel in code-quality.yml: more shards than can run
-# at once add check rows and setup cost without shortening the lane. (It also
-# stays clear of GitHub's hard 256-job matrix limit, which a one-shard-per-
-# module plan blew through on the mypy-strict diff — no matrix, a skipped lane,
-# and a skipped lane counts as a pass.)
-# 4 tracks code-quality.yml's max-parallel and the 12-runner gaia-home-lint
-# pool (2026-08-29): with two shards the pair was the Code Quality long pole
-# at 156-179 s each (run 33202311460); four halve it and start together.
-MAX_SHARDS = 4
+# Bounded so the matrix stays clear of GitHub's hard 256-job limit, which a
+# one-shard-per-module plan blew through on the mypy-strict diff — no matrix, a
+# skipped lane, and a skipped lane counts as a pass.
+#
+# 6 rather than code-quality.yml's max-parallel of 4, deliberately. Sizing to
+# max-parallel (4, from 2026-08-29 against a 12-runner pool)
+# only holds while one wave can carry the whole diff: a 110-module diff packs 28
+# modules per shard, and on run 34476365942 shards 1 and 3 drew enough slow ones
+# to still be running at the step's cutoff — 25 of 28 finished, every one clean,
+# so the lane went red on budget rather than on a survivor. Past that point it is
+# the shard, not the wave, that has to fit. Six run as 4 + 2 and cost one extra
+# wave of setup, which is worth strictly more than a red lane that proved nothing.
+MAX_SHARDS = 6
+
+# The tier that needs live Mongo and Redis (mutation.sh's SERVICES_TIER, passed
+# in rather than repeated). A shard whose modules map to one of these files
+# brings the services up in setup (`pool: services`); every other shard is
+# `unit` and starts none, so it claims no test-services lane. A shard is
+# homogeneous by construction, and its pool travels with it: the workflow
+# conditions the services steps on it. (It once also chose the runner pool —
+# `unit` shards ran on the lint instances — until three stacked PRs showed nine
+# 30-minute shards starving every short lint lane; now all shards share the
+# `gaia-home` pool and `pool` only says whether services are needed.)
+SERVICES_TIER = os.environ["SERVICES_TIER"]
+POOLS = ("unit", "services")
 
 modules = json.loads(os.environ["MATRIX_JSON"])
-shards: list[list[dict[str, str]]] = [[] for _ in range(min(len(modules), MAX_SHARDS))]
-for index, entry in enumerate(modules):
-    shards[index % len(shards)].append(
-        {
-            "module": entry["module"],
-            "testfiles": json.dumps(entry["testfiles"], separators=(",", ":")),
-            "ranges": json.dumps(entry["changed_lines"], separators=(",", ":")),
-        }
-    )
+members = {
+    "services": [m for m in modules if any(f.startswith(SERVICES_TIER) for f in m["testfiles"])],
+    "unit": [m for m in modules if not any(f.startswith(SERVICES_TIER) for f in m["testfiles"])],
+}
+live = {pool: members[pool] for pool in POOLS if members[pool]}
+
+# MAX_SHARDS is the budget for the WHOLE plan, not per pool: the cap exists to
+# stay clear of GitHub's 256-job limit and to keep the wave size honest, and two
+# pools that each helped themselves to six would defeat both. Every live pool
+# starts with one shard and the rest go to whichever pool is carrying the most
+# modules per shard it already has, so the split follows the diff (a typical PR
+# touches one or two repositories and ten other modules, and lands 1 + 5).
+counts = {pool: 1 for pool in live}
+while sum(counts.values()) < MAX_SHARDS:
+    hungry = [pool for pool in live if counts[pool] < len(live[pool])]
+    if not hungry:
+        break
+    counts[max(hungry, key=lambda pool: len(live[pool]) / counts[pool])] += 1
+
+shards: list[tuple[str, list[dict[str, str]]]] = []
+for pool in POOLS:
+    if pool not in live:
+        continue
+    packed: list[list[dict[str, str]]] = [[] for _ in range(counts[pool])]
+    for index, entry in enumerate(live[pool]):
+        packed[index % len(packed)].append(
+            {
+                "module": entry["module"],
+                "testfiles": json.dumps(entry["testfiles"], separators=(",", ":")),
+                "ranges": json.dumps(entry["changed_lines"], separators=(",", ":")),
+            }
+        )
+    shards.extend((pool, group) for group in packed)
 
 include = [
     {
         # The check's displayed name. A lone module names itself — the common
         # case, and the most useful thing a reviewer can read at a glance. A
         # packed shard says how many it carries, so nothing looks dropped.
+        # Either way a services shard says so: it runs on the other pool, so
+        # "which shard needed Mongo" is the first question a red one raises.
         "label": (
-            shard[0]["module"]
-            if len(shard) == 1
-            else f"shard {number}/{len(shards)} ({len(shard)} modules)"
+            (shard[0]["module"] if len(shard) == 1 else f"shard {number}/{len(shards)} ({len(shard)} modules)")
+            + (" (services)" if pool == "services" else "")
         ),
         "group": json.dumps(shard, separators=(",", ":")),
+        # Read by the job's `runs-on` to pick the runner pool, and by
+        # `mutation.sh shard` to decide whether live services are mandatory.
+        "pool": pool,
     }
-    for number, shard in enumerate(shards, start=1)
+    for number, (pool, shard) in enumerate(shards, start=1)
 ]
 
 github_output = os.environ.get("GITHUB_OUTPUT")
@@ -147,7 +331,7 @@ if len(shards) < len(modules):
 else:
     print(f"{len(modules)} module(s) to mutate, one shard each")
 for entry in include:
-    print(f"  {entry['label']}")
+    print(f"  [{entry['pool']:8}] {entry['label']}")
 EOF
 }
 
@@ -165,7 +349,23 @@ cmd_shard() {
   # to iterate and the shard would exit 0 having mutated nothing — a false green,
   # which is the one outcome this gate must never produce.
   SHARD_TSV="$(mktemp)"
-  trap 'rm -f "$SHARD_TSV"' EXIT
+  SHARD_BASE=""
+  SHARD_RCS=""
+  # ONE trap for everything this shard creates, installed before the first of
+  # them exists — a second `trap ... EXIT` later would silently replace this one
+  # and leak whatever it did not name. Explicit ifs, not `&&`: an EXIT trap whose
+  # last command returns 1 clobbers the script's exit status, and this shard's
+  # status IS the gate's verdict.
+  _shard_cleanup() {
+    rm -f "$SHARD_TSV"
+    if [ -n "$SHARD_RCS" ]; then
+      rm -f "$SHARD_RCS"
+    fi
+    if [ -n "$SHARD_BASE" ]; then
+      rm -rf "$SHARD_BASE"
+    fi
+  }
+  trap _shard_cleanup EXIT
   if ! GROUP="$GROUP" python3 -c '
 import json
 import os
@@ -181,10 +381,74 @@ for entry in entries:
     exit 1
   fi
 
+  # Which pool this shard belongs to, read off the work itself rather than
+  # trusted from the environment: `plan` groups contract-mapped modules into
+  # their own shards, so the mapped test files ARE the classification, and a
+  # shard cannot disagree with the runner it was sent to without saying so.
+  if grep -q "$SERVICES_TIER" "$SHARD_TSV"; then
+    # A contract test with no services does not fail — it SKIPS (its autouse
+    # fixture calls pytest.skip), and a mutant no test exercised is reported as
+    # "no covering test", which is informational and fails nothing. That is the
+    # exact false green this shard split exists to remove, so it is an error
+    # here rather than a degraded run.
+    if [ "${USE_REAL_SERVICES:-}" != "1" ]; then
+      echo "::error::this shard maps ${SERVICES_TIER} tests but USE_REAL_SERVICES is not 1 — every contract test would skip and its mutants would be reported as uncovered rather than surviving. On CI the job must run with pool=services (setup-python-test-env); locally, start the services and export USE_REAL_SERVICES=1."
+      exit 1
+    fi
+    if ! python3 -c '
+import os
+import socket
+import sys
+from urllib.parse import urlparse
+
+for name, fallback in (("MONGO_DB", 27017), ("REDIS_URL", 6379)):
+    url = os.environ.get(name, "")
+    if not url:
+        sys.exit(f"{name} is unset — nothing published this lane service endpoints")
+    parsed = urlparse(url)
+    endpoint = (parsed.hostname or "localhost", parsed.port or fallback)
+    try:
+        socket.create_connection(endpoint, timeout=5).close()
+    except OSError as exc:
+        sys.exit(f"{name} at {endpoint[0]}:{endpoint[1]} is unreachable: {exc}")
+'; then
+      echo "::error::this shard maps ${SERVICES_TIER} tests and USE_REAL_SERVICES=1, but the services are not reachable — the contract tests would ERROR on connect, and an erroring test kills every mutant it touches (a green shard that proved nothing)."
+      exit 1
+    fi
+  elif [ "${USE_REAL_SERVICES:-}" = "1" ]; then
+    # The mirror image, and the reason it matters even though no contract test
+    # is mapped here: tests/conftest.py swaps the GLOBAL mongodb mock for a real
+    # client when the variable is 1, so a unit-only shard that inherited it from
+    # a developer's shell would have every mutant killed by a connection error.
+    echo "mutation shard: no ${SERVICES_TIER} tests in this shard — unsetting USE_REAL_SERVICES so the unit tiers keep their mocked services"
+    unset USE_REAL_SERVICES
+  fi
+
   # CI reads the artifact from the fixed name; the local runner overrides it so
   # shards running side by side do not interleave into one unreadable file.
   SHARD_LOG="${SHARD_LOG:-shard.log}"
   : > "$SHARD_LOG"
+
+  # This lane's own record of the run, beside the log: every survivor with its
+  # mutant id, line, one-line change and full diff — what `replay` reads back.
+  # Deliberately NOT under verify-logs/verdicts/: `verdict.py consolidate` reads
+  # every JSON in that tree as a lane verdict and indexes doc["lane"], so a file
+  # of a different shape there does not degrade, it crashes the gate. The
+  # contract is reported separately, through `verdict.py emit` (see `collect`).
+  #
+  # Both names derive from SHARD_LOG: `local` runs every module as its own
+  # single-module shard in ONE directory, and fixed names would have those
+  # shards overwrite each other's record.
+  SHARD_VERDICT="${SHARD_LOG%.log}.verdict.json"
+  RECORD_DIR="${SHARD_LOG%.log}.records"
+  rm -rf "$RECORD_DIR"
+  mkdir -p "$RECORD_DIR"
+  RECORD_DIR="$(cd "$RECORD_DIR" && pwd)"
+  export MUTATION_VERDICT_DIR="$RECORD_DIR"
+  # module<TAB>exit-code, one row per module in the order the shard ran them.
+  # The exit code is recorded rather than inferred from the log: a module whose
+  # log says nothing conclusive but exited non-zero must not merge as a pass.
+  SHARD_RCS="$(mktemp)"
 
   # timeout(1) bounds a genuine mutmut hang from OUTSIDE the script: bash defers
   # traps while waiting on a foreground child, so an in-script watchdog can never
@@ -202,22 +466,41 @@ for entry in entries:
 
   # This shard's CPU appetite: mutmut forks one mutant worker per child, and its
   # own default is os.cpu_count() — 16 on the box, so four shards at max-parallel
-  # would spawn 64 workers on 16 threads. Bound each shard to nproc-2 (the same
-  # budget cmd_local uses; two cores left for the OS and docker) AND take that
-  # many host tokens for the run, so the mutation shards queue against the box's
-  # physical-core budget instead of thrashing it and the test-python/build lanes.
-  # Fail-open and a no-op off the self-hosted box; MUTMUT_MAX_CHILDREN honours an
-  # explicit override for the local runner.
-  local NPROC BUDGET SLOTS
-  NPROC="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
-  BUDGET="$(( NPROC > 3 ? NPROC - 2 : 1 ))"
-  export MUTMUT_MAX_CHILDREN="${MUTMUT_MAX_CHILDREN:-$BUDGET}"
-  # Acquire tokens for the workers we will ACTUALLY spawn, not the default
-  # budget: an explicit MUTMUT_MAX_CHILDREN override (e.g. a local runner) can
-  # exceed BUDGET, and taking only BUDGET tokens would let the shard run more
-  # workers than it holds slots for, weakening the host cap.
-  SLOTS="$MUTMUT_MAX_CHILDREN"; [ "$SLOTS" -ge "$BUDGET" ] || SLOTS="$BUDGET"
+  # would spawn 64 workers on 16 threads. Bound each shard to _mutant_workers
+  # (nproc/2) AND take EXACTLY that many host tokens, so the shard's weight in
+  # the governor is the number of workers it really runs — no more (which used
+  # to make two shards mutually exclusive) and no less (which would let it
+  # outrun the tokens it holds). An explicit MUTMUT_MAX_CHILDREN is honoured as
+  # given, in both places: it is a smaller appetite as often as a larger one, and
+  # rounding it back up to a fixed budget is what made a deliberately small local
+  # override still hold 14 tokens.
+  export MUTMUT_MAX_CHILDREN="${MUTMUT_MAX_CHILDREN:-$(_mutant_workers)}"
+  local SLOTS="$MUTMUT_MAX_CHILDREN"
+  # Printed, not implied: how heavy a shard decided to be is otherwise invisible
+  # from the lane's output, and "the shards ran one at a time" took a week to
+  # notice for exactly that reason.
+  echo "mutation shard: $MUTMUT_MAX_CHILDREN mutant worker(s), $SLOTS host CPU token(s)"
   cpu_slots_acquire "$SLOTS"
+
+  # ONE real copy of app/ + tests/ + scripts/ for the whole shard; each module
+  # below gets a `cp -al` hardlink copy of it. A 40-module shard used to copy
+  # those 43 MB / 2100 files 40 times over (and mutmut copied them a second time
+  # into mutants/, which mutmut_hardlink_copy now links as well).
+  # Named .mutation-* so apps/api/.gitignore covers a SIGKILLed run's leftovers.
+  SHARD_BASE="$(_workdir_base)/.mutation-base-$$"
+  rm -rf "$SHARD_BASE"
+  mkdir -p "$SHARD_BASE"
+  if ( cd "$REPO_ROOT/apps/api" &&
+       cp -r app tests scripts "$SHARD_BASE/" &&
+       cp -f pyproject.toml pytest.ini "$SHARD_BASE/" ); then
+    export MUTMUT_SHARD_BASE="$SHARD_BASE"
+  else
+    # Not fatal: cmd_module copies for itself when it is handed no base. Loud,
+    # because the shard then pays the old per-module copy and nothing else says so.
+    echo "::warning::mutation shard could not stage its base copy in $SHARD_BASE — each module will copy for itself"
+    rm -rf "$SHARD_BASE"
+    SHARD_BASE=""
+  fi
 
   rc=0
   failed_modules=()
@@ -235,6 +518,7 @@ for entry in entries:
       rc="$module_rc"
       failed_modules+=("$module")
     fi
+    printf '%s\t%s\n' "$module" "$module_rc" >> "$SHARD_RCS"
   done < "$SHARD_TSV"
   cpu_slots_release "$SLOTS"
 
@@ -247,6 +531,20 @@ for entry in entries:
   echo "--- $SHARD_LOG (last 200KB; full file in the artifact) ---"
   tail -c 200000 "$SHARD_LOG"
 
+  # Merge the module records into this lane's replay artifact, and report every
+  # module to the quality gate through `verdict.py emit` — one verdict per
+  # module, with a finding per surviving line and that line's diffs as its
+  # detail. Reported HERE rather than inside `module` because `emit` prints the
+  # ::error annotations, and a module's own output is redirected into
+  # $SHARD_LOG, where an annotation is just text GitHub never sees.
+  VERDICT_ROOT="$(_verdict_root)" || exit 1
+  python3 "$SCRIPT_DIR/lib/mutation_report.py" collect \
+    --log "$SHARD_LOG" --dir "$RECORD_DIR" --rcs "$SHARD_RCS" \
+    --out "$SHARD_VERDICT" --repo-root "$REPO_ROOT" --verdict-out "$VERDICT_ROOT"
+  # The records were inputs to a merge that succeeded; keeping both copies only
+  # invites reading the stale one. A FAILED merge leaves them as the evidence.
+  rm -rf "$RECORD_DIR"
+
   # The verdict, last and on its own. A shard carries several modules when the
   # diff is large, so "this check is red" has to say WHICH — otherwise the only
   # way to find out is scrolling a 200KB tail.
@@ -254,11 +552,6 @@ for entry in entries:
     echo "Mutation shard OK — every module clean"
   else
     echo "::error::mutation failed for: ${failed_modules[*]}"
-    {
-      echo "### Mutation failures"
-      echo
-      for module in "${failed_modules[@]}"; do echo "- \`$module\`"; done
-    } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
   fi
 
   exit "$rc"
@@ -275,6 +568,14 @@ cmd_local() {
   LOG_DIR="verify-logs/mutation"
   rm -rf "$LOG_DIR"
   mkdir -p "$LOG_DIR"
+
+  # The lane verdicts live outside $LOG_DIR, in the tree `verdict.py` owns, so
+  # the wipe above cannot reach them and a stale module from an earlier local
+  # run would consolidate as a lane of this one. Cleared here, once, and only
+  # this lane's own subdirectory — every other lane writes into the same tree.
+  # The path is asked for, never derived (see `_verdict_root`).
+  VERDICT_ROOT="$(_verdict_root)" || exit 1
+  rm -rf "${VERDICT_ROOT:?}/mutation"
 
   if [ "$#" -gt 0 ]; then
     MATRIX="$(printf '%s\n' "$@" | sed 's|^apps/api/||; s|^|apps/api/|' |
@@ -354,7 +655,7 @@ print(
   # of magnitude and thrash — split one budget between them instead. Two cores
   # are left for the OS and docker. Most runs touch one or two modules, so the
   # weighting favours mutmut's children over module fan-out.
-  NPROC="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+  NPROC="$(_nproc)"
   BUDGET="${MUTATION_CPU_BUDGET:-$(( NPROC > 3 ? NPROC - 2 : 1 ))}"
   JOBS="${MUTATION_JOBS:-$MODULE_COUNT}"
   [ "$JOBS" -gt 4 ] && JOBS=4
@@ -491,50 +792,19 @@ EOF
     fi
   done
 
-  VENV_PY=""
-  for candidate in "$REPO_ROOT/.venv/bin/python" "$REPO_ROOT/apps/api/.venv/bin/python"; do
-    if [ -x "$candidate" ]; then
-      VENV_PY="$candidate"
-      break
-    fi
-  done
-  if [ -z "$VENV_PY" ]; then
-    echo "ERROR: mutation.sh module — venv python not found (run nx run api:sync first)." >&2
-    exit 1
-  fi
+  VENV_PY="$(_venv_python)" || exit 1
+
+  # The same worker budget a shard would hand down, so `mutation.sh module` run
+  # by hand does not silently fall back to mutmut's own os.cpu_count() default
+  # (16 on the box) and swamp whatever else is on the machine.
+  export MUTMUT_MAX_CHILDREN="${MUTMUT_MAX_CHILDREN:-$(_mutant_workers)}"
 
   # Per-invocation workdir: parallel-safe isolation for the config swap, the
   # mutants/ dir, and the pytest run. Absolute path: the trap runs after
   # `cd "$WORKDIR"`, so a relative path would delete the wrong directory.
   #
-  # Placed on tmpfs when the machine offers one. Each invocation copies ~65 MB
-  # of app + tests + scripts and then has mutmut write a whole mutants/ tree
-  # beside it; with several modules in flight those writes, not the mutation
-  # work, set the pace. /dev/shm keeps all of it in RAM. Falls back to the
-  # working directory on machines without tmpfs (macOS) or when it is nearly
-  # full, so a constrained box degrades in speed rather than failing.
-  #
-  # Real copies, not hardlinks (`cp -al`): the changed-line scoping below
-  # rewrites $MODULE in place, and a hardlink shares its inode with the file in
-  # the developer's checkout — the pragma stamping would edit the real source.
-  # Not symlinks either: a symlinked workdir/app resolves to the SAME inode as
-  # apps/api/app — if both ever land on sys.path, CPython raises "cannot load
-  # module more than once per process" when the same file is imported under two
-  # paths (observed in CI for app.db.chroma).
-  WORKDIR_BASE="${MUTMUT_WORKDIR_BASE:-}"
-  if [ -z "$WORKDIR_BASE" ]; then
-    WORKDIR_BASE="$(pwd)"
-    if [ -d /dev/shm ] && [ -w /dev/shm ]; then
-      # Need room for the copy plus mutmut's mutants/ tree; 1 GiB is a
-      # comfortable ceiling for a single module.
-      SHM_FREE_KB="$(df -Pk /dev/shm 2>/dev/null | awk 'NR==2{print $4}')"
-      if [ -n "${SHM_FREE_KB:-}" ] && [ "$SHM_FREE_KB" -gt 1048576 ]; then
-        WORKDIR_BASE=/dev/shm
-      fi
-    fi
-  fi
   # Named .mutation-$$ so apps/api/.gitignore covers a SIGKILLed run's leftovers.
-  WORKDIR="$WORKDIR_BASE/.mutation-$$"
+  WORKDIR="$(_workdir_base)/.mutation-$$"
 
   # Phase tracking.
   #
@@ -572,15 +842,38 @@ EOF
   # is what .mutation-*/ in apps/api/.gitignore covers.)
   trap 'exit 143' TERM INT
   _phase "copy workdir"
-  mkdir -p "$WORKDIR"
-  cp -r app "$WORKDIR/app"
-  cp -r tests "$WORKDIR/tests"
-  cp -r scripts "$WORKDIR/scripts"
-  cp -f pyproject.toml "$WORKDIR/pyproject.toml"
-  # pytest.ini carries asyncio_mode=auto. Under apps/api the workdir found it by
-  # walking up; under /dev/shm there is nothing above, and without it every
-  # async test fails with "async def functions are not natively supported".
-  cp -f pytest.ini "$WORKDIR/pytest.ini"
+  # A shard stages ONE real copy and every module hardlinks it (`cp -al`), which
+  # costs directories and inodes instead of 43 MB per module. Run standalone
+  # there is no base, and the real copy happens here as it always did.
+  #
+  # Never symlinks: a symlinked workdir/app resolves to the SAME inode as
+  # apps/api/app — if both ever land on sys.path, CPython raises "cannot load
+  # module more than once per process" when the same file is imported under two
+  # paths (observed in CI for app.db.chroma).
+  if [ -n "${MUTMUT_SHARD_BASE:-}" ] && [ -d "${MUTMUT_SHARD_BASE:-}" ] &&
+     mkdir -p "$WORKDIR" && cp -al "$MUTMUT_SHARD_BASE/." "$WORKDIR/" 2> /dev/null; then
+    # The two files this run WRITES must not be shared with the shard's base:
+    # pyproject.toml is rewritten just below with this module's [tool.mutmut],
+    # and the module under test is the mutation target. Writing through a
+    # hardlink would hand every other module in the shard this module's config
+    # and a mutated source file. rm-then-cp, not `cp --remove-destination`
+    # (GNU-only) and not plain `cp -f` (which writes straight through the link).
+    for private in pyproject.toml "$MODULE"; do
+      rm -f "$WORKDIR/$private"
+      cp "$private" "$WORKDIR/$private"
+    done
+  else
+    rm -rf "$WORKDIR"
+    mkdir -p "$WORKDIR"
+    cp -r app "$WORKDIR/app"
+    cp -r tests "$WORKDIR/tests"
+    cp -r scripts "$WORKDIR/scripts"
+    cp -f pyproject.toml "$WORKDIR/pyproject.toml"
+    # pytest.ini carries asyncio_mode=auto. Under apps/api the workdir found it
+    # by walking up; under /dev/shm there is nothing above, and without it every
+    # async test fails with "async def functions are not natively supported".
+    cp -f pytest.ini "$WORKDIR/pytest.ini"
+  fi
   cd "$WORKDIR"
 
   # mutmut 3.x scopes mutation and test selection only via config — point both
@@ -592,11 +885,33 @@ EOF
   # weakness (measured: app/agents/tools/core/retrieval.py reached 186 of 348
   # mutants in CI with 33 timeouts, and completes in 76s with zero on a
   # developer machine). The whole hermetic suite runs in under 300s with xdist,
-  # so a single test in a per-mutant selection needs seconds; 45 leaves ~45x
-  # headroom while capping a hang at a fifteenth of what it used to cost.
+  # so a single test in a per-mutant selection needs seconds.
   # A mutant that times out proves nothing either way and is already excluded
   # from the verdict — this only stops it consuming the module's budget too.
-  MUTANT_TEST_TIMEOUT=45
+  #
+  # 120 and timeout_func_only, not a bare 45. Both come from the same finding:
+  # every abort the lane produced was ONE 45 s pytest-timeout inside the STATS
+  # run of a module whose mapped test files are large endpoint/worker suites
+  # (payment_models.py: "1 failed, 131 passed in 64s"; timezone.py: "1 failed,
+  # 407 passed in 83s"), on a box at load 14 and 54% CPU — not an overloaded one.
+  # A stats-run failure makes mutmut abort with "no state produced", so the whole
+  # module errored with no survivors and the shard was re-run until the box was
+  # quiet. Two distinct forms, and each needs its own half of the fix:
+  #
+  #   ERROR tests/unit/api/test_payments_endpoint.py::TestGetPlans::test_get_plans_returns_200 - Failed: Timeout
+  #     an ERROR, so the cap fired during fixture SETUP — the client fixture
+  #     builds the whole app, 30-40 s when several cold sessions start together.
+  #     timeout_func_only stops charging setup to the test's own budget.
+  #   FAILED ...::test_chat_stream_captures_message_submitted
+  #     a call-phase timeout on a test that waits on streams and retries. Those
+  #     are seconds idle and tens of seconds under real parallelism, so the cap
+  #     itself has to be bigger than a number sized on an idle box.
+  #
+  # Nothing is unguarded by this: a genuinely hung mutant still hits mutmut's own
+  # per-mutant RLIMIT, and the module-level 12-minute cap below is what actually
+  # bounds the lane. A mutant that times out proves nothing either way and is
+  # already excluded from the verdict.
+  MUTANT_TEST_TIMEOUT=120
   python3 - "$MODULE" "$MUTANT_TEST_TIMEOUT" "${TESTFILES[@]}" << 'EOF'
 import json
 import pathlib
@@ -626,8 +941,13 @@ replacement = (
     f'do_not_mutate_patterns = ["# pragma: no mutate"]\n'
     f'debug = true\n'
     f'pytest_add_cli_args_test_selection = [{selection}]\n'
-    f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
-    f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout={mutant_test_timeout}\']\n'
+    # The -o addopts REPLACES apps/api/pytest.ini's, so the plugin fence it
+    # carries has to be repeated here or every stats/mutant pytest session pays
+    # opik's ~4s import again. Keep the two lists in step. timeout_func_only is
+    # ini-only in pytest-timeout, so it needs its own -o rather than a place
+    # inside addopts.
+    f'pytest_add_cli_args = ["-p", "no:xdist", "-o", "timeout_func_only=true", "-o", '
+    f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers -p no:opik -p no:langsmith_plugin -p no:schemathesis --timeout={mutant_test_timeout}\']\n'
 )
 text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", replacement, text)
 path.write_text(text)
@@ -641,6 +961,21 @@ EOF
   # it but it does have the mechanism — scripts/test/mutmut_diff_scope.py, loaded
   # into the mutmut process below, reads these two env vars. The survivor-verdict
   # layer further down stays as defense-in-depth.
+  # Contract tests hit real Redis, and their teardown flushes a DB keyed on
+  # PYTEST_XDIST_WORKER — which mutmut never sets, so every mutant child would
+  # land on one DB and flush each other's keys mid-test. A test failed by a
+  # neighbour's flush is counted as a kill, and a false kill is a false green.
+  # One mutant worker for these modules: a repository's contract suite is ~2s,
+  # so serial is cheap exactly where parallel would be wrong.
+  for tf in ${TESTFILES[@]+"${TESTFILES[@]}"}; do
+    case "$tf" in
+      tests/contracts/*)
+        export MUTMUT_MAX_CHILDREN=1
+        echo "mutation: $MODULE maps a contract test — one mutant worker so real-Redis teardown cannot race" >&2
+        break
+        ;;
+    esac
+  done
   export MUTMUT_CHANGED_RANGES="$CHANGED_RANGES"
   export MUTMUT_SCOPED_MODULE="$MODULE"
   MUTMUT_RC=0
@@ -654,7 +989,9 @@ EOF
   # macOS, and the process-group kill takes mutmut's mutant children with it.
   # The decorated-function patch (mutmut_decorated_patch.py) is imported
   # first so endpoints and other decorated functions become mutation targets,
-  # and mutmut_diff_scope.py scopes generation to the PR's changed lines.
+  # mutmut_diff_scope.py scopes generation to the PR's changed lines, and
+  # mutmut_hardlink_copy.py links the also_copy tree into mutants/ rather than
+  # duplicating the workdir a second time.
   MUTMUT_PATCH_DIR="$REPO_ROOT/scripts/test"
   # Absolute: the run cd's into $WORKDIR, so a relative path resolves nowhere.
   CLASSIFIER="$REPO_ROOT/scripts/test/mutation_classify.py"
@@ -665,14 +1002,17 @@ import subprocess
 import sys
 
 env = dict(os.environ)
-# The Dagger CI container exports USE_REAL_SERVICES=1; under the lane's
-# 4-way parallelism that makes every mutant's covering tests dial real
-# Postgres/Mongo/Redis on a 2-core runner — runs that take seconds
-# hermetically stretch past mutmut's per-mutant timeout and read as ⏰
-# timeouts. The mutation lane is a unit-test instrument: the conftest
-# hermetic fence (blanked creds, mocked DBs) is the intended environment,
-# and real-service integration is covered by test-python.
-env.pop('USE_REAL_SERVICES', None)
+# USE_REAL_SERVICES is inherited from the job, not stripped. It used to be
+# popped here so the contract tier would skip under mutmut — sized for a
+# 2-core Dagger runner where per-mutant real-DB calls blew the timeout. The
+# cost of that was invisible: repository code is tested THROUGH Mongo in
+# tests/contracts, so with the tier skipped every changed repository method
+# reported 'no covering test' and the gate passed on it (users.py, 19 lines,
+# on one PR). The home box runs the services per runner instance already
+# (setup-python-test-env brings them up, namespaced by RUNNER_INDEX), the
+# contract suite for a repository runs in ~2s, and the host CPU governor
+# bounds the parallelism the old comment feared. Locally the variable is
+# simply whatever the developer exported, as in every other lane.
 patch_dir = sys.argv[1]
 env['PYTHONPATH'] = patch_dir + os.pathsep + env.get('PYTHONPATH', '')
 max_children = os.environ.get('MUTMUT_MAX_CHILDREN', '')
@@ -685,6 +1025,7 @@ run_args = ['run'] + (['--max-children', max_children] if max_children else [])
 child_code = (
     'import mutmut_decorated_patch; '
     'import mutmut_diff_scope; '
+    'import mutmut_hardlink_copy; '
     'import sys as _sys; '
     f'_sys.argv += {run_args!r}; '
     'from mutmut.__main__ import cli; cli()'
@@ -728,20 +1069,31 @@ finally:
 sys.exit(proc.returncode)
 " "$MUTMUT_PATCH_DIR" 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
   if [ "$MUTMUT_RC" -ne 0 ]; then
-    # mutmut 3.7 cannot mutate decorated functions (verified in its source:
-    # file_mutation.py skips every FunctionDef with decorators — FastAPI
-    # endpoints, @Cacheable wrappers, etc. are never mutated). When the
-    # module's exercised code is all decorated, the stats phase finds no
-    # mutant with covering tests and stops early. That is a tool limitation,
-    # not a test weakness — the endpoint tests + diff-cover carry that
-    # surface. Skip with a reason instead of failing the lane.
+    # "No mutant had covering tests" is two different facts wearing one
+    # message, and they need opposite answers. Either the changed lines hold
+    # nothing a test could pin — imports, constants, docstrings, decorators,
+    # or code inside a decorated function, which mutmut 3.7 never mutates
+    # (verified in its file_mutation.py) — and silence is right; or they are
+    # executable code inside a function that NO test reaches, which is the
+    # exact gap this lane exists to catch and used to exit 0 on. One PR had
+    # 39 of these SKIPs; 10 were the second kind, and the message pointed at
+    # a diff-cover lane that does not run on PRs as the reason not to worry.
+    # lib/mutation_gap.py draws the line; only the second kind fails.
     if grep -q "could not find any test case for any mutant" "$WORKDIR/mutmut.log"; then
-      echo "SKIP: $MODULE — no mutant had covering tests. Causes:" >&2
-      echo "      mutmut 3.7 cannot mutate decorated functions (FastAPI" >&2
-      echo "      endpoints, @Cacheable, ...), and with the diff-driven scoping" >&2
-      echo "      the changed lines may hold nothing mutatable (imports," >&2
-      echo "      decorators, strings). The changed behavior is covered by the" >&2
-      echo "      module's tests + diff-cover." >&2
+      GAP_LINES="$("$VENV_PY" "$SCRIPT_DIR/lib/mutation_gap.py" "$REPO_ROOT/apps/api/$MODULE" "$CHANGED_RANGES" | tr '\n' ' ')"
+      if [ -n "${GAP_LINES// /}" ]; then
+        echo "MUTATION FAILED — changed code no test reaches in $MODULE:" >&2
+        echo "      line(s) $GAP_LINES" >&2
+        echo "      These are executable lines inside a function that this PR added or" >&2
+        echo "      changed, and none of the module's mapped tests execute them, so no" >&2
+        echo "      mutant there could ever be killed. Write a test that runs them and" >&2
+        echo "      asserts what they do — or, if they are only reachable through the" >&2
+        echo "      contract tier, say so: that tier does not run in this lane." >&2
+        exit 1
+      fi
+      echo "SKIP: $MODULE — nothing on the changed lines for a test to pin" >&2
+      echo "      (imports, constants, docstrings, decorators, or code inside a" >&2
+      echo "      decorated function, which mutmut 3.7 cannot mutate)." >&2
       exit 0
     fi
     # mutmut's stats/clean/mutant phases share ONE process, so module-level
@@ -751,7 +1103,7 @@ sys.exit(proc.returncode)
     # with a reason. Fails there too -> a real breakage, fail loudly.
     if grep -q "Failed to run clean test" "$WORKDIR/mutmut.log"; then
       if "$VENV_PY" -m pytest -q "${TESTFILES[@]}" -p no:randomly -p no:random-order \
-          -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300' \
+          -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers -p no:opik -p no:langsmith_plugin -p no:schemathesis --timeout=300' \
           > "$WORKDIR/plain-check.log" 2>&1; then
         echo "SKIP: $MODULE — the tests pass in the plain copy but fail under"
         echo "      mutmut's single-process phase transitions. Module-level state"
@@ -774,7 +1126,7 @@ sys.exit(proc.returncode)
     if grep -q "BadTestExecutionCommandsException" "$WORKDIR/mutmut.log"; then
       if [ -d "$WORKDIR/mutants" ] && (cd "$WORKDIR/mutants" && "$VENV_PY" -m pytest -q "${TESTFILES[@]}" \
           --rootdir=. -p no:randomly -p no:random-order -p no:xdist \
-          -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300' \
+          -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers -p no:opik -p no:langsmith_plugin -p no:schemathesis --timeout=300' \
           > "$WORKDIR/mutants-tree-check.log" 2>&1); then
         echo "SKIP: $MODULE — the same pytest run passes on mutmut's instrumented tree"
         echo "      out of process, but fails inside mutmut's in-process stats tracer"
@@ -807,6 +1159,23 @@ sys.exit(proc.returncode)
     fi
     if [ ! -f "$WORKDIR/mutants/mutmut-stats.json" ]; then
       echo "MUTATION RUN FAILED (no state produced) — see mutmut's output above." >&2
+      # This path owes the shard a record like every other one. Without it the
+      # module reaches the gate as a bare non-zero exit and reads as "the lane
+      # failed and has not adopted the verdict contract" — the one shape a
+      # reviewer cannot act on. The dominant cause is a per-test timeout inside
+      # the STATS run, which aborts mutmut before a single mutant is graded, so
+      # count those: "the box was slow" and "the suite is weak" are the two
+      # readings of this exit code, and only one of them is ever true here.
+      # The FAILED/ERROR summary form, not every mention: pytest prints the
+      # phrase again inside the failure body, and a doubled count reads as two
+      # slow tests where there was one.
+      TIMED_OUT_TESTS="$(grep -cE '^(FAILED|ERROR) .*Failed: Timeout \(>' "$WORKDIR/mutmut.log" || true)"
+      if [ "${TIMED_OUT_TESTS:-0}" -gt 0 ]; then
+        NO_STATE_REASON="$MODULE reached no verdict: $TIMED_OUT_TESTS test(s) hit the ${MUTANT_TEST_TIMEOUT}s per-test timeout before mutmut graded a mutant, so no survivors were measured"
+      else
+        NO_STATE_REASON="$MODULE reached no verdict: mutmut produced no state and no test hit the ${MUTANT_TEST_TIMEOUT}s per-test timeout, so no mutant was graded and no survivors were measured — see shard.log"
+      fi
+      _write_record error "$NO_STATE_REASON" /dev/null /dev/null
       exit 1
     fi
   fi
@@ -849,6 +1218,33 @@ sys.exit(proc.returncode)
   SEGFAULT="$(printf '%s\n' "$RESULTS" | grep -c ": segfault$" || true)"
   SKIPPED="$(printf '%s\n' "$RESULTS" | grep -c ": skipped$" || true)"
   TYPECHECK="$(printf '%s\n' "$RESULTS" | grep -c ": caught by type check$" || true)"
+  # NOTHING came back. Every guard below needs TOTAL > 0 to fire, so a run that
+  # produced no results at all used to fall straight through them and print
+  # "Mutation: OK" — a module reported as proven by a mutmut that never ran.
+  # That is not hypothetical: a stray double quote in a comment inside the
+  # bash-quoted python child truncated the program, so the child exited 0 having
+  # printed nothing, and every module in the lane reported OK for a day.
+  #
+  # Keyed on the three facts together — no results, an empty log, no mutants
+  # tree — so that this cannot swallow the legitimate zero-mutant case below,
+  # where mutmut ran, said so, and simply found nothing to mutate.
+  if [ "${TOTAL:-0}" -eq 0 ] && [ ! -s "$WORKDIR/mutmut.log" ] && [ ! -d "$WORKDIR/mutants" ]; then
+    echo "MUTATION RUN PRODUCED NO RESULTS — the mutmut child did not run." >&2
+    echo "  No results, an empty mutmut.log, and no mutants/ tree: nothing was" >&2
+    echo "  mutated and nothing was proven about $MODULE. Reporting this as OK is" >&2
+    echo "  the false green this guard exists to stop. Check the mutmut invocation" >&2
+    echo "  itself (its python program is a bash-quoted string — an unescaped \" or" >&2
+    echo "  \$ inside it truncates the program and the child exits 0 in silence)." >&2
+    _write_record error "mutmut produced no results — the child did not run" /dev/null /dev/null
+    exit 1
+  fi
+  if [ "${TOTAL:-0}" -eq 0 ]; then
+    echo "SKIP: $MODULE — mutmut ran and generated no mutants on the changed lines." >&2
+    echo "      Nothing was proven here either way; it is not a pass." >&2
+    _write_record skip "mutmut generated no mutants on the changed lines of $MODULE" \
+      /dev/null /dev/null
+    exit 0
+  fi
   if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
     echo "MUTATION RUN INCOMPLETE — $NOT_CHECKED mutant(s) were never checked;" >&2
     echo "the run was interrupted. See mutmut's output above." >&2
@@ -928,6 +1324,14 @@ sys.exit(proc.returncode)
   EQUIVALENT=""
   UNCHANGED=""
   LOGGING=""
+  LINTED=""
+  # One row per survivor — name, mutmut's status, the classifier's verdict
+  # (CHANGED:<line> / LOGGING:<line> / UNCHANGED:<line> / EQUIV) — for
+  # lib/mutation_report.py to turn into verdict.json. The line number is the
+  # classifier's, resolved against the REAL module, and it is the whole reason
+  # survivors can be grouped by source line instead of listed by mutant id.
+  RECORDS="$WORKDIR/survivor-records.tsv"
+  : > "$RECORDS"
   _phase "classify survivors"
   if [ -n "$SURVIVORS" ]; then
     while IFS= read -r line; do
@@ -952,6 +1356,9 @@ sys.exit(proc.returncode)
         LOGGING:*)
           LOGGING="$LOGGING
   $line" ;;
+        LINTED:*)
+          LINTED="$LINTED
+  $line" ;;
         *)
           echo "MUTATION CLASSIFIER FAILED on: $line" >&2
           echo "  exit=$CLASSIFIER_RC verdict='$VERDICT'" >&2
@@ -959,6 +1366,8 @@ sys.exit(proc.returncode)
           echo "  Re-run: $VENV_PY $CLASSIFIER '$line' '$WORKDIR' '$CHANGED_RANGES' '$MODULE'" >&2
           exit 1 ;;
       esac
+      SURVIVOR_NAME="${line#"${line%%[![:space:]]*}"}"
+      printf '%s\t%s\t%s\n' "${SURVIVOR_NAME%%:*}" "survived" "$VERDICT" >> "$RECORDS"
     done <<< "$SURVIVORS"
   fi
   NO_TESTS_CHANGED=""
@@ -971,7 +1380,7 @@ sys.exit(proc.returncode)
         CHANGED:*)
           NO_TESTS_CHANGED="$NO_TESTS_CHANGED
   $line" ;;
-        UNCHANGED:*|LOGGING:*|EQUIV) ;;
+        UNCHANGED:*|LOGGING:*|LINTED:*|EQUIV) ;;
         *)
           echo "MUTATION CLASSIFIER FAILED on: $line" >&2
           echo "  exit=$CLASSIFIER_RC verdict='$VERDICT'" >&2
@@ -1011,6 +1420,21 @@ sys.exit(proc.returncode)
     echo "      and a case-ONLY rewrite of a header name in an x.headers.get()" >&2
     echo "      lookup, which every .headers mapping resolves case-insensitively" >&2
     echo "      (RFC 9110 5.1); asking for a DIFFERENT header still fails." >&2
+    echo "      Two more: an argument DELETED whose value is the callee's own" >&2
+    echo "      default (BrowserConfig(headless=True) builds a byte-identical" >&2
+    echo "      object without it) — re-VALUING that same argument is reported —" >&2
+    echo "      and a lookup default feeding urlparse(...).hostname, which is None" >&2
+    echo "      for every non-URL, so \"\", None and \"XXXX\" are indistinguishable;" >&2
+    echo "      mutating the lookup's KEY there is still reported." >&2
+    echo "      And one more: a cache write's model= dropped or None'd where the" >&2
+    echo "      value at that call site IS a construction of that same class —" >&2
+    echo "      redis_cache.set dumps through TypeAdapter(model or Any), which" >&2
+    echo "      emits identical bytes for an instance it does not have to coerce." >&2
+    echo "      A dict or a variable value there is coerced, and stays reported," >&2
+    echo "      as does any mutation of that call's key or TTL." >&2
+    echo "      Also the argument of a Starlette call_next(): BaseHTTPMiddleware" >&2
+    echo "      closes over the request's own scope/receive/send and never reads" >&2
+    echo "      that parameter, so call_next(None) is the same program." >&2
     echo "$EQUIVALENT" >&2
   fi
   if [ -n "$LOGGING" ]; then
@@ -1024,16 +1448,69 @@ sys.exit(proc.returncode)
     echo "      verdict so an exclusion is never invisible, including on a failing run:" >&2
     echo "$LOGGING" >&2
   fi
+  if [ -n "$LINTED" ]; then
+    LINTED_COUNT=$(printf '%s\n' "$LINTED" | grep -c . || true)
+    echo "NOTE: $LINTED_COUNT mutant(s) excluded as lint-caught — the mutation rewrites the" >&2
+    echo "      mode=\"json\" literal of a model_dump under app/agents/tools/, which the" >&2
+    echo "      tool-dump-boundary lint (python-static lane of this same gate, issue" >&2
+    echo "      #917) rejects in every other spelling, so the change cannot reach master." >&2
+    echo "      NOT an equivalence claim — whether the bytes differ depends on the model —" >&2
+    echo "      and printed before the verdict so the exclusion is never invisible:" >&2
+    echo "$LINTED" >&2
+  fi
+  # Every survivor's diff, uncapped. The old cap was 40, which on a real run
+  # left 39 survivors carrying a name and nothing else — and a mutant id with no
+  # diff is not actionable, since the numbering depends on the diff scope and
+  # cannot be regenerated locally. A survivor's diff is ~12 lines: even a
+  # hundred of them is noise-free next to the 190k-line log they sit in.
+  # `mutmut show` is the same call the log already made, so this costs nothing
+  # extra per mutant; its output is captured to a file because it is also what
+  # the structured verdict and `replay` read.
+  SURVIVOR_DIFFS="$WORKDIR/survivor-diffs.txt"
+  : > "$SURVIVOR_DIFFS"
   if [ -n "$REAL_SURVIVORS" ]; then
-    echo "MUTATION FAILED — the suite would not notice if this code were wrong:" >&2
-    echo "$REAL_SURVIVORS" >&2
+    _phase "collect survivor diffs"
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      name="${line#"${line%%[![:space:]]*}"}"
+      name="${name%: survived}"
+      "$VENV_PY" -m mutmut show "$name" >> "$SURVIVOR_DIFFS" 2>&1 ||
+        echo "  (diff of $name unavailable)" >&2
+    done <<< "$REAL_SURVIVORS"
+    cat "$SURVIVOR_DIFFS" >&2
+  fi
+
+  # The lane verdict + the grouped human report. Written on the passing path
+  # too: "this module was checked and came back clean" is a fact the gate must
+  # read, not an absence it has to infer.
+  MODULE_STATUS=pass
+  [ -n "$REAL_SURVIVORS" ] && MODULE_STATUS=survivors
+  _write_record "$MODULE_STATUS" "" "$RECORDS" "$SURVIVOR_DIFFS"
+
+  if [ -n "$REAL_SURVIVORS" ]; then
     exit 1
   fi
   echo "Mutation: OK — no survivors on changed lines in $MODULE"
 }
 
+# Reproduce ONE survivor on this machine: apply its recorded diff to a scratch
+# copy of apps/api and run the module's mapped tests there. Nothing under the
+# working tree is written — the copy is the whole point, and the replay checks
+# `git status --porcelain` before and after to prove it.
+cmd_replay() {
+  local source="${1:-}" selector="${2:-}"
+  if [ -z "$source" ] || [ -z "$selector" ]; then
+    echo "usage: mutation.sh replay <verdict.json|shard.log> <mutant-id|file.py:LINE>" >&2
+    exit 2
+  fi
+  local venv_py
+  venv_py="$(_venv_python)" || exit 1
+  "$venv_py" "$SCRIPT_DIR/lib/mutation_report.py" replay "$source" "$selector" \
+    --repo-root "$REPO_ROOT" --api-root "$REPO_ROOT/apps/api" --python "$venv_py"
+}
+
 usage() {
-  sed -n '2,29p' "$0" >&2
+  sed -n '2,41p' "$0" >&2
 }
 
 main() {
@@ -1045,6 +1522,7 @@ main() {
     shard)  cmd_shard "$@" ;;
     module) cmd_module "$@" ;;
     local)  cmd_local "$@" ;;
+    replay) cmd_replay "$@" ;;
     *)
       echo "mutation.sh: unknown subcommand '${sub}'" >&2
       usage

@@ -20,6 +20,7 @@ from app.services.triggers.subscription_validation import (
     _FUZZY_CUTOFF,
     _normalize,
     validate_conditions,
+    validate_scope,
 )
 
 pytestmark = pytest.mark.unit
@@ -27,6 +28,7 @@ pytestmark = pytest.mark.unit
 GMAIL = "gmail_new_message"
 SHEETS = "google_sheets_new_row"
 CALENDAR = "calendar_event_starting_soon"  # has a NUMBER field: minutes_until_start
+GITHUB = "github_pr_event"  # per-resource: scope field 'repos'
 
 
 def _condition(
@@ -230,8 +232,7 @@ class TestRejection:
 
 
 class TestNormalize:
-    """`_normalize` is the field-name matcher; both sides of the compare run through
-    it, so a broken normalize can hide behind the fuzzy fallback. Pin it directly."""
+    """_normalize is the field-name matcher for both sides of the compare; a break could hide behind the fuzzy fallback."""
 
     def test_it_lowercases_and_strips_non_alphanumerics(self) -> None:
         assert _normalize("Thread Id") == "threadid"
@@ -293,8 +294,7 @@ class TestControlFlow:
 
 
 class TestNumberCoercion:
-    """The NUMBER field type (e.g. calendar minutes_until_start) has its own
-    coercion path, distinct from INTEGER — a broken float() silently drops it."""
+    """The NUMBER field type (e.g. calendar minutes_until_start) has its own coercion path; a broken float() would drop it."""
 
     def test_an_integer_value_is_kept_as_a_float(self) -> None:
         outcome = validate_conditions(
@@ -313,3 +313,67 @@ class TestNumberCoercion:
         assert outcome.ok
         assert outcome.conditions[0].value == 15.5
         assert isinstance(outcome.conditions[0].value, float)
+
+
+class TestValidateScope:
+    """Scope is checked at the input boundary: unknown keys are dropped by Pydantic and a missing required field only fails at registration."""
+
+    def test_a_satisfied_required_scope_is_accepted(self) -> None:
+        assert validate_scope(GITHUB, {"repos": ["owner/name"]}) == []
+
+    def test_no_scope_on_an_account_level_trigger_is_accepted(self) -> None:
+        assert validate_scope(GMAIL, None) == []
+        assert validate_scope(GMAIL, {}) == []
+
+    def test_a_missing_required_scope_field_is_rejected(self) -> None:
+        # None, absent, and present-but-empty all mean "no resource to watch".
+        for scope in (None, {}, {"repos": []}):
+            (error,) = validate_scope(GITHUB, scope)
+            assert "requires a 'repos' scope" in error
+
+    def test_a_missing_required_field_error_names_the_field_and_its_description(self) -> None:
+        # The exact message: the field name it wants and the model's own description.
+        (error,) = validate_scope(GITHUB, None)
+
+        assert error == (
+            "'github_pr_event' requires a 'repos' scope "
+            "(List of repositories in owner/repo format); none was provided."
+        )
+
+    def test_an_unknown_scope_key_lists_the_valid_fields_comma_separated(self) -> None:
+        # A multi-field trigger so the ', ' separator actually matters (github has
+        # only one scope field, where any join renders the same).
+        (error,) = validate_scope(
+            "calendar_event_starting_soon", {"calendar_ids": ["primary"], "bogus": 1}
+        )
+
+        assert error == (
+            "'bogus' is not a scope field on 'calendar_event_starting_soon'. "
+            "Scope fields: calendar_ids, include_all_day, minutes_before_start."
+        )
+
+    def test_scope_on_an_account_level_trigger_lists_the_keys_to_remove(self) -> None:
+        # Gmail fires on the account itself and has no scope field; the keys to drop
+        # are listed comma-separated, so the ', ' join is load-bearing here too.
+        (error,) = validate_scope(GMAIL, {"aardvark": 1, "beluga": 2})
+
+        assert error == (
+            "'gmail_new_message' takes no scope configuration; remove aardvark, beluga."
+        )
+
+    def test_every_unknown_key_is_reported_not_just_the_first(self) -> None:
+        errors = validate_scope(GITHUB, {"repos": ["o/n"], "foo": 1, "bar": 2})
+
+        assert len(errors) == 2
+
+    def test_linear_team_id_is_required_because_composio_requires_it(self) -> None:
+        # Composio marks team_id required on LINEAR_ISSUE_CREATED_TRIGGER; our handler
+        # did not gate it, so an unscoped Linear watch failed only at registration.
+        assert validate_scope("linear_issue_created", {"team_id": "team_x"}) == []
+        (error,) = validate_scope("linear_issue_created", {})
+        assert "requires a 'team_id' scope" in error
+
+    def test_sheets_spreadsheet_ids_is_required_because_composio_requires_it(self) -> None:
+        assert validate_scope("google_sheets_new_row", {"spreadsheet_ids": ["1AbC"]}) == []
+        (error,) = validate_scope("google_sheets_new_row", {})
+        assert "requires a 'spreadsheet_ids' scope" in error

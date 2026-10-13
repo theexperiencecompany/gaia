@@ -1,6 +1,6 @@
 """Unit tests for the search service.
 
-``search_messages`` orchestrates two repositories (conversations + notes) and
+search_messages orchestrates two repositories (conversations + notes) and
 assembles the response with highlight snippets. These tests mock the repository
 singletons (services never mock the DB) and assert the service's own behaviour:
 response shape, snippet attachment, error mapping, and — critically — that the
@@ -21,6 +21,8 @@ from app.models.conversation_models import (
 from app.models.notes_models import NoteSearchHit
 from app.services import search_service
 from app.services.search_service import search_messages
+from app.utils.log_identifiers import user_text_shape
+from tests.helpers import captured_wide_event
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
@@ -94,6 +96,42 @@ class TestSearchMessagesHappyPath:
         assert result.notes[0].id == "n1"
 
 
+class TestSearchMessagesLogsNoUserText:
+    async def test_the_event_records_the_query_shape_and_never_its_words(
+        self, mock_conversation_repo, mock_note_repo, mock_get_context_window
+    ):
+        mock_conversation_repo.search.return_value = _conversation_results()
+        mock_note_repo.search_by_plaintext.return_value = _note_hits()
+
+        async with captured_wide_event() as event:
+            with patch.object(search_service, "time") as clock:
+                clock.monotonic.side_effect = [10.0, 10.25]
+                await search_messages("my divorce papers", FAKE_USER_ID)
+
+        assert event["search"] == {
+            "query": user_text_shape("my divorce papers"),
+            "mode": "keyword",
+            "scope": ["messages", "conversations", "notes"],
+            "result_count": 5,
+            "duration_ms": 250,
+        }
+
+    async def test_a_failed_search_still_records_only_the_query_shape(
+        self, mock_conversation_repo, mock_note_repo, mock_get_context_window
+    ):
+        mock_conversation_repo.search.side_effect = Exception("DB connection failed")
+
+        async with captured_wide_event() as event:
+            with pytest.raises(HTTPException):
+                await search_messages("my divorce papers", FAKE_USER_ID)
+
+        assert event["search"] == {
+            "query": user_text_shape("my divorce papers"),
+            "mode": "keyword",
+            "scope": ["messages", "conversations", "notes"],
+        }
+
+
 class TestSearchMessagesEmpty:
     async def test_returns_empty_when_no_results(
         self, mock_conversation_repo, mock_note_repo, mock_get_context_window
@@ -135,8 +173,7 @@ class TestSearchMessagesRegexEscaping:
     async def test_query_is_regex_escaped_before_reaching_repositories(
         self, mock_conversation_repo, mock_note_repo, mock_get_context_window
     ):
-        """A metacharacter-laden query must reach both repositories as an escaped
-        literal — never the raw pattern (ReDoS / regex-injection hardening)."""
+        """A metacharacter-laden query must reach both repositories as an escaped literal, never the raw pattern."""
         mock_conversation_repo.search.return_value = ConversationSearchResults()
         mock_note_repo.search_by_plaintext.return_value = []
 

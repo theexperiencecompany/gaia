@@ -43,12 +43,7 @@ class TestSweepExpiredMemoriesTask:
         return mocks
 
     async def test_legacy_agenda_rows_get_an_expiry_before_the_sweep(self) -> None:
-        """Agenda rows written before the task shelf-life shipped carry no
-        ``forget_after``, so the sweep never retires them — measured in
-        production: 152 of 157 live agenda rows were expiry-less ``durable``
-        rows, keeping year-old items in the always-injected agenda block.
-        The task must stamp them BEFORE sweeping, so an already-overdue
-        legacy item is retired in the same run."""
+        """Regression: 152 of 157 live agenda rows had no forget_after; the task must stamp expiry before sweeping."""
         order: list[str] = []
         mocks = self._patches(swept=[])
         mocks["backfill"].side_effect = lambda: order.append("backfill")
@@ -58,10 +53,7 @@ class TestSweepExpiredMemoriesTask:
         assert order == ["backfill", "sweep"]
 
     async def test_swept_rows_get_their_chroma_flags_retired(self) -> None:
-        """Postgres flips ``is_forgotten`` but Chroma kept ``is_latest=True,
-        is_forgotten=False``, so reconciliation still matched the swept row and
-        swallowed identical restatements as DUPLICATE forever. Every swept id
-        must have its Chroma flags synced in the same run."""
+        """Stale Chroma flags (is_latest/is_forgotten) matched swept rows, swallowing restatements as DUPLICATE forever."""
         mocks = await self._run(
             swept=[
                 SweptMemory(user_id="u1", memory_id="m1"),
@@ -75,9 +67,7 @@ class TestSweepExpiredMemoriesTask:
         ]
 
     async def test_summary_reaches_the_wide_event_and_the_return_value(self) -> None:
-        """The run's outcome is reported twice — ``memory_sweep`` on the wide
-        event and the ARQ result string — and both must carry the real counts
-        under the names dashboards query."""
+        """The outcome is reported twice (wide event and ARQ result), and both must carry the real counts."""
         mocks = self._patches(
             swept=[
                 SweptMemory(user_id="u1", memory_id="m1"),

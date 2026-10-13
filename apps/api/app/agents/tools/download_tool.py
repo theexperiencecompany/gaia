@@ -50,10 +50,8 @@ async def download(
     if not urlparse(url).scheme:
         url = f"https://{url}"
 
-    # Always refetch. The on-disk name is knowable from the URL alone, so an
-    # existing file could be returned without hitting the network — but nothing
-    # invalidates it, so "download it again, it changed" would hand the agent the
-    # stale bytes with no way to ask for the current ones.
+    # Always refetch: nothing invalidates the URL-derived on-disk name, so reusing
+    # it risks handing the agent stale bytes.
     try:
         result = await download_public_url(url)
     except DownloadError as e:

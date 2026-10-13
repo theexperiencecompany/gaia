@@ -1,7 +1,10 @@
-import {
-  INTEGRATION_STATE_ORDER,
-  integrationConnectionState,
-} from "@gaia/shared";
+import type {
+  CreateCustomIntegrationResponse,
+  IntegrationStatusesResponse,
+} from "@gaia/shared/api/generated";
+
+export type { CreateCustomIntegrationResponse } from "@gaia/shared/api/generated";
+
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { apiService } from "@/lib/api";
@@ -24,7 +27,7 @@ WebBrowser.maybeCompleteAuthSession();
 // first, then connected, then the rest of the catalog.
 
 /**
- * Map one personalized catalog entry (`GET /integrations/me`) to the mobile
+ * Map one fast catalog entry (`GET /integrations/me/snapshot`) to the mobile
  * `Integration` UI type. Per-tool schemas are not included here — the detail
  * sheet fetches them on demand via `getIntegrationTools`.
  */
@@ -46,31 +49,32 @@ function toIntegration(item: MyIntegrationItem): Integration {
     iconUrl: item.iconUrl ?? undefined,
     isPublic: item.isPublic ?? undefined,
     createdBy: item.createdBy ?? undefined,
-    creator: item.creator,
+    creator: item.creator ?? undefined,
   };
 }
 
-/**
- * Fetch the user's full integration catalog (platform + their own custom
- * integrations), each carrying connection status, in a single request.
- */
+/** Fetch the catalog snapshot; use fetchIntegrationStatuses for live status. */
 export async function fetchIntegrations(): Promise<Integration[]> {
   try {
-    const response =
-      await apiService.get<MyIntegrationsResponse>("/integrations/me");
+    const response = await apiService.get<MyIntegrationsResponse>(
+      "/integrations/me/snapshot",
+    );
 
-    return response.integrations.map(toIntegration).sort((a, b) => {
-      const priorityA =
-        INTEGRATION_STATE_ORDER[integrationConnectionState(a.status)];
-      const priorityB =
-        INTEGRATION_STATE_ORDER[integrationConnectionState(b.status)];
-      if (priorityA !== priorityB) return priorityA - priorityB;
-      return a.name.localeCompare(b.name);
-    });
+    return response.integrations.map(toIntegration);
   } catch (error) {
     console.error("Error fetching integrations:", error);
     return [];
   }
+}
+
+export async function fetchIntegrationStatuses(): Promise<
+  IntegrationStatusesResponse["statuses"]
+> {
+  const response = await apiService.get<IntegrationStatusesResponse>(
+    "/integrations/status",
+    { silent: true },
+  );
+  return response.statuses;
 }
 
 /**
@@ -174,14 +178,6 @@ export interface ConnectionTestResult {
   toolsCount?: number;
   oauthUrl?: string;
   error?: string;
-}
-
-export interface CreateCustomIntegrationResponse {
-  status: string;
-  message: string;
-  integrationId: string;
-  name: string;
-  connection?: ConnectionTestResult;
 }
 
 export async function createCustomIntegration(

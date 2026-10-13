@@ -36,7 +36,7 @@ ensure_typst() {
     aarch64|arm64) tgt="aarch64-unknown-linux-musl" ;;
     *) fail "0:0: unsupported arch for typst: $arch" ;;
   esac
-  curl -fsSL "https://github.com/typst/typst/releases/download/v${ver}/typst-${tgt}.tar.xz" \
+  curl --proto "=https" --tlsv1.2 -fsSL "https://github.com/typst/typst/releases/download/v${ver}/typst-${tgt}.tar.xz" \
     | tar -xJ -C "$BIN" --strip-components=1 "typst-${tgt}/typst" || fail "0:0: typst download failed"
   chmod +x "$BIN/typst"
 }
@@ -54,7 +54,7 @@ ensure_tectonic() {
     aarch64 | arm64) tgt="aarch64-unknown-linux-musl" ;;
     *) fail "0:0: unsupported arch for tectonic: $arch" ;;
   esac
-  curl -fsSL "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${ver}/tectonic-${ver}-${tgt}.tar.gz" \
+  curl --proto "=https" --tlsv1.2 -fsSL "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${ver}/tectonic-${ver}-${tgt}.tar.gz" \
     | tar -xz -C "$BIN" 2>/dev/null || fail "0:0: tectonic download failed (arch $arch)"
   [[ -x "$BIN/tectonic" ]] || fail "0:0: tectonic binary missing after download"
 }

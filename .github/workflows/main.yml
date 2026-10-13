@@ -10,8 +10,16 @@ name: Quality Checks
 # (build.yml). `workflow_dispatch` additionally exposes the runner probe.
 
 on:
+  # No `branches:` filter — same reason as code-quality.yml, where the full note
+  # lives: the key matches the PR's BASE, so master-only left every stacked PR
+  # ungated while still showing a green tick.
+  #
+  # `edited` for the same reason, and again the note lives in code-quality.yml:
+  # a retarget fires no other event, and these lanes scope to `github.base_ref`
+  # too (`nx affected`, `changes.sh docker-inputs`, the test-impact map). The
+  # `select-runner` guard below drops the title/body edits.
   pull_request:
-    branches: [master]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [master]
   workflow_dispatch:
@@ -37,8 +45,10 @@ on:
 # finish (a cancelled pytest step wedges the self-hosted worker for the
 # listener's 5-minute cancellation timeout). select-runner cancels the
 # superseded runs via the API instead — scripts/ci/runner.sh cancel-superseded.
+# A plain title/body edit gets its own group: it shares the merge sha with the
+# run that validated the commit, and in that group it used to cancel it.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
+  group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}${{ github.event.action == 'edited' && github.event.changes.base == '' && '-edit' || '' }}
   cancel-in-progress: true
 
 env:
@@ -56,6 +66,12 @@ jobs:
   # ── Runner selection (always runs on GH — no Tailscale needed) ─────────
   select-runner:
     name: Select runner
+    # Every job here is downstream of this one, so this condition is the
+    # workflow-level `if:` GitHub does not offer: an `edited` event that did
+    # not move the base changed no code, and `github.event.changes.base` is
+    # present only on a retarget (absent it is null, which casts to '' here).
+    # See the fuller note on the same guard in code-quality.yml.
+    if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -143,6 +159,14 @@ jobs:
       has_typescript: ${{ steps.affected.outputs.has_typescript }}
       python_projects: ${{ steps.affected.outputs.python_projects }}
       typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
+      # The test-python matrices, from the one slice definition CI and Dagger share:
+      # the slices that need no browser engine, and those that do.
+      python_slices: ${{ steps.slices.outputs.python_slices }}
+      engine_slices: ${{ steps.slices.outputs.engine_slices }}
+      # The branch every lane below diffs against. Resolved here, once — see the
+      # note at the top of scripts/ci/changes.sh for why the event payload
+      # cannot be trusted for it on a stacked PR.
+      base_ref: ${{ steps.base.outputs.base_ref }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,11 +178,22 @@ jobs:
           # an already-full workspace is a ~1 s delta.
           fetch-depth: 0
           persist-credentials: false
+      # The PR's REAL base, from the API — the event payload names the stack's
+      # trunk for a PR in a native GitHub stack.
+      - name: Resolve the PR's base branch
+        id: base
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bash scripts/ci/changes.sh base
       - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
         with:
           main-branch-name: master
       - name: Validate release manifest
         run: node scripts/ci/release.mjs validate-manifest
+      - name: Read the test-python slice matrices
+        id: slices
+        run: bash scripts/ci/pytest.sh slices >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/setup-node-pnpm
       - name: Detect affected
         id: affected
@@ -178,6 +213,14 @@ jobs:
           echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "Affected Python: $PY"
           echo "Affected TS: $TS"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: detect
 
   # ── Probe the actual execution capability on the chosen runner ───────────
   # This proves fallback works: the job lands wherever select-runner decided,
@@ -217,7 +260,16 @@ jobs:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 15
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    # ~4 min on an idle box, but the host CPU governor makes lanes queue and
+    # that queueing counts here: while four packed mutation shards share the
+    # box this job measured 12 min, then 16 (cancelled at the old 15-min cap,
+    # 2026-09-08). Sized like test-python's 22, not the idle-box number.
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -235,6 +287,11 @@ jobs:
           echo "nx=$NX" >> "$GITHUB_OUTPUT"
           echo "NX parallel=$NX on $(nproc) vCPUs"
       - name: Build (timed, 16c-optimized)
+        id: nx-build
+        # `continue-on-error` behind the verdict step below, which is what fails
+        # the job — the failure has to be READ out of build.time first, and a
+        # step that exits here runs nothing after it.
+        continue-on-error: true
         # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
         # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
         # a lane with 'FLAKY TESTS DETECTED' reported success.
@@ -257,6 +314,23 @@ jobs:
           # so build.time still measures only the build. No-op off the box.
           bash scripts/ci/runner.sh with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
           echo "Build: OK (parallel=$NX_PARALLEL)"
+      - name: Verdict (the build's own last error lines, not a pointer to the log)
+        if: always()
+        env:
+          NX_BUILD: ${{ steps.nx-build.outcome }}
+        run: |
+          python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback nx.json < "$RUNNER_TEMP/build.time" || true
+          python3 scripts/ci/verdict.py step-outcomes --lane build \
+            --findings "$RUNNER_TEMP/findings.jsonl" \
+            "nx-build=$NX_BUILD"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: build
 
   # ── Test Python — four slices on four runner instances ───────────────────
   # One 16-worker run measured 183s; the box runs eleven `gaia-home` runner
@@ -266,54 +340,70 @@ jobs:
   # from ~2.7 GB to ~1 GB — the parallel lanes now fit in RAM together.
   # Each lane writes its own coverage data; the `coverage` job below combines
   # them and enforces the threshold, so coverage never blocks either lane.
+  # ── The Obscura binaries the engine slices run, built once per run ─────────
+  # Its own job so a cold cargo build (a patch or Dockerfile change, an evicted
+  # cache) has a cap sized for it, and the browser slice's cap covers only its
+  # tests. The same composite and GHA cache scope as obscura-compat. The
+  # binaries travel as a tar: an artifact does not keep the executable bit.
+  obscura-bin:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true' && needs.detect.outputs.engine_slices != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/build-obscura
+      - name: Pack the binaries
+        run: tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/obscura-bin.tar" obscura
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: obscura-bin
+          path: ${{ runner.temp }}/obscura-bin.tar
+          retention-days: 1
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: obscura-bin
+
   test-python:
     name: test-python (${{ matrix.slice.name }})
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 22
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    # 45, not 22: this bounds a HUNG job, and a PR that touches a file no test
+    # in the slice covers (or that falls back when the impact map is missing)
+    # legitimately runs the slice's whole suite. A healthy full slice finishes
+    # in minutes (whole suite 183s at 16 workers), but on 2026-09-16 a loaded
+    # box (mutation shards starved then fail-open + both push workflows
+    # overlapping) crept past 22m without finishing; 45 bounds a hang while
+    # leaving a saturated fallback room to land. Per slice (test-slices.json):
+    # the browser slice is bounded tighter, a whole stack per worker.
+    timeout-minutes: ${{ fromJSON(matrix.slice.timeout_minutes) }}
     permissions:
       contents: read
       actions: read # `test_impact.py fetch` reads the map artifact of a master run
     strategy:
       fail-fast: false
       matrix:
-        slice:
-          # node: only the bridge slice (tests/integration/real/test_device_bridge_e2e.py)
-          # drives the real `gaia bridge` CLI via tsx; every other slice skips the
-          # Node setup (pnpm self-installer alone cost the integration lane 8 s).
-          # unit + meta need no service containers, sidecar or Node (verified on
-          # the box: 10,542 passed, 0 errors, nothing running). contracts needs
-          # Redis/Mongo, so it rides with integration.
-          # Static worker shares: the lanes start together, so a runtime probe of
-          # "workers already running" sees zero on every lane and each took 16 —
-          # 32+ workers on 16 threads (8 physical cores). Shares sum to the box.
-          # integration 4 / unit-b 7 / unit-a 5 (2026-08-28, box idle, -n 6..16):
-          # the integration slice's wall is FLAT from 6 to 16 workers (58-66 s,
-          # 53-58 % of its allotted threads — it waits on pg/mongo/chroma/sidecar)
-          # while each extra worker burns ~38 CPU-s of collection + imports, so
-          # its share goes to unit-b, whose wall is ~30 s fixed + ~270 CPU-s / n.
-          # unit is two slices on two runner instances: xdist re-collects the
-          # whole slice in EVERY worker (measured 20 s for 13.2k tests, CPU-bound),
-          # so 10 workers on one slice burn ~200 s of CPU on collection alone.
-          # Halving the slice halves per-worker collection and takes the lane's
-          # contention with integration off a single instance. services/agents/
-          # storage ≈ 5.2k tests; the rest of unit + meta ≈ 6.4k.
-          - { name: unit-a, paths: "tests/unit/services tests/unit/agents tests/unit/storage", ignore: "", node: "false", services: "false", workers: "5", serial: "false" }
-          - { name: unit-b, paths: "tests/unit tests/meta", ignore: "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage", node: "false", services: "false", workers: "7", serial: "false" }
-          # Long tests first. py-spy sampling of this lane showed 47% of worker
-          # time idle in the scheduler tail: the slice ends on a few 5-15s
-          # e2e/memory tests while the other workers sit finished. Handing
-          # those out first makes the tail out of quick tests instead.
-          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", ignore: "--ignore=tests/integration/real/test_device_bridge_e2e.py", node: "false", services: "true", workers: "4", serial: "false" }
-          # The device-bridge e2e TRUNCATEs bridge_devices on the lane's shared
-          # Postgres (clean_bridge_tables); under xdist another worker's fixture
-          # wipes its rows mid-test ("Refresh token is invalid"). Serial, in
-          # its own slice.
-          # serial: GitHub's expression engine treats the string "0" as falsy, so a
-          # `workers: "0"` fell through to the detected 16 and the 4 tests raced.
-          - { name: bridge, paths: "tests/integration/real/test_device_bridge_e2e.py", ignore: "", node: "true", services: "true", workers: "0", serial: "true" }
-    steps:
+        # scripts/ci/lib/test-slices.json, which Dagger's test-python reads too;
+        # the worker-share rationale lives beside its reader in pytest.sh.
+        slice: ${{ fromJSON(needs.detect.outputs.python_slices) }}
+    # One list of steps for both slice jobs: test-python-engines runs it by alias.
+    steps: &test-python-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
@@ -325,6 +415,20 @@ jobs:
         with:
           node: ${{ matrix.slice.node }}
           services: ${{ matrix.slice.services }}
+      # An engine slice runs real browser hosts: Chrome from the runner image and
+      # Obscura as the obscura-bin job built it. A missing binary fails the slice;
+      # it never skips.
+      - name: Fetch the Obscura binaries the obscura-bin job built
+        if: matrix.slice.engines == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: obscura-bin
+          path: ${{ runner.temp }}
+      - name: Locate the browser binaries
+        if: matrix.slice.engines == 'true'
+        run: |
+          tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/obscura-bin.tar"
+          bash scripts/ci/browser.sh locate
       # Only the GitHub-hosted fallback uses this: the static shares below are
       # sized for the 16-thread box and would put 7 workers on a 4-vCPU VM.
       - name: Detect parallelism
@@ -334,27 +438,32 @@ jobs:
           PY=$(bash scripts/ci/runner.sh parallel --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
           echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
-      # ── Test impact selection (PRs only, never the bridge slice) ───────────
+      # ── Test impact selection (PRs only, never the bridge or browser slice) ─
       # The bridge slice is one serial file; selecting inside it saves nothing
-      # and its e2e is the least safe thing to skip. See the header of scripts/ci/test_impact.py.
+      # and its e2e is the least safe thing to skip. The browser slice runs the
+      # app in child processes coverage never traces, so the map cannot know
+      # which app files reach it: selection there would skip it on every change. See the header of scripts/ci/test_impact.py.
       # Artifact, not actions/cache: a PR run cannot restore a cache written on
       # its head branch, only on its merge ref or master (`test_impact.py fetch`).
       - name: Fetch test impact map
-        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge' && matrix.slice.name != 'browser'
         env:
           SLICE_NAME: ${{ matrix.slice.name }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/test_impact.py fetch
       - name: Select impacted tests
         id: impact
-        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge' && matrix.slice.name != 'browser'
         env:
           SLICE_NAME: ${{ matrix.slice.name }}
           SLICE_PATHS: ${{ matrix.slice.paths }}
           # The slice's paths and its ignores TOGETHER say what it runs; without
           # the ignores unit-b re-ran every unit-a file the diff touched.
           SLICE_IGNORE: ${{ matrix.slice.ignore }}
-          BASE_REF: ${{ github.base_ref }}
+          # The resolved base, not github.base_ref: the payload names the
+          # stack's trunk on a stacked PR, so selection would pick up every test
+          # the PRs below this one touched.
+          BASE_REF: ${{ needs.detect.outputs.base_ref }}
         run: python3 scripts/ci/test_impact.py select
       # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
       # enforced by the coverage job below; one slice alone cannot reach it.
@@ -377,42 +486,19 @@ jobs:
           # serial lanes get -n 0 (GitHub's expression engine treats the string "0" as
           # falsy, hence the explicit flag); the box gets its static share, the
           # GitHub-hosted fallback the count detected on the VM it landed on.
-          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || (needs.select-runner.outputs.is_self_hosted == 'true' && matrix.slice.workers || steps.par.outputs.py) }}
+          # The browser slice keeps its own share everywhere: each worker boots a whole stack.
+          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || ((needs.select-runner.outputs.is_self_hosted == 'true' || matrix.slice.name == 'browser') && matrix.slice.workers || steps.par.outputs.py) }}
         run: |
           echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
           bash scripts/ci/pytest.sh slice
-      # ── gaia-shared ────────────────────────────────────────────────────────
-      # Its OWN pytest invocation, never a slice path. gaia-shared lives under
-      # libs/, and handing pytest paths from two trees at once moves rootdir to
-      # the repo root — apps/api/pytest.ini stops being the inifile, so
-      # asyncio_mode=auto and the marker registrations vanish and the entire
-      # slice dies (measured: 2145 failed, 891 errors, run 33301137881).
-      # A separate run keeps each invocation's rootdir and ini intact. It had a
-      # step in the retired test-python-coverage job and was lost with it.
+      # The suites a slice runs after its own — `after` in test-slices.json;
+      # pytest.sh shared-suite / contract-fuzz say why each is its own run.
       - name: gaia-shared tests
-        if: matrix.slice.name == 'unit-b'
-        working-directory: apps/api
-        run: |
-          uv run --frozen pytest ../../libs/shared/py/tests \
-            --tb=short -q --override-ini=addopts=--strict-markers
-          echo "gaia-shared tests: OK"
-      # ── Schemathesis contract fuzz ─────────────────────────────────────────
-      # Its own step, not a slice member: it boots a REAL server and must run
-      # serially and isolated, and the slice runs exclude `-m schemathesis`
-      # (the plugin costs ~2 s of import per xdist worker on lanes that never
-      # use it). It had a step in the retired test-python-coverage job and was
-      # lost with that job — nothing has fuzzed the API contract since. It runs
-      # in the integration slice because that is the lane with the services up.
+        if: contains(matrix.slice.after, 'shared-suite')
+        run: bash scripts/ci/pytest.sh shared-suite
       - name: Schemathesis contract fuzz (isolated live-server run)
-        if: matrix.slice.name == 'integration'
-        working-directory: apps/api
-        env:
-          USE_REAL_SERVICES: "1"
-        run: |
-          bash ../../scripts/ci/pytest.sh flake-gate \
-            uv run --frozen pytest tests/integration/real/test_schemathesis.py -q --tb=short \
-            -m schemathesis --override-ini=addopts=--strict-markers --timeout=600
-          echo "Schemathesis: OK"
+        if: contains(matrix.slice.after, 'contract-fuzz')
+        run: bash scripts/ci/pytest.sh contract-fuzz
       # ── Record the map (master / dispatch only) ────────────────────────────
       # !cancelled(): a lane with a red test still produced a valid file→test map,
       # and a missing map makes every PR run the whole slice.
@@ -447,6 +533,35 @@ jobs:
       - name: Stop the embedding sidecar
         if: always()
         run: bash scripts/ci/embedding-sidecar.sh stop
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: test-python-${{ matrix.slice.name }}
+          lane: test-python/${{ matrix.slice.name }}
+
+  # The slices that drive real browser engines (engines: true in test-slices.json):
+  # test-python's steps, run once the obscura-bin job has built the engine, so a
+  # cold engine build never spends a slice's cap. The other slices never wait on it.
+  test-python-engines:
+    name: test-python (${{ matrix.slice.name }})
+    needs: [select-runner, detect, obscura-bin]
+    if: needs.detect.outputs.has_python == 'true' && needs.detect.outputs.engine_slices != '[]'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: ${{ fromJSON(matrix.slice.timeout_minutes) }}
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: ${{ fromJSON(needs.detect.outputs.engine_slices) }}
+    steps: *test-python-steps
 
   # ── Coverage gate — its own job, off the test lanes' critical path ────────
   #
@@ -457,12 +572,17 @@ jobs:
   # the 80% combined gate run on master, which is the backstop. Do not
   # "restore" diff-cover to a PR lane; it would be measuring the selection.
   coverage:
-    needs: [select-runner, detect, test-python]
+    needs: [select-runner, detect, test-python, test-python-engines]
     # PR lanes do not trace coverage at all (see the COVERAGE env on
     # test-python) — tracing costs ~35 CPU-points per lane for a number
     # nothing would be entitled to read.
     if: needs.detect.outputs.has_python == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 8
     permissions:
       contents: read
@@ -488,7 +608,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -la .coverage.*
-          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge .coverage.browser
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
           echo "coverage gate: fail-under=$FAIL_UNDER (master/dispatch only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
@@ -497,13 +617,30 @@ jobs:
           name: coverage-xml
           path: apps/api/coverage.xml
           retention-days: 7
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: coverage
 
   # ── Test TypeScript — Nx parallel scales with cores ----------------------
   test-typescript:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 12
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    # 15, not 12, because the step below queues on the CPU governor: the acquire
+    # fails open only after GAIA_CPU_SLOTS_TIMEOUT (600s), so a job cap has to
+    # cover that wait PLUS the work, or a lane that was merely patient dies on
+    # the clock. Same shape as `build` above, which is 15 for the same reason.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -533,12 +670,30 @@ jobs:
         # writes output incrementally as tasks produce it, so nothing large is ever
         # pending at exit. It also drops the ::group:: wrapping, which matches
         # .github/CLAUDE.md: test steps leave failure output un-grouped.
+        #
+        # with-slots, like the `build` step: this lane sizes its own parallelism
+        # from nproc and then lands on the same physical cores as four mutation
+        # shards and four test-python slices, which is what cpu-slots.sh exists
+        # for. Unenrolled, it was the lane that paid — a jsdom render that takes
+        # 137 ms on an idle machine blew vitest's 5 s timeout on the box and
+        # failed the whole lane, then passed unchanged on the next run. A test
+        # timeout is a real failure signal; it must mean the code is slow, not
+        # that the neighbours were loud.
         shell: bash
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+          NX_PARALLEL: ${{ steps.par.outputs.nx }}
         run: |
-          /usr/bin/time -v pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=${{ steps.par.outputs.nx }} --output-style=stream 2>&1 | tee "$RUNNER_TEMP/tstest.time"
-          echo "TS tests: OK (parallel=${{ steps.par.outputs.nx }})"
+          bash scripts/ci/runner.sh with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream' 2>&1 | tee "$RUNNER_TEMP/tstest.time"
+          echo "TS tests: OK (parallel=$NX_PARALLEL)"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: test-typescript
 
   # ── Docker image build — proves the api image still builds, and times it ──
   # On the home box this uses the persistent shared `gaia-ci` builder created
@@ -551,6 +706,11 @@ jobs:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 40
     permissions:
       contents: read
@@ -572,7 +732,10 @@ jobs:
         id: inputs
         if: github.event_name == 'pull_request'
         env:
-          BASE_BRANCH: ${{ github.base_ref }}
+          # The resolved base, not github.base_ref — which on a stacked PR names
+          # the stack's trunk and rebuilds the image for inputs a PR below this
+          # one changed.
+          BASE_BRANCH: ${{ needs.detect.outputs.base_ref }}
         run: bash scripts/ci/changes.sh docker-inputs
       - name: Playwright pin matches uv.lock
         if: steps.inputs.outputs.build != 'false'
@@ -607,6 +770,14 @@ jobs:
       - name: Stop the persistent builder when idle (self-hosted)
         if: always() && runner.environment == 'self-hosted'
         run: pgrep -f 'docker buildx build' >/dev/null || docker buildx stop gaia-ci
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: docker-image
 
   # --- Test: harness tooling (runner-native, every run) ---------------------
   # Not gated on the affected lists. `tools/` belongs to no Nx project, so a
@@ -619,7 +790,17 @@ jobs:
     needs: [select-runner, detect, build, test-typescript]
     if: ${{ !cancelled() && needs.select-runner.result == 'success' }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 10
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    # 15, measured: the lane went from 167 to 425 tests in one day (the verdict
+    # contract, mutation report/replay, ci:remote and workflow-invariant tests),
+    # and on the shared box its pytest alone takes ~5.5 min where a laptop takes
+    # ~1.8 — run 34586500580 was cancelled at 10:31 with nothing hung. The cap
+    # is for a hang, and a hang here is minutes, not a doubling of honest work.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -638,10 +819,18 @@ jobs:
         run: |
           trap 'echo "::error::repro: uv run --no-project --with pytest"' ERR
           echo "::group::pytest output"
-          uv run --no-project --with pytest --with defusedxml pytest tools/lints tools/llm-stub scripts/ci -q
+          uv run --no-project --with pytest --with defusedxml pytest tools/lints tools/llm-stub scripts/ci -q --durations=10
           echo "::endgroup::"
           echo "### Harness tooling tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Harness tooling tests: OK (tools/lints + tools/llm-stub + scripts/ci)"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: test-harness-tools
 
   # --- Changelog sync check (always) --------------------------------------
   # GitHub-hosted on purpose: it pushes a branch and opens a PR, not compute.
@@ -649,7 +838,12 @@ jobs:
     needs: [detect, build, test-typescript]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 8
     permissions:
       contents: write
       pull-requests: write
@@ -706,6 +900,11 @@ jobs:
     needs: [select-runner, detect, build, test-typescript]
     if: ${{ !cancelled() && needs.select-runner.result == 'success' }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -760,6 +959,14 @@ jobs:
           # keep advisory until that PR merges, then flip to exit-code:1.
           exit-code: "0"
           ignore-unfixed: false
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: trivy-scan
 
   # --- Regression-proof: changed tests must FAIL on base -------------------
   # FastAPI's lesson: run the PR's changed test files against origin/master
@@ -771,6 +978,11 @@ jobs:
     needs: [select-runner, detect, build, test-typescript]
     if: ${{ !cancelled() && needs.select-runner.result == 'success' && needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request' }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -781,9 +993,14 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-python-test-env
+      # Against THIS PR's base, not master. Against master, a stacked PR is
+      # charged with every regression test the PRs below it added: this run
+      # reported "7 new regression tests" on #1175, which added none — and a
+      # test that must fail on master but passes on the parent (because the
+      # parent already contains its fix) fails the lane for being correct.
       - name: Changed test files must fail on base
         working-directory: apps/api
-        run: bash ../../scripts/ci/pytest.sh regression-proof origin/master
+        run: bash ../../scripts/ci/pytest.sh regression-proof "origin/${GAIA_PR_BASE:-master}"
       # setup-python-test-env brings up services + the embedding sidecar; on the
       # shared box that namespace must be released like every other lane does.
       - name: Release the test services
@@ -792,17 +1009,33 @@ jobs:
       - name: Stop the embedding sidecar
         if: always()
         run: bash scripts/ci/embedding-sidecar.sh stop
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: regression-proof
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     name: quality-gate
-    if: always()
+    # `always()`, with NO edit guard. Skipping alongside the DAG looked honest
+    # and was not: a skipped required check counts as PASSING, so a title edit
+    # after a RED run published a green verdict for the same head SHA. The
+    # verdict step below still must not run for that edit — with every lane
+    # skipped it would print "quality-gate: PASSED" having run nothing — so the
+    # two cases are split across two steps instead of skipping the job.
+    if: ${{ always() }}
     needs:
       - select-runner
       - detect
       - probe
       - build
+      - obscura-bin
       - test-python
+      - test-python-engines
       - coverage
       - test-typescript
       - docker-image
@@ -816,36 +1049,58 @@ jobs:
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # static checks + dead-code live in code-quality.yml (its own gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 3
-    permissions: {}
+    # Covers the edit path's wait for the run that validated this commit.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read # read this head SHA's previous runs (mirror step below)
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Every gated job uploads `verdict-<job>` through the
+      # ./.github/actions/upload-verdict composite; merge-multiple lands them
+      # as the one verify-logs/verdicts tree `consolidate` reads.
+      - if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: verdict-*
+          # runner.temp, not the checkout: that is where every lane wrote and
+          # uploaded from, and it is per-job and wiped, so nothing a previous
+          # job left on a persistent self-hosted workspace can reach the gate.
+          path: ${{ runner.temp }}/verdicts
+          merge-multiple: true
       - name: Verdict
-        run: |
-          echo "Runner: ${{ needs.select-runner.outputs.runner }} (${{ needs.select-runner.outputs.runner_label }}, self_hosted=${{ needs.select-runner.outputs.is_self_hosted }})"
-          # select-runner is in the loop below: if it fails, every compute lane
-          # is skipped, and skipped counts as passing — the verdict would be
-          # green by accident.
-          printf "  %-16s %s\n" "select-runner:" "${{ needs.select-runner.result }}"
-          printf "  %-16s %s\n" "detect:" "${{ needs.detect.result }}"
-          printf "  %-16s %s\n" "probe:" "${{ needs.probe.result }}"
-          printf "  %-16s %s\n" "build:" "${{ needs.build.result }}"
-          printf "  %-16s %s\n" "test-python:" "${{ needs.test-python.result }}"
-          printf "  %-16s %s\n" "test-typescript:" "${{ needs.test-typescript.result }}"
-          printf "  %-16s %s\n" "coverage:" "${{ needs.coverage.result }}"
-          printf "  %-18s %s\n" "docker-image:" "${{ needs.docker-image.result }}"
-          printf "  %-18s %s\n" "test-harness-tools:" "${{ needs.test-harness-tools.result }}"
-          printf "  %-18s %s\n" "trivy-scan:" "${{ needs.trivy-scan.result }}"
-          printf "  %-18s %s\n" "regression-proof:" "${{ needs.regression-proof.result }}"
-          for r in "${{ needs.select-runner.result }}" "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" \
-                   "${{ needs.test-python.result }}" "${{ needs.coverage.result }}" "${{ needs.test-typescript.result }}" \
-                   "${{ needs.docker-image.result }}" "${{ needs.test-harness-tools.result }}" \
-                   "${{ needs.trivy-scan.result }}" "${{ needs.regression-proof.result }}"; do
-            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
-              echo "::error::Required job $r"
-              exit 1
-            fi
-          done
-          echo "quality-gate: PASSED"
+        if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
+        env:
+          # ONE list: every lane the gate needs, each carrying its job result.
+          # consolidate needs both halves — the result is what tells a
+          # legitimately SKIPPED lane apart from one that ran and reported
+          # nothing, and that second case is the drift this contract exists to
+          # catch. select-runner is in the list on purpose: if it fails, every
+          # compute lane skips, and skipped counts as passing, so the gate
+          # would go green by accident. Results go through env rather than
+          # inline expansion, like every other gate here.
+          #
+          # `@result-only` marks the two lanes that CANNOT upload a verdict:
+          # the composite is a path in the checked-out tree, `probe` never
+          # checks out, and `select-runner` checks out the DEFAULT BRANCH on
+          # purpose (it handles a PAT and must not run PR-authored code, so a
+          # composite this branch adds is not in its tree). Both are still
+          # enforced on their job result — declared, not dropped.
+          EXPECT: >-
+            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},build=${{ needs.build.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},test-typescript=${{ needs.test-typescript.result }},docker-image=${{ needs.docker-image.result }},test-harness-tools=${{ needs.test-harness-tools.result }},trivy-scan=${{ needs.trivy-scan.result }},regression-proof=${{ needs.regression-proof.result }}
+        run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"
+      # The other half of the `always()` above: a title or body edit ran no
+      # lane, so there is nothing to consolidate — but this check must still
+      # conclude, and it must conclude what the head SHA already earned. The
+      # head sha, not github.sha: a pull_request run's github.sha is the merge
+      # commit, while the check runs branch protection reads hang off the head.
+      - name: Repeat this commit's last completed gate verdict
+        if: ${{ github.event.action == 'edited' && github.event.changes.base == '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/verdict.py mirror-previous-gate --repo "$GITHUB_REPOSITORY" --sha "${{ github.event.pull_request.head.sha }}" --workflow main.yml --job quality-gate --run-id "$GITHUB_RUN_ID" --wait-seconds 2400
 
   # --- Docker phase, split so the long part runs parallel to the gate -------
   # build-images starts right after detect (master only) and builds/publishes
@@ -856,6 +1111,43 @@ jobs:
   # failed gate still fires the publish-without-deploy orphan alert instead of
   # silently skipping everything. build.yml owns its own runners
   # (GitHub-hosted) and is deliberately not routed through select-runner.
+  # A deploy parked on an environment gate nothing can release (run 37507260357
+  # sat 3 days with no reviewers configured) holds build.yml's master
+  # concurrency group, and every later push's docker phase queues behind it
+  # until the next push cancels it. No needs: it must clear the slot before
+  # this run's build-images reaches the same group.
+  deploy-unwedge:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    # Above unwedge's 15 min limit: it waits out a gate still inside it.
+    timeout-minutes: 20
+    permissions:
+      actions: write # force-cancel the wedged run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Force-cancel runs wedged on a deployment gate
+        id: unwedge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/deploy.sh unwedge
+      # !cancelled(): a reap done before a later request failed still alerts.
+      # continue-on-error on the send only, as in build.yml's orphan alert.
+      - name: Notify Discord — wedged deploy cancelled
+        if: ${{ !cancelled() && steps.unwedge.outputs.reaped != '' }}
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ffa94d"
+          MESSAGE: |
+            ⚠️ **Wedged Backend Deploy Cancelled**
+            **Run(s):** `${{ steps.unwedge.outputs.reaped }}`
+            Their production deploy sat on an environment gate with no reviewers or wait timer, so nothing could release it, and it was blocking every later deploy. They never reached a runner, so production was not touched.
+            This run (`${{ github.sha }}`) deploys everything they carried. If this keeps happening, raise it with GitHub support.
+        run: bash scripts/ci/deploy.sh notify
+
   build-images:
     needs: [detect]
     if: ${{ always() && needs.detect.result == 'success' && github.ref == 'refs/heads/master' }}

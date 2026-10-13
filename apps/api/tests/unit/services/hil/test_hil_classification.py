@@ -6,7 +6,7 @@ Two invariants carry the security weight, and both are attacked here:
   must resolve to *destructive*. A classifier that returns False when it is broken is a
   classifier that runs destructive tools unattended.
 * **The MCP hint escalates only.** An untrusted MCP server may flag danger but must never
-  clear it: ``destructiveHint=False`` and ``readOnlyHint=True`` mean "defer", not "safe".
+  clear it: destructiveHint=False and readOnlyHint=True mean "defer", not "safe".
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -222,10 +222,11 @@ class TestRegistryAndCache:
 
 
 class TestTheClassifierCallItself:
-    """The verdict is cached per tool for every user, so this call is made once and
-    read forever. A mislabelled call lands its COGS on the wrong lane, and an
-    unbounded one holds the first gated call of a tool open for as long as the
-    provider takes."""
+    """The verdict is cached per tool per user forever, so this call runs exactly once.
+
+    A mislabelled call lands its COGS on the wrong lane, and an unbounded one
+    holds the first gated call of a tool open for as long as the provider takes.
+    """
 
     async def test_the_call_is_labelled_bounded_and_deliberately_unattributed(
         self,

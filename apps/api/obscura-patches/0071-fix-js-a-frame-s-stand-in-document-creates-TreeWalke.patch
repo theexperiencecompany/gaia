@@ -1,0 +1,154 @@
+From e5250a1dedd66818b8809e318ef877b626b8e86f Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 16:53:43 +0530
+Subject: [PATCH] fix(js): a frame's stand-in document creates TreeWalkers and
+ NodeIterators
+
+An about:blank or srcdoc frame, and a frame whose load has not finished,
+expose a stand-in document through contentDocument. It had neither
+createTreeWalker nor createNodeIterator, so a script walking every frame's
+text threw "doc.createTreeWalker is not a function" where Chrome walks the
+frame. Both now come from Document, whose traversal reads only its root.
+The stand-in is not a DOM node, so a walk rooted at it starts from its
+<html> element.
+
+Document's createTreeWalker and createNodeIterator now throw Chrome's
+TypeError ("parameter 1 is not of type 'Node'") for a root that is not a
+DOM node. Such a root has no node id, which the DOM ops read as node 0,
+the main document, so the walk covered the parent page instead of
+failing.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 29 ++++++++++++++++
+ crates/obscura-js/src/runtime.rs  | 56 +++++++++++++++++++++++++++++++
+ 2 files changed, 85 insertions(+)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 74f1396..c1b3526 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -6053,6 +6053,16 @@ function _throwDocumentDomainSecurityError() {
+   throw new DOMException("Failed to set the 'domain' property on 'Document'", "SecurityError");
+ }
+ 
++// A traversal steps through the DOM by its root's node id. Something that is
++// not a DOM node has none, and an undefined id reaches the DOM ops as node 0,
++// the main document, so the walk would silently cover the whole page instead
++// of failing. Chrome rejects a non-Node root with this TypeError.
++function _requireTraversalRoot(root, method) {
++  if (root === null || typeof root !== 'object' || !Number.isInteger(root._nid)) {
++    throw new TypeError(`Failed to execute '${method}' on 'Document': parameter 1 is not of type 'Node'.`);
++  }
++}
++
+ class Document extends Node {
+   get timeline() {
+     if (!this._timeline) {
+@@ -6329,6 +6339,7 @@ class Document extends Node {
+   }
+   createRange() { return new Range(); }
+   createTreeWalker(root, whatToShow, filter) {
++    _requireTraversalRoot(root, 'createTreeWalker');
+     // whatToShow is unsigned long; default SHOW_ALL only when the arg is omitted.
+     // An explicit 0 (show nothing) must stay 0, not become SHOW_ALL.
+     whatToShow = (whatToShow === undefined) ? 0xFFFFFFFF : (whatToShow >>> 0);
+@@ -6475,6 +6486,7 @@ class Document extends Node {
+   // referenceNode/pointerBeforeReferenceNode/detach rather than a TreeWalker's
+   // currentNode and child/sibling movers.
+   createNodeIterator(root, whatToShow, filter) {
++    _requireTraversalRoot(root, 'createNodeIterator');
+     // whatToShow is unsigned long; default SHOW_ALL only when the arg is
+     // omitted. An explicit 0 (show nothing) must stay 0, not become SHOW_ALL.
+     whatToShow = (whatToShow === undefined) ? 0xFFFFFFFF : (whatToShow >>> 0);
+@@ -13498,6 +13510,23 @@ class _IframeDocument {
+   createDocumentFragment() { return document.createDocumentFragment(); }
+   createEvent(type) { return document.createEvent(type); }
+   createRange() { return new Range(); }
++  // TreeWalker and NodeIterator are factories every Document has (DOM 6).
++  // This stand-in, which an about:blank or srcdoc frame and a frame whose
++  // load has not finished all get, lacked both, so a script walking each
++  // frame's text threw "doc.createTreeWalker is not a function" where Chrome
++  // walks the frame. A traversal reads only its root, so the main document's
++  // implementation serves this tree. The stand-in itself is no DOM node, so a
++  // walk rooted at it starts from its <html> element: the same nodes, except
++  // that the walker's root (and a NodeIterator's first node) is <html>, not
++  // the document.
++  createTreeWalker(root, whatToShow, filter) {
++    return Document.prototype.createTreeWalker.call(
++      this, root === this ? this._root : root, whatToShow, filter);
++  }
++  createNodeIterator(root, whatToShow, filter) {
++    return Document.prototype.createNodeIterator.call(
++      this, root === this ? this._root : root, whatToShow, filter);
++  }
+   hasFocus() { return false; }
+ 
+   get cookie() { return ''; }
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 17f0e6e..e4e2cd5 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -21704,6 +21704,62 @@ mod tests {
+             .await;
+     }
+ 
++    /// The stand-in document of a frame with no loaded document of its own
++    /// (about:blank, srcdoc, or still loading) walks its tree like any
++    /// Document; it used to have no createTreeWalker or createNodeIterator.
++    #[test]
++    fn a_stand_in_frame_document_creates_tree_walkers_and_node_iterators() {
++        let mut rt = setup_runtime("<html><body><iframe id=\"f\"></iframe></body></html>");
++        let result = rt
++            .evaluate(
++                "(function() { \
++                    const doc = document.getElementById('f').contentDocument; \
++                    doc.body.innerHTML = '<p>one</p><p>two <b>three</b></p>'; \
++                    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT); \
++                    const text = []; let node; \
++                    while ((node = walker.nextNode())) text.push(node.data); \
++                    const iterator = doc.createNodeIterator(doc.body, NodeFilter.SHOW_ELEMENT); \
++                    const tags = []; \
++                    while ((node = iterator.nextNode())) tags.push(node.localName); \
++                    return text.join(',') + '|' + tags.join(','); \
++                })()",
++            )
++            .unwrap();
++        assert_eq!(result, serde_json::json!("one,two ,three|body,p,p,b"));
++    }
++
++    /// A walk rooted at the stand-in document covers the frame, never the page
++    /// around it; a root that is not a node is a TypeError, as in Chrome,
++    /// rather than a walk over the main document.
++    #[test]
++    fn a_walk_rooted_at_a_stand_in_frame_document_stays_in_the_frame() {
++        let mut rt = setup_runtime("<html><body><p>page text</p><iframe id=\"f\"></iframe></body></html>");
++        let result = rt
++            .evaluate(
++                "(function() { \
++                    const doc = document.getElementById('f').contentDocument; \
++                    const texts = (walker) => { const out = []; let n; \
++                        while ((n = walker.nextNode())) out.push(n.data); return out.join(','); }; \
++                    const before = texts(doc.createTreeWalker(doc, NodeFilter.SHOW_TEXT)); \
++                    doc.body.innerHTML = '<p>frame text</p>'; \
++                    const after = texts(doc.createTreeWalker(doc, NodeFilter.SHOW_TEXT)); \
++                    const iterated = texts(doc.createNodeIterator(doc, NodeFilter.SHOW_TEXT)); \
++                    const rejected = [{}, null, undefined, 'x'].map(root => { \
++                        try { document.createTreeWalker(root); return 'walked'; } \
++                        catch (error) { return error.name; } }); \
++                    let iteratorRejects; \
++                    try { document.createNodeIterator({}); iteratorRejects = 'walked'; } \
++                    catch (error) { iteratorRejects = error.name; } \
++                    return [before, after, iterated, rejected.join(','), iteratorRejects].join('|'); \
++                })()",
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!("|frame text|frame text|TypeError,TypeError,TypeError,TypeError|TypeError")
++        );
++    }
++
+     /// #734: ICU inherits the host OS locale when no default is set, so
+     /// Intl.resolvedOptions() contradicted navigator.language on any host
+     /// whose OS locale is not en-US. The pinned default must win.

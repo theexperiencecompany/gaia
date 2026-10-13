@@ -1,0 +1,522 @@
+From b0399bcbb11447e967ceaacadb34b4a383f5cdc7 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 08:05:29 +0530
+Subject: [PATCH] fix(css): :focus, :focus-visible and :focus-within match the
+ focused element
+
+The focus pseudo-classes never matched: querySelector(':focus') was null,
+matches(':focus-within') false, and focus styles never applied, though the
+page had a focused element. The page's focus model now records the focused
+element (and whether it is focus-visible: keyboard or script focus, or a
+pointer press on a control that takes typed text) on the document, and
+selectors match :focus on it and on a shadow host holding it, and
+:focus-within on its shadow-including ancestors.
+
+A focus move restyles only the elements whose state flipped and only for
+rules whose compound can select them (state dependencies now keep the
+compound's key), so moving focus between fields of one form does not
+re-cascade the document; the retained result matches a full cascade.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-dom/src/selector.rs            | 42 ++++++++--
+ crates/obscura-dom/src/tree.rs                | 15 ++++
+ crates/obscura-js/js/bootstrap.js             | 28 +++++--
+ crates/obscura-js/src/ops.rs                  | 21 +++++
+ crates/obscura-js/src/runtime.rs              | 36 +++++++++
+ crates/obscura-render/src/css.rs              | 26 +++++++
+ crates/obscura-render/src/dom.rs              | 76 +++++++++++++++++++
+ .../src/dom/shadow_restyle_tests.rs           | 45 +++++++++++
+ 8 files changed, 276 insertions(+), 13 deletions(-)
+
+diff --git a/crates/obscura-dom/src/selector.rs b/crates/obscura-dom/src/selector.rs
+index 09ecb31..ddf65d8 100644
+--- a/crates/obscura-dom/src/selector.rs
++++ b/crates/obscura-dom/src/selector.rs
+@@ -504,13 +504,25 @@ impl<'a> Element for DomElement<'a> {
+                     .form_control_checked(self.node_id)
+                     .unwrap_or_else(|| self.has_boolean_attr("checked") || self.has_boolean_attr("selected"))
+             }
+-            // Dynamic user-interaction pseudo-classes have no meaning against
+-            // a static DOM snapshot with no live user input.
+-            PseudoClass::Hover
+-            | PseudoClass::Active
+-            | PseudoClass::Focus
+-            | PseudoClass::FocusVisible
+-            | PseudoClass::FocusWithin => false,
++            // Focus is live page state the focus model records on the tree. A
++            // shadow host holding the focused element in its shadow tree
++            // matches :focus too, as it is what the host's tree sees focused.
++            PseudoClass::Focus => self.tree.focus().is_some_and(|(focused, _)| {
++                focused == self.node_id
++                    || self
++                        .tree
++                        .shadow_root(self.node_id)
++                        .is_some_and(|root| shadow_including_inclusive_ancestor(self.tree, root, focused))
++            }),
++            PseudoClass::FocusVisible => self
++                .tree
++                .focus()
++                .is_some_and(|(focused, visible)| visible && focused == self.node_id),
++            PseudoClass::FocusWithin => self.tree.focus().is_some_and(|(focused, _)| {
++                shadow_including_inclusive_ancestor(self.tree, self.node_id, focused)
++            }),
++            // No pointer is ever over or pressing an element here.
++            PseudoClass::Hover | PseudoClass::Active => false,
+         }
+     }
+ 
+@@ -1824,3 +1836,19 @@ mod tests {
+         assert!(!tree.matches_selector(item, "::slotted(.item)").unwrap());
+     }
+ }
++
++/// Whether `ancestor` is `node` or one of its shadow-including ancestors (a
++/// shadow root's parent is its host).
++fn shadow_including_inclusive_ancestor(tree: &DomTree, ancestor: NodeId, node: NodeId) -> bool {
++    let mut current = Some(node);
++    while let Some(id) = current {
++        if id == ancestor {
++            return true;
++        }
++        current = tree
++            .with_node(id, |n| n.parent)
++            .flatten()
++            .or_else(|| tree.shadow_root_info(id).map(|root| root.host));
++    }
++    false
++}
+diff --git a/crates/obscura-dom/src/tree.rs b/crates/obscura-dom/src/tree.rs
+index 228e984..81ac5a4 100644
+--- a/crates/obscura-dom/src/tree.rs
++++ b/crates/obscura-dom/src/tree.rs
+@@ -276,6 +276,9 @@ pub(crate) struct DomTreeInner {
+     // Whether the document was parsed in (full) quirks mode. In quirks mode CSS
+     // class and id selectors match ASCII-case-insensitively.
+     pub(crate) quirks: bool,
++    /// The element holding focus, kept by the page's focus model, and whether
++    /// it matches :focus-visible. Selectors read it for the focus pseudo-classes.
++    focus: Option<(NodeId, bool)>,
+ }
+ 
+ impl DomTree {
+@@ -297,6 +300,7 @@ impl DomTree {
+                 document: NodeId(0),
+                 id_index: HashMap::new(),
+                 form_controls: HashMap::new(),
++                focus: None,
+                 shadow_roots: HashMap::new(),
+                 shadow_roots_by_host: HashMap::new(),
+                 allow_declarative_shadow_roots: false,
+@@ -322,6 +326,17 @@ impl DomTree {
+             == Some(value)
+     }
+ 
++    /// The focused element and whether it matches :focus-visible; None once
++    /// it has left the document.
++    pub fn focus(&self) -> Option<(NodeId, bool)> {
++        let focus = self.inner.borrow().focus?;
++        self.is_connected(focus.0).then_some(focus)
++    }
++
++    pub fn set_focus(&self, focus: Option<(NodeId, bool)>) {
++        self.inner.borrow_mut().focus = focus;
++    }
++
+     pub fn form_control_checked(&self, node: NodeId) -> Option<bool> {
+         self.inner
+             .borrow()
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 209f9c2..4a32a94 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -3210,11 +3210,27 @@ function _currentFocus() {
+   const focused = globalThis.__obscura_focused || null;
+   // Focus fixup: a removed element no longer holds focus.
+   if (focused && !focused.isConnected) {
+-    globalThis.__obscura_focused = null;
++    _setFocus(null, false);
+     return null;
+   }
+   return focused;
+ }
++// Record the focused element, here and on the document the selectors and the
++// renderer read for :focus, :focus-visible and :focus-within.
++function _setFocus(el, visible) {
++  globalThis.__obscura_focused = el;
++  _dom("set_focus", el ? String(el._nid) : "", visible ? "1" : "0");
++}
++// Whether focus that a pointer press moves to `el` shows a focus ring
++// (:focus-visible): Chrome shows it for controls that take typed text.
++function _pointerFocusIsVisible(el) {
++  if (el.isContentEditable) return true;
++  const name = el.localName;
++  if (name === 'textarea' || name === 'select') return true;
++  if (name !== 'input') return false;
++  const type = (el.getAttribute('type') || 'text').toLowerCase();
++  return !['button', 'submit', 'reset', 'image', 'checkbox', 'radio', 'range', 'color', 'file'].includes(type);
++}
+ globalThis.__obscura_focusedElement = _currentFocus;
+ // The flat-tree parent: a slotted node's slot, a shadow root's host.
+ function _flatTreeParent(node) {
+@@ -3312,17 +3328,17 @@ function _fireFocusEvent(target, type, relatedTarget) {
+ // focusout on the element losing it while nothing is focused, then focus and
+ // focusin on the new one, as Chrome orders them. A blur handler that moves
+ // focus itself wins.
+-function _focusingSteps(next) {
++function _focusingSteps(next, byPointer) {
+   const previous = _currentFocus();
+   if (previous === next) return;
+   if (previous) {
+-    globalThis.__obscura_focused = null;
++    _setFocus(null, false);
+     _fireFocusEvent(previous, 'blur', next);
+     _fireFocusEvent(previous, 'focusout', next);
+     if (_currentFocus() !== null) return;
+   }
+   if (!next || !next.isConnected) return;
+-  globalThis.__obscura_focused = next;
++  _setFocus(next, !byPointer || _pointerFocusIsVisible(next));
+   _fireFocusEvent(next, 'focus', previous);
+   _fireFocusEvent(next, 'focusin', previous);
+ }
+@@ -3571,7 +3587,7 @@ globalThis.__obscura_focusOnPress = function(target) {
+   for (let n = target; n; n = _flatTreeParent(n)) {
+     if (n.nodeType !== 1) continue;
+     if (_isFocusableArea(n)) {
+-      _focusingSteps(n);
++      _focusingSteps(n, true);
+       return;
+     }
+     const delegate = _focusDelegate(n);
+@@ -3581,7 +3597,7 @@ globalThis.__obscura_focusOnPress = function(target) {
+           && current !== n) {
+         return;
+       }
+-      _focusingSteps(delegate);
++      _focusingSteps(delegate, true);
+       return;
+     }
+   }
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index c03bed5..f876b5b 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -801,6 +801,12 @@ fn shadow_including_connected_nodes(dom: &DomTree) -> HashSet<NodeId> {
+ /// changes the rendered document. Chromium dirties layout when the mutation
+ /// reaches a connected style/layout owner, not merely because a mutating API
+ /// was entered.
++/// The focus state a `set_focus` command names: the element (none for an
++/// empty id) and whether it matches :focus-visible.
++fn requested_focus(arg1: &str, arg2: &str) -> Option<(NodeId, bool)> {
++    arg1.parse::<u32>().ok().map(|nid| (NodeId::new(nid), arg2 == "1"))
++}
++
+ fn render_mutation_impact(
+     dom: &DomTree,
+     cmd: &str,
+@@ -809,6 +815,10 @@ fn render_mutation_impact(
+ ) -> RenderMutationImpact {
+     let node = |value: &str| value.parse::<u32>().ok().map(NodeId::new);
+     match cmd {
++        "set_focus" => RenderMutationImpact {
++            connected: true,
++            actual_change: dom.focus() != requested_focus(arg1, arg2),
++        },
+         "set_form_value" | "set_form_checked" | "set_form_indeterminate" => {
+             let Some(target) = node(arg1) else {
+                 return RenderMutationImpact::default();
+@@ -986,6 +996,12 @@ fn retained_style_mutation(
+     arg1: &str,
+     arg2: &str,
+ ) -> Option<obscura_render::RetainedStyleMutation> {
++    if cmd == "set_focus" {
++        return Some(obscura_render::RetainedStyleMutation::Focus {
++            previous: dom.focus(),
++            next: requested_focus(arg1, arg2),
++        });
++    }
+     let node = NodeId::new(arg1.parse::<u32>().ok()?);
+     // Mutations inside shadow trees are planned like light-tree ones: the
+     // renderer looks up each shadow root's own sheet, walks the flattened
+@@ -1261,6 +1277,7 @@ fn is_render_mutation_command(cmd: &str) -> bool {
+             | "set_form_value"
+             | "set_form_checked"
+             | "set_form_indeterminate"
++            | "set_focus"
+             | "remove_attribute"
+             | "set_attribute_ns"
+             | "remove_attribute_ns"
+@@ -1949,6 +1966,10 @@ fn op_dom_inner(shared: SharedState, cmd: String, arg1: String, arg2: String) ->
+                 })
+                 .unwrap_or_else(|| "null".to_string())
+         }
++        "set_focus" => {
++            dom.set_focus(requested_focus(&arg1, &arg2));
++            "null".to_string()
++        }
+         "set_form_value" | "set_form_checked" | "set_form_indeterminate" => {
+             let nid = NodeId::new(arg1.parse().unwrap_or(u32::MAX));
+             dom.update_form_control_state(nid, |control| match cmd.as_str() {
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index cb00cb5..57aa36f 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -7353,6 +7353,42 @@ mod tests {
+         );
+     }
+ 
++    /// Focus is visible to selectors: :focus on the focused element and the
++    /// shadow host holding it, :focus-within on their ancestors.
++    #[test]
++    fn focus_pseudo_classes_follow_the_focused_element() {
++        let mut rt = setup_runtime(
++            "<html><body><form id=f><input id=a><input id=b></form><div id=host></div></body></html>",
++        );
++        let result = rt
++            .evaluate(
++                r#"
++                const host = document.getElementById('host');
++                host.attachShadow({mode: 'open'}).innerHTML = '<input id=inner>';
++                const seen = () => [document.querySelector(':focus')?.id ?? null,
++                    document.getElementById('f').matches(':focus-within'),
++                    host.matches(':focus')];
++                const before = seen();
++                document.getElementById('a').focus();
++                const onA = seen();
++                host.shadowRoot.getElementById('inner').focus();
++                const inShadow = seen();
++                document.activeElement.blur();
++                return [before, onA, inShadow, seen()];
++                "#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!([
++                [null, false, false],
++                ["a", true, false],
++                ["host", false, true],
++                [null, false, false]
++            ])
++        );
++    }
++
+     /// window.onerror starts null, as in a browser, and the engine keeps no
+     /// record of the page's errors that could grow with every one it throws.
+     #[test]
+diff --git a/crates/obscura-render/src/css.rs b/crates/obscura-render/src/css.rs
+index c5426b1..82ad878 100644
+--- a/crates/obscura-render/src/css.rs
++++ b/crates/obscura-render/src/css.rs
+@@ -469,6 +469,10 @@ pub struct InvalidationMap {
+     attributes: HashMap<String, Vec<InvalidationDependency>>,
+     local_names: HashMap<String, Vec<InvalidationDependency>>,
+     states: HashMap<String, Vec<InvalidationDependency>>,
++    /// The same state dependencies with a key from the compound that carries
++    /// the state, so a state that flips on one element is matched only
++    /// against rules whose compound can select it.
++    keyed_states: HashMap<String, Vec<(InvalidationReaches, Option<RelationalSelectorKey>)>>,
+     conservative_rule_orders: Vec<usize>,
+     relational_rule_orders: Vec<usize>,
+     unkeyed_relational_rule_orders: Vec<usize>,
+@@ -502,6 +506,24 @@ impl InvalidationMap {
+             .unwrap_or(&[])
+     }
+ 
++    /// The reaches of the rules depending on `state` whose compound carrying
++    /// it may select `node` (no false negatives: an unkeyed compound may
++    /// select anything).
++    pub(crate) fn state_reaches_for(
++        &self,
++        state: &str,
++        tree: &DomTree,
++        node: NodeId,
++    ) -> Vec<InvalidationReaches> {
++        self.keyed_states
++            .get(&state.to_ascii_lowercase())
++            .into_iter()
++            .flatten()
++            .filter(|(_, key)| relational_key_may_match(key.as_ref(), tree, node))
++            .map(|(reaches, _)| *reaches)
++            .collect()
++    }
++
+     pub fn state_dependencies(&self, state: &str) -> &[InvalidationDependency] {
+         self.states
+             .get(&state.to_ascii_lowercase())
+@@ -1450,6 +1472,10 @@ fn note_compound_dependencies(
+                 }
+                 if chars.get(next) != Some(&'(') {
+                     map.push_state(name.clone(), rule_order, reaches);
++                    map.keyed_states
++                        .entry(name.clone())
++                        .or_default()
++                        .push((reaches, relational_anchor_key(compound)));
+                     if matches!(
+                         name.as_str(),
+                         "empty"
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index 0a9ec66..9dfbc80 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -610,6 +610,14 @@ pub enum RetainedStyleMutation {
+     /// DOM, stylesheet, and computed declarations are unchanged, so no style
+     /// node is dirty.
+     Resource,
++    /// Focus moved: the focused element (and whether it matches
++    /// :focus-visible) before and after. Elements whose :focus,
++    /// :focus-visible or :focus-within state flipped are restyled where a
++    /// rule depends on that state.
++    Focus {
++        previous: Option<(NodeId, bool)>,
++        next: Option<(NodeId, bool)>,
++    },
+ }
+ 
+ impl From<AttributeStyleMutation> for RetainedStyleMutation {
+@@ -4250,6 +4258,7 @@ fn empty_state_may_have_changed(
+             RetainedStyleMutation::Animation { .. } => false,
+             RetainedStyleMutation::WaapiAnimation { .. } => false,
+             RetainedStyleMutation::Resource => false,
++            RetainedStyleMutation::Focus { .. } => false,
+             RetainedStyleMutation::Tree(TreeStyleMutation::Insert {
+                 old_parent,
+                 new_parent,
+@@ -4333,6 +4342,26 @@ fn retained_style_plan(
+             has_animation_damage = true;
+             continue;
+         }
++        if let RetainedStyleMutation::Focus { previous, next } = mutation {
++            for (node, state) in focus_state_flips(tree, *previous, *next) {
++                for scoped in subject_sheets(tree, node, sheet, shadow_sheets) {
++                    for reaches in scoped.invalidation_map().state_reaches_for(state, tree, node) {
++                        if reaches.contains(crate::css::InvalidationReaches::CONSERVATIVE) {
++                            return RetainedStylePlan::Full;
++                        }
++                        if reaches.contains(crate::css::InvalidationReaches::SELF)
++                            || reaches.contains(crate::css::InvalidationReaches::DESCENDANTS)
++                        {
++                            add_style_subtree(tree, node, &mut dirty);
++                        }
++                        if reaches.contains(crate::css::InvalidationReaches::SIBLINGS) {
++                            add_following_sibling_subtrees(tree, node, &mut dirty);
++                        }
++                    }
++                }
++            }
++            continue;
++        }
+         let RetainedStyleMutation::Attribute(mutation) = mutation else {
+             let RetainedStyleMutation::Tree(mutation) = mutation else {
+                 unreachable!()
+@@ -4606,6 +4635,53 @@ fn retained_style_plan(
+     }
+ }
+ 
++/// The elements whose focus pseudo-class state differs between two focus
++/// states, with the state that flipped: :focus on the focused elements and the
++/// shadow hosts holding them, :focus-visible where its flag changed, and
++/// :focus-within on the shadow-including ancestors the two chains do not
++/// share.
++fn focus_state_flips(
++    tree: &DomTree,
++    previous: Option<(NodeId, bool)>,
++    next: Option<(NodeId, bool)>,
++) -> Vec<(NodeId, &'static str)> {
++    fn chain(tree: &DomTree, focused: Option<NodeId>) -> Vec<NodeId> {
++        let mut out = Vec::new();
++        let mut current = focused;
++        while let Some(id) = current {
++            out.push(id);
++            current = tree
++                .get_node(id)
++                .and_then(|node| node.parent)
++                .or_else(|| tree.shadow_root_info(id).map(|root| root.host));
++        }
++        out
++    }
++    // A shadow host matches :focus while its shadow tree holds focus.
++    fn focus_holders(tree: &DomTree, focused: Option<NodeId>) -> HashSet<NodeId> {
++        let chain = chain(tree, focused);
++        let mut out: HashSet<NodeId> = chain.first().copied().into_iter().collect();
++        out.extend(chain.iter().filter(|id| tree.shadow_root(**id).is_some()).copied());
++        out
++    }
++    let mut flips = Vec::new();
++    let before_within: HashSet<NodeId> = chain(tree, previous.map(|focus| focus.0)).into_iter().collect();
++    let after_within: HashSet<NodeId> = chain(tree, next.map(|focus| focus.0)).into_iter().collect();
++    for node in before_within.symmetric_difference(&after_within) {
++        flips.push((*node, "focus-within"));
++    }
++    let before_focus = focus_holders(tree, previous.map(|focus| focus.0));
++    let after_focus = focus_holders(tree, next.map(|focus| focus.0));
++    for node in before_focus.symmetric_difference(&after_focus) {
++        flips.push((*node, "focus"));
++    }
++    let visible = |focus: Option<(NodeId, bool)>| focus.filter(|(_, visible)| *visible).map(|(id, _)| id);
++    if visible(previous) != visible(next) {
++        flips.extend(visible(previous).into_iter().chain(visible(next)).map(|id| (id, "focus-visible")));
++    }
++    flips
++}
++
+ /// A selector-only `tabindex` mutation cannot change layout or paint when the
+ /// current stylesheet has no dependency on it. Keep this deliberately narrow:
+ /// other zero-dirty attributes can still affect native geometry.
+diff --git a/crates/obscura-render/src/dom/shadow_restyle_tests.rs b/crates/obscura-render/src/dom/shadow_restyle_tests.rs
+index 00416ab..afffbde 100644
+--- a/crates/obscura-render/src/dom/shadow_restyle_tests.rs
++++ b/crates/obscura-render/src/dom/shadow_restyle_tests.rs
+@@ -520,6 +520,51 @@ fn retained_sibling_change_restyles_hosts_with_structural_host_rules() {
+     finish("sibling remove before hosts", &tree, &mut cache, initial, &[remove.into()], COMPONENT_BUDGET);
+ }
+ 
++/// Moving focus restyles the elements whose :focus, :focus-visible and
++/// :focus-within state flipped, including a shadow host around the focused
++/// element, and matches a full cascade.
++#[test]
++fn retained_focus_moves_match_full() {
++    let mut peers = String::new();
++    for index in 0..CLEAN_PEERS {
++        peers.push_str(&format!("<span class=clean data-index={index}></span>"));
++    }
++    let html = format!(
++        r#"<!doctype html><html><head><style>
++             html,body{{margin:0}} .clean{{display:block;height:1px}}
++             input{{display:block;width:50px}} input:focus{{width:211px}}
++             input:focus-visible{{height:33px}} form:focus-within{{padding-left:7px}}
++             x-field{{display:block}} x-field:focus{{margin-left:9px}}
++           </style></head><body>
++           <form id="one"><input id="a"><input id="b"></form>
++           <form id="two"><x-field id="host"></x-field></form>
++           <div id="source"><input id="inner"></div>
++           <aside id="clean">{peers}</aside>
++           </body></html>"#
++    );
++    let tree = parse_html(&html);
++    let id = |name: &str| tree.get_element_by_id(name).unwrap_or_else(|| panic!("{name}"));
++    let (a, b, host) = (id("a"), id("b"), id("host"));
++    let root = attach(&tree, host, id("source"));
++    let inner = find(&tree, root, "inner");
++    let mut cache = crate::css::StylesheetCache::default();
++
++    let mut moves = [
++        ("focus a by keyboard", Some((a, true))),
++        ("focus b by pointer", Some((b, false))),
++        ("focus inside a shadow host", Some((inner, true))),
++        ("blur", None),
++    ]
++    .into_iter();
++    while let Some((case, next)) = moves.next() {
++        let initial = initial_layout(&tree, &mut cache);
++        let previous = tree.focus();
++        tree.set_focus(next);
++        let mutation = RetainedStyleMutation::Focus { previous, next };
++        finish(case, &tree, &mut cache, initial, &[mutation], COMPONENT_BUDGET);
++    }
++}
++
+ #[test]
+ fn retained_shadow_mutation_restyles_only_its_component() {
+     let mut peers = String::new();

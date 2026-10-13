@@ -1,4 +1,4 @@
-"""Entry point: ``uv run python -m scripts.memory_benchmark``.
+"""Entry point: uv run python -m scripts.memory_benchmark.
 
 Bootstrap strategy (mirrors tests/memory/conftest.py):
   The engine's Postgres and ChromaDB accessors sit behind a lazy-provider

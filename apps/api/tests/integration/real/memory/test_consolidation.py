@@ -1,6 +1,6 @@
 """Core documents + consolidation — rewrites, versioning, debounce, hot cache.
 
-The consolidation LLM is canned (``ConsolidatedDocument``); everything else
+The consolidation LLM is canned (ConsolidatedDocument); everything else
 (fact gathering from Postgres, document versioning, Redis pending set,
 debounce waiter, hot-context invalidation) runs for real. The debounce wait
 is a monkeypatched seam the test releases — no sleeps against the production
@@ -139,13 +139,9 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
     monkeypatch: pytest.MonkeyPatch,
     real_redis: Redis,
 ) -> None:
-    # The window is released by the test, never by the clock. Shrinking
-    # CONSOLIDATION_DEBOUNCE_SECONDS instead raced the producer: at 1.5s the
-    # second retain (real embeddings + store writes) could land after the
-    # waiter woke under CI CPU contention, and the waiter fired a partial
-    # pass; the 10s window that cured it cost 10s of wall clock per run.
-    # Gating the waiter on an event set after both retains removes the race
-    # and the wait.
+    # The window is released by an event, not the clock: shrinking
+    # CONSOLIDATION_DEBOUNCE_SECONDS to 1.5s let the second retain race the
+    # waiter under CI CPU contention (a partial pass); a fixed 10s window just cost 10s per run instead.
     release = asyncio.Event()
 
     async def _wait_for_release() -> None:

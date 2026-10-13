@@ -51,9 +51,9 @@ export default function SettingsSidebar() {
                 />
               )}
               <span className="text-sm">{item.label}</span>
-              {item.beta && (
+              {item.isNew && (
                 <Chip size="sm" variant="flat" color="success">
-                  Beta
+                  New
                 </Chip>
               )}
             </Button>

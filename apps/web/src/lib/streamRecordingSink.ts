@@ -48,7 +48,7 @@ const flush = (): void => {
   const body = serialize(queue);
   queue = [];
 
-  // Deliberately not `apiService`: that targets the FastAPI backend base URL and
+  // Deliberately not the API client: that targets the FastAPI backend base URL and
   // layers auth headers, toasts and analytics on top. This is a same-origin,
   // dev-only Next route handler that must stay invisible to the user.
   inFlight = inFlight.then(() =>

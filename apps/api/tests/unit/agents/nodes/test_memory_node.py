@@ -27,7 +27,7 @@ NODE = "app.agents.core.nodes.memory_node"
 
 
 def _fake_redis(mark: str | None) -> SimpleNamespace:
-    """A stand-in for ``redis_cache`` holding one high-water mark."""
+    """Stand in for redis_cache, holding one high-water mark."""
     client = SimpleNamespace(
         get=AsyncMock(return_value=mark),
         set=AsyncMock(return_value=True),
@@ -135,10 +135,7 @@ class TestFormatMessagesForUserMemory:
 
     @pytest.mark.regression
     def test_the_time_slot_message_never_reaches_the_extractor(self):
-        """The re-stamped current-time HumanMessage is graph plumbing, not the
-        user speaking: rendered as `user: Current time...` it pollutes the
-        transcript every turn (the extractor already gets the date in its
-        volatile context)."""
+        """The re-stamped current-time HumanMessage is graph plumbing, not the user speaking, and must not pollute the transcript."""
         msgs = [
             mark_message(
                 HumanMessage(content="Current time: 2026-08-27 01:00 IST"),
@@ -257,12 +254,8 @@ class TestMemoryNode:
 
     @pytest.mark.asyncio
     async def test_background_task_exception_is_swallowed(self):
-        """retain exceptions must be caught inside _store_user_memory_background."""
-        # redis_cache.client is a property that ALWAYS builds a live client, so
-        # without this patch the high-water-mark read dials a real Redis — and
-        # on a host without one the connection error is swallowed by the same
-        # suppress() this test is about, retain is never reached, and the
-        # assertion below fails for a reason that has nothing to do with it.
+        """Retain exceptions must be caught inside _store_user_memory_background."""
+        # Patch redis_cache: its client property always dials a live Redis otherwise.
         with (
             patch("app.agents.core.nodes.memory_node.memory_engine") as mock_engine,
             patch(f"{NODE}.redis_cache", _fake_redis(None)),
@@ -439,9 +432,7 @@ class TestSystemGeneratedConversations:
 
 @pytest.mark.unit
 class TestTheFencedTranscript:
-    """The context/delta fence. It is prose inside a transcript, so a wrong
-    marker row is invisible to every type checker and silently tells the
-    extractor to re-extract facts it already stored."""
+    """The context/delta fence is prose inside a transcript, so a wrong marker row is invisible to any type checker."""
 
     @staticmethod
     def _thread() -> list[HumanMessage]:
@@ -459,10 +450,7 @@ class TestTheFencedTranscript:
         ]
 
     def test_the_fence_opens_the_transcript_and_splits_it_at_the_delta(self) -> None:
-        """Pinned verbatim: both marker rows, their exact position, and the
-        `transcript` role that separates them from anything a human or a tool
-        said. One row out of place and the extractor reads already-stored facts
-        as new disclosures."""
+        """Pinned verbatim: one marker row out of place and the extractor reads already-stored facts as new disclosures."""
         assert _format_messages_for_user_memory(self._thread(), context_count=2) == [
             {
                 "role": "transcript",
@@ -481,8 +469,7 @@ class TestTheFencedTranscript:
         assert markers.count("--- new since the last extraction ---") == 1
 
     def test_a_tool_call_is_rendered_with_its_arguments(self) -> None:
-        """The args are the point: they carry the ids, names and emails the
-        extractor mines. Rendering an empty dict loses that silently."""
+        """The args carry the ids, names and emails the extractor mines; rendering an empty dict loses them silently."""
         formatted = _format_messages_for_user_memory(
             [
                 AIMessage(
@@ -509,9 +496,7 @@ class TestTheFencedTranscript:
 
 @pytest.mark.unit
 class TestTheHighWaterMarkRead:
-    """`_messages_to_ingest` decides what the extraction is billed for. Every
-    boundary here is an off-by-one that either re-pays for the whole thread or
-    drops the one message the user actually disclosed something in."""
+    """_messages_to_ingest decides what the extraction is billed for; an off-by-one here re-pays or drops disclosures."""
 
     @staticmethod
     def _thread(count: int) -> list[HumanMessage]:
@@ -529,8 +514,7 @@ class TestTheHighWaterMarkRead:
             assert await _messages_to_ingest("u1", "t1", messages) == (messages, 0)
 
     async def test_the_mark_is_read_from_this_user_s_own_thread_key(self) -> None:
-        """The key namespaces the mark by user AND thread. Collapse either half
-        and one conversation's high-water mark suppresses another's ingestion."""
+        """The key namespaces the mark by user AND thread, or one conversation's mark suppresses another's ingestion."""
         fake = _fake_redis(None)
 
         with patch(f"{NODE}.redis_cache", fake):
@@ -541,21 +525,17 @@ class TestTheHighWaterMarkRead:
         )
 
     async def test_a_mark_on_the_final_message_leaves_nothing_to_ingest(self) -> None:
-        """The whole thread is already extracted, so the run must cost nothing.
-        Handing it back re-pays for every message in the conversation."""
+        """The whole thread is already extracted, so the run must cost nothing."""
         with patch(f"{NODE}.redis_cache", _fake_redis("m2")):
             assert await _messages_to_ingest("u1", "t1", self._thread(3)) == ([], 0)
 
     async def test_an_empty_thread_with_a_mark_is_not_an_error(self) -> None:
-        """A cancelled or pruned turn can leave a mark with no messages behind
-        it; walking off the end of an empty list must not raise."""
+        """A cancelled or pruned turn can leave a mark with no messages behind it."""
         with patch(f"{NODE}.redis_cache", _fake_redis("m0")):
             assert await _messages_to_ingest("u1", "t1", []) == ([], 0)
 
     async def test_the_context_window_is_capped_and_counted(self) -> None:
-        """Only MEMORY_DELTA_CONTEXT_MESSAGES of already-extracted history ride
-        along, and context_count must say how many — the fence is drawn from it,
-        so a wrong count fences off the new material itself."""
+        """Only MEMORY_DELTA_CONTEXT_MESSAGES of history ride along, and context_count must say exactly how many."""
         total = MEMORY_DELTA_CONTEXT_MESSAGES + 4
         messages = self._thread(total)
         mark = f"m{MEMORY_DELTA_CONTEXT_MESSAGES + 1}"
@@ -574,8 +554,7 @@ class TestTheHighWaterMarkRead:
 
 @pytest.mark.unit
 class TestTheHighWaterMarkWrite:
-    """`_mark_ingested` is what stops the next turn re-extracting this one. A
-    wrong key writes a mark nothing reads; a missing TTL leaks it forever."""
+    """A wrong key on _mark_ingested writes a mark nothing reads; a missing TTL leaks it forever."""
 
     @staticmethod
     def _messages() -> list[HumanMessage]:
@@ -611,8 +590,7 @@ class TestTheHighWaterMarkWrite:
     async def test_nothing_is_written_when_there_is_no_mark_to_write(
         self, thread_id: str | None, messages: list[HumanMessage]
     ) -> None:
-        """Each guard stands alone — ANY one failing must stop the write, so a
-        mark is never recorded for a turn that was not ingested."""
+        """Each guard stands alone: any one failing must stop the write."""
         fake = _fake_redis(None)
 
         with patch(f"{NODE}.redis_cache", fake):
@@ -627,9 +605,7 @@ class TestTheHighWaterMarkWrite:
 
 @pytest.mark.unit
 class TestTheIngestionHandoff:
-    """What the background task passes to each collaborator. Every argument here
-    is a user id, a thread id or a prompt: swap one and the extraction still
-    "succeeds", against the wrong user, the wrong thread, or with no hints."""
+    """What the background task passes to each collaborator: swap an id or prompt and extraction still "succeeds" wrongly."""
 
     @staticmethod
     def _thread() -> list[HumanMessage]:
@@ -666,9 +642,7 @@ class TestTheIngestionHandoff:
         return {"retain": engine.retain, "redis": fake.client}
 
     async def test_the_extraction_is_billed_to_the_user_and_thread_it_came_from(self) -> None:
-        """user_id keys the memory rows AND the mark; session_id is the memory's
-        provenance. Either one wrong files one person's disclosure under
-        another's account."""
+        """user_id keys the memory rows AND the mark; session_id is the memory's provenance."""
         calls = await self._run()
 
         calls["retain"].assert_awaited_once()
@@ -678,8 +652,7 @@ class TestTheIngestionHandoff:
         assert kwargs["source_type"] == MemorySourceType.CONVERSATION
 
     async def test_the_integration_hints_and_user_name_ride_along(self) -> None:
-        """The hints are why a Slack turn yields Slack ids. Dropped, extraction
-        silently degrades to generic and nothing fails."""
+        """Dropped, extraction silently degrades to generic and nothing fails."""
         calls = await self._run()
 
         _, kwargs = calls["retain"].await_args
@@ -706,10 +679,7 @@ class TestTheIngestionHandoff:
         calls["redis"].set.assert_awaited_once_with(key, "m2", ex=MEMORY_INGEST_MARK_TTL)
 
     async def test_a_delta_run_hands_the_extractor_a_fenced_transcript(self) -> None:
-        """context_count is not just a number — it is what draws the fence in the
-        transcript retain() receives. Lose it between the two calls and already
-        extracted messages arrive unmarked, which is the re-extraction this whole
-        path exists to stop."""
+        """context_count draws the fence in the transcript retain() receives; lose it and extracted messages arrive unmarked."""
         engine = MagicMock()
         engine.retain = AsyncMock(return_value=None)
         messages = [HumanMessage(content=f"message {i}", id=f"m{i}") for i in range(4)]
@@ -760,9 +730,7 @@ class TestTheIngestionHandoff:
         is_system.assert_awaited_once_with("c1")
 
     async def test_a_skipped_system_conversation_says_so_in_the_wide_event(self) -> None:
-        """The only record that a turn was deliberately not learned from. Without
-        the reason on the event, a skipped ingestion and a broken one look the
-        same in Loki."""
+        """Without the reason on the event, a skipped ingestion and a broken one look the same in Loki."""
         engine = MagicMock()
         engine.retain = AsyncMock(return_value=None)
 
@@ -790,10 +758,7 @@ class TestTheIngestionHandoff:
         }
 
     async def test_the_wide_event_counts_the_thread_the_delta_and_the_context(self) -> None:
-        """These three numbers are how the delta ingestion is monitored — they
-        are what showed one conversation being re-extracted 76 times. The delta
-        is the SUBTRACTION: add instead and a fully re-ingested thread reports
-        as a small delta."""
+        """These numbers caught one conversation being re-extracted 76 times; the delta is a subtraction, not an addition."""
         messages = [HumanMessage(content=f"message {i}", id=f"m{i}") for i in range(10)]
         engine = MagicMock()
         engine.retain = AsyncMock(return_value=None)
@@ -869,16 +834,14 @@ class TestTrivialDeltaGate:
 
     @pytest.mark.regression
     async def test_a_skipped_delta_does_not_advance_the_mark(self) -> None:
-        """The trivial turn stays in the next delta, so its content still gets
-        extracted alongside the next substantive turn instead of being lost."""
+        """The trivial turn stays in the next delta so its content is extracted alongside a later substantive turn."""
         calls = await self._run(self._thread(), mark="m2")
 
         calls["set"].assert_not_awaited()
 
     @pytest.mark.regression
     async def test_a_skipped_delta_says_so_in_the_wide_event(self) -> None:
-        """Without the reason on the event, a deliberately skipped turn and a
-        broken ingestion look identical in Loki."""
+        """Without the reason on the event, a deliberately skipped turn and a broken ingestion look identical in Loki."""
         engine = MagicMock()
         engine.retain = AsyncMock(return_value=None)
         with (
@@ -903,8 +866,7 @@ class TestTrivialDeltaGate:
         }
 
     async def test_a_short_confirmation_that_triggered_work_is_still_extracted(self) -> None:
-        """ "yes" before an executor run must keep journaling what was done —
-        the tool activity is the substance, not the user's word count."""
+        """The tool activity is the substance, not the user's word count."""
         messages: list[AnyMessage] = [
             HumanMessage(content="send that email to the team please", id="m1"),
             AIMessage(content="Ready to send — confirm?", id="m2"),
@@ -935,19 +897,14 @@ class TestTrivialDeltaGate:
         calls["retain"].assert_awaited_once()
 
     async def test_a_first_ingestion_with_a_substantive_thread_still_runs(self) -> None:
-        """No mark: the delta is the whole thread, which the node already
-        checked — the gate must agree, not double-veto."""
+        """No mark: the delta is the whole thread, so the gate must agree rather than double-veto."""
         calls = await self._run(self._thread(), mark=None)
 
         calls["retain"].assert_awaited_once()
 
     @pytest.mark.regression
     async def test_the_time_slot_message_is_not_substance(self) -> None:
-        """The current-time slot is a HumanMessage (kept out of
-        system_instruction for the comms cache) and is re-stamped with fresh
-        content every turn, so it lands in EVERY delta. Counted as user text it
-        makes the gate a no-op — measured live: five consecutive turns, zero
-        skips, every "ok" still bought an extraction call."""
+        """Re-stamped every turn, the time slot lands in EVERY delta; measured live, it made the gate a no-op across five turns."""
         messages: list[AnyMessage] = [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             AIMessage(content="Noted.", id="m2"),
@@ -966,8 +923,7 @@ class TestTrivialDeltaGate:
 
 @pytest.mark.unit
 class TestWhatTheNodeSpawns:
-    """The node's whole job is handing the right arguments to the background
-    task. It returns state either way, so a wrong argument is silent."""
+    """The node's whole job is handing the right arguments to the background task; it returns state either way."""
 
     @staticmethod
     def _spawn_capture() -> tuple[MagicMock, MagicMock]:
@@ -975,8 +931,7 @@ class TestWhatTheNodeSpawns:
         return spawn, MagicMock()
 
     async def test_the_task_is_named_so_it_is_identifiable_in_flight(self) -> None:
-        """`spawn_background_task` strong-refs by name and the name is what the
-        spawn log line reports; an unnamed task is unattributable in a trace."""
+        """An unnamed task is unattributable in a trace."""
         spawn, store = self._spawn_capture()
         state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
         config = {"configurable": {"user_id": "u1", "thread_id": "t1"}}
@@ -990,8 +945,7 @@ class TestWhatTheNodeSpawns:
         assert spawn.call_args.kwargs["name"] == "user_memory"
 
     async def test_the_subagent_s_extraction_prompt_reaches_the_task(self) -> None:
-        """The prompt is resolved from subagent_id here and nowhere else — drop
-        it and every integration turn extracts with generic hints."""
+        """Drop the prompt and every integration turn extracts with generic hints."""
         spawn, store = self._spawn_capture()
         state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
         config = {"configurable": {"user_id": "u1", "thread_id": "t1", "subagent_id": "slack"}}
@@ -1007,7 +961,7 @@ class TestWhatTheNodeSpawns:
         assert background.call_args.kwargs["subagent_id"] == "slack"
 
     async def test_the_user_name_reaches_the_task(self) -> None:
-        """retain uses it to attribute first-person facts to a named person."""
+        """Retain uses it to attribute first-person facts to a named person."""
         spawn, store = self._spawn_capture()
         state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
         config = {"configurable": {"user_id": "u1", "thread_id": "t1", "user_name": "Sam"}}

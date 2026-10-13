@@ -64,11 +64,11 @@ run = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-pa
 
 [tasks.bandit]
 description = "Run bandit security scanner"
-run = "uvx bandit -r app"
+run = "uvx --no-build bandit@1.9.4 -r app"
 
 [tasks."pip:audit"]
 description = "Audit pip packages for vulnerabilities"
-run = "uv run --group backend --group dev pip-audit --skip-editable"
+run = "uv export --no-dev --frozen --no-emit-header | uvx --no-build pip-audit@2.10.1 --disable-pip --no-deps -r /dev/stdin"
 
 [tasks.secrets]
 description = "Detect secrets in codebase"

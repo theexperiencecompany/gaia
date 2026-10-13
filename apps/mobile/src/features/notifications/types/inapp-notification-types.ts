@@ -1,3 +1,5 @@
+import type { ActionExecutionResponse } from "@gaia/shared/api/generated";
+
 export type {
   ChannelPlatform,
   ChannelPreferences,
@@ -25,14 +27,13 @@ export interface InAppNotificationsListResponse {
   offset: number;
 }
 
-export interface NotificationActionResponse {
-  success: boolean;
-  message: string;
-  data?: {
-    redirect_url?: string;
-    [key: string]: unknown;
-  };
-}
+// The API's action result, with `data` narrowed to the redirect an action may carry.
+export type NotificationActionResponse = Omit<
+  ActionExecutionResponse,
+  "data"
+> & {
+  data?: { redirect_url?: string; [key: string]: unknown } | null;
+};
 
 export interface NotificationCategoryPreferences {
   push: boolean;

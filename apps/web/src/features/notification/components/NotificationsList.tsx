@@ -5,13 +5,13 @@ import { NotificationIcon } from "@icons";
 import { useMemo } from "react";
 import type {
   ModalConfig,
-  NotificationRecord,
+  NotificationView,
 } from "@/types/features/notificationTypes";
 import { groupNotificationsByTimezone } from "@/utils/notificationUtils";
 import { EnhancedNotificationCard } from "./EnhancedNotificationCard";
 
 interface NotificationListProps {
-  notifications: NotificationRecord[];
+  notifications: NotificationView[];
   loading: boolean;
   emptyMessage?: string;
   emptyDescription?: string;

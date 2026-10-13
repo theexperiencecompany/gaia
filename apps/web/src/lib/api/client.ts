@@ -1,13 +1,18 @@
 import { getUserTimezone } from "@shared/api/timezone";
-import axios, { type InternalAxiosRequestConfig } from "axios";
+import type { AxiosError, InternalAxiosRequestConfig } from "axios";
+import axios from "axios";
+import { analyticsRequestHeaders } from "@/lib/analytics";
+import { desktopClientHeaders } from "@/lib/electron/api";
+import { toApiOrigin } from "./origin";
 
 /**
  * API Client Configuration
  *
- * This module sets up axios instances for API communication with the backend.
- * It provides two main clients:
- * - api: Basic client with caching for public endpoints
- * - apiauth: Authenticated client with credentials for protected endpoints
+ * The one axios instance every request in the app goes through — directly for
+ * the URL-string `apiService`, and as the transport under the path-typed
+ * client in ./typed. Nothing outside lib/api imports the instance: error UI
+ * registers through `registerApiErrorHandler`, and the SSE helpers read their
+ * URL and headers from `apiBaseUrl` / `clientHeaders` here.
  */
 
 // Validate required environment variables
@@ -32,45 +37,75 @@ axios.defaults.timeout =
     ? parsedApiTimeoutMs
     : DEFAULT_API_TIMEOUT_MS;
 
-/**
- * Base axios instance for public API calls
- * Used for endpoints that don't require authentication
- */
-const baseInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
-  headers: {
-    "x-timezone": getUserTimezone(),
-  },
-});
+/** The configured base, without a trailing slash: `https://api.…/api/v1`. */
+export const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL.replace(
+  /\/+$/,
+  "",
+);
+
+/** The server root the generated `paths` hang off (see toApiOrigin). */
+export const apiOrigin = toApiOrigin(apiBaseUrl);
 
 /**
- * Authenticated axios instance for protected API calls
- * Includes credentials (cookies) for authentication
- * Used for endpoints that require user authentication
+ * The headers every request carries, for callers that cannot use axios. The
+ * client type is on every request, not just chat, so each server event knows
+ * whether it came from the desktop app.
+ */
+export const clientHeaders = (): Record<string, string> => ({
+  "x-timezone": getUserTimezone(),
+  ...analyticsRequestHeaders(),
+  ...desktopClientHeaders(),
+});
+
+/** Marks a request no user action caused; the server reads it in its attribution middleware. */
+const REQUEST_ORIGIN_HEADER = "X-GAIA-Request-Origin";
+const BACKGROUND_REQUEST_ORIGIN = "background";
+
+/** The origin header for a request: present only on one no user action caused. */
+export const requestOriginHeaders = (
+  background: boolean | undefined,
+): Record<string, string> =>
+  background ? { [REQUEST_ORIGIN_HEADER]: BACKGROUND_REQUEST_ORIGIN } : {};
+
+/**
+ * Authenticated axios instance for API calls.
+ * Includes credentials (cookies) for authentication.
  */
 export const apiauth = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  baseURL: apiBaseUrl,
   withCredentials: true,
-  headers: {
-    "x-timezone": getUserTimezone(),
-  },
 });
 
-// Add request interceptor to dynamically update timezone header
-// This ensures the timezone is current even if it changes during the session
-const updateTimezoneHeader = (config: InternalAxiosRequestConfig) => {
-  // Always set the current timezone
-  config.headers["x-timezone"] = getUserTimezone();
+// Recomputed per request: the timezone can change mid-session, and the
+// PostHog session only exists once analytics has loaded at idle.
+const refreshClientHeaders = (config: InternalAxiosRequestConfig) => {
+  config.headers.set(clientHeaders());
 
   return config;
 };
 
-// Apply the interceptor to both instances
-baseInstance.interceptors.request.use(updateTimezoneHeader);
-apiauth.interceptors.request.use(updateTimezoneHeader);
+apiauth.interceptors.request.use(refreshClientHeaders);
+
+/** Surfaces API error UI (login modal, paywall, rate-limit toasts). */
+export type ApiErrorHandler = (
+  error: AxiosError & { handled?: boolean },
+) => void;
 
 /**
- * API client for public endpoints - NO CACHING
- * Direct access to the base instance without caching
+ * Mount the app shell's error UI on every response.
+ *
+ * Returns the eject function; only the (main) provider tree registers one, so
+ * landing pages never surface background-fetch toasts to anonymous visitors.
  */
-export const api = baseInstance;
+export function registerApiErrorHandler(handle: ApiErrorHandler): () => void {
+  const interceptor = apiauth.interceptors.response.use(
+    (response) => response,
+    (error: AxiosError) => {
+      handle(error);
+      return Promise.reject(error);
+    },
+  );
+  return () => {
+    apiauth.interceptors.response.eject(interceptor);
+  };
+}

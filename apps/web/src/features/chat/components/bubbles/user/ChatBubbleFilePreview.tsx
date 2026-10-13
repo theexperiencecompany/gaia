@@ -5,10 +5,10 @@ import {
   getFileTypeExtension,
   getFormattedFileType,
 } from "@/features/chat/components/files/fileTypeConfig";
-import type { FileData } from "@/types/shared/fileTypes";
+import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 interface ChatBubbleFilePreviewProps {
-  files: FileData[];
+  files: AttachedFileData[];
 }
 
 const ChatBubbleFilePreview: React.FC<ChatBubbleFilePreviewProps> = ({

@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import {
   isViewingConversation,
   markConversationUnread,
@@ -24,8 +24,10 @@ interface BgMessageEvent {
     response: string;
     message_id: string;
     date: string;
+    kind?: string;
+    reacts_to_message_id?: string;
     task_id?: string;
-    tool_data?: ToolDataEntry[];
+    tool_data?: TypedToolDataEntry[];
     follow_up_actions?: string[];
     replyToMessage?: {
       id: string;
@@ -36,15 +38,11 @@ interface BgMessageEvent {
 }
 
 /**
- * Subscribe to `conversation.new_message` WebSocket events.
+ * Subscribe to `conversation.new_message` WebSocket events and insert the
+ * message into IndexedDB and the Zustand store.
  *
- * When an executor finishes (live or queued), the backend saves a NEW bot
- * message to MongoDB and pushes it here via WebSocket. This hook inserts
- * the message into IndexedDB and the Zustand store so the chat view
- * updates immediately — no page reload needed.
- *
- * Conversation-scoped: only updates the active chat view. Messages for
- * other conversations are persisted to IndexedDB (visible on navigation).
+ * Conversation-scoped: only the active chat view updates immediately; other
+ * conversations are persisted to IndexedDB and appear on navigation.
  */
 export function useBgMessageWebSocket() {
   const handleBgMessage = useCallback(async (raw: unknown) => {
@@ -77,15 +75,16 @@ export function useBgMessageWebSocket() {
       createdAt: new Date(message.date),
       updatedAt: new Date(message.date),
       messageId: message.message_id,
+      kind: message.kind ?? null,
+      reacts_to_message_id: message.reacts_to_message_id ?? null,
       tool_data: message.tool_data ?? null,
       follow_up_actions: message.follow_up_actions ?? null,
       replyToMessageData: message.replyToMessage ?? null,
     };
 
-    // Persist to IndexedDB (dbEventEmitter syncs to store automatically).
-    // When this final message corresponds to a queued executor placeholder
-    // (keyed by task_id, persisted by useExecutorStream), replace it atomically
-    // so the placeholder is removed from IndexedDB and not left as a duplicate.
+    // Persist to IndexedDB (dbEventEmitter syncs to store automatically). When
+    // this matches a queued executor placeholder (keyed by task_id, from
+    // useExecutorStream), replace it atomically so no duplicate is left behind.
     try {
       if (message.task_id) {
         await db.replaceMessage(message.task_id, iMessage);

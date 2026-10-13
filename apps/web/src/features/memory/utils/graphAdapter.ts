@@ -1,12 +1,9 @@
+import type { MemoryEntry, MemoryGraphResponse } from "@shared/api/generated";
 import type {
   GraphApiDocument,
   GraphApiMemory,
   MemoryRelation,
 } from "@supermemory/memory-graph";
-import type {
-  MemoryEntry,
-  MemoryGraphResponse,
-} from "@/features/memory/api/types";
 
 const UNFILED_FOLDER_LABEL = "Unfiled";
 const FOLDER_DOC_PREFIX = "folder:";
@@ -15,15 +12,11 @@ type RelationsByMemoryId = Map<string, Record<string, MemoryRelation>>;
 
 /**
  * Maps GAIA's entity graph onto @supermemory/memory-graph's document model:
- * - each entity becomes a document hex whose memories are the facts linked
- *   to it (a memory linked to several entities lives under the first and
- *   connects to the rest through `memoryRelations` edges);
- * - memories with no entities cluster under a synthetic document per
- *   top-level category folder;
- * - supersession lineage (parent_id + relation_type) renders as
- *   updates/extends/derives edges between memory versions;
- * - entity-to-entity edges connect through their provenance memory, since
- *   the component cannot draw document-to-document edges directly.
+ * each entity becomes a document hex holding its linked memories (one linked
+ * to several entities lives under the first, connected to the rest via
+ * `memoryRelations` edges); memories with no entities cluster under a
+ * synthetic doc per category folder; supersession lineage renders as
+ * updates/extends/derives edges; entity-to-entity edges route through their provenance memory (no direct doc-to-doc edges).
  */
 export function adaptGraphResponse(
   response: MemoryGraphResponse,

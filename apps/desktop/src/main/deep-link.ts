@@ -21,17 +21,9 @@ import { getServerUrl } from "./server";
 const AUTH_SPINNER_DELAY_MS = 1200;
 
 /**
- * Handle an incoming `gaia://` deep-link URL.
- *
- * Parses the URL, extracts either a session `token` or an `error`
- * query parameter, and takes the appropriate action:
- *
- * - **Error** — navigates the main window to `/login?error=…`
- * - **Token** — stores a `wos_session` cookie on the API origin
- *   and navigates the main window to `/c` (the main chat view).
- *
- * @param url - The full `gaia://…` URL received from the OS.
- * @param mainWindow - The main BrowserWindow to navigate.
+ * Handle an incoming `gaia://` deep-link URL. On an `error` query param,
+ * navigates to `/login?error=…`; on a `token`, stores a `wos_session` cookie on
+ * the API origin and navigates to `/c`.
  */
 export async function handleDeepLink(
   url: string,

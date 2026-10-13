@@ -9,18 +9,17 @@ import {
   NOTIFICATION_PLATFORMS,
   type NotificationPlatform,
 } from "@/features/notification/constants";
+import { ChatChannelSettings } from "@/features/settings/components/ChatChannelSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
-import type { PlatformLink } from "@/types/platform";
+import type { PlatformLinks } from "@/types/platform";
 
 export default function NotificationSettings() {
-  const [platformLinks, setPlatformLinks] = useState<
-    Record<string, PlatformLink | null>
-  >({});
+  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
   const [channelPrefs, setChannelPrefs] = useState<
     Record<NotificationPlatform, boolean>
   >({
@@ -38,13 +37,12 @@ export default function NotificationSettings() {
       setLoading(true);
       try {
         const [linksData, prefs] = await Promise.all([
-          apiService.get<{
-            platform_links: Record<string, PlatformLink | null>;
-          }>("/platform-links", { silent: true }),
+          api.get("/api/v1/platform-links", { silent: true }),
           NotificationsAPI.getChannelPreferences(),
         ]);
         setPlatformLinks(linksData.platform_links || {});
-        setChannelPrefs(prefs);
+        // The API has no iMessage channel preference; keep its local default.
+        setChannelPrefs((prev) => ({ ...prev, ...prefs }));
       } catch {
         // silently ignore
       } finally {
@@ -70,8 +68,13 @@ export default function NotificationSettings() {
     }
   };
 
+  const linkedPlatforms = NOTIFICATION_PLATFORMS.filter(
+    (platform) => !!platformLinks[platform]?.platformUserId,
+  );
+
   return (
     <SettingsPage>
+      {!loading && <ChatChannelSettings linkedPlatforms={linkedPlatforms} />}
       <SettingsSection description="Choose where to receive GAIA notifications.">
         {NOTIFICATION_PLATFORMS.map((platform) => {
           const label = NOTIFICATION_PLATFORM_LABELS[platform];

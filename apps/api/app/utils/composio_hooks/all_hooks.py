@@ -7,11 +7,12 @@ Just importing this module will register all hooks automatically.
 
 # Import all hook modules to trigger their decorators
 from . import (
+    file_upload_hooks,  # noqa: F401 -- imported for @register_hook side effects
     gmail_hooks,  # noqa: F401 -- imported for @register_hook side effects
+    outlook_hooks,  # noqa: F401 -- imported for @register_hook side effects
     reddit_hooks,  # noqa: F401 -- imported for @register_hook side effects
     slack_hooks,  # noqa: F401 -- imported for @register_hook side effects
     twitter_hooks,  # noqa: F401 -- imported for @register_hook side effects
-    user_id_hooks,  # noqa: F401 -- imported for @register_hook side effects
 )
 
 # Add any new hook modules here and they'll be auto-registered

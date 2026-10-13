@@ -1,7 +1,7 @@
 """The hook chains each tier runs before every LLM call.
 
 The ORDER is the whole subject. Every hook here appends or rewrites messages,
-and ``manage_system_prompts_node`` is what places the result into the canonical
+and manage_system_prompts_node is what places the result into the canonical
 slot order — so it has to run last, or whatever an earlier hook appended trails
 the system block instead of sitting inside it. That was previously spelled out
 at three separate graph builders and enforced by nothing.
@@ -9,7 +9,10 @@ at three separate graph builders and enforced by nothing.
 
 import pytest
 
+from app.agents.core.background.executor_channel import drain_inbox_hook
+from app.agents.core.background.subagent_channel import drain_subagent_inbox_hook
 from app.agents.core.nodes.adapt_media import adapt_media_node
+from app.agents.core.nodes.browser_task_status import browser_task_status_hook
 from app.agents.core.nodes.executor_status import executor_status_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
@@ -23,15 +26,13 @@ def _todo_hook(state: dict[str, object]) -> dict[str, object]:
 
 @pytest.mark.unit
 class TestTheChainsAreExactlyThese:
-    """Spelled out end to end. Every weaker assertion — "contains", "ends with",
-    a length check — leaves room for an extra hook, a missing one, or a ``None``
-    slipped into the list, and a ``None`` in a hook chain is a crash on the next
-    LLM call rather than anything the type checker would catch."""
+    """Spelled out end to end: a weaker assertion leaves room for an extra, missing, or None hook to slip through."""
 
     def test_comms(self) -> None:
         assert comms_pre_model_hooks() == [
             filter_messages_node,
             executor_status_hook,
+            browser_task_status_hook,
             manage_system_prompts_node,
         ]
 
@@ -50,13 +51,27 @@ class TestTheChainsAreExactlyThese:
             manage_system_prompts_node,
         ]
 
+    def test_the_executor_drains_its_inbox_after_the_todo_hook(self) -> None:
+        assert worker_pre_model_hooks(_todo_hook, drains_inbox=True) == [
+            filter_messages_node,
+            adapt_media_node,
+            _todo_hook,
+            drain_inbox_hook,
+            manage_system_prompts_node,
+        ]
+
+    def test_a_subagent_drains_its_own_mailbox(self) -> None:
+        assert worker_pre_model_hooks(drains_subagent_inbox=True) == [
+            filter_messages_node,
+            adapt_media_node,
+            drain_subagent_inbox_hook,
+            manage_system_prompts_node,
+        ]
+
 
 @pytest.mark.unit
 class TestTheSlotterRunsLast:
-    """``manage_system_prompts_node`` places messages by ``PromptSlot``. Anything
-    appended after it keeps whatever position it was inserted at, which is the
-    defect that made ``todo_context`` land in a different place depending on
-    which other slots the turn happened to fill."""
+    """manage_system_prompts_node places messages by PromptSlot; anything appended after it keeps its insertion position."""
 
     def test_comms_ends_with_the_slotter(self) -> None:
         assert comms_pre_model_hooks()[-1] is manage_system_prompts_node
@@ -70,8 +85,7 @@ class TestTheSlotterRunsLast:
         assert chain.index(_todo_hook) < chain.index(manage_system_prompts_node)
 
     def test_the_executor_status_frame_runs_before_the_slotter(self) -> None:
-        """Appended after, the frame would trail the system block — where Gemini
-        silently discards it along with everything else that follows."""
+        """Appended after, the frame would trail the system block, where Gemini silently discards it."""
         chain = comms_pre_model_hooks()
 
         assert chain.index(executor_status_hook) < chain.index(manage_system_prompts_node)
@@ -83,8 +97,7 @@ class TestEachTierGetsOnlyItsOwnHooks:
         assert executor_status_hook in comms_pre_model_hooks()
 
     def test_comms_does_no_media_adaptation(self) -> None:
-        """It holds no media-producing tools, so the pass would be dead work on
-        every single user-facing turn."""
+        """It holds no media-producing tools, so the pass would be dead work every turn."""
         assert adapt_media_node not in comms_pre_model_hooks()
 
     def test_workers_adapt_media(self) -> None:
@@ -102,8 +115,7 @@ class TestEachTierGetsOnlyItsOwnHooks:
 @pytest.mark.unit
 class TestTheTodoHookIsOptional:
     def test_a_tier_with_no_todo_channel_gets_no_todo_hook(self) -> None:
-        """Spawned workers own no todo list, and an authoring-only subagent must
-        not plan or execute tasks at all."""
+        """Spawned workers own no todo list, and an authoring-only subagent must not plan or execute tasks."""
         assert worker_pre_model_hooks() == worker_pre_model_hooks(None)
 
     def test_supplying_one_adds_exactly_one_hook(self) -> None:

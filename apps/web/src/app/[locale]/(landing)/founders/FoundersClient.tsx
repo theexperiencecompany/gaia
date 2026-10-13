@@ -36,7 +36,7 @@ export default function FoundersClient() {
         <SectionHeader
           label="Proactive AI"
           headline="GAIA does the work before you think to ask."
-          description="Stop spending hours on the same reports, updates, and follow-ups week after week. GAIA runs in the background — it notices what matters, handles the grunt work, and reports back. You focus on what only you can do."
+          description="Stop spending hours on the same reports, updates, and follow-ups week after week. GAIA runs in the background: it notices what matters, handles the grunt work, and reports back. You focus on what only you can do."
           integrations={[
             { id: "gmail", label: "Gmail" },
             { id: "slack", label: "Slack" },
@@ -55,7 +55,7 @@ export default function FoundersClient() {
         <SectionHeader
           label="Daily Briefing"
           headline="Your morning brief, ready before your coffee."
-          description="GAIA scans your inbox, calendar, Slack, and GitHub overnight — and delivers one crisp summary at 9am. No tabs, no scramble, no wasted hour."
+          description="GAIA scans your inbox, calendar, Slack, and GitHub overnight, then delivers one crisp summary at 9am. No tabs, no scramble, no wasted hour."
           integrations={[
             { id: "gmail", label: "Gmail" },
             { id: "googlecalendar", label: "Calendar" },
@@ -73,7 +73,7 @@ export default function FoundersClient() {
         <SectionHeader
           label="Investor Relations"
           headline="Never send an investor update late again."
-          description="GAIA pulls your latest MRR, churn, and pipeline from Google Sheets, drafts the full update, and tracks every investor thread — so you spend 5 minutes on the update, not 2 hours."
+          description="GAIA pulls your latest MRR, churn, and pipeline from Google Sheets, drafts the full update, and tracks every investor thread, so you spend 5 minutes on the update, not 2 hours."
           integrations={[
             { id: "googlesheets", label: "Sheets" },
             { id: "gmail", label: "Gmail" },
@@ -100,10 +100,10 @@ export default function FoundersClient() {
                 alt="Slack"
                 className="rotate-12 inline-block align-middle bottom-2 relative"
               />{" "}
-              Slack — without pulling you in.
+              Slack, without pulling you in.
             </div>
           }
-          description="Ask @GAIA anything in your Slack channel and it answers from your GitHub, Linear, and docs — instantly, accurately, without a single meeting."
+          description="Ask @GAIA anything in your Slack channel and it answers from your GitHub, Linear, and docs, instantly, accurately, without a single meeting."
           integrations={[
             { id: "slack", label: "Slack" },
             { id: "github", label: "GitHub" },
@@ -138,7 +138,7 @@ export default function FoundersClient() {
         <SectionHeader
           label="On Autopilot"
           headline="Set it once. It runs while you sleep."
-          description="Daily briefings at 9am. Weekly pipeline reviews. Monthly board prep. Tell GAIA once — it builds the workflow, connects the tools, and runs every time. You never touch it again."
+          description="Daily briefings at 9am. Weekly pipeline reviews. Monthly board prep. Tell GAIA once, and it builds the workflow, connects the tools, and runs every time. You never touch it again."
           integrations={[
             { id: "gmail", label: "Gmail" },
             { id: "googlecalendar", label: "Calendar" },

@@ -1,0 +1,86 @@
+# gaia-chat-e2e-p95-critical — fires when chat p95 E2E ack exceeds 60s for 5m.
+#
+# Same buckets as gaia-chat-e2e-p95 (see that fixture): the le=60 bucket
+# carries zero count so p95 lands between le=60 and le=120, i.e. above 60s.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-chat-e2e-p95-critical fires when E2E p95 exceeds 60s
+    interval: 1m
+    input_series:
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="0.05"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="0.1"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="0.25"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="0.5"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="1"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="2.5"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="5"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="10"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="30"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="60"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="120"}'
+        values: '10+10x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="300"}'
+        values: '10+10x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="600"}'
+        values: '10+10x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="+Inf"}'
+        values: '10+10x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-chat-e2e-p95-critical
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: api
+            exp_annotations:
+              description: >-
+                Same signal as the warning-tier E2E rule, at the point where turns time out rather than lag. This tier also pages email. Treat it as an incident — look for a wedged executor lock (executor_queue_wait_seconds climbing), a provider outage, or a runaway tool (tool_call_seconds).
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95-critical
+
+  - name: gaia-chat-e2e-p95-critical stays quiet when E2E p95 is under 60s
+    interval: 1m
+    input_series:
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="0.05"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="0.1"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="0.25"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="0.5"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="1"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="2.5"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="5"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="10"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="30"}'
+        values: '0x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="60"}'
+        values: '10+10x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="120"}'
+        values: '10+10x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="300"}'
+        values: '10+10x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="600"}'
+        values: '10+10x30'
+      - series: 'chat_e2e_ack_seconds_bucket{job="gaia-api",le="+Inf"}'
+        values: '10+10x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-chat-e2e-p95-critical
+        exp_alerts: []

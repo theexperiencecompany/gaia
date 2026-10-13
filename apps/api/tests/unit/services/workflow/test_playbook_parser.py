@@ -13,7 +13,7 @@ from typing import Annotated, Any
 from unittest.mock import AsyncMock, call, patch
 
 from langchain_core.tools import BaseTool, tool
-from pydantic import Field, ValidationError, v1
+from pydantic import Field, TypeAdapter, ValidationError, v1
 import pytest
 import yaml
 
@@ -24,10 +24,12 @@ from app.models.playbook_models import (
     PlaybookHandoffStepInput,
     PlaybookStep,
     PlaybookStepInput,
+    ToolStep,
     playbook_body_from_input,
 )
 from app.models.subagent_models import Subagent
 from app.services.workflow.playbook.parser import (
+    PlaybookValidation,
     RecordedResult,
     dump_playbook,
     validate_playbook,
@@ -35,6 +37,7 @@ from app.services.workflow.playbook.parser import (
 from app.services.workflow.playbook.tool_space import SubagentTools
 
 MODULE = "app.services.workflow.playbook.parser"
+PlaybookStep_adapter = TypeAdapter(PlaybookStep)
 USER_ID = "user-1"
 
 
@@ -79,7 +82,7 @@ def _registry() -> _FakeRegistry:
 class _SchemaTool(BaseTool):
     """A tool whose args are a raw JSON schema, the shape MCP tools arrive in.
 
-    Unions and empty arg sets cannot be expressed with ``@tool`` decorators, and
+    Unions and empty arg sets cannot be expressed with @tool decorators, and
     they are exactly the schemas a real integration hands the validator.
     """
 
@@ -142,12 +145,7 @@ def _handoff_space(tools: dict[str, BaseTool] | None = None):
 
 
 def _retrieval_disabled_handoff_space():
-    """A handoff to a subagent shaped like ``docgen``: direct tools, no retrieval.
-
-    Its scoped dict holds both the tool it binds (``list_events``) and one it
-    can only see (``send_email``), the way the always-available tools sit in
-    every subagent's dict without being in its initial set.
-    """
+    """Build a handoff to a subagent shaped like docgen: direct tools, no retrieval, whose scoped dict also holds a tool it can only see."""
     subagent = Subagent(
         id="calendar_agent",
         name="Calendar",
@@ -156,7 +154,6 @@ def _retrieval_disabled_handoff_space():
         config=SubAgentConfig(
             agent_name="calendar_agent",
             tool_space="calendar",
-            handoff_tool_name="handoff_to_calendar",
             domain="calendar",
             capabilities="c",
             use_cases="u",
@@ -180,31 +177,25 @@ class TestPlaybookGrammar:
 
     def test_a_step_carrying_both_a_tool_and_a_handoff_is_rejected_by_name(self) -> None:
         with pytest.raises(ValidationError) as exc:
-            PlaybookBody.model_validate(
-                {
-                    "description": "Confused",
-                    "steps": [
+            playbook_body_from_input(
+                "Confused",
+                [
+                    PlaybookStepInput.model_validate(
                         {
                             "id": "both_shapes",
                             "tool": "send_email",
                             "handoff": "mail_agent",
                             "steps": [{"id": "inner", "tool": "send_email"}],
                         }
-                    ],
-                    "result_brief": "x",
-                }
+                    )
+                ],
+                "x",
             )
         assert "both_shapes" in str(exc.value)
 
     def test_a_handoff_without_children_is_rejected_by_name(self) -> None:
         with pytest.raises(ValidationError) as exc:
-            PlaybookBody.model_validate(
-                {
-                    "description": "Empty handoff",
-                    "steps": [{"id": "delegate", "handoff": "mail_agent"}],
-                    "result_brief": "x",
-                }
-            )
+            PlaybookStepInput.model_validate({"id": "delegate", "handoff": "mail_agent"})
         assert "mail_agent" in str(exc.value)
 
     def test_an_unknown_top_level_key_is_rejected_by_name(self) -> None:
@@ -236,10 +227,7 @@ class TestValidatePlaybook:
         assert result.issues == []
 
     async def test_an_arg_carrying_the_records_cut_marker_is_refused(self) -> None:
-        """The call record cuts long args and marks them; a step copied from the
-        record would replay the stub forever. This check was dead until
-        ensure_ascii=False: json.dumps escaped the marker ellipsis to a
-        backslash-u2026 sequence and the containment test could never fire."""
+        """Dead until ensure_ascii=False: json.dumps escaped the marker ellipsis to \\u2026, so the containment check never fired."""
         body = _body(
             f"""
 description: Copied from the record
@@ -284,11 +272,9 @@ result_brief: x
         assert problems[1].startswith("list_events takes no arg 'bogus'")
 
     async def test_a_shapeless_step_does_not_stop_its_siblings_being_checked(self) -> None:
-        """exactly_one_shape forbids a step with neither tool nor handoff; if one
-        is conjured anyway (model_construct), the walk skips it and still checks
-        the steps after it."""
-        ghost = PlaybookStep.model_construct(id="ghost", tool=None, handoff=None, steps=[], args={})
-        real = PlaybookStep(id="one", tool="send_owl", args={})
+        """Uses model_construct to conjure a step with an empty tool name, which the variants themselves refuse to construct."""
+        ghost = ToolStep.model_construct(id="ghost", tool="", args={})
+        real = ToolStep(id="one", tool="send_owl", args={})
         body = _body(VALID_YAML)
         patched = body.model_copy(update={"steps": [ghost, real]})
 
@@ -404,9 +390,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_handoff_to_an_unknown_subagent_is_rejected_by_name(self) -> None:
-        """Regression: handoff children used to be checked against the executor's
-        registry, which refused every MCP integration whose tools are fetched per
-        user. Now the subagent is resolved, so a missing one must say so."""
+        """Regression: handoff children used to be checked against the executor's registry, refusing every per-user-fetched MCP integration tool."""
         body = _body(
             """
 description: Hand off to nobody
@@ -431,9 +415,7 @@ result_brief: x
         assert "no_such_agent" in result.issues[0].problem
 
     async def test_a_tool_only_the_integration_has_is_accepted(self) -> None:
-        """The PostHog case: `exec` exists on the user's MCP client and nowhere in
-        the executor's registry. Validating it against the registry refused every
-        playbook an integration-backed workflow could ever write."""
+        """The PostHog case: exec exists on the user's MCP client but nowhere in the executor's registry."""
         body = _body(
             """
 description: Read PostHog
@@ -460,12 +442,7 @@ result_brief: x
     async def test_a_child_the_subagent_can_see_but_not_bind_is_refused_as_the_runner_would(
         self,
     ) -> None:
-        """A subagent that cannot retrieve (``docgen``, ``gaia_knowledge_guide``)
-        runs only the tools it bound at startup, yet its scoped dict also holds
-        the always-available ones. Validating children against the dict alone
-        accepted a playbook the replay then stopped at that very step. The
-        refusal has to be the runner's own wording, so the author reads one
-        message whether it comes at write time or at replay."""
+        """docgen/gaia_knowledge_guide bind only startup tools, but their scoped dict also holds always-available ones the runner would still refuse."""
         body = _body(
             """
 description: Delegate a send the subagent could never make
@@ -519,11 +496,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_dollar_ask_string_is_literal_text_and_is_type_checked_as_one(self) -> None:
-        """``$ask`` left the placeholder vocabulary when asks moved inline, so
-        ``$ask.headline`` is characters like ``$HOME`` is. It must neither be
-        refused as an undeclared reference nor exempt the argument from the type
-        check the way a real placeholder does — an author who writes it into an
-        integer arg has written a string there."""
+        """$ask left the placeholder vocabulary when asks moved inline, so $ask.headline is literal text like $HOME, still type-checked as a string."""
         body = _body(
             """
 description: A dollar-ask string is just text
@@ -545,8 +518,7 @@ result_brief: x
         ]
 
     async def test_an_unknown_dollar_word_is_literal_text_not_a_placeholder(self) -> None:
-        """Only the closed namespaces are placeholders. A recorded ``bash`` step
-        says ``echo $HOME``; refusing every ``$identifier`` would refuse it."""
+        """A recorded bash step says echo $HOME; only the closed namespaces are placeholders."""
         body = _body(
             """
 description: Shell variable in a recorded command
@@ -564,10 +536,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_placeholder_embedded_in_text_is_checked_like_a_whole_one(self) -> None:
-        """The evaluator interpolates ``$x`` inside a larger string, so the
-        validator has to read it there too. It only looked at values that
-        START with ``$``, so ``"Sent $steps.headline.text"`` was accepted and
-        then replayed against a step the playbook never declares."""
+        """Validator used to only look at values starting with $, so "Sent $steps.headline.text" was accepted despite the undeclared step."""
         body = _body(
             """
 description: Embedded undeclared step reference
@@ -587,9 +556,7 @@ result_brief: x
         assert "$steps.headline.text" in result.issues[0].problem
 
     async def test_an_embedded_dollar_ask_is_literal_text_too(self) -> None:
-        """The embedded scan reads every ``$word`` in a string; ``$ask`` is no
-        longer one of the roots it knows, so text mentioning it must pass rather
-        than being refused as a reference to a table that no longer exists."""
+        """The embedded scan reads every $word in a string; $ask is not one of the roots it knows, so mentioning it must not be refused."""
         body = _body(
             """
 description: Text that mentions an ask
@@ -662,10 +629,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_an_ask_slot_standing_where_an_argument_goes_is_accepted(self) -> None:
-        """The whole point of the inline shape: a value a model writes at replay
-        sits in the argument that needs it, in whichever step needs it, and the
-        validator lets it through. Refusing it would make the only way to author
-        written text an unwritable playbook."""
+        """An $ask slot sits directly in the argument that needs it; refusing it would make written text unauthorable."""
         body = _body(
             """
 description: Summarise the agenda after fetching it
@@ -690,8 +654,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_slot_nested_inside_a_structured_arg_is_accepted(self) -> None:
-        """Slots reach as deep as arguments nest; a payload-shaped arg carrying
-        one must validate exactly like a top-level one."""
+        """Slots reach as deep as arguments nest, so a payload-shaped arg carrying one validates like a top-level slot."""
         registry = _schema_registry(query_rows={"filter": {"type": "object"}})
         body = _body(
             """
@@ -712,10 +675,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_slot_carrying_a_key_the_vocabulary_has_no_room_for_is_refused(self) -> None:
-        """The slot vocabulary is two keys. A model that adds ``goal`` has
-        written an instruction the runner will never read, so the refusal names
-        the argument it sits in and spells out what a slot may hold — one issue,
-        not a pydantic dump the author has to decode."""
+        """The slot vocabulary is two keys; an added 'goal' key is refused as one issue naming the argument, not a raw pydantic dump."""
         body = _body(
             """
 description: A slot with an extra key
@@ -745,10 +705,7 @@ result_brief: x
     async def test_a_slot_on_a_step_with_no_id_is_refused_so_keys_cannot_collide(
         self,
     ) -> None:
-        """A slot's key is its step's id plus the arg path; with no id the tool
-        name stands in, so two id-less steps of one tool would share a key and
-        the second would silently receive the first's text. Refusing at
-        authoring time is the only place the author can still add the id."""
+        """A slot's key is its step id plus the arg path; with no id the tool name stands in, so two id-less steps would collide."""
         body = _body(
             """
 description: Two searches, neither named
@@ -769,8 +726,7 @@ result_brief: x
         assert "list_events" in result.issues[0].problem
 
     async def test_a_slot_with_an_empty_prompt_is_refused(self) -> None:
-        """A slot with nothing to say is a model call with no instruction; the
-        text it writes would be whatever the run happened to look like."""
+        """A slot with an empty prompt is a model call with no instruction."""
         body = _body(
             """
 description: A slot with no instruction
@@ -792,9 +748,7 @@ result_brief: x
         assert "$ask" in result.issues[0].problem
 
     async def test_a_slot_whose_max_tokens_is_out_of_range_is_refused(self) -> None:
-        """The budget is what keeps one replay's token cost bounded; a slot
-        asking for more than the cap must be refused at authoring time rather
-        than turning a playbook into an open-ended generation."""
+        """max_tokens bounds a replay's token cost, so a slot asking above the cap is refused at authoring time."""
         body = _body(
             """
 description: A slot with a runaway budget
@@ -817,10 +771,7 @@ result_brief: x
         assert "max_tokens 1..8192" in result.issues[0].problem
 
     async def test_an_arg_holding_a_slot_is_not_type_checked(self) -> None:
-        """A slot is a dict now and the model's text at replay, exactly as a
-        placeholder is a string now and whatever it resolves to later. Type-
-        checking the unfilled slot would refuse every typed argument a model is
-        meant to write."""
+        """A slot is a dict at authoring time and the model's text at replay, like a placeholder is a string now and its resolved value later."""
         body = _body(
             """
 description: A written count
@@ -841,8 +792,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_duplicate_step_id_is_refused_by_name(self) -> None:
-        """The runner records results by id, so a second ``agenda`` overwrites
-        the first and every ``$steps.agenda`` silently reads whichever ran last."""
+        """The runner records results by id, so a duplicate silently overwrites the first and $steps references read whichever ran last."""
         body = _body(
             """
 description: Two steps called agenda
@@ -877,12 +827,7 @@ result_brief: x
         ]
 
     async def test_a_handoff_is_resolved_by_its_own_name_for_this_user_and_registry(self) -> None:
-        """Which tools a child step is checked against is decided by all three
-        arguments: an MCP integration's tools are fetched from THAT user's own
-        client, so resolving with anything else validates the playbook against a
-        tool space the replay never has — accepted at write time, refused at
-        replay, or worse, the reverse.
-        """
+        """An MCP integration's tools are fetched from that user's own client, so resolving with any other user validates against the wrong tool space."""
         body = _body(
             """
 description: Delegate a send
@@ -912,11 +857,7 @@ result_brief: x
         assert resolve.await_args_list == [call("mail_agent", USER_ID, registry)]
 
     async def test_an_arg_json_cannot_serialise_is_type_checked_not_a_crash(self) -> None:
-        """A recorded arg can hold a value ``json.dumps`` refuses — a YAML date is
-        the everyday one. Scanning it for the truncation marker must fall back to
-        its text rather than raise, or authoring dies with a TypeError instead of
-        telling the author their date belongs in a string field.
-        """
+        """A recorded arg can hold a value json.dumps refuses, e.g. a YAML date; the truncation-marker scan must fall back to text, not raise."""
         body = _body(
             """
 description: Send with a date where a string belongs
@@ -937,11 +878,7 @@ result_brief: x
         ]
 
     async def test_a_step_id_keeps_every_leading_character(self) -> None:
-        """Only the separating dot is stripped from a reference's path.
-
-        Trimming anything else silently renames the step, and a reference to a
-        step the document really does declare is refused at authoring time.
-        """
+        """Only the separating dot is stripped from a reference's path; trimming anything else would silently rename the step."""
         body = _body(
             """
 description: Reference a step whose id starts with X
@@ -964,11 +901,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_union_member_whose_type_has_no_python_mapping_is_skipped(self) -> None:
-        """An MCP schema can declare a JSON type this validator has no mapping
-        for. The unmapped member contributes nothing and the members it does know
-        still decide the check; treating the unknown one as "no types at all"
-        would blow up the walk over a union that is otherwise perfectly checkable.
-        """
+        """An MCP schema can declare a JSON type this validator has no mapping for; the unmapped union member is skipped, not treated as untyped."""
         registry = _schema_registry(
             query_rows={"cursor": {"anyOf": [{"type": "widget"}, {"type": "string"}]}}
         )
@@ -1003,12 +936,7 @@ result_brief: x
         ]
 
     async def test_a_union_typed_arg_accepts_every_member_of_the_union(self) -> None:
-        """An optional arg is declared as anyOf[string, null].
-
-        Reading only the ``type`` key would treat the whole union as untyped and
-        wave through any value; reading the wrong union key would reject a
-        perfectly valid playbook at authoring time.
-        """
+        """An optional arg is declared as anyOf[string, null]; reading only the top-level type key would treat the whole union as untyped."""
         registry = _schema_registry(
             query_rows={"cursor": {"anyOf": [{"type": "string"}, {"type": "null"}]}}
         )
@@ -1074,11 +1002,7 @@ result_brief: x
     async def test_a_union_whose_members_are_themselves_unions_still_reports_a_type(
         self,
     ) -> None:
-        """A nested union has accepted types but no name to print for them.
-
-        The message must still be a sentence the agent can act on rather than
-        crashing the whole validation on a schema shape it did not expect.
-        """
+        """A nested union has accepted types but no name to print for them; the message must still be a sentence, not a crash."""
         registry = _schema_registry(
             query_rows={"limit": {"anyOf": [{"anyOf": [{"type": "integer"}]}]}}
         )
@@ -1099,11 +1023,7 @@ result_brief: x
         assert "expected another type, got str" in result.issues[0].problem
 
     async def test_a_boolean_is_not_accepted_for_an_integer_arg(self) -> None:
-        """Python says ``isinstance(True, int)``; the tool's API does not.
-
-        Letting ``true`` through as a count sends a live integration a 1 the
-        author never wrote.
-        """
+        """Python says isinstance(True, int); the tool's API does not."""
         body = _body(
             """
 description: Boolean count
@@ -1123,11 +1043,7 @@ result_brief: x
         assert "expected integer, got bool" in result.issues[0].problem
 
     async def test_a_placeholder_in_a_typed_arg_is_not_type_checked(self) -> None:
-        """``$steps.agenda.count`` is a string now and an int at replay time.
-
-        Type-checking the unresolved token would make every dynamic argument
-        unauthorable.
-        """
+        """$steps.agenda.count is a string now and an int at replay time; type-checking the unresolved token would make it unauthorable."""
         body = _body(
             """
 description: Count comes from an earlier step
@@ -1150,8 +1066,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_placeholder_nested_inside_a_list_arg_is_still_checked(self) -> None:
-        """Placeholders hide inside structured args, and a stale reference in one
-        breaks the replay just as hard as a top-level one."""
+        """Placeholders hide inside structured args; a stale one breaks the replay as hard as a top-level reference."""
         registry = _schema_registry(query_rows={"ids": {"type": "array"}})
         body = _body(
             """
@@ -1190,8 +1105,7 @@ result_brief: x
         assert "$steps.nowhere.id" in result.issues[0].problem
 
     async def test_every_bad_arg_on_a_step_is_reported_not_just_the_first(self) -> None:
-        """The author fixes what the report lists. Stopping at the first bad arg
-        turns one rejected write into a round trip per arg."""
+        """Stopping at the first bad arg would turn one rejected write into a round trip per arg."""
         body = _body(
             """
 description: Two bad args
@@ -1252,9 +1166,7 @@ result_brief: x
         assert "it takes: nothing" in result.issues[0].problem
 
     async def test_a_required_arg_the_step_never_sets_is_refused_by_name(self) -> None:
-        """Nothing else catches this: the per-arg checks walk the args the step
-        HAS, so a call missing a required one is accepted here and fails at
-        replay before it starts."""
+        """Per-arg checks only walk args the step HAS, so a missing required arg would otherwise slip through to fail only at replay."""
         body = _body(
             """
 description: Mail with half the arguments
@@ -1278,8 +1190,7 @@ result_brief: x
         ]
 
     async def test_every_missing_required_arg_is_named_in_sorted_order(self) -> None:
-        """Naming one at a time costs the author a round trip each, and the
-        order has to be the same every run or the message is not diffable."""
+        """The order must be stable across runs, or the refusal message is not diffable."""
         body = _body(
             """
 description: Mail with no arguments at all
@@ -1307,8 +1218,7 @@ result_brief: x
     async def test_a_required_arg_filled_at_replay_still_counts_as_set(
         self, authored: object
     ) -> None:
-        """The arg is present; only its value is deferred. Refusing it would
-        refuse every playbook that addresses the user or writes its own text."""
+        """The arg is present; only its value is deferred until replay."""
         body = PlaybookBody.model_validate(
             {
                 "description": "Mail the agenda",
@@ -1325,8 +1235,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_tool_that_requires_nothing_is_not_asked_for_anything(self) -> None:
-        """An MCP schema with no ``required`` list is not a tool that requires
-        every arg; a step calling it with none is complete."""
+        """An MCP schema with no required list requires no arg."""
         registry = _schema_registry(ping={})
         body = _body(
             """
@@ -1349,10 +1258,7 @@ result_brief: x
     async def test_a_required_arg_is_read_from_every_schema_shape_langchain_hands_back(
         self, tool_kind: str
     ) -> None:
-        """Decorated tools carry a v2 model, MCP tools a raw JSON document and
-        legacy tools a v1 model. ``required`` is spelled the same way on all
-        three, but each is read through a different branch, and a branch that
-        reads nothing would quietly stop refusing calls that cannot run."""
+        """Decorated tools carry a v2 model, MCP tools a raw JSON document, legacy tools a v1 model; required is read through a different branch each."""
 
         class _JsonExec(BaseTool):
             name: str = "run_query"
@@ -1406,9 +1312,7 @@ result_brief: x
         ]
 
     async def test_a_deep_step_reference_resolves_against_the_step_id(self) -> None:
-        """``$steps.agenda.organizer.email`` names step ``agenda``, not
-        ``agenda.organizer``. Splitting from the wrong end rejects a playbook
-        that would replay perfectly."""
+        """$steps.agenda.organizer.email names step agenda, not agenda.organizer; splitting from the wrong end rejects a valid playbook."""
         body = _body(
             """
 description: Deep reference
@@ -1430,9 +1334,11 @@ result_brief: x
         assert result.issues == []
 
 
-def _call(tool_name: str, args: dict[str, Any], result: object) -> RecordedResult:
+def _call(
+    tool_name: str, args: dict[str, Any], result: object, subagent: str | None = None
+) -> RecordedResult:
     """One call as the authoring run made it, with what came back."""
-    return RecordedResult(tool_name=tool_name, args=args, result=result)
+    return RecordedResult(tool_name=tool_name, args=args, result=result, subagent=subagent)
 
 
 @pytest.mark.unit
@@ -1440,15 +1346,13 @@ class TestValidateAgainstTheRunThatIsWritingIt:
     """The checks that read the authoring run's own results.
 
     Every case here was a playbook production accepted and then broke on:
-    ``pb_c7d357db77dd`` froze a field its tool does not return, and two more
+    pb_c7d357db77dd froze a field its tool does not return, and two more
     were frozen from calls that came back empty. The run had every answer in
     hand at write time, and nothing looked at it.
     """
 
     async def test_a_step_is_matched_to_the_call_whose_literal_args_agree(self) -> None:
-        """A tool called twice left two results. If the step is matched to the
-        wrong one, this playbook is refused for an emptiness that belongs to the
-        other calendar entirely."""
+        """A tool called twice left two results; matching the wrong one refuses the playbook for an emptiness belonging to the other call."""
         body = _body(
             """
 description: Read the work calendar
@@ -1471,9 +1375,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_non_string_arg_picks_the_call_that_used_that_value(self) -> None:
-        """Numbers agree by equality like anything else. Matched the other way
-        round the step is checked against the call it is NOT, and this playbook
-        is refused for the emptiness of a run it never froze."""
+        """Numbers agree by equality like anything else; matched to the wrong call, the step is refused for a run's emptiness it never froze."""
         body = _body(
             """
 description: Mail with two retries
@@ -1502,9 +1404,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_an_arg_holding_a_placeholder_matches_any_recorded_value(self) -> None:
-        """A placeholder has no value until replay, so it cannot disagree with a
-        recorded arg. Treated as a literal it would agree with nothing and the
-        step would be checked against the last call — here, the empty one."""
+        """A placeholder has no value until replay, so it cannot disagree with a recorded arg; treated as a literal it would match no call."""
         body = _body(
             """
 description: Mail the digest
@@ -1530,11 +1430,7 @@ result_brief: x
     async def test_a_step_agreeing_with_no_call_is_refused_with_the_args_that_did_run(
         self,
     ) -> None:
-        """A step whose args match no recorded call is not a call the run made.
-        Handing it the run's last call anyway validated that call's result as
-        the step's own, so a `$steps` reference could be approved against a shape
-        the replayed args will never return. The refusal shows the args the run
-        actually used so the author can freeze the real call."""
+        """Handing an unmatched step the run's last call anyway used to validate that call's result as the step's own; the refusal names the args that actually ran."""
         body = _body(
             """
 description: Read a third calendar
@@ -1564,9 +1460,7 @@ result_brief: x
         ]
 
     async def test_the_refusal_shows_the_args_of_the_last_call_still_unfrozen(self) -> None:
-        """Four calls, the first already frozen by an earlier step. The one to
-        show is the LAST still-unfrozen call — the run's final attempt — not the
-        first, not the second, and not the one another step already took."""
+        """Of four calls, one already frozen by an earlier step, the refusal must show the run's last still-unfrozen attempt."""
         body = _body(
             """
 description: Freeze the work calendar, then a calendar nobody read
@@ -1602,9 +1496,7 @@ result_brief: x
         ]
 
     async def test_a_literal_nested_beside_a_placeholder_still_picks_the_call(self) -> None:
-        """The two calls differ only inside ``filters``, which also carries a
-        placeholder. Treating the whole arg as a wildcard matches the last call
-        and refuses this playbook for the spam folder's emptiness."""
+        """Treating a structured arg as a wildcard because it holds a placeholder would match the wrong call and refuse on the wrong emptiness."""
         body = _body(
             """
 description: Read the inbox
@@ -1638,9 +1530,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_key_the_recorded_call_lacks_disagrees_with_it(self) -> None:
-        """The last call never sent ``label`` at all, so it is not the call this
-        step froze — an arg the step names and the record omits is a
-        disagreement, not something to shrug at."""
+        """An arg the step names but the recorded call omits is a disagreement, not something to shrug at."""
         body = _body(
             """
 description: Read the inbox
@@ -1670,9 +1560,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_an_ask_slot_nested_in_an_arg_matches_any_recorded_value(self) -> None:
-        """Text a model writes at replay does not exist yet, so it agrees with
-        whatever sat in that position — while the literal beside it still
-        decides which call this is."""
+        """An $ask slot has no value yet, so it agrees with whatever sat in that position, while the literal beside it still picks the call."""
         body = _body(
             """
 description: Read the inbox
@@ -1707,8 +1595,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_list_arg_agrees_at_its_own_length_only(self) -> None:
-        """A placeholder element stands for one value, not for any number of
-        them, so a recorded list of another length is a different call."""
+        """A placeholder element stands for one value, not for any length, so a recorded list of another length is a different call."""
         body = _body(
             """
 description: Tag the inbox
@@ -1734,9 +1621,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_key_the_step_left_out_does_not_break_agreement(self) -> None:
-        """The model writes the args it meant, not every default the tool
-        filled in; a recorded key the step never mentions cannot be evidence
-        that this is some other call."""
+        """A recorded key the step never mentions, such as a tool-filled default, cannot be evidence that this is some other call."""
         body = _body(
             """
 description: Read the inbox
@@ -1765,8 +1650,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_tool_the_run_never_called_is_refused(self) -> None:
-        """A playbook freezes calls that ran. A step for a tool this run never
-        touched was invented, and its args have never been proven to work."""
+        """A step for a tool this run never touched was invented; its args have never been proven to work."""
         body = _body(
             """
 description: Mail an agenda that was never mailed
@@ -1791,9 +1675,7 @@ result_brief: x
         )
 
     async def test_a_call_that_returned_no_items_is_refused(self) -> None:
-        """Two production playbooks were frozen from a call that returned zero
-        items and were marked SUSPECT one fire later. The list is nested under an
-        envelope, so the check has to look past the top level."""
+        """Seen live: two production playbooks froze a zero-item call and were marked SUSPECT one fire later; the list is nested under an envelope."""
         body = _body(
             """
 description: Read an empty calendar
@@ -1817,10 +1699,7 @@ result_brief: x
         )
 
     async def test_a_call_that_reported_its_own_failure_is_refused_by_its_error(self) -> None:
-        """A tool that catches its own failure answers with a success-shaped
-        message carrying an error envelope. Freezing that call freezes a step
-        that has never once worked, and the refusal has to name the error the
-        author has to fix."""
+        """A tool that catches its own failure answers with a success-shaped message carrying an error envelope; the refusal must name that error."""
         body = _body(
             """
 description: Mail from an expired token
@@ -1861,10 +1740,7 @@ result_brief: x
     async def test_a_failure_with_no_error_key_is_named_by_whatever_it_did_say(
         self, envelope: dict[str, Any], said: str
     ) -> None:
-        """Tools spell their failure two ways — an ``error`` and a bare
-        ``message`` — and some say only ``success: false``. The refusal is the
-        author's only account of why the call failed, so it has to read the
-        second spelling and say so plainly when there is no third."""
+        """Tools spell failure as error or a bare message, and some say only success: false, with no account of why to read."""
         body = _body(
             """
 description: Mail from a failing tool
@@ -1889,10 +1765,7 @@ result_brief: x
         )
 
     async def test_the_args_naming_the_empty_call_are_rendered_as_they_were_sent(self) -> None:
-        """The args are there to say WHICH call came back empty. Escaped to
-        ASCII the author cannot recognise their own query, and a value that is
-        not JSON (a datetime the tool was handed) must render rather than crash
-        the whole validation."""
+        """Escaped to ASCII the author cannot recognise their own query, and a non-JSON value like a datetime must render rather than crash."""
         body = _body(
             """
 description: Read an empty calendar
@@ -1932,9 +1805,7 @@ result_brief: x
     async def test_long_args_are_cut_at_the_cap_and_marked(
         self, filler: int, rendered: str
     ) -> None:
-        """200 characters of args, then an ellipsis. The cap is inclusive: a
-        rendering that lands exactly on it is complete and must not be marked as
-        cut, or the author goes looking for args that were never dropped."""
+        """The cap is inclusive: a rendering that lands exactly on it is complete and must not be marked as cut."""
         body = _body(
             """
 description: Read an empty calendar
@@ -1959,9 +1830,7 @@ result_brief: x
         )
 
     async def test_a_reference_to_a_field_the_result_lacks_is_refused_with_its_keys(self) -> None:
-        """``pb_c7d357db77dd`` exactly: a field frozen on a tool that does not
-        return it. The keys are the whole point of the message — without them the
-        author is told what is wrong and not what it could have written."""
+        """Seen live (pb_c7d357db77dd): a field frozen on a tool that does not return it; without the keys hint the author is told nothing to fix it with."""
         body = _body(
             """
 description: Reply on a thread id that does not exist
@@ -2007,9 +1876,7 @@ result_brief: x
     async def test_the_keys_hint_lists_up_to_the_cap_and_marks_the_rest(
         self, key_count: int, expected_hint: str
     ) -> None:
-        """A wide result must not bury the sentence that says what is wrong, so
-        the hint stops at the cap and says there is more. Exactly at the cap
-        there is nothing more to say, and the marker must not appear."""
+        """The keys hint stops at the cap and says there is more; exactly at the cap, the "more" marker must not appear."""
         body = _body(
             """
 description: Reply on a field that does not exist
@@ -2040,9 +1907,7 @@ result_brief: x
         ]
 
     async def test_an_unknown_arg_is_answered_with_the_tools_whole_arg_list(self) -> None:
-        """The list is what the author rewrites from, so it has to be the real
-        one: every arg, sorted, comma-separated. A one-arg tool cannot show the
-        separator, which is how a broken join went unnoticed."""
+        """The arg list must be every arg, sorted, comma-separated; a one-arg tool can't show the separator, which is how a broken join went unnoticed."""
         body = _body(
             """
 description: A misspelt recipient field
@@ -2067,11 +1932,7 @@ result_brief: x
         ]
 
     async def test_a_call_the_run_made_once_cannot_be_frozen_twice(self) -> None:
-        """Two steps with one tool and the same args both matched the single
-        recorded call, and the replay then sent the mail twice for a run that
-        sent it once. The second step must be refused, and the message must say
-        how many times the tool really ran so the author can tell a duplicate
-        from a call that was dropped from the record."""
+        """Two steps matching one recorded call used to both freeze it, replaying the send twice; the refusal must say how many times it really ran."""
         body = _body(
             """
 description: The same mail, listed twice
@@ -2103,15 +1964,49 @@ result_brief: x
             )
         ]
 
-    async def test_a_handoff_child_never_takes_a_top_level_call_of_the_same_tool(self) -> None:
-        """The run's results hold nothing for a subagent's calls (the handoff
-        record carries their args, not their outputs), so a child is not matched
-        at all. Matching it anyway let a child consume the one recorded top-level
-        call of the same tool, and the real top-level step behind it was refused
-        as a call the run never made."""
+    async def test_a_handoff_child_is_matched_in_its_subagents_scope_not_the_executors(
+        self,
+    ) -> None:
+        """Regression: matching handoff children against the executor's calls let a child consume the one top-level call of the same tool."""
         body = _body(
             """
 description: The subagent listed events, then the executor did too
+steps:
+  - id: delegated
+    handoff: calendar_agent
+    steps:
+      - id: theirs
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mine
+    tool: list_events
+    args:
+      calendar_id: $steps.theirs.events
+result_brief: x
+"""
+        )
+        results = [
+            _call("handoff", {"subagent_id": "calendar_agent", "task": "list"}, "done"),
+            _call(
+                "list_events",
+                {"calendar_id": "primary"},
+                {"events": [{"id": "e1"}]},
+                subagent="calendar_agent",
+            ),
+            _call("list_events", {"calendar_id": "primary"}, {"events": [{"id": "e2"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_a_handoff_child_the_subagent_never_called_is_refused(self) -> None:
+        """With only the executor's call on record, the child has nothing in its own scope and is refused as a call that did not run."""
+        body = _body(
+            """
+description: x
 steps:
   - id: delegated
     handoff: calendar_agent
@@ -2132,12 +2027,62 @@ result_brief: x
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
             result = await validate_playbook(body, USER_ID, results)
 
-        assert result.issues == []
+        assert [issue.where for issue in result.issues] == ["steps[0].steps[0]"]
+        assert "did not run" in result.issues[0].problem
+
+    async def test_an_item_field_inside_a_handoff_is_checked_against_the_subagents_result(
+        self,
+    ) -> None:
+        """Seen live (D2): a for_each inside a handoff over elements carrying id, written with a field they do not have."""
+        body = _body(
+            """
+description: x
+steps:
+  - id: delegated
+    handoff: calendar_agent
+    steps:
+      - id: events
+        tool: list_events
+        args:
+          calendar_id: primary
+      - id: mail
+        tool: send_email
+        for_each: $steps.events.events
+        max_items: 5
+        args:
+          to: $item.email
+          subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            _call("handoff", {"subagent_id": "calendar_agent", "task": "mail"}, "done"),
+            _call(
+                "list_events",
+                {"calendar_id": "primary"},
+                {"events": [{"id": "e1", "title": "standup"}]},
+                subagent="calendar_agent",
+            ),
+            _call(
+                "send_email",
+                {"to": "a@b.com", "subject": "hi"},
+                "sent",
+                subagent="calendar_agent",
+            ),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].steps[1].args.to",
+                "$item.email is not in the current for_each element; its result has keys: id, title",
+            )
+        ]
 
     async def test_a_tool_the_run_called_twice_can_be_frozen_twice(self) -> None:
-        """The refusal above is about cardinality, not repetition: a run that
-        genuinely made the call twice left two records, and two steps may each
-        take one. A third step has nothing left and says so with the count."""
+        """A run that genuinely made the call twice left two records; two steps may each take one, but a third has nothing left."""
         body = _body(
             """
 description: Two mails, then one too many
@@ -2172,10 +2117,7 @@ result_brief: x
         assert result.issues[0].problem.startswith("send_email ran 2 time(s) in this run")
 
     async def test_a_reference_deeper_than_one_field_is_still_read_from_its_step(self) -> None:
-        """``$steps.agenda.organizer.email`` names the step ``agenda`` and the
-        path ``organizer.email``. Split from the other end the step is called
-        ``agenda.organizer``, nothing in the run answers to it, and a reference
-        into a shape the tool does not return is waved through."""
+        """$steps.agenda.organizer.email names step agenda and path organizer.email; split from the other end, nothing answers to agenda.organizer."""
         body = _body(
             """
 description: Reply to the organizer
@@ -2207,9 +2149,7 @@ result_brief: x
         )
 
     async def test_a_result_with_no_keys_to_offer_ends_the_refusal_where_it_is(self) -> None:
-        """The keys are a hint, not a sentence: a result that is a bare list has
-        none to give, and the refusal has to stop rather than trail off into an
-        empty ``has keys:``."""
+        """A bare-list result has no keys to give; the refusal must stop rather than trail off into an empty "has keys:"."""
         body = _body(
             """
 description: Reply on a thread id a list cannot carry
@@ -2240,8 +2180,7 @@ result_brief: x
         )
 
     async def test_a_reference_the_recorded_result_resolves_is_accepted(self) -> None:
-        """The check has to accept the shape the run actually produced, nested
-        list index included; a refusal here refuses a playbook that replays."""
+        """The check must accept the shape the run actually produced, nested list index included."""
         body = _body(
             """
 description: Reply to the first message
@@ -2269,10 +2208,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_a_reference_to_a_steps_offload_file_is_exempt(self) -> None:
-        """``$steps.<id>.file`` addresses the workspace path a step offloaded its
-        result to, which exists only at replay. Checked against the authoring
-        run's result it is always absent, and every offloading playbook would be
-        refused."""
+        """$steps.<id>.file addresses a workspace path that exists only at replay, so checking it against the authoring run's result is always absent."""
         body = _body(
             """
 description: Mail the offloaded agenda
@@ -2300,10 +2236,7 @@ result_brief: x
         assert result.issues == []
 
     async def test_without_results_the_verdict_is_the_one_it_was_before(self) -> None:
-        """No results is not an empty run. The dev executor route and every
-        caller with no graph behind it pass nothing, and must get exactly the
-        registry checks they got before — while a run that genuinely made no
-        calls is refused."""
+        """The dev executor route and any caller with no graph behind it pass no results at all, not an empty run, and must get the registry checks only."""
         body = _body(VALID_YAML)
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -2320,9 +2253,7 @@ class TestDumpPlaybook:
     """The YAML rendering is what the agent reads its own playbook back from."""
 
     def test_non_ascii_text_survives_the_rendering(self) -> None:
-        """Descriptions are written by users in their own language. Escaping the
-        accented characters makes the playbook unreadable for the person who
-        wrote it and for the agent that has to edit it."""
+        """Escaping accented characters would make the playbook unreadable for the person who wrote it."""
         body = _body(
             """
 description: Résumé für das Team
@@ -2338,10 +2269,7 @@ result_brief: x
         assert "Résumé für das Team" in rendered
 
     def test_keys_stay_in_authored_order_with_the_result_brief_last(self) -> None:
-        """Alphabetising would put ``description`` after ``result_brief`` and
-        scatter each step's ``id``/``tool``/``args``, so the document stops
-        reading like the sequence it describes. ``result_brief`` comes last
-        because it is written from what every step above it returned."""
+        """Alphabetising would put description after result_brief and scatter each step's id/tool/args."""
         body = _body(VALID_YAML)
         rendered = dump_playbook(body)
         assert rendered.index("description:") < rendered.index("steps:")
@@ -2349,16 +2277,12 @@ result_brief: x
         assert rendered.index("id: agenda") < rendered.index("args:")
 
     def test_the_document_carries_no_ask_section_of_its_own(self) -> None:
-        """Asks stopped being a section when they moved inline. Rendering one
-        anyway would teach the agent reading its playbook back to author the
-        shape whose dead entries this change exists to make impossible."""
+        """Asks stopped being a top-level section when they moved inline; rendering one anyway would teach the agent to author the dead shape."""
         rendered = dump_playbook(_body(VALID_YAML))
         assert set(yaml.safe_load(rendered)) == {"description", "steps", "result_brief"}
 
     def test_an_ask_slot_renders_inside_the_argument_it_stands_in(self) -> None:
-        """The agent revises the playbook from this YAML, so a slot has to read
-        where its value belongs. Rendered anywhere else — or flattened to a
-        marker — the agent could not tell which argument a model writes."""
+        """The agent revises the playbook from this YAML, so a slot rendered anywhere else, or flattened to a marker, would hide which argument it fills."""
         rendered = dump_playbook(_body(VALID_YAML))
 
         mail = yaml.safe_load(rendered)["steps"][1]
@@ -2369,11 +2293,51 @@ result_brief: x
 def _messages(exc: pytest.ExceptionInfo[ValidationError]) -> list[str]:
     """Just the validator's own messages.
 
-    ``str(ValidationError)`` also renders the offending input, so a message
+    str(ValidationError) also renders the offending input, so a message
     asserted against the whole string passes on the strength of the input echo
     even when the message says something else entirely.
     """
     return [error["msg"] for error in exc.value.errors()]
+
+
+class TestStoredShapesAreUnrepresentable:
+    """The stored step is a union of three variants discriminated by shape; a document that is two shapes, or none, cannot be read at all."""
+
+    @pytest.mark.parametrize(
+        "document",
+        [
+            {
+                "id": "both",
+                "tool": "send_email",
+                "handoff": "mail_agent",
+                "steps": [{"id": "i", "tool": "t"}],
+            },
+            {"id": "neither", "args": {"to": "x"}},
+            {"id": "empty_handoff", "handoff": "mail_agent"},
+            {"id": "nested_call", "tool": "send_email", "steps": [{"id": "i", "tool": "t"}]},
+            {"id": "unbounded", "tool": "send_email", "for_each": "$steps.a.items"},
+            {"id": "ceiling_only", "tool": "send_email", "max_items": 3},
+            {
+                "id": "looping_handoff",
+                "handoff": "m",
+                "for_each": "$steps.a.items",
+                "max_items": 3,
+                "steps": [{"id": "i", "tool": "t"}],
+            },
+        ],
+        ids=[
+            "both",
+            "neither",
+            "empty_handoff",
+            "nested_call",
+            "unbounded",
+            "ceiling_only",
+            "looping_handoff",
+        ],
+    )
+    def test_it_cannot_be_read(self, document: dict[str, object]) -> None:
+        with pytest.raises(ValidationError):
+            PlaybookStep_adapter.validate_python(document)
 
 
 class TestStepShapeMessages:
@@ -2384,53 +2348,13 @@ class TestStepShapeMessages:
     node leaves it to guess which of a dozen steps to change, and a message that
     names the wrong thing sends it to rewrite a step that was fine. Both models
     carry the same rule because a playbook is authored through the input models
-    and stored through ``PlaybookStep``, and the two must refuse the same shapes.
+    and stored through PlaybookStep, and the two must refuse the same shapes.
     """
 
-    def test_a_stored_step_that_is_both_shapes_is_named(self) -> None:
+    def test_an_authored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
+        """Only a handoff nests, and the message names the step by id, not the tool, which could name every step calling that tool."""
         with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate(
-                {
-                    "id": "both_shapes",
-                    "tool": "send_email",
-                    "handoff": "mail_agent",
-                    "steps": [{"id": "inner", "tool": "send_email"}],
-                }
-            )
-
-        assert any(
-            "step both_shapes: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
-        )
-
-    def test_a_stored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
-        """A step with no id has to be described somehow, and "" is not a description."""
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate({"args": {"to": "x@example.com"}})
-
-        assert any(
-            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
-        )
-
-    def test_a_stored_handoff_with_no_children_says_it_would_do_nothing(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate({"id": "delegate", "handoff": "mail_agent"})
-
-        assert any(
-            "handoff mail_agent: carries no steps, so it would do nothing; list the calls that "
-            "subagent ran (its handoff result records them) in this step's 'steps' field" in message
-            for message in _messages(exc)
-        )
-
-    def test_a_stored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
-        """Only a handoff nests, and the message names the step, not the tool.
-
-        The agent addresses the step it has to fix by id, so naming the tool
-        instead points it at every step that calls that tool.
-        """
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate(
+            PlaybookStepInput.model_validate(
                 {
                     "id": "notify",
                     "tool": "send_email",
@@ -2439,8 +2363,7 @@ class TestStepShapeMessages:
             )
 
         assert any(
-            "step notify: only a handoff may carry nested steps" in message
-            for message in _messages(exc)
+            "step notify: only a handoff may carry nested steps" in m for m in _messages(exc)
         )
 
     def test_an_authored_step_that_is_both_shapes_is_named(self) -> None:
@@ -2455,17 +2378,7 @@ class TestStepShapeMessages:
             )
 
         assert any(
-            "step both_shapes: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
-        )
-
-    def test_an_authored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStepInput.model_validate({"args": {"to": "x@example.com"}})
-
-        assert any(
-            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
+            "step both_shapes: set exactly one of 'tool' or 'handoff'" in m for m in _messages(exc)
         )
 
     def test_an_authored_handoff_with_no_children_says_it_would_do_nothing(self) -> None:
@@ -2474,23 +2387,17 @@ class TestStepShapeMessages:
 
         assert any(
             "handoff mail_agent: carries no steps, so it would do nothing; list the calls that "
-            "subagent ran (its handoff result records them) in this step's 'steps' field" in message
-            for message in _messages(exc)
+            "subagent ran (its handoff result records them) in this step's 'steps' field" in m
+            for m in _messages(exc)
         )
 
-    def test_an_authored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
+    def test_an_authored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
+        """A step with no id has to be described somehow, and "" is not a description."""
         with pytest.raises(ValidationError) as exc:
-            PlaybookStepInput.model_validate(
-                {
-                    "id": "notify",
-                    "tool": "send_email",
-                    "steps": [{"id": "inner", "tool": "send_email"}],
-                }
-            )
+            PlaybookStepInput.model_validate({"args": {"to": "x@example.com"}})
 
         assert any(
-            "step notify: only a handoff may carry nested steps" in message
-            for message in _messages(exc)
+            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in m for m in _messages(exc)
         )
 
 
@@ -2514,12 +2421,7 @@ class TestAuthoredPlaybookBecomesTheStoredOne:
         assert step.args == {"to": "team@example.com", "subject": "Agenda"}
 
     def test_an_ask_slot_written_into_an_arg_reaches_the_stored_body(self) -> None:
-        """A slot is ordinary argument data all the way through the conversion.
-
-        The tool boundary no longer has an ``ask`` parameter to drop, so a slot
-        lost here would be lost silently: the playbook stores and replays, and
-        the step simply sends nothing where the written text belonged.
-        """
+        """A slot is ordinary argument data all the way through the conversion; the tool boundary no longer has an ask parameter that could drop it."""
         body = playbook_body_from_input(
             description="Mail the agenda",
             steps=[
@@ -2537,10 +2439,846 @@ class TestAuthoredPlaybookBecomesTheStoredOne:
         assert body.result_brief == "Say how many events there were."
 
     def test_an_ask_slot_inside_a_handoff_child_survives_the_conversion(self) -> None:
-        """A handoff's children are converted through their own model, so a slot
-        in one has a second chance to be dropped on the way to the stored body."""
+        """A handoff's children are converted through their own model, giving a slot a second chance to be dropped."""
         child = PlaybookHandoffStepInput(
             id="mail", tool="send_email", args={"subject": {"$ask": "Write the digest."}}
         )
 
         assert child.to_step().args == {"subject": {"$ask": "Write the digest."}}
+
+
+@pytest.mark.unit
+class TestForEachSource:
+    """Seen live: a model wrote for_each: "overdue-items-from-$steps.list", prose resolving to a STRING, refused correctly but only at replay."""
+
+    def test_a_for_each_woven_into_prose_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="whole value"):
+            _body(
+                """
+description: Sweep the overdue todos
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: overdue-items-from-$steps.agenda
+    max_items: 5
+    args:
+      to: $item
+      subject: Note
+result_brief: Say what was sent.
+"""
+            )
+
+    async def test_a_bare_steps_placeholder_is_accepted(self) -> None:
+        body = _body(
+            """
+description: Sweep the overdue todos
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.agenda.items
+    max_items: 5
+    args:
+      to: $item
+      subject: Note
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is True, result.issues
+
+    async def test_an_ask_slot_source_is_accepted(self) -> None:
+        body = _body(
+            """
+description: Sweep the overdue todos
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each:
+      $ask: which of the events above need a note
+    max_items: 5
+    args:
+      to: $item
+      subject: Note
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is True, result.issues
+
+
+@pytest.mark.unit
+class TestDumpKeepsTheLoop:
+    """A loop step dumped without its for_each is a step whose $item addresses nothing, and the agent would "fix" it by dropping the loop."""
+
+    @pytest.mark.parametrize(
+        "source",
+        ["$steps.agenda.items", {"$ask": "which of the events above need a note"}],
+        ids=["placeholder", "ask"],
+    )
+    def test_a_for_each_step_survives_the_round_trip(self, source: object) -> None:
+        body = PlaybookBody.model_validate(
+            {
+                "description": "Note each event",
+                "steps": [
+                    {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}},
+                    {
+                        "id": "mail",
+                        "tool": "send_email",
+                        "for_each": source,
+                        "max_items": 5,
+                        "args": {"to": "$item", "subject": "Note"},
+                    },
+                ],
+                "result_brief": "Say what was sent.",
+            }
+        )
+
+        rendered = dump_playbook(body)
+        again = PlaybookBody.model_validate(yaml.safe_load(rendered))
+
+        assert again.steps[1].for_each == body.steps[1].for_each
+        assert again.steps[1].max_items == 5
+        assert "for_each" in rendered and "max_items" in rendered
+
+    def test_a_plain_step_still_dumps_without_loop_keys(self) -> None:
+        """Unset optional keys stay out, so an ordinary playbook reads as before."""
+        rendered = dump_playbook(_body(VALID_YAML))
+
+        assert "for_each" not in rendered
+        assert "max_items" not in rendered
+
+
+@pytest.mark.unit
+class TestAHandoffIsNotAnAddress:
+    """Seen live: a model wrote $steps.sweep.list.todos for a handoff's list child; accepted since sweep is a declared id, refused only at replay."""
+
+    async def test_a_reference_through_the_handoff_is_refused_naming_the_child(self) -> None:
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $user.email
+      subject: $steps.sweep.agenda.count
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].args.subject",
+                "$steps.sweep.agenda.count addresses the handoff 'sweep', which records no "
+                "result of its own; address the call inside it by its own id, $steps.agenda...",
+            )
+        ]
+
+    async def test_a_reference_to_the_handoff_itself_is_refused_with_a_child_to_name(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $user.email
+      subject: $steps.sweep
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].args.subject",
+                "$steps.sweep addresses the handoff 'sweep', which records no result of its "
+                "own; address the call inside it by its own id, $steps.<child>...",
+            )
+        ]
+
+    async def test_a_step_after_the_handoff_is_matched_at_the_executors_scope(self) -> None:
+        """If the scope a handoff opens does not close, the step after it is matched against the subagent's calls and refused as one that never ran."""
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+result_brief: Say what was sent.
+"""
+        )
+        results = [
+            _call(
+                "list_events",
+                {"calendar_id": "primary"},
+                {"events": [{"id": "e1"}]},
+                "calendar_agent",
+            ),
+            _call("send_email", {"to": "a@b.com", "subject": "hi"}, "sent"),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID, results)
+        assert result.issues == []
+
+    async def test_the_child_addressed_by_its_own_id_is_fine(self) -> None:
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $user.email
+      subject: $steps.agenda.count
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is True, result.issues
+
+
+@pytest.mark.unit
+class TestForEachSourcesAndItem:
+    """Seen live: $item outside a for_each resolved to nothing at replay; a for_each naming a non-list field was refused only a whole run later."""
+
+    async def test_item_outside_a_for_each_is_refused(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: $item.email
+      subject: hi
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].args.to",
+                "$item.email addresses the element of a for_each, and this step is not one",
+            )
+        ]
+
+    async def test_a_for_each_over_a_field_that_is_not_a_list_is_refused_at_the_write(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.count
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"count": 2, "items": [{"id": 1}, {"id": 2}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].for_each",
+                "$steps.events.count resolved to int, and for_each needs a list to repeat over"
+                "; its result has keys: count, items",
+            )
+        ]
+
+    async def test_an_item_field_the_elements_do_not_have_is_refused_at_the_write(self) -> None:
+        """Seen on the real model: $item.todo_id over a list whose elements carry id; the replay stopped on the first element and spent a heal."""
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.items
+    max_items: 5
+    args:
+      to: $item.email
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1, "title": "standup"}, {"id": 2, "title": "1:1"}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].args.to",
+                "$item.email is not in the current for_each element; its result has keys: id, title",
+            )
+        ]
+
+    async def test_a_field_a_later_element_lacks_is_refused_naming_that_element(self) -> None:
+        """The first element having the field is not enough: the loop runs the earlier calls and stops on the element without it."""
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.items
+    max_items: 5
+    args:
+      to: $item.email
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1, "email": "a@b.com"}, {"id": 2, "title": "1:1"}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].args.to",
+                "$item.email is not in the current for_each element (element 1); its result "
+                "has keys: id, title",
+            )
+        ]
+
+    async def test_an_item_field_the_elements_do_have_is_accepted(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.items
+    max_items: 5
+    args:
+      to: $item.title
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1, "title": "standup"}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "standup", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert result.issues == []
+
+    async def test_a_for_each_source_is_checked_as_a_reference_without_a_run_to_read(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.items
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+  - id: more
+    tool: send_email
+    for_each: $steps.missing.items
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[2].for_each",
+                "$steps.missing.items points at a step that no earlier node declares",
+            )
+        ]
+
+    async def test_a_for_each_over_a_field_the_run_did_not_return_is_refused_at_the_write(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.stats.count
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"stats": {"count": 2}, "items": []},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].for_each",
+                "$steps.events.stats.count resolved to int, and for_each needs a list to "
+                "repeat over; its result has keys: items, stats",
+            )
+        ]
+
+    async def test_a_for_each_over_a_field_the_step_did_not_return_names_the_source(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.nothing
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].for_each",
+                "$steps.events.nothing is not in step 'events''s result; its result has "
+                "keys: items",
+            )
+        ]
+
+    async def test_a_for_each_over_the_trigger_is_not_read_as_a_step(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    for_each: $trigger.recipients
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert result.issues == []
+
+    @pytest.mark.parametrize(
+        ("to", "refused"), [("$item.title", True), ("$item", False)], ids=["field", "whole"]
+    )
+    async def test_an_ask_pick_is_one_text_value_with_no_field_under_it(
+        self, to: str, refused: bool
+    ) -> None:
+        """Seen on the real model (D3): $item.title over an $ask pick; the write accepted it and the replay stopped on the first element."""
+        body = _body(
+            f"""
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each:
+      $ask: the events above that mention money
+    max_items: 5
+    args:
+      to: {to}
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1, "title": "rent"}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "rent", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        expected = [
+            (
+                "steps[1].args.to",
+                "$item.title reads a field of an $ask pick, but each pick is one text value; "
+                "write $item on its own, or make for_each a $steps list and read the field "
+                "off its elements",
+            )
+        ]
+        assert [(issue.where, issue.problem) for issue in result.issues] == (
+            expected if refused else []
+        )
+
+    async def test_a_for_each_source_must_be_a_step_that_ran_not_the_element(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    for_each: $item.ids
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].for_each",
+                "$item.ids addresses the element of a for_each, and the list itself "
+                "cannot be one of its own elements",
+            )
+        ]
+
+
+@pytest.mark.unit
+class TestTimeArgumentsRenderByExample:
+    """Seen live (D6): the run sent 2026-09-06 09:00:00; the model froze it as "$today + 1d at 09:00" since a bare $today + 1d renders to ISO 8601."""
+
+    def _body(self, scheduled_at: str) -> PlaybookBody:
+        return _body(
+            f"""
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {scheduled_at}
+result_brief: x
+"""
+        )
+
+    async def _validate(self, body: PlaybookBody, recorded_subject: str) -> PlaybookValidation:
+        results = [
+            _call("send_email", {"to": "a@b.com", "subject": recorded_subject}, "sent"),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            return await validate_playbook(body, USER_ID, results)
+
+    async def test_prose_around_a_time_placeholder_is_refused_with_the_slot_to_write(
+        self,
+    ) -> None:
+        result = await self._validate(self._body('"$today + 1d at 09:00"'), "2026-09-06 09:00:00")
+
+        assert [issue.where for issue in result.issues] == ["steps[0].args.subject"]
+        problem = result.issues[0].problem
+        assert "'2026-09-06 09:00:00'" in problem
+        assert '{"$time": "$today + 1d", "format": "%Y-%m-%d %H:%M:%S"}' in problem
+
+    async def test_a_bare_placeholder_whose_iso_rendering_is_not_the_tools_layout_is_refused(
+        self,
+    ) -> None:
+        result = await self._validate(self._body('"$today + 1d 09:00"'), "2026-09-06 09:00:00")
+
+        assert len(result.issues) == 1
+        assert (
+            '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}'
+            in result.issues[0].problem
+        )
+
+    async def test_a_bare_placeholder_matching_the_tools_layout_is_accepted(self) -> None:
+        dated = await self._validate(self._body('"$today + 1d"'), "2026-09-06")
+        timed = await self._validate(self._body('"$now + 1h"'), "2026-09-06T10:00:00+00:00")
+
+        assert dated.issues == []
+        assert timed.issues == []
+
+    async def test_a_time_slot_in_the_tools_layout_is_accepted_and_a_wrong_one_refused(
+        self,
+    ) -> None:
+        good = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}
+result_brief: x
+"""
+        )
+        bad = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$today + 1d 09:00", "format": "%d/%m/%Y"}
+result_brief: x
+"""
+        )
+        accepted = await self._validate(good, "2026-09-06 09:00:00")
+        refused = await self._validate(bad, "2026-09-06 09:00:00")
+
+        assert accepted.issues == []
+        assert [(issue.where, issue.problem) for issue in refused.issues] == [
+            (
+                "steps[0].args.subject",
+                "'subject' was '2026-09-06 09:00:00' in this run, whose layout is "
+                "'%Y-%m-%d %H:%M:%S', not '%d/%m/%Y'; write "
+                '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}',
+            )
+        ]
+
+    async def test_words_around_the_recorded_date_are_kept_in_the_slot_to_write(self) -> None:
+        """Seen live (D4): the run titled the todo "Plan for September 5, 2026"; the hint carries the words, so the written slot does too."""
+        refused = await self._validate(
+            self._body('"Plan for $today"'), "Plan for September 5, 2026"
+        )
+        assert [(issue.where, issue.problem) for issue in refused.issues] == [
+            (
+                "steps[0].args.subject",
+                "'subject' was 'Plan for September 5, 2026' in this run; 'Plan for $today' "
+                "renders its placeholder as ISO 8601 inside that text, which is not this "
+                'layout. Write the whole value as {"$time": "$today", "format": "Plan for '
+                '%B %d, %Y"}, with the clock inside the placeholder',
+            )
+        ]
+        accepted = await self._validate(
+            _body(
+                """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$today", "format": "Plan for %B %d, %Y"}
+result_brief: x
+"""
+            ),
+            "Plan for September 5, 2026",
+        )
+        assert accepted.issues == []
+
+    async def test_a_malformed_time_slot_is_refused_by_its_own_rule(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$steps.x.when", "format": "%Y"}
+result_brief: x
+"""
+        )
+        result = await self._validate(body, "2026-09-06 09:00:00")
+
+        assert len(result.issues) == 1
+        assert result.issues[0].problem.startswith("$time takes one time placeholder")
+
+    async def test_every_argument_is_checked_even_after_one_is_refused(self) -> None:
+        """One refusal per argument, in argument order, so several wrong arguments are told all at once, not one per round trip."""
+        body = _body(
+            f"""
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: "abc{ARG_TRUNCATION_MARKER}"
+      cc: nobody
+      subject: {{"$time": "$today", "format": "%Y-%m-%d"}}
+      retries: $item
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "send_email",
+                {
+                    "to": f"abc{ARG_TRUNCATION_MARKER}",
+                    "cc": "nobody",
+                    "subject": "2026-09-06",
+                    "retries": 0,
+                },
+                "sent",
+            )
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].args.to",
+                "'to' was cut short in the call record; pass the full value you actually "
+                "sent, not the recorded stub",
+            ),
+            ("steps[0].args.cc", "send_email takes no arg 'cc'; it takes: retries, subject, to"),
+            (
+                "steps[0].args.retries",
+                "$item addresses the element of a for_each, and this step is not one",
+            ),
+        ]

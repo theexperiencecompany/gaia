@@ -13,41 +13,24 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
-# The app always uses this database, whatever database `MONGO_DB` names in its
-# path — so anything that has to reach the same data (tests seeding the app's
-# startup preconditions) must resolve it from here rather than from the URL.
-#
-# MONGO_DB_NAME overrides it so several CI lanes can share ONE mongod: the URI's
-# database component is ignored by design (above), so the name is the only
-# namespace available. Unset = "GAIA", the production database.
+# The app always uses this database name regardless of what `MONGO_DB`'s URL names.
+# MONGO_DB_NAME overrides it so several CI lanes can share one mongod. Unset = "GAIA".
 MONGO_DATABASE_NAME = os.getenv("MONGO_DB_NAME", "GAIA")
 
 
 class MongoDB:
-    """
-    A class to manage the MongoDB connection using Motor.
-    """
+    """A class to manage the MongoDB connection using Motor."""
 
     client: AsyncIOMotorClient[dict[str, Any]]
     database: AsyncIOMotorDatabase[dict[str, Any]]
 
     def __init__(self, uri: str | None, db_name: str):
-        """
-        Initialize the MongoDB connection.
-
-        Args:
-            uri (str): MongoDB connection string.
-            db_name (str): Name of the database.
-        """
         if not uri:
             log.error(f"{LogTag.MONGO} MongoDB URI is not found in the environment variables.")
             sys.exit(1)
 
         try:
-            # Cap the connection pool. Motor defaults to maxPoolSize=100 per
-            # process; with async I/O the app rarely needs more than a handful
-            # of concurrent Mongo ops, and each pooled socket carries buffers.
-            # 20 is ample headroom and bounds memory under load.
+            # Cap the pool below Motor's default maxPoolSize=100 to bound memory under load.
             self.client = AsyncIOMotorClient(
                 uri,
                 server_api=ServerApi("1"),
@@ -103,18 +86,13 @@ class MongoDB:
             )
 
     def get_collection(self, collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
-        """A Motor handle for one collection of the app's database."""
+        """Return a Motor handle for one collection of the app's database."""
         return self.database.get_collection(collection_name)
 
 
 @lru_cache(maxsize=1)
 def init_mongodb() -> MongoDB:
-    """
-    Initialize MongoDB connection and set it in the app state.
-
-    Args:
-        app (FastAPI): The FastAPI application instance.
-    """
+    """Initialize the MongoDB connection and verify connectivity via a startup ping."""
     log.info(f"{LogTag.MONGO} Initializing MongoDB...")
     mongodb_instance = MongoDB(uri=settings.MONGO_DB, db_name=MONGO_DATABASE_NAME)
     log.info(f"{LogTag.MONGO} Created MongoDB instance")
@@ -124,7 +102,5 @@ def init_mongodb() -> MongoDB:
 
 
 def object_id_filter(id_value: str) -> dict[str, ObjectId]:
-    """The ``_id`` filter for a 24-hex string id — the id-codec stays in app/db
-    (repository-boundaries lint), so raw-connection operational scripts never
-    import bson themselves."""
+    """Build the _id filter for a 24-hex string id, so operational scripts never import bson."""
     return {"_id": ObjectId(id_value)}

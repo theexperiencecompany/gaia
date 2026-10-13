@@ -76,7 +76,7 @@ SYSTEM_STAGING_TARBALL = MOUNT_SCRIPT_PATH.parent / "_gaia_system.tar.gz"
 
 
 def _stage_system_tarball() -> None:
-    """Write the shared ``_system`` files to a tarball for baking into the image.
+    """Write the shared _system files to a tarball for baking into the image.
 
     mtime is pinned to 0 so the artifact is reproducible and doesn't bust E2B's
     build cache when the file bodies are unchanged.

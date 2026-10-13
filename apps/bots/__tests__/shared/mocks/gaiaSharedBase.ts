@@ -18,6 +18,15 @@
  */
 
 import { vi } from "vitest";
+import {
+  type AnalyticsId,
+  platformIdentity,
+} from "../../../../../libs/shared/ts/src/analytics";
+import {
+  consumeInboundLinkCode,
+  redeemLinkCode,
+} from "../../../../../libs/shared/ts/src/bots/link-codes";
+import { REACTION_OUTCOME } from "../../../../../libs/shared/ts/src/bots/utils/reaction-outcome";
 
 interface GaiaSharedMockOptions {
   /** Per-platform streaming configuration object */
@@ -61,8 +70,10 @@ export function makeGaiaSharedMock(
     }
 
     /** Unlinked-user path — adapter tests assert routing, not identity. */
-    protected async resolveDistinctId(platformUserId: string): Promise<string> {
-      return `${this.platform}:${platformUserId}`;
+    protected async resolveDistinctId(
+      platformUserId: string,
+    ): Promise<AnalyticsId> {
+      return platformIdentity(this.platform, platformUserId);
     }
 
     protected async dispatchCommand(
@@ -98,9 +109,8 @@ export function makeGaiaSharedMock(
       return { platform: this.platform, platformUserId: userId, channelId };
     }
 
-    // --- Base helpers added for the class-based pattern. Stubbed with real-ish
-    // behavior so adapter tests exercise the adapter's own wiring; the real
-    // implementations are covered by shared tests (media.test.ts, base behavior).
+    // Base helpers stubbed with real-ish behavior so adapter tests exercise the
+    // adapter's own wiring; real implementations are covered by shared tests.
 
     private readonly _welcomed = new Set<string>();
     protected shouldSendWelcome(userId: string): boolean {
@@ -175,10 +185,8 @@ export function makeGaiaSharedMock(
     ),
     handleStreamingChat: vi.fn().mockResolvedValue(undefined),
     STREAMING_DEFAULTS: streamingDefaults,
-    // renderForPlatform is the shared non-streaming chokepoint. In adapter tests
-    // @gaia/shared is mocked, so conversion does not actually happen here — the
-    // identity mock returns RAW text and the real conversion is covered by the
-    // shared formatters tests.
+    // Shared non-streaming chokepoint; mocked as identity here (returns raw text) —
+    // real conversion is covered by the shared formatters tests.
     renderForPlatform: vi.fn((text: string) => text),
     richMessageToMarkdown: vi.fn().mockReturnValue(defaultRichMarkdown),
     parseTextArgs: vi.fn((text: string) => ({
@@ -203,9 +211,16 @@ export function makeGaiaSharedMock(
     // Plain shared constant every adapter's download path imports — the real
     // value, so a test asserting the deadline asserts production's.
     MEDIA_READ_TIMEOUT_MS: 30_000,
+    // The real outcome set, so an adapter's reaction result is production's value.
+    REACTION_OUTCOME,
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),
+    // The REAL link-code helpers: a codeless message must pass through
+    // untouched, and that is exactly what the adapter routing tests below
+    // depend on — a stub would prove nothing about production.
+    consumeInboundLinkCode: vi.fn(consumeInboundLinkCode),
+    redeemLinkCode: vi.fn(redeemLinkCode),
     extractSubcommandArgs: vi.fn((name: string, raw?: string) =>
       name === "todo" || name === "workflow"
         ? { subcommand: (raw ?? "").trim().split(/\s+/)[0] || "list" }

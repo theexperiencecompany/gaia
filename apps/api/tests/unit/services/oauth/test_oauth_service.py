@@ -1,0 +1,1006 @@
+"""Unit tests for OAuth service operations."""
+
+from datetime import UTC
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from bson import ObjectId
+from fastapi import HTTPException
+import pytest
+from tests.factories import make_integration_config
+from tests.helpers import captured_wide_event
+
+from app.constants.integrations import AccountConnectOutcome
+from app.constants.log_tags import LogTag
+from app.models.integration_models import IntegrationAccount
+from app.models.user_models import BioStatus, UserDocument
+from app.services.email.signup_delivery import signup_email_job_id
+from app.services.integrations.integration_account_lifecycle import (
+    AccountConnected,
+    AccountLimitReached,
+    resync_primary_bound_triggers,
+)
+from app.services.oauth.oauth_service import (
+    check_integration_status,
+    check_multiple_integrations_status,
+    handle_oauth_connection,
+    store_user_info,
+)
+from app.services.workflow.integration_pause import (
+    resume_workflows_for_reconnected_integration,
+)
+from shared.py.analytics import UserId
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_user_repo():
+    with patch("app.services.oauth.oauth_service.user_repository") as mock_repo:
+        mock_repo.get_by_email = AsyncMock()
+        mock_repo.get = AsyncMock()
+        mock_repo.update = AsyncMock()
+        mock_repo.create = AsyncMock()
+        mock_repo.set_bio_status = AsyncMock()
+        mock_repo.stamp_signup_deliveries = AsyncMock()
+        yield mock_repo
+
+
+@pytest.fixture
+def mock_websocket_manager():
+    with patch("app.services.oauth.oauth_service.websocket_manager") as mock_ws:
+        mock_ws.broadcast_to_user = AsyncMock()
+        yield mock_ws
+
+
+@pytest.fixture
+def mock_redis_pool_manager(route_enqueue_via_pool):
+    mock_pool = AsyncMock()
+    mock_pool.enqueue_job = AsyncMock()
+    with patch("app.services.oauth.oauth_service.RedisPoolManager") as mock_rpm:
+        mock_rpm.get_pool = AsyncMock(return_value=mock_pool)
+        yield mock_pool
+
+
+@pytest.fixture
+def mock_track_signup():
+    with patch("app.services.oauth.oauth_service.track_signup") as mock_ts:
+        yield mock_ts
+
+
+@pytest.fixture
+def mock_track_login():
+    with patch("app.services.oauth.oauth_service.track_login") as mock_tl:
+        yield mock_tl
+
+
+@pytest.fixture
+def mock_provision_system_workflows():
+    with patch(
+        "app.services.oauth.oauth_service.provision_system_workflows",
+        new_callable=AsyncMock,
+    ) as mock_fn:
+        yield mock_fn
+
+
+@pytest.fixture
+def mock_queue_inbox_desk():
+    with patch(
+        "app.services.oauth.oauth_service.queue_inbox_desk_provision",
+        new_callable=AsyncMock,
+    ) as mock_fn:
+        yield mock_fn
+
+
+@pytest.fixture(autouse=True)
+def bypass_cacheable():
+    """Bypass the @Cacheable decorator so tests call the real function.
+
+    The Cacheable wrapper (defined in app.decorators.caching) closes over
+    get_cache / set_cache imported from app.db.redis.  Patching them there
+    ensures every cached call goes straight through to the wrapped function.
+    """
+    with (
+        patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
+        patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
+    ):
+        yield
+
+
+def _make_integration_config(
+    integration_id: str = "gmail",
+    name: str = "Gmail",
+    managed_by: str = "composio",
+    associated_triggers: list | None = None,
+    metadata_config: object | None = None,
+):
+    """Build a lightweight mock integration config object."""
+    config = MagicMock()
+    config.id = integration_id
+    config.name = name
+    config.managed_by = managed_by
+    config.associated_triggers = associated_triggers or []
+    config.metadata_config = metadata_config
+    return config
+
+
+# ---------------------------------------------------------------------------
+# store_user_info
+# ---------------------------------------------------------------------------
+
+
+class TestStoreUserInfo:
+    async def test_raises_400_when_email_is_empty(self, mock_user_repo):
+        with pytest.raises(HTTPException) as exc_info:
+            await store_user_info("Test", "", "https://pic.example.com/pic.jpg", auth_method=None)
+        assert exc_info.value.status_code == 400
+        assert "Email is required" in exc_info.value.detail
+
+    async def test_raises_400_when_email_is_none(self, mock_user_repo):
+        with pytest.raises(HTTPException) as exc_info:
+            await store_user_info("Test", None, "https://pic.example.com/pic.jpg", auth_method=None)
+        assert exc_info.value.status_code == 400
+
+    async def test_updates_existing_user_with_picture(self, mock_user_repo, mock_track_login):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="Alice",
+            picture="https://old-pic.example.com/old.jpg",
+        )
+
+        result = await store_user_info(
+            "Alice Updated",
+            "alice@test.com",
+            "https://new-pic.example.com/new.jpg",
+            auth_method=None,
+        )
+
+        assert result == (uid, False)
+        mock_user_repo.update.assert_awaited_once()
+        doc_id, update = mock_user_repo.update.call_args.args
+        assert doc_id == uid
+        fields = update.model_dump(exclude_unset=True)
+        assert fields["picture"] == "https://new-pic.example.com/new.jpg"
+
+    async def test_a_login_tracking_failure_is_recorded_and_the_login_still_succeeds(
+        self, mock_user_repo, mock_track_login
+    ):
+        """Keyed on the user ID (the field dashboards group by) and carries no email address."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="Alice",
+            picture="https://existing.example.com/pic.jpg",
+        )
+        mock_track_login.side_effect = RuntimeError("PostHog unavailable")
+
+        async with captured_wide_event() as event:
+            result = await store_user_info("Alice", "alice@test.com", None, auth_method=None)
+
+        assert result == (uid, False)
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.OAUTH} Failed to track login in PostHog for",
+                "user": {"id": uid},
+                "error": "PostHog unavailable",
+                "error_type": "RuntimeError",
+            }
+        ]
+
+    @pytest.mark.regression
+    async def test_login_never_overwrites_a_stored_name(self, mock_user_repo, mock_track_login):
+        """Regression: WorkOS's login-time name guess used to clobber a user's settings correction."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="Alice Wonderland",
+            picture="https://existing.example.com/pic.jpg",
+        )
+
+        await store_user_info(
+            "alice", "alice@test.com", "https://new-pic.example.com/new.jpg", auth_method=None
+        )
+
+        fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
+        assert "name" not in fields
+        assert mock_track_login.call_args.kwargs["name"] == "Alice Wonderland"
+
+    async def test_login_fills_an_empty_stored_name(self, mock_user_repo, mock_track_login):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="   ",
+            picture="https://existing.example.com/pic.jpg",
+        )
+
+        await store_user_info("Alice Wonderland", "alice@test.com", None, auth_method=None)
+
+        fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
+        assert fields["name"] == "Alice Wonderland"
+        assert mock_track_login.call_args.kwargs["name"] == "Alice Wonderland"
+
+    async def test_updates_existing_user_without_picture_keeps_existing(
+        self, mock_user_repo, mock_track_login
+    ):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="Alice",
+            picture="https://existing.example.com/pic.jpg",
+        )
+
+        result = await store_user_info("Alice Updated", "alice@test.com", None, auth_method=None)
+
+        assert result == (uid, False)
+        # Nothing to write: no new picture URL and the stored name wins, so the
+        # login must not touch the document at all.
+        mock_user_repo.update.assert_not_awaited()
+
+    async def test_updates_existing_user_without_picture_sets_empty_when_no_existing(
+        self, mock_user_repo, mock_track_login
+    ):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="Alice",  # no picture
+        )
+
+        result = await store_user_info("Alice Updated", "alice@test.com", None, auth_method=None)
+
+        assert result == (uid, False)
+        fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
+        assert fields["picture"] == ""
+
+    async def test_creates_new_user_with_picture(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+    ):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(
+            id=uid, name="Bob", email="bob@test.com", picture="https://pic.example.com/bob.jpg"
+        )
+
+        result = await store_user_info(
+            "Bob", "bob@test.com", "https://pic.example.com/bob.jpg", auth_method=None
+        )
+
+        assert result == (uid, True)
+        created = mock_user_repo.create.call_args.args[0]
+        assert created.name == "Bob"
+        assert created.email == "bob@test.com"
+        assert created.picture == "https://pic.example.com/bob.jpg"
+
+    @pytest.mark.regression
+    async def test_signup_reports_the_method_workos_authenticated_with(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+    ):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid, name="Bob", email="bob@test.com")
+
+        await store_user_info("Bob", "bob@test.com", None, auth_method="GoogleOAuth")
+
+        assert mock_track_signup.call_args.kwargs["signup_method"] == "GoogleOAuth"
+
+    @pytest.mark.regression
+    async def test_login_reports_the_method_workos_authenticated_with(
+        self, mock_user_repo, mock_track_login
+    ):
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=str(ObjectId()), name="Alice", email="alice@test.com"
+        )
+
+        await store_user_info("Alice", "alice@test.com", None, auth_method="MagicAuth")
+
+        assert mock_track_login.call_args.kwargs["login_method"] == "MagicAuth"
+
+    async def test_creates_new_user_without_picture_defaults_to_empty(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+    ):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid, name="Bob", email="bob@test.com")
+
+        result = await store_user_info("Bob", "bob@test.com", None, auth_method=None)
+
+        assert result == (uid, True)
+        assert mock_user_repo.create.call_args.args[0].picture == ""
+
+    @pytest.mark.regression
+    async def test_new_user_without_a_workos_name_gets_one_derived_from_the_email(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+        mock_redis_pool_manager,
+    ):
+        """WorkOS sends no name for email-code signups; storing "" left the user nameless forever."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid)
+
+        await store_user_info("", "aryan.randeriya@test.com", None, auth_method=None)
+
+        assert mock_user_repo.create.call_args.args[0].name == "Aryan Randeriya"
+        assert mock_track_signup.call_args.kwargs["name"] == "Aryan Randeriya"
+        # The derived name is what the queued delivery reads back off the row to greet the user.
+        # Not assert_awaited_once_with: enqueue_worker_job also attaches the caller's trace id,
+        # which is not this test's subject.
+        assert mock_redis_pool_manager.enqueue_job.await_args.args == (
+            "deliver_signup_emails",
+            uid,
+        )
+        assert mock_redis_pool_manager.enqueue_job.await_args.kwargs[
+            "_job_id"
+        ] == signup_email_job_id(uid)
+
+    async def test_new_user_keeps_the_workos_name_when_there_is_one(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+    ):
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
+
+        await store_user_info("Bob Vance", "bob.vance@test.com", None, auth_method=None)
+
+        assert mock_user_repo.create.call_args.args[0].name == "Bob Vance"
+
+    async def test_new_user_tracks_signup(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+    ):
+        mock_user_repo.get_by_email.return_value = None
+        created = UserDocument(id=str(ObjectId()))
+        mock_user_repo.create.return_value = created
+
+        await store_user_info("Bob", "bob@test.com", None, auth_method="Password")
+
+        mock_track_signup.assert_called_once_with(
+            user_id=UserId(created.id),
+            email="bob@test.com",
+            name="Bob",
+            signup_method="Password",
+        )
+
+    async def test_new_user_queues_the_signup_email_delivery(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+        mock_redis_pool_manager,
+    ):
+        """Queues the ESP round-trip on the worker; in-process it was undrained and lost on restart."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid)
+
+        await store_user_info("Bob", "bob@test.com", None, auth_method=None)
+
+        # A real signup is created owing both deliveries. Stamping here instead
+        # would mark them settled before the ESP was ever called, and the sweep
+        # would have nothing left to recover when the queued job was lost.
+        created = mock_user_repo.create.call_args.args[0]
+        assert created.welcome_email_sent_at is None
+        assert created.marketing_contact_added_at is None
+        # Not assert_awaited_once_with: enqueue_worker_job also attaches the
+        # caller's trace id, which is not this test's subject.
+        assert mock_redis_pool_manager.enqueue_job.await_args.args == (
+            "deliver_signup_emails",
+            uid,
+        )
+        assert mock_redis_pool_manager.enqueue_job.await_args.kwargs[
+            "_job_id"
+        ] == signup_email_job_id(uid)
+
+    async def test_a_dev_minted_user_is_stamped_so_the_sweep_never_mails_it(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+        mock_redis_pool_manager,
+    ):
+        """The sweep selects on a missing delivery stamp; the stamp rides in the insert itself."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid)
+
+        await store_user_info(
+            "Bob", "bob@test.com", None, auth_method=None, external_side_effects=False
+        )
+
+        created = mock_user_repo.create.call_args.args[0]
+        # Mongo stores a BSON date as UTC and reads a naive one back as though
+        # it already were; a local-clock stamp would land silently shifted.
+        assert created.welcome_email_sent_at is not None
+        assert created.welcome_email_sent_at.tzinfo is UTC
+        assert created.marketing_contact_added_at == created.welcome_email_sent_at
+        mock_user_repo.stamp_signup_deliveries.assert_not_awaited()
+        mock_redis_pool_manager.enqueue_job.assert_not_awaited()
+        mock_track_signup.assert_not_called()
+
+    async def test_new_user_signup_tracking_failure_does_not_raise(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+    ):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid)
+        mock_track_signup.side_effect = Exception("PostHog unavailable")
+
+        # Should not raise
+        result = await store_user_info("Bob", "bob@test.com", None, auth_method=None)
+        assert result == (uid, True)
+
+    async def test_new_user_signup_survives_a_failed_email_enqueue(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+        mock_redis_pool_manager,
+    ):
+        """Redis being unreachable costs the signup emails, not a registration that already succeeded."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid)
+        mock_redis_pool_manager.enqueue_job.side_effect = Exception("Redis down")
+
+        assert await store_user_info("Bob", "bob@test.com", None, auth_method=None) == (uid, True)
+
+
+# ---------------------------------------------------------------------------
+# get_all_integrations_status
+# ---------------------------------------------------------------------------
+
+
+class TestCheckIntegrationStatus:
+    async def test_returns_true_for_connected_integration(self):
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            return_value={"gmail": True, "notion": False},
+        ):
+            result = await check_integration_status("gmail", "user123")
+        assert result is True
+
+    async def test_returns_false_for_disconnected_integration(self):
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            return_value={"gmail": True, "notion": False},
+        ):
+            result = await check_integration_status("notion", "user123")
+        assert result is False
+
+    async def test_returns_false_for_unknown_integration(self):
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            return_value={"gmail": True},
+        ):
+            result = await check_integration_status("unknown", "user123")
+        assert result is False
+
+    async def test_returns_false_on_exception(self):
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            side_effect=Exception("DB error"),
+        ):
+            result = await check_integration_status("gmail", "user123")
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# check_multiple_integrations_status
+# ---------------------------------------------------------------------------
+
+
+class TestCheckMultipleIntegrationsStatus:
+    async def test_returns_status_for_requested_integrations(self):
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            return_value={"gmail": True, "notion": False, "slack": True},
+        ):
+            result = await check_multiple_integrations_status(["gmail", "notion"], "user123")
+
+        assert result == {"gmail": True, "notion": False}
+
+    async def test_unknown_integrations_default_to_false(self):
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            return_value={"gmail": True},
+        ):
+            result = await check_multiple_integrations_status(["gmail", "unknown"], "user123")
+
+        assert result == {"gmail": True, "unknown": False}
+
+    async def test_returns_all_false_on_exception(self):
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            side_effect=Exception("Service error"),
+        ):
+            result = await check_multiple_integrations_status(["gmail", "notion"], "user123")
+
+        assert result == {"gmail": False, "notion": False}
+
+    async def test_empty_list_returns_empty_dict(self):
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            return_value={"gmail": True},
+        ):
+            result = await check_multiple_integrations_status([], "user123")
+
+        assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# handle_oauth_connection
+# ---------------------------------------------------------------------------
+
+
+class TestHandleOAuthConnection:
+    async def test_records_the_account_that_authorized(self, mock_record_account):
+        config = make_integration_config(integration_id="notion", name="Notion")
+
+        with patch("app.services.oauth.oauth_service.publish_connected") as publish:
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=MagicMock(),
+                connected_account_id="ca_new",
+            )
+
+        mock_record_account.assert_awaited_once_with("user123", config, "ca_new")
+        publish.assert_awaited_once_with("user123", "notion")
+
+    async def test_a_connect_over_the_account_limit_has_no_side_effects(self, mock_record_account):
+        mock_record_account.return_value = AccountLimitReached(limit=5)
+        config = make_integration_config(integration_id="gmail", associated_triggers=[MagicMock()])
+        background_tasks = MagicMock()
+
+        with patch("app.services.oauth.oauth_service.publish_connected") as publish:
+            outcome = await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+                connected_account_id="ca_new",
+            )
+
+        assert outcome == AccountLimitReached(limit=5)
+        background_tasks.add_task.assert_not_called()
+        publish.assert_not_called()
+
+    async def test_subscribes_the_new_account_to_account_level_triggers(
+        self,
+        mock_record_account,
+    ):
+        """Account-level events (a new email) fire for every account, so each one subscribes."""
+        mock_trigger = MagicMock()
+        config = make_integration_config(
+            integration_id="notion",
+            associated_triggers=[mock_trigger],
+        )
+        background_tasks = MagicMock()
+
+        with patch("app.services.oauth.oauth_service.get_composio_service") as mock_get_cs:
+            mock_cs = MagicMock()
+            mock_get_cs.return_value = mock_cs
+
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+                connected_account_id="ca_new",
+            )
+
+        background_tasks.add_task.assert_any_call(
+            mock_cs.handle_subscribe_trigger,
+            user_id="user123",
+            connected_account_id="ca_new",
+            triggers=[mock_trigger],
+        )
+
+    async def test_does_not_setup_triggers_when_empty(
+        self,
+        mock_record_account,
+    ):
+        """If no associated_triggers, do not call get_composio_service for triggers."""
+        config = make_integration_config(
+            integration_id="notion",
+            associated_triggers=[],
+        )
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id="user123",
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        # No trigger-related background task should be queued
+        for call in background_tasks.add_task.call_args_list:
+            func = call[0][0] if call[0] else None
+            # Ensure no handle_subscribe_trigger was added
+            if func and hasattr(func, "__name__"):
+                assert func.__name__ != "handle_subscribe_trigger"
+
+    async def test_gmail_connection_enqueues_personalization(
+        self,
+        mock_user_repo,
+        mock_record_account,
+        mock_redis_pool_manager,
+        mock_enqueue_personalization,
+    ):
+        """Connecting Gmail is what triggers the personalization pipeline."""
+        user_id = "507f1f77bcf86cd799439011"
+        mock_user_repo.get.return_value = UserDocument(onboarding={"completed": True})
+        config = make_integration_config(integration_id="gmail")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id=user_id,
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        mock_enqueue_personalization.assert_awaited_once_with(user_id)
+        # The pipeline queues memory ingestion itself, after its own inbox scan,
+        # so queuing it here too would contend for Gmail capacity.
+        mock_redis_pool_manager.enqueue_job.assert_not_awaited()
+
+    async def test_gmail_connection_queues_memory_ingestion_when_pipeline_skipped(
+        self,
+        mock_user_repo,
+        mock_record_account,
+        mock_redis_pool_manager,
+        mock_enqueue_personalization,
+    ):
+        """A reconnect whose pipeline already ran still refreshes memory."""
+        user_id = "507f1f77bcf86cd799439011"
+        mock_enqueue_personalization.return_value = None
+        mock_user_repo.get.return_value = UserDocument(onboarding={"completed": True})
+        config = make_integration_config(integration_id="gmail")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id=user_id,
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        mock_redis_pool_manager.enqueue_job.assert_awaited_once_with(
+            "process_gmail_emails_to_memory", user_id
+        )
+
+    async def test_gmail_connection_updates_bio_status_when_no_gmail(
+        self,
+        mock_user_repo,
+        mock_record_account,
+        mock_websocket_manager,
+        mock_redis_pool_manager,
+        mock_enqueue_personalization,
+    ):
+        """Gmail connection should update bio_status from no_gmail to processing."""
+        user_id = "507f1f77bcf86cd799439011"
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": True, "bio_status": BioStatus.NO_GMAIL}
+        )
+        config = make_integration_config(integration_id="gmail")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id=user_id,
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        mock_user_repo.set_bio_status.assert_awaited_once_with(user_id, BioStatus.PROCESSING)
+
+    async def test_gmail_connection_sends_websocket_update(
+        self,
+        mock_user_repo,
+        mock_record_account,
+        mock_websocket_manager,
+        mock_redis_pool_manager,
+        mock_enqueue_personalization,
+    ):
+        """Gmail with no_gmail bio_status should broadcast WebSocket update."""
+        user_id = "507f1f77bcf86cd799439011"
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": True, "bio_status": "no_gmail"}
+        )
+        config = make_integration_config(integration_id="gmail")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id=user_id,
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        mock_websocket_manager.broadcast_to_user.assert_awaited_once()
+        call_args = mock_websocket_manager.broadcast_to_user.call_args
+        assert call_args.kwargs["user_id"] == user_id
+        assert call_args.kwargs["message"]["type"] == "bio_status_update"
+
+    async def test_gmail_connection_skips_bio_update_when_already_completed(
+        self,
+        mock_user_repo,
+        mock_record_account,
+        mock_redis_pool_manager,
+        mock_enqueue_personalization,
+    ):
+        """If bio_status is 'completed', don't update to processing."""
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": True, "bio_status": BioStatus.COMPLETED}
+        )
+        config = make_integration_config(integration_id="gmail")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id="user123",
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        mock_user_repo.set_bio_status.assert_not_awaited()
+
+    async def test_gmail_connection_skips_bio_when_onboarding_not_completed(
+        self,
+        mock_user_repo,
+        mock_record_account,
+        mock_redis_pool_manager,
+        mock_enqueue_personalization,
+    ):
+        """If onboarding not completed, don't update bio_status."""
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": False, "bio_status": BioStatus.NO_GMAIL}
+        )
+        config = make_integration_config(integration_id="gmail")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id="user123",
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        mock_user_repo.set_bio_status.assert_not_awaited()
+
+    async def test_gmail_arq_queue_failure_does_not_raise(
+        self,
+        mock_user_repo,
+        mock_record_account,
+        mock_enqueue_personalization,
+    ):
+        """ARQ enqueue failure should be logged, not raised."""
+        mock_enqueue_personalization.return_value = None
+        mock_user_repo.get.return_value = UserDocument(onboarding={"completed": True})
+        config = make_integration_config(integration_id="gmail")
+        background_tasks = MagicMock()
+
+        with patch("app.services.oauth.oauth_service.RedisPoolManager") as mock_rpm:
+            mock_pool = AsyncMock()
+            mock_pool.enqueue_job = AsyncMock(side_effect=Exception("Redis down"))
+            mock_rpm.get_pool = AsyncMock(return_value=mock_pool)
+
+            # Should not raise
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+                connected_account_id="ca_new",
+            )
+
+    async def test_non_gmail_connection_skips_email_processing(
+        self,
+        mock_record_account,
+    ):
+        """Non-Gmail integrations should not queue email processing."""
+        config = make_integration_config(integration_id="notion")
+        background_tasks = MagicMock()
+
+        with patch("app.services.oauth.oauth_service.RedisPoolManager") as mock_rpm:
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+                connected_account_id="ca_new",
+            )
+
+            mock_rpm.get_pool.assert_not_called()
+
+    async def test_gmail_provisions_the_inbox_desk_and_no_system_workflow(
+        self,
+        mock_user_repo,
+        mock_record_account,
+        mock_provision_system_workflows,
+        mock_queue_inbox_desk,
+        mock_redis_pool_manager,
+        mock_enqueue_personalization,
+    ):
+        mock_user_repo.get.return_value = UserDocument(onboarding={"completed": False})
+        config = make_integration_config(integration_id="gmail", name="Gmail")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id="user123",
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        background_tasks.add_task.assert_any_call(mock_queue_inbox_desk, "user123")
+        queued = [call.args[0] for call in background_tasks.add_task.call_args_list]
+        assert mock_provision_system_workflows not in queued
+
+    async def test_googlecalendar_provisions_system_workflows(
+        self,
+        mock_record_account,
+        mock_provision_system_workflows,
+    ):
+        """Google Calendar connection should provision system workflows."""
+        config = make_integration_config(
+            integration_id="googlecalendar",
+            name="Google Calendar",
+        )
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id="user123",
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        background_tasks.add_task.assert_any_call(
+            mock_provision_system_workflows,
+            user_id="user123",
+            integration_id="googlecalendar",
+            integration_display_name="Google Calendar",
+        )
+
+    async def test_non_gmail_non_calendar_skips_system_workflow_provisioning(
+        self,
+        mock_record_account,
+    ):
+        """Non-Gmail/Calendar integrations should not provision system workflows."""
+        config = make_integration_config(
+            integration_id="notion",
+            name="Notion",
+        )
+        background_tasks = MagicMock()
+
+        with patch("app.services.oauth.oauth_service.provision_system_workflows") as mock_psw:
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+                connected_account_id="ca_new",
+            )
+
+            # provision_system_workflows should NOT appear in any background task
+            for call in background_tasks.add_task.call_args_list:
+                assert call[0][0] is not mock_psw
+
+    async def test_reconnecting_schedules_the_workflow_resume_for_that_user_and_integration(
+        self,
+        mock_record_account,
+    ):
+        """A reconnect scheduled for the wrong user or integration leaves workflows dark."""
+        config = make_integration_config(integration_id="notion", name="Notion")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id="user123",
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        background_tasks.add_task.assert_any_call(
+            resume_workflows_for_reconnected_integration,
+            "user123",
+            "notion",
+        )
+
+    async def test_a_new_primary_moves_the_workflow_triggers_onto_it(self, mock_record_account):
+        """Workflow and todo triggers live on the primary; a connect that moved it must re-register them."""
+        trigger = MagicMock()
+        trigger.workflow_trigger_schema.slug = "notion_page_added"
+        config = make_integration_config(integration_id="notion", associated_triggers=[trigger])
+        background_tasks = MagicMock()
+
+        with patch("app.services.oauth.oauth_service.get_composio_service"):
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+                connected_account_id="ca_new",
+            )
+
+        background_tasks.add_task.assert_any_call(resync_primary_bound_triggers, "user123", config)
+
+    async def test_a_further_account_leaves_primary_bound_work_alone(self, mock_record_account):
+        """Adding a second mailbox must not move workflows, resume them, or re-run personalization."""
+        mock_record_account.return_value = AccountConnected(
+            account=IntegrationAccount(
+                id="ca_new", connected_account_id="ca_new", label="me@gmail.com"
+            ),
+            primary_changed=False,
+            outcome=AccountConnectOutcome.ADDED,
+        )
+        trigger = MagicMock()
+        trigger.workflow_trigger_schema.slug = "gmail_new_message"
+        config = make_integration_config(integration_id="gmail", associated_triggers=[trigger])
+        background_tasks = MagicMock()
+
+        with (
+            patch("app.services.oauth.oauth_service.get_composio_service"),
+            patch("app.services.oauth.oauth_service._handle_gmail_connection") as gmail,
+        ):
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+                connected_account_id="ca_new",
+            )
+
+        scheduled = {call.args[0] for call in background_tasks.add_task.call_args_list}
+        assert resync_primary_bound_triggers not in scheduled
+        assert resume_workflows_for_reconnected_integration not in scheduled
+        gmail.assert_not_called()
+
+    async def test_websocket_failure_does_not_block_flow(
+        self,
+        mock_user_repo,
+        mock_record_account,
+        mock_redis_pool_manager,
+        mock_enqueue_personalization,
+    ):
+        """WebSocket broadcast failure should not block the OAuth flow."""
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": True, "bio_status": BioStatus.NO_GMAIL}
+        )
+        config = make_integration_config(integration_id="gmail")
+        background_tasks = MagicMock()
+
+        with patch("app.services.oauth.oauth_service.websocket_manager") as mock_ws:
+            mock_ws.broadcast_to_user = AsyncMock(side_effect=Exception("WS connection lost"))
+
+            # Should not raise
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+                connected_account_id="ca_new",
+            )
+
+
+# ---------------------------------------------------------------------------
+# _returning_user_profile
+# ---------------------------------------------------------------------------

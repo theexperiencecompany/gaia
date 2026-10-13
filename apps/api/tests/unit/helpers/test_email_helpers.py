@@ -8,6 +8,7 @@ import pytest
 from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
 from app.constants.memory import MemorySourceType
 from app.helpers.email_helpers import (
+    ProcessedEmail,
     _build_user_context,
     mark_email_processing_complete,
     process_email_content,
@@ -15,6 +16,18 @@ from app.helpers.email_helpers import (
     store_emails_to_memory,
     store_single_profile,
 )
+from app.models.mail_models import GmailMessageSummary
+from app.utils.general_utils import transform_gmail_message
+
+
+def _composio(**fields: object) -> GmailMessageSummary:
+    """Return a Composio message as the pipeline sees it, through transform_gmail_message."""
+    return transform_gmail_message({"messageId": "msg_1", "messageText": "", **fields})
+
+
+def _processed(content: str, sender: str = "a@b.com", subject: str = "S") -> ProcessedEmail:
+    return ProcessedEmail(content=content, message_id="m", sender=sender, subject=subject)
+
 
 # ---------------------------------------------------------------------------
 # _build_user_context
@@ -171,22 +184,26 @@ class TestProcessEmailContent:
 
     def test_basic_html_email(self) -> None:
         emails = [
-            {
-                "messageId": "msg_1",
-                "sender": "friend@example.com",
-                "subject": "Hello",
-                "messageText": "<p>Hello there!</p>",
-            }
+            _composio(
+                messageId="msg_1",
+                sender="friend@example.com",
+                subject="Hello",
+                messageText="<p>Hello there!</p>",
+            )
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 1
         assert failed == 0
-        assert "Hello there!" in processed[0]["content"]
-        assert processed[0]["metadata"]["message_id"] == "msg_1"
-        assert processed[0]["metadata"]["sender"] == "friend@example.com"
-        assert processed[0]["metadata"]["subject"] == "Hello"
-        assert processed[0]["metadata"]["type"] == "email"
-        assert processed[0]["metadata"]["source"] == "gmail"
+        assert "Hello there!" in processed[0].content
+        assert processed[0].message_id == "msg_1"
+        assert processed[0].sender == "friend@example.com"
+        assert processed[0].subject == "Hello"
+        assert processed[0] == ProcessedEmail(
+            content=processed[0].content,
+            message_id="msg_1",
+            sender="friend@example.com",
+            subject="Hello",
+        )
 
     def test_empty_list(self) -> None:
         processed, failed = process_email_content([])
@@ -194,24 +211,14 @@ class TestProcessEmailContent:
         assert failed == 0
 
     def test_empty_message_text_increments_failed(self) -> None:
-        emails = [
-            {
-                "sender": "someone@example.com",
-                "subject": "Empty",
-                "messageText": "",
-            }
-        ]
+        emails = [_composio(sender="someone@example.com", subject="Empty", messageText="")]
         processed, failed = process_email_content(emails)
         assert len(processed) == 0
         assert failed == 1
 
     def test_whitespace_only_message_text_increments_failed(self) -> None:
         emails = [
-            {
-                "sender": "someone@example.com",
-                "subject": "Whitespace",
-                "messageText": "   \n\t  ",
-            }
+            _composio(sender="someone@example.com", subject="Whitespace", messageText="   \n\t  ")
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 0
@@ -219,11 +226,11 @@ class TestProcessEmailContent:
 
     def test_platform_emails_skipped_twitter(self) -> None:
         emails = [
-            {
-                "sender": "notify@twitter.com",
-                "subject": "New follower",
-                "messageText": "<p>You have a new follower</p>",
-            }
+            _composio(
+                sender="notify@twitter.com",
+                subject="New follower",
+                messageText="<p>You have a new follower</p>",
+            )
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 0
@@ -231,11 +238,11 @@ class TestProcessEmailContent:
 
     def test_platform_emails_skipped_github(self) -> None:
         emails = [
-            {
-                "sender": "noreply@github.com",
-                "subject": "PR merged",
-                "messageText": "<p>Your PR was merged</p>",
-            }
+            _composio(
+                sender="noreply@github.com",
+                subject="PR merged",
+                messageText="<p>Your PR was merged</p>",
+            )
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 0
@@ -243,11 +250,11 @@ class TestProcessEmailContent:
 
     def test_platform_emails_skipped_linkedin(self) -> None:
         emails = [
-            {
-                "sender": "messages-noreply@linkedin.com",
-                "subject": "New message",
-                "messageText": "<p>You have a new message</p>",
-            }
+            _composio(
+                sender="messages-noreply@linkedin.com",
+                subject="New message",
+                messageText="<p>You have a new message</p>",
+            )
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 0
@@ -256,87 +263,66 @@ class TestProcessEmailContent:
     def test_sender_from_field_fallback(self) -> None:
         """When 'sender' key is missing, uses 'from' field."""
         emails = [
-            {
-                "from": "friend@example.com",
-                "subject": "Hey",
-                "messageText": "<b>Hi</b>",
-            }
+            _composio(
+                **{
+                    "from": "friend@example.com",
+                    "subject": "Hey",
+                    "messageText": "<b>Hi</b>",
+                }
+            )
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 1
-        assert processed[0]["metadata"]["sender"] == "friend@example.com"
+        assert processed[0].sender == "friend@example.com"
 
     def test_sender_none_uses_from(self) -> None:
         """When sender is None, fall through to from."""
         emails = [
-            {
-                "sender": None,
-                "from": "other@example.com",
-                "subject": "Test",
-                "messageText": "<p>Content</p>",
-            }
+            _composio(
+                **{
+                    "sender": None,
+                    "from": "other@example.com",
+                    "subject": "Test",
+                    "messageText": "<p>Content</p>",
+                }
+            )
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 1
-        assert processed[0]["metadata"]["sender"] == "other@example.com"
+        assert processed[0].sender == "other@example.com"
 
     def test_default_sender_and_subject(self) -> None:
-        """Missing sender and subject should use defaults."""
-        emails = [
-            {
-                "messageText": "<p>Some content</p>",
-            }
-        ]
+        """A message with no sender and no subject is cited with the placeholders."""
+        emails = [_composio(messageText="<p>Some content</p>")]
         processed, failed = process_email_content(emails)
         assert len(processed) == 1
-        assert processed[0]["metadata"]["sender"] == UNKNOWN_SENDER
-        assert processed[0]["metadata"]["subject"] == NO_SUBJECT
+        assert processed[0].sender == UNKNOWN_SENDER
+        assert processed[0].subject == NO_SUBJECT
 
-    def test_message_id_fallback_to_id(self) -> None:
-        """When messageId is missing, falls back to 'id' field."""
+    def test_message_id_is_the_summary_id(self) -> None:
+        """A Gmail-API-shaped message cites its id (the summary's id) too."""
         emails = [
-            {
-                "id": "alt_id_1",
-                "sender": "test@example.com",
-                "messageText": "<p>Hello</p>",
-            }
+            GmailMessageSummary(id="alt_id_1", sender="test@example.com", body="<p>Hello</p>")
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 1
-        assert processed[0]["metadata"]["message_id"] == "alt_id_1"
+        assert processed[0].message_id == "alt_id_1"
 
     def test_invisible_chars_removed_from_content(self) -> None:
-        emails = [
-            {
-                "sender": "test@example.com",
-                "messageText": "<p>Hello\u200bWorld</p>",
-            }
-        ]
+        emails = [_composio(sender="test@example.com", messageText="<p>Hello\u200bWorld</p>")]
         processed, failed = process_email_content(emails)
         assert len(processed) == 1
-        assert "\u200b" not in processed[0]["content"]
+        assert "\u200b" not in processed[0].content
 
     def test_multiple_emails_mixed(self) -> None:
         """Mix of valid, platform-skipped, and empty emails."""
         emails = [
-            {
-                "sender": "friend@example.com",
-                "messageText": "<p>Valid email</p>",
-                "subject": "Hi",
-            },
-            {
-                "sender": "notify@twitter.com",
-                "messageText": "<p>Platform email</p>",
-            },
-            {
-                "sender": "another@example.com",
-                "messageText": "",
-            },
-            {
-                "sender": "third@example.com",
-                "messageText": "<p>Another valid</p>",
-                "subject": "Hey",
-            },
+            _composio(sender="friend@example.com", messageText="<p>Valid email</p>", subject="Hi"),
+            _composio(sender="notify@twitter.com", messageText="<p>Platform email</p>"),
+            _composio(sender="another@example.com", messageText=""),
+            _composio(
+                sender="third@example.com", messageText="<p>Another valid</p>", subject="Hey"
+            ),
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 2
@@ -346,10 +332,7 @@ class TestProcessEmailContent:
         """If an email causes an exception, it's counted as failed."""
         # Pass something that will cause html2text to choke or other error
         emails = [
-            {
-                "sender": "test@example.com",
-                "messageText": "<p>Valid</p>",
-            },
+            _composio(sender="test@example.com", messageText="<p>Valid</p>"),
         ]
         with patch(
             "app.helpers.email_helpers._html_converter.handle",
@@ -362,14 +345,14 @@ class TestProcessEmailContent:
     def test_html_converted_to_clean_text(self) -> None:
         """HTML tags should be stripped from output."""
         emails = [
-            {
-                "sender": "test@example.com",
-                "messageText": "<h1>Title</h1><p>Paragraph with <b>bold</b></p>",
-            }
+            _composio(
+                sender="test@example.com",
+                messageText="<h1>Title</h1><p>Paragraph with <b>bold</b></p>",
+            )
         ]
         processed, failed = process_email_content(emails)
         assert len(processed) == 1
-        content = processed[0]["content"]
+        content = processed[0].content
         assert "<h1>" not in content
         assert "<p>" not in content
         assert "<b>" not in content
@@ -378,22 +361,14 @@ class TestProcessEmailContent:
 
     def test_platform_detection_case_insensitive(self) -> None:
         """Platform domain check should be case-insensitive."""
-        emails = [
-            {
-                "sender": "NOTIFY@TWITTER.COM",
-                "messageText": "<p>Content</p>",
-            }
-        ]
+        emails = [_composio(sender="NOTIFY@TWITTER.COM", messageText="<p>Content</p>")]
         processed, failed = process_email_content(emails)
         assert len(processed) == 0  # skipped as platform email
 
     def test_html_to_text_strips_empty_result(self) -> None:
         """If HTML converts to empty string after stripping, count as failed."""
         emails = [
-            {
-                "sender": "test@example.com",
-                "messageText": "<p>  </p>",  # converts to whitespace
-            }
+            _composio(sender="test@example.com", messageText="<p>  </p>")  # whitespace
         ]
         # This may or may not be empty depending on html2text behavior.
         # We just verify no crash and correct accounting.
@@ -422,49 +397,23 @@ class TestStoreEmailsToMemory:
         mock_memory_engine.retain.assert_not_called()
 
     async def test_calls_retain(self, mock_memory_engine: AsyncMock) -> None:
-        processed = [
-            {
-                "content": "Email body text",
-                "metadata": {
-                    "sender": "alice@example.com",
-                    "subject": "Hello",
-                },
-            }
-        ]
+        processed = [_processed("Email body text", sender="alice@example.com", subject="Hello")]
         await store_emails_to_memory("user_1", processed)
         mock_memory_engine.retain.assert_called_once()
 
     async def test_passes_user_id(self, mock_memory_engine: AsyncMock) -> None:
-        processed = [
-            {
-                "content": "Body",
-                "metadata": {"sender": "a@b.com", "subject": "S"},
-            }
-        ]
+        processed = [_processed("Body", sender="a@b.com", subject="S")]
         await store_emails_to_memory("user_42", processed)
         assert mock_memory_engine.retain.call_args.args[0] == "user_42"
 
     async def test_source_type_is_email(self, mock_memory_engine: AsyncMock) -> None:
-        processed = [
-            {
-                "content": "Body",
-                "metadata": {"sender": "a@b.com", "subject": "S"},
-            }
-        ]
+        processed = [_processed("Body", sender="a@b.com", subject="S")]
         await store_emails_to_memory("user_1", processed)
         call_kwargs = mock_memory_engine.retain.call_args.kwargs
         assert call_kwargs["source_type"] is MemorySourceType.EMAIL
 
     async def test_messages_built_correctly(self, mock_memory_engine: AsyncMock) -> None:
-        processed = [
-            {
-                "content": "Email text here",
-                "metadata": {
-                    "sender": "bob@example.com",
-                    "subject": "Important",
-                },
-            }
-        ]
+        processed = [_processed("Email text here", sender="bob@example.com", subject="Important")]
         await store_emails_to_memory("user_1", processed)
         messages = mock_memory_engine.retain.call_args.args[1]
         assert len(messages) == 1
@@ -478,14 +427,8 @@ class TestStoreEmailsToMemory:
         mock_memory_engine: AsyncMock,
     ) -> None:
         processed = [
-            {
-                "content": "",
-                "metadata": {"sender": "a@b.com", "subject": "S"},
-            },
-            {
-                "content": "   ",
-                "metadata": {"sender": "a@b.com", "subject": "S"},
-            },
+            _processed("", sender="a@b.com", subject="S"),
+            _processed("   ", sender="a@b.com", subject="S"),
         ]
         await store_emails_to_memory("user_1", processed)
         # Both have empty/whitespace content, so the function returns early
@@ -496,12 +439,7 @@ class TestStoreEmailsToMemory:
         mock_memory_engine: AsyncMock,
     ) -> None:
         mock_memory_engine.retain.return_value = MagicMock(facts_extracted=0)
-        processed = [
-            {
-                "content": "Body",
-                "metadata": {"sender": "a@b.com", "subject": "S"},
-            }
-        ]
+        processed = [_processed("Body", sender="a@b.com", subject="S")]
         # Should not raise
         await store_emails_to_memory("user_1", processed)
 
@@ -510,12 +448,7 @@ class TestStoreEmailsToMemory:
         mock_memory_engine: AsyncMock,
     ) -> None:
         mock_memory_engine.retain.side_effect = Exception("boom")
-        processed = [
-            {
-                "content": "Body",
-                "metadata": {"sender": "a@b.com", "subject": "S"},
-            }
-        ]
+        processed = [_processed("Body", sender="a@b.com", subject="S")]
         # Should swallow the exception
         await store_emails_to_memory("user_1", processed)
 
@@ -523,12 +456,7 @@ class TestStoreEmailsToMemory:
         self,
         mock_memory_engine: AsyncMock,
     ) -> None:
-        processed = [
-            {
-                "content": "Body",
-                "metadata": {"sender": "a@b.com", "subject": "S"},
-            }
-        ]
+        processed = [_processed("Body", sender="a@b.com", subject="S")]
         await store_emails_to_memory(
             "user_1",
             processed,
@@ -541,13 +469,7 @@ class TestStoreEmailsToMemory:
         assert call_kwargs["user_name"] == "Alice"
 
     async def test_all_emails_in_batch_sent(self, mock_memory_engine: AsyncMock) -> None:
-        processed = [
-            {
-                "content": f"Email {i}",
-                "metadata": {"sender": "a@b.com", "subject": f"S{i}"},
-            }
-            for i in range(5)
-        ]
+        processed = [_processed(f"Email {i}", subject=f"S{i}") for i in range(5)]
         await store_emails_to_memory("user_1", processed)
         messages = mock_memory_engine.retain.call_args.args[1]
         assert len(messages) == 5
@@ -559,8 +481,7 @@ class TestStoreEmailsToMemory:
 
 
 class TestMarkEmailProcessingComplete:
-    """Tests for mark_email_processing_complete() — delegates to the repository
-    (the persisted fields/timestamp are covered by the UserRepository contract)."""
+    """mark_email_processing_complete() delegates to the repository (fields covered by its contract)."""
 
     @patch(
         "app.helpers.email_helpers.user_repository.mark_email_processing_complete",

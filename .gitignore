@@ -16,6 +16,7 @@ api/.env
 
 venv/
 .venv
+.venv-voice-agent
 .venv/
 .venv311/
 
@@ -120,8 +121,10 @@ out
 postman/
 
 .agents/plans/
+.agents/prod-convos/
 .agents/recording/
 .agents/sim/
+.agents/scratch/
 
 # whatsapp-web.js
 .wwebjs_auth/
@@ -189,6 +192,10 @@ apps/api/scripts/sidecar_benchmark/results/
 .mutation-*/
 mutants/
 verify-logs/
+# The mutation shard's replay artifact, written beside shard.log in the
+# workspace root (shard.log itself is covered by the *.log rule above). The
+# runner's checkout persists between jobs, so an untracked one would linger.
+shard.verdict.json
 
 # Piolium security-scanner artifacts (CodeQL DBs, run transcripts)
 piolium/
@@ -202,3 +209,6 @@ apps/api/.test-impact/
 
 # Private prod infra checked out by CI (theexperiencecompany/gaia-infra)
 /.infra/
+
+# import-linter/grimp module graph cache (scripts/ci lint-imports lane)
+apps/api/.grimp_cache/

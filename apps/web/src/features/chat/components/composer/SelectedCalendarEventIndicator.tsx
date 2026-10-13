@@ -45,7 +45,11 @@ export default function SelectedCalendarEventIndicator({
     return null;
   }
 
-  const timeDisplay = formatEventTime(event.start, event.end, event.isAllDay);
+  const timeDisplay = formatEventTime(
+    event.start,
+    event.end,
+    event.isAllDay ?? undefined,
+  );
   const backgroundColor = event.backgroundColor || "#00bbff";
 
   return (

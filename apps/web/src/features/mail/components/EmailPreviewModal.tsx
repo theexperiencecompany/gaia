@@ -249,14 +249,13 @@ export function EmailPreviewModal({
 
     setIsSending(true);
     try {
-      const formData = new FormData();
-      formData.append("to", emailChips.map((chip) => chip.email).join(", "));
-      formData.append("subject", subject);
-      formData.append("body", body);
-
-      // The apiService.post will handle success/error toasts automatically
+      // The API client handles success/error toasts automatically
       // based on the successMessage and errorMessage options in the API
-      await EmailsAPI.sendEmail(formData);
+      await EmailsAPI.sendEmail({
+        to: emailChips.map((chip) => chip.email).join(", "),
+        subject,
+        body,
+      });
 
       // Mark the notification action as executed if provided (only once)
       if (notificationId && actionId) {
@@ -275,7 +274,7 @@ export function EmailPreviewModal({
       onClose();
     } catch (error) {
       console.error("Failed to send email:", error);
-      // Error toast is already shown by apiService.post
+      // Error toast is already shown by the API client
     } finally {
       setIsSending(false);
     }

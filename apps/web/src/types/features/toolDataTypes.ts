@@ -1,11 +1,9 @@
 // Tool data types for various AI-powered features
 
 // Define image data structure for image generation
-export type ImageData = {
-  url: string;
-  prompt?: string;
-  improved_prompt?: string | null;
-};
+import type { ArtifactRegistryEntry } from "@shared/api/generated";
+
+export type { ImageData } from "@shared/api/generated";
 
 // Define memory data structure for memory operations
 export type MemoryData = {
@@ -87,7 +85,6 @@ export type WorkflowDraftData = {
   suggested_description: string;
   /** Detailed prompt/instructions for the workflow execution */
   prompt: string;
-  /** Trigger type: manual, schedule, or integration */
   trigger_type: "manual" | "schedule" | "integration";
   /** Trigger slug for integration triggers (e.g., GMAIL_NEW_GMAIL_MESSAGE) */
   trigger_slug?: string | null;
@@ -119,6 +116,20 @@ export type WorkflowCreatedData = {
   /** Whether workflow is activated */
   activated: boolean;
 };
+
+/** A stored registry entry as the client holds it: stamped with its conversation. */
+export const fromRegistryEntries = (
+  entries: ArtifactRegistryEntry[],
+  sessionId: string,
+): ArtifactData[] =>
+  entries.map((entry) => ({
+    session_id: sessionId,
+    path: entry.path,
+    size_bytes: entry.size_bytes ?? 0,
+    mtime: entry.mtime ?? undefined,
+    content_type: entry.content_type,
+    body: entry.body,
+  }));
 
 export interface ArtifactData {
   /** Conversation id the artifact belongs to (used to build fetch URLs). */

@@ -1,21 +1,17 @@
 """A streamed turn must be billed for the tokens the provider actually reported.
 
-OpenAI-compatible ``usage`` frames are *cumulative snapshots of the whole
-response*, not per-chunk deltas. Providers are free to repeat that snapshot on
-every chunk, and some do: a live probe of the DEV_LLM lane (a deepseek-v4-flash
-endpoint) returned an 8-chunk answer carrying five usage frames, all reporting
-``input_tokens: 89`` and a completion count climbing 1 → 6 → 10 → 10 → 10.
-``AIMessageChunk.__add__`` merges those frames with ``add_usage``, which ADDS —
-so the merged message claimed 445 input and 37 output tokens for a call that
-really spent 89 and 10. Everything downstream of the merge (the budget wall,
-``record_llm_call``, the ``model.*`` wide event, the per-turn usage the frontend
-is handed) inherits the inflated number, multiplied by however many chunks the
-answer happened to arrive in.
+OpenAI-compatible usage frames are cumulative snapshots of the whole response,
+not per-chunk deltas. Some providers repeat that snapshot on every chunk: a
+live DEV_LLM probe (deepseek-v4-flash) returned an 8-chunk answer with five
+usage frames, all input_tokens: 89, completion counts climbing
+1 -> 6 -> 10 -> 10 -> 10. AIMessageChunk.__add__ merges frames with add_usage,
+which ADDS, so the merge claimed 445 input / 37 output tokens for a call that
+spent 89 / 10. The inflated number reaches the budget wall, record_llm_call,
+the model.* wide event, and the frontend's per-turn usage.
 
-These tests drive a real ``ChatOpenRouter`` against a real (loopback) SSE server
-replaying frame shapes captured from two live providers, because the defect
-lives in the merge of real chunks — a hand-built ``AIMessageChunk`` pair would
-test our own idea of the wire instead of the wire.
+These tests drive a real ChatOpenRouter against a real (loopback) SSE server
+replaying captured frame shapes, because the defect lives in the merge of real
+chunks — a hand-built AIMessageChunk pair would test our own idea of the wire.
 """
 
 from __future__ import annotations
@@ -180,7 +176,7 @@ class TestCumulativeUsageIsNotSummed:
 
     @pytest.mark.asyncio
     async def test_metering_extraction_matches_the_wire(self) -> None:
-        """What ``record_llm_call`` charges the budget is what the provider reported."""
+        """What record_llm_call charges the budget is what the provider reported."""
         with _ScriptedWire(CUMULATIVE_EVERY_CHUNK) as wire:
             message = await _client(wire.base_url).ainvoke("hi")
 
@@ -203,7 +199,7 @@ class TestCumulativeUsageIsNotSummed:
         assert handler.usage_metadata[MODEL]["output_tokens"] == WIRE_OUTPUT
 
     def test_sync_stream_reports_the_wire_totals(self) -> None:
-        """``invoke_llm`` (the sync graph path) merges through ``_stream``, not ``_astream``."""
+        """invoke_llm (the sync graph path) merges through _stream, not _astream."""
         with _ScriptedWire(CUMULATIVE_EVERY_CHUNK) as wire:
             message = _client(wire.base_url).invoke("hi")
 
@@ -248,7 +244,7 @@ class TestSingleUsageFrameIsUnchanged:
 class TestUsageStillAccumulatesAcrossCalls:
     """The normalisation is scoped to one response — two calls still add up.
 
-    ``UsageMetadataCallbackHandler`` sums across LLM calls on purpose: that is
+    UsageMetadataCallbackHandler sums across LLM calls on purpose: that is
     how a multi-step agent turn reports its total. A fix that reached the
     handler's own addition would silently under-bill every multi-step turn.
     """
@@ -267,7 +263,7 @@ class TestUsageStillAccumulatesAcrossCalls:
 
 
 class _TokenRecorder(AsyncCallbackHandler, BaseCallbackHandler):
-    """Records every ``on_llm_new_token`` the wrapper drives, sync or async."""
+    """Records every on_llm_new_token the wrapper drives, sync or async."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any]] = []
@@ -280,17 +276,16 @@ class _TokenRecorder(AsyncCallbackHandler, BaseCallbackHandler):
 
 
 class TestTheTokenCallback:
-    """``BaseChatModel`` fires ``on_llm_new_token`` with the chunk the wrapper
-    just yielded, so a consumer watching the callback must see the SAME
-    normalised numbers the merged message reports. This is the live path — the
-    wrapper is handed no run_manager of its own (langchain-core 1.4.8 calls
-    ``_stream``/``_astream`` as ``(messages, stop=stop, **kwargs)``), so
-    normalising the chunk is the only thing making the two views agree."""
+    """BaseChatModel fires on_llm_new_token with the chunk the wrapper just yielded.
+
+    The wrapper gets no run_manager of its own (langchain-core 1.4.8 calls
+    _stream/_astream as (messages, stop=stop, **kwargs)), so normalising the
+    chunk is the only thing making the callback and the merged message agree.
+    """
 
     @pytest.mark.asyncio
     async def test_the_callback_carries_the_delta_not_the_snapshot(self) -> None:
-        """A consumer summing the callback must land on the wire total, not the
-        inflated one this patch exists to remove."""
+        """A consumer summing the callback must land on the wire total, not the inflated one this patch removes."""
         recorder = _TokenRecorder()
         streamed = 0
         with _ScriptedWire(CUMULATIVE_EVERY_CHUNK) as wire:
@@ -308,7 +303,7 @@ class TestTheTokenCallback:
         assert total_input == WIRE_INPUT
 
     def test_the_sync_callback_carries_the_delta_too(self) -> None:
-        """``_stream``'s twin — the sync graph path goes through it."""
+        """_stream's twin — the sync graph path goes through it."""
         recorder = _TokenRecorder()
         with _ScriptedWire(CUMULATIVE_EVERY_CHUNK) as wire:
             list(_client(wire.base_url).stream("hi", config={"callbacks": [recorder]}))
@@ -323,13 +318,11 @@ class TestTheTokenCallback:
 
 
 class TestWhatReachesUpstream:
-    """The wrapper stands between the caller and the real generator; anything it
-    forgets to forward is a silently ignored request."""
+    """The wrapper stands between the caller and the real generator; anything it forgets to forward is a silently ignored request."""
 
     @pytest.mark.asyncio
     async def test_stop_sequences_reach_the_provider(self) -> None:
-        """Dropped, the model runs past the caller's stop sequence and the extra
-        text is both billed and shown."""
+        """Dropped, the model runs past the caller's stop sequence and the extra text is both billed and shown."""
         with _ScriptedWire(SINGLE_USAGE_FRAME) as wire:
             await _client(wire.base_url).ainvoke("hi", stop=["\n\nHuman:"])
 
@@ -337,8 +330,7 @@ class TestWhatReachesUpstream:
 
     @pytest.mark.asyncio
     async def test_extra_model_kwargs_reach_the_provider(self) -> None:
-        """`**kwargs` carries per-call overrides — temperature, response_format,
-        tool definitions. Dropping them silently ignores the caller."""
+        """**kwargs carries per-call overrides (temperature, response_format, tool definitions); dropping them silently ignores the caller."""
         with _ScriptedWire(SINGLE_USAGE_FRAME) as wire:
             await _client(wire.base_url).ainvoke("hi", temperature=0.123)
 
@@ -358,10 +350,7 @@ class TestWhatReachesUpstream:
 
 
 class TestGenerationInfoSurvivesNormalisation:
-    """Normalisation rebuilds the chunk, so anything not copied onto the new one
-    is dropped. ``generation_info`` is what a tracer reads off the callback chunk
-    (the message's own ``response_metadata`` reaches consumers by a separate
-    route, so the streamed message alone cannot show this loss)."""
+    """Normalisation rebuilds the chunk, so anything not copied onto the new one is dropped; generation_info is what a tracer reads off it."""
 
     @pytest.mark.asyncio
     async def test_the_rebuilt_chunk_keeps_its_generation_info(self) -> None:
@@ -381,8 +370,7 @@ class TestGenerationInfoSurvivesNormalisation:
 
 
 class _FakeRunManager:
-    """Stands in for the manager langchain does not currently pass. Named, so the
-    warning's ``run_manager_type`` has something specific to report."""
+    """Stands in for the manager langchain does not currently pass, named so the warning's run_manager_type has something to report."""
 
 
 #: The whole warning, pinned: the message names the condition and the type says
@@ -394,16 +382,16 @@ _EXPECTED_RUN_MANAGER_WARNING = {
 
 
 class TestTheRunManagerAssumption:
-    """This patch is only correct while langchain fires ``on_llm_new_token``
-    itself. langchain-core 1.4.8 does — it calls ``_stream``/``_astream`` with
-    no run_manager at all. If that ever changes, upstream would report the raw
-    cumulative snapshot while the merged message reports the delta, and the two
-    views of one turn would silently disagree."""
+    """Correct only while langchain fires on_llm_new_token itself.
+
+    langchain-core 1.4.8 calls _stream/_astream with no run_manager at all; if
+    that changes, upstream would report the raw snapshot while the merged
+    message reports the delta, and the two views would silently disagree.
+    """
 
     @pytest.mark.asyncio
     async def test_an_ordinary_stream_is_handed_no_run_manager(self) -> None:
-        """The assumption itself, checked against the installed langchain rather
-        than trusted: a normal turn — sync and async — must produce no warning."""
+        """The assumption itself, checked against the installed langchain: a normal turn (sync and async) must produce no warning."""
         with _ScriptedWire(CUMULATIVE_EVERY_CHUNK) as wire:
             client = _client(wire.base_url)
             async with log_context("patch_test"):
@@ -416,8 +404,7 @@ class TestTheRunManagerAssumption:
 
     @pytest.mark.asyncio
     async def test_a_run_manager_reaching_the_sync_wrapper_is_reported(self) -> None:
-        """The alarm, proven to ring — otherwise the check above is untestable
-        theater that would stay green through the very change it guards."""
+        """The alarm, proven to ring — otherwise the check above is untestable theater that would stay green through the change it guards."""
         with _ScriptedWire(CUMULATIVE_EVERY_CHUNK) as wire:
             client = _client(wire.base_url)
             async with log_context("patch_test"):
@@ -432,8 +419,7 @@ class TestTheRunManagerAssumption:
 
     @pytest.mark.asyncio
     async def test_a_run_manager_reaching_the_async_wrapper_is_reported(self) -> None:
-        """Its twin — the async wrapper is the one the graph actually streams
-        through, so an alarm wired to only one of them is half an alarm."""
+        """Its twin — the async wrapper is the one the graph actually streams through, so an alarm on only one of them is half an alarm."""
         with _ScriptedWire(CUMULATIVE_EVERY_CHUNK) as wire:
             client = _client(wire.base_url)
             async with log_context("patch_test"):
@@ -450,12 +436,7 @@ class TestThePatchIsBound:
     """apply() is what makes any of the above true of the real class."""
 
     def test_both_generators_are_rebound_to_the_wrapper(self) -> None:
-        """The binding is put back FIRST, so this watches apply() do the work.
-
-        Importing the module already applied it, so reading the class straight
-        after a second apply() passes even when apply() wrote to some other
-        attribute entirely — the wrappers were bound before it ran.
-        """
+        """The binding is put back FIRST, so a second apply() can't pass by leaving stale wrappers from before it ran."""
         bound_stream = ChatOpenRouter._stream
         bound_astream = ChatOpenRouter._astream
         try:

@@ -3,8 +3,14 @@ import {
   type ConversationSyncItem,
   chatApi,
   type SyncedConversation,
+  toClientMessages,
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
+import {
+  apiRowHasLiveApproval,
+  isApprovalFlagStale,
+} from "@/features/chat/utils/approvalFlag";
+import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import {
@@ -13,12 +19,11 @@ import {
   shouldBlockSyncForConversation,
 } from "@/stores/streamStore";
 import type { MessageType } from "@/types/features/convoTypes";
+import { fromRegistryEntries } from "@/types/features/toolDataTypes";
 
-// When a remote message overwrites an existing local one, carry forward a
-// non-empty local tool_data if the remote copy lacks it. Executor tool cards are
-// produced client-side-first during streaming and saved locally on abort; the
-// backend's cancelled/partial copy may not have caught up yet, and a wholesale
-// "remote wins" replacement would otherwise delete the cards the user already saw.
+// Carries forward non-empty local tool_data when the remote copy lacks it: executor tool cards
+// are produced client-side during streaming and saved locally on abort, so the backend's
+// cancelled/partial copy may not have caught up yet — a bare "remote wins" would delete them.
 const withPreservedToolData = (remote: IMessage, local: IMessage): IMessage => {
   const remoteHasToolData =
     Array.isArray(remote.tool_data) && remote.tool_data.length > 0;
@@ -59,18 +64,15 @@ const mergeMessageLists = (
       // but keep locally-retained tool cards the backend copy may still be missing.
       messageMap.set(msg.id, withPreservedToolData(msg, existing));
     } else {
-      // Message exists locally
-      // ALWAYS prefer remote version for synced messages to ensure consistency
-      // Local timestamps might be drifted or ahead due to optimistic updates (like on abort)
-      // The only exception is 'sending' status handled above
+      // Always prefer the remote version here: local timestamps can drift ahead of the server's
+      // via optimistic updates (e.g. abort). The only exception is 'sending', handled above.
       messageMap.set(msg.id, withPreservedToolData(msg, existing));
     }
   });
 
-  // No orphan sweep: the client's send id IS the persisted message id (single
-  // identity), so the server copy lands on the same key above and replaces the
-  // optimistic record naturally. Sends the server never received stay visible
-  // and are marked failed by the turn lifecycle — never silently deleted.
+  // No orphan sweep: the client's send id IS the persisted message id, so the server copy
+  // replaces the optimistic record above naturally. Sends the server never received stay
+  // visible and are marked failed by the turn lifecycle — never silently deleted.
 
   // Convert back to array and sort by creation time
   return Array.from(messageMap.values()).toSorted(
@@ -114,6 +116,8 @@ const mapApiMessagesToStored = (
       selectedWorkflow: message.selectedWorkflow,
       replyToMessageId: message.replyToMessage?.id ?? null,
       replyToMessageData: message.replyToMessage ?? null,
+      kind: message.kind ?? null,
+      reacts_to_message_id: message.reacts_to_message_id ?? null,
     } satisfies IMessage;
   });
 
@@ -146,6 +150,9 @@ const identifyStaleConversations = (
       conv.updatedAt || conv.createdAt,
     ]),
   );
+  const localFlagMap = new Map(
+    localConversations.map((conv) => [conv.id, conv.hasLiveApproval]),
+  );
 
   const staleItems: ConversationSyncItem[] = [];
 
@@ -162,7 +169,18 @@ const identifyStaleConversations = (
       continue;
     }
 
-    const remoteUpdated = toTimestamp(remote.updatedAt ?? remote.createdAt);
+    if (isApprovalFlagStale(localFlagMap.get(conversationId), remote)) {
+      // Flag flipped without touching updatedAt — refetch for the dot.
+      staleItems.push({
+        conversation_id: conversationId,
+        last_updated: localUpdatedAt.toISOString(),
+      });
+      continue;
+    }
+
+    const remoteUpdated = toTimestamp(
+      remote.updatedAt ?? remote.createdAt ?? undefined,
+    );
     const localUpdated = localUpdatedAt.getTime();
 
     if (remoteUpdated > localUpdated) {
@@ -260,7 +278,9 @@ const warnOnMessageContentLoss = (
   }
 };
 
-export const batchSyncConversations = async (): Promise<void> => {
+export const batchSyncConversations = async (
+  origin: RequestOrigin = {},
+): Promise<void> => {
   // CRITICAL: Skip sync while any turn streams to prevent data corruption —
   // per-conversation guards above handle the fine-grained cases, this is the
   // conservative whole-batch gate.
@@ -273,7 +293,7 @@ export const batchSyncConversations = async (): Promise<void> => {
   try {
     const [remoteConversations, localConversations] = await Promise.all([
       chatApi
-        .fetchConversations(1, MAX_SYNC_CONVERSATIONS)
+        .fetchConversations(1, MAX_SYNC_CONVERSATIONS, origin)
         .then((res) => res.conversations),
       db.getAllConversations(),
     ]);
@@ -303,7 +323,7 @@ export const batchSyncConversations = async (): Promise<void> => {
     }
 
     const { conversations: freshConversations } =
-      await chatApi.batchSyncConversations(staleItems);
+      await chatApi.batchSyncConversations(staleItems, origin);
 
     if (freshConversations.length === 0) {
       return;
@@ -312,8 +332,11 @@ export const batchSyncConversations = async (): Promise<void> => {
     await Promise.allSettled(
       freshConversations.map(async (conversation) => {
         const conversationId = conversation.conversation_id;
-        const messages = conversation.messages ?? [];
-        const artifacts = conversation.artifacts ?? [];
+        const messages = toClientMessages(conversation.messages);
+        const artifacts = fromRegistryEntries(
+          conversation.artifacts,
+          conversationId,
+        );
 
         // Skip syncing if streaming or pending save (e.g., after abort)
         if (shouldBlockSyncForConversation(conversationId)) return;
@@ -321,18 +344,17 @@ export const batchSyncConversations = async (): Promise<void> => {
         const mappedConversation: IConversation = {
           id: conversationId,
           title: conversation.description || "Untitled conversation",
-          description: conversation.description,
+          description: conversation.description ?? "",
           starred: conversation.starred ?? false,
           isSystemGenerated: conversation.is_system_generated ?? false,
-          isOnboardingConversation:
-            conversation.is_onboarding_conversation ?? false,
           systemPurpose: conversation.system_purpose ?? null,
           isUnread: conversation.is_unread ?? false,
+          hasLiveApproval: apiRowHasLiveApproval(conversation),
           artifacts,
-          createdAt: new Date(conversation.createdAt),
+          createdAt: new Date(conversation.createdAt ?? 0),
           updatedAt: conversation.updatedAt
             ? new Date(conversation.updatedAt)
-            : new Date(conversation.createdAt),
+            : new Date(conversation.createdAt ?? 0),
         };
 
         // Refresh the runtime lookup map from the server-authoritative registry.
@@ -375,24 +397,24 @@ export const applySyncedConversation = async (
     return;
   }
 
-  const messages = conversation.messages ?? [];
-  const artifacts = conversation.artifacts ?? [];
+  const messages = toClientMessages(conversation.messages);
+  const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
 
   // Map conversation to IndexedDB format
   const mappedConversation: IConversation = {
     id: conversationId,
     title: conversation.description || "Untitled conversation",
-    description: conversation.description,
+    description: conversation.description ?? "",
     starred: conversation.starred ?? false,
     isSystemGenerated: conversation.is_system_generated ?? false,
-    isOnboardingConversation: conversation.is_onboarding_conversation ?? false,
     systemPurpose: conversation.system_purpose ?? null,
     isUnread: conversation.is_unread ?? false,
+    hasLiveApproval: apiRowHasLiveApproval(conversation),
     artifacts,
-    createdAt: new Date(conversation.createdAt),
+    createdAt: new Date(conversation.createdAt ?? 0),
     updatedAt: conversation.updatedAt
       ? new Date(conversation.updatedAt)
-      : new Date(conversation.createdAt),
+      : new Date(conversation.createdAt ?? 0),
   };
 
   // Refresh the runtime lookup map from the server-authoritative registry. The

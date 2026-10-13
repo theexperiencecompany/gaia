@@ -1,62 +1,37 @@
 """Validate presence of env-backed settings, grouped by feature.
 
-WARNING: This file is parsed by the GAIA CLI (packages/cli/src/lib/env-parser.ts) using regex.
-Any changes to the structure of SettingsGroup or how groups are registered MUST be reflected in the CLI parser.
-If you change the syntax, please update the CLI parser accordingly.
-
-Why
-- Make missing config obvious with actionable logs.
-
-Flow
-- Define fields in `app.config.settings` (Pydantic classes).
-- Register related keys here as `SettingsGroup`s.
-- `validate_settings()` scans the instantiated settings object and logs what’s missing.
-
-Add env vars
-1) Add fields to `CommonSettings`/`ProductionSettings`/`DevelopmentSettings`.
-2) Add a `SettingsGroup` in `_register_predefined_groups()` with matching key names.
+WARNING: This file is parsed by the GAIA CLI (packages/cli/src/lib/env-parser.ts)
+using regex. Any change to SettingsGroup's structure or registration MUST be
+reflected in the CLI parser.
 """
+
+from dataclasses import dataclass
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
+@dataclass(frozen=True, slots=True)
 class SettingsGroup:
-    def __init__(
-        self,
-        name: str,
-        keys: list[str],
-        description: str,
-        affected_features: str,
-        required_in_prod: bool = True,
-        all_required: bool = True,
-        docs_url: str | None = None,
-        alternative_group: str | None = None,
-    ) -> None:
-        """
-        Initialize a settings group.
+    """One group of related config keys, and what breaks without them.
 
-        Args:
-            name: The name of the settings group
-            keys: List of configuration keys in this group
-            description: Description of what this group of settings enables
-            affected_features: Description of features affected if these settings are missing
-            required_in_prod: Whether this group is required in production
-            all_required: Whether all keys in the group are required (True) or any one is sufficient (False)
-            docs_url: Optional URL to documentation for setting up this group
-            alternative_group: Name of another group that can be used instead of this one (mutually exclusive)
-        """
-        self.name = name
-        self.keys = keys
-        self.description = description
-        self.affected_features = affected_features
-        self.required_in_prod = required_in_prod
-        self.all_required = all_required
-        self.docs_url = docs_url
-        self.alternative_group = alternative_group
+    all_required False means any one key in the group suffices;
+    alternative_group names a mutually exclusive group that can stand in.
+    """
+
+    name: str
+    keys: list[str]
+    description: str
+    affected_features: str
+    required_in_prod: bool = True
+    all_required: bool = True
+    docs_url: str | None = None
+    alternative_group: str | None = None
 
 
 class SettingsValidator:
+    """Validates required settings are present for each enabled feature group."""
+
     def __init__(self) -> None:
         self.groups: list[SettingsGroup] = []
         self.missing_groups: list[tuple[SettingsGroup, list[str]]] = []
@@ -142,6 +117,15 @@ class SettingsValidator:
                 affected_features="File uploads, image storage, and support ticket attachments",
                 all_required=True,
                 docs_url="https://cloudinary.com/documentation/cloudinary_credentials",
+            )
+        )
+
+        self.register_group(
+            SettingsGroup(
+                name="File Sharing",
+                keys=["SHARE_GRANT_SECRET"],
+                description="HMAC signing secret for single-purpose file-share grants",
+                affected_features="File attachments fetched by Composio during tool execution",
             )
         )
 
@@ -257,6 +241,19 @@ class SettingsValidator:
             )
         )
 
+        # Browser Automation
+        self.register_group(
+            SettingsGroup(
+                name="Browser Host",
+                keys=["BROWSER_HOST_URL", "BROWSER_HOST_KEY", "BROWSER_FALLBACK_HOST_URL"],
+                description="gaia-browser-host: the BROWSER_ENGINE host + the Chromium host",
+                affected_features="Autonomous browser automation (the browser_task tool)",
+                # Always-on capability: no enable flag exists. A loud CRITICAL for
+                # every box that simply doesn't run the browser is noise.
+                required_in_prod=False,
+            )
+        )
+
         # Payment Processing
         self.register_group(
             SettingsGroup(
@@ -322,26 +319,13 @@ class SettingsValidator:
         self.missing_groups = []
 
     def validate_settings(
-        # Deliberately `object`, not `CommonSettings`: the body below only ever
-        # does hasattr()/getattr() with dynamic string keys, so it works on any
-        # object and never needs the concrete settings type. Importing
-        # CommonSettings here would also require a TYPE_CHECKING-guarded import
-        # to avoid a circular dependency with app.config.settings -- see
-        # apps/api/CLAUDE.md's Type Safety section, item 9, for why that's
-        # avoided rather than reached for. Do not "fix" this back to
-        # CommonSettings; it is not an imprecision.
+        # Deliberately `object`, not `CommonSettings`: the body only does
+        # hasattr()/getattr() with dynamic keys; importing CommonSettings would
+        # need a TYPE_CHECKING-guarded import to dodge a circular dependency (apps/api/CLAUDE.md item 9).
         self,
         settings_obj: object,
     ) -> list[tuple[SettingsGroup, list[str]]]:
-        """
-        Validate settings against registered groups.
-
-        Args:
-            settings_obj: The settings object to validate
-
-        Returns:
-            List of tuples with missing groups and their missing keys
-        """
+        """Validate settings against registered groups."""
         self.missing_groups = []
 
         for group in self.groups:

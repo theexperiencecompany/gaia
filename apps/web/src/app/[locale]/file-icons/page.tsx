@@ -141,8 +141,8 @@ export default function FileIconsPrototypePage() {
         </h1>
         <p className="text-sm leading-relaxed text-zinc-400">
           macOS-style file icons for every upload-allowed format. The chips
-          below are the real composer component — stacked gradient documents
-          with a clean gaia-icon glyph, resolved from the backend allowlist.
+          below are the real composer component: stacked gradient documents with
+          a clean gaia-icon glyph, resolved from the backend allowlist.
         </p>
       </header>
 
@@ -176,7 +176,7 @@ export default function FileIconsPrototypePage() {
           <FilePreview files={files} onRemove={removeFile} />
         </div>
         <p className="mt-3 text-xs text-zinc-500">
-          The real composer FilePreview component — icons resolve from MIME via
+          The real composer FilePreview component: icons resolve from MIME via
           the backend allowlist, size label is readable, and chips are
           removable.
         </p>

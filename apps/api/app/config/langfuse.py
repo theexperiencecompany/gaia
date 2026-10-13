@@ -4,9 +4,9 @@ Activates only when LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and
 LANGFUSE_HOST are all set; missing any one is a silent no-op so dev runs
 without keys stay quiet.
 
-Trace association lives in `RunnableConfig.metadata["langfuse_trace_id"]`
-(the standard Langfuse LangChain pattern). `trace_id_for_message` seeds a
-deterministic ID from the GAIA assistant `message_id` so `/feedback` can
+Trace association lives in RunnableConfig.metadata["langfuse_trace_id"]
+(the standard Langfuse LangChain pattern). trace_id_for_message seeds a
+deterministic ID from the GAIA assistant message_id so /feedback can
 re-derive it without persisting anything.
 """
 
@@ -21,21 +21,16 @@ from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from shared.py.wide_events import log
 
-# How long process start will wait for the reachability check below. A healthy
-# Langfuse answers in milliseconds, so this only bites when it is down or slow —
-# exactly when startup must not be held up. It cannot be expressed as an SDK
-# timeout: `Langfuse(timeout=...)` bounds a single HTTP attempt, but auth_check
-# retries internally and takes ~120s against an unreachable host regardless of
-# the value passed (measured at both 2s and 5s).
+# Not an SDK timeout: auth_check retries internally and takes ~120s against
+# an unreachable host regardless of the value passed (measured at 2s and 5s).
 LANGFUSE_AUTH_CHECK_WAIT_SECONDS = 5
 
 
 def _langfuse_configured() -> bool:
-    """True only when all three Langfuse env vars are non-blank.
+    """Return True only when all three Langfuse env vars are non-blank.
 
-    Matches `LazyLoader`'s missing-value semantics — whitespace-only strings
-    count as missing, so callbacks stay disabled when the provider itself
-    skipped initialization.
+    Matches LazyLoader's missing-value semantics — whitespace-only strings
+    count as missing.
     """
     return all(
         isinstance(value, str) and value.strip()
@@ -59,32 +54,20 @@ def _langfuse_configured() -> bool:
     strategy=MissingKeyStrategy.SILENT,
 )
 def init_langfuse() -> Langfuse:
-    """Construct the process-wide Langfuse client + verify reachability.
+    """Construct the process-wide Langfuse client and verify reachability.
 
-    A successful `Langfuse(...)` construction does not test the network. The
-    SDK ships traces from a background flush thread that swallows errors, so
-    bad creds / DNS / TLS failures normally surface as zero traces in the UI
-    with no log line anywhere. We run an explicit auth check so the bad case is
-    one warning instead of a silent black hole — but off the startup path, since
-    the check can otherwise block a process start for two minutes (see
-    ``LANGFUSE_AUTH_CHECK_WAIT_SECONDS``).
+    A successful construction does not test the network — the SDK's background
+    flush thread swallows errors, so bad creds/DNS/TLS normally show up as zero
+    traces with no log line. The reachability check therefore runs off the
+    startup path (see LANGFUSE_AUTH_CHECK_WAIT_SECONDS) instead of blocking it.
     """
-    # Sentry's OTel integration (sentry-sdk[langgraph]) sets the global
-    # TracerProvider before us, so the SDK's `environment` constructor kwarg
-    # never reaches the OTel Resource. The env var is the path the SDK reads
-    # for Resource attributes; the kwarg additionally tags per-span context.
-    # Both are set deliberately.
+    # Sentry's OTel integration sets the global TracerProvider first, so the
+    # SDK's `environment` kwarg never reaches the OTel Resource; the env var is
+    # the path it reads instead. Both are set deliberately.
     os.environ["LANGFUSE_TRACING_ENVIRONMENT"] = settings.ENV
-    # Isolated TracerProvider (langfuse's official "Option C" for coexisting with
-    # Sentry). Sentry's OTel integration claims the GLOBAL TracerProvider first;
-    # if we let langfuse fall back to it, langfuse rides Sentry's provider and
-    # per-trace attributes set by the LangChain callback — session_id, user_id —
-    # never land (confirmed: prod had Sentry on → 0 traces with session/user; dev
-    # had Sentry off → session/user present). Handing langfuse its own provider
-    # keeps its tracing independent of Sentry's sampling/propagation so those
-    # attributes attach. Trade-off: spans whose parent lives only in Sentry's
-    # provider may look orphaned. Environment still tags per-span via the kwarg +
-    # LANGFUSE_TRACING_ENVIRONMENT above.
+    # Isolated TracerProvider (langfuse's "Option C"): falling back to Sentry's
+    # global provider drops per-trace attributes (session_id, user_id) —
+    # confirmed via prod/dev trace comparison. Orphaned-looking spans are the trade-off.
     client = Langfuse(
         public_key=settings.LANGFUSE_PUBLIC_KEY,
         secret_key=settings.LANGFUSE_SECRET_KEY,
@@ -92,10 +75,8 @@ def init_langfuse() -> Langfuse:
         environment=settings.ENV,
         tracer_provider=TracerProvider(),
     )
-    # Daemon thread, joined with a deadline: the check is a diagnostic, and
-    # nothing below it depends on the answer, so a Langfuse outage must cost
-    # startup a bounded wait rather than the SDK's full internal retry budget.
-    # Daemon so a still-running check can never hold up interpreter shutdown.
+    # Diagnostic only — a Langfuse outage costs a bounded wait, not the SDK's
+    # full retry budget. Daemon so a still-running check can't block shutdown.
     checker = threading.Thread(
         target=_log_reachability, args=(client,), name="langfuse-auth-check", daemon=True
     )

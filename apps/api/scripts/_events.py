@@ -1,4 +1,4 @@
-"""Parsing rules shared by the scripts that rebuild history from ``llm_call`` events.
+"""Parsing rules shared by the scripts that rebuild history from llm_call events.
 
 Small, but shared deliberately: both backfills turn log lines into dollar
 figures, and a guard that exists in only one of them is a guard that will be
@@ -11,15 +11,12 @@ import math
 
 
 def finite_cost(value: object) -> float | None:
-    """A cost we are willing to add up: a real, non-negative number.
+    """Return value as a cost we can add up: a real, non-negative number, else None.
 
-    ``None`` for anything else — unparseable, negative, NaN or infinite — so the
-    caller can drop the line rather than let it into a sum. ``json.loads``
-    accepts ``NaN`` and ``Infinity`` happily, and either one silently poisons
-    every total it reaches, including the ones these scripts write.
-
-    A missing value is 0.0, not a rejection: an unpriced call is a real call
-    that cost nothing recorded, which is different from a corrupt one.
+    json.loads accepts NaN and Infinity, which would silently poison every
+    total; those and negative/unparseable values return None so the caller
+    can drop the line. A missing value returns 0.0 (a real call that cost
+    nothing recorded), not a rejection.
     """
     if value is None:
         return 0.0

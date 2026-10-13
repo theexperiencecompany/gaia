@@ -5,16 +5,12 @@ Public API:
     async with acquire_sandbox(user_id) as sbx:
         await sbx.commands.run(...)
 
-The context manager handles:
-  - per-user serialization via `asyncio.Lock` + refcount
-  - first-call sandbox creation; subsequent-call connect (auto-resumes a paused
-    sandbox — there is no separate resume step)
-  - mount-script execution after every cold boot
-  - canary verification (E2B GH#884 mitigation) — force recreate if FS is
-    stale across a pause/resume cycle
-  - debounced pause-on-idle when refcount returns to zero
-
-The yielded object is a live `AsyncSandbox` from `e2b`.
+The context manager handles per-user serialization (asyncio.Lock + refcount),
+first-call creation vs. subsequent-call connect (auto-resumes a paused sandbox
+— no separate resume step), mount-script execution after every cold boot,
+canary verification (E2B GH#884 mitigation, force recreate on stale FS across
+pause/resume), and debounced pause-on-idle when refcount hits zero. Yields a
+live AsyncSandbox from e2b.
 """
 
 from __future__ import annotations
@@ -59,10 +55,9 @@ from shared.py.wide_events import log
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
 MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"  # template-baked copy (runtime-ship fallback)
-# The API ships its OWN copy of mount_juicefs.sh into the sandbox at acquire time
-# (see _run_mount_script), so changes to the mount script take effect on the next
-# sandbox without an E2B template rebuild. Timeout covers the in-script
-# mount-readiness poll (primary + skills + system, ~105s worst case) plus margin.
+# The API ships its own copy of mount_juicefs.sh at acquire time (see
+# _run_mount_script), so script changes need no template rebuild. Timeout
+# covers the in-script mount-readiness poll (~105s worst case) plus margin.
 MOUNT_SCRIPT_FILE = Path(__file__).resolve().parents[3] / "scripts" / "mount_juicefs.sh"
 MOUNT_SCRIPT_TIMEOUT_SECONDS = 120
 # Graceful JuiceFS unmount before a hard kill — short, best-effort.
@@ -75,11 +70,11 @@ def _now() -> datetime:
 
 
 def _record(**fields: object) -> None:
-    """Merge ``fields`` into the wide event's ``sandbox`` namespace.
+    """Merge fields into the wide event's sandbox namespace.
 
-    Thin wrapper over ``log.set_ns`` so the multi-step acquire path accumulates
-    into one ``sandbox`` dict instead of clobbering it. Valid keys are the
-    ``SandboxContext`` schema in ``shared.py.wide_events``.
+    Thin wrapper over log.set_ns so the multi-step acquire path accumulates
+    into one sandbox dict instead of clobbering it. Valid keys are the
+    SandboxContext schema in shared.py.wide_events.
     """
     log.set_ns("sandbox", **fields)
 
@@ -87,14 +82,10 @@ def _record(**fields: object) -> None:
 def _split_meta_url(url: str) -> tuple[str, str]:
     """Split a Postgres meta URL into (url_without_password, password).
 
-    Keeping the password out of the URL argv is mandatory: the juicefs daemon
-    long-lives with the URL spliced into its `cmdline`, and Linux exposes
-    `/proc/<pid>/cmdline` world-readable. The unprivileged sandbox user could
-    otherwise recover the meta-DB Postgres credentials with one `cat`. JuiceFS
-    reads `META_PASSWORD` from env when the URL has no userinfo password.
-
-    Empty / userinfo-less URLs round-trip cleanly so callers don't need to
-    branch (dev / local Postgres without a password).
+    Keeping the password out of argv is mandatory: the juicefs daemon
+    long-lives with the URL in its cmdline, and /proc/<pid>/cmdline is
+    world-readable. JuiceFS reads META_PASSWORD from env when the URL has no
+    userinfo password; empty/userinfo-less URLs round-trip cleanly.
     """
     if not url:
         return "", ""
@@ -115,26 +106,12 @@ def _split_meta_url(url: str) -> tuple[str, str]:
 
 
 def _mount_env(user_id: str, shard_id: int) -> dict[str, str]:
-    """Build the env block consumed by ``mount.sh``.
+    """Build the env block consumed by mount.sh.
 
-    These values are credentials: the JuiceFS metadata URL plus R2 keys give
-    full filesystem access. They MUST NOT appear in argv or in any
-    unprivileged process's environ.
-
-    Delivery model: the API invokes ``mount.sh`` via
-    ``commands.run(MOUNT_SCRIPT_PATH, user="root", envs=mount_env)``. e2b's
-    envd (running as root inside the sandbox) sets these on the new root
-    process directly — there is no unprivileged intermediate shell, and the
-    sandbox user (who has no `sudo`) cannot read root's ``/proc/<pid>/environ``
-    (mode 0o400).
-
-    The meta URL is split here so the Postgres password rides in
-    ``META_PASSWORD`` env (which JuiceFS reads) instead of being spliced into
-    the URL argv passed to the long-running juicefs daemon — that argv shows
-    up world-readable in ``/proc/<pid>/cmdline``.
-
-    ``.strip()`` because Infisical-fetched secrets sometimes pick up trailing
-    newlines that AWS SigV4 then rejects with cryptic "InvalidSignature".
+    These are credentials (JuiceFS metadata URL + R2 keys); they MUST NOT reach
+    argv or any unprivileged environ — envd sets them on the root process,
+    unreadable to the no-sudo sandbox user. .strip(): Infisical secrets
+    sometimes carry trailing newlines that break AWS SigV4.
     """
     meta_url_with_pw = shard_meta_url(shard_id)
     meta_url, meta_password = _split_meta_url(meta_url_with_pw)
@@ -234,23 +211,10 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
 async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
     """Run the JuiceFS mount script in the sandbox as root.
 
-    Ships the API's CURRENT copy of ``mount_juicefs.sh`` at acquire time
-    (base64 -> ``bash -s``) instead of executing the copy baked into the E2B
-    template, so changes to the mount script take effect on the next sandbox
-    without rebuilding the template. The script body is not secret and rides in
-    argv; the credentials stay in ``envs`` (never in argv), and nothing is
-    written to a sandbox file that root then executes. Falls back to the
-    template-baked copy if the API's own file is unreadable.
-
-    The mount itself is best-effort inside the script: if the JuiceFS metadata
-    DB or R2 isn't reachable, the script falls back to a plain ``/workspace``
-    and exits 0. We only raise here if the script genuinely crashed.
-
-    ``user="root"`` makes e2b's envd fork the process directly as root, with
-    ``envs=mount_env`` set on that root process's environment. The unprivileged
-    sandbox user never holds the credentials (no ``sudo --preserve-env`` shell,
-    no parent-shell environ race), and has no ``sudo``, so root's
-    ``/proc/<pid>/environ`` stays inaccessible.
+    Ships the API's current mount_juicefs.sh (base64 -> bash -s), not the
+    template-baked copy, so script changes need no template rebuild —
+    falls back to the template-baked copy if unreadable. The mount itself is
+    best-effort; this only raises if the script crashed.
     """
     try:
         script = await asyncio.to_thread(MOUNT_SCRIPT_FILE.read_bytes)
@@ -287,7 +251,7 @@ async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> Non
 async def _run_silent(sbx: AsyncSandbox, cmd: str, *, timeout: int = 10) -> tuple[int, str, str]:
     """Run a command, returning (exit_code, stdout, stderr) without raising.
 
-    `sbx.commands.run` raises `CommandExitException` on any non-zero exit,
+    sbx.commands.run raises CommandExitException on any non-zero exit,
     which is wrong for our internal probes (mountpoint -q, canary read, etc.)
     where non-zero is a legitimate "no" answer, not an error.
     """
@@ -306,18 +270,12 @@ async def _run_silent(sbx: AsyncSandbox, cmd: str, *, timeout: int = 10) -> tupl
 
 
 async def _ensure_mounted(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
-    """No-op if /workspace is a HEALTHY mount, else re-run mount script.
+    """No-op if /workspace is a HEALTHY mount, else re-run the mount script.
 
-    Handles stale FUSE mounts after pause/resume. A wedged JuiceFS endpoint
-    (dead/stuck daemon, or a mount that came up against a misconfigured meta/R2)
-    still passes ``mountpoint -q`` but returns EIO on every I/O, so we probe real
-    I/O (``stat``, ``timeout``-bounded) rather than just the mount-table entry —
-    otherwise a wedged ``/workspace`` is never re-mounted and keeps erroring.
-    ``mount.sh`` tears the stale mount down and remounts when re-run.
-
-    ``mount_env`` is required because the credentials are no longer sandbox-wide
-    — every call site that may re-run the script must supply them (see
-    ``_mount_env``).
+    A wedged JuiceFS mount can pass mountpoint -q but return EIO on I/O, so
+    this probes real I/O (stat, bounded) instead — mount.sh tears down and
+    remounts when re-run. mount_env is required since credentials are no
+    longer sandbox-wide (see _mount_env).
     """
     async with fs_timer(FsOps.SBX_ENSURE_MOUNTED):
         exit_code, _, _ = await _run_silent(
@@ -330,8 +288,8 @@ async def _ensure_mounted(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
 async def _write_canary(sbx: AsyncSandbox) -> str:
     """Write a fresh canary timestamp and return its value.
 
-    Native `files.write` auto-creates the `.gaia/` parent and treats the
-    timestamp as data, not shell argv — no `mkdir`/`echo` round-trip.
+    Native files.write auto-creates the .gaia/ parent and treats the
+    timestamp as data, not shell argv — no mkdir/echo round-trip.
     """
     ts = _now().isoformat()
     await sbx.files.write(CANARY_PATH, ts)
@@ -366,11 +324,10 @@ async def _verify_canary_or_die(entry: PooledSandbox) -> bool:
 async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
     """Connect to a recorded sandbox, auto-resuming it if paused. None on failure.
 
-    `AsyncSandbox.connect` already resumes a paused sandbox — there is no
-    separate `resume()` in the SDK. Passing `timeout` refreshes the sandbox's
-    server-side lifetime so a resumed sandbox doesn't inherit the SDK's short
-    default. Bounded so a hung E2B control-plane call falls through to a fresh
-    create instead of stalling the agent.
+    AsyncSandbox.connect already resumes a paused sandbox — there is no
+    separate resume() in the SDK. Passing timeout refreshes the sandbox's
+    server-side lifetime; bounded so a hung E2B control-plane call falls
+    through to a fresh create instead of stalling the agent.
     """
     async with fs_timer(FsOps.SBX_CONNECT_RESUME):
         try:
@@ -393,7 +350,7 @@ async def _health_probe(sbx: AsyncSandbox) -> bool:
 
     Uses the official E2B health endpoint (HTTP GET /health) which is faster
     and more reliable than spawning a shell process — a degraded sandbox can
-    still fork `true` while being unable to execute real I/O workloads.
+    still fork true while being unable to execute real I/O workloads.
     """
     async with fs_timer(FsOps.SBX_HEALTH_PROBE):
         try:
@@ -409,7 +366,7 @@ async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
     """Start the artifact watcher if it isn't already running.
 
     Best-effort: the watcher is a latency optimization for surfacing
-    `artifacts/` artifacts; the host-side JuiceFS list is authoritative,
+    artifacts/ artifacts; the host-side JuiceFS list is authoritative,
     so a watcher failure must never block sandbox acquisition.
     """
     if entry.watcher is not None and entry.watcher.is_alive():
@@ -420,8 +377,11 @@ async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
 
 
 async def _stop_watcher(entry: PooledSandbox) -> None:
-    """Stop + drop the watcher. HTTP/2 streams to envd don't survive
-    pause/kill, so we reopen on the next acquire."""
+    """Stop and drop the watcher.
+
+    HTTP/2 streams to envd don't survive pause/kill, so we reopen on the next
+    acquire.
+    """
     if entry.watcher is not None:
         with contextlib.suppress(Exception):
             await entry.watcher.stop()
@@ -429,12 +389,12 @@ async def _stop_watcher(entry: PooledSandbox) -> None:
 
 
 async def _seed_user_subtrees(user_id: str) -> None:
-    """Pre-create the per-user JuiceFS subtrees the sandbox's --subdir mounts
-    need on the HOST side, so the sandbox never has to do a full-FS admin
-    mount itself.
+    """Pre-create the per-user JuiceFS subtrees the sandbox's --subdir mounts need.
 
-    Soft-fails when the host JuiceFS mount is missing (dev mode) — the
-    sandbox-side mount.sh will then take its ephemeral-fallback branch.
+    Done on the HOST side, so the sandbox never has to do a full-FS admin
+    mount itself. Soft-fails when the host JuiceFS mount is missing (dev
+    mode) — the sandbox-side mount.sh will then take its ephemeral-fallback
+    branch.
     """
     try:
         await ensure_user_workspace(user_id)
@@ -455,10 +415,9 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
     if entry is None or entry.sandbox is None:
         return None
 
-    # Stop any in-flight idle-pause before reusing, and wait for it to actually
-    # finish — a bare cancel() only *requests* cancellation, so without the await
-    # the pause could already be mid-flight server-side and we'd reuse a pausing
-    # sandbox (the health probe below would then force a wasteful recreate).
+    # Wait for the cancel to actually finish — a bare cancel() only requests it,
+    # and without the await we could reuse a still-pausing sandbox, forcing a
+    # wasteful recreate at the health probe below.
     await _cancel_pause_task(entry)
 
     # Cheap liveness check first — if the cached handle is stale (sandbox
@@ -470,11 +429,9 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
         await mark_sandbox_dead(user_id)
         return None
 
-    # Running commands does NOT reset E2B's server-side kill timer — only
-    # connect()/set_timeout() do. Refresh it so a continuously active session is
-    # never killed mid-use at the original create deadline — but only once per
-    # refresh window, not on every tool call: a rapid multi-tool turn would
-    # otherwise pay a set_timeout round-trip per call for no benefit.
+    # Running commands does NOT reset E2B's kill timer — only connect()/
+    # set_timeout() do, so refresh it here (once per window, not every call,
+    # or a rapid multi-tool turn pays a round-trip per call for no benefit).
     if time.monotonic() - entry.timeout_refreshed_at > SANDBOX_TIMEOUT_REFRESH_SECONDS:
         with contextlib.suppress(Exception):
             await entry.sandbox.set_timeout(SANDBOX_LIFETIME_SECONDS)
@@ -540,12 +497,9 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     source = "create"
 
     if doc is not None and doc.shard_id != shard_id:
-        # An existing user is pinned to the shard their workspace actually lives
-        # on. `shard_for` recomputes from the CURRENT JUICEFS_NUM_SHARDS, so
-        # raising the shard count would otherwise silently route them at a
-        # different meta DB and their workspace would read as empty. This is the
-        # read site shard_router's docstring promises ("we never re-shard a user
-        # without an explicit migration") and previously did not exist.
+        # Pin to the shard the user's workspace actually lives on: shard_for
+        # recomputes from the CURRENT JUICEFS_NUM_SHARDS, so raising the shard
+        # count would otherwise silently route them to a different meta DB (empty workspace).
         log.info(
             f"{LogTag.SANDBOX} honouring recorded shard",
             user_id=user_id,
@@ -564,10 +518,9 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
 
     if sbx is None:
         await _enforce_creation_limit(user_id)
-        # Pre-create the per-user subtrees host-side so the sandbox's
-        # ``--subdir`` mounts find them ready. Doing this on the host (which
-        # holds the full JuiceFS mount) avoids ever exposing the full
-        # cross-user namespace inside the sandbox, even briefly.
+        # Pre-create the per-user subtrees host-side so the sandbox's --subdir
+        # mounts find them ready — done on the host (full JuiceFS mount) so the
+        # sandbox never briefly sees the full cross-user namespace.
         await _seed_user_subtrees(user_id)
         sbx = await _create_fresh_sandbox(user_id, shard_id)
         workspace_version += 1
@@ -614,8 +567,8 @@ async def _cancel_pause_task(entry: PooledSandbox) -> None:
 async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
     """Pause the sandbox and record the paused state. False on failure.
 
-    The SDK method is `beta_pause` (there is no plain `pause`); it snapshots
-    both filesystem and memory so a later `connect()` resumes in place.
+    The SDK method is beta_pause (there is no plain pause); it snapshots
+    both filesystem and memory so a later connect() resumes in place.
     """
     try:
         await entry.sandbox.beta_pause()
@@ -635,15 +588,10 @@ async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
 async def _idle_on_every_replica(user_id: str) -> bool:
     """Has nobody, on any replica, used this user's sandbox during the idle window?
 
-    ``entry.refcount`` only knows about this process. The pause timer also
-    outlives the acquisition lease that guarded the turn, so by the time it
-    fires another replica may have connected to the same sandbox (its id comes
-    from Mongo) and started a long run — pausing then kills that user's tool
-    call mid-command. ``last_used_at`` is stamped on every release from every
-    replica, which makes it the shared idleness signal; this is the same
-    predicate the hourly sweep uses in ``find_idle_user_ids``.
-
-    A missing record means nothing has claimed it, so the pause proceeds.
+    entry.refcount only knows this process. The pause timer outlives the
+    acquisition lease, so another replica may have started a long run by the
+    time it fires — pausing then kills that call mid-command. last_used_at
+    (stamped on every release, every replica) is the shared idleness signal.
     """
     doc = await e2b_sandbox_repository.get_for_user(user_id)
     if doc is None or doc.last_used_at is None:
@@ -680,18 +628,12 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
 
 
 async def _release_juicefs_sessions(sbx: AsyncSandbox) -> None:
-    """Unmount the in-sandbox JuiceFS daemons so they deregister their metadata
-    sessions before the sandbox is killed.
+    """Unmount the in-sandbox JuiceFS daemons before the sandbox is killed.
 
-    A hard ``sandbox.kill()`` SIGKILLs the juicefs daemons without a clean
-    unmount, so their sessions stay registered in the metadata engine until the
-    stale-session timeout — and the volume's GC owner keeps re-scanning those
-    dead sessions (``SMEMBERS``/``ZSCORE`` per session) the whole time. A clean
-    ``juicefs umount`` lets each daemon close its session immediately. Bind
-    mounts are detached first so the underlying FUSE mounts aren't busy.
-
-    Best-effort: any failure just defers cleanup to the GC owner's stale reaper,
-    so this never blocks or fails eviction.
+    A hard sandbox.kill() SIGKILLs the daemons without unmounting, leaving
+    sessions registered until the stale-session timeout. A clean umount closes
+    each session immediately; bind mounts are detached first so the FUSE
+    mounts aren't busy. Best-effort: failure defers to the GC's stale reaper.
     """
     cmd = (
         "for m in /workspace/skills /workspace/.system /workspace; do "
@@ -718,8 +660,10 @@ async def _hard_evict(user_id: str, entry: PooledSandbox) -> None:
 
 
 async def mark_sandbox_dead(user_id: str) -> None:
-    """Forcibly drop the cached sandbox and mark it dead in Mongo. Caller's
-    next acquire will create a fresh one."""
+    """Forcibly drop the cached sandbox and mark it dead in Mongo.
+
+    Caller's next acquire will create a fresh one.
+    """
     _record(marked_dead=True)
     log.info(f"{LogTag.SANDBOX} marking sandbox dead user", user_id=user_id)
     entry = get_sandbox_pool().get(user_id)
@@ -729,7 +673,7 @@ async def mark_sandbox_dead(user_id: str) -> None:
 
 
 async def pause_sandbox_for_user(user_id: str) -> bool:
-    """Synchronous pause request (e.g. for tests or maintenance)."""
+    """Pause synchronously (e.g. for tests or maintenance)."""
     entry = get_sandbox_pool().get(user_id)
     if entry is None:
         return False
@@ -740,7 +684,7 @@ async def pause_sandbox_for_user(user_id: str) -> bool:
 
 @contextlib.asynccontextmanager
 async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
-    """Context manager that yields a live `AsyncSandbox` for the user.
+    """Context manager that yields a live AsyncSandbox for the user.
 
     Serializes against concurrent calls for the same user. Schedules a
     debounced pause when the last in-flight call finishes.
@@ -758,12 +702,9 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
         try:
             yield entry.sandbox
         except Exception:
-            # A tool op failed. It could mean the sandbox itself died (E2B
-            # timeout/kill, transport gone) or just a command/file error. Ask
-            # the official /health endpoint rather than parsing error text — if
-            # it's not running, evict so the next acquire recreates. Owning this
-            # here means every tool (bash/read/write/edit) gets death-eviction
-            # uniformly; none need their own detection.
+            # A tool op failed — could be the sandbox itself dying or just a
+            # command error. Ask the official /health endpoint rather than parse
+            # error text; owning eviction here means every tool gets it uniformly.
             sandbox_dead = not await _health_probe(entry.sandbox)
             if sandbox_dead:
                 _record(health_ok=False)

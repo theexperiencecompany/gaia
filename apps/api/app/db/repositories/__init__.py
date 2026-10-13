@@ -1,6 +1,6 @@
 """Typed, cache-integrated repository layer — the only path to MongoDB.
 
-See ``CLAUDE.md`` in this directory for the rules and the three type-safety
+See CLAUDE.md in this directory for the rules and the three type-safety
 layers that keep the boundary clean.
 """
 

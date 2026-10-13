@@ -48,11 +48,11 @@ interface PersonaConfig {
 const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   "startup-founders": {
     metaTitle:
-      "GAIA for Startup Founders — AI Chief of Staff & Proactive Automation",
+      "GAIA for Startup Founders: AI Chief of Staff & Proactive Automation",
     metaDescription:
-      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools — then handles the operational work so you can focus on building. Save 8-12 hours every week.",
+      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools, then handles the operational work so you can focus on building. Save 8 to 12 hours every week.",
     schemaDescription:
-      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools — then handles the operational work so you can focus on building.",
+      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools, then handles the operational work so you can focus on building.",
     keywords: [
       "AI for founders",
       "startup AI assistant",
@@ -80,11 +80,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "software-developers": {
     metaTitle:
-      "GAIA for Software Developers — AI Standup Generator & GitHub Automation",
+      "GAIA for Software Developers: AI Standup Generator & GitHub Automation",
     metaDescription:
-      "GAIA connects to GitHub, Linear, and Slack — then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
+      "GAIA connects to GitHub, Linear, and Slack, then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
     schemaDescription:
-      "GAIA connects to GitHub, Linear, and Slack — then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
+      "GAIA connects to GitHub, Linear, and Slack, then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
     keywords: [
       "AI assistant for developers",
       "developer productivity tool",
@@ -111,11 +111,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "sales-professionals": {
     metaTitle:
-      "GAIA for Sales Professionals — AI CRM Monitor & Follow-Up Automation",
+      "GAIA for Sales Professionals: AI CRM Monitor & Follow-Up Automation",
     metaDescription:
-      "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call — automatically. Spend more time selling.",
+      "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call automatically. Spend more time selling.",
     schemaDescription:
-      "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call — automatically.",
+      "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call automatically.",
     keywords: [
       "AI assistant for sales",
       "CRM automation AI",
@@ -142,11 +142,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "product-managers": {
     metaTitle:
-      "GAIA for Product Managers — Automate Stakeholder Updates & Sprint Reports",
+      "GAIA for Product Managers: Automate Stakeholder Updates & Sprint Reports",
     metaDescription:
-      "GAIA connects Linear, GitHub, Slack, and Notion — then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
+      "GAIA connects Linear, GitHub, Slack, and Notion, then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
     schemaDescription:
-      "GAIA connects Linear, GitHub, Slack, and Notion — then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
+      "GAIA connects Linear, GitHub, Slack, and Notion, then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
     keywords: [
       "AI assistant for product managers",
       "PM productivity tool",
@@ -172,11 +172,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "engineering-managers": {
     metaTitle:
-      "GAIA for Engineering Managers — 1:1 Prep, Sprint Reports & Team Analytics",
+      "GAIA for Engineering Managers: 1:1 Prep, Sprint Reports & Team Analytics",
     metaDescription:
-      "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers — automatically.",
+      "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers automatically.",
     schemaDescription:
-      "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers — automatically.",
+      "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers automatically.",
     keywords: [
       "AI assistant for engineering managers",
       "EM productivity tool",
@@ -204,11 +204,11 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
   "agency-owners": {
     metaTitle:
-      "GAIA for Agency Owners — Automate Client Reports & Portfolio Management",
+      "GAIA for Agency Owners: Automate Client Reports & Portfolio Management",
     metaDescription:
-      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active — automatically. Scale your agency without scaling your overhead.",
+      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically. Scale your agency without scaling your overhead.",
     schemaDescription:
-      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active — automatically.",
+      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically.",
     keywords: [
       "AI assistant for agency owners",
       "agency management automation",

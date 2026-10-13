@@ -12,7 +12,7 @@ import {
   getTriggerDisplayInfoBySlug,
   type TriggerDisplayInfo,
 } from "./registryDisplay";
-import type { TriggerConfig, TriggerSchema } from "./types";
+import type { TriggerConfigDraft, TriggerSchema } from "./types";
 
 /**
  * Find integration by ID from list.
@@ -68,7 +68,7 @@ export function getTriggerDisplayInfo(
 
   const displayInfo: TriggerDisplayInfo = getTriggerDisplayInfoBySlug(
     triggerSlug,
-    trigger_config as TriggerConfig,
+    trigger_config as TriggerConfigDraft,
   ) ?? {
     label: "unknown trigger",
     integrationId: null,

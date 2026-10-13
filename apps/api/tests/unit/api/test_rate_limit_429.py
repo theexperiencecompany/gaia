@@ -1,11 +1,11 @@
 """Endpoint-level 429 wiring for the tiered rate limiter.
 
-The root conftest mocks ``check_and_increment`` to always succeed, so no test
+The root conftest mocks check_and_increment to always succeed, so no test
 proves an exceeded limit surfaces as an HTTP 429. Here the REAL limiter runs
-against a fake Redis seam (``tiered_limiter.redis``) pre-seeded past the FREE
+against a fake Redis seam (tiered_limiter.redis) pre-seeded past the FREE
 notes daily limit (30, see app/config/rate_limits.py) — the decision logic
-raises its real 429 signal and the real ``POST /api/v1/notes`` route (a write
-endpoint behind ``@tiered_rate_limit``) must translate it into a 429 with the
+raises its real 429 signal and the real POST /api/v1/notes route (a write
+endpoint behind @tiered_rate_limit) must translate it into a 429 with the
 real detail shape.
 """
 
@@ -20,6 +20,8 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_limiter,
 )
 from app.models.payment_models import PlanType
+from app.models.user_models import AuthenticatedUser
+from tests.conftest import PRO_USER_SUBSCRIPTION
 
 NOTES_BASE = "/api/v1/notes"
 
@@ -66,11 +68,11 @@ async def test_rate_limit_exceeded_returns_429(
         response = await client.post(NOTES_BASE, json=_NOTE_BODY)
 
     assert response.status_code == 429
-    detail = response.json()["detail"]
-    assert detail["error"] == "rate_limit_exceeded"
-    assert detail["feature"] == "notes"
-    assert detail["message"] == "Rate limit exceeded for notes"
-    assert detail["reset_time"] == reset_time.isoformat()
+    body = response.json()
+    assert body["code"] == "rate_limit_exceeded"
+    assert body["feature"] == "notes"
+    assert body["message"] == "Rate limit exceeded for notes"
+    assert body["reset_time"] == reset_time.isoformat()
 
     # The limiter read the pre-seeded usage for the authenticated FREE user
     # (the root conftest's subscription patch), and the handler never ran —
@@ -81,14 +83,14 @@ async def test_rate_limit_exceeded_returns_429(
 
 async def test_pro_user_reaches_limiter_on_pro_plan(
     client: AsyncClient,
-    pro_user: dict,
+    pro_user: AuthenticatedUser,
 ) -> None:
     """Opting into a paying context routes the PRO tier into the limiter."""
     with (
         patch(
             "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
             new_callable=AsyncMock,
-            return_value=pro_user["subscription"],
+            return_value=PRO_USER_SUBSCRIPTION,
         ),
         patch(
             "app.decorators.rate_limiting.tiered_limiter.check_and_increment",

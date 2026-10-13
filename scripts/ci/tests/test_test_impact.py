@@ -121,7 +121,7 @@ def test_an_unrelated_script_outside_scripts_ci_is_not_suite_config() -> None:
 
 @pytest.fixture
 def two_slice_suite(tmp_path: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
-    """A map shaped like unit-a's directories plus the rest of unit-b's."""
+    """Return a map shaped like unit-a's directories plus the rest of unit-b's."""
     files = {
         "app/svc.py": ["tests/unit/services/test_svc.py::test_a"],
         "app/util.py": ["tests/unit/util/test_util.py::test_a"],
@@ -250,7 +250,7 @@ def test_the_run_query_asks_for_successful_pushes_to_master(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     asked = _with_runs(monkeypatch, [_run(id=7)])
-    assert ti._newest_trusted_run(REPO) == (7, "2026-08-30T00:00:00Z")
+    assert ti._trusted_runs(REPO) == [(7, "2026-08-30T00:00:00Z")]
     (endpoint,) = asked
     assert "actions/workflows/main.yml/runs" in endpoint
     for required in ("branch=master", "event=push", "status=success"):
@@ -261,14 +261,14 @@ def test_a_pull_request_run_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None
     # The query says event=push; this re-checks the run itself, because a
     # query parameter is a filter, not a guarantee.
     _with_runs(monkeypatch, [_run(id=7, event="pull_request")])
-    assert ti._newest_trusted_run(REPO) is None
+    assert ti._trusted_runs(REPO) == []
 
 
 def test_a_run_from_a_fork_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     # The attack this closes: a fork branch NAMED master. The head repository,
     # not the branch string, is what says whose code produced the map.
     _with_runs(monkeypatch, [_run(id=7, head_repository={"full_name": "attacker/gaia"})])
-    assert ti._newest_trusted_run(REPO) is None
+    assert ti._trusted_runs(REPO) == []
 
 
 def test_the_newest_trusted_run_wins_over_an_untrusted_newer_one(
@@ -282,7 +282,7 @@ def test_the_newest_trusted_run_wins_over_an_untrusted_newer_one(
             _run(id=8, created_at="2026-08-29T00:00:00Z"),
         ],
     )
-    assert ti._newest_trusted_run(REPO) == (8, "2026-08-29T00:00:00Z")
+    assert ti._trusted_runs(REPO) == [(8, "2026-08-29T00:00:00Z")]
 
 
 def test_no_trusted_run_leaves_no_map(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -300,7 +300,7 @@ def test_a_head_repository_of_null_is_rejected(monkeypatch: pytest.MonkeyPatch) 
     # Deleted forks come back with head_repository: null; `or {}` must not turn
     # that into a match.
     _with_runs(monkeypatch, [_run(id=7, head_repository=None)])
-    assert ti._newest_trusted_run(REPO) is None
+    assert ti._trusted_runs(REPO) == []
 
 
 def test_fetch_json_shape_matches_the_real_api(tmp_path: Path) -> None:

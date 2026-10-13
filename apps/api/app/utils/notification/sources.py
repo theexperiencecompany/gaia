@@ -22,13 +22,11 @@ class AIProactiveNotificationSource:
         body: str,
         actions: list[NotificationAction],
     ) -> NotificationRequest:
-        """Create notification for AI-generated reminders.
+        """Create a notification for AI-generated reminders.
 
-        Pinned to the in-app channel only: the bot-platform delivery (Telegram,
-        WhatsApp, …) is handled by ``deliver_result_to_platforms``, which — unlike
-        the notification system's lean external adapters — also records the
-        delivery into the conversation's langgraph thread so a later turn can
-        backtrack to the reminder. Auto-injecting the external channels here would
+        Pinned to the in-app channel only: bot-platform delivery is handled
+        by deliver_result_to_platforms, which also records delivery into the
+        conversation's thread. Auto-injecting external channels here would
         double-send and leave the platform copy unrecorded.
         """
         return NotificationRequest(

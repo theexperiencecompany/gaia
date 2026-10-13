@@ -1,9 +1,10 @@
 """OAuth integration models."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 from pydantic.alias_generators import to_camel
+from typing_extensions import TypedDict
 
 from app.models.mcp_config import (
     ComposioConfig,
@@ -13,6 +14,18 @@ from app.models.mcp_config import (
     SubAgentConfig,
 )
 from app.models.trigger_config import TriggerConfig
+
+
+class OAuthStateData(TypedDict):
+    """The OAuth state a callback consumes from Redis; validation rejects a missing or empty field.
+
+    connected_account_id is the exception: empty unless a Composio connect attached one.
+    """
+
+    user_id: Annotated[str, StringConstraints(min_length=1)]
+    redirect_path: Annotated[str, StringConstraints(min_length=1)]
+    integration_id: Annotated[str, StringConstraints(min_length=1)]
+    connected_account_id: str
 
 
 class IntegrationHowItWorksStep(BaseModel):
@@ -64,11 +77,9 @@ class OAuthIntegration(BaseModel):
     managed_by: Literal["self", "composio", "mcp", "internal"]
     composio_config: ComposioConfig | None = None
     mcp_config: MCPConfig | None = None
-    # Tool names/slugs this integration's HIL gate must treat as destructive
-    # (e.g. GMAIL_SEND_EMAIL). Integration-agnostic — applies to Composio and
-    # built-in MCP configs alike. ``None`` = uncurated: the HIL LLM classifier
-    # resolves each tool at gate time and fails closed. A list (possibly empty)
-    # = reviewed: exactly those are destructive, the rest safe.
+    # Tool names/slugs this integration's HIL gate treats as destructive (e.g.
+    # GMAIL_SEND_EMAIL). None = uncurated: the HIL LLM classifier resolves each
+    # tool at gate time and fails closed. A list (possibly empty) = reviewed.
     destructive_tools: list[str] | None = None
     associated_triggers: list[TriggerConfig] = []
     subagent_config: SubAgentConfig | None = None
@@ -77,10 +88,9 @@ class OAuthIntegration(BaseModel):
 
     @model_validator(mode="after")
     def _enforce_composio_invariant(self) -> "OAuthIntegration":
-        # `provider_subagents.py` selects the Composio branch using
-        # `managed_by == "composio"` and then expects `composio_config` to
-        # be present. Pin the bidirectional invariant so a future config
-        # entry can't silently skip Composio tool registration.
+        # provider_subagents.py selects the Composio branch via managed_by ==
+        # "composio" and expects composio_config to be set; pin the bidirectional
+        # invariant so a future entry can't silently skip Composio registration.
         if self.composio_config is not None and self.managed_by != "composio":
             raise ValueError(
                 f"Integration {self.id!r} sets composio_config but "
@@ -89,6 +99,13 @@ class OAuthIntegration(BaseModel):
         if self.managed_by == "composio" and self.composio_config is None:
             raise ValueError(
                 f"Integration {self.id!r} has managed_by='composio' but no composio_config."
+            )
+        # Available with an empty auth_config_id would mint Connect Links against
+        # an empty Composio config; staged integrations keep available=False.
+        if self.available and self.composio_config and not self.composio_config.auth_config_id:
+            raise ValueError(
+                f"Integration {self.id!r} is available but has no Composio auth_config_id; "
+                "set it from the Composio dashboard or keep available=False."
             )
         return self
 

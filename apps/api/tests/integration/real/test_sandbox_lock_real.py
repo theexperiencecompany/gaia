@@ -50,11 +50,7 @@ class TestSandboxDistributedLock:
         assert order == ["A:enter", "A:exit", "B:enter", "B:exit"]
 
     async def test_holder_keeps_the_lease_past_its_ttl(self, real_redis, fast_lease) -> None:
-        """A holder still working after the lease expires must not be displaced.
-
-        Without renewal the waiter enters at ~1s while the holder is still
-        inside, and both are in the critical section at once.
-        """
+        """A holder still working after the lease expires must not be displaced."""
         user_id = "lock-user-renew"
         overlap = False
 
@@ -86,11 +82,7 @@ class TestSandboxDistributedLock:
     async def test_lease_expires_when_a_replica_dies_holding_it(
         self, real_redis, fast_lease
     ) -> None:
-        """A pod killed mid-acquire must free the user, not wedge them until a deploy.
-
-        Simulated by taking the lease and never releasing it — which is exactly
-        what a SIGKILL leaves behind, since no finally block runs.
-        """
+        """A pod killed mid-acquire must free the user, not wedge them until a deploy."""
         user_id = "lock-user-crash"
         abandoned = real_redis.lock(
             f"{SANDBOX_LOCK_KEY_PREFIX}{user_id}",

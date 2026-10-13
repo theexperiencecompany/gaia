@@ -1,11 +1,11 @@
 """An expectation written in the wrong shape must never disable its gate.
 
-``expected`` reaches a scorer typed ``object`` because it comes from
+expected reaches a scorer typed object because it comes from
 user-written YAML, and iterating a scalar succeeds silently:
-``must_not_call_tools: send_email`` yields the characters ``s``, ``e``, ``n``…
+must_not_call_tools: send_email yields the characters s, e, n…
 so no entry ever equals a real tool name and the gate goes green whatever the
-agent called. The same shape mistake turns ``communicate`` into a per-character
-check, and a scalar ``judge:`` raised ``AttributeError`` from inside the judge
+agent called. The same shape mistake turns communicate into a per-character
+check, and a scalar judge: raised AttributeError from inside the judge
 instead of scoring anything.
 
 The gate must still be able to go red — a wrong shape is a case-authoring bug,

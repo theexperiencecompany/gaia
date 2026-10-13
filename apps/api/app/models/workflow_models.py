@@ -2,26 +2,32 @@
 Clean and lean workflow models for GAIA workflow system.
 """
 
-from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 import uuid
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
-    SerializeAsAny,
     field_serializer,
     field_validator,
     model_validator,
 )
 
 from app.db.repositories.base import MongoDocument
-from app.models.scheduler_models import BaseScheduledTask, ScheduledTaskStatus
+from app.models.scheduler_models import (
+    BaseScheduledTask,
+    DeactivationReason,
+    ScheduledTaskStatus,
+)
 from app.models.trigger_configs import TriggerConfigData
-from app.utils.cron_utils import get_next_run_time, validate_cron_expression
+from app.schemas.common import ResponseModel
+from app.utils.cron_utils import get_next_run_time
+from app.utils.schedule import validate_recurring_schedule
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -46,15 +52,6 @@ class TriggerType(str, Enum):
     TODO_TRIGGER = "todo_trigger"
 
 
-class DeactivationReason(str, Enum):
-    """Why a workflow was deactivated by the system, so an automatic resume can tell
-    its own pauses apart from a workflow the user deliberately switched off. A
-    user-initiated deactivation records no reason at all."""
-
-    USER_DORMANT = "user_dormant"
-    INTEGRATION_EXPIRED = "integration_expired"
-
-
 class IntegrationRef(BaseModel):
     """Lightweight integration reference for workflow responses."""
 
@@ -62,7 +59,7 @@ class IntegrationRef(BaseModel):
     name: str
 
 
-class WorkflowStep(BaseModel):
+class WorkflowStep(ResponseModel):
     """A single step in a workflow."""
 
     id: str = Field(default="", description="Unique identifier for the step")
@@ -158,14 +155,17 @@ class TriggerConfig(BaseModel):
         self.next_run = self.calculate_next_run(base_time, user_timezone)
         return old_next_run != self.next_run
 
-    @field_validator("cron_expression")
-    @classmethod
-    def validate_cron_expression(cls, v: str | None) -> str | None:
-        """Validate cron expression if provided."""
-        if v is not None:
-            if not validate_cron_expression(v):
-                raise ValueError(f"Invalid cron expression: {v}")
-        return v
+
+def _require_valid_schedule(trigger_config: TriggerConfig) -> TriggerConfig:
+    """Apply the recurring-schedule rule to a trigger config a caller is writing."""
+    if trigger_config.cron_expression is not None:
+        validate_recurring_schedule(trigger_config.cron_expression)
+    return trigger_config
+
+
+#: A trigger config on its way in. Stored configs stay plain TriggerConfig so a
+#: legacy schedule that breaks the rule still loads and can be fixed.
+NewTriggerConfig = Annotated[TriggerConfig, AfterValidator(_require_valid_schedule)]
 
 
 class WorkflowCreator(TypedDict):
@@ -181,11 +181,11 @@ class WorkflowCreator(TypedDict):
     avatar: str | None
 
 
-class Workflow(BaseScheduledTask):
+class Workflow(BaseScheduledTask, ResponseModel):
     """Main workflow model extending BaseScheduledTask for scheduling capabilities."""
 
     # Override ID generation for workflows - always generate ID
-    id: str | None = Field(
+    id: str = Field(
         default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}",
         description="Unique identifier",
     )
@@ -250,6 +250,10 @@ class Workflow(BaseScheduledTask):
         default=False,
         description="Whether this workflow is published to the community marketplace",
     )
+    is_explore: bool = Field(
+        default=False,
+        description="Whether this is a curated explore card (seeded, listed ahead of community)",
+    )
     slug: str | None = Field(
         default=None,
         description="Human-readable URL slug derived from title. Unique among public workflows.",
@@ -309,67 +313,31 @@ class Workflow(BaseScheduledTask):
         description="Creator info hydrated for public workflow lookups.",
     )
 
-    def __init__(self, **data: Any) -> None:  # noqa: ANN401 -- framework contract
-        """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields.
+    @model_validator(mode="after")
+    def schedule_from_trigger(self) -> "Workflow":
+        """Take scheduled_at and repeat from the trigger when the caller did not give them.
 
-        ``**data`` stays ``Any``. Measured, don't re-litigate: ``**data: object``
-        produces 4 errors on the ``super().__init__(**data)`` below, because
-        BaseScheduledTask's generated ``__init__`` declares per-field types
-        (``str``, ``datetime``, ``ScheduledTaskStatus``, ``int``) that a
-        ``dict[str, object]`` bag cannot satisfy. The two "before" validators in
-        this module were narrowed to ``object`` and did not need it.
+        Only cron-triggered workflows get a scheduled_at (from next_run); others stay
+        None rather than a fabricated "now", which would look due to the recovery scan.
         """
-        # Ensure user_id is provided (it's required by BaseScheduledTask)
-        if "user_id" not in data:
-            raise ValueError("user_id is required for workflow creation")
+        if "scheduled_at" not in self.model_fields_set and self.trigger_config.next_run:
+            self.scheduled_at = self.trigger_config.next_run
+        if "repeat" not in self.model_fields_set and self.trigger_config.cron_expression:
+            self.repeat = self.trigger_config.cron_expression
+        return self
 
-        # Map trigger_config fields to BaseScheduledTask fields if not provided
-        if "trigger_config" in data:
-            trigger_config = data["trigger_config"]
-
-            # Handle both dict and TriggerConfig object
-            if isinstance(trigger_config, dict):
-                # Map scheduled_at from trigger_config.next_run if not provided
-                if "scheduled_at" not in data and trigger_config.get("next_run"):
-                    data["scheduled_at"] = trigger_config["next_run"]
-
-                # Map repeat from trigger_config.cron_expression if not provided
-                if "repeat" not in data and trigger_config.get("cron_expression"):
-                    data["repeat"] = trigger_config["cron_expression"]
-            else:
-                # TriggerConfig is already a Pydantic model
-                # Map scheduled_at from trigger_config.next_run if not provided
-                if (
-                    "scheduled_at" not in data
-                    and hasattr(trigger_config, "next_run")
-                    and trigger_config.next_run
-                ):
-                    data["scheduled_at"] = trigger_config.next_run
-
-                # Map repeat from trigger_config.cron_expression if not provided
-                if (
-                    "repeat" not in data
-                    and hasattr(trigger_config, "cron_expression")
-                    and trigger_config.cron_expression
-                ):
-                    data["repeat"] = trigger_config.cron_expression
-
-        # A workflow only has a scheduled_at when it is a schedule-triggered (cron)
-        # workflow with a next_run (mapped above). Manual / integration / todo
-        # workflows have no scheduled run — leave scheduled_at as None rather than
-        # fabricating "now", which would make them look due to the recovery scan.
-        super().__init__(**data)
-
-    @model_validator(mode="before")
+    @field_validator("description", "prompt", mode="before")
     @classmethod
-    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:  # noqa: ANN401 -- forwards **data into BaseScheduledTask's typed __init__
-        """Ensure legacy records still expose prompt and non-null description."""
-        if isinstance(data, dict):
-            description = data.get("description") or ""
-            prompt = data.get("prompt") or description
-            data["description"] = description
-            data["prompt"] = prompt
-        return data
+    def legacy_null_text_is_empty(cls, value: object) -> object:
+        """Read a legacy record's null description or prompt as empty text."""
+        return "" if value is None else value
+
+    @model_validator(mode="after")
+    def legacy_prompt_falls_back_to_description(self) -> "Workflow":
+        """Give a legacy record with no prompt its description as the prompt."""
+        if not self.prompt:
+            self.prompt = self.description
+        return self
 
     @property
     def effective_prompt(self) -> str:
@@ -412,7 +380,7 @@ class CreateWorkflowRequest(BaseModel):
         pattern=r"^#[0-9a-fA-F]{6}$",
         description="Hex color for the user-chosen icon",
     )
-    trigger_config: TriggerConfig = Field(description="Trigger configuration")
+    trigger_config: NewTriggerConfig = Field(description="Trigger configuration")
     steps: list[WorkflowStep] | None = Field(
         default=None,
         description="Optional pre-existing steps (e.g., from explore/community workflows). If provided, step generation will be skipped.",
@@ -487,7 +455,7 @@ class UpdateWorkflowRequest(BaseModel):
     icon: str | None = Field(default=None, max_length=64)
     icon_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     steps: list[WorkflowStep] | None = Field(default=None)
-    trigger_config: TriggerConfig | None = Field(default=None)
+    trigger_config: NewTriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
     notify_on_completion: bool | None = Field(default=None)
     integration_ids: list[str] | None = Field(default=None)
@@ -512,22 +480,25 @@ class UpdateWorkflowRequest(BaseModel):
         return stripped or None
 
 
-class WorkflowResponse(BaseModel):
+def as_read_view(workflow: Workflow) -> WorkflowWithIntegrations:
+    """The wire shape of a workflow: a write path's plain ``Workflow`` widened
+    to the read view (its computed integration fields empty)."""
+    if isinstance(workflow, WorkflowWithIntegrations):
+        return workflow
+    return WorkflowWithIntegrations.model_validate(workflow.model_dump())
+
+
+class WorkflowResponse(ResponseModel):
     """Response model for workflow operations."""
 
-    # SerializeAsAny so a WorkflowWithIntegrations (from read paths) serializes
-    # its extra integration fields; plain Workflow instances still validate.
-    workflow: SerializeAsAny[Workflow]
+    workflow: WorkflowWithIntegrations
     message: str = Field(description="Success or status message")
 
 
-class WorkflowListResponse(BaseModel):
+class WorkflowListResponse(ResponseModel):
     """Response model for listing workflows."""
 
-    # Sequence (not list) because list is invariant: the read path hands us
-    # list[WorkflowWithIntegrations]. SerializeAsAny keeps the subclass's extra
-    # integration fields in the payload while still accepting a plain Workflow.
-    workflows: Sequence[SerializeAsAny[Workflow]]
+    workflows: list[WorkflowWithIntegrations]
 
 
 class WorkflowExecutionRequest(BaseModel):
@@ -572,19 +543,63 @@ class RegenerateStepsRequest(BaseModel):
     )
 
 
-class PublicWorkflowsResponse(BaseModel):
+class PublicWorkflowStep(ResponseModel):
+    """The step summary a marketplace card shows: what it does, not how."""
+
+    id: str
+    title: str
+    description: str
+    category: str
+
+
+class PublicWorkflowCard(ResponseModel):
+    """One marketplace card, as the community, explore and related lists emit it.
+
+    The three lists share this shape; ``categories`` and ``total_executions``
+    are set only where the list has them (explore, related) and are null on the
+    others, so a consumer never has to guess which list a card came from.
+    """
+
+    id: str
+    title: str
+    description: str
+    slug: str
+    prompt: str
+    icon: str | None = None
+    icon_color: str | None = None
+    # Present only on the built-in cards: lets the client dedupe against a
+    # workflow the user was already provisioned, and name the integration that
+    # sets it up automatically.
+    system_workflow_key: str | None = None
+    source_integration: str | None = None
+    # The card advertises "Daily at 8am" / "on new email", so adding it has to
+    # reproduce that trigger — without this the client can only guess, and every
+    # added workflow silently became manual.
+    trigger_config: TriggerConfig | None = None
+    steps: list[PublicWorkflowStep]
+    created_at: datetime
+    creator: WorkflowCreator
+    categories: list[str] | None = None
+    total_executions: int | None = None
+
+
+def public_workflow_steps(row: "PublicWorkflowRow") -> list[PublicWorkflowStep]:
+    """The card's step summaries; an uncategorised step reads as ``general``."""
+    return [
+        PublicWorkflowStep(
+            id=step.id,
+            title=step.title,
+            description=step.description,
+            category=step.category or "general",
+        )
+        for step in row.steps
+    ]
+
+
+class PublicWorkflowsResponse(ResponseModel):
     """Response model for listing public workflows."""
 
-    # Deliberately left as untyped card dicts. Three endpoints build these — the
-    # community and explore lists here plus /public/{id}/workflows in
-    # integrations/public.py — and each emits a different key set (explore adds
-    # categories + total_executions, related adds total_executions). Modelling
-    # them as a card base + subclasses means every construction site must hand
-    # over a model instead of a dict, or Pydantic silently drops the subclass-only
-    # keys from the payload; that reaches outside this flow's files and changes
-    # what a frontend consumer receives if it is done partially (Type Safety
-    # item 14). Typed together with that endpoint, not before.
-    workflows: list[dict[str, Any]] = Field(
+    workflows: list[PublicWorkflowCard] = Field(
         description="List of public workflows with creator info"
     )
     total: int = Field(description="Total number of public workflows")
@@ -750,17 +765,23 @@ class WorkflowDocument(Workflow, MongoDocument):
     inherited ``BaseScheduledTask`` validators.
     """
 
-    # Resolve the ``Workflow.id`` (``str | None``, alias ``_id``) vs
-    # ``MongoDocument.id`` (``str``) diamond: a persisted workflow always has its
-    # ``wf_…`` id, so the stored document is non-optional. The repository keys on
-    # ``_id`` directly, so no alias is needed here.
+    # Resolves the Workflow.id (str | None, alias _id) vs MongoDocument.id (str)
+    # diamond: a persisted workflow always has its wf_ id, so this stays
+    # non-optional with no alias — the repository keys on _id directly.
     id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
-    #: How many runs declined to write a playbook for the workflow as it stands,
-    #: and the workflow hash those declines were about. Past
-    #: ``PLAYBOOK_DECLINE_LIMIT`` on the same hash the check brief stops asking;
+    #: Runs declined to write a playbook at this workflow hash. Past
+    #: PLAYBOOK_DECLINE_LIMIT on the same hash the check brief stops asking;
     #: an edit to the workflow changes the hash and asks again.
     playbook_declines: int = 0
     playbook_declined_hash: str | None = None
+    #: The run (its stream id) that last counted a decline. A run is one
+    #: decision however many times it is voiced, and a model voices it several
+    #: times in one turn: the tally grows once per run, matched on this.
+    playbook_declined_run: str | None = None
+    #: What a blocked run named as missing when it paused this workflow —
+    #: not always what compute_required_integrations reads off the declared
+    #: steps, so the resume side can't re-derive it. Empty otherwise.
+    blocked_on_integrations: list[str] = Field(default_factory=list)
     #: Why the worker last dropped this workflow's playbook, so a workflow that
     #: quietly went back to full agent cost can say what happened to it.
     last_playbook_discard: PlaybookDiscard | None = None
@@ -824,4 +845,19 @@ class WorkflowUpdate(BaseModel):
     created_by: str | None = None
     playbook_declines: int | None = None
     playbook_declined_hash: str | None = None
+    playbook_declined_run: str | None = None
+    blocked_on_integrations: list[str] | None = None
     last_playbook_discard: PlaybookDiscard | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class SystemWorkflowDefinition:
+    """A system workflow's canonical definition, re-applied in full by
+    ``WorkflowsRepository.reset_system_workflow``."""
+
+    title: str
+    description: str
+    prompt: str
+    steps: list[WorkflowStep]
+    trigger_config: TriggerConfig
+    composio_trigger_ids: list[str]

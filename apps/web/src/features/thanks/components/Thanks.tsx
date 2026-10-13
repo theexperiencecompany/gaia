@@ -5,7 +5,7 @@ import { useEffect } from "react";
 
 import { type ToolCategory, toolCategories, tools } from "@/data/tools";
 import ToolCard from "@/features/thanks/components/ToolCard";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 interface ToolMetadata {
   title: string | null;
@@ -22,7 +22,7 @@ interface ThanksProps {
 
 export default function Thanks({ toolsMetadata }: ThanksProps) {
   useEffect(() => {
-    trackEvent(ANALYTICS_EVENTS.THANKS_PAGE_VIEWED);
+    track("thanks:page_viewed", {});
   }, []);
 
   const toolsByCategory = toolCategories.reduce(

@@ -1,6 +1,6 @@
-"""Unit tests for `app.models.subagent_models`.
+"""Unit tests for app.models.subagent_models.
 
-Covers the `Subagent` frozen dataclass: required-field construction, default
+Covers the Subagent frozen dataclass: required-field construction, default
 values, immutability, equality, and hashability.
 """
 
@@ -17,7 +17,6 @@ def _make_config() -> SubAgentConfig:
         has_subagent=True,
         agent_name="test_agent",
         tool_space="test_space",
-        handoff_tool_name="call_test",
         domain="test domain",
         capabilities="test capabilities",
         use_cases="test use cases",
@@ -102,13 +101,10 @@ class TestSubagentEquality:
 
 
 class TestSubagentHashability:
-    """`Subagent` is a frozen dataclass, so it requests `__hash__`. But its
-    `config` field is a Pydantic `BaseModel`, which is not hashable by default —
-    so hashing the dataclass propagates a `TypeError`. The dataclass is
-    "frozen" for value-semantic safety, not for use as a dict key.
+    """Subagent is a frozen dataclass, but its config field is a Pydantic BaseModel, which is not hashable by default.
 
     If this assertion ever fails (e.g., Pydantic gains hashability), revisit
-    whether `Subagent` should advertise itself as a hashable key.
+    whether Subagent should advertise itself as a hashable key.
     """
 
     def test_subagent_is_not_hashable(self) -> None:

@@ -104,13 +104,6 @@ class TestMCPTokenManagement:
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
     async def test_get_bearer_token_returns_stored_value(self, mock_get_session, token_store):
-        """get_bearer_token must decrypt and return the same value that was stored.
-
-        This is the retrieval path that the previous test_store_and_get_bearer_token
-        never exercised.  The mock DB returns a CONNECTED BEARER credential whose
-        access_token was encrypted with the same cipher, and the method must
-        return the original plaintext.
-        """
         plaintext = "bearer-secret-abc"
         stored_cred = _make_bearer_credential(token_store, "int-get-bearer", plaintext)
 
@@ -130,13 +123,6 @@ class TestMCPTokenManagement:
     async def test_get_bearer_token_returns_none_for_unknown_key(
         self, mock_get_session, token_store
     ):
-        """get_bearer_token must return None when no credential exists for the key.
-
-        The production code calls get_credential() → None, then the guard
-        `if cred and cred.access_token and ...` short-circuits to return None.
-        This test ensures that branch is reached and produces None rather than
-        raising an exception.
-        """
         mock_session = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none = MagicMock(return_value=None)
@@ -151,17 +137,7 @@ class TestMCPTokenManagement:
     async def test_token_expiry_bearer_disconnected_returns_none(
         self, mock_get_session, token_store
     ):
-        """Bearer tokens whose credential has a non-CONNECTED status are not returned.
-
-        MCPTokenStore.get_bearer_token() checks ``cred.status ==
-        MCPCredentialStatus.CONNECTED``.  A credential with status ERROR
-        (or any other non-CONNECTED value) must be treated as absent so that
-        a stale / revoked token is never forwarded to an MCP server.
-
-        This models the 'expired-by-status' path: the credential exists in the
-        DB but is no longer valid because the connection errored or the token
-        was explicitly invalidated.
-        """
+        """A credential with a non-CONNECTED status (e.g. ERROR) is treated as absent so a stale or revoked token is never forwarded."""
         plaintext = "stale-bearer-token"
         stale_cred = _make_bearer_credential(token_store, "int-stale", plaintext)
         # Simulate a token that has been revoked / connection failed

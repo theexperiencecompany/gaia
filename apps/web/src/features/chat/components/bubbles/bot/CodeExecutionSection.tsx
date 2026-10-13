@@ -21,20 +21,6 @@ interface CodeExecutionSectionProps {
   code_data: CodeData;
 }
 
-// Language display configuration
-// const LANGUAGE_DISPLAY = {
-//   python: { name: "Python", color: "text-blue-400" },
-//   javascript: { name: "JavaScript", color: "text-yellow-400" },
-//   typescript: { name: "TypeScript", color: "text-blue-500" },
-//   ruby: { name: "Ruby", color: "text-red-400" },
-//   php: { name: "PHP", color: "text-purple-400" },
-// } as const;
-
-// const getLanguageDisplay = (language: string) => {
-//   const lang = language.toLowerCase() as keyof typeof LANGUAGE_DISPLAY;
-//   return LANGUAGE_DISPLAY[lang] || { name: language, color: "text-gray-400" };
-// };
-
 const createCopyHandler = (
   text: string,
   setCopied: (value: boolean) => void,

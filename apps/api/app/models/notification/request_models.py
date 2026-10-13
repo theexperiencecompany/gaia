@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +22,12 @@ class BulkActionSummary(BaseModel):
     total: int
 
 
+class MarkAllReadSummary(BaseModel):
+    """Outcome of marking every delivered notification for a user as read."""
+
+    updated_count: int
+
+
 class NotificationResponse(BaseModel, Generic[DataT]):
     """The ``{success, message, data}`` envelope every notification mutation returns.
 
@@ -35,6 +41,17 @@ class NotificationResponse(BaseModel, Generic[DataT]):
     success: bool
     message: str
     data: DataT | None = None
+
+
+class ActionExecutionResponse(NotificationResponse[dict[str, Any]]):
+    """The execute-action envelope, under a name of its own.
+
+    Parameterising the generic inline exports the component as
+    ``NotificationResponse_dict_str__Any__``, a TypeScript type name that
+    changes with the type argument; a named subclass exports as itself.
+    ``data`` is whatever the matched ``ActionHandler`` returned, which is open
+    by design.
+    """
 
 
 class PaginatedNotificationsResponse(BaseModel):

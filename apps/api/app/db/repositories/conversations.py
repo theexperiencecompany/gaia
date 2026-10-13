@@ -1,20 +1,17 @@
-"""Repository for the ``conversations`` collection (the chat hot path).
+"""Repository for the conversations collection (the chat hot path).
 
-Identity is the business key ``conversation_id`` scoped to ``user_id`` — never
-Mongo's incidental ``ObjectId`` ``_id``. Documents embed the full ``messages``
-array, so most writes are array mutations expressed through the raw-update seam.
+Identity is the business key conversation_id scoped to user_id, never Mongo's
+ObjectId _id. Most writes are array mutations via the raw-update seam.
 
-Caching is disabled (``cache_policy = None``): a conversation document carries its
-entire message history (up to MongoDB's 16MB limit) and is written on every chat
-turn, so an entity/query cache would store megabytes and bump its generation
-constantly — a pessimisation, not a win. The generation bumps in the write paths
-below still run (harmlessly no-op while the policy is None) so enabling a policy
-later needs no call-site changes.
+Caching is disabled (cache_policy = None): a conversation document carries its
+full message history (up to MongoDB's 16MB limit) and is written on every chat
+turn, so an entity/query cache would store megabytes and bump constantly. The
+no-op generation bumps below let a policy be enabled later with no call-site
+changes.
 
-``createdAt`` (ISO string, set at insert) and ``updatedAt`` (BSON date, bumped via
-``$currentDate``) are the legacy camelCase timestamp pair; the base's snake_case
-auto-stamp does not apply, so each mutating method that must advance the sync
-clock bumps ``updatedAt`` explicitly.
+createdAt (ISO string) and updatedAt (BSON date, via $currentDate) are a
+legacy camelCase pair; each mutating method that must advance the sync clock
+bumps updatedAt explicitly.
 """
 
 from __future__ import annotations
@@ -24,12 +21,20 @@ from datetime import datetime
 
 from bson import ObjectId
 
+from app.constants.chat import (
+    FOLDED_CARDS_FIELD,
+    FOLDED_CARDS_KEEP_SECONDS,
+    SUBAGENT_GROUP_TOOL_NAME,
+    USER_MESSAGE_TYPE,
+)
 from app.db.repositories.base import UserScopedRepository
+from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
     ConversationSource,
     ConversationSyncItem,
     MessageModel,
+    SavedSubagentGroup,
     SystemPurpose,
     ToolDataEntry,
 )
@@ -39,11 +44,8 @@ from app.models.conversation_models import (
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
-    OnboardingProbe,
     _ConversationIdRow,
-    _FollowUpActionsRow,
     _MessageProjectionRow,
-    _OnboardingProbeRow,
     _SourceRow,
     _SystemGeneratedRow,
 )
@@ -56,19 +58,19 @@ _SUMMARY_PROJECTION: dict[str, object] = {
     "description": 1,
     "starred": 1,
     "is_system_generated": 1,
-    "is_onboarding_conversation": 1,
     "system_purpose": 1,
     "is_unread": 1,
     "source": 1,
+    "has_live_approval": 1,
     "createdAt": 1,
     "updatedAt": 1,
 }
 
 
 class ConversationRepository(UserScopedRepository[ConversationDocument, ConversationUpdate]):
-    """The ``conversations`` collection repository (the chat hot path).
+    """The conversations collection repository (the chat hot path).
 
-    Identity is the business key ``conversation_id``; caching is disabled
+    Identity is the business key conversation_id; caching is disabled
     (see the module docstring for why)."""
 
     collection_name = "conversations"
@@ -81,7 +83,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     # ---- conversation-list reads (projected: no messages) ----
 
     async def list_starred_summaries(self, user_id: str) -> list[ConversationSummary]:
-        """The user's starred conversations (projected summaries, newest first)."""
+        """Return the user's starred conversations (projected summaries, newest first)."""
         return await self._aggregate(
             [
                 {"$match": {"user_id": user_id, "starred": True, **self._non_bot()}},
@@ -113,45 +115,52 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def count_non_onboarding(self, user_id: str) -> int:
         """Real (non-onboarding) conversations for a user — the chat-usage signal.
 
-        Excludes both the onboarding walkthrough conversation and onboarding
-        demo conversations (either marker true = not real usage)."""
+        Excludes onboarding demo conversations."""
         return await self._count(
             {
                 "user_id": user_id,
-                "is_onboarding_conversation": {"$ne": True},
                 "is_onboarding_demo": {"$ne": True},
             }
         )
 
     async def has_activity_since(self, user_id: str, since: datetime) -> bool:
-        """Whether the user touched any conversation at or after ``since``.
+        """Whether the user touched any conversation at or after since.
 
-        The transport-agnostic usage signal. Every chat turn appends messages,
-        which stamps ``updatedAt``, whether it arrived from the web app or a bot
-        — unlike ``users.last_active_at``, which only a WorkOS web login bumps.
-        ``createdAt`` covers conversations created but never appended to.
-
-        The two are compared differently ON PURPOSE, per this module's timestamp
-        contract: ``updatedAt`` is a BSON date, ``createdAt`` an ISO string. Mongo
-        does not compare across BSON types, so a date ``$gte`` against
-        ``createdAt`` matches NOTHING — silently, which is how it read as "this
-        user has no activity". ISO-8601 sorts lexicographically in time order, so
-        the string form is a real comparison, not a workaround.
+        The transport-agnostic usage signal (unlike users.last_active_at,
+        which only a WorkOS web login bumps). updatedAt is a BSON date and
+        createdAt an ISO string; Mongo does not compare across BSON types, so
+        each is compared against its own type rather than one shared filter.
         """
         return (
             await self._count(
                 {
                     "user_id": user_id,
-                    # A workflow execution appends to its system conversation and
-                    # stamps updatedAt, so counting those would let a user's own
-                    # automation vouch for them as "active" forever — the
-                    # circularity that kept the dormancy sweep from ever pausing
-                    # an armed workflow. Only human-touched conversations count.
+                    # Excludes system-generated conversations: counting a workflow's
+                    # own updatedAt bumps would let a user's automation vouch for
+                    # them as "active" forever, defeating the dormancy sweep.
                     "is_system_generated": {"$ne": True},
                     "$or": [
                         {"updatedAt": {"$gte": since}},
                         {"createdAt": {"$gte": since.isoformat()}},
                     ],
+                }
+            )
+            > 0
+        )
+
+    async def has_sent_message(self, user_id: str) -> bool:
+        """Whether the user has ever sent a message, from any surface.
+
+        Workflow-execution threads also carry user messages (the workflow's
+        own prompt), so system-generated conversations are excluded — the
+        signal is a human typing, not an automation running.
+        """
+        return (
+            await self._count(
+                {
+                    "user_id": user_id,
+                    "is_system_generated": {"$ne": True},
+                    "messages.type": USER_MESSAGE_TYPE,
                 }
             )
             > 0
@@ -180,8 +189,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_workflow_binding(
         self, conversation_id: str, *, user_id: str, workflow_id: str, workflow_title: str
     ) -> bool:
-        """Bind an existing conversation to a workflow (source + metadata). Matches
-        the legacy write, which does not advance ``updatedAt``."""
+        """Bind an existing conversation to a workflow (source + metadata); does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
             {
@@ -200,12 +208,47 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
-    async def mark_onboarding_conversation(self, conversation_id: str, *, user_id: str) -> bool:
-        """Flag a freshly seeded conversation as the onboarding demo. Matches the
-        legacy write, which does not advance ``updatedAt``."""
+    async def mark_background_with_live_approval(
+        self, conversation_id: str, *, user_id: str
+    ) -> bool:
+        """Flag a background run's conversation while it holds a live approval.
+
+        Stamps source BACKGROUND only when unset (never overwrites a real
+        channel), and raises the sidebar flag. No-op when the conversation
+        does not exist yet — the later persist carries no source either way,
+        and the next register/publish for the same owner retries the stamp.
+        """
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
-            {"$set": {"is_onboarding_conversation": True}},
+            {"$set": {"has_live_approval": True}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        if matched:
+            # pragma: no mutate start — scope/doc_id repeat the eviction the write above just
+            # made, so no read can observe them; mutmut cannot pragma a single argument.
+            await self._apply_raw_update_unfetched(
+                {"conversation_id": conversation_id, "source": {"$exists": False}},
+                {"$set": {"source": ConversationSource.BACKGROUND.value}},
+                scope=user_id,
+                doc_id=conversation_id,
+                extra_filter={"user_id": user_id},
+            )
+            # pragma: no mutate end
+        return matched > 0
+
+    async def refresh_live_approval_flag(
+        self, conversation_id: str, *, user_id: str, live: bool
+    ) -> bool:
+        """Rewrite the sidebar flag from a fresh live-rows read (ledger side).
+
+        Plain setter by design: the caller (bridge sync helper) owns the
+        ledger read, this owns the conversation write — one collection each.
+        """
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id},
+            {"$set": {"has_live_approval": live}},
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
@@ -222,31 +265,98 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         messages: list[MessageModel],
         max_messages: int | None = None,
     ) -> list[str] | None:
-        """Append messages to a conversation, returning their ids (``None`` if the
-        conversation does not exist). ``max_messages`` caps stored history via a
-        negative ``$slice`` so per-workflow threads stay under the 16MB limit."""
-        docs: list[dict[str, object]] = []
+        """Append messages to a conversation, returning their ids (None if it does not exist).
+
+        One atomic update: each message takes the folded cards waiting for its id
+        into its tool_data, and those (and any a day stale) leave the waiting room.
+        max_messages caps stored history so per-workflow threads stay under 16MB.
+        """
+        stored: list[dict[str, object]] = []
         message_ids: list[str] = []
         for message in messages:
             data = {k: v for k, v in message.model_dump().items() if v is not None}
-            existing = data.get("message_id")
-            message_id = str(existing) if existing is not None else str(ObjectId())
+            message_id = message.message_id if message.message_id is not None else str(ObjectId())
             data["message_id"] = message_id
             message_ids.append(message_id)
-            docs.append(data)
+            stored.append(_absorbing(message_id, data))
 
-        push_spec: dict[str, object] = {"$each": docs}
+        history: dict[str, object] = {"$concatArrays": [{"$ifNull": ["$messages", []]}, stored]}
         if max_messages is not None:
-            push_spec["$slice"] = -max_messages
-
-        matched = await self._apply_raw_update_unfetched(
+            history = {"$slice": [history, -max_messages]}
+        matched = await self._apply_pipeline_update_unfetched(
             {"conversation_id": conversation_id},
-            {"$push": {"messages": push_spec}, "$currentDate": {"updatedAt": True}},
+            [
+                {
+                    "$set": {
+                        "messages": history,
+                        "updatedAt": "$$NOW",
+                        FOLDED_CARDS_FIELD: _still_waiting(message_ids),
+                    }
+                }
+            ],
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return message_ids if matched > 0 else None
+
+    async def park_folded_cards(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str,
+        message_id: str,
+        entries: Sequence[Mapping[str, object]],
+    ) -> bool:
+        """Leave cards for message_id until its save absorbs them; False once it is saved.
+
+        Matches only while the message is absent, in one atomic update, so a card
+        parked here is always taken by the append that saves the message.
+        """
+        waiting = _waiting_for(message_id)
+        matched = await self._apply_pipeline_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": {"$ne": message_id}},
+            [
+                {
+                    "$set": {
+                        FOLDED_CARDS_FIELD: {
+                            "$setField": {
+                                "field": {"$literal": message_id},
+                                "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+                                "value": {
+                                    "since": {
+                                        "$ifNull": [
+                                            {"$getField": {"field": "since", "input": waiting}},
+                                            "$$NOW",
+                                        ]
+                                    },
+                                    "cards": {
+                                        "$concatArrays": [
+                                            {
+                                                "$ifNull": [
+                                                    {
+                                                        "$getField": {
+                                                            "field": "cards",
+                                                            "input": waiting,
+                                                        }
+                                                    },
+                                                    [],
+                                                ]
+                                            },
+                                            {"$literal": [dict(entry) for entry in entries]},
+                                        ]
+                                    },
+                                },
+                            }
+                        }
+                    }
+                }
+            ],
+            # The waiting room is write-side only: no cached read shows it.
+            scope=None,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
 
     async def set_message_pinned(
         self, conversation_id: str, *, user_id: str, message_id: str, pinned: bool
@@ -264,7 +374,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def update_artifact(
         self, conversation_id: str, *, user_id: str, path: str, fields: Mapping[str, object]
     ) -> bool:
-        """Patch the registry entry at ``path``; False when no entry exists yet."""
+        """Patch the registry entry at path; False when no entry exists yet."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "artifacts.path": path},
             {
@@ -280,9 +390,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def push_artifact(
         self, conversation_id: str, *, user_id: str, path: str, element: Mapping[str, object]
     ) -> None:
-        """Append a registry entry, but only when ``path`` is not already present.
+        """Append a registry entry, but only when path is not already present.
 
-        The ``$ne`` guard is what makes concurrent inserts idempotent: of two
+        The $ne guard is what makes concurrent inserts idempotent: of two
         racing pushes for the same path, only one can match the filter.
         """
         await self._apply_raw_update_unfetched(
@@ -305,8 +415,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def list_artifacts(
         self, conversation_id: str, *, user_id: str
-    ) -> list[dict[str, object]]:
-        """The conversation's artifact registry, or an empty list when it has none."""
+    ) -> list[ArtifactRegistryEntry]:
+        """Return the conversation's artifact registry, or an empty list when it has none."""
         document = await self._find_one({"conversation_id": conversation_id, "user_id": user_id})
         return list(document.artifacts) if document else []
 
@@ -318,8 +428,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         message_id: str,
         entries: Sequence[Mapping[str, object]],
     ) -> bool:
-        """Append tool-data entries onto one message. Does not advance ``updatedAt``
-        (matches the legacy executor/artifact writes)."""
+        """Append tool-data entries onto one message; does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$push": {"messages.$.tool_data": {"$each": entries}}},
@@ -329,11 +438,41 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
+    async def extend_subagent_group(
+        self, conversation_id: str, *, user_id: str, message_id: str, group: SavedSubagentGroup
+    ) -> bool:
+        """Append calls to one saved subagent group in place and stamp its end; False when absent."""
+        path = "messages.$[msg].tool_data.$[group].data"
+        matched = await self._apply_raw_update_unfetched(
+            {
+                "conversation_id": conversation_id,
+                "messages.message_id": message_id,
+                "messages.tool_data.data.subagent_id": group.subagent_id,
+            },
+            {
+                "$push": {f"{path}.tool_calls": {"$each": group.tool_calls}},
+                "$set": {
+                    f"{path}.completed_at": group.completed_at,
+                    f"{path}.duration_ms": group.duration_ms,
+                },
+            },
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+            array_filters=[
+                {"msg.message_id": message_id},
+                {
+                    "group.tool_name": SUBAGENT_GROUP_TOOL_NAME,
+                    "group.data.subagent_id": group.subagent_id,
+                },
+            ],
+        )
+        return matched > 0
+
     async def set_message_response(
         self, conversation_id: str, *, user_id: str, message_id: str, response: str
     ) -> bool:
-        """Set a message's response text in place. Does not advance ``updatedAt``
-        (matches the legacy delivery write)."""
+        """Set a message's response text in place; does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.response": response}},
@@ -346,8 +485,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_message_tool_data(
         self, conversation_id: str, *, user_id: str, message_id: str, entries: list[ToolDataEntry]
     ) -> bool:
-        """Replace a message's tool_data wholesale. Does not advance ``updatedAt``
-        (matches the legacy delivery write)."""
+        """Replace a message's tool_data wholesale; does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.tool_data": entries}},
@@ -360,19 +498,20 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_message_approval_status(
         self, conversation_id: str, *, user_id: str, approval_id: str, status: str
     ) -> bool:
-        """Settle a persisted approval_request frame's status wherever it lives in
-        the messages array. Returns whether the frame was there to settle. Does not
-        advance ``updatedAt``."""
+        """Settle a persisted approval_request frame's status wherever it lives in the messages array.
+
+        Returns whether the frame was there to settle. Does not advance updatedAt.
+        """
+        update: dict[str, object] = {"messages.$[msg].tool_data.$[entry].data.status": status}
         matched = await self._apply_raw_update_unfetched(
-            # The approval belongs in the match, not only in the array filters:
-            # those pick which element is written but never narrow `matched`, so
-            # filtering on the conversation alone reported success for any
-            # approval_id the document never held.
+            # The approval must also be in the match: array filters alone pick which
+            # element to write but don't narrow `matched`, so matching on the
+            # conversation alone reported success for any approval_id never held.
             {
                 "conversation_id": conversation_id,
                 "messages.tool_data.data.approval_id": approval_id,
             },
-            {"$set": {"messages.$[msg].tool_data.$[entry].data.status": status}},
+            {"$set": update},
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
@@ -388,8 +527,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_message_follow_up_actions(
         self, conversation_id: str, *, user_id: str, message_id: str, actions: list[str]
     ) -> bool:
-        """Set a message's follow-up actions. Does not advance ``updatedAt`` (matches
-        the legacy delivery write)."""
+        """Set a message's follow-up actions; does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.follow_up_actions": actions}},
@@ -404,8 +542,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def get_message(
         self, conversation_id: str, message_id: str, *, user_id: str
     ) -> MessageModel | None:
-        """Read one embedded message by id via a positional projection, without
-        loading the whole array."""
+        """Read one embedded message by id via a positional projection, without loading the whole array."""
         row = await self._find_one_projected(
             {
                 "conversation_id": conversation_id,
@@ -420,7 +557,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return row.messages[0]
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
-        """The conversation's source enum, or None when it doesn't exist."""
+        """Return the conversation's source enum, or None when it doesn't exist."""
         row = await self._find_one_projected(
             {"conversation_id": conversation_id, "user_id": user_id},
             {"_id": 0, "source": 1},
@@ -431,12 +568,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def get_recent_follow_up_actions(
         self, user_id: str, conversation_id: str, *, window: int
     ) -> list[str]:
-        """Follow-up actions already shown in the trailing ``window`` messages,
-        deduped in order — so the generator can avoid repeating a suggestion."""
+        """Return the follow-up actions shown in the trailing window of messages.
+
+        Deduped in first-seen order, so the generator can avoid repeating a suggestion.
+        """
         row = await self._find_one_projected(
             {"conversation_id": conversation_id, "user_id": user_id},
             {"messages": {"$slice": -window}},
-            _FollowUpActionsRow,
+            _MessageProjectionRow,
         )
         if row is None:
             return []
@@ -464,7 +603,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def is_workflow_execution(self, conversation_id: str) -> bool:
         """Whether this is the conversation a workflow's runs execute in.
 
-        Narrower than ``is_system_generated``: email and reminder runs are
+        Narrower than is_system_generated: email and reminder runs are
         system-generated too, and the workflow thread reset must not touch them.
         """
         row = await self._find_one_projected(
@@ -481,7 +620,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def find_owner_of_message(
         self, user_id: str, message_id: str, *, message_type: str = "bot"
     ) -> str | None:
-        """The conversation id owning a message of ``message_type`` with this id."""
+        """Return the conversation id owning a message of message_type with this id."""
         row = await self._find_one_projected(
             {
                 "user_id": user_id,
@@ -492,24 +631,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else row.conversation_id
 
-    async def get_onboarding_probe(self, conversation_id: str) -> OnboardingProbe | None:
-        """The onboarding-demo flag and message count for the system-prompt gate."""
-        row = await self._find_one_projected(
-            {"conversation_id": conversation_id},
-            {"is_onboarding_conversation": 1, "messages": 1},
-            _OnboardingProbeRow,
-        )
-        if row is None:
-            return None
-        return OnboardingProbe(
-            is_onboarding_conversation=row.is_onboarding_conversation,
-            message_count=len(row.messages),
-        )
-
     async def find_workflow_conversation(
         self, user_id: str, workflow_id: str
     ) -> ConversationDocument | None:
-        """The system-generated conversation bound to a workflow execution."""
+        """Return the system-generated conversation bound to a workflow execution."""
         return await self._find_one(
             {
                 "user_id": user_id,
@@ -520,15 +645,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
-        """The user's most recent conversations."""
+        """Return the user's most recent conversations."""
         return await self._find({"user_id": user_id}, sort=[("createdAt", -1)], limit=limit)
 
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
     ) -> list[ConversationDocument]:
-        """Batch-fetch the named conversations whose ``updatedAt`` is newer than the
-        client's last-seen timestamp (or which have none) — the client-sync read.
-        A missing/unparseable timestamp includes the conversation unconditionally."""
+        """Batch-fetch conversations updated since each item's last-seen timestamp (the client-sync read).
+
+        A missing/unparseable timestamp includes that conversation unconditionally.
+        """
         conditions: list[dict[str, object]] = []
         for item in items:
             condition: dict[str, object] = {
@@ -565,7 +691,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def search(self, user_id: str, *, pattern: str) -> ConversationSearchResults:
         """Regex search across message responses and conversation descriptions.
-        ``pattern`` is treated as a literal — the caller passes an escaped query."""
+
+        pattern is treated as a literal — the caller passes an escaped query.
+        """
         rows = await self._aggregate(
             [
                 {"$match": {"user_id": user_id}},
@@ -590,8 +718,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     # ---- bulk deletes / maintenance sweeps ----
 
     async def delete_all_for_user(self, user_id: str) -> list[str]:
-        """Delete every conversation for a user, returning the deleted ids so the
-        caller can clean up their (non-user-scoped) checkpoint threads."""
+        """Delete every conversation for a user, returning the deleted ids.
+
+        Callers use the ids to clean up the (non-user-scoped) checkpoint threads.
+        """
         ids = await self._distinct("conversation_id", {"user_id": user_id})
         await self._delete_many({"user_id": user_id}, scope=user_id)
         return ids
@@ -603,13 +733,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     async def all_conversation_ids(self) -> list[str]:
-        """Every live conversation id across all users — the checkpoint orphan
-        sweep's source of truth. Intentionally unscoped (a maintenance sweep)."""
+        """Every live conversation id across all users — the checkpoint orphan sweep's source of truth.
+
+        Intentionally unscoped (a maintenance sweep).
+        """
         return await self._distinct("conversation_id")
 
     async def active_user_ids_since(self, cutoff: datetime) -> list[str]:
-        """User ids with a conversation updated since ``cutoff`` — the workspace
-        sync sweep's active-user set. Intentionally unscoped (a maintenance sweep)."""
+        """User ids with a conversation updated since cutoff — the workspace sync sweep's active-user set.
+
+        Intentionally unscoped (a maintenance sweep).
+        """
         return await self._distinct("user_id", {"updatedAt": {"$gte": cutoff}})
 
     # ---- internal helpers ----
@@ -618,9 +752,25 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return {"source": {"$nin": _BOT_SOURCE_VALUES}}
 
     def _active_filter(self, user_id: str) -> dict[str, object]:
+        # Background runs stay out of the sidebar unless one holds a live approval
+        # (its card is the only way to reach it). Sourceless legacy rows match $ne
+        # and stay visible; {starred: null} matches a null AND a missing starred.
         return {
             "user_id": user_id,
-            "$or": [{"starred": {"$exists": False}}, {"starred": False}],
+            "$and": [
+                {
+                    "$or": [
+                        {"starred": False},
+                        {"starred": None},
+                    ]
+                },
+                {
+                    "$or": [
+                        {"source": {"$ne": ConversationSource.BACKGROUND.value}},
+                        {"has_live_approval": True},
+                    ]
+                },
+            ],
             **self._non_bot(),
         }
 
@@ -638,3 +788,70 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
 
 conversation_repository = ConversationRepository()
+
+
+def _waiting_for(message_id: str) -> dict[str, object]:
+    """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
+    return {
+        "$getField": {
+            "field": {"$literal": message_id},
+            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
+        }
+    }
+
+
+def _absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
+    """Build the message as stored, with the cards waiting for its id after its own tool_data.
+
+    The message itself is a $literal, so text that starts with "$" is never read as a path.
+    """
+    waiting = {"$getField": {"field": "cards", "input": _waiting_for(message_id)}}
+    tool_data = {
+        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
+    }
+    return {
+        "$let": {
+            "vars": {"message": {"$literal": dict(message)}},
+            "in": {
+                "$mergeObjects": [
+                    "$$message",
+                    {"tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]}},
+                ]
+            },
+        }
+    }
+
+
+def _still_waiting(saved_ids: list[str]) -> dict[str, object]:
+    """Keep the waiting room minus the cards these messages absorbed and any a day stale."""
+    kept = {
+        "$arrayToObject": {
+            "$filter": {
+                "input": {"$objectToArray": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]}},
+                "as": "waiting",
+                "cond": {
+                    "$and": [
+                        {"$not": [{"$in": ["$$waiting.k", {"$literal": saved_ids}]}]},
+                        {
+                            "$gt": [
+                                "$$waiting.v.since",
+                                {
+                                    "$dateSubtract": {
+                                        "startDate": "$$NOW",
+                                        "unit": "second",
+                                        "amount": FOLDED_CARDS_KEEP_SECONDS,
+                                    }
+                                },
+                            ]
+                        },
+                    ]
+                },
+            }
+        }
+    }
+    return {
+        "$let": {
+            "vars": {"kept": kept},
+            "in": {"$cond": [{"$eq": ["$$kept", {}]}, "$$REMOVE", "$$kept"]},
+        }
+    }

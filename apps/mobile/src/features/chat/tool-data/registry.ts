@@ -4,7 +4,6 @@ export type {
   CalendarEditOptions,
   CalendarFetchData,
   CalendarListFetchData,
-  CalendarOptions,
   CodeData,
   ContactData,
   DeepResearchResults,

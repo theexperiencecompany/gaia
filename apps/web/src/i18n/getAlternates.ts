@@ -46,15 +46,8 @@ export function getAlternates(path: string): Record<string, string> {
 
 /**
  * Build the full `alternates` block for a translated page: a self-referential,
- * locale-aware canonical plus the hreflang map. Use on every page under a
- * translated route family so each locale variant points its canonical at
- * itself (not at the default-locale URL) and cross-references its siblings.
- *
- * @param path           The page's own path (e.g. `/compare/zapier`).
- * @param locale         The active locale from the route params.
- * @param canonicalPath  Optional consolidated target for near-duplicate pages;
- *                       both canonical and hreflang resolve against it so they
- *                       never point at a non-canonical URL.
+ * locale-aware canonical plus the hreflang map, so each variant points at
+ * itself. `canonicalPath`, if given, consolidates near-duplicate pages so canonical and hreflang both resolve against it.
  */
 export function getLocalizedAlternates(
   path: string,

@@ -7,51 +7,50 @@ runs to completion and the conversation lands in MongoDB.
 
 import asyncio
 from collections.abc import AsyncGenerator
+import time
 from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import TypeAdapter
 
+from app.agents.core.background.running_registry import stop_stream
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_id,
     get_user_timezone_from_preferences,
 )
+from app.api.v1.middleware.client_type import request_client_source
 from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
+from app.core.stream_manager import StreamProgress, stream_manager
 from app.db.redis import redis_cache
 from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
-from app.models.chat_models import CancelStreamResponse, ConversationSource
-from app.models.message_models import MessageRequestWithHistory
+from app.models.chat_models import CancelStreamResponse
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
+from app.services.browser.job_stop import stop_chat_jobs
 from app.services.chat.stream import run_chat_stream_background
+from app.services.latency_metrics import observe_sse_delivery
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
+
+# ``stream_manager.get_progress`` returns the Redis JSON blob; routes validate it
+# into ``StreamProgress`` (the shape ``start_stream`` writes) once, on entry.
+_STREAM_PROGRESS = TypeAdapter(StreamProgress)
 
 _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
 _SSE_MEDIA_TYPE = "text/event-stream"
 _DELIVERY_FAILED = "The connection to the server was lost before this response finished."
-_CLIENT_TYPE_HEADER = "X-Client-Type"
 
 router = APIRouter()
-
-
-def _resolve_source(request: Request) -> str:
-    """Map the client-type header to a conversation source.
-
-    Only the desktop app is trusted to claim a non-web source — it unlocks
-    desktop-executed tools, which are useless (harmless) anywhere else.
-    """
-    client_type = request.headers.get(_CLIENT_TYPE_HEADER, "").strip().lower()
-    if client_type == ConversationSource.DESKTOP.value:
-        return ConversationSource.DESKTOP.value
-    return ConversationSource.WEB.value
 
 
 def _build_chat_context(
@@ -94,11 +93,14 @@ async def _stream_from_redis(
             yield "data: [STREAM_ERROR]\n\n"
             return
 
+        delivery_start = time.perf_counter()
+        delivery_status = "completed"
         try:
             async for chunk in stream_manager.subscribe_stream(
                 stream_id, last_event_id=last_event_id
             ):
                 if await request.is_disconnected():
+                    delivery_status = "disconnected"
                     log.set(client_disconnected=True)
                     log.info(
                         f"{LogTag.CHAT} Client disconnected, stream continues in background",
@@ -106,13 +108,18 @@ async def _stream_from_redis(
                     )
                     break
                 yield chunk
+        except GeneratorExit:
+            delivery_status = "abandoned"
+            raise
         except asyncio.CancelledError:
             # Client disconnected mid-stream — expected, not an error. The
             # background LangGraph task keeps running and persists the result.
+            delivery_status = "disconnected"
             log.set(client_disconnected=True)
             log.info(f"{LogTag.CHAT} Client connection cancelled", stream_id=stream_id)
             raise
         except Exception as e:
+            delivery_status = "error"
             log.error(
                 f"{LogTag.CHAT} Error streaming to client",
                 stream_id=stream_id,
@@ -122,9 +129,11 @@ async def _stream_from_redis(
             # Closing silently is indistinguishable from a finished turn, so the
             # client would render a truncated answer as complete.
             yield format_sse_data(ErrorFrame(error=_DELIVERY_FAILED).model_dump())
+        finally:
+            observe_sse_delivery(time.perf_counter() - delivery_start, status=delivery_status)
 
 
-@router.post("/chat-stream")
+@router.post("/chat-stream", response_class=StreamingResponse)
 @tiered_rate_limit("chat_messages")
 async def chat_stream_endpoint(
     request: Request,
@@ -135,7 +144,7 @@ async def chat_stream_endpoint(
     """Stream a chat turn. Continues in the background if the client disconnects."""
     stream_id = str(uuid4())
     conversation_id = body.conversation_id or str(uuid4())
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -147,11 +156,12 @@ async def chat_stream_endpoint(
     await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
     # Seed the agent's home zone (DB-resolved, browser-header-healed) so its
     # "now" and schedule defaults run in the user's real zone, not stored UTC.
-    user = {**user, "timezone": home_timezone}
+    user = user.with_timezone(home_timezone)
+    last_message: MessageDict | None = body.messages[-1] if body.messages else None
     log.set(
         user={"id": user_id},
         chat=_build_chat_context(body, conversation_id, stream_id),
-        user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+        user_message_length=len(last_message["content"]) if last_message else 0,
         selected_tool=body.selectedTool,
     )
 
@@ -176,31 +186,30 @@ async def chat_stream_endpoint(
         conversation_id=conversation_id,
         user_id=user_id,
     )
-    # The ONE event for a chat message. It fires for every surface (web,
-    # desktop, and bots via endpoints/bot.py), no ad blocker can drop it, and
-    # it lands only once the request has passed the rate limit and the cost
-    # budget — so it counts messages that were actually accepted.
-    #
-    # The composer context below used to ride on a second, client-side
-    # `chat:message_sent`. Every field of it arrives in this request anyway, so
-    # that emitter was a duplicate of this one wearing a different name and has
-    # been removed; counting either name now gives the same, correct number.
-    capture_context_event(
-        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
-        {
-            "is_new_conversation": body.conversation_id is None,
-            "message_count": len(body.messages) if body.messages else 0,
-            "has_files": bool(body.fileIds or body.fileData),
-            "file_count": len(body.fileIds or []) + len(body.fileData or []),
-            "has_selected_tool": bool(body.selectedTool),
-            "tool_name": body.selectedTool,
-            "tool_category": body.toolCategory,
-            "has_selected_workflow": bool(body.selectedWorkflow),
-            "workflow_id": body.selectedWorkflow.id if body.selectedWorkflow else None,
-            "has_selected_calendar_event": bool(body.selectedCalendarEvent),
-            "is_reply": bool(body.replyToMessage),
-            "source": _resolve_source(request),
-        },
+    # Request-accepted clock for TTFT/E2E; past the rate limit and cost
+    # budget so it counts turns actually accepted.
+    t0_perf = time.perf_counter()
+    # The ONE event for a chat message: fires for every surface, no ad blocker
+    # can drop it, and lands only once rate limit + cost budget pass. A
+    # duplicate client-side `chat:message_sent` emitter has been removed.
+    capture(
+        UserId(user_id),
+        ChatMessageSubmitted(
+            is_new_conversation=body.conversation_id is None,
+            message_count=len(body.messages) if body.messages else 0,
+            has_files=bool(body.fileIds or body.fileData),
+            file_count=len(body.fileIds or []) + len(body.fileData or []),
+            has_selected_tool=bool(body.selectedTool),
+            tool_name=body.selectedTool,
+            tool_category=body.toolCategory,
+            has_selected_workflow=bool(body.selectedWorkflow),
+            workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
+            has_selected_calendar_event=bool(body.selectedCalendarEvent),
+            is_reply=bool(body.replyToMessage),
+            source=request_client_source(request).value,
+            stream_id=stream_id,
+            is_retry=body.is_retry,
+        ),
     )
 
     spawn_background_task(
@@ -209,7 +218,8 @@ async def chat_stream_endpoint(
             body=body,
             user=user,
             conversation_id=conversation_id,
-            source=_resolve_source(request),
+            source=request_client_source(request).value,
+            t0_perf=t0_perf,
         )
     )
 
@@ -236,29 +246,37 @@ async def cancel_stream_endpoint(
     """Cancel a running stream owned by the requesting user."""
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
-    # Progress is a free-form JSON blob deserialized from Redis, not a model —
-    # keyed access is the honest read here.
-    progress = await stream_manager.get_progress(stream_id)
-    if not progress:
+    raw_progress = await stream_manager.get_progress(stream_id)
+    if not raw_progress:
         return CancelStreamResponse(
             success=False,
             stream_id=stream_id,
             error="Stream not found",
         )
 
-    if progress.get("user_id") != user_id:
+    progress = _STREAM_PROGRESS.validate_python(raw_progress)
+    if progress.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to cancel this stream",
         )
 
-    success = await stream_manager.cancel_stream(stream_id)
-    log.info(f"{LogTag.CHAT} Cancel stream request", stream_id=stream_id, success=success)
+    stopped = await stop_stream(progress.conversation_id, stream_id)
+    # A browser run outlives the turn that started it: Stop reaches the job itself,
+    # whichever of the conversation's turns the button was pressed on.
+    # The web's Stop: its conversation's run; a bot user's own chat is not this surface.
+    browser_jobs = await stop_chat_jobs(progress.conversation_id, None)
+    log.info(
+        f"{LogTag.CHAT} Cancel stream request",
+        stream_id=stream_id,
+        stopped_subagents=len(stopped),
+        browser={"stopped": {job: outcome.value for job, outcome in browser_jobs.items()}},
+    )
 
-    return CancelStreamResponse(success=success, stream_id=stream_id)
+    return CancelStreamResponse(success=True, stream_id=stream_id)
 
 
-@router.get("/stream/{stream_id}")
+@router.get("/stream/{stream_id}", response_class=StreamingResponse)
 async def subscribe_executor_stream(
     stream_id: str,
     request: Request,
@@ -271,21 +289,22 @@ async def subscribe_executor_stream(
     The stream_id is delivered via the `executor.stream_started` WebSocket event.
     Verifies stream ownership before allowing subscription.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_USER_ID_REQUIRED,
         )
 
-    progress = await stream_manager.get_progress(stream_id)
-    if not progress:
+    raw_progress = await stream_manager.get_progress(stream_id)
+    if not raw_progress:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stream not found",
         )
+    progress = _STREAM_PROGRESS.validate_python(raw_progress)
 
-    if progress.get("user_id") != user_id:
+    if progress.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to subscribe to this stream",
@@ -293,14 +312,10 @@ async def subscribe_executor_stream(
 
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
-    # A finished stream still has a replayable event log — subscribe_stream
-    # replays it and returns at the DONE control entry, so a late attach loses
-    # nothing. (An earlier is_complete short-circuit returned a bare [DONE]
-    # here, which dropped every frame a just-paused HIL resume had published —
-    # the second approval card never reached the client.) Only when the log has
-    # already expired is there genuinely nothing to replay; answer [DONE] then,
-    # or subscribe_stream would idle on keepalives forever.
-    if progress.get("is_complete") and not await stream_manager.has_events(stream_id):
+    # A finished stream still replays its log to DONE, so late attach loses
+    # nothing (an is_complete short-circuit here once dropped HIL resume
+    # frames). Only reply [DONE] outright once the log itself has expired.
+    if progress.is_complete and not await stream_manager.has_events(stream_id):
         log.info(
             f"{LogTag.CHAT} Executor stream complete and log expired, returning [DONE]",
             stream_id=stream_id,

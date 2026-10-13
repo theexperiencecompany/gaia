@@ -1,7 +1,4 @@
-"""
-MCP resource fetcher for MCP Apps UI resources.
-Fetches HTML content from MCP servers using existing user credentials.
-"""
+"""Fetch HTML content for MCP Apps UI resources from MCP servers using existing user credentials."""
 
 from __future__ import annotations
 
@@ -16,17 +13,7 @@ async def fetch_mcp_ui_resource(
     resource_uri: str,
     user_id: str,
 ) -> McpUiResourceDetails | None:
-    """
-    Fetch an MCP UI resource from an MCP server using the user's credentials.
-
-    Args:
-        server_url: The MCP server URL (e.g. "https://mcp.example.com/mcp")
-        resource_uri: The ui:// resource URI (e.g. "ui://get-time/app.html")
-        user_id: The user ID for credential lookup
-
-    Returns:
-        The resource's HTML plus its ``_meta.ui`` hints, or None on failure
-    """
+    """Fetch an MCP UI resource, returning its HTML plus _meta.ui hints, or None on failure."""
     log.set(
         mcp_ui={
             "server_url": server_url,

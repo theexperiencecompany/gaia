@@ -1,19 +1,17 @@
 """ARQ task: fan a fired trigger out to the tracked todos subscribed to it.
 
-The fan-out runs here rather than inline in ``TriggerHandler.process_event`` for a
-dependency reason that is load-bearing, not cosmetic. Dispatch needs the todo
-completion path for its ``complete`` action, and that lifecycle service imports
-the trigger stack back (to tear subscriptions down) — so calling it from
-``base.py`` closes a real import cycle, one mypy passes clean straight through.
-Handing the work to a task cuts it: the handler only needs a task *name*.
+The fan-out runs here, not inline in TriggerHandler.process_event, for a load-bearing
+dependency reason: dispatch needs the todo completion path, whose lifecycle service
+imports the trigger stack back (to tear subscriptions down) — calling it from base.py
+would close a real import cycle. Handing the work to a task cuts it, since the handler
+only needs a task name.
 
-It buys two things beyond that. The webhook path stays fast, so a Mongo scan
-across every subscriber cannot delay the workflow queueing that follows it; and a
-failure lands in its own wide-event boundary instead of a handler's.
+It also keeps the webhook path fast (a Mongo scan across every subscriber can't delay
+the workflow queueing that follows) and lands failures in their own wide-event boundary
+instead of a handler's.
 
-This is not the endpoint-level second task the design rejected — it is enqueued
-from inside ``process_event``, after handler normalization, with the trigger names
-that handler owns.
+This is not the endpoint-level second task the design rejected — it is enqueued from
+inside process_event, after handler normalization, with the trigger names handler owns.
 """
 
 import asyncio
@@ -33,10 +31,8 @@ async def dispatch_todo_subscriptions(
     """Run every subscribed todo's action for one fired trigger.
 
     One handler can serve several GAIA trigger names (Gmail's account-level and
-    poll variants share an event type), so each is resolved separately — a todo
-    subscribed to one must not be woken by the other. The names have independent
-    lookup and action work, so they fan out concurrently; one name failing must
-    not cancel or strand the others.
+    poll variants share an event type); each is resolved and dispatched
+    concurrently, and one name failing must not cancel or strand the others.
     """
     log.set(
         component="trigger_subscription",

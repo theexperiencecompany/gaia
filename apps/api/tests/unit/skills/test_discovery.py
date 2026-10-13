@@ -32,9 +32,7 @@ def _builtin(**overrides) -> BuiltinSkill:
 
 
 class TestMongoFailureFallback:
-    """The Mongo lookup failing must degrade to builtins-only text, not
-    propagate and break prompt construction for every agent turn — but it
-    must not disappear silently either."""
+    """The Mongo lookup failing must degrade to builtins-only text, not propagate, and must not disappear silently either."""
 
     async def test_mongo_failure_falls_back_to_builtins_only_and_logs(self):
         user_id = f"user-{uuid4()}"
@@ -58,9 +56,7 @@ class TestMongoFailureFallback:
         )
 
     async def test_mongo_failure_with_no_builtins_returns_empty_string(self):
-        """A non-executor agent has no builtins merged in here (integration
-        subagents get theirs from a different code path) — if Mongo also
-        fails, there is nothing to show, and that must not raise."""
+        """A non-executor agent has no merged builtins; if Mongo also fails there is nothing to show, and that must not raise."""
         user_id = f"user-{uuid4()}"
         with (
             patch(
@@ -121,9 +117,7 @@ class TestSuccessfulMerge:
         assert result == ""
 
     async def test_non_executor_agent_does_not_merge_builtins(self):
-        """Integration subagents get their builtins from a different code path
-        (system_docs.integration_skills_block) — merging here too would list
-        them twice."""
+        """Integration subagents get their builtins from a different code path (system_docs.integration_skills_block); merging here too would list them twice."""
         user_id = f"user-{uuid4()}"
         with (
             patch(_LOAD_BUILTIN_SKILLS, return_value=(_builtin(),)),

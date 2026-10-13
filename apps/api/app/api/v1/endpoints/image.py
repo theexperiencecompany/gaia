@@ -11,11 +11,14 @@ from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
 from app.models.message_models import MessageRequest
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import capture
 from app.services.image_service import (
     api_generate_image,
     generate_image_stream,
     image_to_text_endpoint,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ImageDescribed, ImageGenerated
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -24,12 +27,13 @@ router = APIRouter()
 @router.post("/image/generate")
 @tiered_rate_limit("generate_image")
 async def image(
-    request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)
+    request: MessageRequest, user: AuthenticatedUser = Depends(get_current_user)
 ) -> ImageData:
     """Generate an image based on the text prompt."""
     log.set(operation="generate", prompt_length=len(request.message))
     response = await api_generate_image(request.message)
     log.set(outcome="success")
+    capture(UserId(user.user_id), ImageGenerated())
     return response
 
 
@@ -38,7 +42,7 @@ async def image(
 async def image_to_text(
     message: str = Form(...),
     file: UploadFile = File(...),
-    _user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> ImageToTextResponse:
     """Extract text from an image using OCR."""
     log.set(
@@ -49,10 +53,11 @@ async def image_to_text(
     )
     response = await image_to_text_endpoint(message, file)
     log.set(outcome="success")
+    capture(UserId(user.user_id), ImageDescribed())
     return response
 
 
-@router.post("/image/generate/stream")
+@router.post("/image/generate/stream", response_class=StreamingResponse)
 @tiered_rate_limit("generate_image")
 async def image_stream(
     request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)

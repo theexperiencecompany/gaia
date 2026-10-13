@@ -3,8 +3,8 @@
 A replay runs inside a real agent graph so the pregel loop supplies the runtime,
 the stream writer, the metadata copy, the middleware chain and the tool-call
 plumbing — the same things it supplies an agentic run. What the graph must NOT
-have is a model that reasons, so this stands in its place: turn ``N`` emits
-``script[N]`` verbatim, and the turn after the last one emits a message with no
+have is a model that reasons, so this stands in its place: turn N emits
+script[N] verbatim, and the turn after the last one emits a message with no
 tool calls, which is how the agent loop ends.
 
 The turn is counted off the messages the model is handed rather than held in a
@@ -23,8 +23,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 
-#: What the loop-ending turn says. Never read by anything — a replay's
-#: user-facing text is written by the run's end-of-run model call — but an empty
+#: What the loop-ending turn says. Never read by anything — but an empty
 #: assistant message is rewritten to "Empty response from model." by
 #: ``create_agent``, which reads as a fault in a log.
 REPLAY_FINISHED_CONTENT = "Playbook replay finished."
@@ -39,12 +38,12 @@ class ScriptedCall:
 
 
 def scripted_call_id(turn: int) -> str:
-    """The tool_call_id turn ``turn`` emits — derived, so a replayed turn reuses it."""
+    """Return the tool_call_id this turn emits — derived, so a replayed turn reuses it."""
     return f"pb_call_{turn}"
 
 
 class ScriptedModel(BaseChatModel):
-    """Replays ``script`` one call per turn, consuming no tokens and no network."""
+    """Replays script one call per turn, consuming no tokens and no network."""
 
     script: list[ScriptedCall]
 
@@ -61,7 +60,7 @@ class ScriptedModel(BaseChatModel):
     ) -> Runnable[LanguageModelInput, AIMessage]:
         """Hand back the model itself: a scripted turn does not depend on the tools.
 
-        Overridden because ``BaseChatModel.bind_tools`` raises, and ``create_agent``
+        Overridden because BaseChatModel.bind_tools raises, and create_agent
         binds the run's tools before every call.
         """
         del tools, tool_choice, kwargs
@@ -78,7 +77,7 @@ class ScriptedModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=self.turn_for(messages))])
 
     def turn_for(self, messages: Sequence[BaseMessage]) -> AIMessage:
-        """The message this turn emits, derived entirely from ``messages``."""
+        """Return the message this turn emits, derived entirely from messages."""
         turn = sum(1 for message in messages if isinstance(message, AIMessage))
         if turn >= len(self.script):
             return AIMessage(content=REPLAY_FINISHED_CONTENT)

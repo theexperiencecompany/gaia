@@ -1,0 +1,7 @@
+=== app/agents/tools/workflow_shared_tools.py ===
+mutating app/agents/tools/workflow_shared_tools.py (tests: tests/unit/tools/test_workflow_tool.py) ...
+SKIP: app/agents/tools/workflow_shared_tools.py — no mutant had covering tests. Causes:
+      mutmut 3.7 cannot mutate decorated functions (FastAPI
+      endpoints, @Cacheable, ...), and with the diff-driven scoping
+      the changed lines may hold nothing mutatable (imports,
+      decorators, strings). The changed behavior is covered by the

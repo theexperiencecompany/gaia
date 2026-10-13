@@ -37,15 +37,9 @@ from datetime import UTC, datetime
 from app.db.mongodb.collections import get_async_collection
 from shared.py.wide_events import log
 
-# ---------------------------------------------------------------------------
-# Manifest of edits, keyed by workflow id (``_id`` in Mongo).
-#
-# - ``description``: new short marketing copy. ``None`` means leave as-is.
-# - ``prompt``: new prompt text. ``None`` means leave as-is. The string
-#   ``"<copy-description>"`` is a sentinel meaning "copy whatever description
-#   the document has after this run into prompt"; used for the user-published
-#   community workflows where prompt is currently null.
-# ---------------------------------------------------------------------------
+# Manifest of edits, keyed by workflow id (_id in Mongo). None means leave
+# as-is; COPY_DESCRIPTION means "copy this document's post-run description
+# into prompt" — used for community workflows where prompt is currently null.
 
 COPY_DESCRIPTION = "<copy-description>"
 

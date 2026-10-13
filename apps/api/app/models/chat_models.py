@@ -1,10 +1,32 @@
-from enum import Enum
-from typing import Any, NotRequired, Union
+from enum import Enum, StrEnum
+from typing import Any, NotRequired
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import TypedDict
 
+# The channel vocabulary lives in app.constants.chat, a leaf, so
+# app.constants.outbound can derive the outbound queue set without the model
+# stack. Re-exported here because this is the import site consumers use.
+from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
 from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
+
+__all__ = [
+    "BOT_CONVERSATION_SOURCES",
+    "BatchSyncRequest",
+    "CancelStreamResponse",
+    "ConversationModel",
+    "ConversationSource",
+    "ConversationSyncItem",
+    "ImageData",
+    "MessageModel",
+    "PinnedUpdate",
+    "SourceCategory",
+    "StarredUpdate",
+    "SystemPurpose",
+    "ToolDataEntry",
+    "UpdateDescriptionRequest",
+    "UpdateMessagesRequest",
+]
 
 
 class ImageData(BaseModel):
@@ -13,6 +35,17 @@ class ImageData(BaseModel):
     url: str
     prompt: str
     improved_prompt: str | None = None
+
+
+class SavedSubagentGroup(BaseModel):
+    """The parts of a saved subagent_group entry's data a resumed run extends in place."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    subagent_id: str = ""
+    tool_calls: list[dict[str, object]] = Field(default_factory=list)
+    completed_at: str | None = None
+    duration_ms: int | None = None
 
 
 class ToolDataEntry(TypedDict):
@@ -35,14 +68,16 @@ class ToolDataEntry(TypedDict):
     """
 
     tool_name: str
-    data: Union[dict[str, Any], list[Any], str, int, float, bool]
+    # Any on purpose (see above): it is JSON the tool owns, and the generated
+    # TypeScript reads it as `unknown` — the honest type for every consumer to
+    # narrow from.
+    data: Any
     # Optional: emitters always stamp it, but legacy stored entries predate the
     # field, so a read must tolerate its absence rather than fail validation.
     timestamp: NotRequired[str | None]
-    # Which card renders the entry. Stamped by format_tool_call_entry, the HIL
-    # approval frame, the reasoning absorber, and the artifact/rate-limit
-    # emitters; absent on the plain per-tool-field entries normalize_custom_event
-    # builds, which the frontend keys off tool_name alone.
+    # Which card renders the entry, stamped by format_tool_call_entry, the HIL
+    # frame, the reasoning absorber and rate-limit/artifact emitters; absent on
+    # plain per-tool-field entries, which the frontend keys off tool_name alone.
     tool_category: NotRequired[str]
     # Tags an entry produced inside a delegated subagent, so
     # reconstruct_subagent_groups can fold it into that subagent's group.
@@ -77,7 +112,10 @@ tool_fields = [
     "code_data",
     "google_docs_data",
     "integration_connection_required",
+    "connect_options",
     "integration_list_data",
+    "device_onboarding_required",
+    "device_approval_required",
     "reddit_data",
     "twitter_user_data",
     "twitter_search_data",
@@ -85,8 +123,18 @@ tool_fields = [
     "workflow_created",
     "artifact_data",
     "screenshot_data",
+    "browser_task_data",
     "mcp_app",
 ]
+
+
+class MessageKind(StrEnum):
+    """What a bot message IS beyond its text, set when comms' intent is known at
+    creation and would otherwise be unrecoverable from the body alone (a deliberate
+    one-emoji acknowledgement reads identically to a coincidental one-emoji reply)."""
+
+    TEXT = "text"
+    EMOJI_ACK = "emoji_ack"  # comms acknowledged a background update with a single emoji
 
 
 class MessageModel(BaseModel):
@@ -94,6 +142,7 @@ class MessageModel(BaseModel):
 
     type: str
     response: str
+    kind: MessageKind = MessageKind.TEXT
     date: str | None = None
     image_data: ImageData | None = None
     disclaimer: str | None = None
@@ -117,6 +166,17 @@ class MessageModel(BaseModel):
     # Set by the pin-message endpoint on the embedded message; absent on most
     # messages, so it reads back as None unless the user pinned this one.
     pinned: bool | None = None
+    # GAIA id of the message an emoji-ack reacts to. Set only when kind is
+    # EMOJI_ACK; the web client renders the emoji as a reaction badge on this
+    # message instead of a new bubble. None everywhere else.
+    reacts_to_message_id: str | None = None
+    # Platform-native id (WhatsApp wamid, Telegram message_id, Discord id, Slack
+    # ts). Set only on user messages that arrived through a bot, so a later
+    # background reaction can anchor to the exact platform message. Else None.
+    platform_message_id: str | None = None
+    # Set on the user's linking message stored at account linking: no chat turn
+    # ran for it, so no chat:message_submitted counts it. None everywhere else.
+    first_contact: bool | None = None
 
 
 class SystemPurpose(str, Enum):
@@ -125,81 +185,9 @@ class SystemPurpose(str, Enum):
     EMAIL_PROCESSING = "email_processing"
     REMINDER_PROCESSING = "reminder_processing"
     WORKFLOW_EXECUTION = "workflow_execution"
+    #: The seeded Getting-started thread: the user's first screen after onboarding.
+    GETTING_STARTED = "getting_started"
     OTHER = "other"
-
-
-class ConversationSource(str, Enum):
-    """Client or channel a conversation originated from."""
-
-    WEB = "web"
-    MOBILE = "mobile"
-    DESKTOP = "desktop"
-    TELEGRAM = "telegram"
-    DISCORD = "discord"
-    SLACK = "slack"
-    WHATSAPP = "whatsapp"
-    IMESSAGE = "imessage"
-    WORKFLOW_SYSTEM = "workflow_system"
-    BACKGROUND = "background"
-
-    @classmethod
-    def coerce(cls, value: "ConversationSource | str | None") -> "ConversationSource | None":
-        """Parse a raw source value (e.g. a stored string) into the enum.
-
-        Returns None for blank or unrecognised values so callers can compare on
-        enum members instead of raw strings.
-        """
-        if value is None or isinstance(value, cls):
-            return value
-        try:
-            return cls(value)
-        except ValueError:
-            return None
-
-
-class SourceCategory(str, Enum):
-    """Generalized origin of a graph invocation.
-
-    Coarser than ``ConversationSource``: every specific channel rolls up to one
-    of these so traces and tools can branch on "where did this run come from"
-    without enumerating every platform.
-    """
-
-    BG = "bg"  # autonomous background work (workflows, scheduled todos, sweeps)
-    UI = "ui"  # first-party clients (web, mobile, desktop)
-    BOT = "bot"  # messaging-platform bots (whatsapp, telegram, discord, slack)
-
-    @classmethod
-    def from_source(cls, source: "ConversationSource | str | None") -> "SourceCategory":
-        """Map a specific ``ConversationSource`` to its category.
-
-        Unknown / unset sources fall back to ``BG`` — the only callers that
-        leave the source blank are the silent background paths.
-        """
-        channel = ConversationSource.coerce(source)
-        if channel in _UI_SOURCES:
-            return cls.UI
-        if channel in BOT_CONVERSATION_SOURCES:
-            return cls.BOT
-        return cls.BG
-
-
-# Specific channels that belong to each generalized category. Single source of
-# truth for "which conversation sources are messaging-platform bots" — reused by
-# delivery routing and the web conversation-list filter. Members are enums so all
-# comparisons happen on ConversationSource, never raw strings.
-_UI_SOURCES: frozenset[ConversationSource] = frozenset(
-    {ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.DESKTOP}
-)
-BOT_CONVERSATION_SOURCES: frozenset[ConversationSource] = frozenset(
-    {
-        ConversationSource.WHATSAPP,
-        ConversationSource.TELEGRAM,
-        ConversationSource.DISCORD,
-        ConversationSource.SLACK,
-        ConversationSource.IMESSAGE,
-    }
-)
 
 
 class ConversationModel(BaseModel):

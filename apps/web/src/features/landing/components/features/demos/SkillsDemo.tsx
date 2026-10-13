@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-interface Skill {
+interface DemoSkill {
   id: string;
   name: string;
   description: string;
@@ -15,7 +15,7 @@ interface Skill {
 
 // ─── Data ──────────────────────────────────────────────────────────────────────
 
-const SKILLS: Skill[] = [
+const SKILLS: DemoSkill[] = [
   {
     id: "gmail",
     name: "Gmail Workflows",
@@ -75,10 +75,10 @@ function AnimatingBadge({ started, onComplete }: AnimatingBadgeProps) {
   );
 }
 
-// ─── Skill Row ─────────────────────────────────────────────────────────────────
+// ─── DemoSkill Row ─────────────────────────────────────────────────────────────────
 
 interface SkillRowProps {
-  skill: Skill;
+  skill: DemoSkill;
   isLast: boolean;
   animationStarted: boolean;
   onBarComplete: () => void;

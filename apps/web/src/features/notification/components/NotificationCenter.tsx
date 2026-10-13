@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { NotificationStatus } from "../../../types/features/notificationTypes";
 import { NotificationConnectBanner } from "./NotificationConnectBanner";
 import { NotificationItem } from "./NotificationItem";
@@ -34,11 +34,22 @@ export function NotificationCenter({
     [activeTab],
   );
 
-  const { notifications, unreadCount, loading, markAsRead, bulkMarkAsRead } =
-    useNotifications(notificationOptions);
+  const {
+    notifications,
+    unreadCount,
+    hasMoreUnseen,
+    loading,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications(notificationOptions);
+
+  // The loaded page can undercount unread notifications, so gating on
+  // unreadCount alone could hide the button even though an older delivered
+  // notification exists beyond what's loaded.
+  const canMarkAllAsRead = unreadCount > 0 || hasMoreUnseen;
 
   const handleMarkAsRead = async (notificationId: string) => {
-    trackEvent(ANALYTICS_EVENTS.NOTIFICATION_VIEWED, {
+    track("notification:viewed", {
       notification_id: notificationId,
       source: "popover",
     });
@@ -46,13 +57,10 @@ export function NotificationCenter({
   };
 
   const handleMarkAllAsRead = async () => {
-    const unreadIds = notifications.flatMap((n) =>
-      n.status === NotificationStatus.DELIVERED ? [n.id] : [],
-    );
-    if (unreadIds.length === 0) return;
+    if (!canMarkAllAsRead) return;
     setIsMarkingAllRead(true);
     try {
-      await bulkMarkAsRead(unreadIds);
+      await markAllAsRead();
     } finally {
       setIsMarkingAllRead(false);
     }
@@ -152,7 +160,7 @@ export function NotificationCenter({
 
           {/* Footer */}
           <div className="flex w-full items-center justify-evenly gap-3 p-3">
-            {unreadCount > 0 && (
+            {canMarkAllAsRead && (
               <Button
                 size="sm"
                 fullWidth
@@ -167,7 +175,7 @@ export function NotificationCenter({
             <Button
               fullWidth
               size="sm"
-              variant={unreadCount > 0 ? "bordered" : "solid"}
+              variant={canMarkAllAsRead ? "bordered" : "solid"}
               onPress={() => {
                 router.push("/notifications");
               }}

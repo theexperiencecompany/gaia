@@ -2,17 +2,17 @@
 Prometheus metrics for the ARQ background worker.
 
 Exposes a histogram of task durations and a counter of task outcomes so the
-`arq-worker` dashboard can show real latency percentiles instead of scraping logs.
-The observations are recorded by ``app.workers.task_envelope.arq_task``.
+arq-worker dashboard can show real latency percentiles instead of scraping logs.
+The observations are recorded by app.workers.task_envelope.arq_task.
 
-A standalone HTTP server is started in `startup()` on the port configured via
-``ARQ_METRICS_PORT`` (default 9100). Prometheus scrapes this endpoint via the
-``arq_worker`` job in ``prometheus.yml``.
+A standalone HTTP server is started in startup() on the port configured via
+ARQ_METRICS_PORT (default 9100). Prometheus scrapes this endpoint via the
+arq_worker job in prometheus.yml.
 
 This module also re-registers the FsOps Prometheus collectors (declared on
-the default registry in ``app/services/storage/metrics.py``) onto the worker's
-custom ``REGISTRY`` so the same ``fs_op_*`` metric families show up at
-``/metrics`` for the worker process too.
+the default registry in app/services/storage/metrics.py) onto the worker's
+custom REGISTRY so the same fs_op_* metric families show up at
+/metrics for the worker process too.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from typing import ParamSpec, TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
 
+from app.services.latency_metrics import ALL_COLLECTORS
 from app.services.storage.metrics import (
     _FS_OP_BYTES_TOTAL,
     _FS_OP_DURATION_SECONDS,
@@ -51,14 +52,9 @@ TASK_TOTAL = Counter(
     registry=REGISTRY,
 )
 
-# Cross-register the FsOps collectors onto this worker registry so the worker
-# process's /metrics surface mirrors the API's. The same collector instances
-# are registered on both registries — observations from `record_fs_op` flow
-# into one underlying state and surface on both /metrics endpoints.
-#
-# The `tool_bash_exit_code_total` counter is NOT mirrored here — bash_tool is
-# only reachable from API request paths, not ARQ tasks, so it would always be
-# zero on the worker side.
+# Cross-registers the FsOps collectors so the worker's /metrics mirrors the
+# API's — same instances, so record_fs_op observations surface on both.
+# tool_bash_exit_code_total is NOT mirrored: bash_tool never runs from ARQ.
 for _collector in (
     _FS_OP_DURATION_SECONDS,
     _FS_OP_BYTES_TOTAL,
@@ -66,6 +62,8 @@ for _collector in (
     _FS_OP_LAST_SEEN,
     _FS_OP_IN_FLIGHT,
     _SANDBOX_POOL_SIZE,
+    # Turn/executor/HIL latency: the sweep and re-dispatched runs emit here.
+    *ALL_COLLECTORS,
 ):
     # Already registered on this registry (re-import under reload).
     with contextlib.suppress(ValueError):

@@ -5,7 +5,7 @@
  */
 
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 import type { LinearConfig } from "./LinearSettings";
 import { LinearSettings } from "./LinearSettings";
 
@@ -20,7 +20,7 @@ export const linearTriggerHandler: RegisteredHandler = {
     "linear_comment_added",
   ],
 
-  createDefaultConfig: (slug: string): TriggerConfig => ({
+  createDefaultConfig: (slug: string): TriggerConfigDraft => ({
     type: "integration",
     enabled: true,
     trigger_name: slug,

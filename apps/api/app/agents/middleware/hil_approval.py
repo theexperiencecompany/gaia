@@ -1,9 +1,9 @@
-"""HIL approval middleware: the middleware-chain adapter over ``decide_tool_call``.
+"""HIL approval middleware: the middleware-chain adapter over decide_tool_call.
 
 DynamicToolNode has two execution paths; this covers the middleware chain
-(regular tools). The parent ToolNode path is covered by ``hil_and_timeout_
-guarded_tool_call`` in ``dynamic_tool_node.py``. Both ask the one canonical gate in
-``app/services/hil/gate.py``, and both run the tool themselves — the gate decides and
+(regular tools). The parent ToolNode path is covered by hil_and_timeout_
+guarded_tool_call in dynamic_tool_node.py. Both ask the one canonical gate in
+app/services/hil/gate.py, and both run the tool themselves — the gate decides and
 never executes, so a blocked call is one the handler is simply not asked to run.
 """
 

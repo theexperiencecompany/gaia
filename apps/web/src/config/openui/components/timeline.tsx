@@ -53,14 +53,9 @@ function formatTimelineTime(raw: string): string {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Views
-//
-// TimelineView stays file-private on purpose: this module's public surface is
-// the `timelineDef` registration at the bottom (consumed by
-// ../genericLibrary). Exporting the component alongside that def breaks Fast
-// Refresh (react-refresh/only-export-components).
-// ---------------------------------------------------------------------------
+// TimelineView stays file-private: this module's public surface is the
+// `timelineDef` registration at the bottom. Exporting the component
+// alongside that def breaks Fast Refresh (react-refresh/only-export-components).
 
 function TimelineView(props: z.infer<typeof timelineSchema>) {
   const triggerAction = useSafeTriggerAction();

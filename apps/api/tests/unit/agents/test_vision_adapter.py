@@ -63,8 +63,7 @@ class TestToolMessageBlocksLane:
         assert len(out) == len(msgs), "no extra message should be injected on this lane"
 
     def test_no_human_message_is_injected(self):
-        """Repacking into a HumanMessage is the OpenRouter workaround. Doing it on
-        Gemini would put a spurious user turn into the conversation."""
+        """Repacking into a HumanMessage is the OpenRouter workaround, not needed on Gemini."""
         msgs = [_ai_call(), _tool_msg(_img())]
 
         out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)
@@ -94,8 +93,7 @@ class TestTextOnlyLane:
         assert "BASE64-A" not in str(out[1].content)
 
     def test_the_cached_description_is_what_the_model_sees(self):
-        """describe_tool_media caches the prose at tool-execution time; this lane
-        must spend it, not emit a bare notice that tells the model nothing."""
+        """describe_tool_media caches the prose at tool-execution time; this lane must spend it."""
         msg = _tool_msg(
             {"type": "text", "text": "shot.png"},
             _img(),
@@ -120,8 +118,7 @@ class TestTextOnlyLane:
         assert "second image" in out[1].content
 
     def test_a_message_with_no_cached_description_falls_back_to_the_notice(self):
-        """Produced on a vision lane, replayed on a text-only one — there is
-        nothing to spend, and the model must at least be told it is blind."""
+        """Produced on a vision lane, replayed on a text-only one — nothing to spend."""
         out = MediaAdapter(MediaDelivery.REPLACE_WITH_TEXT).adapt([_ai_call(), _tool_msg(_img())])
 
         assert MEDIA_OMITTED_NOTICE in out[1].content
@@ -141,8 +138,7 @@ class TestTextOnlyLane:
 
 class TestBudget:
     def test_at_most_max_blocks_reach_the_provider(self):
-        """Without this, a thread that read twenty screenshots re-sends all of
-        them on every subsequent turn until the provider rejects the payload."""
+        """Without this, a thread with twenty screenshots re-sends all of them every turn."""
         msgs = [
             _tool_msg(_img(str(i)), call_id=f"c{i}") for i in range(MAX_INLINE_MEDIA_BLOCKS + 3)
         ]
@@ -174,7 +170,7 @@ class TestBudget:
         assert any(MEDIA_EVICTED_NOTICE in str(m.content) for m in out)
 
     def test_exactly_at_the_budget_nothing_is_evicted(self):
-        """Boundary: `>=` vs `>` in the budget check."""
+        """Boundary: >= vs > in the budget check."""
         msgs = [_tool_msg(_img(str(i)), call_id=f"c{i}") for i in range(MAX_INLINE_MEDIA_BLOCKS)]
 
         out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)

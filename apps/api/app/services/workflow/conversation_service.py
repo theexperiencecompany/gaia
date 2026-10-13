@@ -1,6 +1,4 @@
-"""
-Workflow conversation service for managing single conversations per workflow.
-"""
+"""Workflow conversation service for managing single conversations per workflow."""
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -17,7 +15,7 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
 )
 from app.models.message_models import SelectedWorkflowData
-from app.models.playbook_models import PlaybookDocument, PlaybookStep
+from app.models.playbook_models import HandoffStep, PlaybookDocument, PlaybookStep
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import Workflow
@@ -72,9 +70,10 @@ async def add_workflow_execution_messages(
             conversation_id=conversation_id, messages=workflow_execution_messages
         )
 
-        user_dict: AuthenticatedUser = {"user_id": user_id}
         await update_messages(
-            messages_request, user_dict, max_messages=WORKFLOW_CONVERSATION_MAX_MESSAGES
+            messages_request,
+            AuthenticatedUser(user_id=user_id),
+            max_messages=WORKFLOW_CONVERSATION_MAX_MESSAGES,
         )
 
     except Exception as e:
@@ -89,7 +88,7 @@ async def add_workflow_execution_messages(
 
 
 def build_selected_workflow_data(workflow: Workflow) -> SelectedWorkflowData:
-    """The workflow card a run's trigger message carries.
+    """Build the workflow card a run's trigger message carries.
 
     One builder for both run paths: the agent turn and the playbook replay must
     attach the identical card, or the same workflow renders two different ways
@@ -100,15 +99,7 @@ def build_selected_workflow_data(workflow: Workflow) -> SelectedWorkflowData:
         title=workflow.title,
         description=workflow.description,
         prompt=workflow.prompt,
-        steps=[
-            {
-                "id": step.id,
-                "title": step.title,
-                "description": step.description,
-                "category": step.category,
-            }
-            for step in workflow.steps
-        ],
+        steps=list(workflow.steps),
     )
 
 
@@ -149,27 +140,27 @@ async def add_playbook_run_messages(
 
 
 def _playbook_plan(steps: Sequence[PlaybookStep]) -> list[str]:
-    """The frozen steps as lines a person can read on the Run playbook card.
+    """Render the frozen steps as lines a person can read on the Run playbook card.
 
     "todos subagent -> list_todos" says who does what; the raw document shape
     (ids, args, nesting) belongs in read_playbook, not on a chat card.
     """
     lines: list[str] = []
     for step in steps:
-        if step.handoff:
-            children = ", ".join(child.tool or "?" for child in step.steps)
+        if isinstance(step, HandoffStep):
+            children = ", ".join(child.tool for child in step.steps)
             lines.append(f"{step.handoff} subagent -> {children}")
         else:
-            lines.append(step.tool or "?")
+            lines.append(step.tool)
     return lines
 
 
 async def build_playbook_tool_data(
     trace: Sequence[RecordedCall], user_id: str, playbook: PlaybookDocument
 ) -> list[ToolDataEntry]:
-    """Replayed calls in the shape ``drain_executor_tool_data`` yields.
+    """Replayed calls in the shape drain_executor_tool_data yields.
 
-    Built through ``format_tool_call_entry`` rather than by hand so a card's
+    Built through format_tool_call_entry rather than by hand so a card's
     category, icon and display name are resolved by the one function the live
     stream uses. The synthetic call ids exist only to carry each result back
     onto its own entry through the same backfill the live path runs.

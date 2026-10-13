@@ -1,9 +1,10 @@
-from typing import Any, TypedDict
+from pydantic import BaseModel, ConfigDict
 
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
+    ActionConfig,
     ActionStyle,
     ActionType,
     ChannelDeliveryStatus,
@@ -14,8 +15,10 @@ from app.utils.notification.channels.base import ChannelAdapter
 from shared.py.wide_events import log
 
 
-class InAppActionPayload(TypedDict):
-    """One action button as it appears inside an ``InAppPayload``."""
+class InAppActionPayload(BaseModel):
+    """One action button as it appears inside an InAppPayload."""
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str
     type: ActionType
@@ -23,11 +26,13 @@ class InAppActionPayload(TypedDict):
     style: ActionStyle
     requires_confirmation: bool
     confirmation_message: str | None
-    config: dict[str, Any] | None
+    config: ActionConfig | None
 
 
-class InAppPayload(TypedDict):
-    """The ``notification.new`` WebSocket frame body."""
+class InAppPayload(BaseModel):
+    """The notification.new WebSocket frame body."""
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str
     title: str
@@ -35,7 +40,8 @@ class InAppPayload(TypedDict):
     type: NotificationType
     priority: int
     actions: list[InAppActionPayload]
-    metadata: dict[str, Any]
+    # The request's own free-form metadata, forwarded verbatim.
+    metadata: dict[str, object]
     created_at: str
 
 
@@ -43,14 +49,14 @@ class InAppChannelAdapter(ChannelAdapter[InAppPayload]):
     """In-app notification channel adapter.
 
     Pushes the notification payload to the connected client in real time via
-    WebSocket using the ``notification.new`` event.  This is the *delivery*
+    WebSocket using the notification.new event.  This is the *delivery*
     step for the in-app channel — the orchestrator subsequently fires a
-    separate ``notification.delivered`` broadcast that carries the full record
+    separate notification.delivered broadcast that carries the full record
     with channel-delivery statuses for all channels.  The two events serve
     different purposes and are not redundant:
 
-    * ``notification.new``       — immediate display of the notification content
-    * ``notification.delivered`` — status update after all channels have run
+    * notification.new       — immediate display of the notification content
+    * notification.delivered — status update after all channels have run
     """
 
     @property
@@ -59,43 +65,40 @@ class InAppChannelAdapter(ChannelAdapter[InAppPayload]):
 
     def can_handle(self, notification: NotificationRequest) -> bool:  # noqa: ARG002 -- polymorphic interface; implementations keep the full signature
         """Return True — in-app delivery is always available for any request."""
-        # In-app is always deliverable. The orchestrator decides targeting:
-        # explicit requests look adapters up by channel_type, and auto-injection
-        # always includes inapp — checking the request's channel list here would
-        # silently skip the real-time push whenever channels are auto-injected
-        # (the list is empty in that mode).
+        # The orchestrator decides targeting; checking the request's channel
+        # list here would silently skip the push when auto-injected (list is empty).
         return True
 
     async def transform(self, notification: NotificationRequest) -> InAppPayload:
-        """Build the WebSocket payload for the in-app ``notification.new`` event."""
-        return {
-            "id": notification.id,
-            "title": notification.content.title,
-            "body": notification.content.body,
-            "type": notification.type,
-            "priority": notification.priority,
-            "actions": [
-                {
-                    "id": action.id,
-                    "type": action.type,
-                    "label": action.label,
-                    "style": action.style,
-                    "requires_confirmation": action.requires_confirmation,
-                    "confirmation_message": action.confirmation_message,
-                    "config": action.config.model_dump() if action.config else None,
-                }
+        """Build the WebSocket payload for the in-app notification.new event."""
+        return InAppPayload(
+            id=notification.id,
+            title=notification.content.title,
+            body=notification.content.body,
+            type=notification.type,
+            priority=notification.priority,
+            actions=[
+                InAppActionPayload(
+                    id=action.id,
+                    type=action.type,
+                    label=action.label,
+                    style=action.style,
+                    requires_confirmation=action.requires_confirmation,
+                    confirmation_message=action.confirmation_message,
+                    config=action.config,
+                )
                 for action in (notification.content.actions or [])
             ],
-            "metadata": notification.metadata,
-            "created_at": notification.created_at.isoformat(),
-        }
+            metadata=notification.metadata,
+            created_at=notification.created_at.isoformat(),
+        )
 
     async def deliver(self, content: InAppPayload, user_id: str) -> ChannelDeliveryStatus:
         """Push the in-app payload to the user's live WebSocket connection."""
         log.set(
             operation="inapp_deliver",
             user_id=user_id,
-            notification_id=content["id"],
+            notification_id=content.id,
             channel_type=CHANNEL_TYPE_INAPP,
         )
         try:
@@ -103,7 +106,7 @@ class InAppChannelAdapter(ChannelAdapter[InAppPayload]):
                 user_id,
                 {
                     "type": "notification.new",
-                    "notification": content,
+                    "notification": content.model_dump(),
                 },
             )
             log.info(f"{LogTag.NOTIFICATION} In-app notification delivered", user_id=user_id)

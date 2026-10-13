@@ -39,6 +39,8 @@ export const iconAliases: Record<string, string> = {
   google_calendar: "googlecalendar",
   planner: "plan_tasks",
   gaia_knowledge_guide: "gaia",
+  // The "browser" tool category reuses the browser_task tool's icon.
+  browser: "browser_task",
 };
 
 export const toolIconConfigs: Record<string, ToolIconConfig> = {
@@ -53,6 +55,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
   },
   googledocs: {
     icon: "googledocs",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
+  googledrive: {
+    icon: "googledrive",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     bgColorRaw: "#3f3f46",
@@ -307,14 +317,6 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#ffffff",
     isImage: true,
   },
-  browserbase: {
-    icon: "browserbase",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    bgColorRaw: "#3f3f46",
-    iconColorRaw: "#e4e4e7",
-    isImage: true,
-  },
   posthog: {
     icon: "posthog",
     bgColor: "bg-zinc-700",
@@ -325,6 +327,46 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
   },
   agentmail: {
     icon: "agentmail",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
+  calcom: {
+    icon: "calcom",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
+  calendly: {
+    icon: "calendly",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
+  outlook: {
+    icon: "outlook",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
+  jira: {
+    icon: "jira",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
+  dropbox: {
+    icon: "dropbox",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     bgColorRaw: "#3f3f46",
@@ -413,12 +455,28 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#c084fc",
     isImage: false,
   },
+  browser_task: {
+    icon: "AiWebBrowsingIcon",
+    bgColor: "bg-[#00bbff]/20 backdrop-blur",
+    iconColor: "text-[#00bbff]",
+    bgColorRaw: "rgba(0, 187, 255, 0.2)",
+    iconColorRaw: "#00bbff",
+    isImage: false,
+  },
   support: {
     icon: "InformationCircleIcon",
     bgColor: "bg-blue-500/20 backdrop-blur",
     iconColor: "text-blue-400",
     bgColorRaw: "rgba(59, 130, 246, 0.2)",
     iconColorRaw: "#60a5fa",
+    isImage: false,
+  },
+  account: {
+    icon: "UserAccountIcon",
+    bgColor: "bg-sky-500/20 backdrop-blur",
+    iconColor: "text-sky-400",
+    bgColorRaw: "rgba(14, 165, 233, 0.2)",
+    iconColorRaw: "#38bdf8",
     isImage: false,
   },
   billing: {
@@ -459,14 +517,6 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColor: "text-violet-400",
     bgColorRaw: "rgba(139, 92, 246, 0.2)",
     iconColorRaw: "#a78bfa",
-    isImage: false,
-  },
-  wait_for_subagents: {
-    icon: "Clock04Icon",
-    bgColor: "bg-yellow-500/20 backdrop-blur",
-    iconColor: "text-yellow-400",
-    bgColorRaw: "rgba(234, 179, 8, 0.2)",
-    iconColorRaw: "#facc15",
     isImage: false,
   },
   retrieve_tools: {

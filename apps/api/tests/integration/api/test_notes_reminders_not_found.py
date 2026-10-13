@@ -1,11 +1,4 @@
-"""Regression tests: notes & reminders endpoints must surface 404, not 500.
-
-The endpoint handlers wrap the service call in a generic ``except Exception`` that
-raised a 500. A deliberate ``HTTPException(404, ...)`` from the service (or from
-the handler's own not-found check) was caught by that generic clause and masked
-as ``500 Failed to retrieve/update/delete``. The fix re-raises ``HTTPException``
-before the generic catch; these tests pin that a nonexistent id returns 404.
-"""
+"""Regression tests: notes & reminders endpoints must surface 404, not 500."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -44,7 +37,7 @@ class TestNotesNotFound:
         with patch("app.api.v1.endpoints.notes.get_note", _not_found("Note not found")):
             response = await test_client.get("/api/v1/notes/does-not-exist")
         assert response.status_code == 404, response.text
-        assert response.json()["detail"] == "Note not found"
+        assert response.json()["message"] == "Note not found"
 
     async def test_update_missing_note_returns_404(self, test_client) -> None:
         with patch("app.api.v1.endpoints.notes.update_note", _not_found("Note not found")):
@@ -53,13 +46,13 @@ class TestNotesNotFound:
                 json={"content": "x", "plaintext": "x"},
             )
         assert response.status_code == 404, response.text
-        assert response.json()["detail"] == "Note not found"
+        assert response.json()["message"] == "Note not found"
 
     async def test_delete_missing_note_returns_404(self, test_client) -> None:
         with patch("app.api.v1.endpoints.notes.delete_note", _not_found("Note not found")):
             response = await test_client.delete("/api/v1/notes/does-not-exist")
         assert response.status_code == 404, response.text
-        assert response.json()["detail"] == "Note not found"
+        assert response.json()["message"] == "Note not found"
 
 
 @pytest.mark.integration
@@ -73,4 +66,4 @@ class TestRemindersNotFound:
         ):
             response = await test_client.get("/api/v1/reminders/does-not-exist")
         assert response.status_code == 404, response.text
-        assert "not found" in response.json()["detail"].lower()
+        assert "not found" in response.json()["message"].lower()

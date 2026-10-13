@@ -45,6 +45,9 @@ async def read_manual(topic: ManualTopic) -> str:
       spreadsheets, CSV) from a request and its data.
     - ``billing``: the user's plan and payment history; handing them a checkout
       link to upgrade to Pro; what to say when they hit a usage limit.
+    - ``device-setup``: connect the user's own machine with the ``gaia bridge``
+      CLI (install, pair via a code pasted in chat or the approval page, expose
+      MCP servers or local files, keep it online); how to use a connected device.
 
     Pass one of the topic names above; returns that topic's full doc. Passing an
     unknown topic returns the list of valid topics.

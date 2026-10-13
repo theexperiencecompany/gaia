@@ -14,15 +14,10 @@ interface AppShellProps {
 }
 
 /**
- * App-wide drawer host. Wraps any authenticated route group so that the
- * shared `SidebarContent` is reachable from every screen inside.
- *
- * Lives outside any feature folder because the drawer is no longer
- * chat-specific — chat, todos, and any future feature share the same
- * sidebar (with a contextual middle section keyed off the current
- * pathname). Mount this once per route group that should expose the
- * drawer; the underlying `useSidebar` context is provided by
- * `(app)/_layout.tsx`.
+ * App-wide drawer host, wrapping any authenticated route group so the shared
+ * `SidebarContent` is reachable everywhere. Lives outside any feature folder
+ * since chat, todos, and future features share one sidebar (contextual middle
+ * section keyed off pathname); mount once per route group — `useSidebar` context comes from `(app)/_layout.tsx`.
  */
 export function AppShell({ children }: AppShellProps) {
   const { drawerRef, _notifyDrawerOpened, _notifyDrawerClosed } = useSidebar();

@@ -5,8 +5,15 @@ on:
   # Fires after a release is published; workflow filters to desktop tags below.
   release:
     types: [published]
-  # Manual trigger for testing the build across all OSes without cutting a release.
+  # Manual trigger: builds across all OSes and, with an optional tag, attaches
+  # the installers to an existing release — the backfill path when a release
+  # shipped without assets (e.g. dispatch with tag `desktop-v0.7.0`).
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Desktop release tag to attach installers to (e.g. desktop-v0.7.0). Empty = build only, no release upload."
+        required: false
+        default: ""
 
 concurrency:
   # Prevent duplicate builds for the same release tag.
@@ -36,6 +43,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # The public build values (vars.NEXT_PUBLIC_*) live on the production
+    # environment, the same place deploy-web.yml reads them from.
+    environment: production
+
     steps:
       # Checkout source for package/build tooling.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,10 +66,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Keep desktop package version aligned with release tag before packaging.
+      # On a manual dispatch the tag comes from the `tag` input (backfill path);
+      # with neither, fall back to the version in package.json (build-only check).
       - name: Set version from tag
         shell: bash
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
           if [ -n "$TAG" ]; then
             # Strip component prefix (e.g., 'desktop-v0.11.0' -> '0.11.0')
             VERSION="${TAG#*-v}"
@@ -81,47 +94,41 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rpm
 
-      # Build platform-specific desktop distribution artifacts.
+      # Build platform-specific desktop distribution artifacts. NEXT_PUBLIC_*
+      # is inlined at build time, so an empty value ships an installer with
+      # that feature dead (desktop analytics was off this way); fail instead.
       - name: Build Desktop (${{ matrix.target }})
-        run: pnpm nx dist:${{ matrix.target }} desktop
+        shell: bash
+        run: |
+          missing=$(for name in ${!NEXT_PUBLIC_@}; do [ -n "${!name}" ] || echo "$name"; done)
+          if [ -n "$missing" ]; then
+            echo "::error::Empty in the production environment's variables: $(echo $missing). Set them under Settings → Environments → production."
+            exit 1
+          fi
+          pnpm nx dist:${{ matrix.target }} desktop
         env:
           CI: true
           NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
+          NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No paid Apple Developer ID / notarization. Disabling auto-discovery
           # makes electron-builder skip real signing and lets the afterSign hook
-          # (scripts/adhoc-sign.cjs) ad-hoc sign the macOS app — a valid bundle
+          # (scripts/mac-sign.cjs) ad-hoc sign the macOS app — a valid bundle
           # seal so macOS 26 RunningBoard doesn't kill it on launch. Harmless on
           # Windows/Linux (no auto-discoverable certificate there either).
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      # Attach all generated installer/update files to the existing release entry.
-      # make_latest ensures electron-updater (which reads /releases/latest) can
-      # find the desktop release and its latest-*.yml update metadata.
-      - name: Upload to Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          make_latest: "true"
-          files: |
-            apps/desktop/release/**/*.dmg
-            apps/desktop/release/**/*.zip
-            apps/desktop/release/**/*.exe
-            apps/desktop/release/**/*.AppImage
-            apps/desktop/release/**/*.deb
-            apps/desktop/release/**/*.rpm
-            apps/desktop/release/**/latest*.yml
-
-      # On a manual dispatch (no release to attach to) keep the installers as a
-      # downloadable workflow artifact so the build can be verified end-to-end.
-      - name: Upload installers as artifact
-        if: github.event_name == 'workflow_dispatch'
+      # Matrix legs must NOT touch the GitHub Release directly: three jobs
+      # concurrently updating one release (metadata + make_latest) fail each
+      # other — desktop-v0.7.0 built fine on mac/win but shipped zero assets
+      # this way. Legs publish workflow artifacts; the single `publish` job
+      # below attaches everything to the release exactly once.
+      - name: Upload installers as workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: desktop-${{ matrix.target }}
+          name: desktop-installers-${{ matrix.target }}
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
           path: |
             apps/desktop/release/**/*.dmg
             apps/desktop/release/**/*.zip
@@ -129,3 +136,76 @@ jobs:
             apps/desktop/release/**/*.AppImage
             apps/desktop/release/**/*.deb
             apps/desktop/release/**/*.rpm
+            apps/desktop/release/**/latest*.yml
+            # electron-builder leaves unpacked dirs (win-unpacked/, mac/, …)
+            # next to the installers — their inner files (e.g. a second
+            # GAIA.exe, resources/elevate.exe) must not become release assets.
+            "!apps/desktop/release/**/*-unpacked/**"
+
+  # Attach every platform's installers to the release in ONE job — a single
+  # writer, so no concurrent update-release/make-latest collisions, and `gh`
+  # failures surface with a real error message instead of a bare HttpError.
+  # make_latest is replaced by an explicit `gh release edit --latest` here, so
+  # electron-updater (/releases/latest + latest-*.yml) keeps resolving.
+  publish:
+    name: publish installers to release
+    needs: build
+    # Release events always publish. Manual dispatches publish only when a tag
+    # was given (empty tag = build-only verification run).
+    if: github.event_name == 'release' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="$RELEASE_TAG"
+          [ -n "$TAG" ] || TAG="$INPUT_TAG"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
+              | jq -r '[.[] | select(.tagName | startswith("desktop-v"))][0].tagName // empty')
+          fi
+          [ -n "$TAG" ] || { echo "::error::No desktop release tag to publish to (no release event, no tag input, no desktop-* release found)"; exit 1; }
+          echo "Publishing installers to $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Download installer artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: desktop-installers-*
+          merge-multiple: true
+          path: installers
+
+      - name: Upload installers to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Top-level installer files only — belt-and-braces alongside the
+          # *-unpacked exclusion on the artifact globs above.
+          mapfile -t FILES < <(find installers -type f -not -path '*-unpacked/*' \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'latest*.yml' \) | sort)
+          [ "${#FILES[@]}" -gt 0 ] || { echo "::error::No installer files downloaded — nothing to publish"; exit 1; }
+          printf 'Attaching %s\n' "${FILES[@]}"
+          # --repo: this job does not check out the repo, so gh cannot
+          # discover it via git and fails with "not a git repository".
+          # --clobber makes re-runs idempotent (a partial first attempt's
+          # assets are replaced instead of failing the whole publish).
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "${FILES[@]}"
+          # Mark Latest only when this IS the newest desktop release — a
+          # backfill for an older tag must not steal Latest from a newer one
+          # (electron-updater resolves /releases/latest).
+          NEWEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
+            | jq -r '[.[] | select(.tagName | startswith("desktop-v"))][0].tagName // empty')
+          if [ "$TAG" = "$NEWEST" ]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
+          else
+            echo "::notice::Not marking $TAG as Latest — newest desktop release is $NEWEST"
+          fi
+          echo "### ✅ Installers published to $TAG (${#FILES[@]} files)" >> "$GITHUB_STEP_SUMMARY"

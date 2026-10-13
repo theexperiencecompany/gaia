@@ -5,11 +5,9 @@ Extraction quality is the heart of the memory system: everything downstream
 what gets pulled out of the transcript here. Edit with care.
 """
 
-# Shared folder taxonomy + routing rules used by both the extraction and the
-# categorize prompts. Choosing the folder by the fact's SUBJECT (not by who it
-# mentions) is the single most common categorization mistake; these rules and
-# examples exist to prevent it. Contains no '{' / '}' so it is safe to embed in
-# a str.format() template.
+# Shared folder taxonomy + routing rules used by both the extraction and
+# categorize prompts. Contains no '{' / '}' so it is safe to embed in a
+# str.format() template.
 _FOLDER_GUIDANCE = """## Choosing the folder (category_path)
 
 File each fact by its SUBJECT (what the fact is ABOUT), never by which person
@@ -78,7 +76,7 @@ Working ON a product makes that product's internals documentation, not biography
 Every fact declares `shelf_life`, and the value decides where the assertion is stored:
 
 - **durable**: identity, relationships, preferences, style, health, values, long-run goals. Never expires. Stored as a fact.
-- **state**: a value that was only true as of a moment: counts, balances, metrics, connection status, deployment state, open bugs, in-flight applications, anything you would naturally write "as of <date>". Stored as a fact that expires.
+- **state**: a value that was only true as of a moment: counts, balances, metrics, deployment state, open bugs, in-flight applications, anything you would naturally write "as of <date>". Stored as a fact that expires.
 - **task**: a commitment, deadline, or intention. NOT a fact: emit it as an agenda update instead.
 - **journal**: what happened today, what GAIA recommended, produced, drafted or advised, and world facts that were merely looked up. NOT a fact: emit it as an episode entry instead.
 
@@ -112,6 +110,7 @@ When you cannot decide between durable and state, choose **state**.
 9. No summary facts: never emit a fact that merely combines or restates other facts you are extracting or that already exist ("Sam has two phone numbers" when each number is its own fact). One attribute per subject, stated once, in its most complete form.
 10. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
 11. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
+12. Never store the state of the user's GAIA integrations or connected accounts: connected, disconnected, expired, lost, needing reconnection, or a connect, add-account or sign-in flow still in progress. GAIA reads that live every turn, and a remembered copy outlives it and contradicts it. Keep only the durable thing the conversation reveals (which account is for work, where a client's mail arrives), and at most a journal line for what happened.
 
 ## Entities and edges
 
@@ -125,18 +124,15 @@ Write 3-8 terse past-tense journal lines for today's diary. Write from the USER'
 
 ## Agenda updates
 
-List open loops this conversation opened or closed: new commitments, deadlines, things GAIA owes the user, or previously open items now resolved. Leave empty if nothing changed.
+List open loops this conversation opened or closed: new commitments, deadlines, things GAIA owes the user, or previously open items now resolved. Leave empty if nothing changed. Finishing a connection, sign-in or account setup GAIA just offered is never an open loop (rule 12).
 
 """
     + _FOLDER_GUIDANCE
 )
 
-#: The user's folder tree, which grows as memory accumulates. It rides the
-#: TRAILING volatile message, not the system prompt: the memory lane's cache is
-#: a byte-prefix cache, and this sat at the very end of the system prompt —
-#: directly ahead of the transcript — so every new folder moved the cache
-#: boundary and the whole transcript re-sent uncached behind it. The folder
-#: GUIDANCE above is stable and stays in the prompt; only the tree moves.
+#: The user's folder tree, which grows as memory accumulates. Rides the
+#: TRAILING volatile message, not the system prompt, since a growing tree
+#: there moved the byte-prefix cache boundary and re-sent the transcript uncached.
 EXTRACTION_FOLDER_TREE_BLOCK = """## Existing memory folders
 
 {folder_tree}"""
@@ -182,9 +178,7 @@ Given the fact below, assign:
 EPISODE_SUMMARY_SYSTEM_PROMPT = """You write the daily journal of GAIA, a personal AI assistant. Given the timestamped entries from one day of a user's journal, write a 2-4 sentence past-tense summary of the day focused on what the USER did, decided, or accomplished, and any meaningful outcomes GAIA produced for them. Skip GAIA's internal mechanics (drafting, presenting, storing, indexing). Be concrete: keep names, decisions, and outcomes; drop filler and duplicate details. Write only the summary text."""
 
 
-# --- Core-document consolidation -------------------------------------------
-#
-# One prompt per core document. Each rewrites a single markdown doc from the
+# One prompt per core document, each rewriting a markdown doc from the
 # previous version plus fresh inputs. The shared rules block keeps the five
 # prompts consistent; the per-doc body defines the section skeleton.
 

@@ -3,35 +3,19 @@ import type { OnboardingState } from "./types";
 export const initialState: OnboardingState = {
   responses: {},
   questionIndex: 0,
-  draftText: "",
   draftProfession: null,
+  selectedNeeds: [],
+  otherNeed: "",
+  otherNeedOpen: false,
+  preferencesPersisted: false,
 
-  server: null,
-
-  progressByStage: {},
-  completedStages: new Set(),
-
-  ackedWritingStyle: false,
-  ackedTodos: false,
-
-  workflowsConfirmed: false,
+  paidRevealAcked: false,
   platformsConfirmed: false,
   connectedPlatform: null,
 
-  todoExecutionMessage: null,
-  todoExecutionConvoId: null,
-  todoExecutionStarted: false,
-  todoExecutionTodo: null,
-
   isRestarting: false,
 
-  integrationSelectDone: false,
-  selectedIntegrations: [],
+  introSeen: null,
 
-  clarifyQuestions: null,
-  clarifyAnswers: {},
-  clarifyActiveTab: null,
-  clarifyCustomDrafts: {},
-  clarifyOtherSelected: {},
-  clarifySubmitted: false,
+  hydratedFor: null,
 };

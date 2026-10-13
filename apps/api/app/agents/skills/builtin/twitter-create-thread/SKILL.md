@@ -15,16 +15,16 @@ target: twitter_agent
 ## Tools
 
 ### Research
-- **TWITTER_RECENT_SEARCH** — Search recent tweets on the topic
-- **TWITTER_USER_LOOKUP_BY_USERNAME** — Look up relevant accounts
+- **TWITTER_RECENT_SEARCH**: Search recent tweets on the topic
+- **TWITTER_USER_LOOKUP_BY_USERNAME**: Look up relevant accounts
 
 ### Creation
-- **TWITTER_CUSTOM_CREATE_THREAD** — Post entire thread at once
+- **TWITTER_CUSTOM_CREATE_THREAD**: Post entire thread at once
   - tweets: Array of tweet text strings
   - Returns: Thread URL
 
 ### Scheduling
-- **TWITTER_CUSTOM_SCHEDULE_TWEET** — Schedule for later (single tweets only)
+- **TWITTER_CUSTOM_SCHEDULE_TWEET**: Schedule for later (single tweets only)
 
 ## Workflow
 
@@ -46,38 +46,38 @@ Study the results to learn:
 
 A great thread follows storytelling structure:
 
-**Tweet 1 — The Hook (MOST IMPORTANT)**
+**Tweet 1: The Hook (MOST IMPORTANT)**
 - Bold claim, surprising fact, or compelling question
-- This is what appears in timeline — it must stop the scroll
+- This is what appears in timeline: it must stop the scroll
 - Include "Thread:" so people know more is coming
 
-**Tweets 2-3 — Context & Setup**
+**Tweets 2-3: Context & Setup**
 - Why this matters
 - Background the reader needs
 
-**Tweets 4-6 — Key Points**
+**Tweets 4-6: Key Points**
 - One clear idea per tweet
 - Use data, examples, or analogies
 - Each tweet should make sense on its own
 
-**Tweet 7 — Examples or Evidence**
+**Tweet 7: Examples or Evidence**
 - Concrete proof or real-world application
 - Screenshots, links, or references if relevant
 
-**Final Tweet — Conclusion + CTA**
+**Final Tweet: Conclusion + CTA**
 - Summarize the takeaway
 - End with a question, call to action, or invitation to engage
 - "What do you think?" or "Follow for more on X"
 
 ### Step 3: Writing Best Practices
 
-- **280 chars per tweet** — Leave room, don't max out every tweet
-- **Line breaks** — Use them for readability within tweets
-- **One idea per tweet** — Don't cram multiple points
-- **Conversational tone** — Write like you're explaining to a smart friend
-- **No walls of text** — Short sentences, clear language
-- **4-8 tweets total** — Sweet spot for engagement; longer threads lose readers
-- **Emojis sparingly** — 1-2 per tweet max, only if they add meaning
+- **280 chars per tweet**: Leave room, don't max out every tweet
+- **Line breaks**: Use them for readability within tweets
+- **One idea per tweet**: Don't cram multiple points
+- **Conversational tone**: Write like you're explaining to a smart friend
+- **No walls of text**: Short sentences, clear language
+- **4-8 tweets total**: Sweet spot for engagement; longer threads lose readers
+- **Emojis sparingly**: 1-2 per tweet max, only if they add meaning
 
 ### Step 4: Draft and Confirm
 
@@ -131,11 +131,11 @@ Report back with:
 
 ### User Wants to Schedule
 - CUSTOM_SCHEDULE_TWEET handles single tweets, not threads
-- Inform user: "Thread scheduling isn't available yet — I can post it now or save the draft for you to post later."
+- Inform user: "Thread scheduling isn't available yet: I can post it now or save the draft for you to post later."
 
 ## Important Rules
-1. **Research first** — Understand what's already being said
-2. **Hook is everything** — First tweet determines if people read the rest
-3. **Draft before posting** — Always show the full thread for review
-4. **One idea per tweet** — Keep each tweet focused and standalone
-5. **4-8 tweets sweet spot** — Respect the reader's time
+1. **Research first**: Understand what's already being said
+2. **Hook is everything**: First tweet determines if people read the rest
+3. **Draft before posting**: Always show the full thread for review
+4. **One idea per tweet**: Keep each tweet focused and standalone
+5. **4-8 tweets sweet spot**: Respect the reader's time

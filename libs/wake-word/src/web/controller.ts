@@ -9,18 +9,9 @@ import type {
 import { WebRuntime, type WebRuntimeOptions } from "./runtime";
 
 /**
- * High-level controller that owns the AudioContext, AudioWorklet, and detector
- * lifecycle for a browser or Electron renderer. Designed to be used directly,
- * or wrapped in a React hook (see `useWakeWord` in `react.ts`).
- *
- *     const controller = new WakeWordController({
- *       models: { ... }, // ModelSource per stage
- *       workletUrl: new URL("@gaia/wake-word/worklet", import.meta.url),
- *     });
- *     controller.on("detection", e => console.log("WAKE", e));
- *     await controller.start();
- *     // ...
- *     await controller.stop();
+ * High-level controller that owns the AudioContext, AudioWorklet, and detector lifecycle for a
+ * browser or Electron renderer. Used directly, or wrapped in a React hook (see `useWakeWord` in
+ * `react.ts`).
  */
 
 export interface WakeWordControllerOptions {

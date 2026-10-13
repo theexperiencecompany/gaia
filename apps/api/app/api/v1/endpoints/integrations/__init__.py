@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.v1.endpoints.integrations.accounts import router as accounts_router
 from app.api.v1.endpoints.integrations.community import router as community_router
 from app.api.v1.endpoints.integrations.config import router as config_router
 from app.api.v1.endpoints.integrations.custom import router as custom_router
@@ -12,6 +13,7 @@ from app.api.v1.endpoints.integrations.user import router as user_router
 router = APIRouter()
 
 router.include_router(config_router)
+router.include_router(accounts_router)
 router.include_router(marketplace_router, prefix="/marketplace")
 router.include_router(community_router, prefix="/community")
 router.include_router(public_router)

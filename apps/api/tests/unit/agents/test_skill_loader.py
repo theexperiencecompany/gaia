@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 
 from app.agents.workspace import skill_loader as sl
+from app.constants.log_tags import LogTag
+from tests.helpers import captured_wide_event
 
 
 class TestParseFrontmatter:
@@ -51,6 +53,15 @@ class TestTargetToSubagent:
     )
     def test_maps_target_to_subagent_id(self, target: str, expected: str) -> None:
         assert sl.target_to_subagent(target) == expected
+
+    async def test_an_unknown_target_is_reported_not_silently_misfiled(self) -> None:
+        async with captured_wide_event() as event:
+            assert sl.target_to_subagent("weird") == "weird"
+
+        assert event["skill_target"] == "weird"
+        assert event["warnings"] == [
+            {"msg": f"{LogTag.AGENT} skill target matches no integration agent_name"}
+        ]
 
 
 class TestLoadResources:

@@ -1,0 +1,425 @@
+From dd0fa0db916d18c978db76037c3d8283b9a19bcf Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 01:18:12 +0530
+Subject: [PATCH] fix(js): dispatch events along the DOM Standard's event path
+
+Dispatch ran an element's own listeners and then its parentNode's, so it had
+no capture phase, never crossed a shadow root to its host, never went from the
+document to the window, ignored once/passive/capture on element listeners, and
+never retargeted event.target. A click inside a web component never reached
+the page's own listeners.
+
+Dispatch now builds the event path once (assigned slots, shadow roots for
+composed events, the document, the window except for load), runs capture then
+bubble, retargets target and relatedTarget for every listener, honours
+passive, and hides closed trees from composedPath(). Every target shares one
+listener store. DOMContentLoaded and a viewport scroll fire once at the
+document and bubble to the window, instead of being fired at both.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-browser/src/page.rs      |   3 +-
+ crates/obscura-cdp/src/domains/input.rs |   3 +-
+ crates/obscura-js/js/bootstrap.js       | 269 +++++++++++++-----------
+ crates/obscura-js/src/frame.rs          |   4 +-
+ 4 files changed, 152 insertions(+), 127 deletions(-)
+
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+index c637e08..222d32b 100644
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -2892,8 +2892,7 @@ impl Page {
+             // a DOMContentLoaded listener.
+             let _ = js.execute_script(
+                 "<dom-content-loaded>",
+-                "try { document.dispatchEvent(new Event('DOMContentLoaded', {bubbles:false,cancelable:false})); } catch(e) {}\n\
+-                 try { window.dispatchEvent(new Event('DOMContentLoaded', {bubbles:false,cancelable:false})); } catch(e) {}",
++                "try { document.dispatchEvent(new Event('DOMContentLoaded', {bubbles:true,cancelable:false})); } catch(e) {}",
+             );
+ 
+             let load_blockers_finished =
+diff --git a/crates/obscura-cdp/src/domains/input.rs b/crates/obscura-cdp/src/domains/input.rs
+index e6cff31..5b72a6e 100644
+--- a/crates/obscura-cdp/src/domains/input.rs
++++ b/crates/obscura-cdp/src/domains/input.rs
+@@ -318,8 +318,7 @@ pub async fn handle(
+                                 var beforeX = root.scrollLeft, beforeY = root.scrollTop;\
+                                 root.scrollBy(dx, dy);\
+                                 if (root.scrollLeft !== beforeX || root.scrollTop !== beforeY) setTimeout(function() {{\
+-                                    try {{ document.dispatchEvent(new Event('scroll', {{bubbles:false}})); }} catch (_e) {{}}\
+-                                    try {{ globalThis.dispatchEvent(new Event('scroll', {{bubbles:false}})); }} catch (_e) {{}}\
++                                    try {{ document.dispatchEvent(new Event('scroll', {{bubbles:true}})); }} catch (_e) {{}}\
+                                 }}, 0);\
+                             }} else if (scrollTarget && typeof scrollTarget.scrollBy === 'function') scrollTarget.scrollBy(dx, dy);\
+                         }})()",
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index f7d9257..3690a6f 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -711,11 +711,9 @@ function _getFp() {
+   return _fpCache;
+ }
+ function _fp(key) { return _getFp()[key]; }
+-globalThis._eventRegistry = globalThis._eventRegistry || {};
+ globalThis._formValues = globalThis._formValues || {};
+ globalThis._formChecked = globalThis._formChecked || {};
+ globalThis._formIndeterminate = globalThis._formIndeterminate || {};
+-const _eventRegistry = globalThis._eventRegistry;
+ const _formValues = globalThis._formValues;
+ const _formChecked = globalThis._formChecked;
+ const _formIndeterminate = globalThis._formIndeterminate;
+@@ -1869,32 +1867,140 @@ function _eventTargetRemove(target, type, callback, options) {
+   if (listeners.length === 0) byType.delete(type);
+   if (byType.size === 0) _eventTargetListeners.delete(target);
+ }
+-function _eventTargetDispatch(target, event) {
+-  if (!event || typeof event.type === "undefined") {
+-    throw new TypeError("Failed to execute 'dispatchEvent' on 'EventTarget': parameter 1 is not of type 'Event'.");
++// DOM Standard "get the parent" of an event path item: a slotted node's
++// parent is its assigned slot, a shadow root's is its host unless the event
++// is not composed and started inside that shadow tree, a document's is its
++// window (except for `load`), and the window has none.
++function _eventParent(item, event, firstTarget) {
++  if (item === globalThis) return null;
++  if (typeof item.nodeType !== "number") return null;
++  if (item instanceof ShadowRoot) {
++    if (!event.composed && firstTarget && firstTarget.getRootNode && firstTarget.getRootNode() === item) {
++      return null;
++    }
++    return item.host;
+   }
+-  if (String(event.type) === "") {
+-    throw new DOMException("The event's type was not specified.", "InvalidStateError");
++  if (item.nodeType === 9) {
++    return event.type !== "load" && item === globalThis.document ? globalThis : null;
++  }
++  if (item.nodeType === 1 || item.nodeType === 3) {
++    const slot = +_dom("assigned_slot", item._nid);
++    if (slot >= 0) return _wrap(slot);
++  }
++  return item.parentNode;
++}
++// Listener invocation for one path item in one phase ("inner invoke").
++function _eventInvoke(item, event, capturePhase) {
++  if (event._propagationStopped) return;
++  event.currentTarget = item;
++  const type = String(event.type);
++  // An element's `on<type>` handler (property or content attribute) runs
++  // with its non-capture listeners, ahead of them.
++  if (!capturePhase && item.nodeType === 1) {
++    const handlerName = "on" + type;
++    const inlineFn = item[handlerName] || item._resolveInlineHandler(handlerName);
++    if (typeof inlineFn === "function") {
++      try {
++        if (inlineFn.call(item, event) === false) event.preventDefault();
++      } catch (error) {
++        console.error(error);
++      }
++      if (event._immediatePropagationStopped) return;
++    }
+   }
+-  if (!event.target) event.target = target;
+-  event.currentTarget = target;
+-  event.eventPhase = 2;
+-  const listeners = (_eventTargetListeners.get(target)?.get(String(event.type)) || []).slice();
++  const listeners = (_eventTargetListeners.get(item)?.get(type) || []).slice();
+   for (const entry of listeners) {
+-    const current = _eventTargetListeners.get(target)?.get(String(event.type));
++    if (entry.capture !== capturePhase) continue;
++    const current = _eventTargetListeners.get(item)?.get(type);
+     if (!current || !current.includes(entry)) continue;
+-    if (entry.once) _eventTargetRemove(target, event.type, entry.callback, entry.capture);
++    if (entry.once) _eventTargetRemove(item, type, entry.callback, entry.capture);
+     const callback = entry.callback;
++    event._inPassiveListener = entry.passive;
+     try {
+-      if (typeof callback === "function") callback.call(target, event);
++      if (typeof callback === "function") callback.call(item, event);
+       else callback.handleEvent.call(callback, event);
+     } catch (error) {
+       console.error(error);
+     }
++    event._inPassiveListener = false;
+     if (event._immediatePropagationStopped) break;
+   }
+-  event.currentTarget = null;
++}
++// DOM Standard "dispatch": build the event path once (through shadow roots,
++// slots, the document and the window), then run the capture phase from the
++// window down, and the bubble phase back up, retargeting `target` and
++// `relatedTarget` for every item so no listener sees into a shadow tree it is
++// outside of. Activation behaviour (a link's navigation, a checkbox's toggle)
++// stays with the callers that perform it.
++function _eventTargetDispatch(target, event) {
++  if (!event || typeof event.type === "undefined") {
++    throw new TypeError("Failed to execute 'dispatchEvent' on 'EventTarget': parameter 1 is not of type 'Event'.");
++  }
++  if (String(event.type) === "") {
++    throw new DOMException("The event's type was not specified.", "InvalidStateError");
++  }
++  if (event._dispatching) {
++    throw new DOMException("The event is already being dispatched.", "InvalidStateError");
++  }
++  event._dispatching = true;
++  const originalRelated = event.relatedTarget == null ? null : event.relatedTarget;
++  const path = [];
++  const relatedFor = (item) => (originalRelated == null ? null : _retarget(originalRelated, item));
++  const targetRelated = relatedFor(target);
++  if (target !== targetRelated || target === originalRelated) {
++    path.push({ item: target, target, related: targetRelated });
++    let current = target;
++    let parent = _eventParent(target, event, target);
++    while (parent) {
++      const targetRoot = current.getRootNode ? current.getRootNode() : null;
++      if (parent === globalThis || (targetRoot && _rootContainsShadowIncluding(targetRoot, parent))) {
++        path.push({ item: parent, target: null, related: relatedFor(parent) });
++      } else if (parent === targetRelated) {
++        break;
++      } else {
++        current = parent;
++        path.push({ item: parent, target: parent, related: relatedFor(parent) });
++      }
++      parent = _eventParent(parent, event, target);
++    }
++  }
++  event._path = path;
++  // An item's event target is the nearest shadow-adjusted target at or
++  // before it in the path.
++  const targets = [];
++  let adjusted = target;
++  for (const entry of path) {
++    if (entry.target !== null) adjusted = entry.target;
++    targets.push(adjusted);
++  }
++  for (let i = path.length - 1; i >= 0; i--) {
++    event.target = targets[i];
++    event.relatedTarget = path[i].related;
++    event.eventPhase = path[i].target !== null ? 2 : 1;
++    _eventInvoke(path[i].item, event, true);
++  }
++  for (let i = 0; i < path.length; i++) {
++    if (path[i].target === null && !event.bubbles) continue;
++    event.target = targets[i];
++    event.relatedTarget = path[i].related;
++    event.eventPhase = path[i].target !== null ? 2 : 3;
++    _eventInvoke(path[i].item, event, false);
++  }
+   event.eventPhase = 0;
++  event.currentTarget = null;
++  event._path = null;
++  // A target inside a shadow tree is not exposed once dispatch ends.
++  const lastTarget = targets.length ? targets[targets.length - 1] : target;
++  const inShadow = (node) => node && node.getRootNode && node.getRootNode() instanceof ShadowRoot;
++  if (inShadow(lastTarget) || inShadow(event.relatedTarget)) {
++    event.target = null;
++    event.relatedTarget = null;
++  } else {
++    event.target = lastTarget;
++  }
++  event._dispatching = false;
++  event._propagationStopped = false;
++  event._immediatePropagationStopped = false;
+   return !event.defaultPrevented;
+ }
+ 
+@@ -1906,24 +2012,6 @@ function _eventTargetDispatch(target, event) {
+ // calls them on window and on elements; when window did not inherit from
+ // EventTarget it found nothing and threw
+ // "window.__shady_native_addEventListener is not a function".
+-//
+-// The listener storage still differs by kind of target (elements keep theirs in
+-// _eventRegistry, documents on the wrapper), so each kind registers its storage
+-// against its prototype and the shared methods use the nearest one on the
+-// target's prototype chain.
+-const _eventTargetKinds = new WeakMap();
+-const _eventTargetGeneric = {
+-  add: _eventTargetAdd,
+-  remove: _eventTargetRemove,
+-  dispatch: _eventTargetDispatch,
+-};
+-function _eventTargetKindOf(target) {
+-  for (let p = Object.getPrototypeOf(target); p; p = Object.getPrototypeOf(p)) {
+-    const kind = _eventTargetKinds.get(p);
+-    if (kind) return kind;
+-  }
+-  return _eventTargetGeneric;
+-}
+ // WebIDL: an operation called with a null/undefined `this` on the global uses
+ // the global object, so a bare `addEventListener(...)` in strict code or a
+ // module still reaches window.
+@@ -1932,16 +2020,13 @@ function _eventTargetThis(target) {
+ }
+ class EventTarget {
+   addEventListener(type, callback, options) {
+-    const target = _eventTargetThis(this);
+-    _eventTargetKindOf(target).add(target, type, callback, options);
++    _eventTargetAdd(_eventTargetThis(this), type, callback, options);
+   }
+   removeEventListener(type, callback, options) {
+-    const target = _eventTargetThis(this);
+-    _eventTargetKindOf(target).remove(target, type, callback, options);
++    _eventTargetRemove(_eventTargetThis(this), type, callback, options);
+   }
+   dispatchEvent(event) {
+-    const target = _eventTargetThis(this);
+-    return _eventTargetKindOf(target).dispatch(target, event);
++    return _eventTargetDispatch(_eventTargetThis(this), event);
+   }
+ }
+ _markNative(EventTarget);
+@@ -5301,53 +5386,6 @@ class Element extends Node {
+   }
+ }
+ 
+-// Element listener storage, reached through EventTarget.prototype (see
+-// _eventTargetKinds). Listeners live in _eventRegistry by node id so they
+-// survive wrapper churn; dispatch also runs the element's inline `on*`
+-// handler and bubbles to the parent.
+-_eventTargetKinds.set(Element.prototype, {
+-  add(el, type, handler, opts) {
+-    const key = el._nid;
+-    if (!_eventRegistry[key]) _eventRegistry[key] = {};
+-    if (!_eventRegistry[key][type]) _eventRegistry[key][type] = [];
+-    _eventRegistry[key][type].push(handler);
+-  },
+-  remove(el, type, handler) {
+-    const key = el._nid;
+-    if (_eventRegistry[key] && _eventRegistry[key][type]) {
+-      _eventRegistry[key][type] = _eventRegistry[key][type].filter(h => h !== handler);
+-    }
+-  },
+-  dispatch(el, event) {
+-    if (!event) return true;
+-    if (!event.target) event.target = el;
+-    event.currentTarget = el;
+-    // Spec: inline `onclick="..."` content attributes are event handlers
+-    // for the matching event type. Fire them alongside any
+-    // addEventListener handlers. Also honor the IDL property
+-    // `el.onclick = fn` if set. Without this, b.click() never invokes
+-    // the inline handler and forms with onsubmit / buttons with onclick
+-    // are silently dead.
+-    const handlerName = 'on' + event.type;
+-    const inlineFn = el[handlerName] || el._resolveInlineHandler(handlerName);
+-    if (typeof inlineFn === 'function') {
+-      try {
+-        const ret = inlineFn.call(el, event);
+-        if (ret === false) event.preventDefault();
+-      } catch(e) { console.error(e); }
+-    }
+-    const handlers = (_eventRegistry[el._nid] || {})[event.type] || [];
+-    for (const h of handlers) {
+-      try { h.call(el, event); } catch(e) { console.error(e); }
+-      if (event._immediatePropagationStopped) break;
+-    }
+-    if (event.bubbles && !event._propagationStopped && el.parentNode) {
+-      el.parentNode.dispatchEvent(event);
+-    }
+-    return !event.defaultPrevented;
+-  },
+-});
+-
+ // WHATWG "convert nodes into a node": a Node argument passes through, anything
+ // else is stringified into a Text node, so e.g. append(null) inserts the text
+ // "null" and append(undefined) inserts "undefined" per the (Node or DOMString)
+@@ -10285,17 +10323,31 @@ globalThis.__obscura_setInputFiles = function(el, specs) {
+ globalThis.Event = class Event {
+   constructor(t,o={}) { if (arguments.length < 1) throw new TypeError("Failed to construct 'Event': 1 argument required, but only 0 present."); this.type=String(t);this.bubbles=!!o.bubbles;this.cancelable=!!o.cancelable;this.composed=!!o.composed;this.defaultPrevented=false;this.target=null;this.currentTarget=null;this.eventPhase=0;this.timeStamp=Date.now();this._propagationStopped=false;this._immediatePropagationStopped=false; }
+   get isTrusted() { return _trustedEvents.has(this); }
+-  preventDefault() { if (this.cancelable) this.defaultPrevented=true; } stopPropagation(){ this._propagationStopped=true; } stopImmediatePropagation(){ this._propagationStopped=true; this._immediatePropagationStopped=true; }
++  preventDefault() { if (this.cancelable && !this._inPassiveListener) this.defaultPrevented=true; } stopPropagation(){ this._propagationStopped=true; } stopImmediatePropagation(){ this._propagationStopped=true; this._immediatePropagationStopped=true; }
++  get cancelBubble() { return !!this._propagationStopped; }
++  set cancelBubble(v) { if (v) this._propagationStopped = true; }
++  get returnValue() { return !this.defaultPrevented; }
++  set returnValue(v) { if (!v) this.preventDefault(); }
++  get srcElement() { return this.target; }
+   initEvent(type,bubbles,cancelable) { if (arguments.length < 1) throw new TypeError("Failed to execute 'initEvent' on 'Event': 1 argument required, but only 0 present."); this.type=String(type);this.bubbles=!!bubbles;this.cancelable=!!cancelable;this.defaultPrevented=false;this._propagationStopped=false;this._immediatePropagationStopped=false; }
++  // The dispatch path as the current listener may see it: nodes inside a
++  // closed shadow tree that does not contain the current target are hidden.
+   composedPath() {
+-    if (!this.target) return [];
+-    const path = [];
+-    let n = this.target;
+-    while (n) { path.push(n); n = n.parentNode || null; }
+-    if (typeof window !== "undefined" && window && path[path.length - 1] !== window) path.push(window);
+-    return path;
++    if (!this._path || !this.currentTarget) return [];
++    const current = this.currentTarget;
++    const visible = (item) => {
++      for (let root = item.getRootNode ? item.getRootNode() : null; root instanceof ShadowRoot; root = root.host.getRootNode()) {
++        if (root.mode === "closed" && !_rootContainsShadowIncluding(root, current)) return false;
++      }
++      return true;
++    };
++    return this._path.map((entry) => entry.item).filter(visible);
+   }
+ };
++for (const [_phaseName, _phase] of [["NONE", 0], ["CAPTURING_PHASE", 1], ["AT_TARGET", 2], ["BUBBLING_PHASE", 3]]) {
++  Object.defineProperty(Event, _phaseName, { value: _phase, enumerable: true });
++  Object.defineProperty(Event.prototype, _phaseName, { value: _phase, enumerable: true });
++}
+ _markNative(Event);
+ globalThis.CustomEvent = class extends Event {
+   constructor(t,o={}) { if (arguments.length < 1) throw new TypeError("Failed to construct 'CustomEvent': 1 argument required, but only 0 present."); super(t,o);this.detail=o.detail!==undefined?o.detail:null; }
+@@ -12363,27 +12415,6 @@ globalThis.DocumentType = DocumentType;
+ globalThis.Node = Node;
+ globalThis.Element = Element;
+ globalThis.Document = Document;
+-// Document listener storage, reached through EventTarget.prototype (see
+-// _eventTargetKinds).
+-_eventTargetKinds.set(Document.prototype, {
+-  add(doc, type, fn, opts) {
+-    if (typeof fn !== 'function') return;
+-    if (!doc._listeners) doc._listeners = {};
+-    if (!doc._listeners[type]) doc._listeners[type] = [];
+-    if (!doc._listeners[type].includes(fn)) doc._listeners[type].push(fn);
+-  },
+-  remove(doc, type, fn) {
+-    if (doc._listeners?.[type]) {
+-      doc._listeners[type] = doc._listeners[type].filter(h => h !== fn);
+-    }
+-  },
+-  dispatch(doc, event) {
+-    if (!event) return true;
+-    const handlers = (doc._listeners?.[event.type] || []).slice();
+-    for (const h of handlers) { try { h.call(doc, event); } catch(e) { console.error('document event error:', e); } }
+-    return !event.defaultPrevented;
+-  },
+-});
+ // CSSStyleDeclaration is the type of element.style and getComputedStyle(); it is
+ // pre-declared non-enumerable in _preHideInternals, but unlike the other WebIDL
+ // interfaces it had no value assignment, leaving `window.CSSStyleDeclaration`
+@@ -14391,15 +14422,13 @@ function _windowScroll(x, y, relative) {
+   if ((root.scrollLeft || 0) === beforeLeft && (root.scrollTop || 0) === beforeTop) {
+     return;
+   }
+-  // Async, matching the element path #431 added. Dispatched at the document
+-  // AND the window: a page scroll event reaches both in Chrome, but
+-  // Document.dispatchEvent here runs only its own listeners and does not
+-  // propagate, so firing once would strand half the listeners.
++  // Async, matching the element path #431 added. A viewport scroll fires at
++  // the document and bubbles to the window, as in Chrome.
+   setTimeout(() => {
+     try {
+       const doc = globalThis.document;
+-      if (doc) doc.dispatchEvent(new Event('scroll', { bubbles: false }));
+-      globalThis.dispatchEvent(new Event('scroll', { bubbles: false }));
++      if (doc) doc.dispatchEvent(new Event('scroll', { bubbles: true }));
++      else globalThis.dispatchEvent(new Event('scroll', { bubbles: false }));
+     } catch (e) {}
+   }, 0);
+ }
+diff --git a/crates/obscura-js/src/frame.rs b/crates/obscura-js/src/frame.rs
+index 09dd16b..e3aeacf 100644
+--- a/crates/obscura-js/src/frame.rs
++++ b/crates/obscura-js/src/frame.rs
+@@ -142,9 +142,7 @@ impl FrameRealm {
+             parent,
+             "globalThis.__documentReadyState__ = 'interactive';\
+              try { document.dispatchEvent(new Event('DOMContentLoaded', \
+-                 { bubbles: false, cancelable: false })); } catch (_) {}\
+-             try { window.dispatchEvent(new Event('DOMContentLoaded', \
+-                 { bubbles: false, cancelable: false })); } catch (_) {}\
++                 { bubbles: true, cancelable: false })); } catch (_) {}\
+              globalThis.__documentReadyState__ = 'complete';\
+              try { document.dispatchEvent(new Event('readystatechange')); } catch (_) {}\
+              try { const loadEvent = new Event('load', \

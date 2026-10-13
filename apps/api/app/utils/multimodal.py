@@ -5,13 +5,14 @@ media is in play the list form carries base64 payloads that must never reach a
 logger, a stream, a memory ingest, or a char-based token estimate. These helpers
 are the single place that knows how to look inside that list.
 
-Image encoding and transcoding live in ``app/utils/image_codec.py``; per-lane
-delivery lives in ``app/agents/llm/vision/``.
+Image encoding and transcoding live in app/utils/image_codec.py; per-lane
+delivery lives in app/agents/llm/vision/.
 """
 
 from typing import Any, TypeAlias, TypeGuard
 
 from langchain_core.messages import is_data_content_block
+from pydantic import BaseModel, ConfigDict
 
 from app.constants.media import MEDIA_BLOCK_TOKEN_ESTIMATE
 
@@ -19,9 +20,8 @@ from app.constants.media import MEDIA_BLOCK_TOKEN_ESTIMATE
 _MEDIA_BLOCK_CHARS = MEDIA_BLOCK_TOKEN_ESTIMATE * 4
 
 # A single content block: an arbitrary string-keyed JSON object. Values stay
-# ``Any`` because provider and LangChain data blocks are genuinely heterogeneous
-# third-party shapes — this is the one place that ``Any`` is unavoidable. The
-# blocks this codebase itself produces (text / image) follow a fixed schema.
+# ``Any`` since provider and LangChain data blocks are genuinely heterogeneous
+# third-party shapes — the one place ``Any`` is unavoidable.
 ContentBlock: TypeAlias = dict[str, Any]
 # One entry in a structured content list: a bare string or a block.
 ContentItem: TypeAlias = str | ContentBlock
@@ -30,12 +30,21 @@ ContentItem: TypeAlias = str | ContentBlock
 MessageContent: TypeAlias = str | list[ContentItem]
 
 
+class _BlockText(BaseModel):
+    """A content block's discriminator and text, as far as text extraction reads them."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    type: object = None
+    text: object = None
+
+
 def text_content_block(text: str) -> ContentBlock:
     return {"type": "text", "text": text}
 
 
 def image_content_block(base64_data: str, mime_type: str) -> ContentBlock:
-    """The canonical inline-image block, from already-base64-encoded data."""
+    """Build the canonical inline-image block, from already-base64-encoded data."""
     return {"type": "image", "base64": base64_data, "mime_type": mime_type}
 
 
@@ -44,7 +53,7 @@ def is_media_block(block: object) -> TypeGuard[ContentBlock]:
 
 
 def media_blocks(content: MessageContent) -> list[ContentBlock]:
-    """The inline-media blocks in ``content``, in order; empty for text content."""
+    """Return the inline-media blocks in content, in order; empty for text content."""
     if not isinstance(content, list):
         return []
     return [block for block in content if is_media_block(block)]
@@ -55,17 +64,12 @@ def has_media_blocks(content: MessageContent) -> bool:
 
 
 def extract_text_content(content: object) -> str:
-    """The text of message content that may be a list of blocks.
+    """Return the text of message content that may be a list of blocks.
 
-    Non-text blocks (inline media, base64 payloads) are dropped, so callers that
-    log, stream, or ingest text never see megabytes of base64. Text blocks are
-    rejoined with newlines, the separator their producers split on (an MCP result
-    is one block per line), so extracting a block list round-trips its layout.
-
-    Typed ``object`` rather than ``MessageContent``: real callers (``msg.content``
-    on non-``BaseMessage`` objects, malformed upstream data) sometimes hand this a
-    bool/int/None, so the trailing ``str(content)`` fallback below is real,
-    reachable code, not dead code the type alias would otherwise imply.
+    Non-text blocks (inline media, base64) are dropped; text blocks are
+    rejoined with newlines, the separator their producers split on. Typed
+    object, not MessageContent: real callers sometimes hand this a
+    bool/int/None, so the trailing str(content) fallback is reachable code.
     """
     if isinstance(content, str):
         return content
@@ -75,8 +79,10 @@ def extract_text_content(content: object) -> str:
         for item in content:
             if isinstance(item, str):
                 text_parts.append(item)
-            elif isinstance(item, dict) and item.get("type") == "text":
-                text_parts.append(str(item.get("text") or ""))
+            elif (
+                isinstance(item, dict) and (block := _BlockText.model_validate(item)).type == "text"
+            ):
+                text_parts.append(str(block.text or ""))
         return "\n".join(text_parts)
 
     return str(content)

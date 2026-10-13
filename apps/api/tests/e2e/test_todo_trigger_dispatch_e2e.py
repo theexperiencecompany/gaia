@@ -1,27 +1,17 @@
 """E2E: a fired trigger fans out to subscribed todos, against real Mongo + Redis.
 
-WHAT THIS PROVES — the loop the dispatch unit test mocks away in full (it patches
-the repository, Redis, the enqueue, notifications and completion). Here every one
-of those is real: ``dispatch_to_subscribed_todos`` resolves subscribers through
-the real todo finders, evaluates conditions, claims the cooldown slot in real
-Redis, and runs each action for real — enqueues ``execute``, writes a
-notification, completes-and-tears-down.
+Unlike the dispatch unit test (which mocks the repository, Redis, enqueue,
+notifications and completion), every one of those is real here:
+dispatch_to_subscribed_todos resolves subscribers via the real todo finders,
+evaluates conditions, claims the cooldown slot in real Redis, and runs each
+action for real.
 
-Seeding goes through the REAL update path (``todo_repository.update`` with a
-``TodoUpdate`` carrying the subscription), because the finders match on
-``trigger_subscriptions.$elemMatch: {status: "active"}``. A subscription that did
-not round-trip whole — the ``exclude_unset`` regression that shipped once — would
-be stored without ``status`` and the ``$elemMatch`` would never match, so these
-tests would go red. That makes this file the end-to-end guard for that bug.
-
-Needs USE_REAL_SERVICES=1 (real Mongo + Redis); skipped at collection otherwise.
-
-NOT here: running the woken ``execute_tracked_todo`` agent. Its request is covered
-by ``tests/integration/test_tracked_todo_agent_request.py`` and the subscribe path
-through the compiled graph by ``tests/e2e/test_todo_trigger_subscription_flow.py``.
-This file asserts the ``execute`` hand-off — the enqueued job and its
-``TriggerOrigin`` — not the run itself, so ``enqueue_worker_job`` is the one seam
-spied rather than executed.
+Seeding goes through the real todo_repository.update, because finders match
+trigger_subscriptions.$elemMatch: {status: "active"} — the exclude_unset
+regression that once shipped would store a subscription without status and
+silently break that match. Needs USE_REAL_SERVICES=1; skipped at collection
+otherwise. Does NOT run the woken execute_tracked_todo agent (covered
+elsewhere) — only the hand-off, so enqueue_worker_job is spied not executed.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -37,16 +27,18 @@ from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionCondition,
     SubscriptionResolution,
-    SubscriptionStatus,
     TriggerOrigin,
     TriggerSubscription,
+    TriggerSubscriptionStatus,
 )
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
 
 pytestmark = pytest.mark.e2e
 
 _MOD = "app.services.triggers.subscription_dispatch"
+_BATCHING = "app.services.triggers.batching"
 GMAIL = "gmail_new_message"
+GMAIL_SENT = "gmail_email_sent"
 SLACK = "slack_new_message"
 
 
@@ -69,7 +61,7 @@ async def _seed_watch(
     """Create a todo, then attach a subscription through the real update path.
 
     The update path (not create) is deliberate: it is the one that dropped nested
-    defaults via ``exclude_unset`` before the fix, and it is what registration
+    defaults via exclude_unset before the fix, and it is what registration
     actually uses.
     """
     todo = await todo_repository.create(
@@ -105,7 +97,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"thread_id": "t-1", "sender": "a@acme.com"}
                 )
@@ -128,9 +120,47 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"thread_id": "t-999"}
+                )
+
+        assert fired == 0
+        enqueue.assert_not_awaited()
+
+    async def test_the_users_own_reply_on_the_watched_thread_wakes_the_todo(
+        self, _new_user
+    ) -> None:
+        todo_id, sub = await _seed_watch(
+            _new_user,
+            trigger_name=GMAIL_SENT,
+            conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
+        )
+        reply = {"thread_id": "t-1", "recipients": "alice@acme.com, bob@acme.com"}
+
+        with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
+            with patch(f"{_MOD}.capture"):
+                fired = await dispatch_to_subscribed_todos(GMAIL_SENT, None, _new_user, reply)
+
+        assert fired == 1
+        _pool, task_name, woken_todo_id, origin = enqueue.await_args.args
+        assert task_name == "execute_tracked_todo"
+        assert woken_todo_id == todo_id
+        assert origin.subscription_id == sub.id
+        assert origin.trigger_name == GMAIL_SENT
+        assert origin.payload["thread_id"] == "t-1"
+
+    async def test_a_reply_on_another_thread_does_not_wake_the_todo(self, _new_user) -> None:
+        await _seed_watch(
+            _new_user,
+            trigger_name=GMAIL_SENT,
+            conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
+        )
+
+        with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
+            with patch(f"{_MOD}.capture"):
+                fired = await dispatch_to_subscribed_todos(
+                    GMAIL_SENT, None, _new_user, {"thread_id": "t-2"}
                 )
 
         assert fired == 0
@@ -139,17 +169,22 @@ class TestTriggerDispatchAgainstRealInfra:
     async def test_a_per_resource_event_resolves_by_trigger_id_without_a_user(
         self, _new_user
     ) -> None:
+        # Unique per run: the lookup spans users, and the test database is not
+        # wiped, so a fixed id also matched every earlier run's todo.
+        trigger_id = f"ti-{ObjectId()}"
         todo_id, _ = await _seed_watch(
             _new_user,
             trigger_name=SLACK,
             resolution=SubscriptionResolution.TRIGGER_ID,
-            composio_trigger_ids=["ti-42"],
+            composio_trigger_ids=[trigger_id],
             conditions=[],
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
-                fired = await dispatch_to_subscribed_todos(SLACK, "ti-42", None, {"channel": "C1"})
+            with patch(f"{_MOD}.capture"):
+                fired = await dispatch_to_subscribed_todos(
+                    SLACK, trigger_id, None, {"channel": "C1"}
+                )
 
         assert fired == 1
         assert enqueue.await_args.args[2] == todo_id
@@ -166,7 +201,7 @@ class TestTriggerDispatchAgainstRealInfra:
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"sender": "ap@northwind.com"}
                 )
@@ -174,24 +209,35 @@ class TestTriggerDispatchAgainstRealInfra:
         assert fired == 1
         assert enqueue.await_count == 1
 
-    async def test_cooldown_suppresses_the_second_fire(self, _new_user) -> None:
-        await _seed_watch(
+    async def test_a_second_fire_inside_the_window_is_held_for_the_next_run(
+        self, _new_user, real_redis
+    ) -> None:
+        todo_id, sub = await _seed_watch(
             _new_user,
             cooldown_seconds=300,
             conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
         )
-        payload = {"thread_id": "t-1"}
 
-        with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
-                first = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, payload)
-                second = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, payload)
+        with (
+            patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
+            patch(f"{_BATCHING}.enqueue_worker_job", new_callable=AsyncMock) as drain,
+            patch(f"{_MOD}.capture"),
+        ):
+            first = await dispatch_to_subscribed_todos(
+                GMAIL, None, _new_user, {"thread_id": "t-1", "message_id": "m-1"}
+            )
+            second = await dispatch_to_subscribed_todos(
+                GMAIL, None, _new_user, {"thread_id": "t-1", "message_id": "m-2"}
+            )
 
-        # The real Redis SET NX cooldown slot is claimed on the first fire and
-        # still held on the second, within the 300s window.
-        assert first == 1
-        assert second == 0
+        # The real SET NX window is claimed by the first fire, which runs now; the
+        # second lands inside the 300s window and waits in the todo's buffer.
+        assert (first, second) == (1, 1)
         assert enqueue.await_count == 1
+        (held,) = await real_redis.lrange(f"trigger_batch:todo:{todo_id}", 0, -1)
+        origin = TriggerOrigin.model_validate_json(held)
+        assert (origin.subscription_id, origin.payload["message_id"]) == (sub.id, "m-2")
+        assert drain.await_args.args[1:3] == ("execute_tracked_todo", todo_id)
 
     async def test_notify_writes_a_notification_and_leaves_the_todo_open(
         self, _new_user, mongo_db
@@ -202,7 +248,7 @@ class TestTriggerDispatchAgainstRealInfra:
             conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
         )
 
-        with patch(f"{_MOD}.capture_event"):
+        with patch(f"{_MOD}.capture"):
             fired = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, {"thread_id": "t-1"})
 
         assert fired == 1
@@ -222,7 +268,7 @@ class TestTriggerDispatchAgainstRealInfra:
             conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
         )
 
-        with patch(f"{_MOD}.capture_event"):
+        with patch(f"{_MOD}.capture"):
             fired = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, {"thread_id": "t-1"})
 
         assert fired == 1
@@ -243,14 +289,14 @@ class TestTriggerDispatchAgainstRealInfra:
         paused = (
             todos[0]
             .trigger_subscriptions[0]
-            .model_copy(update={"status": SubscriptionStatus.PAUSED})
+            .model_copy(update={"status": TriggerSubscriptionStatus.PAUSED})
         )
         await todo_repository.update(
             todos[0].id, user_id=_new_user, update=TodoUpdate(trigger_subscriptions=[paused])
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
+            with patch(f"{_MOD}.capture"):
                 fired = await dispatch_to_subscribed_todos(
                     GMAIL, None, _new_user, {"thread_id": "t-1"}
                 )

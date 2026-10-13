@@ -1,18 +1,18 @@
-import { createTheme } from "@openuidev/react-ui";
+// Import from the ThemeProvider subpath, not the package barrel. The barrel
+// (@openuidev/react-ui) statically pulls in recharts, react-markdown,
+// react-syntax-highlighter and react-day-picker (~1.5-2 MB), which then land on
+// EVERY route via RootProviders — including the desktop login screen. The
+// subpath re-exports createTheme + ThemeProvider with none of that weight.
+import { createTheme } from "@openuidev/react-ui/ThemeProvider";
 
 /**
  * GAIA OpenUI theme.
  *
- * Maps `@openuidev/react-ui`'s `--openui-*` design tokens onto GAIA's design
- * system (see DESIGN.md) so the adopted component library renders identically
- * to the rest of the product. Applied via `<ThemeProvider mode="dark"
- * darkTheme={gaiaOpenUITheme}>` around the OpenUI render root.
- *
- * Token → component mapping verified against the library CSS:
- * - `foreground` → Card "card" surface  → zinc-800 (#27272a)
- * - `sunk`       → Card "sunk" surface  → zinc-900 (#18181b)
- * - `textNeutral*` → all body/label text → zinc-100/400/500
- * - `radius3xl` (Card) defaults to 16px = GAIA `rounded-2xl`
+ * Maps `@openuidev/react-ui`'s `--openui-*` tokens onto GAIA's design system
+ * (DESIGN.md), applied via `<ThemeProvider mode="dark" darkTheme={gaiaOpenUITheme}>`.
+ * Verified against the library CSS: `foreground`→Card "card" zinc-800
+ * (#27272a), `sunk`→Card "sunk" zinc-900 (#18181b), `textNeutral*`→body/label
+ * zinc-100/400/500, `radius3xl`(Card)=16px=GAIA `rounded-2xl`.
  */
 
 // GAIA data-viz palettes (DESIGN.md). Cyan-led, matching the previous OpenUI charts.

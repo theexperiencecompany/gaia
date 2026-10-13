@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { RedirectLoader } from "@/components/shared/RedirectLoader";
-import { apiauth } from "@/lib/api/client";
+import { apiBaseUrl } from "@/lib/api/client";
 import { generatePageMetadata } from "@/lib/seo";
 // import SignupForm from "@/features/auth/components/SignupForm";
 
@@ -26,7 +26,7 @@ export default function SignupPage() {
 
   return (
     <div className="h-screen">
-      <RedirectLoader url={`${apiauth.getUri()}oauth/login/workos`} replace />
+      <RedirectLoader url={`${apiBaseUrl}/oauth/login/workos`} replace />
     </div>
   );
 }

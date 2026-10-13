@@ -1,23 +1,15 @@
-"""E2E: the account-center surface wired into a REAL compiled GAIA graph.
+"""E2E: the account-center surface wired into a real compiled GAIA graph.
 
-WHAT THIS TESTS (REAL GAIA CODE):
-- The five account mutation tools exactly as registered for the executor.
-- The real ``create_agent`` graph (bigtool) dispatching LLM tool calls into
-  them, with config threading (user_id) intact end to end.
-- The real global ToolRegistry stamps: the settings tools carry
-  ``always_gate`` and ``manage_linked_account`` does not — plus the REAL
-  ``resolve_policy`` returning ``ask`` for them under an ``always_allow`` user.
-- The write tool refusing ``account/**`` paths inside a graph turn, naming the
-  owning mutation tool, without touching the sandbox.
+Covers real GAIA code: the five account mutation tools as registered for the
+executor; the real create_agent (bigtool) graph dispatching LLM tool calls
+with user_id threaded through config; the real ToolRegistry stamps (settings
+tools carry always_gate, manage_linked_account does not) and resolve_policy
+returning ask for them under an always_allow user; the write tool refusing
+account/** paths inside a graph turn, naming the owning mutation tool.
 
-Mock surfaces:
-- LLM: BindableToolsFakeModel (scripted AIMessages)
-- Store/Checkpointer: in-memory
-- Repository/service seams (Mongo, ElevenLabs, platform links): patched at the
-  boundary the tools own
-
-DELETE ``app/agents/tools/account_tools.py`` → these tests FAIL.
-DELETE ``app/agents/tools/core/mutations.py`` → these tests FAIL.
+Mocked: the LLM, in-memory store/checkpointer, and the repo/service seams
+(Mongo, ElevenLabs, platform links) each tool owns. Deleting account_tools.py
+or core/mutations.py fails these tests.
 """
 
 import asyncio
@@ -34,9 +26,10 @@ from app.core.lazy_loader import providers
 from app.db.repositories.users import user_repository
 from app.models.hil_models import HILPreferences
 from app.services import account_settings
-from app.services.analytics_service import AnalyticsEvents
 from app.services.hil.policy import resolve_policy
 from app.services.hil.utils import unpack_tool_call
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import AccountSettingChanged
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel
 
@@ -69,7 +62,7 @@ def _graph_with(fake_llm, extra_tools=(), **patches):
 
 @pytest.fixture
 def _patched_seams():
-    """The repo/service boundaries behind every account tool."""
+    """Patch the repo/service boundaries behind every account tool."""
 
     with (
         patch.object(user_repository, "set_channel_preferences", new=AsyncMock()) as set_channels,
@@ -80,7 +73,7 @@ def _patched_seams():
         patch.object(account_settings, "list_voices", new=AsyncMock()) as list_voices,
         patch.object(account_settings, "set_user_voice", new=AsyncMock()) as set_user_voice,
         patch(f"{account_tools.__name__}.schedule_account_sync") as resync,
-        patch("app.agents.tools.core.mutations.capture_context_event") as capture,
+        patch("app.agents.tools.core.mutations.capture") as capture,
         patch(f"{account_tools.__name__}.enforce_rate_limit", new=AsyncMock()),
     ):
         yield SimpleNamespace(
@@ -135,11 +128,11 @@ class TestAccountToolsThroughGraph:
         )
         # Analytics only after success.
         _patched_seams.capture.assert_called_once_with(
-            AnalyticsEvents.ACCOUNT_SETTING_CHANGED, {"area": "notifications"}
+            UserId(thread_config["configurable"]["user_id"]),
+            AccountSettingChanged(area="notifications"),
         )
-        # NOTE: the projection resync is bound into the tool at import time
-        # (factory kwarg), so it cannot be observed through a module patch here;
-        # the resync-on-success contract is proven against real probes in
+        # The resync is bound into the tool at import time (factory kwarg), so it
+        # can't be observed via a module patch here — proven instead in
         # tests/unit/agents/tools/test_mutations_factory.py.
 
     async def test_set_selected_voice_resolves_name_and_persists_id(

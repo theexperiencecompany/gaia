@@ -66,7 +66,7 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
   const router = useRouter();
   const { spacing, fontSize, moderateScale } = useResponsive();
   const isClickable = !!execution.conversation_id;
-  const durationText = formatDuration(execution.duration_seconds);
+  const durationText = formatDuration(execution.duration_seconds ?? undefined);
   const relativeDate = formatRelativeDate(execution.started_at);
   const descriptor = EXECUTION_STATUS[execution.status];
 

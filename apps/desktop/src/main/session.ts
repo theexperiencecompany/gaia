@@ -13,6 +13,11 @@
 import { session } from "electron";
 import { getApiOrigin, isApiOriginSecure } from "./api-origin";
 
+/** Name of the WorkOS session cookie the app authenticates with. The bridge
+ * logout hook watches this same cookie on `session.defaultSession` to detect
+ * sign-out, so both sites key off one constant rather than a magic string. */
+export const WOS_SESSION_COOKIE = "wos_session";
+
 /**
  * Install a `webRequest.onHeadersReceived` filter that rewrites
  * `SameSite` on `wos_session` cookies from the API origin.
@@ -35,12 +40,10 @@ export function fixSessionCookies(): void {
 
       if (headers["set-cookie"]) {
         headers["set-cookie"] = headers["set-cookie"].map((c: string) => {
-          if (!c.includes("wos_session")) return c;
-          // SameSite=None is only valid WITH Secure — without it Chromium
-          // silently drops the cookie. In dev the API omits Secure (http),
-          // so rotated sessions were being lost and the stale cookie kept
-          // 401-ing. localhost is a trustworthy origin, so Secure cookies
-          // are accepted over http there.
+          if (!c.includes(WOS_SESSION_COOKIE)) return c;
+          // SameSite=None needs Secure or Chromium drops the cookie; the dev
+          // API omits Secure over http, which lost rotated sessions to stale
+          // 401s. localhost accepts Secure cookies over http, so we add it.
           let patched = c.replace(/SameSite=\w+/i, "SameSite=None");
           if (!/;\s*Secure/i.test(patched)) patched += "; Secure";
           return patched;

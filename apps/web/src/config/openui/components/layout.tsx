@@ -9,12 +9,8 @@ import { CopyableContentView } from "./CopyableContentView";
 import { FileTreeView } from "./FileTreeView";
 import { KbdRowView } from "./KbdRowView";
 
-// ---------------------------------------------------------------------------
-// Component definitions
-//
-// This module is the registration surface consumed by ../genericLibrary; the
-// views themselves live in their own files next to this one.
-// ---------------------------------------------------------------------------
+// Component definitions: the registration surface consumed by
+// ../genericLibrary — the views themselves live in their own files next to this one.
 
 export const copyableContentDef = defineComponent({
   name: "CopyableContent",
@@ -35,7 +31,7 @@ export const fileTreeDef = defineComponent({
 export const kbdRowDef = defineComponent({
   name: "KbdRow",
   description:
-    "A single keyboard shortcut row — keys + description. Compose inside a Card for a shortcut table.",
+    "A single keyboard shortcut row: keys + description. Compose inside a Card for a shortcut table.",
   props: kbdRowSchema,
   component: ({ props }) => React.createElement(KbdRowView, props),
 });

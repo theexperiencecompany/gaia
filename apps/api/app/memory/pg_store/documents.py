@@ -35,8 +35,8 @@ async def get_document(user_id: str, doc_type: MemoryDocType) -> MemoryDocument 
 async def upsert_document(user_id: str, doc_type: MemoryDocType, content: str) -> MemoryDocument:
     """Create or rewrite a core document, archiving the previous version.
 
-    Bumps ``version``, pushes the outgoing content onto ``history``
-    (newest first, capped at ``DOCUMENT_HISTORY_LIMIT``).
+    Bumps version, pushes the outgoing content onto history
+    (newest first, capped at DOCUMENT_HISTORY_LIMIT).
     """
     async with memory_session() as session:
         result = await session.execute(

@@ -1,6 +1,6 @@
-"""Unit tests for `app.agents.core.subagents.builtin_subagents`.
+"""Unit tests for app.agents.core.subagents.builtin_subagents.
 
-These tests pin invariants on the `BUILTIN_SUBAGENTS` tuple so future edits
+These tests pin invariants on the BUILTIN_SUBAGENTS tuple so future edits
 don't silently break the registry's assumptions.
 """
 

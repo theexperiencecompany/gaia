@@ -16,13 +16,23 @@ from collections.abc import AsyncGenerator, Iterator
 import contextlib
 from datetime import datetime
 import json
+import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessage
+from prometheus_client import REGISTRY
 import pytest
 
-from app.models.chat_models import ConversationModel
-from app.models.message_models import MessageRequestWithHistory
-from app.services.analytics_service import AnalyticsEvents
+from app.agents.core.background.session import (
+    RunKind,
+    create_session,
+    teardown_session,
+)
+from app.constants.chat import EMPTY_RESPONSE_FALLBACK
+from app.models.chat_models import ConversationModel, MessageKind
+from app.models.message_models import MessageRequestWithHistory, SelectedWorkflowData
+from app.models.user_models import AuthenticatedUser
 from app.services.chat.chunks import (
     extract_response_text as _extract_response_text,
     extract_tool_data,
@@ -31,28 +41,53 @@ from app.services.chat.persistence import (
     initialize_new_conversation as _initialize_new_conversation,
     save_conversation_async as _save_conversation_async,
 )
-from app.services.chat.stream import run_chat_stream_background
+from app.services.chat.stream import (
+    _close_turn_timings,
+    _executor_delegation,
+    _finalize_stream,
+    _note_cancellation,
+    _observe_turn_latencies,
+    _resolve_pending_approval_turn,
+    _stamp_turn_latencies,
+    _StreamState,
+    run_chat_stream_background,
+    stream_manager as _stream_manager,
+)
+from app.utils.stream_publishers import ExtractedToolData
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.catalog.chat import (
+    ChatMessageCancelled,
+    ChatMessageCompleted,
+    ChatTurnReacted,
+)
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    analytics_context,
+    current_analytics_context,
+)
+from shared.py.wide_events import log as _log
+from tests.helpers import ScriptedGraph, agent_update_event, message_chunk_event
 
 
 def _created_conversation(conversation_id: str, description: str) -> ConversationModel:
-    """The real `create_conversation` return value — mock it with nothing looser."""
+    """Return the real create_conversation value; mock it with nothing looser."""
     return ConversationModel(conversation_id=conversation_id, description=description)
 
 
 def _usage_callback_class() -> MagicMock:
-    """Stand-in for LangChain's `UsageMetadataCallbackHandler`.
+    """Stand-in for LangChain's UsageMetadataCallbackHandler.
 
-    The real handler exposes `usage_metadata` as a dict, and the stream feeds it
-    straight into `MainResponseCompleteFrame`. A bare `MagicMock()` would hand the
+    The real handler exposes usage_metadata as a dict, and the stream feeds it
+    straight into MainResponseCompleteFrame. A bare MagicMock() would hand the
     frame a Mock instead, so the stand-in must carry the real attribute type.
     """
     return MagicMock(return_value=MagicMock(usage_metadata={}))
 
 
-# Each module does `from app.core.stream_manager import stream_manager`,
-# so the patch target is each module's binding. This helper rebinds all
-# five at once so a single mock intercepts calls from stream.py, chunks.py,
-# state.py, artifact_forwarder.py, and stream_publishers.py.
+# Each module does `from app.core.stream_manager import stream_manager`, so the patch
+# target is each module's own binding. This rebinds all five at once: stream.py,
+# chunks.py, state.py, artifact_forwarder.py, and stream_publishers.py.
 @contextlib.contextmanager
 def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
     with contextlib.ExitStack() as stack:
@@ -72,14 +107,17 @@ def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
 # ---------------------------------------------------------------------------
 
 
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+
+
 @pytest.fixture
-def test_user() -> dict:
-    return {"user_id": "user_abc", "email": "tester@example.com"}
+def test_user() -> AuthenticatedUser:
+    return AuthenticatedUser(user_id=USER_ID, email="tester@example.com")
 
 
 @pytest.fixture
 def basic_body() -> MessageRequestWithHistory:
-    """A minimal request body with a single user message."""
+    """Build a minimal request body with a single user message."""
     return MessageRequestWithHistory(
         message="Hello GAIA",
         messages=[{"role": "user", "content": "Hello GAIA"}],
@@ -89,7 +127,7 @@ def basic_body() -> MessageRequestWithHistory:
 
 @pytest.fixture
 def existing_conv_body() -> MessageRequestWithHistory:
-    """A request body referencing an already-existing conversation."""
+    """Build a request body referencing an already-existing conversation."""
     return MessageRequestWithHistory(
         message="Follow-up",
         messages=[{"role": "user", "content": "Follow-up"}],
@@ -109,7 +147,7 @@ async def _done_only_stream() -> AsyncGenerator[str, None]:
 
 
 async def _text_then_nostream(text: str, complete: str) -> AsyncGenerator[str, None]:
-    """Yields a text chunk, then a nostream marker, then DONE."""
+    """Yield a text chunk, then a nostream marker, then DONE."""
     yield f"data: {json.dumps({'response': text})}\n\n"
     yield f"nostream: {json.dumps({'complete_message': complete})}"
     yield "data: [DONE]\n\n"
@@ -121,13 +159,13 @@ async def _text_then_nostream(text: str, complete: str) -> AsyncGenerator[str, N
 
 
 class TestExtractToolData:
-    def test_returns_empty_dict_on_invalid_json(self):
+    def test_returns_an_empty_result_on_invalid_json(self):
         result = extract_tool_data("not json{{")
-        assert result == {}
+        assert result == ExtractedToolData()
 
-    def test_returns_empty_dict_for_plain_response(self):
+    def test_returns_an_empty_result_for_plain_response(self):
         result = extract_tool_data(json.dumps({"response": "hello"}))
-        assert result == {}
+        assert result == ExtractedToolData()
 
     def test_extracts_unified_tool_data_list(self):
         payload = json.dumps(
@@ -142,8 +180,9 @@ class TestExtractToolData:
             }
         )
         result = extract_tool_data(payload)
-        assert "tool_data" in result
-        assert result["tool_data"][0]["tool_name"] == "search_results"
+        assert result.tool_data == [
+            {"tool_name": "search_results", "data": {"items": []}, "timestamp": "t"}
+        ]
 
     def test_extracts_unified_tool_data_single_dict(self):
         """tool_data as a single dict (not a list) should be wrapped in a list."""
@@ -151,15 +190,14 @@ class TestExtractToolData:
             {"tool_data": {"tool_name": "weather_data", "data": {}, "timestamp": "t"}}
         )
         result = extract_tool_data(payload)
-        assert isinstance(result["tool_data"], list)
-        assert result["tool_data"][0]["tool_name"] == "weather_data"
+        assert result.tool_data == [{"tool_name": "weather_data", "data": {}, "timestamp": "t"}]
 
     def test_extracts_legacy_tool_field(self):
         payload = json.dumps({"calendar_options": [{"id": 1, "title": "Meeting"}]})
         result = extract_tool_data(payload)
-        assert "tool_data" in result
-        assert result["tool_data"][0]["tool_name"] == "calendar_options"
-        assert result["tool_data"][0]["data"] == [{"id": 1, "title": "Meeting"}]
+        assert len(result.tool_data) == 1
+        assert result.tool_data[0]["tool_name"] == "calendar_options"
+        assert result.tool_data[0]["data"] == [{"id": 1, "title": "Meeting"}]
 
     def test_extracts_multiple_legacy_tool_fields(self):
         payload = json.dumps(
@@ -169,36 +207,37 @@ class TestExtractToolData:
             }
         )
         result = extract_tool_data(payload)
-        tool_names = {e["tool_name"] for e in result["tool_data"]}
-        assert "search_results" in tool_names
-        assert "weather_data" in tool_names
+        tool_names = {e["tool_name"] for e in result.tool_data}
+        assert tool_names == {"search_results", "weather_data"}
 
     def test_extracts_follow_up_actions_into_other_data(self):
         payload = json.dumps({"follow_up_actions": ["Do X", "Do Y"]})
         result = extract_tool_data(payload)
-        assert "other_data" in result
-        assert result["other_data"]["follow_up_actions"] == ["Do X", "Do Y"]
+        assert result.other_data is not None
+        assert result.other_data.follow_up_actions == ["Do X", "Do Y"]
 
     def test_extracts_tool_output(self):
         payload = json.dumps({"tool_output": {"tool_call_id": "call_1", "output": "result text"}})
         result = extract_tool_data(payload)
-        assert "tool_output" in result
-        assert result["tool_output"]["tool_call_id"] == "call_1"
+        assert result.tool_output is not None
+        assert result.tool_output.tool_call_id == "call_1"
+        assert result.tool_output.output == "result text"
 
     def test_ignores_none_valued_legacy_fields(self):
         payload = json.dumps({"calendar_options": None})
         result = extract_tool_data(payload)
-        assert "tool_data" not in result
+        assert result.tool_data == []
 
     def test_unknown_fields_produce_no_tool_data(self):
         payload = json.dumps({"completely_unknown_key": "value"})
         result = extract_tool_data(payload)
-        assert "tool_data" not in result
+        assert result.is_empty()
 
     def test_timestamp_is_iso_string(self):
         payload = json.dumps({"search_results": {"items": []}})
         result = extract_tool_data(payload)
-        ts = result["tool_data"][0]["timestamp"]
+        ts = result.tool_data[0]["timestamp"]
+        assert ts is not None
         # Verify it's a parseable ISO timestamp
         parsed = datetime.fromisoformat(ts)
         assert parsed.tzinfo is not None
@@ -475,6 +514,50 @@ class TestSaveConversationAsync:
         request_arg = mock_update.call_args.args[0]
         assert request_arg.conversation_id == "specific_conv_id"
 
+    async def test_react_ack_is_stamped_emoji_ack_with_target(self, test_user, basic_body) -> None:
+        """A comms REACT turn saves the bare emoji with kind + target so every surface (reload, sync, second device) renders it as a reaction badge."""
+        mock_update = AsyncMock()
+        with (
+            patch("app.services.chat.persistence.update_messages", new=mock_update),
+        ):
+            await _save_conversation_async(
+                body=basic_body,
+                user=test_user,
+                conversation_id="conv_123",
+                complete_message="😎",
+                tool_data={},
+                metadata={},
+                user_message_id="umsg_1",
+                bot_message_id="bmsg_1",
+                kind=MessageKind.EMOJI_ACK,
+                reacts_to_message_id="umsg_1",
+            )
+        request_arg = mock_update.call_args.args[0]
+        bot_msg = request_arg.messages[1]
+        assert bot_msg.response == "😎"
+        assert bot_msg.kind is MessageKind.EMOJI_ACK
+        assert bot_msg.reacts_to_message_id == "umsg_1"
+
+    async def test_plain_reply_stays_text_without_target(self, test_user, basic_body):
+        mock_update = AsyncMock()
+        with (
+            patch("app.services.chat.persistence.update_messages", new=mock_update),
+        ):
+            await _save_conversation_async(
+                body=basic_body,
+                user=test_user,
+                conversation_id="conv_123",
+                complete_message="all set",
+                tool_data={},
+                metadata={},
+                user_message_id="umsg_1",
+                bot_message_id="bmsg_1",
+            )
+        request_arg = mock_update.call_args.args[0]
+        bot_msg = request_arg.messages[1]
+        assert bot_msg.kind is MessageKind.TEXT
+        assert bot_msg.reacts_to_message_id is None
+
 
 # ---------------------------------------------------------------------------
 # run_chat_stream_background — top-level orchestrator
@@ -487,6 +570,7 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
     m.publish_chunk = AsyncMock()
     m.is_cancelled = AsyncMock(return_value=is_cancelled)
     m.update_progress = AsyncMock()
+    m.settle_message_progress = AsyncMock()
     m.complete_stream = AsyncMock()
     m.set_error = AsyncMock()
     m.cleanup = AsyncMock()
@@ -499,9 +583,9 @@ class TestRunChatStreamBackground:
     def _no_pending_approval(self) -> Iterator[None]:
         """Stub conversational HIL resolution to "nothing pending".
 
-        ``run_chat_stream_background`` now checks Mongo for a pending approval at
+        run_chat_stream_background now checks Mongo for a pending approval at
         the top of each turn. These tests exercise the normal turn and don't stub
-        Redis, so without this the real ``redis_cache`` singleton is reached and
+        Redis, so without this the real redis_cache singleton is reached and
         raises "Event loop is closed" under xdist's per-test event loops.
         """
         with patch(
@@ -512,19 +596,12 @@ class TestRunChatStreamBackground:
 
     @pytest.fixture(autouse=True)
     def _no_live_artifact_forwarder(self) -> Iterator[None]:
-        """Force ``ArtifactForwarder`` onto its "Redis unavailable" fast path.
+        """Force ArtifactForwarder onto its "Redis unavailable" fast path.
 
-        ``run_chat_stream_background`` spawns ``forward_artifact_events`` as a
-        background task for every turn with a ``user_id``. Its ``run()`` reads
-        the process-wide ``redis_cache`` singleton directly (not ``stream_manager``,
-        which the tests below already mock) — in a hermetic dev/test env
-        ``redis_cache.redis`` is ``None`` and it no-ops, but under CI's live-services
-        job (real Redis running, ``REDIS_URL`` pointing at it) it subscribes to a
-        real pub/sub channel and blocks in ``pubsub.listen()`` for the rest of the
-        turn, relying entirely on ``_finalize_stream``'s ``artifact_task.cancel()``
-        landing before test/CI timeouts to unblock it. ``tests/unit/`` must be fully
-        mocked and I/O-free (see ``tests/CLAUDE.md``), so pin the fast path here
-        instead of depending on ambient Redis connectivity/scheduling.
+        forward_artifact_events reads the process-wide redis_cache singleton directly (not
+        the mocked stream_manager); under CI's live-services job it would otherwise block in
+        pubsub.listen() until artifact_task.cancel() lands. tests/unit/ must stay fully
+        mocked and I/O-free, so pin the fast path here instead of depending on Redis.
         """
         with patch("app.services.chat.artifact_forwarder.redis_cache.redis", None):
             yield
@@ -545,7 +622,7 @@ class TestRunChatStreamBackground:
             ),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -575,7 +652,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -604,7 +681,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -628,14 +705,14 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_capture_complete",
@@ -646,30 +723,57 @@ class TestRunChatStreamBackground:
 
         mock_capture.assert_called_once()
         call_args = mock_capture.call_args
-        assert call_args.args[0] == "user_abc"
-        assert call_args.args[1] == AnalyticsEvents.CHAT_MESSAGE_COMPLETED
-        assert call_args.args[2] == {
-            "conversation_id": "conv_existing_123",
-            "voice_mode": False,
-            "is_new_conversation": False,
-        }
+        assert call_args.args[0] == UserId(USER_ID)
+        assert isinstance(call_args.args[1], ChatMessageCompleted)
+        props = call_args.args[1]
+        # DONE-only turn: E2E present, TTFT absent, nothing delegated.
+        assert props.conversation_id == "conv_existing_123"
+        assert props.voice_mode is False
+        assert props.is_new_conversation is False
+        assert props.delegated is False
+        assert props.queued is False
+        assert props.e2e_ack_ms <= props.e2e_full_ms
+        assert props.ttft_ms is None
 
-    async def test_source_is_carried_onto_the_terminal_event(self, test_user, existing_conv_body):
-        """`source` is what lets one event name span web, desktop and bots.
-
-        Every other test leaves it None, so the branch that attaches it never
-        ran with a value — key and value were both free to drift.
-        """
+    @pytest.mark.regression
+    async def test_the_terminal_event_names_its_stream(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()
         with (
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_keyed",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="desktop",
+                t0_perf=time.perf_counter(),
+            )
+
+        event = mock_capture.call_args.args[1]
+        assert event.stream_id == "stream_keyed"
+        # Desktop turns share the web endpoint's clock; their latency is measured like any other.
+        assert event.e2e_full_ms is not None
+
+    async def test_source_is_carried_onto_the_terminal_event(self, test_user, existing_conv_body):
+        """Every other test leaves source None, so the branch that attaches it never ran with a value."""
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_done_only_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_capture_source",
@@ -679,12 +783,37 @@ class TestRunChatStreamBackground:
                 source="desktop",
             )
 
-        assert mock_capture.call_args.args[2] == {
-            "conversation_id": "conv_existing_123",
-            "voice_mode": False,
-            "is_new_conversation": False,
-            "source": "desktop",
-        }
+        assert mock_capture.call_args.args[1].conversation_id == "conv_existing_123"
+        assert mock_capture.call_args.args[1].voice_mode is False
+        assert mock_capture.call_args.args[1].is_new_conversation is False
+        assert mock_capture.call_args.args[1].source == "desktop"
+        assert mock_capture.call_args.args[1].delegated is False
+        assert mock_capture.call_args.args[1].queued is False
+
+    async def test_an_empty_source_is_omitted_rather_than_sent_blank(
+        self, test_user, existing_conv_body
+    ):
+        """A bot platform is a plain str, so "" reaches here; analytics must not get a blank prop."""
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_done_only_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_capture_blank_source",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="",
+            )
+
+        assert mock_capture.call_args.args[1].source is None
 
     async def test_captures_message_cancelled_when_stream_cancelled(
         self, test_user, existing_conv_body
@@ -694,14 +823,14 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
-            patch("app.services.chat.stream.capture_event") as mock_capture,
+            patch("app.services.chat.stream.capture") as mock_capture,
         ):
             await run_chat_stream_background(
                 stream_id="stream_capture_cancel",
@@ -712,9 +841,9 @@ class TestRunChatStreamBackground:
 
         mock_capture.assert_called_once()
         call_args = mock_capture.call_args
-        assert call_args.args[0] == "user_abc"
-        assert call_args.args[1] == AnalyticsEvents.CHAT_MESSAGE_CANCELLED
-        assert call_args.args[2]["conversation_id"] == "conv_existing_123"
+        assert call_args.args[0] == UserId(USER_ID)
+        assert isinstance(call_args.args[1], ChatMessageCancelled)
+        assert call_args.args[1].conversation_id == "conv_existing_123"
 
     async def test_complete_stream_called_on_success(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()
@@ -722,7 +851,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -745,7 +874,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -771,7 +900,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(side_effect=RuntimeError("agent exploded")),
+                new=MagicMock(side_effect=RuntimeError("agent exploded")),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -788,9 +917,88 @@ class TestRunChatStreamBackground:
 
         sm.cleanup.assert_called_once_with("stream_6")
 
+    async def test_stop_during_executor_wait_is_a_cancelled_turn(
+        self, test_user, existing_conv_body
+    ):
+        """The consume loop's cancel check is long past, so the executor wait itself must notice."""
+        labels = {"source": "web", "delegated": "false", "status": "cancelled"}
+        before = REGISTRY.get_sample_value("chat_turn_total", labels) or 0.0
+        sm = _make_stream_manager_mock()
+
+        async def _cancel_lands_during_wait(*_args: Any, **_kwargs: Any) -> bool:
+            sm.is_cancelled.return_value = True
+            return True
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_done_only_stream()),
+            ),
+            patch(
+                "app.services.chat.stream.await_executor_done",
+                new=AsyncMock(side_effect=_cancel_lands_during_wait),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_cancel_in_wait",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="web",
+            )
+
+        assert REGISTRY.get_sample_value("chat_turn_total", labels) == before + 1
+        assert isinstance(mock_capture.call_args.args[1], ChatMessageCancelled)
+        # Every cancel check reads THIS stream's flag — a check on None reads nothing.
+        assert {call.args[0] for call in sm.is_cancelled.await_args_list} == {
+            "stream_cancel_in_wait"
+        }
+
+    async def test_failed_turn_is_observed_with_error_status(self, test_user, existing_conv_body):
+        """A raising turn lands in chat_turn_total and the E2E histogram as status=error, not nowhere."""
+        labels_total = {"source": "web", "delegated": "false", "status": "error"}
+        labels_e2e = {
+            "source": "web",
+            "voice_mode": "false",
+            "delegated": "false",
+            "status": "error",
+        }
+        total_before = REGISTRY.get_sample_value("chat_turn_total", labels_total) or 0.0
+        e2e_before = REGISTRY.get_sample_value("chat_e2e_full_seconds_count", labels_e2e) or 0.0
+        sm = _make_stream_manager_mock()
+        sm.get_progress = AsyncMock(return_value=None)
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(side_effect=RuntimeError("agent exploded")),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_error_observed",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="web",
+            )
+
+        assert REGISTRY.get_sample_value("chat_turn_total", labels_total) == total_before + 1
+        assert (
+            REGISTRY.get_sample_value("chat_e2e_full_seconds_count", labels_e2e) == e2e_before + 1
+        )
+        # A failed turn is not a completed one: no completion milestone for it.
+        mock_capture.assert_not_called()
+
     async def test_error_chunk_published_before_set_error(self, test_user, existing_conv_body):
-        """set_error() sends STREAM_ERROR_SIGNAL which breaks the subscriber.
-        The human-readable error JSON must be published first."""
+        """set_error() sends STREAM_ERROR_SIGNAL, which breaks the subscriber — publish the error JSON first."""
         sm = _make_stream_manager_mock()
         sm.get_progress = AsyncMock(return_value=None)
         publish_calls: list[str] = []
@@ -811,7 +1019,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(side_effect=RuntimeError("network timeout")),
+                new=MagicMock(side_effect=RuntimeError("network timeout")),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -847,7 +1055,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(side_effect=RuntimeError("agent down")),
+                new=MagicMock(side_effect=RuntimeError("agent down")),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -880,7 +1088,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_with_nostream()),
+                new=MagicMock(return_value=agent_with_nostream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -917,7 +1125,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_with_nostream()),
+                new=MagicMock(return_value=agent_with_nostream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -950,7 +1158,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_that_yields_many()),
+                new=MagicMock(return_value=agent_that_yields_many()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -990,7 +1198,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_with_tool_data()),
+                new=MagicMock(return_value=agent_with_tool_data()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -1039,7 +1247,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_with_output()),
+                new=MagicMock(return_value=agent_with_output()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -1083,7 +1291,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_with_follow_up()),
+                new=MagicMock(return_value=agent_with_follow_up()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -1108,8 +1316,7 @@ class TestRunChatStreamBackground:
     async def test_complete_message_recovered_from_redis_when_empty(
         self, test_user, existing_conv_body
     ):
-        """If nostream: marker never arrives (e.g. cancellation), complete_message
-        should be recovered from Redis progress data."""
+        """If the nostream: marker never arrives (e.g. cancellation), recover it from Redis progress."""
         sm = _make_stream_manager_mock()
         sm.get_progress = AsyncMock(
             return_value={"complete_message": "recovered text", "tool_data": {}}
@@ -1126,7 +1333,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=partial_agent()),
+                new=MagicMock(return_value=partial_agent()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -1144,8 +1351,28 @@ class TestRunChatStreamBackground:
         save_kwargs = mock_save.call_args.kwargs
         assert save_kwargs["complete_message"] == "recovered text"
 
-    async def test_description_task_spawned_for_new_conversation(self, test_user, basic_body):
-        """generate_and_update_description must be called for new conversations."""
+    @pytest.mark.parametrize(
+        ("selected_tool", "selected_workflow"),
+        [
+            (None, None),
+            (
+                "search_web",
+                SelectedWorkflowData(id="wf-1", title="Wf", description="d", steps=[]),
+            ),
+        ],
+        ids=["plain", "with_selection"],
+    )
+    async def test_description_task_spawned_for_new_conversation(
+        self,
+        test_user,
+        basic_body,
+        selected_tool: str | None,
+        selected_workflow: SelectedWorkflowData | None,
+    ):
+        """generate_and_update_description is called for a new conversation, with the turn's own inputs."""
+        basic_body = basic_body.model_copy(
+            update={"selectedTool": selected_tool, "selectedWorkflow": selected_workflow}
+        )
         mock_desc = AsyncMock(return_value="Generated description")
         sm = _make_stream_manager_mock()
 
@@ -1161,7 +1388,7 @@ class TestRunChatStreamBackground:
             ),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -1176,7 +1403,45 @@ class TestRunChatStreamBackground:
                 conversation_id="new_id",
             )
 
-        mock_desc.assert_called_once()
+        mock_desc.assert_called_once_with(
+            "new_id", basic_body.messages[-1], test_user, selected_tool, selected_workflow
+        )
+
+    async def test_the_auto_title_is_the_agents_work_not_the_users(self, test_user, basic_body):
+        """Greptile #1337: the title task inherited the turn's actor=user, so its rename read as a human edit."""
+        actors: list[Actor] = []
+
+        async def _record_actor(*_: object) -> str:
+            actors.append(current_analytics_context().attribution.actor)
+            return "Generated description"
+
+        users_turn = AnalyticsContext(
+            attribution=Attribution(
+                actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.WEB
+            )
+        )
+        sm = _make_stream_manager_mock()
+        with (
+            analytics_context(users_turn),
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.persistence.create_conversation",
+                new=AsyncMock(return_value=_created_conversation("new_id", "New Chat")),
+            ),
+            patch("app.services.chat.stream.generate_and_update_description", new=_record_actor),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_desc", body=basic_body, user=test_user, conversation_id="new_id"
+            )
+            assert current_analytics_context() == users_turn
+
+        assert actors == [Actor.AGENT]
 
     async def test_no_description_task_for_existing_conversation(
         self, test_user, existing_conv_body
@@ -1193,7 +1458,7 @@ class TestRunChatStreamBackground:
             ),
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
+                new=MagicMock(return_value=_done_only_stream()),
             ),
             patch(
                 "app.services.chat.stream.save_conversation_async",
@@ -1209,3 +1474,959 @@ class TestRunChatStreamBackground:
             )
 
         mock_desc.assert_not_called()
+
+    async def test_terminal_event_carries_latency_props(self, test_user, existing_conv_body):
+        """TTFT/E2E/delegated props land on chat:message_completed for the user."""
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_text_then_nostream("hello there", "hello there")),
+            ),
+            patch(
+                "app.services.chat.stream.save_conversation_async",
+                new=AsyncMock(),
+            ),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_latency_props",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+            )
+
+        mock_capture.assert_called_once()
+        assert mock_capture.call_args.args[0] == UserId(USER_ID)
+        props = mock_capture.call_args.args[1]
+        assert props.ttft_ms <= props.e2e_ack_ms <= props.e2e_full_ms
+        assert props.ttft_ms >= 0.0
+        assert props.delegated is False
+        assert props.queued is False
+
+    async def test_terminal_event_without_text_has_no_ttft(self, test_user, existing_conv_body):
+        """A turn with no response text still reports E2E, but no TTFT."""
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_done_only_stream()),
+            ),
+            patch(
+                "app.services.chat.stream.save_conversation_async",
+                new=AsyncMock(),
+            ),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_latency_no_ttft",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+            )
+
+        props = mock_capture.call_args.args[1]
+        assert props.ttft_ms is None
+        assert props.e2e_ack_ms <= props.e2e_full_ms
+        assert props.delegated is False
+
+    async def test_voice_mode_turn_labels_the_histograms_voice_true(
+        self, test_user, existing_conv_body
+    ):
+        """voice_mode reaches the terminal histogram labels; dropped, voice traffic files as false."""
+        labels = {
+            "source": "web",
+            "voice_mode": "true",
+            "delegated": "false",
+            "status": "success",
+        }
+        before = REGISTRY.get_sample_value("chat_e2e_full_seconds_count", labels) or 0.0
+        sm = _make_stream_manager_mock()
+        body = existing_conv_body.model_copy(update={"voice_mode": True})
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_text_then_nostream("hi there", "hi there")),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture"),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_voice_success",
+                body=body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="web",
+            )
+        assert REGISTRY.get_sample_value("chat_e2e_full_seconds_count", labels) == before + 1
+
+    async def test_delegated_turn_labels_turn_total_delegated_true(
+        self, test_user, existing_conv_body
+    ):
+        """The delegation label is read from this stream's session, not another's."""
+        labels = {"source": "web", "delegated": "true", "status": "success"}
+        before = REGISTRY.get_sample_value("chat_turn_total", labels) or 0.0
+        sm = _make_stream_manager_mock()
+        delegated_session = MagicMock(executor_spawned=True, executor_queued_task_id=None)
+
+        def _session_for(stream_id: str) -> Any:
+            return delegated_session if stream_id == "stream_delegated_ok" else None
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_text_then_nostream("ok", "ok")),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture"),
+            patch("app.services.chat.stream.get_session", side_effect=_session_for),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_delegated_ok",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="web",
+            )
+        assert REGISTRY.get_sample_value("chat_turn_total", labels) == before + 1
+
+    async def test_error_turn_labels_voice_and_delegation(self, test_user, existing_conv_body):
+        """The error path files under its real delegation and voice labels, as the happy path does."""
+        labels = {
+            "source": "web",
+            "voice_mode": "true",
+            "delegated": "true",
+            "status": "error",
+        }
+        before = REGISTRY.get_sample_value("chat_e2e_full_seconds_count", labels) or 0.0
+        sm = _make_stream_manager_mock()
+        sm.get_progress = AsyncMock(return_value=None)
+        delegated_session = MagicMock(executor_spawned=True, executor_queued_task_id=None)
+        body = existing_conv_body.model_copy(update={"voice_mode": True})
+
+        def _session_for(stream_id: str) -> Any:
+            return delegated_session if stream_id == "stream_err_voice" else None
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(side_effect=RuntimeError("agent exploded")),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture"),
+            patch("app.services.chat.stream.get_session", side_effect=_session_for),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_err_voice",
+                body=body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="web",
+            )
+        assert REGISTRY.get_sample_value("chat_e2e_full_seconds_count", labels) == before + 1
+
+    async def test_a_non_text_data_chunk_does_not_stamp_ttft(self, test_user, existing_conv_body):
+        """TTFT is first reply text, not first byte, so an empty-response frame must not open it."""
+
+        async def _empty_response_then_done() -> AsyncGenerator[str, None]:
+            yield 'data: {"response": ""}\n\n'
+            yield "data: [DONE]\n\n"
+            yield "nostream: " + json.dumps({"complete_message": "", "cancelled": False})
+
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_empty_response_then_done()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_empty_response",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="web",
+            )
+        assert mock_capture.call_args.args[1].ttft_ms is None
+
+    async def test_pending_approval_turn_stamps_ack_and_ttft(self, test_user, existing_conv_body):
+        """An approval reply is still a turn: it stamps the ack clock and TTFT exactly once."""
+        state = _StreamState()
+        state.t0_perf = 50.0
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.resolve_pending_from_message",
+                new=AsyncMock(return_value="approve"),
+            ),
+            patch("app.services.chat.stream._persist_turn", new=AsyncMock()),
+            patch("app.services.chat.stream.time.perf_counter", return_value=52.0),
+        ):
+            handled = await _resolve_pending_approval_turn(
+                existing_conv_body, test_user, "conv_existing_123", "s_approval", state, "whatsapp"
+            )
+
+        assert handled is True
+        assert state.ack_perf == 52.0
+        assert state.ttft_perf == 52.0
+        assert state.ttft_ms == 2000.0
+        assert state.e2e_ack_ms == 2000.0
+
+    # chunk dispatch: every frame goes through `_dispatch_stream_chunk`, which
+    # picks what the client sees and what the turn persists. The tests above
+    # only assert the happy path, so a wrong branch would still read as a pass.
+
+    async def _drive(self, agent_chunks, sm, save, *, stream_id="stream_dispatch"):
+        async def agent_stream():
+            for chunk in agent_chunks:
+                yield chunk
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=agent_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id=stream_id,
+                body=self.dispatch_body(),
+                user=AuthenticatedUser(user_id=USER_ID, email="a@b.com"),
+                conversation_id="conv_existing_123",
+            )
+
+    @staticmethod
+    def dispatch_body() -> MessageRequestWithHistory:
+        return MessageRequestWithHistory(
+            message="hi", messages=[], conversation_id="conv_existing_123"
+        )
+
+    async def test_a_non_data_frame_is_published_verbatim_on_its_own_stream(
+        self, test_user
+    ) -> None:
+        """Pass a non-data: frame through untouched to the stream the client is listening on."""
+        sm = _make_stream_manager_mock()
+
+        await self._drive(["keepalive\n\n", "data: [DONE]\n\n"], sm, AsyncMock())
+
+        assert ("stream_dispatch", "keepalive\n\n") in [
+            call.args for call in sm.publish_chunk.call_args_list
+        ]
+
+    async def test_an_error_frame_from_the_agent_is_persisted_onto_the_turn(
+        self, test_user
+    ) -> None:
+        """Persist an error frame yielded by call_agent's setup guard, the one path nothing else records."""
+        save = AsyncMock()
+
+        await self._drive(
+            [f"data: {json.dumps({'error': 'model unavailable'})}\n\n", "data: [DONE]\n\n"],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        assert save.call_args.kwargs["error"] == "model unavailable"
+
+    async def test_a_data_frame_without_an_error_leaves_the_turn_unmarked(self, test_user) -> None:
+        save = AsyncMock()
+
+        await self._drive(
+            [f"data: {json.dumps({'response': 'hello'})}\n\n", "data: [DONE]\n\n"],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        assert save.call_args.kwargs["error"] is None
+
+    async def test_comms_thinking_is_folded_into_the_persisted_tool_data(self, test_user) -> None:
+        """Fold comms's plain-frame reasoning into tool_data the same way the executor's is, so a reload keeps it."""
+        save = AsyncMock()
+
+        await self._drive(
+            [
+                f"data: {json.dumps({'reasoning': {'content': 'weighing it up'}})}\n\n",
+                "data: [DONE]\n\n",
+            ],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        assert save.call_args.kwargs["tool_data"]["tool_data"] == [
+            {
+                "tool_name": "tool_calls_data",
+                "tool_category": "reasoning",
+                "data": {
+                    "tool_name": "reasoning",
+                    "tool_category": "reasoning",
+                    "message": "",
+                    "reasoning": "weighing it up",
+                },
+            }
+        ]
+
+    async def test_comms_thinking_streamed_in_deltas_is_saved_as_one_step(self, test_user) -> None:
+        save = AsyncMock()
+
+        await self._drive(
+            [
+                f"data: {json.dumps({'reasoning': {'content': 'weighing '}})}\n\n",
+                f"data: {json.dumps({'reasoning': {'content': 'it up'}})}\n\n",
+                f"data: {json.dumps({'response': 'Done.'})}\n\n",
+                "data: [DONE]\n\n",
+            ],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        [step] = save.call_args.kwargs["tool_data"]["tool_data"]
+        assert step["data"]["reasoning"] == "weighing it up"
+
+    async def test_a_turn_that_only_thought_still_answers(self, test_user) -> None:
+        """Thinking is not a reply: without the fallback the user saw a thinking block and nothing else."""
+        sm = _make_stream_manager_mock()
+        save = AsyncMock()
+
+        await self._drive(
+            [
+                f"data: {json.dumps({'reasoning': {'content': 'hmm'}})}\n\n",
+                "data: [DONE]\n\n",
+            ],
+            sm,
+            save,
+        )
+
+        assert save.call_args.kwargs["complete_message"] == EMPTY_RESPONSE_FALLBACK
+        [step] = save.call_args.kwargs["tool_data"]["tool_data"]
+        assert step["tool_category"] == "reasoning"
+
+    async def test_a_frame_with_no_reasoning_adds_no_thinking_entry(self, test_user) -> None:
+        save = AsyncMock()
+
+        await self._drive(
+            [f"data: {json.dumps({'response': 'hello'})}\n\n", "data: [DONE]\n\n"],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        assert save.call_args.kwargs["tool_data"]["tool_data"] == []
+
+    async def test_a_frame_the_processor_chokes_on_still_reaches_the_client(
+        self, test_user
+    ) -> None:
+        """Passthrough is the fallback: a frame we cannot parse is still the agent's output, and swallowing it would blank the bubble."""
+        sm = _make_stream_manager_mock()
+        frame = f"data: {json.dumps({'response': 'hello'})}\n\n"
+
+        with patch(
+            "app.services.chat.stream.process_data_chunk",
+            new=AsyncMock(side_effect=RuntimeError("collector blew up")),
+        ):
+            await self._drive([frame, "data: [DONE]\n\n"], sm, AsyncMock())
+
+        assert ("stream_dispatch", frame) in [call.args for call in sm.publish_chunk.call_args_list]
+
+    @pytest.mark.parametrize(
+        "frame",
+        [
+            pytest.param('data: {"error": "trunc', id="truncated-error-json"),
+            pytest.param('data: {"reasoning": {"content": "half', id="truncated-reasoning-json"),
+            pytest.param('data: ["error", "reasoning"]', id="json-array-not-object"),
+        ],
+    )
+    async def test_a_malformed_data_frame_does_not_take_the_turn_down(
+        self, test_user, frame: str
+    ) -> None:
+        """Treat a data: line that mentions error or reasoning but is not valid JSON as unreadable, not a reason to fail the turn."""
+        sm = _make_stream_manager_mock()
+        save = AsyncMock()
+
+        await self._drive([f"{frame}\n\n", "data: [DONE]\n\n"], sm, save)
+
+        save.assert_awaited()
+        assert save.call_args.kwargs["error"] is None
+        assert save.call_args.kwargs["tool_data"]["tool_data"] == []
+
+    async def test_a_parsed_data_frame_reaches_the_client_on_its_own_stream(
+        self, test_user
+    ) -> None:
+        """Route a parsed frame through process_data_chunk using the stream id passed in, not a default."""
+        sm = _make_stream_manager_mock()
+        frame = f"data: {json.dumps({'response': 'hello'})}\n\n"
+
+        await self._drive([frame, "data: [DONE]\n\n"], sm, AsyncMock(), stream_id="stream_routed")
+
+        assert ("stream_routed", frame) in [call.args for call in sm.publish_chunk.call_args_list]
+
+    async def test_todo_progress_streamed_mid_turn_survives_onto_the_saved_turn(
+        self, test_user
+    ) -> None:
+        """Todo snapshots accumulate across the turn and are injected once at save time — lose the accumulator and the reloaded turn shows no todo card at all."""
+        save = AsyncMock()
+        snapshot = {"source": "executor", "completed": 1, "total": 2}
+
+        await self._drive(
+            [f"data: {json.dumps({'todo_progress': snapshot})}\n\n", "data: [DONE]\n\n"],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        entries = save.call_args.kwargs["tool_data"]["tool_data"]
+        assert [e["data"] for e in entries if e["tool_name"] == "todo_progress"] == [
+            {"executor": snapshot}
+        ]
+
+    async def test_a_chunk_processor_failure_is_reported_with_its_cause(self, test_user) -> None:
+        """The passthrough fallback hides the failure from the user by design, so the wide event is the only place it exists — without the cause and the conversation on it, a recurring parse failure is undebuggable."""
+        with (
+            patch("app.services.chat.stream.log") as mock_log,
+            patch(
+                "app.services.chat.stream.process_data_chunk",
+                new=AsyncMock(side_effect=RuntimeError("collector blew up")),
+            ),
+        ):
+            mock_log.get.return_value = {}
+            await self._drive(
+                [f"data: {json.dumps({'response': 'hello'})}\n\n", "data: [DONE]\n\n"],
+                _make_stream_manager_mock(),
+                AsyncMock(),
+            )
+
+        errors = [c for c in mock_log.error.call_args_list if "Error processing chunk" in c.args[0]]
+        assert len(errors) == 1
+        assert errors[0].kwargs == {
+            "error": "collector blew up",
+            "error_type": "RuntimeError",
+            "conversation_id": "conv_existing_123",
+        }
+
+    # executor tool_data attach + finalize backstop: attach is the sole owner of
+    # the executor's cards on a live delegated turn; `_finalize_stream` re-runs
+    # it as a backstop when the turn was cut short. Both paths fail silently.
+
+    async def test_a_completed_attach_is_not_repeated_by_the_finally_backstop(
+        self, test_user
+    ) -> None:
+        """Flip attached on a completed attach so the finally backstop does not wait and drain twice."""
+        wait = AsyncMock(return_value=True)
+
+        with (
+            patch("app.services.chat.stream.await_executor_done", new=wait),
+            patch("app.services.chat.stream.drain_executor_tool_data", return_value=[]),
+        ):
+            await self._drive(["data: [DONE]\n\n"], _make_stream_manager_mock(), AsyncMock())
+
+        wait.assert_awaited_once()
+
+    async def test_the_fallback_save_persists_this_turn_recovered_from_its_own_stream(
+        self, test_user, existing_conv_body
+    ) -> None:
+        """Recover this stream's progress and save it under this conversation and user, or write an empty turn."""
+        sm = _make_stream_manager_mock()
+        sm.get_progress = AsyncMock(
+            side_effect=lambda sid: {"complete_message": "recovered"}
+            if sid == "stream_fallback"
+            else None
+        )
+        save = AsyncMock()
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(side_effect=RuntimeError("agent down")),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_fallback",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+            )
+
+        assert save.call_args.kwargs["complete_message"] == "recovered"
+        assert save.call_args.kwargs["body"] is existing_conv_body
+        assert save.call_args.kwargs["user"] == test_user
+        assert save.call_args.kwargs["conversation_id"] == "conv_existing_123"
+
+    async def test_the_backstop_attaches_the_executor_cards_to_this_conversation(
+        self, test_user, existing_conv_body
+    ) -> None:
+        """A turn cut short during the executor wait leaves saved=True but attached=False; the backstop is the only thing that still writes the cards, and it must write them to the conversation they belong to."""
+        entries = [{"tool_name": "browser_task", "data": {"steps": 3}}]
+        append = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "app.services.chat.stream.await_executor_done",
+                new=AsyncMock(side_effect=[RuntimeError("wait interrupted"), True]),
+            ),
+            patch("app.services.chat.stream.drain_executor_tool_data", return_value=entries),
+            patch(
+                "app.services.chat.stream.conversation_repository.append_message_tool_data",
+                new=append,
+            ),
+        ):
+            await self._drive(["data: [DONE]\n\n"], _make_stream_manager_mock(), AsyncMock())
+
+        append.assert_awaited_once()
+        assert append.await_args.args[0] == "conv_existing_123"
+        assert append.await_args.kwargs["entries"] == entries
+
+    async def test_a_failing_backstop_attach_is_reported_with_its_cause(self, test_user) -> None:
+        """Best-effort means the user loses their cards silently; the wide event is the only signal that it happened, so it carries the stream, the cause and the conversation."""
+        with (
+            patch("app.services.chat.stream.log") as mock_log,
+            patch(
+                "app.services.chat.stream.await_executor_done",
+                new=AsyncMock(side_effect=RuntimeError("executor gone")),
+            ),
+        ):
+            mock_log.get.return_value = {}
+            await self._drive(
+                ["data: [DONE]\n\n"],
+                _make_stream_manager_mock(),
+                AsyncMock(),
+                stream_id="stream_backstop",
+            )
+
+        errors = [
+            c
+            for c in mock_log.error.call_args_list
+            if "Backstop executor tool_data attach failed" in c.args[0]
+        ]
+        assert len(errors) == 1
+        assert errors[0].kwargs == {
+            "stream_id": "stream_backstop",
+            "error": "executor gone",
+            "error_type": "RuntimeError",
+            "conversation_id": "conv_existing_123",
+        }
+
+    async def _run_turn(
+        self, user: AuthenticatedUser, *reply_pieces: str
+    ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock, MagicMock]:
+        """Run one turn whose comms reply streams as reply_pieces; return the JSON frames published, the save and the capture.
+
+        The real graph driver runs over a scripted graph, so its hold on directive text is in the path.
+        """
+        body = MessageRequestWithHistory(
+            message="Booked it",
+            messages=[{"role": "user", "content": "Booked it"}],
+            conversation_id="conv_existing_123",
+            turn_id="umsg_1",
+        )
+        graph = ScriptedGraph(
+            [
+                *(message_chunk_event(message_id="m1", content=piece) for piece in reply_pieces),
+                agent_update_event(AIMessage(id="m1", content="".join(reply_pieces))),
+            ]
+        )
+        sm = _make_stream_manager_mock()
+        save = AsyncMock()
+        with (
+            _patch_stream_manager(sm),
+            patch("app.helpers.agent_helpers.stream_manager", sm),
+            patch(
+                "app.agents.core.agent._core_agent_logic",
+                new=AsyncMock(
+                    return_value=(graph, {}, {"agent_name": "comms_agent", "configurable": {}})
+                ),
+            ),
+            patch("app.services.analytics_service.capture"),
+            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture") as capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_turn",
+                body=body,
+                user=user,
+                conversation_id="conv_existing_123",
+            )
+        frames = [
+            (call.args[0], json.loads(call.args[1][len("data: ") :]))
+            for call in sm.publish_chunk.call_args_list
+            if call.args[1].startswith("data: {")
+        ]
+        return frames, save, capture
+
+    async def test_a_react_turn_tells_the_client_to_fold_the_reply_into_a_reaction(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, _, _ = await self._run_turn(test_user, "REACT: 😎")
+
+        acks = [(sid, frame) for sid, frame in frames if "emoji_ack" in frame]
+        assert acks == [
+            ("stream_turn", {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg_1"}})
+        ]
+        # Sent before the completion frame, so the client never closes the turn as an empty bubble.
+        order = [next(iter(frame)) for _, frame in frames]
+        assert order.index("emoji_ack") < order.index("main_response_complete")
+
+    async def test_a_react_turn_is_saved_and_counted_as_a_reaction_to_the_users_message(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        _, save, capture = await self._run_turn(test_user, "REACT: 😎")
+
+        saved = save.await_args.kwargs
+        assert saved["complete_message"] == "😎"
+        assert saved["kind"] is MessageKind.EMOJI_ACK
+        assert saved["reacts_to_message_id"] == "umsg_1"
+        capture.assert_any_call(UserId(USER_ID), ChatTurnReacted(emoji="😎"))
+
+    async def test_a_plain_reply_is_neither_folded_nor_counted_as_a_reaction(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, save, capture = await self._run_turn(test_user, "Booked your 9am flight.")
+
+        assert not [frame for _, frame in frames if "emoji_ack" in frame]
+        assert save.await_args.kwargs["kind"] is MessageKind.TEXT
+        assert ChatTurnReacted not in [type(c.args[1]) for c in capture.call_args_list]
+
+    @pytest.mark.regression
+    async def test_a_reaction_streamed_in_pieces_never_reaches_any_client_as_text(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """Web, mobile, bots and voice all read this stream; the raw tag used to paint as a bubble on every one."""
+        frames, _, _ = await self._run_turn(test_user, "<EM", "OJI>👍</EM", "OJI>")
+
+        assert [frame for _, frame in frames if "response" in frame] == []
+        acks = [frame["emoji_ack"] for _, frame in frames if "emoji_ack" in frame]
+        assert acks == [{"emoji": "👍", "reacts_to_message_id": "umsg_1"}]
+
+    @pytest.mark.regression
+    async def test_a_reaction_beside_a_message_streams_and_saves_only_the_message(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, save, _ = await self._run_turn(
+            test_user, "<EMOJI>👍</EMOJI>", "<NEW_MESSAGE_BREAK>", "and more"
+        )
+
+        streamed = "".join(frame["response"] for _, frame in frames if "response" in frame)
+        assert streamed == "and more"
+        assert not [frame for _, frame in frames if "emoji_ack" in frame]
+        assert (save.await_args.kwargs["complete_message"], save.await_args.kwargs["kind"]) == (
+            "and more",
+            MessageKind.TEXT,
+        )
+
+    @pytest.mark.regression
+    async def test_a_silence_bubble_after_the_message_is_never_published_or_saved(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, save, _ = await self._run_turn(
+            test_user, "Hello there.", "<NEW_MESSAGE_B", "REAK><SIL", "ENCE>x</SILENCE>"
+        )
+
+        streamed = [frame["response"] for _, frame in frames if "response" in frame]
+        assert "".join(streamed) == "Hello there."
+        assert save.await_args.kwargs["complete_message"] == "Hello there."
+
+    @pytest.mark.regression
+    async def test_a_live_silence_is_never_streamed_and_the_turn_still_answers(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """Silence is for background deliveries; a live turn must not vanish, nor show the tag."""
+        frames, save, _ = await self._run_turn(test_user, "<SILENCE>", "nothing new</SILENCE>")
+
+        streamed = [frame["response"] for _, frame in frames if "response" in frame]
+        assert streamed == [EMPTY_RESPONSE_FALLBACK]
+        assert save.await_args.kwargs["complete_message"] == EMPTY_RESPONSE_FALLBACK
+
+
+def _hist_count(name: str, labels: dict[str, str]) -> float:
+    return REGISTRY.get_sample_value(f"{name}_count", labels) or 0.0
+
+
+def _hist_sum(name: str, labels: dict[str, str]) -> float:
+    return REGISTRY.get_sample_value(f"{name}_sum", labels) or 0.0
+
+
+def _counter(name: str, labels: dict[str, str]) -> float:
+    # The counter is registered as chat_turn_total; prometheus_client appends
+    # _total only when the name does not already end in it, so the sample name
+    # is exactly the metric name here.
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+class TestTurnLatencyHelpers:
+    """The latency helpers are deterministic given fixed stamps.
+
+    Exact values, labels and None-guards are asserted so a mutated subtraction,
+    scaling, rounding, label or guard is caught rather than riding along under a
+    range assertion.
+    """
+
+    def test_stream_state_latency_defaults(self) -> None:
+        state = _StreamState()
+        assert state.t0_perf is None
+        assert state.ttft_perf is None
+        assert state.ack_perf is None
+        assert state.ttft_ms is None
+        assert state.e2e_ack_ms is None
+        assert state.e2e_full_ms is None
+        assert state.delegated is False
+        assert state.queued is False
+        assert state.turn_completed_at is None
+        assert state.is_cancelled is False
+
+    def test_stamp_turn_latencies_computes_exact_ms(self) -> None:
+        state = _StreamState()
+        state.t0_perf = 100.0
+        # Third-decimal deltas: round(..., 2) differs from round(..., 3) and from
+        # round(...), so the precision argument is load-bearing.
+        state.ttft_perf = 100.1271658
+        state.ack_perf = 101.234567
+        _stamp_turn_latencies(state)
+        assert state.ttft_ms == 127.17
+        assert state.e2e_ack_ms == 1234.57
+
+    def test_stamp_turn_latencies_without_t0_leaves_everything_unset(self) -> None:
+        state = _StreamState()
+        state.ttft_perf = 100.5
+        state.ack_perf = 101.25
+        _stamp_turn_latencies(state)
+        assert state.ttft_ms is None
+        assert state.e2e_ack_ms is None
+
+    def test_stamp_turn_latencies_absent_span_stays_absent(self) -> None:
+        state = _StreamState()
+        state.t0_perf = 100.0
+        state.ack_perf = 101.0
+        _stamp_turn_latencies(state)
+        assert state.ttft_ms is None
+        assert state.e2e_ack_ms == 1000.0
+
+    def test_executor_delegation_no_session(self) -> None:
+        assert _executor_delegation("latency-delegation-missing") == (False, False)
+
+    def test_executor_delegation_spawned_is_not_queued(self) -> None:
+        stream_id = "latency-delegation-spawned"
+        session = create_session(stream_id, RunKind.LIVE)
+        session.executor_spawned = True
+        try:
+            assert _executor_delegation(stream_id) == (True, False)
+        finally:
+            teardown_session(stream_id)
+
+    async def test_note_cancellation_records_the_stop(self) -> None:
+        state = _StreamState()
+        with patch.object(_stream_manager, "is_cancelled", AsyncMock(return_value=True)) as check:
+            await _note_cancellation("s", state)
+        assert state.is_cancelled is True
+        # The cancel flag is per stream; checking it with the wrong id would read
+        # another turn's state.
+        check.assert_awaited_once_with("s")
+
+    async def test_note_cancellation_noop_when_flag_clear(self) -> None:
+        state = _StreamState()
+        with patch.object(_stream_manager, "is_cancelled", AsyncMock(return_value=False)):
+            await _note_cancellation("s", state)
+        assert state.is_cancelled is False
+
+    async def test_note_cancellation_skips_the_check_when_already_cancelled(self) -> None:
+        state = _StreamState()
+        state.is_cancelled = True
+        with patch.object(_stream_manager, "is_cancelled", AsyncMock(return_value=True)) as check:
+            await _note_cancellation("s", state)
+        check.assert_not_awaited()
+
+    def test_observe_turn_latencies_all_spans_exact_labels_and_values(self) -> None:
+        source = "lat-obs-all"
+        state = _StreamState()
+        state.t0_perf = 10.0
+        state.ttft_perf = 10.5
+        state.ack_perf = 11.0
+        state.e2e_full_ms = 2000.0
+        state.delegated = False
+        ttft_labels = {"source": source, "voice_mode": "false", "status": "success"}
+        ack_labels = {
+            "source": source,
+            "voice_mode": "false",
+            "delegated": "false",
+            "status": "success",
+        }
+        full_labels = {
+            "source": source,
+            "voice_mode": "false",
+            "delegated": "false",
+            "status": "success",
+        }
+        total_labels = {"source": source, "delegated": "false", "status": "success"}
+        ttft_before = _hist_count("chat_ttft_seconds", ttft_labels)
+        ttft_sum_before = _hist_sum("chat_ttft_seconds", ttft_labels)
+        ack_before = _hist_count("chat_e2e_ack_seconds", ack_labels)
+        ack_sum_before = _hist_sum("chat_e2e_ack_seconds", ack_labels)
+        full_before = _hist_count("chat_e2e_full_seconds", full_labels)
+        full_sum_before = _hist_sum("chat_e2e_full_seconds", full_labels)
+        total_before = _counter("chat_turn_total", total_labels)
+
+        _observe_turn_latencies(source=source, voice_mode=False, state=state, status="success")
+
+        assert _hist_count("chat_ttft_seconds", ttft_labels) == ttft_before + 1
+        assert _hist_sum("chat_ttft_seconds", ttft_labels) - ttft_sum_before == pytest.approx(0.5)
+        assert _hist_count("chat_e2e_ack_seconds", ack_labels) == ack_before + 1
+        assert _hist_sum("chat_e2e_ack_seconds", ack_labels) - ack_sum_before == pytest.approx(1.0)
+        assert _hist_count("chat_e2e_full_seconds", full_labels) == full_before + 1
+        assert _hist_sum("chat_e2e_full_seconds", full_labels) - full_sum_before == pytest.approx(
+            2.0
+        )
+        assert _counter("chat_turn_total", total_labels) == total_before + 1
+
+    def test_observe_turn_latencies_unknown_source_delegated_and_voice_true(self) -> None:
+        state = _StreamState()
+        state.t0_perf = 20.0
+        state.ttft_perf = 20.25
+        state.ack_perf = 20.5
+        state.e2e_full_ms = 1000.0
+        state.delegated = True
+        ttft_labels = {"source": "unknown", "voice_mode": "true", "status": "cancelled"}
+        ack_labels = {
+            "source": "unknown",
+            "voice_mode": "true",
+            "delegated": "true",
+            "status": "cancelled",
+        }
+        full_labels = {
+            "source": "unknown",
+            "voice_mode": "true",
+            "delegated": "true",
+            "status": "cancelled",
+        }
+        total_labels = {"source": "unknown", "delegated": "true", "status": "cancelled"}
+        ttft_before = _hist_count("chat_ttft_seconds", ttft_labels)
+        ttft_sum_before = _hist_sum("chat_ttft_seconds", ttft_labels)
+        ack_before = _hist_count("chat_e2e_ack_seconds", ack_labels)
+        full_before = _hist_count("chat_e2e_full_seconds", full_labels)
+        total_before = _counter("chat_turn_total", total_labels)
+
+        _observe_turn_latencies(source=None, voice_mode=True, state=state, status="cancelled")
+
+        assert _hist_count("chat_ttft_seconds", ttft_labels) == ttft_before + 1
+        assert _hist_sum("chat_ttft_seconds", ttft_labels) - ttft_sum_before == pytest.approx(0.25)
+        assert _hist_count("chat_e2e_ack_seconds", ack_labels) == ack_before + 1
+        # voice_mode/delegated are forwarded to the full-turn emit too (True -> "true").
+        assert _hist_count("chat_e2e_full_seconds", full_labels) == full_before + 1
+        assert _counter("chat_turn_total", total_labels) == total_before + 1
+
+    def test_observe_turn_latencies_absent_spans_only_count_the_turn(self) -> None:
+        source = "lat-obs-empty"
+        state = _StreamState()
+        total_labels = {"source": source, "delegated": "false", "status": "success"}
+        ttft_labels = {"source": source, "voice_mode": "false", "status": "success"}
+        total_before = _counter("chat_turn_total", total_labels)
+        ttft_before = _hist_count("chat_ttft_seconds", ttft_labels)
+
+        _observe_turn_latencies(source=source, voice_mode=False, state=state, status="success")
+
+        assert _counter("chat_turn_total", total_labels) == total_before + 1
+        assert _hist_count("chat_ttft_seconds", ttft_labels) == ttft_before
+
+    def test_close_turn_timings_fills_state_and_emits(self) -> None:
+        stream_id = "latency-close-turn"
+        session = create_session(stream_id, RunKind.LIVE)
+        session.executor_spawned = True
+        state = _StreamState()
+        state.t0_perf = 100.0
+        state.ttft_perf = 100.5
+        state.ack_perf = 101.0
+        total_labels = {"source": "web", "delegated": "true", "status": "cancelled"}
+        ttft_labels = {"source": "web", "voice_mode": "true", "status": "cancelled"}
+        before = _counter("chat_turn_total", total_labels)
+        ttft_before = _hist_count("chat_ttft_seconds", ttft_labels)
+        try:
+            # 3.1234567s: round(..., 2) != round(..., 3), so the e2e rounding is pinned.
+            with patch("app.services.chat.stream.time.perf_counter", return_value=103.1234567):
+                _close_turn_timings(
+                    stream_id, state, source="web", voice_mode=True, status="cancelled"
+                )
+            assert state.delegated is True
+            assert state.queued is False
+            assert state.ttft_ms == 500.0
+            assert state.e2e_ack_ms == 1000.0
+            assert state.e2e_full_ms == 3123.46
+            assert _counter("chat_turn_total", total_labels) == before + 1
+            # voice_mode is forwarded to the emit (True -> "true"), not dropped.
+            assert _hist_count("chat_ttft_seconds", ttft_labels) == ttft_before + 1
+        finally:
+            teardown_session(stream_id)
+
+    async def test_finalize_stream_stamps_latency_fields_on_wide_event(
+        self, test_user, existing_conv_body
+    ) -> None:
+        _log.reset()
+        state = _StreamState()
+        state.saved = True
+        state.delegated = True
+        state.queued = True
+        state.ttft_ms = 500.0
+        state.e2e_ack_ms = 1000.0
+        state.e2e_full_ms = 3000.0
+        with (
+            patch("app.services.chat.stream.teardown_executor_capture"),
+            patch("app.services.chat.stream.stream_manager.cleanup", new=AsyncMock()),
+            patch("app.services.chat.stream.flush_fs_metrics", return_value={}),
+        ):
+            await _finalize_stream(
+                "stream_latency_final",
+                existing_conv_body,
+                test_user,
+                "conv_existing_123",
+                state,
+                None,
+            )
+        assert _log.get()["chat"] == {
+            "delegated": True,
+            "queued": True,
+            "ttft_ms": 500.0,
+            "e2e_ack_ms": 1000.0,
+            "e2e_full_ms": 3000.0,
+        }
+
+    async def test_finalize_stream_omits_absent_spans(self, test_user, existing_conv_body) -> None:
+        _log.reset()
+        state = _StreamState()
+        state.saved = True
+        with (
+            patch("app.services.chat.stream.teardown_executor_capture"),
+            patch("app.services.chat.stream.stream_manager.cleanup", new=AsyncMock()),
+            patch("app.services.chat.stream.flush_fs_metrics", return_value={}),
+        ):
+            await _finalize_stream(
+                "stream_latency_final_empty",
+                existing_conv_body,
+                test_user,
+                "conv_existing_123",
+                state,
+                None,
+            )
+        assert _log.get()["chat"] == {"delegated": False, "queued": False}
+
+
+class TestAFreshStreamState:
+    """A new turn starts with nothing saved and nothing attached, as real bools."""
+
+    def test_starts_with_nothing_saved_or_attached(self) -> None:
+        state = _StreamState()
+
+        assert state.saved is False
+        assert state.attached is False

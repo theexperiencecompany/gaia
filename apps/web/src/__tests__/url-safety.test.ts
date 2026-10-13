@@ -7,7 +7,11 @@
  * these assertions must fail.
  */
 import { describe, expect, it } from "vitest";
-import { isSafeInternalPath, sanitizeRedirectUrl } from "@/lib/url-safety";
+import {
+  isAppLink,
+  isSafeInternalPath,
+  sanitizeRedirectUrl,
+} from "@/lib/url-safety";
 
 describe("sanitizeRedirectUrl", () => {
   it("allows safe absolute http(s) and mailto URLs unchanged", () => {
@@ -73,5 +77,30 @@ describe("isSafeInternalPath", () => {
     "",
   ])("rejects non-same-origin path %s", (path) => {
     expect(isSafeInternalPath(path)).toBe(false);
+  });
+});
+
+describe("isAppLink", () => {
+  const origin = "https://heygaia.io";
+
+  it("keeps the API's absolute integrations link inside the app", () => {
+    expect(isAppLink("https://heygaia.io/integrations", origin)).toBe(true);
+    expect(
+      isAppLink("https://heygaia.io/integrations?connect=gmail", origin),
+    ).toBe(true);
+  });
+
+  it("treats a same-origin path as internal even before the origin is known", () => {
+    expect(isAppLink("/integrations", "")).toBe(true);
+    expect(isAppLink("//evil.example/integrations", "")).toBe(false);
+  });
+
+  it("sends every other origin to a new tab", () => {
+    expect(isAppLink("https://docs.heygaia.io/setup", origin)).toBe(false);
+    expect(
+      isAppLink("https://heygaia.io.evil.example/integrations", origin),
+    ).toBe(false);
+    expect(isAppLink("mailto:hi@heygaia.io", origin)).toBe(false);
+    expect(isAppLink("not a url", origin)).toBe(false);
   });
 });

@@ -1,167 +1,18 @@
 "use client";
 
+import type {
+  EventProperties,
+  WebEventName,
+} from "@gaia/shared/analytics/events";
+import type { UserId } from "@gaia/shared/analytics/identity";
 import posthog from "posthog-js";
 
 /**
- * Centralized analytics module for PostHog integration.
- * Provides type-safe event tracking with consistent naming conventions.
+ * Which surface put the paid-only wall on screen: the `source` property of
+ * `paywall:modal_viewed`. Every `openModal` call must name one; add a member
+ * to the catalog's literal when a new surface starts raising the wall.
  */
-
-// Event name constants for consistent tracking
-export const ANALYTICS_EVENTS = {
-  // Desktop-only and deliberately its own name: Electron IPC (app icon, popup
-  // shortcut) that never reaches the API, so no server event exists for it.
-  SETTINGS_DESKTOP_PREFERENCE_CHANGED: "settings:desktop_preference_changed",
-  // Auth events
-  USER_SESSION_RESUMED: "user:session_resumed",
-  USER_LOGGED_IN: "user:logged_in",
-  USER_LOGGED_OUT: "user:logged_out",
-
-  // Onboarding events
-  ONBOARDING_STARTED: "onboarding:started",
-  ONBOARDING_STEP_COMPLETED: "onboarding:step_completed",
-  ONBOARDING_COMPLETED: "onboarding:completed",
-  ONBOARDING_SKIPPED: "onboarding:skipped",
-
-  // Subscription events
-  SUBSCRIPTION_PAGE_VIEWED: "subscription:page_viewed",
-  SUBSCRIPTION_PLAN_VIEWED: "subscription:plan_viewed",
-  SUBSCRIPTION_CHECKOUT_STARTED: "subscription:checkout_started",
-  SUBSCRIPTION_COMPLETED: "subscription:completed",
-  SUBSCRIPTION_FAILED: "subscription:failed",
-
-  // Chat events
-  CHAT_STARTED: "chat:started",
-  CHAT_FIRST_MESSAGE_SENT: "chat:first_message_sent",
-  CHAT_VOICE_MODE_TOGGLED: "chat:voice_mode_toggled",
-
-  // Chat – interaction detail events
-  CHAT_MESSAGE_FEEDBACK: "chat:message_feedback",
-  CHAT_SLASH_COMMAND_SELECTED: "chat:slash_command_selected",
-  CHAT_SLASH_COMMAND_CATEGORY_CHANGED: "chat:slash_command_category_changed",
-  CHAT_COMPOSER_PLUS_MENU_CLICKED: "chat:composer_plus_menu_clicked",
-  CHAT_TOOLS_BUTTON_CLICKED: "chat:tools_button_clicked",
-  CHAT_GRID_INTEGRATION_CONNECT_CLICKED:
-    "chat:grid_integration_connect_clicked",
-  CHAT_MESSAGE_RETRIED: "chat:message_retried",
-
-  INTEGRATION_ERROR: "integration:error",
-
-  // Feature discovery events
-  FEATURE_DISCOVERED: "feature:discovered",
-
-  // Workflow events
-  WORKFLOWS_CREATED: "workflows:created",
-  WORKFLOWS_DELETED: "workflows:deleted",
-  WORKFLOWS_EXECUTED: "workflows:executed",
-  WORKFLOWS_PUBLISHED: "workflows:published",
-  WORKFLOWS_UNPUBLISHED: "workflows:unpublished",
-  WORKFLOWS_STEPS_REGENERATED: "workflows:steps_regenerated",
-  WORKFLOW_CARD_NAVIGATE: "workflow_card:navigate",
-  USE_CASES_PROMPT_INSERTED: "use_cases:prompt_inserted",
-
-  TODOS_VIEW_CHANGED: "todos:view_changed",
-
-  // Email events
-  EMAIL_OPENED: "email:opened",
-  EMAIL_COMPOSE_OPENED: "email:compose_opened",
-  EMAIL_AI_DRAFT_GENERATED: "email:ai_draft_generated",
-
-  // UI/UX events
-  UI_SIDEBAR_COLLAPSED: "ui:sidebar_collapsed",
-  UI_SIDEBAR_EXPANDED: "ui:sidebar_expanded",
-
-  SEARCH_GLOBAL_OPENED: "search:global_opened",
-  SEARCH_RESULT_CLICKED: "search:result_clicked",
-
-  // Pins/Bookmarks events
-  PIN_CREATED: "pin:created",
-  PIN_DELETED: "pin:deleted",
-  PIN_VIEWED: "pin:viewed",
-
-  // Profile events
-  PROFILE_LINK_COPIED: "profile:link_copied",
-
-  // Notifications events
-  NOTIFICATION_VIEWED: "notification:viewed",
-  NOTIFICATION_CLICKED: "notification:clicked",
-  NOTIFICATION_DISMISSED: "notification:dismissed",
-
-  // Content/Learning events
-  BLOG_ARTICLE_VIEWED: "blog:article_viewed",
-
-  // Navigation events
-  NAVIGATION_SIDEBAR_CLICKED: "navigation:sidebar_clicked",
-  NAVIGATION_NAVBAR_LINK_CLICKED: "navigation:navbar_link_clicked",
-  NAVIGATION_NAVBAR_DROPDOWN_OPENED: "navigation:navbar_dropdown_opened",
-  NAVIGATION_GITHUB_CLICKED: "navigation:github_clicked",
-  NAVIGATION_CTA_CLICKED: "navigation:cta_clicked",
-
-  // Pricing events
-  PRICING_PLAN_SELECTED: "pricing:plan_selected",
-
-  // CTA events
-  CTA_GET_STARTED_CLICKED: "cta:get_started_clicked",
-
-  // Error events
-  ERROR_OCCURRED: "error:occurred",
-
-  // Founder letter events
-  FOUNDER_LETTER_SHOWN: "founder_letter:shown",
-  FOUNDER_LETTER_OPENED: "founder_letter:opened",
-  FOUNDER_LETTER_DISCOUNT_CTA_CLICKED: "founder_letter:discount_cta_clicked",
-  FOUNDER_LETTER_CODE_COPIED: "founder_letter:code_copied",
-  FOUNDER_LETTER_MEETING_CLICKED: "founder_letter:meeting_clicked",
-  FOUNDER_LETTER_DISMISSED: "founder_letter:dismissed",
-
-  // What's new events
-  WHATS_NEW_CARD_SHOWN: "whats_new:card_shown",
-  WHATS_NEW_CARD_CLICKED: "whats_new:card_clicked",
-  WHATS_NEW_CARD_DISMISSED: "whats_new:card_dismissed",
-  WHATS_NEW_MODAL_OPENED: "whats_new:modal_opened",
-  WHATS_NEW_SLIDE_VIEWED: "whats_new:slide_viewed",
-  WHATS_NEW_DOCS_CLICKED: "whats_new:docs_clicked",
-
-  // Voice events
-  VOICE_MODE_STARTED: "voice:mode_started",
-  VOICE_MODE_STOPPED: "voice:mode_stopped",
-  VOICE_TRANSCRIPTION_RECEIVED: "voice:transcription_received",
-  WAKE_WORD_DETECTED: "wake_word:detected",
-
-  // Device events
-  DEVICE_CONNECTED: "device:connected",
-  DEVICE_DISCONNECTED: "device:disconnected",
-
-  // Desktop popup events
-  DESKTOP_POPUP_OPENED: "desktop_popup:opened",
-  DESKTOP_POPUP_DISMISSED: "desktop_popup:dismissed",
-
-  // Bot events
-  BOT_CONNECTED: "bot:connected",
-  BOT_DISCONNECTED: "bot:disconnected",
-
-  // Weather events
-  WEATHER_QUERIED: "weather:queried",
-
-  SKILL_SEARCHED: "skill:searched",
-
-  // Use case events
-  USE_CASE_CLICKED: "use_cases:clicked",
-
-  // Thanks page
-  THANKS_PAGE_VIEWED: "thanks:page_viewed",
-
-  // Reddit events
-  REDDIT_POST_VIEWED: "reddit:post_viewed",
-
-  // API layer events
-  API_REQUEST_FAILED: "api:request_failed",
-  API_CHUNK_RECOVERED: "api:chunk_recovered",
-  ROUTE_ERROR_SHOWN: "error:route_error_shown",
-} as const;
-
-export type AnalyticsEvent =
-  (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
+export type PaywallSource = EventProperties["paywall:modal_viewed"]["source"];
 
 interface UserProperties {
   email?: string;
@@ -174,8 +25,92 @@ interface UserProperties {
   first_message_sent?: boolean;
 }
 
-interface EventProperties {
-  [key: string]: unknown;
+/**
+ * `posthog.init` is deferred to browser idle (`instrumentation-client.ts`), and
+ * `posthog.capture` before init is silently *dropped* — `onboarding:started`
+ * on mount missed the head of the funnel this way for quick users.
+ *
+ * Calls made before init are buffered here and replayed in order by
+ * `flushPendingAnalytics`; capped, since no project token (local dev) means the queue never flushes and would grow for the tab's life.
+ */
+type PendingCall =
+  | { kind: "identify"; userId: string; properties: Record<string, unknown> }
+  | { kind: "capture"; event: string; properties: Record<string, unknown> }
+  | { kind: "person"; properties: UserProperties }
+  | { kind: "reset" };
+
+const MAX_PENDING_CALLS = 50;
+const pendingCalls: PendingCall[] = [];
+
+function isPostHogReady(): boolean {
+  return posthog.__loaded;
+}
+
+function isIdentityChange(call: PendingCall): boolean {
+  return call.kind === "identify" || call.kind === "reset";
+}
+
+/** Past the cap only events are dropped: a lost identify or reset misattributes everything after it. */
+function enqueue(call: PendingCall): void {
+  if (pendingCalls.length >= MAX_PENDING_CALLS && !isIdentityChange(call)) {
+    return;
+  }
+  pendingCalls.push(call);
+}
+
+function send(call: PendingCall): void {
+  switch (call.kind) {
+    case "identify":
+      posthog.identify(call.userId, call.properties);
+      break;
+    case "capture":
+      posthog.capture(call.event, call.properties);
+      break;
+    case "person":
+      posthog.setPersonProperties(call.properties);
+      break;
+    case "reset":
+      // An anonymous id carries pre-signup history; resetting it would orphan that.
+      if (posthog._isIdentified()) posthog.reset();
+      break;
+  }
+}
+
+function dispatch(call: PendingCall): void {
+  if (!isPostHogReady()) {
+    enqueue(call);
+    return;
+  }
+  send(call);
+}
+
+/** Sent on every API request so server events join this browser's session and replay. */
+const POSTHOG_SESSION_HEADER = "X-PostHog-Session-Id";
+
+/** The analytics headers for an API request; empty until PostHog has a session. */
+export function analyticsRequestHeaders(): Record<string, string> {
+  if (!isPostHogReady()) return {};
+  return { [POSTHOG_SESSION_HEADER]: posthog.get_session_id() };
+}
+
+const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+$/;
+
+/**
+ * Drop a distinct_id persisted from before #1007, when the web identified by email.
+ *
+ * Call after init and before the queue replays, so a queued identify links the
+ * fresh anonymous id to the Mongo id. Afterwards the id is a uuid, so it runs once.
+ */
+export function resetLegacyEmailIdentity(): void {
+  if (!isPostHogReady()) return;
+  if (EMAIL_SHAPED.test(posthog.get_distinct_id())) posthog.reset();
+}
+
+/** Replays everything captured before `posthog.init` finished, in order. */
+export function flushPendingAnalytics(): void {
+  if (!isPostHogReady()) return;
+  const queued = pendingCalls.splice(0, pendingCalls.length);
+  for (const call of queued) send(call);
 }
 
 /**
@@ -183,36 +118,40 @@ interface EventProperties {
  * Call this when a user logs in or signs up.
  */
 export function identifyUser(
-  userId: string,
+  userId: UserId,
   properties?: UserProperties,
 ): void {
-  if (!userId) return;
-
-  posthog.identify(userId, {
-    ...properties,
-    $set_once: {
-      first_seen: new Date().toISOString(),
+  dispatch({
+    kind: "identify",
+    userId,
+    properties: {
+      ...properties,
+      $set_once: {
+        first_seen: new Date().toISOString(),
+      },
     },
   });
 }
 
 /**
- * Reset user identity (call on logout).
+ * End a signed-in identity: on logout, or a 401. An anonymous identity is kept.
+ * Queued like identify, since posthog.reset() before init is a silent no-op.
  */
 export function resetUser(): void {
-  posthog.reset();
+  dispatch({ kind: "reset" });
 }
 
-/**
- * Track an analytics event.
- */
-export function trackEvent(
-  event: AnalyticsEvent | string,
-  properties?: EventProperties,
+/** Track a web-owned catalog event; server-owned events do not compile here. */
+export function track<E extends WebEventName>(
+  event: E,
+  properties: EventProperties[E],
 ): void {
-  posthog.capture(event, {
-    ...properties,
-    timestamp: new Date().toISOString(),
+  dispatch({
+    kind: "capture",
+    event,
+    // Stamped at call time, not at flush time: a buffered event must keep the
+    // moment it actually happened.
+    properties: { ...properties, timestamp: new Date().toISOString() },
   });
 }
 
@@ -220,36 +159,5 @@ export function trackEvent(
  * Set user properties without tracking an event.
  */
 export function setUserProperties(properties: UserProperties): void {
-  posthog.setPersonProperties(properties);
-}
-
-/**
- * Track onboarding progress.
- */
-export function trackOnboardingStep(
-  step: number,
-  stepName: string,
-  properties?: EventProperties,
-): void {
-  trackEvent(ANALYTICS_EVENTS.ONBOARDING_STEP_COMPLETED, {
-    step_number: step,
-    step_name: stepName,
-    ...properties,
-  });
-}
-
-/**
- * Track onboarding completion.
- */
-export function trackOnboardingComplete(properties: {
-  profession?: string;
-  integrationsConnected?: string[];
-  totalSteps: number;
-  timeToComplete?: number;
-}): void {
-  trackEvent(ANALYTICS_EVENTS.ONBOARDING_COMPLETED, properties);
-  setUserProperties({
-    onboarding_completed: true,
-    profession: properties.profession,
-  });
+  dispatch({ kind: "person", properties });
 }

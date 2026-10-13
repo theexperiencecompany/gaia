@@ -89,7 +89,6 @@ class TestCreateFlowchart:
         assert "TD" in result["prompt"]
 
     async def test_empty_direction_defaults_to_td(self) -> None:
-        """Empty string direction defaults to TD."""
         from app.agents.tools.flowchart_tool import create_flowchart
 
         result = await create_flowchart.coroutine(

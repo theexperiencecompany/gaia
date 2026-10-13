@@ -4,23 +4,37 @@ Sources (Google contacts, Gravatar, domain favicon) degrade silently and
 merge field-wise in priority order; results are cached per (user, email).
 """
 
+from collections.abc import Awaitable, Callable
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
+import respx
 
 from app.constants.email import (
     DOMAIN_FAVICON_URL_TEMPLATE,
     EMAIL_PROFILE_CACHE_KEY_TEMPLATE,
     GOOGLE_CONTACTS_SOURCE_NAME,
+    GRAVATAR_PROFILE_URL_TEMPLATE,
     GRAVATAR_SOURCE_NAME,
+    OTHER_CONTACTS_READ_MASK,
+    OTHER_CONTACTS_SEARCH_ENDPOINT,
+    PEOPLE_GET_ENDPOINT_TEMPLATE,
+    PEOPLE_SEARCH_ENDPOINT,
+    PEOPLE_SEARCH_READ_MASK,
 )
+from app.models.composio_schemas.google_people import GooglePerson, GooglePersonPhoto
 from app.models.search_models import URLResponse
+from app.services.composio.proxy_client import ProxyRequest
 from app.services.email_profile_service import (
     _domain_favicon_profile,
+    _fetch_gravatar_profile,
     _merge_profiles,
     _person_to_profile,
     _pick_photo,
+    _search_google_people,
     fetch_email_profile,
     fetch_email_profiles,
 )
@@ -46,8 +60,8 @@ def _search_result(person: dict) -> dict:
 
 
 def _proxy_side_effect(search_payload: dict, get_payload: dict):
-    async def fake_proxy_request(**kwargs: object) -> dict:
-        endpoint = kwargs["endpoint"]
+    async def fake_proxy_request(request: ProxyRequest) -> dict:
+        endpoint = request.endpoint
         if "search" in str(endpoint):
             return search_payload
         return get_payload
@@ -118,6 +132,63 @@ class TestFetchEmailProfile:
         assert value["title"] == "Alice Example"
         assert ttl == 24 * 60 * 60
 
+    async def test_searches_both_people_surfaces_through_the_users_gmail_proxy(self, mock_http):
+        """Saved contacts and other-contacts are each one GET through the user's Gmail connection, per the People API contract."""
+        mock_http.proxy.side_effect = _proxy_side_effect(_search_result(_person()), {})
+
+        await fetch_email_profile(USER_ID, EMAIL)
+
+        search_requests = [
+            call.args[0]
+            for call in mock_http.proxy.await_args_list
+            if call.args[0].endpoint in (PEOPLE_SEARCH_ENDPOINT, OTHER_CONTACTS_SEARCH_ENDPOINT)
+        ]
+        assert sorted(search_requests, key=lambda r: r.endpoint) == [
+            ProxyRequest(
+                user_id=USER_ID,
+                toolkit="GMAIL",
+                method="GET",
+                endpoint=OTHER_CONTACTS_SEARCH_ENDPOINT,
+                query={"query": EMAIL, "readMask": OTHER_CONTACTS_READ_MASK},
+            ),
+            ProxyRequest(
+                user_id=USER_ID,
+                toolkit="GMAIL",
+                method="GET",
+                endpoint=PEOPLE_SEARCH_ENDPOINT,
+                query={"query": EMAIL, "readMask": PEOPLE_SEARCH_READ_MASK},
+            ),
+        ]
+
+    async def test_full_photo_list_is_fetched_with_people_get_for_the_matched_contact(
+        self, mock_http
+    ):
+        mock_http.proxy.side_effect = _proxy_side_effect(
+            _search_result(_person(resourceName="people/c123")), {}
+        )
+
+        await fetch_email_profile(USER_ID, EMAIL)
+
+        get_requests = [
+            call.args[0]
+            for call in mock_http.proxy.await_args_list
+            if call.args[0].endpoint not in (PEOPLE_SEARCH_ENDPOINT, OTHER_CONTACTS_SEARCH_ENDPOINT)
+        ]
+        # Both search surfaces match the same person, so each fetches its photos.
+        assert (
+            get_requests
+            == [
+                ProxyRequest(
+                    user_id=USER_ID,
+                    toolkit="GMAIL",
+                    method="GET",
+                    endpoint=PEOPLE_GET_ENDPOINT_TEMPLATE.format(resource_name="people/c123"),
+                    query={"personFields": "photos"},
+                )
+            ]
+            * 2
+        )
+
     async def test_freemail_domain_never_gets_domain_favicon(self, mock_http):
         mock_http.proxy.return_value = {}
         mock_http.gravatar.return_value = None
@@ -154,11 +225,10 @@ class TestFetchEmailProfile:
         assert response.website_name == GRAVATAR_SOURCE_NAME
 
     async def test_empty_search_triggers_warmup_retry(self, mock_http):
-        """Google's search endpoints go cold after inactivity — the service must
-        warm up (empty query) and retry before giving up."""
+        """A cold Google search endpoint must be warmed up (empty query) and retried before giving up."""
         calls = {"n": 0}
 
-        async def fake_proxy_request(**kwargs: object) -> dict:
+        async def fake_proxy_request(request: ProxyRequest) -> dict:
             calls["n"] += 1
             if calls["n"] <= 2:
                 return {"results": []}
@@ -203,15 +273,70 @@ class TestFetchEmailProfiles:
         assert results["bob@example.com"].title is None
 
 
+def _cold_search(
+    search_payloads: list[dict],
+) -> tuple[list[ProxyRequest], Callable[[ProxyRequest], Awaitable[dict | None]]]:
+    """Answer each People search call in turn, and people.get with nothing."""
+    requests: list[ProxyRequest] = []
+    payloads = iter(search_payloads)
+
+    async def fake_proxy_request(request: ProxyRequest) -> dict | None:
+        requests.append(request)
+        if request.endpoint == PEOPLE_SEARCH_ENDPOINT:
+            return next(payloads)
+        return {}
+
+    return requests, fake_proxy_request
+
+
+class TestSearchWarmupRetry:
+    """Google's contact search returns empty until warmed up; the retry must repeat the original query."""
+
+    async def test_a_cold_search_is_warmed_up_then_retried_with_the_same_request(self, mock_http):
+        requests, fake = _cold_search([{"results": []}, {"results": []}, _search_result(_person())])
+        mock_http.proxy.side_effect = fake
+
+        with patch(f"{_MOD}.PEOPLE_SEARCH_WARMUP_DELAY_SECONDS", 0):
+            profile = await _search_google_people(
+                USER_ID, PEOPLE_SEARCH_ENDPOINT, EMAIL, PEOPLE_SEARCH_READ_MASK
+            )
+
+        assert profile is not None
+        assert profile.title == "Alice Example"
+        searches = [r for r in requests if r.endpoint == PEOPLE_SEARCH_ENDPOINT]
+        assert [r.query["query"] for r in searches] == [EMAIL, "", EMAIL]
+        assert searches[2] == ProxyRequest(
+            user_id=USER_ID,
+            toolkit="GMAIL",
+            method="GET",
+            endpoint=PEOPLE_SEARCH_ENDPOINT,
+            query={"query": EMAIL, "readMask": PEOPLE_SEARCH_READ_MASK},
+        )
+
+    async def test_a_retry_that_fails_finds_no_one_instead_of_raising(self, mock_http):
+        requests, fake = _cold_search([{"results": []}, {"results": []}, None])
+        mock_http.proxy.side_effect = fake
+
+        with patch(f"{_MOD}.PEOPLE_SEARCH_WARMUP_DELAY_SECONDS", 0):
+            profile = await _search_google_people(
+                USER_ID, PEOPLE_SEARCH_ENDPOINT, EMAIL, PEOPLE_SEARCH_READ_MASK
+            )
+
+        assert profile is None
+        assert len(requests) == 3
+
+
 class TestPersonToProfile:
     def test_matches_email_and_extracts_fields(self):
         profile = _person_to_profile(
-            {
-                "names": [{"displayName": "Alice Example"}],
-                "emailAddresses": [{"value": "ALICE@example.com "}],
-                "biographies": [{"value": "Works at X"}],
-                "photos": [{"url": "https://x/a.jpg"}],
-            },
+            GooglePerson.model_validate(
+                {
+                    "names": [{"displayName": "Alice Example"}],
+                    "emailAddresses": [{"value": "ALICE@example.com "}],
+                    "biographies": [{"value": "Works at X"}],
+                    "photos": [{"url": "https://x/a.jpg"}],
+                }
+            ),
             EMAIL,
         )
 
@@ -223,32 +348,44 @@ class TestPersonToProfile:
 
     def test_returns_none_when_email_does_not_match(self):
         assert (
-            _person_to_profile(_person(emailAddresses=[{"value": "other@example.com"}]), EMAIL)
+            _person_to_profile(
+                GooglePerson.model_validate(
+                    _person(emailAddresses=[{"value": "other@example.com"}])
+                ),
+                EMAIL,
+            )
             is None
         )
 
     def test_returns_none_without_name_or_photo(self):
-        assert _person_to_profile({"emailAddresses": [{"value": EMAIL}]}, EMAIL) is None
+        assert (
+            _person_to_profile(
+                GooglePerson.model_validate({"emailAddresses": [{"value": EMAIL}]}), EMAIL
+            )
+            is None
+        )
 
     def test_prefers_real_photo_over_monogram(self):
         photos = [
-            {"url": "https://x/monogram.jpg", "default": True},
-            {"url": "https://x/real.jpg"},
+            GooglePersonPhoto(url="https://x/monogram.jpg", default=True),
+            GooglePersonPhoto(url="https://x/real.jpg"),
         ]
 
         assert _pick_photo(photos) == "https://x/real.jpg"
 
     def test_pick_photo_prefers_profile_source(self):
         photos = [
-            {"url": "https://x/real.jpg"},
-            {"url": "https://x/profile.jpg", "metadata": {"source": {"type": "PROFILE"}}},
+            GooglePersonPhoto(url="https://x/real.jpg"),
+            GooglePersonPhoto.model_validate(
+                {"url": "https://x/profile.jpg", "metadata": {"source": {"type": "PROFILE"}}}
+            ),
         ]
 
         assert _pick_photo(photos) == "https://x/profile.jpg"
 
     def test_pick_photo_empty(self):
         assert _pick_photo([]) is None
-        assert _pick_photo([{"default": True, "url": "https://x/m.jpg"}]) is None
+        assert _pick_photo([GooglePersonPhoto(default=True, url="https://x/m.jpg")]) is None
 
 
 class TestMergeProfiles:
@@ -281,3 +418,59 @@ class TestDomainFaviconProfile:
 
         assert profile is not None
         assert profile.favicon == DOMAIN_FAVICON_URL_TEMPLATE.format(domain="acme-corp.com")
+
+
+_GRAVATAR_URL = GRAVATAR_PROFILE_URL_TEMPLATE.format(
+    email_hash=hashlib.sha256(EMAIL.encode("utf-8")).hexdigest()
+)
+
+
+class TestFetchGravatarProfile:
+    @respx.mock
+    async def test_a_public_profile_maps_onto_the_preview_fields(self) -> None:
+        respx.get(_GRAVATAR_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "entry": [
+                        {
+                            "displayName": "Alice G",
+                            "name": {"formatted": "Alice Gravatar"},
+                            "aboutMe": "Builds things",
+                            "thumbnailUrl": "https://gravatar.example/a.jpg",
+                        }
+                    ]
+                },
+            )
+        )
+
+        profile = await _fetch_gravatar_profile(EMAIL)
+
+        assert profile is not None
+        assert profile.title == "Alice G"
+        assert profile.description == "Builds things"
+        assert profile.favicon == "https://gravatar.example/a.jpg"
+        assert profile.website_name == GRAVATAR_SOURCE_NAME
+
+    @respx.mock
+    async def test_without_a_display_name_the_formatted_name_is_the_title(self) -> None:
+        respx.get(_GRAVATAR_URL).mock(
+            return_value=httpx.Response(200, json={"entry": [{"name": {"formatted": "Alice G"}}]})
+        )
+
+        profile = await _fetch_gravatar_profile(EMAIL)
+
+        assert profile is not None
+        assert profile.title == "Alice G"
+
+    @respx.mock
+    async def test_an_email_without_a_gravatar_has_no_profile(self) -> None:
+        respx.get(_GRAVATAR_URL).mock(return_value=httpx.Response(404))
+
+        assert await _fetch_gravatar_profile(EMAIL) is None
+
+    @respx.mock
+    async def test_a_profile_with_no_entries_has_no_profile(self) -> None:
+        respx.get(_GRAVATAR_URL).mock(return_value=httpx.Response(200, json={"entry": []}))
+
+        assert await _fetch_gravatar_profile(EMAIL) is None

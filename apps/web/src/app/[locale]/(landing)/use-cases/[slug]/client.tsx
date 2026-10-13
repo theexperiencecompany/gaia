@@ -139,9 +139,7 @@ function deriveRunCountText(
   useCase: UseCase | null,
 ) {
   const runCount = communityWorkflow
-    ? communityWorkflow.metadata?.total_executions ||
-      communityWorkflow.total_executions ||
-      0
+    ? communityWorkflow.total_executions || 0
     : (useCase?.total_executions ?? 0);
   if (runCount === 0) return "Never";
   return formatCompactNumber(runCount);
@@ -247,34 +245,27 @@ function UseCaseMetaInfo({
   );
 }
 
-export default function UseCaseDetailClient({
-  useCase,
-  communityWorkflow,
-  slug,
-}: UseCaseDetailClientProps) {
+/** Creating the workflow behind a use case, gated on being signed in. */
+function useCreateFromUseCase(
+  useCase: UseCaseDetailClientProps["useCase"],
+  communityWorkflow: UseCaseDetailClientProps["communityWorkflow"],
+) {
   const [isCreating, startCreateTransition] = useTransition();
   const { createWorkflow } = useWorkflowCreation();
   const { selectWorkflow } = useWorkflowSelection();
-  const { integrations } = useIntegrations();
-  const { getIntegrationName } = useIntegrationLookup();
-
-  // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
 
   const handleCreateWorkflow = () => {
-    // Check authentication first - open login modal if not authenticated
     if (!isAuthenticated) {
       openLoginModal();
       return;
     }
-
     const workflowRequest = buildWorkflowRequest(useCase, communityWorkflow);
     if (!workflowRequest) return;
 
     startCreateTransition(async () => {
       try {
         const result = await createWorkflow(workflowRequest);
-
         if (result.success && result.workflow)
           selectWorkflow(result.workflow, { autoSend: false });
       } catch (error) {
@@ -283,47 +274,85 @@ export default function UseCaseDetailClient({
     });
   };
 
+  return { isCreating, handleCreateWorkflow };
+}
+
+/** Everything the detail layout shows, from whichever source the page resolved. */
+function deriveDetail(
+  useCase: UseCaseDetailClientProps["useCase"],
+  communityWorkflow: UseCaseDetailClientProps["communityWorkflow"],
+  slug: string,
+) {
   const data = useCase || communityWorkflow;
   if (!data) return null;
-
-  // Prepare common data
-  const title = "title" in data ? data.title : "";
-  const workflowPrompt = useCase?.prompt || communityWorkflow?.prompt;
-  const sourceIntegration =
-    useCase?.source_integration ?? communityWorkflow?.source_integration;
-  const heroIcon = renderHeroIcon(data.icon, data.icon_color);
-  const currentSlug = useCase?.slug ?? communityWorkflow?.slug ?? slug;
-
-  // Prepare breadcrumbs
-  const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Use Cases", href: "/use-cases" },
-    {
-      label: useCase
-        ? useCase.categories.find((cat) => cat !== "featured") ||
-          useCase.categories[0]
-        : "Community",
-    },
-  ];
-
-  const { creatorName, creatorAvatar, showCreator } = deriveCreatorInfo(
-    communityWorkflow,
-    useCase,
-  );
-
-  // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList.
-  // Dedupe by category so a workflow with multiple steps using the same tool only
-  // renders one chip in the tools list.
+  const steps = useCase?.steps || communityWorkflow?.steps;
+  // Dedupe by category so a workflow with multiple steps using the same tool
+  // only renders one chip in the tools list.
   const tools = Array.from(
     new Map(
-      (useCase?.steps || communityWorkflow?.steps || []).map((step) => [
+      (steps || []).map((step) => [
         step.category,
         { name: step.category, category: step.category },
       ]),
     ).values(),
   );
+  return {
+    title: "title" in data ? data.title : "",
+    workflowPrompt: useCase?.prompt || communityWorkflow?.prompt,
+    sourceIntegration:
+      useCase?.source_integration ?? communityWorkflow?.source_integration,
+    heroIcon: renderHeroIcon(data.icon, data.icon_color),
+    currentSlug: useCase?.slug ?? communityWorkflow?.slug ?? slug,
+    breadcrumbs: [
+      { label: "Home", href: "/" },
+      { label: "Use Cases", href: "/use-cases" },
+      {
+        label: useCase
+          ? useCase.categories.find((cat) => cat !== "featured") ||
+            useCase.categories[0]
+          : "Community",
+      },
+    ],
+    creator: deriveCreatorInfo(communityWorkflow, useCase),
+    tools,
+    runCountText: deriveRunCountText(communityWorkflow, useCase),
+    steps,
+    stepsFormatted: deriveFormattedSteps(useCase, communityWorkflow),
+    description:
+      useCase?.detailed_description ||
+      useCase?.description ||
+      communityWorkflow?.description,
+  };
+}
 
-  const runCountText = deriveRunCountText(communityWorkflow, useCase);
+export default function UseCaseDetailClient({
+  useCase,
+  communityWorkflow,
+  slug,
+}: UseCaseDetailClientProps) {
+  const { isCreating, handleCreateWorkflow } = useCreateFromUseCase(
+    useCase,
+    communityWorkflow,
+  );
+  const { integrations } = useIntegrations();
+  const { getIntegrationName } = useIntegrationLookup();
+
+  const detail = deriveDetail(useCase, communityWorkflow, slug);
+  if (!detail) return null;
+  const {
+    title,
+    workflowPrompt,
+    sourceIntegration,
+    heroIcon,
+    currentSlug,
+    breadcrumbs,
+    creator: { creatorName, creatorAvatar, showCreator },
+    tools,
+    runCountText,
+    steps,
+    stepsFormatted,
+    description,
+  } = detail;
 
   // Prepare trigger info (only for community workflows)
   const triggerInfo = communityWorkflow
@@ -331,10 +360,6 @@ export default function UseCaseDetailClient({
     : null;
   const shouldShowTrigger =
     communityWorkflow && communityWorkflow.trigger_config.type !== "manual";
-
-  // Prepare steps
-  const steps = useCase?.steps || communityWorkflow?.steps;
-  const stepsFormatted = deriveFormattedSteps(useCase, communityWorkflow);
 
   return (
     <div className="relative">
@@ -374,11 +399,7 @@ export default function UseCaseDetailClient({
             </div>
           ) : undefined
         }
-        description={
-          useCase?.detailed_description ||
-          useCase?.description ||
-          communityWorkflow?.description
-        }
+        description={description}
         steps={
           steps && steps.length > 0 ? (
             <div className="w-fit shrink-0">
@@ -391,12 +412,7 @@ export default function UseCaseDetailClient({
             </div>
           ) : undefined
         }
-        categories={
-          useCase?.categories ||
-          (communityWorkflow?.metadata?.category
-            ? [communityWorkflow.metadata.category]
-            : [])
-        }
+        categories={useCase?.categories || []}
       />
       <FinalSection />
     </div>

@@ -1,14 +1,9 @@
 /**
- * Document components — re-exported from the OpenUI config layer.
- *
- * The implementations live in:
- *   apps/mobile/src/config/openui/components/document.tsx
- *
- * Mobile-specific behaviour:
- * - TextDocument uses MarkdownRenderer (react-native-markdown-display) instead
- *   of Tiptap, which is web-only. The body field accepts raw markdown or HTML.
- * - Metadata fields render as InnerCard label/value pairs.
- * - Copy functionality is omitted on mobile; the share sheet handles this natively.
+ * Document components re-exported from
+ * apps/mobile/src/config/openui/components/document.tsx. TextDocument uses
+ * MarkdownRenderer instead of the web-only Tiptap (body accepts raw markdown or
+ * HTML); metadata renders as InnerCard label/value pairs; copy is omitted since
+ * the share sheet handles it natively.
  */
 export {
   TextDocumentView,

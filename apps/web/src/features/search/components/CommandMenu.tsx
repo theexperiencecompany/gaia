@@ -2,6 +2,7 @@
 
 import { Kbd } from "@heroui/kbd";
 import { MessageMultiple02Icon, SearchIcon } from "@icons";
+import type { SearchResultsResponse } from "@shared/api/generated";
 import { Command } from "cmdk";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -15,11 +16,11 @@ import React, {
 } from "react";
 import { getLinkByLabel } from "@/config/appConfig";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
-import { type ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
+import { searchApi } from "../api/searchApi";
 import {
   ANIMATION_CONFIG,
   COMMAND_MENU_STYLES,
@@ -43,7 +44,7 @@ function ConversationResults({
   conversations,
   onOpen,
 }: Readonly<{
-  conversations: ComprehensiveSearchResponse["conversations"];
+  conversations: SearchResultsResponse["conversations"];
   onOpen: (conversationId: string) => void;
 }>) {
   if (conversations.length === 0) return null;
@@ -54,7 +55,7 @@ function ConversationResults({
           key={`conversation-${conversation.conversation_id}`}
           value={conversation.description || "Conversation"}
           onSelect={() => {
-            trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+            track("search:result_clicked", {
               result_type: "conversation",
               conversation_id: conversation.conversation_id,
             });
@@ -82,7 +83,7 @@ function MessageResults({
   messages,
   onOpen,
 }: Readonly<{
-  messages: ComprehensiveSearchResponse["messages"];
+  messages: SearchResultsResponse["messages"];
   onOpen: (conversationId: string) => void;
 }>) {
   if (messages.length === 0) return null;
@@ -93,10 +94,10 @@ function MessageResults({
           key={`message-${message.message.message_id}`}
           value={message.snippet}
           onSelect={() => {
-            trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+            track("search:result_clicked", {
               result_type: "message",
               conversation_id: message.conversation_id,
-              message_id: message.message.message_id,
+              message_id: message.message.message_id ?? undefined,
             });
             onOpen(message.conversation_id);
           }}
@@ -111,7 +112,9 @@ function MessageResults({
               className={COMMAND_MENU_STYLES.resultSubtitle}
               suppressHydrationWarning
             >
-              {new Date(message.message.date).toLocaleDateString()}
+              {message.message.date
+                ? new Date(message.message.date).toLocaleDateString()
+                : null}
             </div>
           </div>
         </Command.Item>
@@ -165,17 +168,16 @@ function MenuSectionsList({
 export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const router = useRouter();
   const { modifierKeyName } = usePlatform();
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const { isPaid, isUnknown } = useIsPaid();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] =
-    useState<ComprehensiveSearchResponse>({
-      conversations: [],
-      messages: [],
-      notes: [],
-    });
+  const [searchResults, setSearchResults] = useState<SearchResultsResponse>({
+    conversations: [],
+    messages: [],
+    notes: [],
+  });
   const [isSearching, setIsSearching] = useState(false);
 
   // Reset and focus
@@ -185,7 +187,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       setSearchResults({ conversations: [], messages: [], notes: [] });
       return;
     }
-    trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
+    track("search:global_opened", {});
     const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
     return () => clearTimeout(focusTimer);
   }, [open]);
@@ -323,8 +325,10 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     for (const section of MENU_SECTIONS) {
       const items: CommandMenuItem[] = [];
       for (const item of section.items) {
-        // Filter out upgrade if subscribed
-        if (item.hideWhenSubscribed && subscriptionStatus?.is_subscribed) {
+        // Filter out "upgrade" once the user is paid, and also while status is
+        // unknown — showing an upgrade prompt is exactly the free-tier UI a
+        // paying user reloading mid-fetch must never see.
+        if (item.hideWhenSubscribed && (isUnknown || isPaid)) {
           continue;
         }
         // Filter by search
@@ -341,7 +345,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       }
     }
     return sections;
-  }, [search, subscriptionStatus, buildMenuItem]);
+  }, [search, isUnknown, isPaid, buildMenuItem]);
 
   return (
     <AnimatePresence>

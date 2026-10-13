@@ -7,12 +7,15 @@ import type {
   ToolName,
 } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
-import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";
+import ConnectOptions from "@/features/chat/components/bubbles/bot/ConnectOptions";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
+import { DeviceApprovalPrompt } from "@/features/chat/components/bubbles/bot/DeviceApprovalPrompt";
+import { DeviceOnboardingPrompt } from "@/features/chat/components/bubbles/bot/DeviceOnboardingPrompt";
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
+import type { DeviceApprovalRequiredData } from "@/features/devices/types";
 import { IntegrationListSection } from "@/features/integrations/components/IntegrationListSection";
 import type {
   IntegrationConnectionData,
@@ -28,7 +31,7 @@ import type {
   EmailFetchData,
   EmailSentData,
 } from "@/types/features/mailTypes";
-import type { NotificationRecord } from "@/types/features/notificationTypes";
+import type { NotificationView } from "@/types/features/notificationTypes";
 import type {
   RedditCommentCreatedData,
   RedditCommentData,
@@ -39,9 +42,11 @@ import type {
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
 import ApprovalRequestGroup from "../ApprovalRequestGroup";
+import BrowserTaskSection from "../BrowserTaskSection";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
-import CalendarEventSection from "../CalendarEventSection";
+import { CalendarEventReadonlySection } from "../CalendarEventReadonlySection";
+import { CalendarListFetchSection } from "../CalendarListFetchSection";
 import CodeExecutionSection from "../CodeExecutionSection";
 import ContactListSection from "../ContactListSection";
 import EmailComposeSection from "../EmailComposeSection";
@@ -77,10 +82,9 @@ export function getTypedData<K extends ToolName>(
     : undefined;
 }
 
-// Map of tool_name -> renderer function for unified tool_data rendering.
-// Renderers return ONE card per tool_data entry; sibling identity is owned by
-// the keyed <React.Fragment> wrapper at the renderTool() call site (TextBubble),
-// so renderers neither take nor set keys.
+// Map of tool_name -> renderer for unified tool_data rendering. Renderers
+// return ONE card per entry; sibling identity is owned by the keyed
+// <React.Fragment> at renderTool()'s call site (TextBubble) — no keys here.
 type RendererMap = {
   [K in ToolName]: (data: ToolDataMap[K]) => React.ReactNode;
 };
@@ -130,6 +134,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   // Desktop
   screenshot_data: (data) => <ScreenshotSection screenshot_data={data} />,
 
+  // Browser automation (Browser-Use)
+  browser_task_data: (data) => <BrowserTaskSection data={data} />,
+
   // Email
   email_thread_data: (data) => <EmailThreadCard emailThreadData={data} />,
   email_fetch_data: (data) => {
@@ -163,7 +170,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   ),
 
   // Calendar
-  calendar_options: (data) => <CalendarEventSection calendar_options={data} />,
+  calendar_options: (data) => (
+    <CalendarEventReadonlySection calendar_options={data} />
+  ),
   calendar_delete_options: (data) => (
     <CalendarDeleteSection calendar_delete_options={data} />
   ),
@@ -173,8 +182,11 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   calendar_fetch_data: (data) => (
     <CalendarListCard events={Array.isArray(data) ? data : [data]} />
   ),
+  // Restored-history only: old conversations still carry this key, and a
+  // null renderer left them blank. Read-only list, no draft or add flows
+  // (those moved to HIL approvals by design).
   calendar_list_fetch_data: (data) => (
-    <CalendarListFetchCard calendars={Array.isArray(data) ? data : [data]} />
+    <CalendarListFetchSection calendars={Array.isArray(data) ? data : [data]} />
   ),
 
   // Support ticket
@@ -200,7 +212,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     <NotificationListSection
       notifications={
         (data as { notifications: unknown[] })
-          .notifications as NotificationRecord[]
+          .notifications as NotificationView[]
       }
       title="Your Notifications"
     />
@@ -208,6 +220,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   send_notification_data: (data) => (
     <SendNotificationSection send_notification_data={data} />
   ),
+  connect_options: (data) => <ConnectOptions connect_options={data} />,
   integration_connection_required: (data) => {
     // Data can be a single item or an array (when grouped)
     const items = (
@@ -226,6 +239,37 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
           <IntegrationConnectionPrompt
             key={item.integration_id}
             integration_connection_required={item}
+          />
+        ))}
+      </>
+    );
+  },
+
+  // Device onboarding is a single instructional card (install → pair → approve);
+  // not grouped, so `data` is one payload. It routes to the authenticated approve
+  // page rather than approving inline.
+  device_onboarding_required: (data) => (
+    <DeviceOnboardingPrompt device_onboarding_required={data} />
+  ),
+
+  device_approval_required: (data) => {
+    // Grouped: a resumed stream can replay the same waiting-device frame, so
+    // normalize single-or-array and de-duplicate by pairing code.
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as DeviceApprovalRequiredData[];
+    const seen = new Set<string>();
+    const uniqueItems = items.filter((item) => {
+      if (seen.has(item.code)) return false;
+      seen.add(item.code);
+      return true;
+    });
+    return (
+      <>
+        {uniqueItems.map((item) => (
+          <DeviceApprovalPrompt
+            key={item.code}
+            device_approval_required={item}
           />
         ))}
       </>
@@ -340,11 +384,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     return <MemoryCard items={items} />;
   },
 
-  // HIL approval — grouped so a run needing many decisions doesn't stack a full
-  // card each: pending ones show side by side, settled ones are removed (the
-  // assistant's reply already reflects them). Each approval_id is a single entry
-  // (pending→resolved replaced in place via upsertApprovalToolData); grouping
-  // collects them into the array.
+  // HIL approval — grouped so many decisions don't stack a full card each:
+  // pending show side by side, settled are removed (reply reflects them).
+  // Each approval_id is one entry, replaced in place via upsertApprovalToolData.
   approval_request: (data) => {
     const raw = (Array.isArray(data) ? data : [data]) as ApprovalRequestData[];
     // A resumed stream replays the gate-time PENDING frame after the decision

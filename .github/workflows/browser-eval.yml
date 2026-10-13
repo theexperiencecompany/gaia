@@ -1,0 +1,70 @@
+name: Browser Eval
+
+# The browser quality eval (apps/api/scripts/evals/suites/browser.py): real
+# models drive a Chrome host through 22 tasks on real sites, each scored on what
+# the run reported. On demand only and never a required check: it bills model
+# calls and loads live third-party sites, so a red run means "read the report",
+# not "the PR is broken". The hermetic browser slice in main.yml is the gate.
+#
+# Needs the EVAL_OPENROUTER_API_KEY repository secret (the agent, its text model
+# and Jev's decisions all run on OpenRouter).
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Comma-separated case ids (browser-form,browser-search); empty runs all 22"
+        required: false
+        default: ""
+      model:
+        description: "The model the browser agent runs on, recorded as the run's model"
+        required: false
+        default: "deepseek/deepseek-v4-flash"
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    name: Browser quality eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ENV: development
+      BROWSER_HOST_PORT: "8931"
+      BROWSER_HOST_URL: http://127.0.0.1:8931
+      BROWSER_FALLBACK_HOST_URL: http://127.0.0.1:8931
+      BROWSER_JEV_PROVIDER: openrouter
+      OPENROUTER_API_KEY: ${{ secrets.EVAL_OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: ${{ inputs.model }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-test-env
+        with:
+          node: "false"
+          services: "true"
+          restore-models: "false"
+      - name: Start the Chrome host
+        run: bash scripts/ci/browser.sh chrome-host
+      - name: Run the browser eval
+        # bash -eo pipefail: the default shell would let tee swallow the eval's exit code.
+        shell: bash
+        env:
+          ONLY: ${{ inputs.only }}
+        run: bash scripts/ci/browser.sh eval "$ONLY" | tee "$RUNNER_TEMP/eval.txt"
+      - name: Write the eval tail to the job summary
+        if: always()
+        run: tail -n 60 "$RUNNER_TEMP/eval.txt" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: browser-eval
+          path: |
+            apps/api/scripts/evals/runs/
+            ${{ runner.temp }}/browser-host.log
+          retention-days: 14
+      - name: Release the test services
+        if: always()
+        run: bash scripts/ci/test-services.sh down

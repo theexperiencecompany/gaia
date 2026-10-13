@@ -73,6 +73,9 @@ jobs:
     name: build (cf:build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The public build values (vars.NEXT_PUBLIC_*) live on the production environment,
+    # so only a master build bakes them in; PR previews build without them.
+    environment: ${{ github.event_name == 'pull_request' && 'Preview' || 'production' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -91,11 +94,32 @@ jobs:
       # 32592594996: build step itself is only 179s of the 545s job).
       # The Next.js compiler cache above is what actually warms next build.
 
-      # No Cloudflare secrets here — preflight moved to preview/deploy (environment-gated)
+      # NEXT_PUBLIC_* vars are inlined into the JS at build time — there is no
+      # runtime override on Workers (wrangler.jsonc has no [vars]), so the
+      # bundle that deploy-prod ships MUST be built with the prod API URL.
+      # PR previews keep the fake URL (render check only, no backend). The
+      # deploy-prod verify step fails the run if a fake-URL bundle ever
+      # reaches it, so a misconfigured build can't silently ship prod broken.
       - name: Build Cloudflare bundle
         env:
-          NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
+          NEXT_PUBLIC_API_BASE_URL: ${{ github.event_name == 'pull_request' && 'http://fake-api-for-build.example.com' || 'https://api.heygaia.io/api/v1/' }}
+          NEXT_PUBLIC_DISCORD_CLIENT_ID: ${{ vars.NEXT_PUBLIC_DISCORD_CLIENT_ID }}
+          NEXT_PUBLIC_SLACK_CLIENT_ID: ${{ vars.NEXT_PUBLIC_SLACK_CLIENT_ID }}
+          NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_GA_ID: ${{ vars.NEXT_PUBLIC_GA_ID }}
+          NEXT_PUBLIC_RYBBIT_SITE_ID: ${{ vars.NEXT_PUBLIC_RYBBIT_SITE_ID }}
+          NEXT_PUBLIC_FASTLANE_TRACKING_ID: ${{ vars.NEXT_PUBLIC_FASTLANE_TRACKING_ID }}
+          IS_PR: ${{ github.event_name == 'pull_request' }}
         run: |
+          # A production bundle missing a public value ships a dead link or silent analytics.
+          if [ "$IS_PR" != "true" ]; then
+            missing=$(for name in ${!NEXT_PUBLIC_@}; do [ -n "${!name}" ] || echo "$name"; done)
+            if [ -n "$missing" ]; then
+              echo "::error::Empty in the production environment's variables: $(echo $missing). Set them under Settings → Environments → production."
+              exit 1
+            fi
+          fi
           echo "::group::opennext build — pnpm --filter ./apps/web cf:build"
           time pnpm --filter ./apps/web cf:build
           echo "::endgroup::"
@@ -162,6 +186,13 @@ jobs:
           test -f apps/web/.open-next/worker.js || { echo "::error::worker.js missing — build artifact not restored"; exit 1; }
           du -h apps/web/.open-next/worker.js
           du -sh apps/web/.open-next
+          # NEXT_PUBLIC_API_BASE_URL is baked into the JS at build time. A
+          # PR-preview bundle (fake URL) must never ship to production — refuse
+          # to deploy instead of shipping a silently backend-less frontend.
+          if grep -rq "fake-api-for-build" apps/web/.open-next --include='*.js'; then
+            echo "::error::Production bundle contains the fake preview API URL — NEXT_PUBLIC_API_BASE_URL was wrong at build time. Refusing to deploy."
+            exit 1
+          fi
 
       - name: Deploy to Cloudflare Workers (production)
         env:
@@ -170,7 +201,9 @@ jobs:
         run: |
           # wrangler is a dependency of apps/web; under the isolated linker its
           # bin only exists in that package's node_modules, not the repo root.
-          pnpm --filter ./apps/web exec wrangler deploy --config wrangler.jsonc
+          # A token deploy has no author; the tag and message say which commit and run shipped it.
+          pnpm --filter ./apps/web exec wrangler deploy --config wrangler.jsonc \
+            --tag "${GITHUB_SHA::7}" --message "GitHub Actions: ${GITHUB_ACTOR} run ${GITHUB_RUN_ID}"
 
       - name: Report deploy duration
         if: always()
@@ -236,7 +269,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm --filter ./apps/web exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config wrangler.jsonc
+          pnpm --filter ./apps/web exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config wrangler.jsonc \
+            --tag "pr-${{ github.event.number }}-${GITHUB_SHA::7}" --message "GitHub Actions: ${GITHUB_ACTOR} run ${GITHUB_RUN_ID}"
 
       - name: Report preview duration
         if: always()

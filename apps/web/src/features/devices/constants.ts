@@ -11,6 +11,16 @@ export const BRIDGE_ADD_COMMAND = "gaia bridge add";
 export const BRIDGE_UP_COMMAND = "gaia bridge up";
 
 /**
+ * Device bridge setup docs. Mirrors DEVICE_BRIDGE_DOCS_URL in
+ * `apps/api/app/constants/device_bridge.py`.
+ */
+export const DEVICE_BRIDGE_DOCS_URL =
+  "https://docs.heygaia.io/cli/device-bridge";
+
+/** How long the "device paired" screen stays up before returning to the list. */
+export const DEVICE_APPROVED_REDIRECT_MS = 4000;
+
+/**
  * The daemon prints its pairing code as two groups of four, e.g. "ABCD-2345".
  * Mirrors USER_CODE_LENGTH in `apps/api/app/constants/device_bridge.py`.
  */

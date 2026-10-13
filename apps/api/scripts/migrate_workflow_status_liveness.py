@@ -1,34 +1,16 @@
-"""
-One-time, idempotent migration: repair workflow liveness/run-state after the
-status refactor.
+"""Idempotent migration: repair workflow liveness/run-state after the status refactor.
 
-The refactor split two concepts that the workflow scheduler used to conflate:
-- **liveness** (is this workflow on?) -> governed solely by ``activated``.
-- **run-state** (is a fire in flight?) -> ``status``, now restricted for workflows to
-  ``scheduled`` / ``executing`` / ``completed``.
+liveness (on/off) is now governed solely by activated; run-state (fire in flight) is
+status, restricted for workflows to scheduled/executing/completed. Normalises existing
+workflow docs: a forbidden status (cancelled/failed/paused) or stale executing resets
+to scheduled; each active recurring workflow (activated + repeat) gets its next future
+run recomputed and re-enqueued in ARQ, honouring max_occurrences/stop_after;
+trigger_config.enabled is synced to activated on every workflow.
 
-Existing documents carry the old shape and must be normalised (workflows only -
-reminders keep the full ``ScheduledTaskStatus`` vocabulary):
+Run with the ARQ worker stopped. Re-running is safe: the deterministic ARQ job id
+dedupes the enqueue.
 
-1. Any workflow whose ``status`` is a forbidden lifecycle value (``cancelled`` /
-   ``failed`` / ``paused``) or a leftover ``executing`` (a fire that never re-armed)
-   is reset to ``scheduled`` - the resting run-state. This is what un-wedges the
-   ``status=cancelled`` + ``activated=True`` rows the original bug produced.
-2. For every active recurring workflow (``activated`` + ``repeat``), the next *future*
-   run is recomputed, ``scheduled_at`` / ``trigger_config.next_run`` are advanced, and
-   the job is enqueued in ARQ so it resumes. ``max_occurrences`` / ``stop_after`` are
-   honoured (-> ``completed``).
-3. ``trigger_config.enabled`` is synced to ``activated`` on every workflow (the two
-   are now a single liveness concept).
-
-Run with the ARQ worker stopped (so no legitimate ``executing`` fire is in flight).
-Idempotent: re-running recomputes a future run and the deterministic ARQ job id
-dedupes the enqueue, so it is safe to run repeatedly.
-
-Run from repo root (dry run prints what would change):
-    cd apps/api && uv run python scripts/migrate_workflow_status_liveness.py
-Apply the changes:
-    cd apps/api && uv run python scripts/migrate_workflow_status_liveness.py --apply
+    cd apps/api && uv run python scripts/migrate_workflow_status_liveness.py [--apply]
 """
 
 import asyncio

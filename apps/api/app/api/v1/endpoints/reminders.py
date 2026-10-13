@@ -11,6 +11,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.constants.log_tags import LogTag
+from app.constants.scheduling import SCHEDULE_REJECTION_MESSAGES
 from app.decorators import tiered_rate_limit
 from app.models.reminder_models import (
     CreateReminderRequest,
@@ -22,18 +23,23 @@ from app.models.reminder_models import (
     UpdateReminderRequest,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.reminder_service import reminder_scheduler
-from app.utils.cron_utils import (
-    calculate_next_occurrences,
-    get_next_run_time,
-    validate_cron_expression,
+from app.utils.cron_utils import calculate_next_occurrences
+from app.utils.schedule import InvalidScheduleError, schedule_rejection
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.reminders import (
+    ReminderCreated,
+    ReminderDeleted,
+    ReminderPaused,
+    ReminderResumed,
+    ReminderUpdated,
 )
 from shared.py.wide_events import ReminderContext, log
 
 _CRON_PREVIEW_RUNS = 5
 
-router = APIRouter(prefix="/reminders", tags=["reminders"])
+router = APIRouter(prefix="/reminders")
 
 
 def _reminder_context(operation: str, reminder: ReminderModel) -> ReminderContext:
@@ -73,7 +79,7 @@ async def create_reminder_endpoint(
         HTTPException: If validation fails or creation errors occur
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -90,7 +96,6 @@ async def create_reminder_endpoint(
         # — and the same default as workflows, regardless of current location.
         reminder_data.timezone = user_timezone
 
-        # Create the reminder
         reminder_id = await reminder_scheduler.create_reminder(
             reminder_data=reminder_data, user_id=user_id
         )
@@ -106,9 +111,7 @@ async def create_reminder_endpoint(
         log.set(reminder=_reminder_context("create", reminder))
         log.set(outcome="success")
 
-        capture_context_event(
-            AnalyticsEvents.REMINDER_CREATED, {"is_recurring": bool(reminder.repeat)}
-        )
+        capture(UserId(user_id), ReminderCreated(is_recurring=bool(reminder.repeat)))
         return ReminderResponse.model_validate(reminder)
 
     except HTTPException:
@@ -116,7 +119,7 @@ async def create_reminder_endpoint(
     except Exception as e:
         log.error(
             f"{LogTag.API} Error creating reminder",
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -143,7 +146,7 @@ async def get_reminder_endpoint(
         HTTPException: If reminder not found or access denied
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -174,7 +177,7 @@ async def get_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error getting reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -204,7 +207,7 @@ async def update_reminder_endpoint(
         HTTPException: If reminder not found or validation fails
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -220,7 +223,6 @@ async def update_reminder_endpoint(
         # repository's `$set` only touches what the caller actually sent.
         update = ReminderUpdate(**request.model_dump(exclude_none=True))
 
-        # Update reminder
         success = await reminder_scheduler.update_reminder(
             reminder_id, user_id=user_id, update=update
         )
@@ -231,7 +233,6 @@ async def update_reminder_endpoint(
                 detail="Failed to update reminder",
             )
 
-        # Get updated reminder
         updated_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not updated_reminder:
             raise HTTPException(
@@ -241,6 +242,7 @@ async def update_reminder_endpoint(
 
         log.set(reminder=_reminder_context("update", updated_reminder))
         log.set(outcome="success")
+        capture(UserId(user_id), ReminderUpdated())
 
         return ReminderResponse.model_validate(updated_reminder)
 
@@ -250,7 +252,7 @@ async def update_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error updating reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -274,7 +276,7 @@ async def cancel_reminder_endpoint(
         HTTPException: If reminder not found or access denied
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -294,7 +296,7 @@ async def cancel_reminder_endpoint(
                 detail="Failed to cancel reminder",
             )
 
-        capture_context_event(AnalyticsEvents.REMINDER_DELETED)
+        capture(UserId(user_id), ReminderDeleted())
         log.set(outcome="success")
 
     except HTTPException:
@@ -303,7 +305,7 @@ async def cancel_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error cancelling reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -332,7 +334,7 @@ async def list_reminders_endpoint(
     Returns:
         List of reminders
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     try:
         if not user_id:
             raise HTTPException(
@@ -394,7 +396,7 @@ async def pause_reminder_endpoint(
         HTTPException: If reminder not found or access denied
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -414,7 +416,6 @@ async def pause_reminder_endpoint(
                 detail="Failed to pause reminder",
             )
 
-        # Get updated reminder
         updated_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not updated_reminder:
             raise HTTPException(
@@ -422,6 +423,7 @@ async def pause_reminder_endpoint(
                 detail="Failed to retrieve updated reminder",
             )
 
+        capture(UserId(user_id), ReminderPaused())
         return ReminderResponse.model_validate(updated_reminder)
 
     except HTTPException:
@@ -430,7 +432,7 @@ async def pause_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error pausing reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -457,7 +459,7 @@ async def resume_reminder_endpoint(
         HTTPException: If reminder not found or access denied
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -480,22 +482,17 @@ async def resume_reminder_endpoint(
                 detail=f"Reminder {reminder_id} is not paused (current status: {existing_reminder.status})",
             )
 
-        # Update status to scheduled and reschedule if needed
-        update = ReminderUpdate(status=ReminderStatus.SCHEDULED)
+        try:
+            resumed = await reminder_scheduler.resume(existing_reminder)
+        except InvalidScheduleError as e:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
-        # If it's a recurring reminder, calculate next run time
-        if existing_reminder.repeat:
-            update.scheduled_at = get_next_run_time(existing_reminder.repeat)
-
-        success = await reminder_scheduler.update_reminder(reminder_id, update, user_id=user_id)
-
-        if not success:
+        if not resumed:
             raise HTTPException(
                 status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to resume reminder",
             )
 
-        # Get updated reminder
         updated_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not updated_reminder:
             raise HTTPException(
@@ -503,6 +500,7 @@ async def resume_reminder_endpoint(
                 detail="Failed to retrieve updated reminder",
             )
 
+        capture(UserId(user_id), ReminderResumed())
         return ReminderResponse(**updated_reminder.model_dump())
 
     except HTTPException:
@@ -511,7 +509,7 @@ async def resume_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error resuming reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -525,25 +523,20 @@ async def resume_reminder_endpoint(
 async def validate_cron_endpoint(
     expression: str = Query(..., description="Cron expression to validate"),
 ) -> CronValidationResponse:
-    """Validate a cron expression and preview its next few run times."""
+    """Check a cron expression against the recurring-schedule rule and preview its next runs."""
     log.set(reminder=ReminderContext(operation="validate_cron"))
-    try:
-        is_valid = validate_cron_expression(expression)
-        if not is_valid:
-            return CronValidationResponse(expression=expression, valid=False)
-
-        next_runs = calculate_next_occurrences(expression, _CRON_PREVIEW_RUNS)
+    rejection = schedule_rejection(expression)
+    if rejection is not None:
         return CronValidationResponse(
             expression=expression,
-            valid=True,
-            next_runs=[run.isoformat() for run in next_runs],
+            valid=False,
+            error=SCHEDULE_REJECTION_MESSAGES[rejection],
+            reason=rejection,
         )
 
-    except Exception as e:
-        log.error(
-            f"{LogTag.API} Error validating cron expression",
-            expression=expression,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        return CronValidationResponse(expression=expression, valid=False, error=str(e))
+    next_runs = calculate_next_occurrences(expression, _CRON_PREVIEW_RUNS)
+    return CronValidationResponse(
+        expression=expression,
+        valid=True,
+        next_runs=[run.isoformat() for run in next_runs],
+    )

@@ -1,3 +1,4 @@
+import type { ToolDataEntry } from "../api/generated";
 import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   type DesktopToolRequest,
@@ -7,13 +8,7 @@ import type { TodoProgressSnapshot } from "./types";
 
 export type { TodoProgressSnapshot };
 
-export interface StreamToolDataEntry {
-  tool_name: string;
-  data: unknown;
-  timestamp?: string | null;
-  tool_category?: string;
-  subagent_id?: string;
-}
+export type StreamToolDataEntry = ToolDataEntry;
 
 /**
  * tool_name marking a streamed tool-call-progress entry. These render via the
@@ -52,10 +47,9 @@ export type ChatStreamEvent =
   | { type: "error"; error: string }
   | { type: "model_fallback"; model?: string }
   | { type: "response"; chunk: string }
-  // End of one assistant message. `discarded` means that message turned out to
-  // carry tool calls, so the text it streamed was a handoff preamble and the
-  // real reply is the NEXT message — the wire hands over the text before the
-  // tool call, so the client has already rendered it and has to take it back.
+  // End of one assistant message. `discarded` means it turned out to carry tool calls, so the
+  // streamed text was a handoff preamble and the real reply is the NEXT message — the wire sends
+  // text before the tool call, so the client has already rendered it and must take it back.
   | { type: "message_boundary"; messageId: string; discarded: boolean }
   | {
       type: "conversation_initialized";
@@ -89,6 +83,10 @@ export type ChatStreamEvent =
   // A frame that was not valid JSON. Never rendered — consumers must log it
   // loudly and surface a stream error instead of showing garbage text.
   | { type: "parse_error"; raw: string }
+  // The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` one-emoji ack, whose
+  // text the server never streams: the client shows a badge on the user's
+  // message (`reactsToMessageId`), never a bubble of its own.
+  | { type: "emoji_ack"; emoji: string; reactsToMessageId: string }
   | { type: "unknown"; payload: JsonObject };
 
 const isObject = (value: unknown): value is JsonObject =>
@@ -103,7 +101,8 @@ const toToolDataEntry = (value: unknown): StreamToolDataEntry | null => {
 
   return {
     tool_name: value.tool_name,
-    data: value.data,
+    // The frame is JSON; every tool owns the shape of its own `data`.
+    data: value.data as StreamToolDataEntry["data"],
     timestamp:
       typeof value.timestamp === "string" || value.timestamp === null
         ? value.timestamp
@@ -137,6 +136,26 @@ const extractError = (payload: JsonObject): ChatStreamEvent[] =>
   typeof payload.error === "string" && payload.error.length > 0
     ? [{ type: "error", error: payload.error }]
     : [];
+
+// `emoji_ack` arrives when comms' whole reply was an `<EMOJI>…</EMOJI>` tag: the
+// client badges the emoji onto the user's message instead of leaving a bubble.
+const extractEmojiAck = (payload: JsonObject): ChatStreamEvent[] => {
+  const ack = payload.emoji_ack;
+  if (!isObject(ack)) return [];
+  if (
+    typeof ack.emoji !== "string" ||
+    typeof ack.reacts_to_message_id !== "string"
+  ) {
+    return [];
+  }
+  return [
+    {
+      type: "emoji_ack",
+      emoji: ack.emoji,
+      reactsToMessageId: ack.reacts_to_message_id,
+    },
+  ];
+};
 
 // The backend emits `{"model_fallback": {"model": "..."}}` at most once per
 // stream when the primary model failed and the backup answered. Modeled as a
@@ -422,6 +441,7 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   const events: ChatStreamEvent[] = [
     ...extractError(payload),
     ...extractModelFallback(payload),
+    ...extractEmojiAck(payload),
     ...extractResponse(payload),
     ...extractMessageBoundary(payload),
     ...extractFollowUpActions(payload),

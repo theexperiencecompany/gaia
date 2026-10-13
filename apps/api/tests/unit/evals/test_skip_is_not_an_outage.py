@@ -1,6 +1,6 @@
 """A skip scores zero and stays in the denominator; an outage leaves it.
 
-Both used to arrive as ``CaseRun(error=...)``, so both were recorded ``errored``
+Both used to arrive as CaseRun(error=...), so both were recorded errored
 and both left the denominator. GAIA's baseline records it exactly: graded 89,
 errored 76, accuracy 0.4045 — 36/89, published as "GAIA 40.4%" for a benchmark
 whose split is 165 questions. The honest figure over the split is 36/165 =
@@ -56,8 +56,7 @@ def test_an_outage_is_still_errored() -> None:
 
 
 def test_the_skip_beats_the_error_text() -> None:
-    """The transport signals a skip by setting `error`. Reading the error first
-    is precisely what filed every skip as an outage."""
+    """The transport signals a skip by setting error; reading the error first is precisely what filed every skip as an outage."""
     case = _case("gaia-zip", skip="archives have no ingestion path")
     assert runner._status_from_scores(case, {"gaia_exact": 0.0}, "skipped: archives") == "skipped"
 
@@ -89,8 +88,7 @@ def test_skips_stay_in_the_denominator_and_outages_do_not() -> None:
 
 
 def test_the_old_arithmetic_is_what_produced_the_published_number() -> None:
-    """Same run with the skips recorded as outages: 36/89 = 40.4%, the figure
-    that shipped, nearly double the honest one."""
+    """Same run with the skips recorded as outages: 36/89 = 40.4%, the figure that shipped, nearly double the honest one."""
     records = (
         [_graded("passed", f"p{i}") for i in range(36)]
         + [_graded("failed", f"f{i}") for i in range(53)]
@@ -102,9 +100,7 @@ def test_the_old_arithmetic_is_what_produced_the_published_number() -> None:
 
 
 def test_the_publish_gate_lets_a_declared_skip_carry_its_zero() -> None:
-    """The gate refuses to score a case that produced nothing — which is what a
-    scored-zero skip looks like. It has to tell "we never asked" from "we asked
-    and got silence", and the declared reason is what tells it."""
+    """The gate must tell "we never asked" from "we asked and got silence"; the declared skip reason is what tells it."""
     skips = [_graded("skipped", f"s{i}", skip="audio has no ingestion path") for i in range(9)]
     assert check_records(skips).ok, [v.detail for v in check_records(skips).violations]
 
@@ -121,8 +117,7 @@ def test_the_publish_gate_still_refuses_an_undeclared_silence() -> None:
 
 
 def test_a_denominator_change_is_not_reported_as_a_regression(tmp_path: Path) -> None:
-    """attach's work makes 28 declined cases actually run. The numerator barely
-    moves, so the rate falls — that is the measurement improving."""
+    """28 more cases actually run and the numerator barely moves, so the rate falls — that is the measurement improving."""
     baseline.write(
         "gaia_bench",
         [_graded("passed", f"p{i}") for i in range(36)]

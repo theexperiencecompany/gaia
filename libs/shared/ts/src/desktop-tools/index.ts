@@ -11,6 +11,8 @@ export type {
   DesktopToolRequest,
   DesktopToolResult,
   DesktopWindowInfo,
+  FolderAccessResult,
+  ProtectedFolder,
 } from "./types";
 export {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
