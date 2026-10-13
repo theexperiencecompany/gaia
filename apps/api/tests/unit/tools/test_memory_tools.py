@@ -8,9 +8,11 @@ documented at the top of the module under test.
 
 from collections.abc import Iterator
 from datetime import UTC, date as date_type, datetime
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.tools import BaseTool
 import pytest
 
 from app.agents.tools.memory_tools import (
@@ -376,6 +378,17 @@ class TestResolveDocType:
     @pytest.mark.parametrize("raw", ["", "   ", "profile", "users", "user.txt", ".md"])
     def test_unknown_names_resolve_to_none(self, raw: str) -> None:
         assert _resolve_doc_type(raw) is None
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("doc_tool", [read_memory_document, update_memory_document])
+    def test_the_doc_type_argument_offers_exactly_the_resolvable_documents(
+        self, doc_tool: BaseTool
+    ) -> None:
+        description = doc_tool.args["doc_type"]["description"]
+        offered = set(re.findall(r"'([^']+)'", description))
+        friendly = {name.removesuffix(".md") for name in MEMORY_DOC_FILENAMES.values()}
+        assert offered == friendly
+        assert all(_resolve_doc_type(name) is not None for name in offered)
 
 
 # ---------------------------------------------------------------------------

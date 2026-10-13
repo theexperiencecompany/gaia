@@ -175,8 +175,9 @@ _DOC_TYPE_ALIASES: dict[str, MemoryDocType] = {
     },
 }
 _DOC_TYPE_CHOICES = ", ".join(
-    filename.removesuffix(".md") for filename in MEMORY_DOC_FILENAMES.values()
+    f"'{filename.removesuffix('.md')}'" for filename in MEMORY_DOC_FILENAMES.values()
 )
+_DOC_TYPE_ARG_DESCRIPTION = f"Which document: one of {_DOC_TYPE_CHOICES}"
 
 
 def _stream_memory_data(payload: MemoryDataPayload) -> None:
@@ -658,7 +659,7 @@ async def get_journal(
 @with_doc(READ_MEMORY_DOCUMENT)
 async def read_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
+    doc_type: Annotated[str, _DOC_TYPE_ARG_DESCRIPTION],
 ) -> str:
     user_id = get_user_id(config)
 
@@ -704,7 +705,7 @@ async def read_memory_document(
 @with_doc(UPDATE_MEMORY_DOCUMENT)
 async def update_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
+    doc_type: Annotated[str, _DOC_TYPE_ARG_DESCRIPTION],
     content: Annotated[str, "The complete new markdown content (full replace)"],
 ) -> str:
     user_id = get_user_id(config)
