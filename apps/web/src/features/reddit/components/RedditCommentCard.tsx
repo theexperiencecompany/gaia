@@ -122,7 +122,7 @@ export default function RedditCommentCard({
 
   return (
     <CollapsibleListWrapper
-      icon={<RedditIcon />}
+      icon={<RedditIcon width={20} height={20} />}
       count={comments.length}
       label="Comment"
       isCollapsible={isCollapsible}

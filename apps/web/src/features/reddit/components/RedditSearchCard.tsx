@@ -131,7 +131,7 @@ export default function RedditSearchCard({
 
   return (
     <CollapsibleListWrapper
-      icon={<RedditIcon color="#FF4500" />}
+      icon={<RedditIcon width={20} height={20} color="#FF4500" />}
       count={posts.length}
       label="Reddit Post"
       isCollapsible={isCollapsible}

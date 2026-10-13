@@ -97,7 +97,7 @@ export default function RedditCreatedCard({
 
   return (
     <CollapsibleListWrapper
-      icon={<RedditIcon color="#FF4500" />}
+      icon={<RedditIcon width={20} height={20} color="#FF4500" />}
       count={totalCount}
       label={totalCount === 1 ? "Action Completed" : "Actions Completed"}
       isCollapsible={isCollapsible}

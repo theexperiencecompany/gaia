@@ -464,6 +464,8 @@ export const StarFilledIcon: React.FC<IconProps> = (props) => (
 
 export const RedditIcon: React.FC<IconProps> = (props) => (
   <svg
+    width={24}
+    height={24}
     viewBox="0 0 24 24"
     fill="currentColor"
     {...props}
