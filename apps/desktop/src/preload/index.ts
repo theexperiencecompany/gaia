@@ -77,6 +77,16 @@ const api = {
    */
   openExternal: (url: string): void => ipcRenderer.send(IPC.openExternal, url),
 
+  /** Whether {@link showShareSheet} opens the native macOS share menu here. */
+  canShowShareSheet: process.platform === "darwin",
+
+  /**
+   * Open the macOS share menu (Messages, Mail, AirDrop, Notes...) for a link,
+   * at the cursor. Resolves false when the platform has no share menu.
+   */
+  showShareSheet: (item: { text: string; url: string }): Promise<boolean> =>
+    ipcRenderer.invoke(IPC.shareSheet, item),
+
   /**
    * Subscribe to auth-redirecting events from the main process.
    *

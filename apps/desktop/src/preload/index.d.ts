@@ -25,6 +25,8 @@ declare global {
       isElectron: boolean;
       signalReady: () => void;
       openExternal: (url: string) => void;
+      canShowShareSheet: boolean;
+      showShareSheet: (item: { text: string; url: string }) => Promise<boolean>;
       onAuthRedirecting: (callback: () => void) => () => void;
       executeDesktopTool: (
         request: DesktopToolRequest,
