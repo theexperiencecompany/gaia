@@ -77,6 +77,7 @@ const statusWith = (configured: string[]): SetupStatus => ({
   plans_seeded: true,
   local_code_sandbox: false,
   blob_store: "local",
+  gaia_support: false,
   providers: Object.fromEntries(
     configured.map((key) => [
       key,

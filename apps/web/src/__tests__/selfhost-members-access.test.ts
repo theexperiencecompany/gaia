@@ -16,6 +16,7 @@ const status = (
   plans_seeded: true,
   local_code_sandbox: false,
   blob_store: "local",
+  gaia_support: false,
   providers: {},
   ...overrides,
 });
