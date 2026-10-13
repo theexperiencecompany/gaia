@@ -10,6 +10,7 @@ import {
 } from "@icons";
 import type { ReferralCopyVariant } from "@shared/api/generated";
 import { useState } from "react";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { track } from "@/lib/analytics";
 import { useReferralMe } from "../hooks/useReferrals";
 import { useShareLink } from "../hooks/useShareLink";
@@ -98,20 +99,19 @@ function PostPaymentShareCard({
           {REFERRAL_UI_COPY.giftPeriod(prices)}
         </p>
       </div>
-      <Button
-        variant="flat"
-        radius="full"
-        fullWidth
-        className="font-medium"
-        startContent={shareIcon}
-        onPress={canShareNatively ? shareNatively : copy}
+      {/* The same raised cyan as the receipt's own CTA: the one thing this card asks for. */}
+      <RaisedButton
+        color="#00bbff"
+        className="w-full text-black!"
+        onClick={canShareNatively ? shareNatively : copy}
       >
+        {shareIcon}
         {canShareNatively
           ? postPayment.cta
           : copied
             ? REFERRAL_UI_COPY.copied
             : REFERRAL_UI_COPY.copyLink}
-      </Button>
+      </RaisedButton>
     </section>
   );
 }
