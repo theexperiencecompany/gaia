@@ -20,8 +20,9 @@ import {
   isDockerRunning,
 } from "../../lib/docker.js";
 import type { SetupMode } from "../../lib/env-parser.js";
+import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
 import { checkModePorts } from "../../lib/prerequisites.js";
-import { findRepoRoot } from "../../lib/service-starter.js";
+import { GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import type { CheckResult } from "./types";
 
 /** How a failed check influences the exit code. */
@@ -630,87 +631,41 @@ export async function checkMemoryHeadroom(): Promise<CheckResult> {
   };
 }
 
-export async function checkGitUpdateAvailable(): Promise<CheckResult> {
+/**
+ * Warns when a self-host install runs other images than the release this CLI
+ * ships. Reads infra/docker/.env only, so it costs no network round-trip.
+ */
+export function checkReleaseVersion(
+  repoPath: string | null,
+  mode: SetupMode | null,
+): CheckResult {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
-    id: "git-update",
-    label: "Git update",
+    id: "gaia-version",
+    label: "GAIA version",
     severity: "warning",
   };
-
-  const repoPath = findRepoRoot();
   if (!repoPath) {
+    return { ...base, state: "skipped", detail: "No GAIA installation found" };
+  }
+  if (mode !== "selfhost") {
     return {
       ...base,
       state: "skipped",
-      detail: "No GAIA installation found",
+      detail: "Developer checkout: update it with 'gaia update --git'",
     };
   }
-
-  // VM plain-copy installs (gaia-vm) have no .git — this is expected, not a failure.
-  try {
-    const { stdout: isInside } = await execa(
-      "git",
-      ["rev-parse", "--is-inside-work-tree"],
-      {
-        cwd: repoPath,
-      },
-    );
-    if (isInside.trim() !== "true") {
-      return {
-        ...base,
-        state: "skipped",
-        detail: "Not a git repository — pull manually",
-      };
-    }
-  } catch {
+  const pinned = readPinnedGaiaVersion(repoPath);
+  if (pinned === GAIA_RELEASE_IMAGE_TAG) {
     return {
       ...base,
-      state: "skipped",
-      detail: "Not a git repository — pull manually",
+      state: "ok",
+      detail: `${pinned}, the release this CLI ships`,
     };
   }
-  try {
-    await execa("git", ["remote", "get-url", "origin"], { cwd: repoPath });
-  } catch {
-    return {
-      ...base,
-      state: "skipped",
-      detail: "Not a git repository — pull manually (no origin remote)",
-    };
-  }
-
-  try {
-    const { stdout } = await execa(
-      "git",
-      ["rev-list", "HEAD..origin/master", "--count"],
-      { cwd: repoPath },
-    );
-    const count = Number(stdout.trim());
-    if (!Number.isFinite(count)) {
-      return {
-        ...base,
-        state: "skipped",
-        detail: "Could not check git status",
-      };
-    }
-    if (count === 0) {
-      return {
-        ...base,
-        state: "ok",
-        detail: "Up to date with origin/master",
-      };
-    }
-    return {
-      ...base,
-      state: "fail",
-      detail: `${count} commit(s) behind origin/master`,
-      fix: "Run 'gaia update' to pull and restart services (preserves infra/docker/.env and volumes).",
-    };
-  } catch {
-    return {
-      ...base,
-      state: "skipped",
-      detail: "Could not check git status (no origin/master or not a git repo)",
-    };
-  }
+  return {
+    ...base,
+    state: "fail",
+    detail: `Running ${pinned}; this CLI ships ${GAIA_RELEASE_IMAGE_TAG}`,
+    fix: "Run 'gaia update' to move to it (keeps volumes and .env files).",
+  };
 }

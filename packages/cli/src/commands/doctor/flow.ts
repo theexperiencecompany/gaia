@@ -22,9 +22,9 @@ import {
   checkComposeContainers,
   checkDiskHeadroom,
   checkDockerDaemon,
-  checkGitUpdateAvailable,
   checkMemoryHeadroom,
   checkPortConflicts,
+  checkReleaseVersion,
   checkSetupReadiness,
   checkWebReachable,
   EXPECTED_SERVICES,
@@ -48,6 +48,7 @@ export function hasBlockingFailure(report: DoctorReport): boolean {
 
 /** Resolved context shared by the checks (host ports, compose project). */
 interface DoctorContext {
+  repoPath: string | null;
   /** API base (`…/api/v1`) on this machine for the detected mode. */
   apiUrl: string;
   webPort: number;
@@ -64,6 +65,7 @@ async function resolveContext(): Promise<DoctorContext> {
   const mode = repoPath ? await detectSetupMode(repoPath) : null;
 
   return {
+    repoPath,
     // Unconfigured repos probe the self-host origin, the default install.
     apiUrl: localApiUrl(mode ?? "selfhost", overrides),
     webPort: resolvePort(overrides, 3000),
@@ -124,8 +126,8 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   // 7. Memory headroom.
   results.push(await checkMemoryHeadroom());
 
-  // 8. Git update drift — warns when behind origin/master.
-  results.push(await checkGitUpdateAvailable());
+  // 8. Release drift — warns when the images are not this CLI's release.
+  results.push(checkReleaseVersion(ctx.repoPath, ctx.mode));
 
   return { results };
 }

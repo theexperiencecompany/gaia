@@ -1,23 +1,33 @@
 /**
- * Handler for `gaia update` — drift detection, pull, and restart.
+ * Handler for `gaia update` — show what an update changes, confirm, apply.
  * @module commands/update/handler
  */
 
 import * as readline from "node:readline";
-import { execa } from "execa";
 import { isInteractive } from "../../lib/non-tty.js";
 import { findRepoRoot } from "../../lib/service-starter.js";
+import { GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import {
-  fetchOrigin,
-  getUpdateStatus,
-  pullAndRestart,
-  type UpdateStatus,
-  WATCH_PATHS,
+  applyGitUpdate,
+  applyReleaseUpdate,
+  type ChangeSummary,
+  isReleaseCurrent,
+  planGitUpdate,
+  planReleaseUpdate,
+  type ReleasePlan,
 } from "./flow.js";
 
 export interface UpdateOptions {
   yes?: boolean;
+  /** Image tag to pin instead of the one this CLI release ships. */
+  version?: string;
+  /** Developer checkouts: pull the branch and rebuild from source. */
+  git?: boolean;
 }
+
+const MAX_LISTED_COMMITS = 10;
+const RELEASE_NOTES_URL = "https://docs.heygaia.io/release-notes";
+const CLI_INSTALL_COMMAND = "curl -fsSL https://heygaia.io/install.sh | sh";
 
 function out(line = ""): void {
   process.stdout.write(`${line}\n`);
@@ -40,151 +50,112 @@ async function askConfirm(question: string): Promise<boolean> {
   return normalized === "" || normalized === "y" || normalized === "yes";
 }
 
-function printManualSteps(): void {
-  out("\nManual update steps (preserves infra/docker/.env and volumes):");
-  out("  git fetch origin");
-  out(
-    "  git log HEAD..origin/master --oneline -- apps/web apps/api infra/docker  # what changed",
+function printChanges(changes: ChangeSummary): void {
+  for (const [prefix, count] of Object.entries(changes.files)) {
+    out(`    ${prefix}: ${count} file(s)`);
+  }
+  for (const commit of changes.commits.slice(0, MAX_LISTED_COMMITS)) {
+    out(`    ${commit}`);
+  }
+  if (changes.commits.length > MAX_LISTED_COMMITS) {
+    out(`    ... and ${changes.commits.length - MAX_LISTED_COMMITS} more`);
+  }
+}
+
+function printReleasePlan(plan: ReleasePlan): void {
+  out(`\nGAIA images: ${plan.fromVersion} -> ${plan.toVersion}`);
+  if (plan.checkout === null) {
+    out(
+      "Compose files: unchanged (this install is not a git checkout; replace infra/docker by hand if the release changed it)",
+    );
+    return;
+  }
+  if (plan.checkout.atTag) {
+    out(`Compose files: already at ${plan.checkout.toTag}`);
+    return;
+  }
+  out(`Compose files: ${plan.checkout.fromRef} -> ${plan.checkout.toTag}`);
+  printChanges(plan.checkout.changes);
+}
+
+/** Ask unless --yes; a non-interactive run without --yes only reports. */
+async function confirmed(options: UpdateOptions): Promise<boolean> {
+  if (options.yes) return true;
+  if (!isInteractive()) {
+    out("\nNon-interactive terminal: rerun with --yes to apply.");
+    return false;
+  }
+  return askConfirm("\nApply and restart now? [Y/n] ");
+}
+
+async function runReleaseUpdate(
+  repoPath: string,
+  options: UpdateOptions,
+): Promise<void> {
+  const plan = await planReleaseUpdate(
+    repoPath,
+    options.version ?? GAIA_RELEASE_IMAGE_TAG,
   );
-  out("  git pull --ff-only");
-  out(
-    "  gaia up   # or: docker compose -f infra/docker/docker-compose.selfhost.yml up -d --pull always",
-  );
-  out("  # never run: docker compose down -v  (would delete volumes)");
+  if (isReleaseCurrent(plan)) {
+    out(`Already on GAIA ${plan.toVersion}.`);
+    out(
+      `For a newer release, update the CLI first (${CLI_INSTALL_COMMAND}), then rerun 'gaia update'.`,
+    );
+    return;
+  }
+  printReleasePlan(plan);
+  out("Volumes, apps/api/.env and infra/docker/.env are kept.");
+  if (!(await confirmed(options))) return;
+
+  await applyReleaseUpdate(plan, (message) => out(`  ${message}`));
+  out(`\nGAIA is on ${plan.toVersion}. What's new: ${RELEASE_NOTES_URL}`);
+  out("Run 'gaia doctor' to confirm every dependency is ready.");
+}
+
+async function runGitUpdate(
+  repoPath: string,
+  options: UpdateOptions,
+): Promise<void> {
+  const changes = await planGitUpdate(repoPath);
+  if (changes.commits.length === 0) {
+    out("Already up to date with the upstream branch.");
+    return;
+  }
+  out(`\n${changes.commits.length} new commit(s) touch the self-host stack:`);
+  printChanges(changes);
+  out("The images are rebuilt from this checkout (slow on small machines).");
+  if (!(await confirmed(options))) return;
+
+  await applyGitUpdate(repoPath, (message) => out(`  ${message}`));
+  out("\nUpdated and restarted from source.");
 }
 
 export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
   const repoPath = findRepoRoot();
   if (!repoPath) {
     err("Error: No GAIA installation found.");
-    err("Fix: Run 'gaia up' or 'gaia init' to clone the repository first.");
+    err("Fix: Run 'gaia up' to install GAIA first.");
+    process.exitCode = 1;
+    return;
+  }
+  if (options.git && options.version) {
+    err(
+      "Error: --version pins published images; --git builds from source. Pick one.",
+    );
     process.exitCode = 1;
     return;
   }
 
   out(`Checking for updates in ${repoPath}...`);
   try {
-    await fetchOrigin(repoPath);
+    await (options.git
+      ? runGitUpdate(repoPath, options)
+      : runReleaseUpdate(repoPath, options));
   } catch (e) {
-    const msg = (e as Error).message;
-    if (msg.includes("Not a git repository")) {
-      err(`Skipped: ${msg}`);
-      err(
-        "This install is a plain copy (e.g. gaia-vm) without a git remote — update by re-downloading or cloning the repo, then copy infra/docker/.env forward. Volumes are preserved (never run down -v).",
-      );
-      return;
-    }
-    err(`Warning: Could not fetch origin: ${msg}`);
+    err(`\nUpdate failed: ${(e as Error).message}`);
     err(
-      "Fix: Check your network and that 'origin' remote is configured (git remote -v).",
+      "Volumes are untouched. Fix the cause above, then rerun 'gaia update'.",
     );
-    printManualSteps();
-    process.exitCode = 1;
-    return;
-  }
-
-  let status: UpdateStatus;
-  try {
-    status = await getUpdateStatus(repoPath);
-  } catch (e) {
-    err(`Error checking update status: ${(e as Error).message}`);
-    process.exitCode = 1;
-    return;
-  }
-
-  // No diff in watch paths but maybe behindCount >0 for other paths — still
-  // report as up-to-date for the self-host watch set, matching spec's log filter.
-  if (status.changedFiles.length === 0 && status.behindCount === 0) {
-    out("Already up to date.");
-    return;
-  }
-  if (status.changedFiles.length === 0 && status.behindCount > 0) {
-    out(
-      `Already up to date for ${WATCH_PATHS.join(", ")} (${status.behindCount} commit(s) behind on other paths).`,
-    );
-    return;
-  }
-
-  out(
-    `\nUpdate available — ${status.behindCount} commit(s) behind origin/master:`,
-  );
-  for (const [prefix, count] of Object.entries(status.summary)) {
-    const label = prefix === "other" ? "other" : prefix;
-    out(`  ${label}: ${count} file(s)`);
-    // Extra hint for compose changes
-    if (
-      prefix === "infra/docker" &&
-      status.changedFiles.some((f) => f.includes("compose"))
-    ) {
-      out("    (compose file changed)");
-    }
-  }
-  if (status.commits.length > 0) {
-    out("\nCommits:");
-    for (const c of status.commits.slice(0, 10)) {
-      out(`  ${c}`);
-    }
-    if (status.commits.length > 10) {
-      out(`  ... and ${status.commits.length - 10} more`);
-    }
-  }
-  out("\nStrategy: pull the latest published images (--pull always)");
-  out("Preserves infra/docker/.env and volumes (never runs down -v).");
-
-  let confirmed = options.yes === true;
-  if (!confirmed) {
-    if (!isInteractive()) {
-      out(
-        "\nNon-interactive terminal — re-run with --yes to apply, or run manually:",
-      );
-      printManualSteps();
-      return;
-    }
-    confirmed = await askConfirm("\nPull and restart now? [Y/n] ");
-    if (!confirmed) {
-      out("Aborted. Run 'gaia update --yes' to apply, or manually:");
-      printManualSteps();
-      return;
-    }
-  }
-
-  try {
-    await pullAndRestart(repoPath, (msg) => out(`  ${msg}`));
-    out("\nAlready up to date after pull — services restarted.");
-    out("Pulled latest images (preserved infra/docker/.env and volumes).");
-  } catch (e) {
-    // Provide the manual fallback on any failure after fetch.
-    const msg = (e as Error).message;
-    if (msg.includes("Not a git repository")) {
-      err(`\nUpdate skipped: ${msg}`);
-      err(
-        "This install is a plain copy without a git remote — update by re-downloading or cloning the repo, then copy infra/docker/.env forward. Volumes are preserved (never run down -v).",
-      );
-      return;
-    }
-    err(`\nUpdate failed: ${msg}`);
-    if (
-      msg.includes("Not possible to fast-forward") ||
-      msg.includes("would be overwritten")
-    ) {
-      err(
-        "Fix: Commit or stash local changes, then rerun 'gaia update --yes'.",
-      );
-    }
-    // Show what the user would have run.
-    try {
-      const { stdout } = await execa("git", ["status", "--porcelain"], {
-        cwd: repoPath,
-      });
-      if (stdout.trim().length > 0) {
-        err(
-          "Local modifications exist — 'git pull --ff-only' refuses to overwrite them.",
-        );
-      }
-    } catch {
-      // ignore
-    }
-    printManualSteps();
     process.exitCode = 1;
   }
 }

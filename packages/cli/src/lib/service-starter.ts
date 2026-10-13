@@ -152,6 +152,36 @@ export async function startServices(
   onStatus?.("All services started in Docker!");
 }
 
+/** The self-host services that run GAIA's own images (GAIA_VERSION). */
+const SELFHOST_APP_SERVICES = ["gaia-backend", "arq_worker", "gaia-web"];
+
+/**
+ * Pull GAIA's images at one tag without touching running containers, so a
+ * tag that does not exist fails before anything about the install changes.
+ */
+export async function pullSelfhostImages(
+  repoPath: string,
+  version: string,
+): Promise<void> {
+  const dockerComposePath = path.join(repoPath, "infra/docker");
+  await runCommand(
+    "docker",
+    [
+      "compose",
+      "-f",
+      "docker-compose.selfhost.yml",
+      ...getEnvFileArgs(dockerComposePath),
+      "pull",
+      ...SELFHOST_APP_SERVICES,
+    ],
+    dockerComposePath,
+    undefined,
+    undefined,
+    // The shell environment outranks infra/docker/.env in compose interpolation.
+    { GAIA_VERSION: version },
+  );
+}
+
 export async function stopServices(
   repoPath: string,
   onStatus?: (status: string) => void,

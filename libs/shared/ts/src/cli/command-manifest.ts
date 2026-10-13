@@ -13,7 +13,7 @@ export const CLI_COMMAND_DESCRIPTIONS = {
   backup: "Back up GAIA databases (MongoDB + PostgreSQL) to a local directory",
   restore: "Restore GAIA databases from backup files",
   update:
-    "Pull latest changes and restart services (preserves .env and volumes)",
+    "Move GAIA to the release this CLI ships, pull its images and restart (keeps .env and volumes)",
 } as const;
 
 /** The canonical way to install the `gaia` CLI, per package manager. */

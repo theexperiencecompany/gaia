@@ -11,6 +11,8 @@
 #                        not own (gaia-web, gaia-grafana), registry-side.
 #   dispatch-cli-publish Dispatch the CLI publish workflow and block until the
 #                        version is actually on npm.
+#   pin-selfhost-release Tag the live gaia + gaia-web images v<CLI version>,
+#                        the pair that CLI release's `gaia update` pins.
 #   connect-cross-check  Cross-compile tools/gaia-connect for every published
 #                        target and discard the result — the pre-merge proof
 #                        that a release build cannot fail on a target the
@@ -28,6 +30,7 @@
 #                         pushed by this run's build phase; empty means that
 #                         image wasn't built this run. Needs a GHCR login.
 #   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION (required).
+#   pin-selfhost-release  VERSION (required). Needs a GHCR login.
 #   connect-cross-check   none.
 #   connect-binaries      GH_TOKEN (contents:write), RELEASE_TAG (required);
 #                         OUT_DIR (optional, default tools/gaia-connect/dist).
@@ -375,8 +378,32 @@ cmd_connect_binaries() {
   ci_ok "gaia-connect: OK (${#ASSETS[@]} binaries + $SUMS attached to $RELEASE_TAG in ${SECONDS}s)"
 }
 
+# Gives a CLI release its own immutable image pair. `gaia update` pins
+# GAIA_VERSION=v<CLI version> for gaia (API + worker) and gaia-web together, so
+# both must carry that tag before the CLI reaches npm. :latest is what the
+# quality gate and production deploy last verified, so the release pins that.
+# Idempotent: a rerun keeps an existing tag instead of moving it to a newer
+# :latest, because an install may already run it.
+cmd_pin_selfhost_release() {
+
+  : "${VERSION:?VERSION is required}"
+
+  local tag="v${VERSION}"
+  local repo
+  for repo in gaia "$WEB_IMAGE_REPO"; do
+    local image="$GHCR_NAMESPACE/$repo"
+    if docker buildx imagetools inspect "$image:$tag" >/dev/null 2>&1; then
+      ci_ok "$image:$tag already exists; keeping it."
+      continue
+    fi
+    echo "Tagging $image:latest as :$tag"
+    docker buildx imagetools create -t "$image:$tag" "$image:latest"
+  done
+  echo "### Self-host release pinned: \`GAIA_VERSION=$tag\`" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+}
+
 usage() {
-  sed -n '2,19p' "$0" >&2
+  sed -n '2,21p' "$0" >&2
 }
 
 main() {
@@ -386,6 +413,7 @@ main() {
     resolve-image-tags)   cmd_resolve_image_tags "$@" ;;
     promote-latest)       cmd_promote_latest "$@" ;;
     dispatch-cli-publish) cmd_dispatch_cli_publish "$@" ;;
+    pin-selfhost-release) cmd_pin_selfhost_release "$@" ;;
     connect-cross-check) cmd_connect_cross_check "$@" ;;
     connect-binaries)     cmd_connect_binaries "$@" ;;
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;

@@ -15,7 +15,7 @@ import { runStatus } from "./commands/status/handler.js";
 import { runStop } from "./commands/stop/handler.js";
 import { runLogs } from "./commands/stream-logs/handler.js";
 import { runUp } from "./commands/up/handler.js";
-import { runUpdate } from "./commands/update/handler.js";
+import { runUpdate, type UpdateOptions } from "./commands/update/handler.js";
 import { LLM_PROVIDERS, type LlmProvider } from "./lib/answers.js";
 import { CLI_VERSION } from "./lib/version.js";
 
@@ -40,7 +40,10 @@ interface UpCliOptions {
 program
   .name("gaia")
   .description("CLI tool for setting up and managing GAIA")
-  .version(CLI_VERSION);
+  .version(CLI_VERSION)
+  // Root options only before the subcommand, so `gaia update --version <tag>`
+  // reaches update instead of printing the CLI version.
+  .enablePositionalOptions();
 
 program.addCommand(bridgeCommand);
 program.addCommand(connectCommand);
@@ -208,8 +211,16 @@ program
   .command("update")
   .description(CLI_COMMAND_DESCRIPTIONS.update)
   .option("--yes", "Apply updates without prompting")
-  .action(async (options: { yes?: boolean }) => {
-    await runUpdate({ yes: options.yes });
+  .option(
+    "--version <tag>",
+    "Pin this GAIA image tag instead of the release this CLI ships",
+  )
+  .option(
+    "--git",
+    "Developer checkouts: pull the current branch and rebuild the images from source",
+  )
+  .action(async (options: UpdateOptions) => {
+    await runUpdate(options);
   });
 
 // Show help when no command is given instead of silently running init
