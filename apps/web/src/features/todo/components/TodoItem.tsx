@@ -1,6 +1,5 @@
 "use client";
 
-import { Checkbox } from "@heroui/checkbox";
 import { isTrackedTodo } from "@shared/todos";
 import { memo, useEffect, useRef } from "react";
 import { ChevronRight } from "@/components/shared/icons";
@@ -8,7 +7,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTodoItem } from "@/features/todo/hooks/useTodoItem";
 import { cn } from "@/lib/utils";
 import type { Project, Todo, TodoUpdate } from "@/types/features/todoTypes";
-import { Priority } from "@/types/features/todoTypes";
+import { TodoItemCheckbox } from "./TodoItemCheckbox";
 import { TodoItemMeta } from "./TodoItemMeta";
 import { TodoTitle } from "./TodoTitle";
 
@@ -124,23 +123,11 @@ export default memo(function TodoItem({
       />
       <div className="pointer-events-none relative z-20 flex h-full items-start gap-2">
         <div className="pointer-events-auto">
-          <Checkbox
-            isSelected={todo.completed}
-            onChange={handleToggleComplete}
+          <TodoItemCheckbox
+            completed={todo.completed}
+            priority={todo.priority}
             color={checkboxColor}
-            radius="full"
-            classNames={{
-              wrapper: todo.completed
-                ? "mt-1"
-                : todo.priority === Priority.HIGH
-                  ? "mt-1 border-red-400 border-dashed! border-1 before:border-0! bg-zinc-900"
-                  : todo.priority === Priority.MEDIUM
-                    ? "mt-1 border-yellow-400 border-dashed! border-1 before:border-0! bg-zinc-900"
-                    : todo.priority === Priority.LOW
-                      ? "mt-1 border-blue-400 border-dashed! border-1 before:border-0! bg-zinc-900"
-                      : "mt-1 border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900",
-              label: "w-[30vw]",
-            }}
+            onChange={handleToggleComplete}
           />
         </div>
 

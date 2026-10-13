@@ -31,6 +31,13 @@ const priorityRingColors = {
   none: "border-zinc-500",
 } as const;
 
+const PRIORITY_CHIP_COLOR = {
+  high: "danger",
+  medium: "warning",
+  low: "primary",
+  none: "default",
+} as const;
+
 function formatDueDate(dateString: string): string {
   const date = new Date(dateString);
   const today = new Date();
@@ -138,15 +145,7 @@ function DemoTodoItem({
                 size="sm"
                 variant="flat"
                 radius="sm"
-                color={
-                  todo.priority === "high"
-                    ? "danger"
-                    : todo.priority === "medium"
-                      ? "warning"
-                      : todo.priority === "low"
-                        ? "primary"
-                        : "default"
-                }
+                color={PRIORITY_CHIP_COLOR[todo.priority]}
                 startContent={
                   <Flag02Icon width={15} height={15} className="mx-1" />
                 }
