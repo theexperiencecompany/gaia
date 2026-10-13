@@ -21,4 +21,11 @@ export const referralsApi = {
 
   sendInvites: (emails: string[], surface: ReferralInviteSurface) =>
     api.post("/api/v1/referrals/invites", { body: { emails, surface } }),
+
+  /** Spends this week's referral nudge when show is true; ask only at the moment the card would appear. */
+  claimChatCard: () =>
+    api.post("/api/v1/referrals/nudges/chat-card", { silent: true }),
+
+  dismissChatCard: () =>
+    api.post("/api/v1/referrals/nudges/chat-card/dismissal", { silent: true }),
 };
