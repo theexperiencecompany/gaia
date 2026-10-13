@@ -6,23 +6,19 @@ import uuid
 
 import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
-from pydantic import BaseModel, ConfigDict
 
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
 from app.models.integrations.cloudinary import CloudinaryUploadResult
 from app.utils.chat_utils import do_prompt_no_stream
-from app.utils.image_utils import convert_image_to_text, generate_image
+from app.utils.image_utils import (
+    ImageGenerationNotConfiguredError,
+    convert_image_to_text,
+    generate_image,
+)
 from shared.py.wide_events import get_trace_id, log, log_context
-
-
-class ImageGenerationFailure(BaseModel):
-    """The failure dict ``generate_image`` returns in place of image bytes."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    error: str = "unknown error"
 
 
 def generate_public_id(refined_text: str, max_length: int = 50) -> str:
@@ -64,20 +60,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
 
             message = refined_text
 
-        # Handle the case when generate_image returns a dict or bytes
-        image_data = await generate_image(message)
-
-        # Ensure we're working with bytes for the upload. generate_image only
-        # ever returns a dict on the httpx failure path ({"error": str(e)});
-        # bytes is the sole success shape.
-        if isinstance(image_data, dict):
-            failure = ImageGenerationFailure.model_validate(image_data)
-            raise ValueError(f"Failed to generate image: {failure.error}")
-        if isinstance(image_data, bytes):
-            # Already bytes, use as is
-            image_bytes = image_data
-        else:
-            raise ValueError(f"Unexpected type from generate_image: {type(image_data)}")
+        image_bytes = await generate_image(message)
 
         upload_result = cloudinary.uploader.upload(
             io.BytesIO(image_bytes),
@@ -95,6 +78,9 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
             improved_prompt=(message if improve_prompt and original_message != message else None),
         )
 
+    except ImageGenerationNotConfiguredError as e:
+        log.warning("Image generation is not configured on this instance")
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         log.error(
             "Error occurred while processing image generation",
@@ -118,6 +104,9 @@ async def image_to_text_endpoint(message: str, file: UploadFile) -> ImageToTextR
         # An unreadable upload is the caller's problem, not a 500 — let the
         # status the conversion chose reach them.
         raise
+    except LLMNotConfiguredError as e:
+        log.warning("No vision provider configured for image-to-text")
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         log.error(
             "Error occurred while processing image-to-text",

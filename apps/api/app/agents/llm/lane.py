@@ -13,20 +13,18 @@ entirely by the queue's serializer. That table is what made model selection
 unreadable and its bugs invisible.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter
 
-from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider, openai_lane_available
+from app.agents.llm.client import chat_model, chat_route, provider_configured
 from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
-    COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -61,32 +59,6 @@ from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from app.services.providers.provider_credentials_service import ProviderConfig
-
-#: Injected by provider_registration after the LLM providers register. Reads
-#: the client's runtime snapshot (credential store → env) per provider name.
-_RUNTIME_CONFIG_LOOKUP: Callable[[str], "ProviderConfig | None"] | None = None
-_DEFAULT_LANE_PRIORITY = (
-    LLMProviderName.OPENROUTER,
-    LLMProviderName.GEMINI,
-    LLMProviderName.OLLAMA,
-    LLMProviderName.CUSTOM,
-)
-
-
-def set_runtime_config_lookup(
-    fn: "Callable[[str], ProviderConfig | None]",
-) -> None:
-    """Wire the snapshot lookup used by _default_lane.
-
-    DI seam: lane and client import each other, so provider_registration wires
-    this after both modules load.
-    """
-    global _RUNTIME_CONFIG_LOOKUP
-    _RUNTIME_CONFIG_LOOKUP = fn
-
 
 #: Every configurable key a lane owns. These must be REPLACED wholesale on a lane
 #: change, never merged into — a leftover key is the previous lane still steering
@@ -199,7 +171,7 @@ class ModelLane:
         concepts, so carrying either onto a different provider is how a
         fallback turns one failure into two.
         """
-        nxt = next_fallback_provider(self.provider)
+        nxt = chat_route(self.provider)
         if nxt is None:
             return None
         provider, model = nxt
@@ -221,31 +193,23 @@ def _reasoning_for(role: AgentRole) -> OpenRouterReasoning:
 def _default_lane() -> ModelLane:
     """Return the lane for a default (free or unresolved-plan) turn.
 
-    Hosted instances run OpenRouter's default model exactly as always. A bare
-    self-host without it resolves the highest-priority AVAILABLE lane via the
-    runtime snapshot, so LangChain is never asked for a lane that has no config.
+    Hosted instances run OpenRouter's default model exactly as always. Without
+    OpenRouter the highest-priority usable chat provider serves, so LangChain is
+    never asked for a lane that has no config; with none at all, the OpenRouter
+    lane fails loud at load time naming the fix.
     """
-    lookup = _RUNTIME_CONFIG_LOOKUP
-    if lookup is not None:
-        for name in _DEFAULT_LANE_PRIORITY:
-            cfg: ProviderConfig | None = lookup(name.value)
-            if not cfg:
-                continue
-            if name is LLMProviderName.OPENROUTER:
-                return ModelLane(
-                    provider=name,
-                    model=cfg.get("model") or DEFAULT_MODEL_NAME,
-                    reasoning=OPENROUTER_REASONING,
-                    provider_pin=None,
-                    max_input_tokens=DEFAULT_MAX_TOKENS,
-                )
-            return ModelLane(
-                provider=name,
-                model=cfg.get("model"),
-                reasoning=None,
-                provider_pin=None,
-                max_input_tokens=DEFAULT_MAX_TOKENS,
-            )
+    route = chat_route()
+    if route is not None:
+        provider, model = route
+        is_openrouter = provider is LLMProviderName.OPENROUTER
+        return ModelLane(
+            provider=provider,
+            model=model,
+            # A reasoning pin is OpenRouter-wire only.
+            reasoning=OPENROUTER_REASONING if is_openrouter else None,
+            provider_pin=None,
+            max_input_tokens=DEFAULT_MAX_TOKENS,
+        )
     return ModelLane(
         provider=LLMProviderName(DEFAULT_LLM_PROVIDER),
         model=DEFAULT_MODEL_NAME,
@@ -257,11 +221,11 @@ def _default_lane() -> ModelLane:
 
 def _comms_lane() -> ModelLane | None:
     """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured."""
-    if not openai_lane_available():
+    if not provider_configured(LLMProviderName.OPENAI):
         return None
     return ModelLane(
         provider=LLMProviderName.OPENAI,
-        model=COMMS_MODEL_NAME,
+        model=chat_model(LLMProviderName.OPENAI),
         # The effort is fixed on the client; a reasoning key would only be ignored.
         reasoning=None,
         provider_pin=None,
@@ -278,13 +242,13 @@ def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     """Build a lane pinned from the DEV-ONLY model menu.
 
     An entry may carry no model (the env-defined "custom" endpoint); the lane
-    resolves PROVIDER_MODELS[provider] instead of leaving it None, so
+    resolves the provider's chat model instead of leaving it None, so
     accounting sees the real name instead of metering as "unknown". None
-    survives only when the env var itself is unset.
+    survives only when no model is configured at all.
     """
     return ModelLane(
         provider=option.provider,
-        model=option.model or PROVIDER_MODELS.get(option.provider) or None,
+        model=option.model or chat_model(option.provider),
         reasoning=_reasoning_for(role) if option.reasoning else None,
         provider_pin=option.provider_pin,
         max_input_tokens=DEFAULT_MAX_TOKENS,

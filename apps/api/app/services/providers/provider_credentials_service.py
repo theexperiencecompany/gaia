@@ -36,6 +36,7 @@ _REGISTRY_RESET_KEYS: dict[str, str] = {
     "gemini": "gemini_llm",
     "ollama": "ollama_llm",
     "custom": "custom_llm",
+    "openai": "openai_llm",
     "composio": "composio_service",
     "cloudinary": "cloudinary",
 }
