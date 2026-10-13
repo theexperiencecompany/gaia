@@ -13,32 +13,19 @@ import {
   DEFAULT_WEB_PORT,
 } from "./endpoints.js";
 import type { SetupMode } from "./env-parser.js";
-
-export type CheckResult = "success" | "error" | "missing" | "pending";
-
-export interface PrerequisiteInfo {
-  name: string;
-  installUrl: string;
-  installed: boolean;
-  working: boolean;
-  /** The daemon answered, but refused this user (socket permissions). */
-  permissionDenied?: boolean;
-  errorMessage?: string;
-}
+import type {
+  CheckResult,
+  DockerReadiness,
+  EnsureDockerOptions,
+  PortCheckResult,
+  PrerequisiteInfo,
+} from "./prerequisites.types.js";
 
 export const PREREQUISITE_URLS = {
   git: "https://git-scm.com/downloads",
   docker: "https://docs.docker.com/get-docker/",
   mise: "https://mise.jdx.dev/getting-started.html",
 } as const;
-
-export interface PortCheckResult {
-  port: number;
-  service: string;
-  available: boolean;
-  usedBy?: string;
-  alternative?: number;
-}
 
 const PORT_SERVICE_MAP: Record<number, string> = {
   8000: "API Server",
@@ -167,22 +154,6 @@ function isDebianAptLinux(): boolean {
   return (
     fs.existsSync("/usr/bin/apt-get") || fs.existsSync("/etc/debian_version")
   );
-}
-
-/** Outcome of {@link ensureDocker}. */
-export type DockerReadiness =
-  /** Docker answers this process; carry on. */
-  | "ready"
-  /**
-   * This user was just granted the docker group, which only a new process
-   * picks up: the command runner relaunches under `sg docker` and the flow
-   * must stop here (see lib/docker-group.ts).
-   */
-  | "relaunch";
-
-export interface EnsureDockerOptions {
-  /** `--yes`: consent to installing Docker and joining the docker group. */
-  assumeYes?: boolean;
 }
 
 /**

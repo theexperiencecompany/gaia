@@ -1,7 +1,7 @@
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import type { PortCheckResult } from "../../lib/prerequisites.js";
+import type { PortCheckResult } from "../../lib/prerequisites.types.js";
 import { THEME_COLOR } from "../constants.js";
 
 export const SystemChecksStep: React.FC<{
