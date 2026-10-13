@@ -2,43 +2,50 @@
 
 import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
-import { CancelIcon, ZapIcon } from "@icons";
-import { useEffect, useState } from "react";
+import { CancelIcon } from "@icons";
+import { type ReactNode, useEffect, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
-import type { PaywallCopy } from "@/features/pricing/constants";
-
-const STORAGE_KEY = "sidebar-promo-collapsed:v1";
 
 interface SidebarPromoProps {
-  /** The live Pro monthly price; null while loading or when the plans could not be read. */
-  price: number | null;
-  isPriceLoading: boolean;
-  copy: PaywallCopy;
-  onUpgrade: () => void;
+  heading: string;
+  /** Null while the line is still loading (a live price, say) or has nothing to say. */
+  body: string | null;
+  isBodyLoading: boolean;
+  cta: string;
+  icon: ReactNode;
+  onAction: () => void;
+  /** localStorage key remembering that the card was collapsed to its button. */
+  collapseKey: string;
+  onCollapse?: () => void;
 }
 
+/** The sidebar's one promo card: heading, a line, a raised CTA; collapses to the CTA alone. */
 export function SidebarPromo({
-  price,
-  isPriceLoading,
-  copy,
-  onUpgrade,
+  heading,
+  body,
+  isBodyLoading,
+  cta,
+  icon,
+  onAction,
+  collapseKey,
+  onCollapse,
 }: SidebarPromoProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(collapseKey);
       if (stored) setIsCollapsed(JSON.parse(stored));
     } catch {
       // localStorage unavailable (e.g. incognito/Safari) — use default
     }
-  }, []);
+  }, [collapseKey]);
 
   const handleCollapse = () => {
-    const newState = true;
-    setIsCollapsed(newState);
+    setIsCollapsed(true);
+    onCollapse?.();
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      localStorage.setItem(collapseKey, JSON.stringify(true));
     } catch {
       // localStorage unavailable — state still updated in memory
     }
@@ -51,7 +58,7 @@ export function SidebarPromo({
       {!isCollapsed && (
         <>
           <div className="flex w-full justify-between items-center gap-1">
-            <div className="font-medium text-sm">{copy.heading}</div>
+            <div className="font-medium text-sm">{heading}</div>
             <Button
               isIconOnly
               variant="light"
@@ -63,12 +70,10 @@ export function SidebarPromo({
               <CancelIcon width={15} height={15} />
             </Button>
           </div>
-          {price !== null ? (
-            <p className="text-xs text-zinc-400">{copy.sidebarBody(price)}</p>
+          {body !== null ? (
+            <p className="text-xs text-zinc-400">{body}</p>
           ) : (
-            isPriceLoading && (
-              <Skeleton className="mt-1 h-8 w-full rounded-lg" />
-            )
+            isBodyLoading && <Skeleton className="mt-1 h-8 w-full rounded-lg" />
           )}
         </>
       )}
@@ -77,10 +82,10 @@ export function SidebarPromo({
         className={`w-full rounded-xl! text-black! ${isCollapsed ? "" : "mt-2"}`}
         color="#00bbff"
         size={"sm"}
-        onClick={onUpgrade}
+        onClick={onAction}
       >
-        <ZapIcon fill="black" width={17} height={17} />
-        {copy.cta}
+        {icon}
+        {cta}
       </RaisedButton>
     </div>
   );
