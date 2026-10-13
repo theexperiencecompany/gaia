@@ -25,6 +25,7 @@ from app.constants.briefing import (
     BOOTSTRAP_GRACE_DAYS,
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
+    MAX_BRIEF_ITEMS,
     MINUTES_SAVED_PER_GAIA_TODO,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
     hue_for_day,
@@ -35,7 +36,13 @@ from app.constants.notifications import (
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
-from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
+from app.models.briefing_models import (
+    BRIEFING_ITEM_LABELS,
+    BriefingItemKind,
+    BriefingKind,
+    BriefingModel,
+    BriefingPayload,
+)
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -86,7 +93,14 @@ def _parse_payload(raw: str) -> BriefingPayload:
         except json.JSONDecodeError:
             continue
         if isinstance(data, dict) and "headline" in data:
-            return BriefingPayload.model_validate(data)
+            payload = BriefingPayload.model_validate(data)
+            item_count = sum(len(section.items) for section in payload.sections)
+            if item_count > MAX_BRIEF_ITEMS:
+                raise BriefingGenerationError(
+                    f"BriefingPayload has {item_count} items; a brief holds at most "
+                    f"{MAX_BRIEF_ITEMS}"
+                )
+            return payload
     raise BriefingGenerationError(
         f"No valid BriefingPayload in agent output (first 300 chars): {raw[:300]!r}"
     )
@@ -311,25 +325,44 @@ async def _deliver(
     return channels or ["inapp"]
 
 
-def _work_items(work: context.TrackedWork) -> list[dict]:
-    """Code-built items for GAIA's tracked work. Truth by construction."""
-    items: list[dict] = []
-    for d in work.completed:
-        items.append({"text": f"Done: {d.title}", "todo_id": d.id, "kind": "lookback"})
-    for d in work.running:
-        items.append({"text": f"In progress: {d.title}", "todo_id": d.id, "kind": "gaia"})
-    for d in work.failed:
-        items.append({"text": f"Failed: {d.title}", "todo_id": d.id, "kind": "note"})
-    for d in work.blocked:
-        items.append({"text": f"Waiting on you: {d.title}", "todo_id": d.id, "kind": "you"})
-    return items
-
-
+_NEEDS_YOU_SECTION_TITLE = "NEEDS YOU"
 _WORK_SECTION_TITLE = "GAIA'S WORK"
+_SECTION_NUMERALS = ("I", "II")
+
+
+def _work_item(doc: TodoDocument, kind: BriefingItemKind) -> dict:
+    return {"text": doc.title, "todo_id": doc.id, "kind": kind}
+
+
+def _work_sections(work: context.TrackedWork) -> tuple[list[dict], int]:
+    """Code-built sections for GAIA's tracked work. Truth by construction.
+
+    Needs-you items (blocked, then failed) come first, then GAIA's own work
+    (finished, then running), and the whole brief stops at ``MAX_BRIEF_ITEMS``.
+    Returns the sections and how many items the cap left out.
+    """
+    needs_you = [_work_item(d, "you") for d in work.blocked] + [
+        _work_item(d, "failed") for d in work.failed
+    ]
+    gaia_work = [_work_item(d, "lookback") for d in work.completed] + [
+        _work_item(d, "gaia") for d in work.running
+    ]
+
+    sections: list[dict] = []
+    budget = MAX_BRIEF_ITEMS
+    for title, items in ((_NEEDS_YOU_SECTION_TITLE, needs_you), (_WORK_SECTION_TITLE, gaia_work)):
+        kept = items[:budget]
+        budget -= len(kept)
+        if kept:
+            sections.append(
+                {"numeral": _SECTION_NUMERALS[len(sections)], "title": title, "items": kept}
+            )
+    kept_total = MAX_BRIEF_ITEMS - budget
+    return sections, len(needs_you) + len(gaia_work) - kept_total
 
 
 def _fact_line(item: dict, art: _ArtifactFact | None) -> str:
-    line = f"- {item['text']}"
+    line = f"- {BRIEFING_ITEM_LABELS[item['kind']]}: {item['text']}"
     if art:
         if art.snippet:
             line += f" | summary: {art.snippet}"
@@ -354,14 +387,12 @@ def _build_facts(
     whether it is waiting on the user, and the link — the model summarises every
     item and only appends the link for big/waiting ones.
     """
-    items = _work_items(work)
-    for it in items:
-        art = artifacts.get(it.get("todo_id", ""))
-        if art and art.link:
-            it["link"] = art.link
-    sections: list[dict] = (
-        [{"numeral": "I", "title": _WORK_SECTION_TITLE, "items": items}] if items else []
-    )
+    sections, left_out = _work_sections(work)
+    for sec in sections:
+        for it in sec["items"]:
+            art = artifacts.get(it.get("todo_id", ""))
+            if art and art.link:
+                it["link"] = art.link
     stats: list[dict] = []
     if work.completed:
         stats.append({"value": str(len(work.completed)), "label": "done since yesterday"})
@@ -375,6 +406,10 @@ def _build_facts(
         fact_lines.append(f"[{sec['title']}]")
         for it in sec["items"]:
             fact_lines.append(_fact_line(it, artifacts.get(it.get("todo_id", ""))))
+    if left_out:
+        fact_lines.append(
+            f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
+        )
     if not sections:
         fact_lines.append(
             "GAIA has no tracked work and no background work ran. Do not claim anything "

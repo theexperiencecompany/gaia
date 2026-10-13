@@ -1,0 +1,174 @@
+{#-
+  Layout for the daily brief and the weekly recap emails.
+  Context: a BriefingEmail view (app/utils/notification/email_templates.py).
+  Table layout with inline light-mode styles so Gmail and Outlook render it as
+  written; the <style> block only upgrades clients that honour
+  prefers-color-scheme (Apple Mail, iOS Mail, Outlook for Mac) and
+  Outlook.com's [data-ogsc] dark mode.
+-#}
+{% extends "_base_email.html" %}
+
+{% block head %}
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      a { text-decoration: none; }
+      .item-link:hover .item-text { text-decoration: underline; }
+      @media (max-width: 620px) {
+        .card { border-radius: 0 !important; }
+        .px { padding-left: 24px !important; padding-right: 24px !important; }
+        .headline { font-size: 24px !important; line-height: 30px !important; }
+      }
+      @media (prefers-color-scheme: dark) {
+        .page { background-color: #0b0b0c !important; }
+        .card { background-color: #18181b !important; }
+        .text { color: #fafafa !important; }
+        .muted { color: #a1a1aa !important; }
+        .faint { color: #71717a !important; }
+        .rule { border-color: #27272a !important; }
+        .stat-cell { border-color: #27272a !important; }
+        .item-row { border-color: #27272a !important; }
+        .stat-panel { background-color: #232327 !important; }
+      }
+      [data-ogsc] .page { background-color: #0b0b0c !important; }
+      [data-ogsc] .card { background-color: #18181b !important; }
+      [data-ogsc] .text { color: #fafafa !important; }
+      [data-ogsc] .muted { color: #a1a1aa !important; }
+      [data-ogsc] .faint { color: #71717a !important; }
+      [data-ogsc] .rule,
+      [data-ogsc] .stat-cell,
+      [data-ogsc] .item-row { border-color: #27272a !important; }
+    </style>
+{% endblock %}
+
+{% block body_style %}class="page" style="margin: 0; padding: 0; width: 100%; background-color: #f4f4f5; -webkit-font-smoothing: antialiased;"{% endblock %}
+
+{% block body %}
+    {#- Inbox preview line; padded so the client doesn't pull body copy after it. -#}
+    <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; color: #f4f4f5; opacity: 0;">
+      {{ brief.preheader }}{% for _ in range(60) %}&#847;&zwnj;&nbsp;{% endfor %}
+    </div>
+    <table role="presentation" class="page" width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #f4f4f5;">
+      <tr>
+        <td align="center" style="padding: 32px 12px;">
+          <table role="presentation" class="card" width="600" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 600px; background-color: #ffffff; border-radius: 20px;">
+            <tr>
+              <td class="px" style="padding: 32px 40px 0; font-family: {{ fonts }};">
+                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="vertical-align: middle;">
+                      <a href="{{ brief.app_url }}" style="text-decoration: none;">
+                        <img src="{{ brief.logo_url }}" width="28" height="28" alt="GAIA" style="display: inline-block; vertical-align: middle; border: 0; border-radius: 8px;" />
+                        <span class="text" style="display: inline-block; vertical-align: middle; margin-left: 8px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: #18181b;">GAIA</span>
+                      </a>
+                    </td>
+                    <td align="right" class="muted" style="vertical-align: middle; font-size: 13px; color: #71717a;">
+                      {{ brief.date_label }}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="px" style="padding: 36px 40px 0; font-family: {{ fonts }};">
+                <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #00a3e0;">
+                  {{ brief.kicker }}
+                </div>
+                <h1 class="text headline" style="margin: 12px 0 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; color: #18181b;">
+                  {{ brief.headline }}
+                </h1>
+                <p class="muted" style="margin: 12px 0 0; font-size: 16px; line-height: 26px; color: #52525b;">
+                  {{ brief.lede }}
+                </p>
+              </td>
+            </tr>
+            {% block stats %}
+            {% if brief.stats %}
+            <tr>
+              <td class="px" style="padding: 28px 40px 0; font-family: {{ fonts }};">
+                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    {% for stat in brief.stats %}
+                    <td class="stat-cell" width="{{ (100 / brief.stats|length)|int }}%" style="vertical-align: top; padding: 0 0 0 {% if loop.first %}0{% else %}16px{% endif %};{% if not loop.first %} border-left: 1px solid #e4e4e7;{% endif %}">
+                      <div class="text" style="font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.02em; color: #18181b;">{{ stat.value }}</div>
+                      <div class="muted" style="margin-top: 4px; font-size: 13px; line-height: 18px; color: #71717a;">{{ stat.label }}</div>
+                    </td>
+                    {% endfor %}
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            {% endif %}
+            {% endblock %}
+            {% for section in brief.sections %}
+            <tr>
+              <td class="px" style="padding: 32px 40px 0; font-family: {{ fonts }};">
+                <div class="faint" style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #a1a1aa;">
+                  {{ section.title }}
+                </div>
+                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin-top: 8px;">
+                  {% for item in section.items %}
+                  <tr>
+                    <td class="item-row" style="border-top: 1px solid #f4f4f5;{% if loop.last %} border-bottom: 1px solid #f4f4f5;{% endif %}">
+                      <a class="item-link" href="{{ item.href }}" target="_blank" style="display: block; padding: 14px 0; text-decoration: none;">
+                        <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
+                          <tr>
+                            <td width="20" style="vertical-align: top; padding-top: 8px;">
+                              <div style="width: 8px; height: 8px; border-radius: 4px; background-color: {{ item.accent }};"></div>
+                            </td>
+                            <td style="vertical-align: top;">
+                              <div class="text item-text" style="font-size: 15px; line-height: 23px; color: #18181b;">{{ item.text }}</div>
+                              <div class="faint" style="margin-top: 2px; font-size: 13px; line-height: 18px; color: #a1a1aa;">{{ item.label }}</div>
+                            </td>
+                            <td width="24" align="right" class="faint" style="vertical-align: top; font-size: 20px; line-height: 22px; color: #a1a1aa;">&rsaquo;</td>
+                          </tr>
+                        </table>
+                      </a>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </table>
+              </td>
+            </tr>
+            {% endfor %}
+            <tr>
+              <td class="px" style="padding: 36px 40px 0; font-family: {{ fonts }};">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="border-radius: 12px; background-color: #00bbff;">
+                      <a href="{{ brief.cta_url }}" target="_blank" style="display: inline-block; padding: 12px 22px; font-size: 15px; font-weight: 600; line-height: 20px; color: #0b0b0c; text-decoration: none; border-radius: 12px;">{{ brief.cta_label }}</a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="px" style="padding: 28px 40px 36px; font-family: {{ fonts }};">
+                {% if brief.caption %}
+                <p class="muted rule" style="margin: 0; padding-top: 24px; border-top: 1px solid #f4f4f5; font-size: 14px; line-height: 22px; color: #71717a;">
+                  {{ brief.caption }}
+                </p>
+                {% endif %}
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="600" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 600px;">
+            <tr>
+              <td class="px faint" style="padding: 24px 40px 0; font-family: {{ fonts }}; font-size: 12px; line-height: 20px; color: #a1a1aa;">
+                {% block cadence %}{% endblock %}
+                <a class="faint" href="{{ brief.manage_url }}" target="_blank" style="color: #a1a1aa; text-decoration: underline;">Delivery settings</a>
+                &nbsp;&middot;&nbsp;
+                <a class="faint" href="{{ unsubscribe_url }}" target="_blank" style="color: #a1a1aa; text-decoration: underline;">Unsubscribe</a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+{% endblock %}

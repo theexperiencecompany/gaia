@@ -1,16 +1,15 @@
 """Email notification channel adapter.
 
-Sends via the Resend HTTP API (no vendor SDK — a plain ``httpx`` POST keeps the
-send fully async so it doesn't block the event loop alongside the other
-channels' concurrent deliveries). Missing ``RESEND_API_KEY`` /
+Sends through the platform email service (``app/services/email``), the same
+provider path every other GAIA email takes. Missing ``RESEND_API_KEY`` /
 ``EMAIL_UNSUBSCRIBE_SECRET`` is an ops precondition, not a feature flag: the
-adapter skips with a structured log until both are configured.
+adapter skips with a structured log until both are configured. A send that
+fails raises, and the orchestrator records the channel as failed.
 
 Template selection keys off ``notification.metadata["kind"]``:
-``briefing_daily`` / ``briefing_weekly`` render the corresponding briefing
-template from ``notification.content.rich_content`` (the same
-``BriefingPayload`` dict the OpenUI dashboard card renders — no re-invoking
-the LLM to reformat). Anything else renders the plain-notification template
+``briefing_daily`` / ``briefing_weekly`` render the briefing email from
+``notification.content.rich_content`` (the same ``BriefingPayload`` dict the
+dashboard card renders). Anything else renders the plain notification email
 from ``content.title`` / ``content.body``.
 """
 
@@ -18,26 +17,22 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
-
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_DAILY,
-    NOTIFICATION_KIND_BRIEFING_WEEKLY,
-    NotificationChannel,
-)
+from app.constants.notifications import NotificationChannel
 from app.db.repositories.users import user_repository
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
 )
+from app.services.email.models import EmailMessage
+from app.services.email.service import send_email
 from app.utils.email_utils import normalize_email
 from app.utils.notification.channels.base import ChannelAdapter
 from app.utils.notification.email_templates import (
-    render_daily_brief_email,
-    render_plain_notification_email,
-    render_weekly_digest_email,
+    is_briefing_kind,
+    render_briefing_email,
+    render_notification_email,
 )
 from app.utils.notification.unsubscribe import (
     build_unsubscribe_headers,
@@ -45,12 +40,11 @@ from app.utils.notification.unsubscribe import (
 )
 from shared.py.wide_events import log
 
-RESEND_SEND_URL = "https://api.resend.com/emails"
-_SEND_TIMEOUT_SECONDS = 10.0
+_DEFAULT_SUBJECT = "GAIA"
 
 
 class EmailChannelAdapter(ChannelAdapter):
-    """Sends notification content to the user's email via Resend."""
+    """Sends notification content to the user's email address."""
 
     @property
     def channel_type(self) -> str:
@@ -79,48 +73,24 @@ class EmailChannelAdapter(ChannelAdapter):
         if not email:
             return self._skipped("email: no email address on file")
 
-        unsubscribe_url = build_unsubscribe_url(user_id)
-        subject, html = self._render(content, unsubscribe_url)
-
-        try:
-            async with httpx.AsyncClient(timeout=_SEND_TIMEOUT_SECONDS) as client:
-                response = await client.post(
-                    RESEND_SEND_URL,
-                    headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-                    json={
-                        "from": settings.EMAIL_FROM,
-                        "to": [email],
-                        "subject": subject,
-                        "html": html,
-                        "headers": build_unsubscribe_headers(user_id),
-                    },
-                )
-                response.raise_for_status()
-        except httpx.HTTPError as e:
-            log.error(
-                f"{LogTag.NOTIFICATION} Email send failed",
-                user_id=user_id,
-                error_type=type(e).__name__,
-                error=str(e),
+        subject, html = self._render(content, build_unsubscribe_url(user_id))
+        await send_email(
+            EmailMessage(
+                sender=f"GAIA <{settings.EMAIL_FROM}>",
+                to=[email],
+                subject=subject,
+                html=html,
+                headers=build_unsubscribe_headers(user_id),
             )
-            return self._error(f"email: send failed ({e})")
-
+        )
         return self._success()
 
     def _render(self, content: dict[str, Any], unsubscribe_url: str) -> tuple[str, str]:
         """Picks the template by ``kind`` and returns ``(subject, html)``."""
         kind = content.get("kind")
-        payload = content.get("payload") or {}
-        title = content.get("title") or "GAIA"
-
-        if kind == NOTIFICATION_KIND_BRIEFING_DAILY:
-            return payload.get("headline") or title, render_daily_brief_email(
-                payload, unsubscribe_url
-            )
-        if kind == NOTIFICATION_KIND_BRIEFING_WEEKLY:
-            return payload.get("headline") or title, render_weekly_digest_email(
-                payload, unsubscribe_url
-            )
-        return title, render_plain_notification_email(
-            title, content.get("body") or "", unsubscribe_url
-        )
+        if is_briefing_kind(kind):
+            # A briefing without its payload is a producer bug: validation in
+            # render_briefing_email fails the send rather than mailing a blank.
+            return render_briefing_email(content.get("payload") or {}, kind, unsubscribe_url)
+        title = content.get("title") or _DEFAULT_SUBJECT
+        return title, render_notification_email(title, content.get("body") or "", unsubscribe_url)

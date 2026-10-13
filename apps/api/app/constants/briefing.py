@@ -33,8 +33,10 @@ WEEKLY_DIGEST_CRON: Final[str] = "0 17 * * 0"  # Sunday 17:00
 BRIEFING_KIND_DAILY: Final[Literal["daily"]] = "daily"
 BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
 
-# The you-item budget the prompt is held to (max user-facing asks per brief).
-MAX_YOU_ITEMS: Final[int] = 3
+# A brief is finite: at most this many items across all its sections, so it reads
+# in under a minute. The daily brief keeps the highest-priority items (needs-you
+# first); a weekly payload over the cap fails generation.
+MAX_BRIEF_ITEMS: Final[int] = 8
 
 # Consecutive unacknowledged briefings (no open, no activity) that flip a run into
 # winback mode. At/above this the run sends one adaptive winback then backs off.

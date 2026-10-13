@@ -1,14 +1,18 @@
 {#-
-  Shared skeleton for lifecycle emails (founder-note style).
-  Context: cta_url/cta_label render the button; unsubscribe_url renders the footer.
+  Shared skeleton for every platform email.
+  Lifecycle emails (founder-note style) override `content` only: cta_url/cta_label
+  render the button and unsubscribe_url renders the footer.
+  Designed emails (the briefing) override `head` for their own styles,
+  `body_style` for the page frame, and `body` for the whole layout.
 -#}
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html dir="ltr" lang="en">
   <head>
     <title>GAIA</title>
+    {% block head %}{% endblock %}
   </head>
   <body
-    style="
+    {% block body_style %}style="
       margin-left: auto;
       margin-right: auto;
       margin-top: auto;
@@ -19,8 +23,9 @@
         &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;,
         &quot;Noto Color Emoji&quot;;
       max-width: 500px;
-    "
+    "{% endblock %}
   >
+    {% block body %}
     <div style="margin-top: 3.5rem; margin-bottom: 2rem">
       <table
         align="center"
@@ -133,5 +138,6 @@
         </tbody>
       </table>
     </div>
+    {% endblock %}
   </body>
 </html>

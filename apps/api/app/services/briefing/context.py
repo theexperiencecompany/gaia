@@ -127,9 +127,9 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
             user_id, "what is the user currently working on and their goals", limit=5
         )
         for entry in result.memories:
-            note = entry_to_note(entry).strip()
-            if note and note not in lines:
-                lines.append(f"- {note}")
+            line = f"- {entry_to_note(entry).strip()}"
+            if line != "- " and line not in lines:
+                lines.append(line)
     except Exception as exc:
         # Memory recall is best-effort context, not a hard dependency of the run.
         log.warning("briefing.goal_block_recall_failed", user_id=user_id, error=str(exc))
@@ -139,7 +139,7 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
             "No stated goal on record yet — treat goal discovery as part of today's job.",
             False,
         )
-    return ("\n".join(lines), bool(focus) or len(lines) > 0)
+    return ("\n".join(lines), True)
 
 
 async def gather_tracked_work(user_id: str, since: datetime) -> TrackedWork:

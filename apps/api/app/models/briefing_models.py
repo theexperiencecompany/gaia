@@ -23,8 +23,17 @@ BriefingKind = Literal["daily", "weekly"]
 BriefingMood = Literal["clear", "packed", "idle", "winback", "weekly"]
 
 # ``kind`` on a section item tags how the renderer treats it (a GAIA action, a
-# user ask, a look-back note, a plain highlight).
-BriefingItemKind = Literal["gaia", "you", "lookback", "note"]
+# user ask, a look-back note, work that failed, a plain highlight).
+BriefingItemKind = Literal["gaia", "you", "lookback", "failed", "note"]
+
+# The state each kind reads as, shown under an item and handed to the voice pass.
+BRIEFING_ITEM_LABELS: dict[BriefingItemKind, str] = {
+    "you": "Waiting on you",
+    "gaia": "In progress",
+    "lookback": "Done",
+    "failed": "Didn't finish",
+    "note": "Worth knowing",
+}
 
 
 class BriefingStat(BaseModel):

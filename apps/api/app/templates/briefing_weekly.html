@@ -1,0 +1,35 @@
+{#-
+  The weekly recap email. Leads with the week's first stat as a hero number
+  and lists the rest beneath it. Context: see _briefing_email.html.
+-#}
+{% extends "_briefing_email.html" %}
+{% block stats %}
+{% if brief.stats %}
+{% set hero = brief.stats[0] %}
+            <tr>
+              <td class="px" style="padding: 28px 40px 0; font-family: {{ fonts }};">
+                <table role="presentation" class="stat-panel" width="100%" border="0" cellpadding="0" cellspacing="0" style="border-radius: 16px; background-color: #f4f4f5;">
+                  <tr>
+                    <td style="padding: 24px;">
+                      <div class="text" style="font-size: 44px; line-height: 48px; font-weight: 600; letter-spacing: -0.03em; color: #18181b;">{{ hero.value }}</div>
+                      <div class="muted" style="margin-top: 6px; font-size: 14px; line-height: 20px; color: #52525b;">{{ hero.label }}</div>
+                      {% if brief.stats|length > 1 %}
+                      <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin-top: 20px;">
+                        <tr>
+                          {% for stat in brief.stats[1:] %}
+                          <td class="stat-cell" style="vertical-align: top; padding: 14px 0 0 {% if loop.first %}0{% else %}16px{% endif %}; border-top: 1px solid #e4e4e7;">
+                            <div class="text" style="font-size: 20px; line-height: 24px; font-weight: 600; color: #18181b;">{{ stat.value }}</div>
+                            <div class="muted" style="margin-top: 2px; font-size: 13px; line-height: 18px; color: #71717a;">{{ stat.label }}</div>
+                          </td>
+                          {% endfor %}
+                        </tr>
+                      </table>
+                      {% endif %}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+{% endif %}
+{% endblock %}
+{% block cadence %}GAIA sends this recap every Sunday evening.<br />{% endblock %}

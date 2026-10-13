@@ -10,6 +10,8 @@ proposes work with the ``create_tracked_todo`` tool, then emits exactly one
 
 from dataclasses import dataclass
 
+from app.constants.briefing import MAX_BRIEF_ITEMS
+
 # The exact output contract, shared by daily and weekly so the parser sees one
 # shape. ``hue`` is set deterministically in code post-run, so the model leaves
 # it at 0. Kept as a single block so the two prompts never drift.
@@ -70,7 +72,7 @@ string; the renderer owns all styling.
 
 # What separates a briefing the user acts on from a list they ignore. Shared by
 # both prompts so item quality never drifts between daily and weekly.
-_ITEM_QUALITY = """
+_ITEM_QUALITY = f"""
 ## ITEM QUALITY (this is the whole product)
 
 A bare todo title is a failure: a title alone tells the user nothing they can
@@ -90,7 +92,8 @@ rather than inventing one. A fabricated "your lawyer needs this by Friday" for
 a user who has no lawyer destroys trust in one message.
 
 Selection beats coverage: pick items by leverage toward the user's goal, never
-by listing whatever todos exist. If a todo's title is vague, use its canvas,
+by listing whatever todos exist. A brief is finite: at most {MAX_BRIEF_ITEMS} items
+across all sections, fewer when fewer matter. If a todo's title is vague, use its canvas,
 description, or serves to say something specific; if you know nothing concrete
 about it, it does not belong in the brief.
 """.strip()
