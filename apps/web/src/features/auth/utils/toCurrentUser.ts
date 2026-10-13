@@ -13,6 +13,8 @@ export interface CurrentUser {
   profilePicture: string;
   timezone: string | undefined;
   onboarding: UserInfo["onboarding"] | undefined;
+  /** Self-host account role; hosted accounts have none. */
+  role: NonNullable<UserInfo["role"]> | undefined;
 }
 
 export function toCurrentUser(info: UserInfo): CurrentUser {
@@ -23,5 +25,6 @@ export function toCurrentUser(info: UserInfo): CurrentUser {
     profilePicture: info.picture ?? "",
     timezone: info.timezone ?? undefined,
     onboarding: info.onboarding,
+    role: info.role ?? undefined,
   };
 }

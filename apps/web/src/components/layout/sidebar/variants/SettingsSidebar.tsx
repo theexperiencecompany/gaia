@@ -4,9 +4,11 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { usePathname, useRouter } from "next/navigation";
 
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import {
   BILLING_ONLY_SETTINGS_KEYS,
   DESKTOP_ONLY_SETTINGS_KEYS,
+  isSettingsSectionAllowed,
   settingsPageItems,
 } from "@/features/settings/config/settingsConfig";
 import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
@@ -19,11 +21,13 @@ export default function SettingsSidebar() {
 
   // Self-host instances have no billing — the entries make no sense there.
   const billingHidden = !useBillingEnabled();
+  const { role } = useCurrentUser();
 
   const visibleItems = settingsPageItems.filter(
     (item) =>
       (isElectron || !DESKTOP_ONLY_SETTINGS_KEYS.has(item.key)) &&
-      !(billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(item.key)),
+      !(billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(item.key)) &&
+      isSettingsSectionAllowed(item.key, role),
   );
 
   const handleNavigation = (href: string) => {

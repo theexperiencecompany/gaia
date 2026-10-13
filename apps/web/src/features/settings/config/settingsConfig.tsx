@@ -1,3 +1,4 @@
+import type { InstanceRole } from "@gaia/shared/api/generated";
 import {
   AiWebBrowsingIcon,
   Brain02Icon,
@@ -13,6 +14,7 @@ import {
   PlugSocketIcon,
   PuzzleIcon,
   UserCircleIcon,
+  UserGroupIcon,
   VoiceIdIcon,
   WhatsappIcon,
 } from "@icons";
@@ -74,6 +76,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Integrations setup",
     icon: PlugSocketIcon,
     href: "/settings/integrations-setup",
+  },
+  {
+    key: "members",
+    label: "Members",
+    icon: UserGroupIcon,
+    href: "/settings/members",
   },
   {
     key: "notifications",
@@ -161,6 +169,25 @@ export const DESKTOP_ONLY_SETTINGS_KEYS = new Set(["desktop"]);
  * from navigation and redirected away on self-host (billing_enabled=false).
  */
 export const BILLING_ONLY_SETTINGS_KEYS = new Set(["subscription", "usage"]);
+
+/**
+ * Sections that configure the instance itself (its people, model keys and
+ * integration project). Only a self-host instance admin has them; hosted
+ * accounts carry no role, so they never see these.
+ */
+const INSTANCE_ADMIN_SETTINGS_KEYS = new Set([
+  "members",
+  "providers",
+  "integrations-setup",
+]);
+
+/** Whether an account with this instance role may open a settings section. */
+export function isSettingsSectionAllowed(
+  key: string,
+  role: InstanceRole | undefined,
+): boolean {
+  return !INSTANCE_ADMIN_SETTINGS_KEYS.has(key) || role === "admin";
+}
 
 export const socialMediaItems: SettingsMenuItem[] = [
   {

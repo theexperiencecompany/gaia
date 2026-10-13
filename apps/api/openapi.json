@@ -895,6 +895,16 @@
             ],
             "title": "Platform Links Connected At"
           },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InstanceRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "selected_voice_id": {
             "anyOf": [
               {
@@ -7653,6 +7663,15 @@
         "title": "InitiatePlatformConnectResponse",
         "type": "object"
       },
+      "InstanceRole": {
+        "description": "A self-host account's role: the first account administers the instance.",
+        "enum": [
+          "admin",
+          "member"
+        ],
+        "title": "InstanceRole",
+        "type": "string"
+      },
       "InstructionsEditor": {
         "description": "Who last wrote the instructions \u2014 surfaced in the UI audit line.",
         "enum": [
@@ -8300,6 +8319,57 @@
           "integrations"
         ],
         "title": "IntegrationsConfigResponse",
+        "type": "object"
+      },
+      "InviteCreatedResponse": {
+        "description": "A new invite and its one-time token, which the web turns into /signup?invite=<token>.",
+        "properties": {
+          "invite": {
+            "$ref": "#/components/schemas/InviteResponse"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invite",
+          "token"
+        ],
+        "title": "InviteCreatedResponse",
+        "type": "object"
+      },
+      "InviteResponse": {
+        "description": "A pending invite link; the token itself is only ever returned at creation.",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "InviteResponse",
         "type": "object"
       },
       "LabelRequest": {
@@ -9097,6 +9167,90 @@
           "configured"
         ],
         "title": "MaskedProvider",
+        "type": "object"
+      },
+      "MemberResponse": {
+        "description": "One active account on the instance.",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "$ref": "#/components/schemas/InstanceRole"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "name",
+          "role",
+          "created_at"
+        ],
+        "title": "MemberResponse",
+        "type": "object"
+      },
+      "MembersOverviewResponse": {
+        "description": "Everything the admin Members settings page shows.",
+        "properties": {
+          "invites": {
+            "items": {
+              "$ref": "#/components/schemas/InviteResponse"
+            },
+            "title": "Invites",
+            "type": "array"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MemberResponse"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "registration_policy": {
+            "$ref": "#/components/schemas/RegistrationPolicy"
+          }
+        },
+        "required": [
+          "members",
+          "invites",
+          "registration_policy"
+        ],
+        "title": "MembersOverviewResponse",
         "type": "object"
       },
       "MemoryDocType": {
@@ -14484,6 +14638,43 @@
         "title": "RegisterServerResponse",
         "type": "object"
       },
+      "RegistrationPolicy": {
+        "description": "Who may create a self-host account once the administrator exists.",
+        "enum": [
+          "invite_only",
+          "open"
+        ],
+        "title": "RegistrationPolicy",
+        "type": "string"
+      },
+      "RegistrationPolicyRequest": {
+        "additionalProperties": false,
+        "description": "Body of PUT /api/v1/members/registration.",
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/RegistrationPolicy",
+            "description": "Who may create an account"
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "title": "RegistrationPolicyRequest",
+        "type": "object"
+      },
+      "RegistrationPolicyResponse": {
+        "description": "The registration policy now in force.",
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/RegistrationPolicy"
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "title": "RegistrationPolicyResponse",
+        "type": "object"
+      },
       "ReminderResponse": {
         "description": "Response model for reminder operations.\n\n``from_attributes`` so the endpoints can project a ``ReminderModel`` onto\nthis without a dict round-trip. Declared here rather than passed at each\ncall site: it is a property of this model, not of one conversion.",
         "properties": {
@@ -15504,7 +15695,7 @@
             "type": "boolean"
           },
           "has_admin_account": {
-            "description": "Whether the single admin slot is taken",
+            "description": "Whether the instance administrator exists",
             "title": "Has Admin Account",
             "type": "boolean"
           },
@@ -15525,11 +15716,16 @@
             "description": "Readiness per credential-store provider",
             "title": "Providers",
             "type": "object"
+          },
+          "registration_policy": {
+            "$ref": "#/components/schemas/RegistrationPolicy",
+            "description": "Who may sign up once the administrator exists"
           }
         },
         "required": [
           "auth_mode",
           "has_admin_account",
+          "registration_policy",
           "needs_setup",
           "billing_enabled",
           "providers",
@@ -15540,12 +15736,25 @@
       },
       "SignupRequest": {
         "additionalProperties": false,
-        "description": "Body of ``POST /api/v1/auth/signup`` \u2014 creates the instance admin.",
+        "description": "Body of POST /api/v1/auth/signup; invite is the token from an invite link.",
         "properties": {
           "email": {
             "format": "email",
             "title": "Email",
             "type": "string"
+          },
+          "invite": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invite"
           },
           "name": {
             "anyOf": [
@@ -21680,7 +21889,7 @@
     },
     "/api/v1/auth/signup": {
       "post": {
-        "description": "Create the instance administrator account and open a session.\n\nRefused with 403 ``registration_closed`` once any credential exists \u2014 a\nself-hosted GAIA is single-admin. The gate is an ATOMIC CLAIM (a unique\nindex on the constant ``slot`` discriminator admits exactly one document),\nnot check-then-create: two concurrent signups on a fresh instance both read\nzero credentials, but Mongo lets precisely one insert land and the loser\ndeterministically gets 403 \u2014 its half-created user row is removed again.\n\nA pre-existing user row with the same email is NOT claimed \u2014 knowledge of\nan email address is not proof of ownership, and a migrated WorkOS-era row\nmust not be attachable by an attacker (Greptile finding). Such signups are\nrefused as closed; only brand-new user rows can become the admin.",
+        "description": "Create an account and open a session.\n\nThe first account administers the instance. Its gate is an ATOMIC CLAIM (a\npartial unique index on slot=admin), not check-then-create: two concurrent\nfirst signups both read no admin, Mongo lets precisely one insert land, and\nthe loser gets 403 registration_closed with its half-created user row removed.\n\nEvery later account is a member, admitted by a valid invite or, when the\nadministrator has opened signup, by anyone; otherwise 403 registration_closed.\n\nA pre-existing user row with the same email is NOT claimed \u2014 knowledge of\nan email address is not proof of ownership, and a migrated WorkOS-era row\nmust not be attachable by an attacker (Greptile finding). Such signups are\nrefused as closed before any invite is spent.",
         "operationId": "auth_signup",
         "requestBody": {
           "content": {
@@ -30429,6 +30638,289 @@
         "summary": "Test Mcp Connection",
         "tags": [
           "MCP"
+        ]
+      }
+    },
+    "/api/v1/members": {
+      "get": {
+        "description": "List accounts, pending invites, and the registration policy.",
+        "operationId": "members_get_members",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembersOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Members",
+        "tags": [
+          "Members",
+          "Members"
+        ]
+      }
+    },
+    "/api/v1/members/invites": {
+      "post": {
+        "description": "Create a single-use invite link that expires in seven days.",
+        "operationId": "members_post_invite",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Post Invite",
+        "tags": [
+          "Members",
+          "Members"
+        ]
+      }
+    },
+    "/api/v1/members/invites/{invite_id}": {
+      "delete": {
+        "description": "Revoke a pending invite link.",
+        "operationId": "members_delete_invite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invite_id",
+            "required": true,
+            "schema": {
+              "title": "Invite Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Delete Invite",
+        "tags": [
+          "Members",
+          "Members"
+        ]
+      }
+    },
+    "/api/v1/members/registration": {
+      "put": {
+        "description": "Choose whether anyone can sign up or only people with an invite.",
+        "operationId": "members_put_registration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Put Registration",
+        "tags": [
+          "Members",
+          "Members"
+        ]
+      }
+    },
+    "/api/v1/members/{user_id}": {
+      "delete": {
+        "description": "Remove a member: their login stops working and their sessions end.",
+        "operationId": "members_delete_member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Delete Member",
+        "tags": [
+          "Members",
+          "Members"
         ]
       }
     },

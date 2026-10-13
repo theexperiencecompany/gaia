@@ -11,7 +11,7 @@ from starlette.requests import Request
 
 from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
-from app.constants.auth import DEV_USER_HEADER
+from app.constants.auth import DEV_USER_HEADER, InstanceRole
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.first_steps_models import FirstStepsState
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument, UserDocument
@@ -792,6 +792,7 @@ _SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
     ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
     ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_STAMP)),
     ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),
+    ("InstanceRole", InstanceRole.ADMIN),
     ("datetime", _STAMP),
     ("bool", True),
     ("int", 3),

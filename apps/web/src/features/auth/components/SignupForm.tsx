@@ -2,35 +2,41 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Link } from "@heroui/link";
 import { Alert01Icon, ViewIcon, ViewOffSlashIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
+import { RegistrationClosedNotice } from "@/features/auth/components/RegistrationClosedNotice";
 import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 
 const MIN_PASSWORD_LENGTH = 8;
-const REGISTRATION_CLOSED_COPY =
-  "This instance already has an administrator account";
+const INVITE_INVALID_COPY =
+  "This invite link is invalid or has expired. Ask for a new one.";
 const GENERIC_ERROR_COPY = "Could not create your account. Please try again.";
 
 /**
- * Local-mode (self-host) signup. A GAIA instance has exactly one
- * administrator: the first successful signup creates it and the setup wizard
- * takes over; later signups are refused by the backend with 403
- * `registration_closed`.
+ * Local-mode (self-host) signup. The first account administers the instance
+ * and continues into the setup wizard; later accounts are members, admitted by
+ * an invite link or by open registration, and land in the app.
  */
 interface SignupFormProps {
   /**
-   * Called after the admin account is created instead of navigating to
-   * /setup — the setup wizard embeds this form as its first step and
-   * continues in place.
+   * Called after the account is created instead of navigating — the setup
+   * wizard embeds this form as its first step and continues in place.
    */
   onCreated?: () => void;
+  /** The token from an invite link, sent with the signup. */
+  invite?: string;
+  /** Where a new account goes next; the first account goes to /setup. */
+  redirectTo?: string;
 }
 
-export function SignupForm({ onCreated }: SignupFormProps) {
+export function SignupForm({
+  onCreated,
+  invite,
+  redirectTo = "/setup",
+}: SignupFormProps) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -51,21 +57,18 @@ export function SignupForm({ onCreated }: SignupFormProps) {
     setIsSubmitting(true);
     setError(null);
     try {
-      await authApi.localSignup(name, email.trim(), password);
-      // Hand off to the first-run setup wizard (or let the embedding wizard
-      // continue in place).
+      await authApi.localSignup(name, email.trim(), password, invite);
       if (onCreated) {
         onCreated();
         return;
       }
-      router.push("/setup");
+      router.push(redirectTo);
     } catch (err) {
       const authError = getLocalAuthError(err);
-      if (
-        authError.status === 403 &&
-        authError.errorCode === API_ERROR_CODES.REGISTRATION_CLOSED
-      ) {
+      if (authError.errorCode === API_ERROR_CODES.REGISTRATION_CLOSED) {
         setIsRegistrationClosed(true);
+      } else if (authError.errorCode === API_ERROR_CODES.INVITE_INVALID) {
+        setError(INVITE_INVALID_COPY);
       } else {
         setError(authError.message ?? GENERIC_ERROR_COPY);
       }
@@ -74,17 +77,7 @@ export function SignupForm({ onCreated }: SignupFormProps) {
   }
 
   if (isRegistrationClosed) {
-    return (
-      <div className="flex flex-col items-center gap-4" role="alert">
-        <div className="flex items-center gap-2 rounded-xl bg-amber-400/10 px-3 py-2 text-sm text-amber-400">
-          <Alert01Icon height={17} className="shrink-0" />
-          {REGISTRATION_CLOSED_COPY}
-        </div>
-        <Link href="/login" size="sm" color="primary">
-          Sign in instead
-        </Link>
-      </div>
-    );
+    return <RegistrationClosedNotice />;
   }
 
   return (

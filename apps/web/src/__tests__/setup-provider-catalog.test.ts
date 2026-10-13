@@ -69,6 +69,7 @@ const statusWith = (configured: string[]): SetupStatus => ({
   auth_mode: "local",
   billing_enabled: false,
   has_admin_account: true,
+  registration_policy: "invite_only",
   needs_setup: true,
   plans_seeded: true,
   providers: Object.fromEntries(

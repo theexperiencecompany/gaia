@@ -67,7 +67,6 @@ apps/api/app/db/chroma/chromadb.py	TB002
 apps/api/app/db/chroma/noop_embedding.py	TB001
 apps/api/app/db/chroma/public_integrations_store.py	TB001
 apps/api/app/db/chroma/public_integrations_store.py	TB002
-apps/api/app/db/mongodb/collections.py	TB001
 apps/api/app/db/repositories/usage_daily.py	TB002
 apps/api/app/memory/chroma_store.py	TB002
 apps/api/app/memory/context.py	TB002

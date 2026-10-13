@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from app.api.v1.dependencies.instance_admin import require_instance_admin
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
+from app.constants.auth import RegistrationPolicy
 from app.constants.llm import OPENROUTER_MODELS_URL
 from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
@@ -40,6 +41,7 @@ from app.constants.providers import (
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.provider_credentials import provider_credentials_repository
 from app.models.user_models import AuthenticatedUser
+from app.services.members_service import get_registration_policy
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     delete as delete_provider_config,
@@ -104,7 +106,10 @@ class SetupStatusResponse(BaseModel):
     """``GET /setup/status`` — what the first-run wizard branches on."""
 
     auth_mode: Literal["workos", "local"] = Field(description="Active auth stack")
-    has_admin_account: bool = Field(description="Whether the single admin slot is taken")
+    has_admin_account: bool = Field(description="Whether the instance administrator exists")
+    registration_policy: RegistrationPolicy = Field(
+        description="Who may sign up once the administrator exists"
+    )
     needs_setup: bool = Field(description="Whether an LLM lane still has to be configured")
     billing_enabled: bool = Field(description="Whether payments are live for this instance")
     providers: dict[str, ProviderConfiguredState] = Field(
@@ -186,12 +191,13 @@ async def get_setup_status() -> SetupStatusResponse:
     there); in workos mode the route requires a session like any other.
     """
     log.set(operation="setup_status", auth_mode=settings.AUTH_MODE)
-    has_admin_account = await local_credentials_repository.any_exists()
+    has_admin_account = await local_credentials_repository.admin_exists()
     sources = {p: await _credential_source(p) for p in CREDENTIAL_PROVIDERS}
     configured = {p: source is not CredentialSource.UNSET for p, source in sources.items()}
     return SetupStatusResponse(
         auth_mode=settings.AUTH_MODE,
         has_admin_account=has_admin_account,
+        registration_policy=await get_registration_policy(),
         needs_setup=_needs_setup(has_admin_account, configured),
         billing_enabled=settings.deployment.bills,
         providers={

@@ -394,6 +394,7 @@ _INDEX_CREATORS = [
     "create_browser_tasks_indexes",
     "create_llm_call_indexes",
     "create_local_credential_indexes",
+    "create_local_invite_indexes",
     "create_instance_settings_indexes",
     "create_playbook_indexes",
     "create_provider_credential_indexes",
@@ -523,6 +524,7 @@ class TestCreateAllIndexes:
         ("creator", "collection"),
         [
             ("create_local_credential_indexes", "auth_credentials"),
+            ("create_local_invite_indexes", "auth_invites"),
             ("create_instance_settings_indexes", "instance_settings"),
             ("create_provider_credential_indexes", "provider_credentials"),
         ],

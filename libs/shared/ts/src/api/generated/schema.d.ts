@@ -216,19 +216,20 @@ export interface paths {
         put?: never;
         /**
          * Signup
-         * @description Create the instance administrator account and open a session.
+         * @description Create an account and open a session.
          *
-         *     Refused with 403 ``registration_closed`` once any credential exists — a
-         *     self-hosted GAIA is single-admin. The gate is an ATOMIC CLAIM (a unique
-         *     index on the constant ``slot`` discriminator admits exactly one document),
-         *     not check-then-create: two concurrent signups on a fresh instance both read
-         *     zero credentials, but Mongo lets precisely one insert land and the loser
-         *     deterministically gets 403 — its half-created user row is removed again.
+         *     The first account administers the instance. Its gate is an ATOMIC CLAIM (a
+         *     partial unique index on slot=admin), not check-then-create: two concurrent
+         *     first signups both read no admin, Mongo lets precisely one insert land, and
+         *     the loser gets 403 registration_closed with its half-created user row removed.
+         *
+         *     Every later account is a member, admitted by a valid invite or, when the
+         *     administrator has opened signup, by anyone; otherwise 403 registration_closed.
          *
          *     A pre-existing user row with the same email is NOT claimed — knowledge of
          *     an email address is not proof of ownership, and a migrated WorkOS-era row
          *     must not be attachable by an attacker (Greptile finding). Such signups are
-         *     refused as closed; only brand-new user rows can become the admin.
+         *     refused as closed before any invite is spent.
          */
         post: operations["auth_signup"];
         delete?: never;
@@ -2685,6 +2686,106 @@ export interface paths {
          *     Can be used to retry failed connections.
          */
         post: operations["mcp_test_mcp_connection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Members
+         * @description List accounts, pending invites, and the registration policy.
+         */
+        get: operations["members_get_members"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Member
+         * @description Remove a member: their login stops working and their sessions end.
+         */
+        delete: operations["members_delete_member"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Invite
+         * @description Create a single-use invite link that expires in seven days.
+         */
+        post: operations["members_post_invite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/invites/{invite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Invite
+         * @description Revoke a pending invite link.
+         */
+        delete: operations["members_delete_invite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/registration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Registration
+         * @description Choose whether anyone can sign up or only people with an invite.
+         */
+        put: operations["members_put_registration"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6440,6 +6541,7 @@ export interface components {
             platform_links_connected_at?: {
                 [key: string]: unknown;
             } | null;
+            role?: components["schemas"]["InstanceRole"] | null;
             /** Selected Voice Id */
             selected_voice_id?: string | null;
             /** Starred Voice Ids */
@@ -9658,6 +9760,12 @@ export interface components {
             instructions: string | null;
         };
         /**
+         * InstanceRole
+         * @description A self-host account's role: the first account administers the instance.
+         * @enum {string}
+         */
+        InstanceRole: "admin" | "member";
+        /**
          * InstructionsEditor
          * @description Who last wrote the instructions — surfaced in the UI audit line.
          * @enum {string}
@@ -9946,6 +10054,30 @@ export interface components {
              * @default []
              */
             tools: components["schemas"]["IntegrationTool"][];
+        };
+        /**
+         * InviteCreatedResponse
+         * @description A new invite and its one-time token, which the web turns into /signup?invite=<token>.
+         */
+        InviteCreatedResponse: {
+            invite: components["schemas"]["InviteResponse"];
+            /** Token */
+            token: string;
+        };
+        /**
+         * InviteResponse
+         * @description A pending invite link; the token itself is only ever returned at creation.
+         */
+        InviteResponse: {
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: string;
         };
         /**
          * LabelRequest
@@ -10357,6 +10489,32 @@ export interface components {
              * @default false
              */
             is_error?: boolean;
+        };
+        /**
+         * MemberResponse
+         * @description One active account on the instance.
+         */
+        MemberResponse: {
+            /** Created At */
+            created_at: string | null;
+            /** Email */
+            email: string | null;
+            /** Name */
+            name: string | null;
+            role: components["schemas"]["InstanceRole"];
+            /** User Id */
+            user_id: string;
+        };
+        /**
+         * MembersOverviewResponse
+         * @description Everything the admin Members settings page shows.
+         */
+        MembersOverviewResponse: {
+            /** Invites */
+            invites: components["schemas"]["InviteResponse"][];
+            /** Members */
+            members: components["schemas"]["MemberResponse"][];
+            registration_policy: components["schemas"]["RegistrationPolicy"];
         };
         /**
          * MemoryDocType
@@ -12869,6 +13027,27 @@ export interface components {
             server_key: string;
         };
         /**
+         * RegistrationPolicy
+         * @description Who may create a self-host account once the administrator exists.
+         * @enum {string}
+         */
+        RegistrationPolicy: "invite_only" | "open";
+        /**
+         * RegistrationPolicyRequest
+         * @description Body of PUT /api/v1/members/registration.
+         */
+        RegistrationPolicyRequest: {
+            /** @description Who may create an account */
+            policy: components["schemas"]["RegistrationPolicy"];
+        };
+        /**
+         * RegistrationPolicyResponse
+         * @description The registration policy now in force.
+         */
+        RegistrationPolicyResponse: {
+            policy: components["schemas"]["RegistrationPolicy"];
+        };
+        /**
          * ReminderResponse
          * @description Response model for reminder operations.
          *
@@ -13356,7 +13535,7 @@ export interface components {
             billing_enabled: boolean;
             /**
              * Has Admin Account
-             * @description Whether the single admin slot is taken
+             * @description Whether the instance administrator exists
              */
             has_admin_account: boolean;
             /**
@@ -13376,10 +13555,12 @@ export interface components {
             providers: {
                 [key: string]: components["schemas"]["ProviderConfiguredState"];
             };
+            /** @description Who may sign up once the administrator exists */
+            registration_policy: components["schemas"]["RegistrationPolicy"];
         };
         /**
          * SignupRequest
-         * @description Body of ``POST /api/v1/auth/signup`` — creates the instance admin.
+         * @description Body of POST /api/v1/auth/signup; invite is the token from an invite link.
          */
         SignupRequest: {
             /**
@@ -13387,6 +13568,8 @@ export interface components {
              * Format: email
              */
             email: string;
+            /** Invite */
+            invite?: string | null;
             /** Name */
             name?: string | null;
             /** Password */
@@ -16394,6 +16577,7 @@ export type ImportedOrigin = components['schemas']['ImportedOrigin'];
 export type ImportTokenResponse = components['schemas']['ImportTokenResponse'];
 export type InitiatePlatformConnectRequest = components['schemas']['InitiatePlatformConnectRequest'];
 export type InitiatePlatformConnectResponse = components['schemas']['InitiatePlatformConnectResponse'];
+export type InstanceRole = components['schemas']['InstanceRole'];
 export type InstructionsEditor = components['schemas']['InstructionsEditor'];
 export type IntegrationAccountResponse = components['schemas']['IntegrationAccountResponse'];
 export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
@@ -16410,6 +16594,8 @@ export type IntegrationStatusesResponse = components['schemas']['IntegrationStat
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
+export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
+export type InviteResponse = components['schemas']['InviteResponse'];
 export type LabelRequest = components['schemas']['LabelRequest'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
@@ -16438,6 +16624,8 @@ export type MCPProxyResourceTemplatesListRequest = components['schemas']['MCPPro
 export type MCPProxyResourceTemplatesListResponse = components['schemas']['MCPProxyResourceTemplatesListResponse'];
 export type MCPProxyToolCallRequest = components['schemas']['MCPProxyToolCallRequest'];
 export type MCPProxyToolCallResponse = components['schemas']['MCPProxyToolCallResponse'];
+export type MemberResponse = components['schemas']['MemberResponse'];
+export type MembersOverviewResponse = components['schemas']['MembersOverviewResponse'];
 export type MemoryDocType = components['schemas']['MemoryDocType'];
 export type MemoryDocument = components['schemas']['MemoryDocument'];
 export type MemoryDocumentPreview = components['schemas']['MemoryDocumentPreview'];
@@ -16560,6 +16748,9 @@ export type RegenerateStepsRequest = components['schemas']['RegenerateStepsReque
 export type RegenerateWritingStyleExampleResponse = components['schemas']['RegenerateWritingStyleExampleResponse'];
 export type RegisterServerRequest = components['schemas']['RegisterServerRequest'];
 export type RegisterServerResponse = components['schemas']['RegisterServerResponse'];
+export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
+export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
+export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
 export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
@@ -23875,6 +24066,245 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MCPConnectionTestResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_get_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembersOverviewResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_delete_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_post_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCreatedResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_delete_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_put_registration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationPolicyResponse"];
                 };
             };
             /** @description Unprocessable Entity */

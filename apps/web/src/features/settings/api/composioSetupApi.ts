@@ -1,10 +1,7 @@
-import type {
-  ComposioIntegrationSetup,
-  ComposioSetupResponse,
-} from "@shared/api/generated";
+import type { ComposioIntegrationSetup } from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
 
-export type { ComposioIntegrationSetup, ComposioSetupResponse };
+export type { ComposioIntegrationSetup };
 
 export const COMPOSIO_SETUP_DOCS_URL =
   "https://docs.heygaia.io/self-hosting/composio-integrations";

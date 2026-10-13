@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from app.config.feature_flags import FeatureFlag
+from app.constants.auth import InstanceRole
 from app.db.repositories.base import MongoDocument
 from app.models.first_steps_models import FirstStepsState
 from app.schemas.common import ResponseModel
@@ -566,6 +567,8 @@ class UserDocument(MongoDocument):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
+    # Self-host (local auth) accounts only; hosted users never carry a role.
+    role: InstanceRole | None = None
 
 
 class AuthenticatedUser(BaseModel):
@@ -630,6 +633,7 @@ class AuthenticatedUser(BaseModel):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
+    role: InstanceRole | None = None
 
     def with_timezone(self, timezone: str) -> "AuthenticatedUser":
         """A copy carrying the resolved home timezone (the model is frozen)."""
@@ -712,6 +716,7 @@ class AuthenticatedUserResponse(BaseModel):
     last_inactive_email_sent: datetime | None = None
     inactive_email_count: int | None = None
     first_steps: FirstStepsState | None = None
+    role: InstanceRole | None = None
 
 
 class PersonalizationBundle(BaseModel):

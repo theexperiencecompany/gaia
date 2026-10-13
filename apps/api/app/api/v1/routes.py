@@ -27,6 +27,7 @@ from app.api.v1.endpoints import (
     mail,
     mcp,
     mcp_proxy,
+    members,
     memory,
     models,
     notes,
@@ -78,10 +79,11 @@ router.include_router(calendar.router, tags=["Calendar"])
 router.include_router(notes.router, tags=["Notes/Memories"])
 router.include_router(memory.router, tags=["Memory"], prefix="/memory")
 router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
-# Hosted production mounts neither: it exposes no password registration and
-# no runtime credential store.
+# Hosted production mounts none of these: it exposes no password registration,
+# no instance membership, and no runtime credential store.
 if settings.deployment.local_auth:
     router.include_router(auth_local.router, prefix="/auth", tags=["Auth"])
+    router.include_router(members.router, prefix="/members", tags=["Members"])
 if settings.deployment.runtime_credentials:
     router.include_router(setup.router, prefix="/setup", tags=["Setup"])
     router.include_router(setup_composio.router, prefix="/setup", tags=["Setup"])

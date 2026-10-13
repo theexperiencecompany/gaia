@@ -143,6 +143,7 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: true,
         plans_seeded: false,
         has_admin_account: false,
+        registration_policy: "invite_only",
         billing_enabled: false,
         providers: { openrouter: { configured: false, source: "unset" } },
       },
@@ -170,6 +171,7 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: false,
         plans_seeded: true,
         has_admin_account: true,
+        registration_policy: "invite_only",
         billing_enabled: true,
         providers: {
           gemini: { configured: true, source: "stored" },
@@ -189,6 +191,7 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: false,
         plans_seeded: true,
         has_admin_account: true,
+        registration_policy: "invite_only",
         billing_enabled: false,
         providers: {
           ollama: { configured: true, source: "stored" },
@@ -212,6 +215,7 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: true,
         plans_seeded: true,
         has_admin_account: true,
+        registration_policy: "invite_only",
         billing_enabled: false,
         providers: { tavily: { configured: true, source: "stored" } },
       },
@@ -233,6 +237,7 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: false,
         plans_seeded: true,
         has_admin_account: true,
+        registration_policy: "invite_only",
         billing_enabled: false,
         providers: { openrouter: { configured: true, source: "stored" } },
       },
@@ -251,6 +256,7 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: true,
         plans_seeded: true,
         has_admin_account: false,
+        registration_policy: "invite_only",
         billing_enabled: false,
         providers: {},
       },
@@ -442,6 +448,7 @@ describe("checkSetupReadiness", () => {
       needs_setup: true,
       plans_seeded: false,
       has_admin_account: true,
+      registration_policy: "invite_only",
       billing_enabled: false,
       providers: {},
     });
@@ -469,6 +476,7 @@ describe("checkSetupReadiness", () => {
       needs_setup: false,
       plans_seeded: true,
       has_admin_account: true,
+      registration_policy: "invite_only",
       billing_enabled: true,
       providers: { openrouter: { configured: true, source: "stored" } },
     });
@@ -492,6 +500,7 @@ describe("checkSetupReadiness", () => {
       needs_setup: false,
       plans_seeded: true,
       has_admin_account: true,
+      registration_policy: "invite_only",
       billing_enabled: false,
       providers: { openrouter: { configured: true, source: "stored" } },
     });
@@ -513,6 +522,7 @@ describe("checkSetupReadiness", () => {
       needs_setup: false,
       plans_seeded: true,
       has_admin_account: true,
+      registration_policy: "invite_only",
       billing_enabled: false,
       providers: { openai: { configured: true, source: "stored" } },
     });

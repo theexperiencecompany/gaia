@@ -8,7 +8,7 @@ import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
  * Returns null when unconfigured or unreachable so callers fall back
  * to the WorkOS redirect.
  */
-async function getSetupStatusServer(): Promise<SetupStatusResponse | null> {
+export async function getSetupStatusServer(): Promise<SetupStatusResponse | null> {
   const apiBaseUrl = getServerApiBaseUrl();
   if (!apiBaseUrl) {
     console.error(

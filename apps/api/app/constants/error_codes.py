@@ -9,8 +9,14 @@ INTEGRATION_NOT_CONNECTED = "INTEGRATION_NOT_CONNECTED"
 # 401 — local login presented a wrong email/password.
 INVALID_CREDENTIALS = "invalid_credentials"
 
-# 403 — self-host instance already has its administrator account; signup closed.
+# 403 — self-host signup is invite-only and no invite was presented.
 REGISTRATION_CLOSED = "registration_closed"
+
+# 403 — the self-host invite link is unknown, used, revoked or expired.
+INVITE_INVALID = "invite_invalid"
+
+# 409 — an instance administrator account cannot be removed.
+CANNOT_REMOVE_ADMIN = "cannot_remove_admin"
 
 # 401 — the bot request's X-Bot-API-Key is missing or wrong (bot misconfigured).
 BOT_API_KEY_INVALID = "BOT_API_KEY_INVALID"

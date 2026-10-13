@@ -1,8 +1,8 @@
 """Auth models for local (self-hosted) username/password authentication.
 
-``AUTH_MODE="local"`` instances keep exactly one administrator account: the
-``auth_credentials`` collection holds at most one bcrypt credential, and the
-session itself is an HS256 JWT in the ``gaia_session`` cookie.
+AUTH_MODE="local" instances hold one bcrypt credential per account in
+auth_credentials (the first account administers the instance), invite links in
+auth_invites, and the session itself is an HS256 JWT in the gaia_session cookie.
 """
 
 from datetime import datetime
@@ -50,46 +50,60 @@ NormalizedEmail = Annotated[EmailStr, AfterValidator(_normalize_email)]
 
 
 class LocalCredentialDocument(MongoDocument):
-    """One row per local user in the ``auth_credentials`` collection.
+    """One row per local user in the auth_credentials collection.
 
-    ``password_hash`` is a bcrypt hash (never the password). Self-host signup
-    closes once any row exists, so this collection stays single-row in practice;
-    every row carries the constant ``slot`` discriminator and a unique index on
-    it enforces the singleton atomically (the registration race is decided by
-    Mongo, not by a read-then-write in request code). The row is still keyed by
-    ``user_id``, so a future multi-account mode only drops the index.
+    password_hash is a bcrypt hash, never the password. Only the first account's
+    row carries slot=admin; a partial unique index on slot makes that bootstrap
+    claim atomic. disabled_at marks an account an administrator removed.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     user_id: str
     password_hash: str
-    # Constant registration-slot discriminator — see the unique index in
-    # app/db/mongodb/indexes.py. Never set to anything else while self-host
-    # remains single-admin.
-    slot: str = ADMIN_CREDENTIAL_SLOT
+    slot: str | None = None
     # Monotonic session revocation counter. Embedded as ``ver`` in the JWT;
     # bumping it (e.g. on password change) invalidates all previously issued
     # tokens whose ``ver`` no longer matches.
     token_version: int = 0
+    disabled_at: datetime | None = None
     created_at: datetime | None = None
 
 
 class LocalCredentialUpdate(BaseModel):
-    """Typed update payload for credential writes. ``password_hash`` and
-    ``token_version`` are the only mutable fields (password rotation bumps both
-    so existing JWTs are revoked). ``user_id``, ``slot`` and ``created_at`` are
-    write-once identity. ``extra="forbid"`` keeps any accidental extra-field
-    update loud."""
+    """Typed update payload for credential writes; user_id, slot and created_at are write-once."""
 
     model_config = ConfigDict(extra="forbid")
 
     password_hash: str | None = None
     token_version: int | None = None
+    disabled_at: datetime | None = None
+
+
+class LocalInviteDocument(MongoDocument):
+    """A single-use self-host invite link in auth_invites; only the token's SHA-256 is stored."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    token_hash: str
+    created_by: str
+    expires_at: datetime
+    used_at: datetime | None = None
+    used_by: str | None = None
+    revoked_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class LocalInviteUpdate(BaseModel):
+    """Typed update payload for an invite; only the redeemer is set after redemption."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    used_by: str | None = None
 
 
 class SignupRequest(BaseModel):
-    """Body of ``POST /api/v1/auth/signup`` — creates the instance admin."""
+    """Body of POST /api/v1/auth/signup; invite is the token from an invite link."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -99,6 +113,7 @@ class SignupRequest(BaseModel):
     # bcrypt's hard input cap — see BcryptLimitedPassword.
     password: BcryptLimitedPassword = Field(min_length=8)
     name: str | None = Field(None, max_length=100)
+    invite: str | None = Field(None, min_length=1, max_length=128)
 
 
 class LoginRequest(BaseModel):

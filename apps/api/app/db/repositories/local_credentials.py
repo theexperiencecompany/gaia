@@ -1,19 +1,22 @@
 """Repository for the auth_credentials collection: local-mode passwords.
 
-Global, not user-scoped: a self-host instance has a single administrator, and
-the signup gate (does any credential exist) is a whole-collection question.
-Identity fields are write-once; only the bcrypt hash rotates, in place, never
-by delete-and-recreate. Registration is an atomic claim, never
-check-then-create: every credential carries the constant slot=admin
-discriminator and a unique index on it admits at most one document, even when
-concurrent requests both read an empty collection.
+Global, not user-scoped: the bootstrap gate (does the administrator exist) is a
+whole-collection question. Identity fields are write-once; only the bcrypt hash
+rotates, in place, never by delete-and-recreate. The first account is an
+atomic claim, never check-then-create: its row carries slot=admin and a partial
+unique index on slot admits at most one such row, even when concurrent
+requests both read an empty collection. Member rows carry no slot.
 """
 
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
-from app.models.auth_models import LocalCredentialDocument, LocalCredentialUpdate
+from app.models.auth_models import (
+    ADMIN_CREDENTIAL_SLOT,
+    LocalCredentialDocument,
+    LocalCredentialUpdate,
+)
 
 
 class LocalCredentialsRepository(MongoRepository[LocalCredentialDocument, LocalCredentialUpdate]):
@@ -27,26 +30,28 @@ class LocalCredentialsRepository(MongoRepository[LocalCredentialDocument, LocalC
         """Return the credential for one user, or None when they authenticate some other way."""
         return await self._find_one({"user_id": user_id})
 
+    async def get_admin(self) -> LocalCredentialDocument | None:
+        """Return the bootstrap administrator's credential, or None before first signup."""
+        return await self._find_one({"slot": ADMIN_CREDENTIAL_SLOT})
+
+    async def list_all(self) -> list[LocalCredentialDocument]:
+        """Every local account, oldest first."""
+        return await self._find({}, sort=[("created_at", 1)])
+
     async def try_create(self, doc: LocalCredentialDocument) -> LocalCredentialDocument | None:
-        """Atomically insert doc, or return None if the single admin slot is taken.
+        """Atomically insert the slot=admin doc, or return None if the admin slot is taken.
 
         The unique index on slot admits exactly one of concurrent inserts; the
-        loser gets DuplicateKeyError, translated here to None. A plain
-        count-then-insert cannot do this: two signups both count zero and both
-        become admin.
+        loser's DuplicateKeyError becomes None.
         """
         try:
             return await self._insert(doc, REPO_GLOBAL_SCOPE)
         except DuplicateKeyError:
             return None
 
-    async def any_exists(self) -> bool:
-        """Whether any local credential exists at all.
-
-        Fast-path pre-check for the registration gate; the authoritative gate
-        is try_create, which cannot lose the race.
-        """
-        return await self._count({}) > 0
+    async def admin_exists(self) -> bool:
+        """Fast-path pre-check for the bootstrap gate; try_create is the authoritative one."""
+        return await self._count({"slot": ADMIN_CREDENTIAL_SLOT}) > 0
 
 
 local_credentials_repository = LocalCredentialsRepository()

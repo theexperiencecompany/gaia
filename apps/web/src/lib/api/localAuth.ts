@@ -50,12 +50,13 @@ export const localAuthApi = {
     name: string | undefined,
     email: string,
     password: string,
+    invite: string | undefined,
     options: ApiOptions,
   ): Promise<LocalAuthResponse> => {
     const response = await apiauth.post<LocalAuthResponse>(
       authUrl("signup"),
       // The backend treats an empty/absent name identically; never send "".
-      { name: name?.trim() || undefined, email, password },
+      { name: name?.trim() || undefined, email, password, invite },
       { withCredentials: true },
     );
     announceSuccess(options);

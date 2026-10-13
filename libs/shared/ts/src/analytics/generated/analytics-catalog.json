@@ -3897,6 +3897,49 @@
       }
     },
     {
+      "event": "instance:invite_created",
+      "class": "InstanceInviteCreated",
+      "owner": "server",
+      "domain": "instance",
+      "description": "A self-host administrator created an invite link.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host administrator created an invite link.",
+        "properties": {},
+        "title": "InstanceInviteCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "instance:member_joined",
+      "class": "InstanceMemberJoined",
+      "owner": "server",
+      "domain": "instance",
+      "description": "A member account was created on a self-host instance, emitted for the new member.",
+      "previous_names": [],
+      "budget_per_user_day": 1,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A member account was created on a self-host instance, emitted for the new member.",
+        "properties": {
+          "via": {
+            "enum": ["invite", "open"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["via"],
+        "title": "InstanceMemberJoined",
+        "type": "object"
+      }
+    },
+    {
       "event": "integration:account_added",
       "class": "IntegrationAccountAdded",
       "owner": "server",

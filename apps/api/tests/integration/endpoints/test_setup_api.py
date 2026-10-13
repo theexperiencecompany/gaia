@@ -30,6 +30,7 @@ from shared.py.wide_events import log
 from tests.integration.endpoints.conftest import (
     API,
     FAKE_USER_ID,
+    _client,
     local_credentials_repo,
     provider_service,
     seed_state,
@@ -112,11 +113,13 @@ class TestStatus:
         assert set(body) == {
             "auth_mode",
             "has_admin_account",
+            "registration_policy",
             "needs_setup",
             "billing_enabled",
             "providers",
             "plans_seeded",
         }
+        assert body["registration_policy"] == "invite_only"
         assert set(body["providers"]) == {
             "openrouter",
             "gemini",
@@ -781,10 +784,10 @@ class TestInstanceAdminGuard:
         resp = await client.put(f"{API}/providers/ollama", json={"base_url": "http://o"})
         assert resp.status_code == 200
 
-    async def test_no_credential_row_means_no_admin(self, client: AsyncClient) -> None:
-        """Pre-first-signup instance: nobody is admin yet — fail closed."""
-        local_credentials_repo.admin_user_id = None
-        resp = await client.get(f"{API}/providers")
+    async def test_an_account_without_a_role_is_not_admin(self) -> None:
+        """A user row predating roles (or a hosted user) administers nothing — fail closed."""
+        async with _client(authenticated=True, role=None) as roleless:
+            resp = await roleless.get(f"{API}/providers")
         assert resp.status_code == 403
 
 
