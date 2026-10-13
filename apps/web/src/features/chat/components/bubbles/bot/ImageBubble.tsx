@@ -1,6 +1,7 @@
 // ImageBubble.tsx
 import { Skeleton } from "@heroui/skeleton";
 import Image from "next/image";
+import { isPrivateBlobUrl } from "@/lib/privateBlob";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import type { ImageData } from "@/types/features/toolDataTypes";
 
@@ -35,6 +36,7 @@ export default function ImageBubble({
             height={500}
             width={500}
             src={image_data.url}
+            unoptimized={isPrivateBlobUrl(image_data.url)}
             onClick={() => {
               setOpenImage(true);
               setImageData({

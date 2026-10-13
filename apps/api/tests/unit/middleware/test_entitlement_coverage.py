@@ -218,6 +218,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/webhook/composio",
         "/api/v1/workflows/explore",
         "/health",
+        "/health/ready",
     ]
 
 

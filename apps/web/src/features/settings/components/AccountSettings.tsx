@@ -22,6 +22,7 @@ import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { binaryField } from "@/lib/api/typed";
+import { isPrivateBlobUrl } from "@/lib/privateBlob";
 import { toast } from "@/lib/toast";
 import type { ModalAction } from "./SettingsMenu";
 
@@ -94,6 +95,7 @@ export default function AccountSection({
                   width={56}
                   height={56}
                   src={user.profilePicture}
+                  unoptimized={isPrivateBlobUrl(user.profilePicture)}
                   alt={user?.name || "Profile"}
                   className="h-full w-full object-cover"
                 />

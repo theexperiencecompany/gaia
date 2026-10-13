@@ -65,3 +65,12 @@ LOCAL_BLOB_URL_PREFIX = "/api/v1/blobs"
 # Inside each local blob's directory: its bytes and its metadata.
 LOCAL_BLOB_DATA_FILENAME = "data"
 LOCAL_BLOB_META_FILENAME = "meta.json"
+# Blob responses render only inert content in a browser: a same-origin HTML or
+# SVG upload must never run script as the app.
+LOCAL_BLOB_RESPONSE_HEADERS = {
+    "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "private, max-age=3600",
+}
+# Types a browser may show in place; everything else downloads.
+LOCAL_BLOB_INLINE_TYPE_PREFIXES = ("image/", "audio/", "video/", "application/pdf", "text/plain")

@@ -30,6 +30,7 @@ from app.constants.files import (
 )
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.models.integrations.cloudinary import CloudinaryUploadResult
+from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 _SAFE_ID_RE = re.compile(SAFE_PATH_ID_PATTERN)
@@ -213,3 +214,15 @@ def blob_store() -> BlobStore:
     if settings.deployment.local_file_storage:
         return local_blob_store()
     return CloudinaryBlobStore()
+
+
+async def open_owned_blob(requester_id: str, owner_id: str, key: str) -> LocalBlob:
+    """Resolve a local blob for its owner; anyone else, or a hosted deployment, gets a 404."""
+    blob = (
+        await local_blob_store().open(owner_id, key)
+        if settings.deployment.local_file_storage and requester_id == owner_id
+        else None
+    )
+    if blob is None:
+        raise AppError(message="File not found", status_code=404, code="blob_not_found")
+    return blob

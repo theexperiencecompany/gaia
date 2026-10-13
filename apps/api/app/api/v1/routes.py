@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     approvals,
     auth_local,
+    blob,
     blog,
     bot,
     bot_links,
@@ -97,6 +98,7 @@ router.include_router(features.router, prefix="/features", tags=["Features"])
 router.include_router(mail.router, tags=["Mail"])
 router.include_router(blog.router, tags=["Blog"])
 router.include_router(file.router, tags=["File"])
+router.include_router(blob.router, tags=["Blob"])
 router.include_router(notification.router, tags=["Notification"])
 router.include_router(websocket.router, tags=["WebSocket"])
 router.include_router(webhook_composio.router, tags=["Composio Webhook"])

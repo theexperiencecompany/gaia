@@ -10,6 +10,7 @@ import {
   getFileTypeExtension,
   getFormattedFileType,
 } from "@/features/chat/components/files/fileTypeConfig";
+import { isPrivateBlobUrl } from "@/lib/privateBlob";
 
 export interface UploadedFilePreview {
   id: string;
@@ -61,6 +62,7 @@ const FileChip: React.FC<{
         <div className="h-12 w-12 overflow-hidden rounded-md">
           <Image
             src={file.url}
+            unoptimized={isPrivateBlobUrl(file.url)}
             alt={file.name}
             width={40}
             height={40}
