@@ -166,7 +166,9 @@ function ConnectBrowserBody({ onClose }: { onClose: () => void }) {
   }, [mint]);
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  const apiOrigin = apiBaseUrl ? connectApiOverride(apiBaseUrl) : null;
+  const apiOrigin = apiBaseUrl
+    ? connectApiOverride(apiBaseUrl, window.location.href)
+    : null;
   const runners = connectRunnersFor(apiOrigin);
   const command =
     token && apiBaseUrl
