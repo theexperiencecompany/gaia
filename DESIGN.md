@@ -402,7 +402,7 @@ mostly numbers (usage, analytics, billing) — where the difference between
 
 - Hierarchy comes from **weight and tone, not size or case**. Card titles are
   `text-base font-semibold text-white`; supporting copy drops to
-  `text-[13px] text-zinc-500`. Never uppercase-with-letter-spacing labels
+  `text-sm text-zinc-500`. Never uppercase-with-letter-spacing labels
   on dense-data pages (settings panels / form groups keep uppercase labels
   per Text Patterns above).
 - Sentence case everywhere — "Usage this month", not "USAGE THIS MONTH".
@@ -552,7 +552,7 @@ Style: `new-york`, base: `zinc`, CSS variables on.
 
 | Component | Key details |
 |---|---|
-| `Button` | Variants: `default`, `destructive`, `outline`, `secondary`, `ghost`, `link` · Sizes: `default`, `sm`, `lg`, `icon` |
+| `Button` | Variants: `default`, `destructive`, `outline`, `ghost`, `link`, `glass` (dark translucent pill over hero imagery) · Sizes: `default`, `sm`, `lg`, `icon`. No `secondary`: `bg-secondary` resolves to HeroUI's purple here |
 | `Input` | `h-9 rounded-md shadow-xs` · focus ring · `aria-invalid` error state |
 | `Textarea` | Same as Input · `min-h-16` · auto-height via `field-sizing-content` |
 | `Dialog` | Zoom + fade entrance/exit — use for confirmations, forms requiring focus |
@@ -663,7 +663,8 @@ Empty state pattern (no shared component — build inline):
 - Do truncate long strings in constrained containers with `truncate` or `line-clamp-N`.
 - Don't put `border-`, `ring-`, or `outline-` anywhere in the card tree. Depth comes from tonal layering only.
 - Don't use `rounded-lg` on card containers. Outer cards are `rounded-3xl`, inner surfaces `rounded-2xl` (the card contract).
-- Don't use Unicode symbols (`→`, `↗`, `•`, `✓`, `×`) as UI elements. Always use icon components from `@icons`.
+- Don't use Unicode symbols (`→`, `↗`, `•`, `✓`, `✕`) as UI, alone or mixed into copy. Use `@icons`, `<Kbd>` for key hints, and `list-disc` for bullets. `×` in copy (`1200×630`) is typography.
+- Don't restyle a HeroUI or shadcn component with `className` colors, radii or padding. Use its props (`variant`, `color`, `radius`, `size`), or add a `cva` variant when the look is reusable.
 - Don't use solid color backgrounds for status states. Always pair `/10` background with full color text.
 - Don't import from `framer-motion` — import from `motion/react`. `AnimatePresence` is required for exit animations.
 - Don't add another `<Toaster>` or import from `sonner` / `react-hot-toast`. Sileo is the only toast library.
@@ -793,12 +794,27 @@ Class-based: `.dark` on `<html>`. Tailwind `dark:` modifier works everywhere.
 
 Global scrollbar is already styled (8px, pill-shaped, `zinc-700` thumb). Use `.no-scrollbar` to suppress chrome on scroll areas where it would be distracting.
 
+## Enforcement
+
+Every rule above that a machine can check is an error, with no warning budget:
+
+| Check | Catches | Run |
+|---|---|---|
+| `@shadcn/lint` via Oxlint (`apps/web/.oxlintrc.json`) | Component restyles (per-component HeroUI contracts), raw palette colors, off-scale arbitrary values, unknown classes, inline styles | `nx run web:lint:shadcn` |
+| Biome Grit rules (`config/biome-rules/`) | Card borders, outlines, shadows, `rounded-lg` cards, status tints off `/10`, raw divider divs, Unicode glyphs in JSX text | `pnpm exec biome check apps/web` |
+| `pnpm tokens:check` | `config/design.tokens.json` drifting from this file's frontmatter | `pnpm tokens:check` |
+
+An exception lives next to what it exempts: a per-component contract or a per-file override in `.oxlintrc.json`, never a disable comment.
+
+To see what a styling change does to the product, run `mise web:visual-diff [base-ref]`. It screenshots every tool card, the OpenUI samples and every landing route on the base ref and on your checkout, then writes base | head | diff composites, a ranked summary, and a ledger of every class and prop swap to `.context/visual-diff/`.
+
 ## New Card Checklist
 
 - [ ] Outer: `rounded-3xl bg-zinc-800 p-4` (chat thread cards; settings keep their own `rounded-2xl bg-zinc-900/60` system)
 - [ ] Inner items: `rounded-2xl bg-zinc-900 p-3`
 - [ ] No `border-`, `ring-`, `outline-` anywhere
 - [ ] Icons from `@icons` only
-- [ ] Status colors use `/10` opacity backgrounds
+- [ ] Status colors are the `-400` shade with `/10` backgrounds
+- [ ] `nx run web:lint:shadcn` and `pnpm exec biome check apps/web` pass; `mise web:visual-diff` shows only the change you meant
 - [ ] Width: `w-fit min-w-[400px]` or `w-full`
 - [ ] If it's a native tool card: registered in `TOOL_RENDERERS`

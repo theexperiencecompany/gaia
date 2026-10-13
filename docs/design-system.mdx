@@ -379,7 +379,7 @@ Icons accept `className`, `height`, `width`, and `size` props.
 ```
 
 <Warning>
-  Never use Unicode/text symbols in JSX: no `→`, `↗`, `•`, `✓`, `×`, or similar. Always use icon components from `@icons`.
+  Never use Unicode/text symbols as UI in JSX, alone or mixed into copy: no `→`, `↗`, `•`, `✓`, `✕`. Use `@icons`, `<Kbd>` for key hints, `list-disc` for bullets.
 </Warning>
 
 ---
@@ -460,7 +460,7 @@ toast.info("New message received");
 
     | Component | Key details |
     |-----------|-------------|
-    | `Button` | `default` `destructive` `outline` `secondary` `ghost` `link` · sizes: `default` `sm` `lg` `icon` |
+    | `Button` | `default` `destructive` `outline` `ghost` `link` `glass` · sizes: `default` `sm` `lg` `icon` (no `secondary`: `bg-secondary` resolves to HeroUI's purple) |
     | `Input` | `h-9 rounded-md shadow-xs` · focus ring · `aria-invalid` for errors |
     | `Textarea` | Same as Input · `min-h-16` · auto-height via `field-sizing-content` |
     | `Dialog` | Zoom + fade · use for confirmations, forms requiring focus |
