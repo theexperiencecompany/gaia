@@ -15699,6 +15699,11 @@
             "title": "Has Admin Account",
             "type": "boolean"
           },
+          "local_code_sandbox": {
+            "description": "Whether code runs in the opt-in local Docker sandbox when no E2B key is saved",
+            "title": "Local Code Sandbox",
+            "type": "boolean"
+          },
           "needs_setup": {
             "description": "Whether an LLM lane still has to be configured",
             "title": "Needs Setup",
@@ -15729,7 +15734,8 @@
           "needs_setup",
           "billing_enabled",
           "providers",
-          "plans_seeded"
+          "plans_seeded",
+          "local_code_sandbox"
         ],
         "title": "SetupStatusResponse",
         "type": "object"

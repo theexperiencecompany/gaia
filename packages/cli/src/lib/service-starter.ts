@@ -54,18 +54,34 @@ function resolveStartTimeoutMs(): number | undefined {
   return timeoutMin === 0 ? undefined : timeoutMin * 60 * 1000;
 }
 
+/**
+ * Compose files for a self-host `up`. The base file is image-only; building
+ * and the Docker-socket code sandbox are explicit override files.
+ */
+function selfhostComposeFiles(options: {
+  build?: boolean;
+  codeSandbox: boolean;
+}): string[] {
+  const files = ["docker-compose.selfhost.yml"];
+  if (options.build) files.push("docker-compose.build.yml");
+  if (options.codeSandbox) files.push("docker-compose.sandbox.yml");
+  return files;
+}
+
 /** Build the `docker compose ... up` argument list for self-host mode. */
 function buildSelfhostUpArgs(
   envArgs: string[],
   options?: StartServicesOptions,
 ): string[] {
-  // The base file is image-only; building is the explicit override file.
-  const fileArgs = options?.build
-    ? ["-f", "docker-compose.selfhost.yml", "-f", "docker-compose.build.yml"]
-    : ["-f", "docker-compose.selfhost.yml"];
+  // The sandbox opt-in is read from the saved config on every start, so a
+  // restart or update can never silently drop (or add) the Docker socket.
+  const files = selfhostComposeFiles({
+    build: options?.build,
+    codeSandbox: readConfig()?.codeSandbox === true,
+  });
   const upArgs = [
     "compose",
-    ...fileArgs,
+    ...files.flatMap((file) => ["-f", file]),
     ...envArgs,
     "up",
     "-d",

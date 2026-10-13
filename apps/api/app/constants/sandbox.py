@@ -78,3 +78,11 @@ LOCAL_SANDBOX_WORKSPACE_MOUNT = "/workspace"
 # (~50 MB class) plus daemon latency; the API container itself talks to the
 # host Docker daemon over its socket, so first-acquire can legitimately be slow.
 LOCAL_SANDBOX_START_TIMEOUT_SECONDS = 300
+
+# What every coding tool tells the user on a self-host instance that has neither
+# an E2B key nor the opt-in local sandbox (docker-compose.sandbox.yml).
+CODE_EXECUTION_DISABLED_MESSAGE = (
+    "code execution is not enabled on this instance. The admin can enable it by "
+    "running `gaia up --code-sandbox` on the server, or by saving an E2B API key "
+    "in Settings."
+)

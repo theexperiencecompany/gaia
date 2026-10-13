@@ -37,10 +37,11 @@ def _fake_local_sandbox(alive: bool = True) -> Any:
 
 
 @contextmanager
-def _selfhost_no_key() -> Iterator[None]:
+def _selfhost_no_key(*, local_code_sandbox: bool = True) -> Iterator[None]:
     """Flip settings to self-host with NO resolvable E2B credential."""
     with (
         patch.object(lifecycle.settings, "ENV", "selfhost"),
+        patch.object(lifecycle.settings, "LOCAL_CODE_SANDBOX", local_code_sandbox),
         patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
     ):
         yield
@@ -59,13 +60,35 @@ async def test_use_local_sandbox_requires_selfhost_and_no_resolvable_key() -> No
     ):
         assert await lifecycle.use_local_sandbox() is False
 
-    with (
-        patch.object(lifecycle.settings, "ENV", "selfhost"),
-        patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
-    ):
+    with _selfhost_no_key():
         assert await lifecycle.use_local_sandbox() is True
 
-    with patch.object(lifecycle.settings, "ENV", "production"):
+    with (
+        patch.object(lifecycle.settings, "ENV", "production"),
+        patch.object(lifecycle.settings, "LOCAL_CODE_SANDBOX", True),
+    ):
+        assert await lifecycle.use_local_sandbox() is False
+
+
+async def test_selfhost_without_the_opt_in_refuses_code_execution_with_the_fix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    get_local = MagicMock()
+    monkeypatch.setattr(lifecycle, "get_local_sandbox", get_local)
+    with _selfhost_no_key(local_code_sandbox=False):
+        with pytest.raises(lifecycle.CodeExecutionDisabledError, match="gaia up --code-sandbox"):
+            async with lifecycle.acquire_sandbox(_uid()):
+                pass  # pragma: no cover — never reached
+    # No Docker call may be attempted without the socket the opt-in mounts.
+    get_local.assert_not_called()
+
+
+async def test_an_e2b_key_runs_code_without_the_local_opt_in() -> None:
+    with (
+        patch.object(lifecycle.settings, "ENV", "selfhost"),
+        patch.object(lifecycle.settings, "LOCAL_CODE_SANDBOX", False),
+        patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value="k")),
+    ):
         assert await lifecycle.use_local_sandbox() is False
 
 

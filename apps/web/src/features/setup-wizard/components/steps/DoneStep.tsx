@@ -114,12 +114,12 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
   const toolConfigured = (key: CredentialProvider) =>
     connectedTools.some((card) => card.key === key);
 
-  // Sandbox/inbox need no key on self-host (local Docker backend; Gmail via
-  // Composio) — every other prompt needs its key configured.
+  // Code runs on E2B or the operator's opt-in local sandbox; the inbox needs
+  // Composio — every other prompt needs its key configured.
   const capabilityReady = (requires: StarterPrompt["requires"]): boolean => {
     if (!requires) return true;
     if (requires === "sandbox")
-      return toolConfigured("e2b") || status?.auth_mode === "local";
+      return toolConfigured("e2b") || status?.local_code_sandbox === true;
     if (requires === "inbox") return toolConfigured("composio");
     return isProviderConfigured(status, requires);
   };

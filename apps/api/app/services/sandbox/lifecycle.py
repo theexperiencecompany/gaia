@@ -47,7 +47,11 @@ from app.services.providers.provider_credentials_service import (
     resolve as resolve_e2b_config,
 )
 from app.services.sandbox.artifact_watcher import start_watcher_for
-from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimitError
+from app.services.sandbox.errors import (
+    CodeExecutionDisabledError,
+    SandboxAcquisitionError,
+    SandboxRateLimitError,
+)
 from app.services.sandbox.local_sandbox import (
     LocalDockerSandbox,
     get_local_sandbox,
@@ -90,13 +94,16 @@ async def use_local_sandbox() -> bool:
     """Report whether coding sandboxes should be local Docker-exec containers.
 
     Self-host without a resolvable E2B credential is the only mode that routes
-    here: hosted plans always have E2B, and self-host WITH a key gets the real
-    (paused-VM) experience. Checked per acquire so adding a key — to .env or
-    Settings — switches the backend on the next call with no restart.
+    here, and only when the operator opted in; otherwise CodeExecutionDisabledError.
+    Checked per acquire so saving an E2B key switches backends with no restart.
     """
     if settings.deployment.kind is not DeploymentKind.SELFHOST:
         return False
-    return await _resolved_e2b_api_key() is None
+    if await _resolved_e2b_api_key() is not None:
+        return False
+    if not settings.deployment.local_code_sandbox:
+        raise CodeExecutionDisabledError
+    return True
 
 
 @contextlib.asynccontextmanager

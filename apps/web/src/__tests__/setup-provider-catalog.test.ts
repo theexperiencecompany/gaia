@@ -72,6 +72,7 @@ const statusWith = (configured: string[]): SetupStatus => ({
   registration_policy: "invite_only",
   needs_setup: true,
   plans_seeded: true,
+  local_code_sandbox: false,
   providers: Object.fromEntries(
     configured.map((key) => [
       key,

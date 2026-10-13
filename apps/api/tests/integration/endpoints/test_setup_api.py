@@ -118,6 +118,7 @@ class TestStatus:
             "billing_enabled",
             "providers",
             "plans_seeded",
+            "local_code_sandbox",
         }
         assert body["registration_policy"] == "invite_only"
         assert set(body["providers"]) == {

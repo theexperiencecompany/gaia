@@ -17,6 +17,12 @@ export interface GaiaConfig {
    * wizard only.
    */
   values?: Record<string, string>;
+  /**
+   * Run the local coding sandbox (docker-compose.sandbox.yml, which mounts the
+   * host Docker socket). Set by `gaia up --code-sandbox`; every later start
+   * and update keeps it until `gaia up --no-code-sandbox`.
+   */
+  codeSandbox?: boolean;
   createdAt: string;
   updatedAt: string;
 }

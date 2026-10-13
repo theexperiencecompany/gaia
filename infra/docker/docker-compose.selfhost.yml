@@ -157,23 +157,14 @@ services:
     # Lets the container reach host services (e.g. Ollama on :11434).
     extra_hosts: &host_gateway
       - "host.docker.internal:host-gateway"
-    # The local coding sandbox (ENV=selfhost without an E2B key) runs each
-    # user's code in a sibling container it creates through the host Docker
-    # daemon, so the processes that run agents (this one and arq_worker) get
-    # the daemon socket. SECURITY: socket access is root-equivalent on the
-    # host — a compromise of this container is a compromise of the machine.
-    # Saving an E2B key moves sandboxes off-host; to drop the socket
-    # entirely, delete this mount and the group_add below (coding tools then
-    # fail until an E2B key is set). DOCKER_SOCKET_GID is the socket's group
-    # as seen in containers (`gaia up` writes it; 0 on Docker Desktop/OrbStack).
-    group_add: &docker_socket_group
-      - "${DOCKER_SOCKET_GID:-0}"
+    # No Docker socket here: the local coding sandbox is the opt-in
+    # docker-compose.sandbox.yml override (`gaia up --code-sandbox`), because
+    # socket access is root-equivalent on the host.
     volumes:
       # Persist JuiceFS's local chunk cache so reads don't re-fetch from the
       # object store on every restart.
       - juicefs_cache:/var/cache/juicefs
       - models_cache:/models
-      - /var/run/docker.sock:/var/run/docker.sock
     restart: on-failure
     tty: true
     stdin_open: true
@@ -212,17 +203,15 @@ services:
     # appuser the runtime image switches to.
     command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
     restart: always
-    # Same FUSE, host-gateway and sandbox-socket needs as gaia-backend: session
-    # and workflow tasks touch the workspace and run agents.
+    # Same FUSE and host-gateway needs as gaia-backend: session and workflow
+    # tasks touch the workspace and run agents.
     cap_add: *fuse_cap_add
     devices: *fuse_devices
     security_opt: *fuse_security_opt
     extra_hosts: *host_gateway
-    group_add: *docker_socket_group
     volumes:
       - juicefs_cache:/var/cache/juicefs
       - models_cache:/models
-      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       redis:
         condition: service_healthy

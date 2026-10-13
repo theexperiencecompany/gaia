@@ -6,7 +6,7 @@
 import type { LlmProvider } from "../../lib/answers.js";
 import { runCommandUI } from "../../lib/command-runner.js";
 import type { CLIStore } from "../../ui/store.js";
-import { runUpFlow } from "./flow.js";
+import { codeSandboxSummary, runUpFlow } from "./flow.js";
 
 function printPlainSummary(store: CLIStore): void {
   const data = store.currentState.data;
@@ -25,6 +25,7 @@ function printPlainSummary(store: CLIStore): void {
     console.info(`  API: ${apiUrl}`);
   }
   console.info(`Finish setup in your browser: ${webUrl}/setup`);
+  console.info(codeSandboxSummary(data.upCodeSandbox === true));
   console.info(
     "Next: gaia doctor — run 'gaia doctor' anytime to verify your installation",
   );
@@ -38,6 +39,7 @@ export async function runUp(
     domain?: string;
     webPort?: number;
     build?: boolean;
+    codeSandbox?: boolean;
     noStart?: boolean;
     forceDevTree?: boolean;
   } = {},

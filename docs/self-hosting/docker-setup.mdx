@@ -87,7 +87,7 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | **Required config** | Full SaaS keys (OpenRouter, Gemini, Tavily, Composio, R2, LiveKit, etc.) required to boot | Only infra + 3 machine secrets (`MONGO_DB`, `REDIS_URL`, `POSTGRES_URL`, `CHROMADB_*`, `RABBITMQ_URL`, `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) — everything else is optional and disables gracefully; providers configured at runtime via the setup wizard |
 | **LLM providers** | Managed keys via Infisical | Bring your own — OpenRouter / Gemini / Ollama / OpenCode / Nous via Settings; keys encrypted with the instance secret |
 | **Workspace storage** | Hosted R2 + JuiceFS (managed) | Bring your own R2/S3 + Postgres meta DB via `R2_*` / `JUICEFS_META_URL_TEMPLATE`; without it chat works but uploads/artifacts log `JuiceFSUnavailable` |
-| **Sandbox** | E2B (required) with warm pool | E2B optional; without it each user's code runs in a local `gaia-sandbox-*` container via the host Docker socket — see [Local coding sandbox](#local-coding-sandbox) |
+| **Sandbox** | E2B (required) with warm pool | Off until you save an E2B key or opt into the local Docker-socket sandbox with `gaia up --code-sandbox` — see [Local coding sandbox](#local-coding-sandbox) |
 | **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Bring your own LiveKit or leave unset to disable voice |
 | **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | Same providers but opt-in via env; unset skips that lane |
 | **Email** | Resend (managed) | Optional `RESEND_*` — without it email features stay quiet |
@@ -335,11 +335,26 @@ Until both are configured, the backend starts normally and chat works, but works
 
 ## Local coding sandbox
 
-Without an E2B key, GAIA runs each user's code in its own local `gaia-sandbox-*` container. To create those containers, `gaia-backend` and `arq_worker` mount the host Docker socket (`/var/run/docker.sock`) and join the socket's group, `DOCKER_SOCKET_GID`, which `gaia up` writes to `infra/docker/.env`.
+GAIA's coding tools (run a command, read, write and edit files) need a sandbox to run in. A self-hosted instance has two options, and runs neither until you choose one:
+
+| Option | How to turn it on | What it costs you |
+| --- | --- | --- |
+| **E2B** (recommended) | Save an E2B API key in **Settings → AI Providers**, or set `E2B_API_KEY` in `apps/api/.env` | An [E2B](https://e2b.dev) account; code never runs on your host |
+| **Local sandbox** | `gaia up --code-sandbox` | Root-equivalent access to your host for the API and worker containers (see below) |
+
+With neither, the coding tools answer with *"code execution is not enabled on this instance"* and name both fixes. Chat, memory, integrations and everything else keep working.
+
+The local sandbox runs each user's code in its own `gaia-sandbox-*` container. To create those containers, `gaia-backend` and `arq_worker` need the host Docker socket, so `--code-sandbox` adds the `docker-compose.sandbox.yml` override, which mounts `/var/run/docker.sock` into both services and adds them to the socket's group (`DOCKER_SOCKET_GID`, which `gaia up` writes to `infra/docker/.env`). The CLI saves the choice, so `gaia start` and `gaia update` keep it. Turn it off again with `gaia up --no-code-sandbox`.
 
 <Warning>
-Access to the Docker socket is equivalent to root on the host: anyone who compromises `gaia-backend` or `arq_worker` controls the machine. To keep sandboxes off your host, save an E2B key. To remove the socket entirely, delete the `/var/run/docker.sock` mount and the `group_add` entry from both services in `docker-compose.selfhost.yml`; coding tools then fail until an E2B key is set.
+Access to the Docker socket is equivalent to root on the host. With the local sandbox on, anyone who compromises `gaia-backend` or `arq_worker` (for example through a prompt-injected agent that escapes its sandbox) controls the whole machine. Only turn it on for an instance you alone use, on a machine that runs nothing else you care about. An E2B key gives the same coding tools without this exposure.
 </Warning>
+
+When an E2B key is saved, E2B wins even with the local sandbox on, and the next tool call switches over with no restart. Driving Compose by hand, layer the override yourself:
+
+```bash
+docker compose -f docker-compose.selfhost.yml -f docker-compose.sandbox.yml up -d
+```
 
 ## Docker Commands
 

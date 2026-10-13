@@ -30,6 +30,8 @@ interface UpCliOptions {
   webPort?: number;
   domain?: string;
   build?: boolean;
+  /** Undefined unless --code-sandbox or --no-code-sandbox is passed. */
+  codeSandbox?: boolean;
   /** False when --no-start is passed (commander negatable option). */
   start?: boolean;
   forceDevTree?: boolean;
@@ -77,6 +79,14 @@ program
   .option(
     "-b, --build",
     "Build the images from this checkout instead of pulling them",
+  )
+  .option(
+    "--code-sandbox",
+    "Run agent code in local containers via the host Docker socket (root-equivalent access; kept on later starts and updates)",
+  )
+  .option(
+    "--no-code-sandbox",
+    "Turn the local code sandbox off again (code execution then needs an E2B key)",
   )
   .option("--no-start", "Configure environment only; do not start services")
   .option(

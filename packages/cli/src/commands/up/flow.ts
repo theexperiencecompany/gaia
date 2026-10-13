@@ -20,7 +20,7 @@ import {
   type UpFlags,
   validateLlmFlags,
 } from "../../lib/answers.js";
-import { readConfig, updateConfig, writeConfig } from "../../lib/config.js";
+import { readConfig, updateConfig } from "../../lib/config.js";
 import { DEFAULT_WEB_PORT, localApiUrl } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import { delay, runPortChecks } from "../../lib/flow-utils.js";
@@ -203,8 +203,13 @@ export async function runUpFlow(
     await delay(500);
   }
   // Record the install before anything else can fail, so a rerun resumes
-  // this checkout instead of tripping over it.
-  updateConfig({ repoPath: targetPath });
+  // this checkout instead of tripping over it. The sandbox choice is saved
+  // here too: every compose start reads it from the config.
+  updateConfig(
+    options.codeSandbox === undefined
+      ? { repoPath: targetPath }
+      : { repoPath: targetPath, codeSandbox: options.codeSandbox },
+  );
 
   // 5. Environment — selfhost pipeline with pre-sourced answers; prompts
   //    never block because the answer resolver covers them.
@@ -335,6 +340,13 @@ async function startSelfhostServices(
   store.updateData("dependencyComplete", true);
 }
 
+/** One line on the finished screen saying how agent code runs on this instance. */
+export function codeSandboxSummary(enabled: boolean): string {
+  return enabled
+    ? "Code execution: local sandbox (the host Docker socket is mounted into the API and worker)"
+    : "Code execution: off until you save an E2B key, or rerun with --code-sandbox";
+}
+
 /** Record the install and move to the Finished step. */
 function finishUp(
   store: CLIStore,
@@ -346,17 +358,17 @@ function finishUp(
     stillStarting?: boolean;
   },
 ): void {
-  writeConfig({
+  // A partial update: the saved sandbox choice must survive a finished run.
+  updateConfig({
     version: CLI_VERSION,
     setupComplete: true,
     setupMethod:
       (store.currentState.data.envMethod as "manual" | "infisical") || "manual",
     repoPath,
-    createdAt: readConfig()?.createdAt ?? new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   });
 
   store.updateData("setupMode", "selfhost");
+  store.updateData("upCodeSandbox", readConfig()?.codeSandbox === true);
   store.updateData("upWebUrl", webUrl);
   store.updateData("upApiUrl", `${webUrl}/api/v1`);
   store.updateData("upNoStart", flags?.noStart === true);

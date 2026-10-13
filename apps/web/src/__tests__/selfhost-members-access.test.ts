@@ -14,6 +14,7 @@ const status = (
   registration_policy: "invite_only",
   needs_setup: false,
   plans_seeded: true,
+  local_code_sandbox: false,
   providers: {},
   ...overrides,
 });

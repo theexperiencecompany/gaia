@@ -45,6 +45,11 @@ export interface UpFlags {
   /** Public domain; the proxy serves HTTPS for it on 80/443. */
   domain?: string;
   build?: boolean;
+  /**
+   * Opt in (true) or out (false) of the Docker-socket code sandbox; undefined
+   * keeps the saved choice.
+   */
+  codeSandbox?: boolean;
   noStart?: boolean;
   /** Confirm operating on a developer checkout that is not the recorded install. */
   forceDevTree?: boolean;

@@ -125,6 +125,10 @@ class CommonSettings(BaseAppSettings):
     # of requests/day against a free-plan dev user, which 429s at 200/day
     # otherwise. get_settings() refuses production boot when set.
     DEV_UNLIMITED_RATE_LIMITS: bool = False
+    # Self-host opt-in for the local Docker-exec coding sandbox. Set only by the
+    # docker-compose.sandbox.yml override (`gaia up --code-sandbox`), which is
+    # also what mounts the Docker socket it needs.
+    LOCAL_CODE_SANDBOX: bool = False
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
     BOT_LOG_HASH_SECRET: str | None = None
@@ -201,6 +205,7 @@ class CommonSettings(BaseAppSettings):
             DeploymentKind(self.ENV),
             self.AUTH_MODE,
             unlimited_usage=self.DEV_UNLIMITED_RATE_LIMITS,
+            local_code_sandbox=self.LOCAL_CODE_SANDBOX,
         )
 
     # Outbound Email. EMAIL_PROVIDER keys the registry in
@@ -1063,7 +1068,10 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
             # Building the profile refuses an invalid ENV/AUTH_MODE pair
             # (production with local auth) ahead of every other guard.
             deployment_profile(
-                DeploymentKind.PRODUCTION, _auth_mode_from_env(), unlimited_usage=False
+                DeploymentKind.PRODUCTION,
+                _auth_mode_from_env(),
+                unlimited_usage=False,
+                local_code_sandbox=False,
             )
             # Hosted deployments authenticate via AuthKit/WorkOS: missing
             # credentials must stop the boot here instead of crashing later

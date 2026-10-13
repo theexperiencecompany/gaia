@@ -13539,6 +13539,11 @@ export interface components {
              */
             has_admin_account: boolean;
             /**
+             * Local Code Sandbox
+             * @description Whether code runs in the opt-in local Docker sandbox when no E2B key is saved
+             */
+            local_code_sandbox: boolean;
+            /**
              * Needs Setup
              * @description Whether an LLM lane still has to be configured
              */

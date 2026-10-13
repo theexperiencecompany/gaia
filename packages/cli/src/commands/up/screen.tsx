@@ -19,6 +19,7 @@ import {
 } from "../../ui/components/shared-steps.js";
 import { THEME_COLOR } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
+import { codeSandboxSummary } from "./flow.js";
 
 const DependencyInstallStep: React.FC<{
   phase: string;
@@ -79,7 +80,15 @@ const UpFinishedStep: React.FC<{
   noStart: boolean;
   stillStarting: boolean;
   customProviderNote: boolean;
-}> = ({ webUrl, apiUrl, noStart, stillStarting, customProviderNote }) => {
+  codeSandbox: boolean;
+}> = ({
+  webUrl,
+  apiUrl,
+  noStart,
+  stillStarting,
+  customProviderNote,
+  codeSandbox,
+}) => {
   const success = !noStart && !stillStarting;
   return (
     <Box
@@ -141,6 +150,10 @@ const UpFinishedStep: React.FC<{
             {webUrl}/setup
           </Text>
         </Text>
+      </Box>
+
+      <Box marginTop={1}>
+        <Text color="gray">{codeSandboxSummary(codeSandbox)}</Text>
       </Box>
 
       {customProviderNote && (
@@ -254,6 +267,7 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
             state.data.upNoStart !== true && state.data.upStillStarting === true
           }
           customProviderNote={state.data.customProviderNote === true}
+          codeSandbox={state.data.upCodeSandbox === true}
         />
       )}
 

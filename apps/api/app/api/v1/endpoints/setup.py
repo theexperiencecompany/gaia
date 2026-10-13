@@ -116,6 +116,9 @@ class SetupStatusResponse(BaseModel):
         description="Readiness per credential-store provider"
     )
     plans_seeded: bool = Field(description="Whether the billing plans have been seeded")
+    local_code_sandbox: bool = Field(
+        description="Whether code runs in the opt-in local Docker sandbox when no E2B key is saved"
+    )
 
 
 class ProviderCatalogResponse(BaseModel):
@@ -205,6 +208,7 @@ async def get_setup_status() -> SetupStatusResponse:
             for p, source in sources.items()
         },
         plans_seeded=await is_payment_setup(),
+        local_code_sandbox=settings.deployment.local_code_sandbox,
     )
 
 

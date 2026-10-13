@@ -39,6 +39,7 @@ class DeploymentProfile:
     catalog_composio_auth_configs: the integration catalog's Composio auth config
         ids exist in this deployment's Composio project (GAIA's own); off means
         each integration needs an auth config from the instance's own project.
+    local_code_sandbox: keyless code runs on the host Docker daemon (self-host opt-in).
     """
 
     kind: DeploymentKind
@@ -49,15 +50,21 @@ class DeploymentProfile:
     runtime_credentials: bool
     hosted_models: bool
     catalog_composio_auth_configs: bool
+    local_code_sandbox: bool
 
 
 @cache
 def deployment_profile(
-    kind: DeploymentKind, auth_mode: AuthMode, *, unlimited_usage: bool
+    kind: DeploymentKind,
+    auth_mode: AuthMode,
+    *,
+    unlimited_usage: bool,
+    local_code_sandbox: bool,
 ) -> DeploymentProfile:
     """Build the profile for one ENV/AUTH_MODE pair; raise on a pair that must never run.
 
-    unlimited_usage is the development-only DEV_UNLIMITED_RATE_LIMITS switch.
+    unlimited_usage is the development-only DEV_UNLIMITED_RATE_LIMITS switch;
+    local_code_sandbox is the self-host LOCAL_CODE_SANDBOX opt-in.
     """
     local_auth = auth_mode == "local"
     if kind is DeploymentKind.PRODUCTION and local_auth:
@@ -76,4 +83,5 @@ def deployment_profile(
         runtime_credentials=kind is DeploymentKind.SELFHOST or local_auth,
         hosted_models=kind is DeploymentKind.PRODUCTION,
         catalog_composio_auth_configs=kind is not DeploymentKind.SELFHOST,
+        local_code_sandbox=kind is DeploymentKind.SELFHOST and local_code_sandbox,
     )
