@@ -1,9 +1,0 @@
-{#-
-  Email rendering of a plain (non-briefing) notification.
-  Context: title, body, cta_url/cta_label, unsubscribe_url.
--#}
-{% extends "_base_email.html" %}
-{% block content %}
-<strong style="font-weight: 600">{{ title }}</strong><br /><br />
-{{ body }}
-{% endblock %}

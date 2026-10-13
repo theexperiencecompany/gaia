@@ -115,6 +115,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> World:
         service.dormancy, "reactivation_signal_since", AsyncMock(return_value=False)
     )
     monkeypatch.setattr(service, "track", MagicMock())
+    monkeypatch.setattr(service, "choose_edition_family", AsyncMock(return_value="broadsheet"))
     return w
 
 
@@ -142,9 +143,10 @@ class TestDailyBrief:
 
         payload = _stored_payload(world)
         assert payload.headline == "Two things need you"
+        assert payload.template_family == "broadsheet"
         assert [(s.title, [i.text for i in s.items]) for s in payload.sections] == [
-            ("NEEDS YOU", ["Approve the Priya reply"]),
-            ("GAIA'S WORK", ["Investor update"]),
+            ("NEEDS YOU", ["Waiting on you: Approve the Priya reply"]),
+            ("GAIA'S WORK", ["Done: Investor update"]),
         ]
         request = world.notify.await_args.args[0]
         assert [c.channel_type for c in request.channels] == _CHANNELS
@@ -167,7 +169,7 @@ class TestDailyBrief:
 
         items = [i for s in _stored_payload(world).sections for i in s.items]
         assert len(items) == MAX_BRIEF_ITEMS
-        assert [i.kind for i in items[:4]] == ["you", "you", "you", "failed"]
+        assert [i.kind for i in items[:4]] == ["you", "you", "you", "note"]
         prompt = world.agent.await_args.kwargs["request"].message
         assert "2 lower-priority item(s) are not in this brief" in prompt
 

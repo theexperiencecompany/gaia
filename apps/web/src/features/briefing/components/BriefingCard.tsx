@@ -114,13 +114,13 @@ function Masthead({ payload, isCollapsed, onToggle }: MastheadProps) {
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <span className="font-aeonik-display text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
             {payload.kicker}
           </span>
           <span className="text-[11px] text-zinc-600">{payload.date}</span>
         </div>
         {isCollapsed && (
-          <p className="mt-1 truncate font-serif text-lg italic text-zinc-100">
+          <p className="mt-1 truncate font-display text-lg italic text-zinc-100">
             {payload.headline}
           </p>
         )}
@@ -159,7 +159,7 @@ function HeroBand({ payload }: { payload: BriefingPayload }) {
         )}
       />
       <div className="relative flex h-full flex-col justify-end p-5">
-        <h2 className="font-serif text-2xl italic leading-tight text-zinc-50 sm:text-3xl">
+        <h2 className="font-display text-2xl italic leading-tight text-zinc-50 sm:text-3xl">
           {payload.headline}
         </h2>
       </div>
@@ -201,7 +201,7 @@ function Section({
   return (
     <div className="mt-6">
       <div className="flex items-baseline gap-2">
-        <span className="font-serif text-sm italic text-zinc-500">
+        <span className="font-display text-sm italic text-zinc-500">
           {section.numeral}
         </span>
         <h3 className="text-sm font-semibold text-zinc-200">{section.title}</h3>

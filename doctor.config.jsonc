@@ -21,7 +21,21 @@
     // scanners already make for these paths: [tool.ruff] extend-exclude and
     // [tool.bandit] exclude_dirs in pyproject.toml, and biome.json, which
     // excludes .claude and .agents outright.
-    "files": [".agents/skills/**", ".claude/skills/**"],
+    // Explorer briefing edition templates: plain JS read as text and injected
+    // into a headless-Chromium page by the briefing renderer to produce a
+    // poster image — never imported, bundled, or executed by the web app, so
+    // there is no fast-refresh/tree-shaking/type-checking reason to touch
+    // their internals. The chained `.filter().map()`/`.map().filter()` calls
+    // js-combine-iterations flags run once per render against a handful of
+    // template items, so the "extra iteration" has no measurable cost, and
+    // rewriting hand-authored template JS to satisfy a React-oriented lint
+    // rule would only make future template edits (done by design, not by
+    // import) harder to diff against upstream template updates.
+    "files": [
+      ".agents/skills/**",
+      ".claude/skills/**",
+      "apps/api/app/services/briefing/editions/explorer/js/**",
+    ],
     "overrides": [
       // deliverSources MUST await each send before the next: the bubbles of one
       // logical message have to arrive in published order, so fanning them out

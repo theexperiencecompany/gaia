@@ -23,17 +23,8 @@ BriefingKind = Literal["daily", "weekly"]
 BriefingMood = Literal["clear", "packed", "idle", "winback", "weekly"]
 
 # ``kind`` on a section item tags how the renderer treats it (a GAIA action, a
-# user ask, a look-back note, work that failed, a plain highlight).
-BriefingItemKind = Literal["gaia", "you", "lookback", "failed", "note"]
-
-# The state each kind reads as, shown under an item and handed to the voice pass.
-BRIEFING_ITEM_LABELS: dict[BriefingItemKind, str] = {
-    "you": "Waiting on you",
-    "gaia": "In progress",
-    "lookback": "Done",
-    "failed": "Didn't finish",
-    "note": "Worth knowing",
-}
+# user ask, a look-back note, a plain highlight).
+BriefingItemKind = Literal["gaia", "you", "lookback", "note"]
 
 
 class BriefingStat(BaseModel):
@@ -76,6 +67,14 @@ class BriefingPayload(BaseModel):
     mood: BriefingMood
     caption: str
     hue: int = Field(default=0, ge=0, le=HUE_MAX)
+    template_family: str | None = Field(
+        default=None,
+        description=(
+            "Weekly editions only: the edition template family this payload was "
+            "assigned by the shuffled-cycle rotation. Persisted so the archive "
+            "re-renders identically forever; None on daily briefs and legacy rows."
+        ),
+    )
     message: str | None = Field(
         default=None,
         description=(

@@ -132,6 +132,11 @@
     var(--font-geist-mono), ui-monospace, "Cascadia Code", "Source Code Pro",
     Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
+  /* Briefing display families (Aeonik masthead + Playfair Display serif) */
+  --font-display:
+    var(--font-playfair-display), Georgia, "Times New Roman", serif;
+  --font-aeonik-display: var(--font-aeonik), system-ui, sans-serif;
+
   --color-secondary-bg: #1a1a1a; /* sidebar */
   --color-primary-bg: #111111; /*  main */
 
