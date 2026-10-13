@@ -51,20 +51,27 @@ export function IntegrationsStep({
 }: IntegrationsStepProps) {
   const { integrations, isLoading, connectIntegration } = useIntegrations();
 
-  const { suggested, connectedCount } = useMemo(() => {
+  const { suggested, connectedCount, needsSetupCount } = useMemo(() => {
     const connectable = integrations.filter((integration) => {
       const state = integrationConnectionState(integration.status);
       const isAvailable =
         integration.source === "custom" || integration.available;
       // Pending ("added, never authenticated") rows stay out of the wizard —
       // they resolve through the integrations page's deep-link handling.
-      return state !== "connected" && state !== "pending" && isAvailable;
+      return (
+        state !== "connected" &&
+        state !== "pending" &&
+        isAvailable &&
+        !integration.instanceSetupRequired
+      );
     });
     return {
       suggested: connectable.slice(0, MAX_SUGGESTED),
       connectedCount: integrations.filter(
         (i) => integrationConnectionState(i.status) === "connected",
       ).length,
+      needsSetupCount: integrations.filter((i) => i.instanceSetupRequired)
+        .length,
     };
   }, [integrations]);
 
@@ -83,6 +90,18 @@ export function IntegrationsStep({
           Pick a few now, or browse the full catalog later — connections live in
           Settings either way.
         </p>
+        {needsSetupCount > 0 && (
+          <p className="mb-3 text-xs text-zinc-500">
+            {needsSetupCount} apps like Gmail and GitHub need your Composio
+            project first.{" "}
+            <Link
+              href="/settings/integrations-setup"
+              className="text-primary hover:underline"
+            >
+              Set them up
+            </Link>
+          </p>
+        )}
 
         {isLoading ? (
           <div className="space-y-2">

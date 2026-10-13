@@ -1,0 +1,57 @@
+---
+title: "Connect integrations (Composio)"
+sidebarTitle: "Connect integrations"
+description: "Use your own Composio project so Gmail, Calendar, GitHub and the other app integrations connect on your instance"
+icon: "plug"
+---
+
+Gmail, Google Calendar, GitHub, Slack, Notion and about 25 other integrations connect through [Composio](https://composio.dev). Each one needs an **auth config**: Composio's record of how users sign in to that app.
+
+Auth configs belong to one Composio project. GAIA Cloud's auth configs live in GAIA's own project, so they don't work with your key. A self-hosted instance needs a Composio project of its own. Until an integration has an auth config on your instance, the integrations page shows it as **Not set up on this instance**.
+
+## 1. Create a Composio project and copy its key
+
+1. Sign up at [app.composio.dev](https://app.composio.dev) and create a project.
+2. Copy the project's API key from the Composio dashboard.
+
+## 2. Create an auth config for each app you want
+
+In your Composio project, create an auth config for each app you want GAIA to use (Gmail, Google Calendar, GitHub, and so on). Make sure each one is enabled.
+
+For most apps you can use Composio's managed sign-in, which needs no further setup.
+
+<Note>
+  **Google apps (Gmail, Calendar, Drive, Docs, Sheets, Tasks, Meet).** Composio's managed Google sign-in is fine for trying things out. To show your own app name on Google's consent screen, create an OAuth client in the [Google Cloud console](https://console.cloud.google.com/apis/credentials) and choose your own credentials when you create the auth config. Use the redirect URI that Composio shows in the auth config form. Enable each Google API you use (Gmail API, Google Calendar API, and so on) in the same Google Cloud project.
+</Note>
+
+You don't need to set a callback URL in Composio. GAIA sends users back to `{HOST}/api/v1/oauth/composio/callback` on its own.
+
+## 3. Add them to GAIA
+
+1. Sign in as the instance admin and open **Settings → Integrations setup**.
+2. Paste your Composio API key and save it.
+3. GAIA lists the auth configs in your project and fills in a match for each integration. If an app has more than one, pick the right one. You can also paste an auth config id (it starts with `ac_`) by hand.
+4. Click **Save**.
+
+Saved integrations can be connected right away. You don't need to restart anything. Leave a field empty to skip that integration.
+
+<Tip>
+  You can paste the key during first-run setup too: it is the Composio card under **Tool keys**.
+</Tip>
+
+## Setting auth configs from the environment
+
+If you manage configuration in files instead, set `COMPOSIO_KEY` and map integration ids to auth config ids in `COMPOSIO_AUTH_CONFIG_OVERRIDES`:
+
+```bash
+COMPOSIO_KEY=your-composio-api-key
+COMPOSIO_AUTH_CONFIG_OVERRIDES={"gmail": "ac_...", "googlecalendar": "ac_...", "github": "ac_..."}
+```
+
+An id saved in **Settings → Integrations setup** takes priority over the environment. The instance refuses to start if this variable names an integration that doesn't use Composio, or gives an empty id.
+
+## Troubleshooting
+
+- **"Composio rejected the saved API key".** The key is wrong or was revoked. Copy a fresh one from the Composio dashboard.
+- **No matches are filled in.** The project has no enabled auth config for that app. Create one in Composio, then reload the page.
+- **An app still shows "Not set up on this instance".** It has no saved auth config yet. Add one in **Settings → Integrations setup** and save.

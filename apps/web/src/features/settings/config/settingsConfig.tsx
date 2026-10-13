@@ -10,6 +10,7 @@ import {
   MessageMultiple02Icon,
   NoteEditIcon,
   NotificationIcon,
+  PlugSocketIcon,
   PuzzleIcon,
   UserCircleIcon,
   VoiceIdIcon,
@@ -67,6 +68,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
       />
     ),
     href: "/settings/providers",
+  },
+  {
+    key: "integrations-setup",
+    label: "Integrations setup",
+    icon: PlugSocketIcon,
+    href: "/settings/integrations-setup",
   },
   {
     key: "notifications",

@@ -8,6 +8,7 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
+import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useRouter } from "@/i18n/navigation";
@@ -82,6 +83,8 @@ const IntegrationItem: React.FC<{
       <div className="flex shrink-0 items-center">
         {isConnected ? (
           <span className="h-2 w-2 rounded-full bg-success" />
+        ) : integration.instanceSetupRequired ? (
+          <InstanceSetupNotice />
         ) : (
           (isAvailable || needsAttention) && (
             <Button

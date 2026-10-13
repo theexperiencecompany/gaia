@@ -26,6 +26,7 @@ export function toIntegration(item: MyIntegrationItem): Integration {
     isFeatured: item.isFeatured,
     displayPriority: item.displayPriority,
     available: item.available,
+    instanceSetupRequired: item.instanceSetupRequired,
     toolCount: item.toolCount,
     iconUrl: item.iconUrl ?? undefined,
     isPublic: item.isPublic ?? undefined,

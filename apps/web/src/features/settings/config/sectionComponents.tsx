@@ -3,6 +3,7 @@
 import type React from "react";
 import AccountSettings from "@/features/settings/components/AccountSettings";
 import BrowserSettings from "@/features/settings/components/BrowserSettings";
+import { ComposioSetupSettings } from "@/features/settings/components/ComposioSetupSettings";
 import DesktopSettings from "@/features/settings/components/DesktopSettings";
 import DevicesSettings from "@/features/settings/components/DevicesSettings";
 import ExperimentalFeaturesSettings from "@/features/settings/components/ExperimentalFeaturesSettings";
@@ -38,6 +39,7 @@ const SECTION_PANELS: Record<
   profile: () => <ProfileCardSettings />,
   "linked-accounts": () => <LinkedAccountsSettings />,
   providers: () => <ProvidersSettings />,
+  "integrations-setup": () => <ComposioSetupSettings />,
   subscription: () => <SubscriptionSettings />,
   usage: () => <UsageSettings />,
   preferences: (setModalAction) => (
