@@ -220,6 +220,18 @@ class TurnOptions:
     delivery_poll_seconds: float = DELIVERY_POLL_SECONDS
 
 
+async def open_conversation(client: httpx.AsyncClient, api_url: str, description: str) -> str:
+    """Create a conversation the caller owns and return its id; chat-stream 404s any other id."""
+    conversation_id = str(uuid4())
+    response = await client.post(
+        f"{api_url}/api/v1/conversations",
+        json={"conversation_id": conversation_id, "description": description},
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    return conversation_id
+
+
 async def send_turn(
     client: httpx.AsyncClient,
     api_url: str,

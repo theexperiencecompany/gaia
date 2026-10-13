@@ -42,10 +42,12 @@ from app.services.conversation_service import (
     mark_conversation_as_read,
     mark_conversation_as_unread,
     pin_message,
+    require_owned_conversation,
     star_conversation,
     update_conversation_description,
     update_messages,
 )
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import (
     ChatConversationCreated,
@@ -505,3 +507,28 @@ class TestBatchSyncConversations:
             result = await batch_sync_conversations(request, test_user)
 
         assert result.conversations[0].has_live_approval in (None, False)
+
+
+class TestRequireOwnedConversation:
+    async def test_the_owner_passes(self, owned_conversations: set[tuple[str, str]]) -> None:
+        owned_conversations.add(("conv_abc", USER_ID))
+
+        await require_owned_conversation("conv_abc", USER_ID)
+
+    @pytest.mark.parametrize(
+        ("conversation_id", "user_id"),
+        [("conv_abc", "someone-else"), ("conv_missing", USER_ID)],
+    )
+    async def test_a_foreign_or_missing_conversation_is_the_same_404(
+        self, owned_conversations: set[tuple[str, str]], conversation_id: str, user_id: str
+    ) -> None:
+        owned_conversations.add(("conv_abc", USER_ID))
+
+        with pytest.raises(AppError) as raised:
+            await require_owned_conversation(conversation_id, user_id)
+
+        assert (raised.value.status_code, raised.value.code, raised.value.message) == (
+            404,
+            "CONVERSATION_NOT_FOUND",
+            "Conversation not found",
+        )
