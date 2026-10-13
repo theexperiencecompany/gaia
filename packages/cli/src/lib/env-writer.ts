@@ -230,7 +230,7 @@ function dockerComposeEnvPath(repoRoot: string): string {
 }
 
 /** The values in infra/docker/.env; empty when the file does not exist. */
-export function readDockerComposeEnv(repoRoot: string): EnvValues {
+function readDockerComposeEnv(repoRoot: string): EnvValues {
   const envPath = dockerComposeEnvPath(repoRoot);
   return fs.existsSync(envPath)
     ? parseEnvFileValues(fs.readFileSync(envPath, "utf-8"))

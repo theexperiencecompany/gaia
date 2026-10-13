@@ -52,7 +52,7 @@ const DEPENDENCY_HINTS: Record<string, { service: string; cause: string }> = {
 };
 
 /** The command and likely cause for one failing dependency. */
-export function dependencyFix(name: string, project: ComposeProject): string {
+function dependencyFix(name: string, project: ComposeProject): string {
   const hint = DEPENDENCY_HINTS[name];
   if (!hint) {
     return `Check the API logs: docker compose -p ${project} logs gaia-backend`;
