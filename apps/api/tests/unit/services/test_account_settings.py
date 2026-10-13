@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.notifications import USER_CONFIGURABLE_CHANNELS
 from app.services import account_settings
 from app.utils.errors import AppError
 
@@ -34,8 +35,8 @@ def repo():
 async def test_notification_channels_write_only_the_given_flags(repo) -> None:
     result = await account_settings.set_notification_channels(USER_ID, email=False, telegram=True)
 
-    assert result == "Notification settings updated (telegram=on, email=off)."
-    repo.set_channels.assert_awaited_once_with(USER_ID, {"telegram": True, "email": False})
+    assert result == "Notification settings updated (email=off, telegram=on)."
+    repo.set_channels.assert_awaited_once_with(USER_ID, {"email": False, "telegram": True})
 
 
 async def test_notification_channels_with_no_flags_is_an_error(repo) -> None:
@@ -261,7 +262,7 @@ class TestCustomInstructionBoundaries:
 
 class TestChannelFlagSemantics:
     async def test_every_flag_writes_in_one_call(self, repo) -> None:
-        flags = dict.fromkeys(account_settings.CHANNEL_FLAGS, True)
+        flags = {channel.value: True for channel in USER_CONFIGURABLE_CHANNELS}
         await account_settings.set_notification_channels(USER_ID, **flags)
         repo.set_channels.assert_awaited_once_with(USER_ID, flags)
 
@@ -271,7 +272,7 @@ class TestChannelFlagSemantics:
         await account_settings.set_notification_channels(USER_ID, email=False)
         written = repo.set_channels.await_args.args[1]
         assert written == {"email": False}
-        assert set(written) != set(account_settings.CHANNEL_FLAGS)
+        assert set(written) != {channel.value for channel in USER_CONFIGURABLE_CHANNELS}
 
 
 class TestVoiceSelectionAttacks:

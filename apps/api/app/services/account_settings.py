@@ -6,10 +6,6 @@ AppError; nothing here writes to JuiceFS (the projection refresh is the
 tool wrapper's job).
 """
 
-from app.constants.notifications import (
-    USER_CONFIGURABLE_CHANNELS,
-    NotificationChannel,
-)
 from app.db.repositories.users import user_repository
 from app.models.user_models import OnboardingPreferences, UserUpdate
 from app.services.voice_service import list_voices, set_user_voice
@@ -18,32 +14,10 @@ from app.utils.timezone import is_valid_timezone
 
 MAX_CUSTOM_INSTRUCTIONS_CHARS = 500
 
-CHANNEL_FLAGS = tuple(channel.value for channel in USER_CONFIGURABLE_CHANNELS)
 
-
-async def set_notification_channels(
-    user_id: str,
-    *,
-    telegram: bool | None = None,
-    discord: bool | None = None,
-    whatsapp: bool | None = None,
-    slack: bool | None = None,
-    imessage: bool | None = None,
-    email: bool | None = None,
-) -> str:
-    """Set the given notification channel flags; unspecified channels untouched."""
-    given: dict[str, bool] = {
-        channel: value
-        for channel, value in [
-            (NotificationChannel.TELEGRAM.value, telegram),
-            (NotificationChannel.DISCORD.value, discord),
-            (NotificationChannel.WHATSAPP.value, whatsapp),
-            (NotificationChannel.SLACK.value, slack),
-            (NotificationChannel.IMESSAGE.value, imessage),
-            (NotificationChannel.EMAIL.value, email),
-        ]
-        if value is not None
-    }
+async def set_notification_channels(user_id: str, **flags: bool | None) -> str:
+    """Set the given notification channel flags; a None or omitted channel is untouched."""
+    given = {channel: value for channel, value in flags.items() if value is not None}
     if not given:
         raise AppError(
             message="No channels were specified",

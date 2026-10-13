@@ -188,5 +188,4 @@ apps/api/app/workers/tasks/signup_email_tasks.py	TB001
 apps/api/app/workers/tasks/trigger_dispatch_tasks.py	TB001
 apps/api/app/workers/tasks/usage_badge_tasks.py	TB001
 apps/api/app/workers/tasks/usage_badge_tasks.py	TB002
-apps/api/app/workers/tasks/user_tasks.py	TB001
 apps/api/app/workers/tasks/workflow_dormancy_tasks.py	TB001
