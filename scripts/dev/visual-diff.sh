@@ -37,9 +37,6 @@ rm -rf "$OUT"/{baseline,results,report,composites,logs} "$OUT"/results.json "$OU
 mkdir -p "$OUT/logs"
 
 BASE_SHA=$(git -C "$ROOT" rev-parse --short "$BASE_REF")
-HEAD_SHA=$(git -C "$ROOT" rev-parse --short HEAD)
-HEAD_LABEL="$(git -C "$ROOT" branch --show-current) @ $HEAD_SHA"
-git -C "$ROOT" diff --quiet || HEAD_LABEL="$HEAD_LABEL + uncommitted"
 
 echo "==> base worktree at $BASE_REF ($BASE_SHA)"
 git -C "$ROOT" worktree add --detach --quiet "$BASE_DIR" "$BASE_REF"
@@ -94,6 +91,9 @@ capture_resilient "$BASE_DIR/apps/web" "$OUT/logs/base-server.log" \
   --update-snapshots=all --reporter=line >"$OUT/logs/base-capture.log" 2>&1
 
 echo "==> comparing head"
+# Labelled when head is captured, not at start: the tree may move during the base run.
+HEAD_LABEL="$(git -C "$ROOT" branch --show-current) @ $(git -C "$ROOT" rev-parse --short HEAD)"
+git -C "$ROOT" diff --quiet || HEAD_LABEL="$HEAD_LABEL + uncommitted"
 serve "$ROOT/apps/web" "$OUT/logs/head-server.log"
 # Differences fail the run by design; compose reads them from results.json.
 capture_resilient "$ROOT/apps/web" "$OUT/logs/head-server.log"
