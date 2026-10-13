@@ -18,6 +18,7 @@ __all__ = [
     "SettingsDesktopPreferenceChanged",
     "SettingsNotificationsToggled",
     "SettingsPreferencesChanged",
+    "SettingsQuietHoursUpdated",
 ]
 
 FlagFallbackReason = Literal[
@@ -44,6 +45,16 @@ class SettingsNotificationsToggled(ServerEvent):
     changed_channel_count: int
     channels_enabled: list[Identifier]
     channels_disabled: list[Identifier]
+
+
+class SettingsQuietHoursUpdated(ServerEvent):
+    """A user changed the daily window in which GAIA holds proactive pushes."""
+
+    event: ClassVar[str] = "settings:quiet_hours_updated"
+    budget_per_user_day: ClassVar[int] = 20
+
+    start_hour: int
+    end_hour: int
 
 
 class SettingsPreferencesChanged(ServerEvent):

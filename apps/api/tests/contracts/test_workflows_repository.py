@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.workflows import WorkflowsRepository
 from app.models.scheduler_models import (
     DeactivationReason,
@@ -45,6 +46,7 @@ def _workflow(**overrides: object) -> WorkflowDocument:
         "prompt": "do the thing",
         "steps": [WorkflowStep(title="step", category="gmail", description="d")],
         "trigger_config": TriggerConfig(type=TriggerType.MANUAL),
+        "delivery": WorkflowDelivery.NOW,
     }
     data.update(overrides)
     return WorkflowDocument(**data)

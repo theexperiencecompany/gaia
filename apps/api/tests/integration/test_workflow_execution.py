@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.exceptions import OutputParserException
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -108,6 +109,7 @@ def _make_create_request(
 ) -> CreateWorkflowRequest:
     """Build a CreateWorkflowRequest with defaults."""
     return CreateWorkflowRequest(
+        delivery=WorkflowDelivery.NOW,
         title=title,
         prompt=prompt,
         trigger_config=_make_trigger_config(trigger_type, **trigger_kwargs),
@@ -126,6 +128,7 @@ def _make_workflow(
 ) -> Workflow:
     """Build a Workflow model instance for testing."""
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=user_id,
         title=title,
@@ -297,6 +300,7 @@ class TestWorkflowValidation:
         """CreateWorkflowRequest rejects empty/whitespace title."""
         with pytest.raises(ValueError):
             CreateWorkflowRequest(
+                delivery=WorkflowDelivery.NOW,
                 title="   ",
                 prompt="valid prompt",
                 trigger_config=_make_trigger_config(),
@@ -306,6 +310,7 @@ class TestWorkflowValidation:
         """CreateWorkflowRequest rejects empty/whitespace prompt."""
         with pytest.raises(ValueError):
             CreateWorkflowRequest(
+                delivery=WorkflowDelivery.NOW,
                 title="Valid Title",
                 prompt="   ",
                 trigger_config=_make_trigger_config(),

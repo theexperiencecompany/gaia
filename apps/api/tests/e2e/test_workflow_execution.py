@@ -33,6 +33,7 @@ from app.agents.core.graph_builder.build_graph import (
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 from app.api.v1.middleware import tiered_rate_limiter
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
@@ -468,6 +469,7 @@ class _InMemoryExecutionRecords:
 
 def _make_multi_step_workflow(user_id: str) -> Workflow:
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         user_id=user_id,
         title="Morning briefing",
         description="Summarize overnight mail and post it to Slack.",

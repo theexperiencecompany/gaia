@@ -23,12 +23,12 @@ from app.agents.prompts.todo_prompts import (
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
 from app.constants.todos import ACTIVITY_PROMPT_TAIL_CHARS, TRIGGER_EVENTS_PROMPT_MAX_CHARS
+from app.models.notification.notification_models import QuietHours
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoRunContext
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.services.canvas_markdown import bounded_canvas
 from app.services.hil.utils import untrusted_fence
 from app.services.todo_observations import bounded_observations
-from app.services.todos.inbox_desk import in_quiet_hours
 from app.workers.tasks.todo_run_context import NO_CONTEXT
 
 # How a run works the outside object its todo owns, by kind; each takes the ref id as ref_id.
@@ -78,6 +78,7 @@ def opening_parts(
     origin: TriggerOrigin | None,
     coalesced: Sequence[TriggerOrigin],
     local_now: datetime,
+    quiet_hours: QuietHours,
 ) -> list[str]:
     """Open the run prompt with what woke it; trigger payloads share one untrusted fence."""
     title = doc.title
@@ -86,7 +87,7 @@ def opening_parts(
     wake = WAKE_OPENINGS.get(doc.external_ref.source) if doc.external_ref else None
     if wake is not None:
         woken = [wake.format(title=title)]
-        if in_quiet_hours(local_now):
+        if quiet_hours.contains_hour(local_now.hour):
             woken.append(INBOX_DESK_QUIET_HOURS_NOTE.format(local_time=f"{local_now:%H:%M}"))
         return woken
     fence = untrusted_fence()
@@ -129,6 +130,7 @@ def build_execution_prompt(
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
     local_now: datetime,
+    quiet_hours: QuietHours,
 ) -> str:
     """Assemble the run prompt from the todo's fields and context, local_now on the user's clock.
 
@@ -136,7 +138,7 @@ def build_execution_prompt(
     model. They are attacker-influenceable, so all of them share one fence
     labelled untrusted. doc.notify_on_run decides which delivery contract is stated.
     """
-    prompt_parts = opening_parts(doc, origin, coalesced, local_now)
+    prompt_parts = opening_parts(doc, origin, coalesced, local_now, quiet_hours)
     prompt_parts.append(TODO_ID_LINE.format(todo_id=doc.id))
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")

@@ -16,6 +16,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import TriggerType
 from shared.py.wide_events import log
 
@@ -79,8 +80,12 @@ class FinalizedOutput(BaseModel):
         """Return this draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
-    def to_stream_payload(self) -> dict[str, Any]:
-        """Convert to the format expected by frontend stream handler."""
+    def to_stream_payload(self, delivery: WorkflowDelivery) -> dict[str, Any]:
+        """Convert to the format expected by frontend stream handler.
+
+        delivery is not the assistant's to choose: the calling agent sets it from
+        the user's intent, and the draft carries it to the confirming modal.
+        """
         return {
             "workflow_draft": {
                 "suggested_title": self.title,
@@ -91,6 +96,7 @@ class FinalizedOutput(BaseModel):
                 "integration_ids": self.integration_ids,
                 "cron_expression": self.cron_expression,
                 "direct_create": self.direct_create,
+                "delivery": delivery.value,
             }
         }
 

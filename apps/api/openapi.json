@@ -4336,6 +4336,10 @@
       "CreateWorkflowRequest": {
         "description": "Request model for creating a new workflow.",
         "properties": {
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "description": "How a finished run's result reaches the user. Required: every creator (the user, the agent from the user's intent, a system definition) decides it explicitly."
+          },
           "description": {
             "anyOf": [
               {
@@ -4401,12 +4405,6 @@
             "title": "Is System Workflow",
             "type": "boolean"
           },
-          "notify_on_completion": {
-            "default": true,
-            "description": "Whether GAIA sends the automatic completion notification when a run finishes.",
-            "title": "Notify On Completion",
-            "type": "boolean"
-          },
           "prompt": {
             "description": "Detailed execution instructions for the AI",
             "minLength": 1,
@@ -4467,7 +4465,8 @@
         "required": [
           "title",
           "prompt",
-          "trigger_config"
+          "trigger_config",
+          "delivery"
         ],
         "title": "CreateWorkflowRequest",
         "type": "object"
@@ -13595,6 +13594,29 @@
         "title": "PushTokenResponse",
         "type": "object"
       },
+      "QuietHours": {
+        "description": "A daily window, on the user's own clock, when GAIA holds proactive pushes.\n\nWhole local hours; the window may span midnight (start 22, end 8 is 22:00 to\n08:00). The end hour is the first hour outside the window.",
+        "properties": {
+          "end_hour": {
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "End Hour",
+            "type": "integer"
+          },
+          "start_hour": {
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Start Hour",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_hour",
+          "end_hour"
+        ],
+        "title": "QuietHours",
+        "type": "object"
+      },
       "RecordedCall": {
         "description": "One tool call as it actually ran.\n\nCaptured from the run's own tool events \u2014 the same stream the chat UI\nrenders \u2014 so recording costs nothing beyond persisting what was already\ncollected. ``args`` is what makes this useful: it is the material an agent\nreads to author a playbook, and the cursor a later run picks up from.",
         "properties": {
@@ -16650,7 +16672,7 @@
           },
           "notify_on_run": {
             "default": true,
-            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.",
+            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.",
             "title": "Notify On Run",
             "type": "boolean"
           },
@@ -16857,7 +16879,7 @@
           },
           "notify_on_run": {
             "default": true,
-            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.",
+            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.",
             "title": "Notify On Run",
             "type": "boolean"
           },
@@ -18895,6 +18917,16 @@
             ],
             "title": "Activated"
           },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "anyOf": [
               {
@@ -18943,17 +18975,6 @@
               }
             ],
             "title": "Integration Ids"
-          },
-          "notify_on_completion": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notify On Completion"
           },
           "prompt": {
             "anyOf": [
@@ -19723,6 +19744,16 @@
         "title": "WorkflowCreator",
         "type": "object"
       },
+      "WorkflowDelivery": {
+        "description": "How a finished workflow run's result reaches the user.\n\nFailures always notify, whatever the mode: a broken workflow needs the user\nnow. A run whose narration decides there is nothing worth reporting reaches\nnobody in any mode.",
+        "enum": [
+          "now",
+          "brief",
+          "silent"
+        ],
+        "title": "WorkflowDelivery",
+        "type": "string"
+      },
       "WorkflowExecution": {
         "description": "A single workflow execution record.",
         "properties": {
@@ -20208,6 +20239,10 @@
             ],
             "description": "Why the workflow is not activated. None means the user turned it off themselves \u2014 only system-paused workflows may be resumed automatically."
           },
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "description": "How a finished run's result reaches the user: pushed now, held for the next brief, or kept silent in the workflow's conversation. Failures always notify."
+          },
           "description": {
             "default": "",
             "description": "Short display description for cards/UI (1-2 sentences)",
@@ -20334,12 +20369,6 @@
             ],
             "description": "Required integrations the user has not connected yet.",
             "title": "Missing Integrations"
-          },
-          "notify_on_completion": {
-            "default": true,
-            "description": "Whether GAIA sends the automatic completion notification when a run finishes. When False the run is silent (failures still notify) and the agent only notifies if the workflow's own instructions ask it to.",
-            "title": "Notify On Completion",
-            "type": "boolean"
           },
           "occurrence_count": {
             "default": 0,
@@ -20526,7 +20555,7 @@
           "trigger_config",
           "activated",
           "deactivated_reason",
-          "notify_on_completion",
+          "delivery",
           "last_executed_at",
           "is_public",
           "is_explore",
@@ -31327,6 +31356,118 @@
           }
         },
         "summary": "Update Channel Preferences",
+        "tags": [
+          "Notification"
+        ]
+      }
+    },
+    "/api/v1/notifications/preferences/quiet-hours": {
+      "get": {
+        "description": "The daily window, on the user's clock, in which GAIA holds proactive pushes.",
+        "operationId": "notification_read_quiet_hours",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuietHours"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Quiet Hours",
+        "tags": [
+          "Notification"
+        ]
+      },
+      "put": {
+        "description": "Replace the user's quiet hours; echoes back what was stored.",
+        "operationId": "notification_update_quiet_hours",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuietHours"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuietHours"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Quiet Hours",
         "tags": [
           "Notification"
         ]

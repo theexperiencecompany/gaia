@@ -8,6 +8,7 @@ from app.constants.integrations import (
     MAX_MY_INTEGRATIONS_RESULTS,
 )
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
     MyIntegrationItem,
@@ -129,11 +130,12 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="send me a summary every morning",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
-        draft.to_stream_payload.assert_called_once()
+        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW)
 
     async def test_new_mode_clarifying(self) -> None:
         """Clarifying mode returns the question for the user."""
@@ -152,6 +154,7 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="create a workflow",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is True
@@ -175,6 +178,7 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="create workflow",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is False
@@ -190,6 +194,7 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is False
@@ -209,6 +214,7 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="make a workflow",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is False
@@ -231,7 +237,7 @@ class TestCreateWorkflow:
                 f"{MODULE}.create_workflow_directly",
                 new_callable=AsyncMock,
                 return_value=direct_result,
-            ),
+            ) as mock_direct,
         ):
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="output")
@@ -239,9 +245,11 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="run daily at 9am",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result == direct_result
+        assert mock_direct.await_args.kwargs["delivery"] is WorkflowDelivery.NOW
 
     async def test_direct_creation_fallback_to_draft(self) -> None:
         """When direct creation fails, falls back to streaming draft."""
@@ -268,11 +276,12 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="run daily",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
-        draft.to_stream_payload.assert_called_once()
+        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW)
 
 
 # ---------------------------------------------------------------------------
@@ -501,7 +510,7 @@ class TestCreateWorkflowPins:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="out")
             await cast(Any, create_workflow).coroutine(
-                config=_make_config(), user_request="every morning"
+                config=_make_config(), user_request="every morning", delivery=WorkflowDelivery.NOW
             )
 
         mock_log.set.assert_called_once_with(tool={"name": "create_workflow", "action": "create"})
@@ -511,7 +520,7 @@ class TestCreateWorkflowPins:
         from app.agents.tools.workflow_tool import create_workflow
 
         result = await cast(Any, create_workflow).coroutine(
-            config=_make_config(), user_request="   "
+            config=_make_config(), user_request="   ", delivery=WorkflowDelivery.NOW
         )
         assert result["success"] is False
         assert result["error"] == "missing_request"
@@ -532,7 +541,7 @@ class TestCreateWorkflowPins:
             mock_writer_factory.return_value = writer = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="out")
             await cast(Any, create_workflow).coroutine(
-                config=_make_config(), user_request="daily digest"
+                config=_make_config(), user_request="daily digest", delivery=WorkflowDelivery.NOW
             )
 
         kwargs = mock_runner.execute.await_args.kwargs
@@ -561,7 +570,7 @@ class TestCreateWorkflowPins:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="out")
             await cast(Any, create_workflow).coroutine(
-                config=_make_config(), user_request="weekly report"
+                config=_make_config(), user_request="weekly report", delivery=WorkflowDelivery.NOW
             )
 
         mode_logs = [c for c in mock_log.info.call_args_list if "parsed mode" in str(c.args[0])]

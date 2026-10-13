@@ -18,6 +18,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import MongoDocument
 from app.models.scheduler_models import (
     BaseScheduledTask,
@@ -230,12 +231,11 @@ class Workflow(BaseScheduledTask, ResponseModel):
             "themselves — only system-paused workflows may be resumed automatically."
         ),
     )
-    notify_on_completion: bool = Field(
-        default=True,
+    delivery: WorkflowDelivery = Field(
         description=(
-            "Whether GAIA sends the automatic completion notification when a run "
-            "finishes. When False the run is silent (failures still notify) and the "
-            "agent only notifies if the workflow's own instructions ask it to."
+            "How a finished run's result reaches the user: pushed now, held for the "
+            "next brief, or kept silent in the workflow's conversation. Failures "
+            "always notify."
         ),
     )
     last_executed_at: datetime | None = Field(default=None)
@@ -389,9 +389,12 @@ class CreateWorkflowRequest(BaseModel):
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
     )
-    notify_on_completion: bool = Field(
-        default=True,
-        description="Whether GAIA sends the automatic completion notification when a run finishes.",
+    delivery: WorkflowDelivery = Field(
+        description=(
+            "How a finished run's result reaches the user. Required: every creator "
+            "(the user, the agent from the user's intent, a system definition) "
+            "decides it explicitly."
+        ),
     )
     integration_ids: list[str] | None = Field(
         default=None,
@@ -457,7 +460,7 @@ class UpdateWorkflowRequest(BaseModel):
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: NewTriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
-    notify_on_completion: bool | None = Field(default=None)
+    delivery: WorkflowDelivery | None = Field(default=None)
     integration_ids: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")
@@ -833,7 +836,7 @@ class WorkflowUpdate(BaseModel):
     steps: list[WorkflowStep] | None = None
     trigger_config: TriggerConfig | None = None
     activated: bool | None = None
-    notify_on_completion: bool | None = None
+    delivery: WorkflowDelivery | None = None
     integration_ids: list[str] | None = None
     status: ScheduledTaskStatus | None = None
     scheduled_at: datetime | None = None

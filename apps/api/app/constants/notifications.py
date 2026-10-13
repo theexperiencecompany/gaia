@@ -61,6 +61,12 @@ DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
     NotificationChannel.DISCORD,
 )
 
+# The default quiet hours, on the user's own clock: 22:00 to 08:00. Proactive
+# pushes (a mail-woken inbox desk alert, a stale-todo nudge) hold during it.
+# The user overrides it in notification settings (users.quiet_hours).
+DEFAULT_QUIET_HOURS_START = 22
+DEFAULT_QUIET_HOURS_END = 8
+
 # In-app route a notification action redirects to. Shared so the memory-backfill
 # and Gmail-personalization notifications can't drift onto different pages.
 MEMORY_SETTINGS_URL = "/settings/memory"

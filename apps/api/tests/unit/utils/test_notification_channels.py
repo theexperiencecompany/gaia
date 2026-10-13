@@ -25,6 +25,8 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.user_models import UserDocument
+from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
 from app.utils.notification.channels.discord import DiscordChannelAdapter
 from app.utils.notification.channels.external import ExternalPayload
@@ -203,14 +205,14 @@ class TestExternalPlatformTransform:
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
-        assert content.parts == ["**My Title**\nMy body"]
+        assert content.text == "**My Title**\nMy body"
 
     async def test_standard_message_without_title(self) -> None:
         request = _make_request(title="", body="just body")
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
-        assert content.parts == ["just body"]
+        assert content.text == "just body"
 
     async def test_redirect_actions_appended_as_commonmark_link(self) -> None:
         action = _make_redirect_action(label="View Task", url="/todos/1")
@@ -218,7 +220,7 @@ class TestExternalPlatformTransform:
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
-        assert "[View Task](https://app.example.com/todos/1)" in content.parts[0]
+        assert "[View Task](https://app.example.com/todos/1)" in content.text
 
     async def test_rich_content_is_ignored(self) -> None:
         # Workflow results now reach the user as real chat messages, not through
@@ -236,7 +238,7 @@ class TestExternalPlatformTransform:
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
-        assert content.parts == ["**Workflow Done**\nCompleted in 30s"]
+        assert content.text == "**Workflow Done**\nCompleted in 30s"
 
 
 # ========================================================================
@@ -244,31 +246,70 @@ class TestExternalPlatformTransform:
 # ========================================================================
 
 
+LINKED_USER = UserDocument(id="user-1", platform_links={"discord": {"id": "dc-7"}})
+EXTERNAL = "app.utils.notification.channels.external"
+
+
 @pytest.mark.asyncio
 class TestExternalPlatformDeliver:
-    async def test_deliver_publishes_and_maps_success(self) -> None:
-        with patch(
-            "app.utils.notification.channels.external.publish_outbound_message",
-            new_callable=AsyncMock,
-            return_value=OutboundResult.PUBLISHED,
-        ) as pub:
+    async def test_deliver_posts_into_the_linked_dm_and_maps_success(self) -> None:
+        with (
+            patch(f"{EXTERNAL}.user_repository.get", AsyncMock(return_value=LINKED_USER)),
+            patch(
+                f"{EXTERNAL}.post_to_platform_chat",
+                new_callable=AsyncMock,
+                return_value=OutboundResult.PUBLISHED,
+            ) as post,
+        ):
             status = await DiscordChannelAdapter().deliver(
-                ExternalPayload(parts=["hello"]), "user-1"
+                ExternalPayload(text="hello", origin="notification from ai_agent"), "user-1"
             )
-        pub.assert_awaited_once_with(ConversationSource.DISCORD, "user-1", ["hello"])
+
+        kwargs = post.await_args.kwargs
+        assert kwargs["user"].user_id == "user-1"
+        assert kwargs["channel"] == ChatChannel(
+            source=ConversationSource.DISCORD, platform_user_id="dc-7"
+        )
+        assert (kwargs["text"], kwargs["origin"]) == ("hello", "notification from ai_agent")
         assert status.status == NotificationStatus.DELIVERED
         assert status.skipped is False
 
-    async def test_deliver_maps_skipped_to_skipped(self) -> None:
-        # Unsupported platform / unlinked account / nothing to send: a genuine
-        # skip, flagged so it isn't treated as a failure.
-        with patch(
-            "app.utils.notification.channels.external.publish_outbound_message",
-            new_callable=AsyncMock,
-            return_value=OutboundResult.SKIPPED,
+    async def test_an_unlinked_platform_is_skipped_without_posting(self) -> None:
+        with (
+            patch(
+                f"{EXTERNAL}.user_repository.get",
+                AsyncMock(return_value=UserDocument(id="user-1")),
+            ),
+            patch(f"{EXTERNAL}.post_to_platform_chat", new_callable=AsyncMock) as post,
         ):
             status = await DiscordChannelAdapter().deliver(
-                ExternalPayload(parts=["hello"]), "user-1"
+                ExternalPayload(text="hello", origin="notification from ai_agent"), "user-1"
+            )
+
+        post.assert_not_awaited()
+        assert status.status == NotificationStatus.FAILED
+        assert status.skipped is True
+
+    async def test_blank_text_is_skipped_without_a_lookup(self) -> None:
+        with patch(f"{EXTERNAL}.user_repository.get", new_callable=AsyncMock) as get:
+            status = await DiscordChannelAdapter().deliver(
+                ExternalPayload(text="  ", origin="notification from ai_agent"), "user-1"
+            )
+
+        get.assert_not_awaited()
+        assert status.skipped is True
+
+    async def test_deliver_maps_skipped_to_skipped(self) -> None:
+        with (
+            patch(f"{EXTERNAL}.user_repository.get", AsyncMock(return_value=LINKED_USER)),
+            patch(
+                f"{EXTERNAL}.post_to_platform_chat",
+                new_callable=AsyncMock,
+                return_value=OutboundResult.SKIPPED,
+            ),
+        ):
+            status = await DiscordChannelAdapter().deliver(
+                ExternalPayload(text="hello", origin="notification from ai_agent"), "user-1"
             )
         assert status.status == NotificationStatus.FAILED
         assert status.skipped is True
@@ -276,13 +317,16 @@ class TestExternalPlatformDeliver:
     async def test_deliver_maps_failed_to_error_not_skipped(self) -> None:
         # Broker down / publish error: a real failure, NOT a skip — so retries
         # and alerting that key off non-skipped FAILED still fire in an outage.
-        with patch(
-            "app.utils.notification.channels.external.publish_outbound_message",
-            new_callable=AsyncMock,
-            return_value=OutboundResult.FAILED,
+        with (
+            patch(f"{EXTERNAL}.user_repository.get", AsyncMock(return_value=LINKED_USER)),
+            patch(
+                f"{EXTERNAL}.post_to_platform_chat",
+                new_callable=AsyncMock,
+                return_value=OutboundResult.FAILED,
+            ),
         ):
             status = await DiscordChannelAdapter().deliver(
-                ExternalPayload(parts=["hello"]), "user-1"
+                ExternalPayload(text="hello", origin="notification from ai_agent"), "user-1"
             )
         assert status.status == NotificationStatus.FAILED
         assert status.skipped is False
@@ -318,7 +362,7 @@ class TestExternalTransformBrutalEdges:
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
-        assert content.parts == ["**Reminder**"]
+        assert content.text == "**Reminder**"
 
     async def test_actions_only_has_no_leading_newline(self) -> None:
         # With empty title/body, an action link must not be prefixed by "\n\n".
@@ -327,7 +371,7 @@ class TestExternalTransformBrutalEdges:
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
-        assert content.parts == ["[Open](https://app.example.com/x)"]
+        assert content.text == "[Open](https://app.example.com/x)"
 
     @pytest.mark.parametrize(
         "adapter_cls",
@@ -347,7 +391,7 @@ class TestExternalTransformBrutalEdges:
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await adapter_cls().transform(request)
-        assert content.parts == ["**Reminder**\nTake a break"]
+        assert content.text == "**Reminder**\nTake a break"
 
     async def test_redirect_action_with_no_url_is_skipped_not_crashed(self) -> None:
         # A REDIRECT action whose config.redirect is None must be skipped, not
@@ -362,4 +406,4 @@ class TestExternalTransformBrutalEdges:
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
-        assert content.parts == ["**T**\nB"]
+        assert content.text == "**T**\nB"

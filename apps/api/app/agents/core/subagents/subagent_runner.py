@@ -34,8 +34,7 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, dev_option
 from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.prompts.workflow_prompts import (
-    WORKFLOW_AUTO_NOTIFY_SECTION,
-    WORKFLOW_SILENT_NOTIFY_SECTION,
+    WORKFLOW_DELIVERY_SECTIONS,
 )
 from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
 from app.constants.general import (
@@ -46,6 +45,7 @@ from app.constants.general import (
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread, build_agent_config
 from app.helpers.message_helpers import (
@@ -881,11 +881,9 @@ async def prepare_executor_execution(
     # writes, so inject the notification mode here (keyed off this run's own
     # configurable) rather than depend on comms forwarding the rule. Skip if already present.
     if configurable.get("workflow_id") and "NOTIFICATIONS:" not in enhanced_task:
-        notification_section = (
-            WORKFLOW_AUTO_NOTIFY_SECTION
-            if configurable.get("workflow_notify_on_completion", True)
-            else WORKFLOW_SILENT_NOTIFY_SECTION
-        )
+        notification_section = WORKFLOW_DELIVERY_SECTIONS[
+            configurable.get("workflow_delivery", WorkflowDelivery.NOW)
+        ]
         enhanced_task = f"{enhanced_task}\n{notification_section}"
 
     # Surface uploaded files so the executor (which holds the file tools) can act

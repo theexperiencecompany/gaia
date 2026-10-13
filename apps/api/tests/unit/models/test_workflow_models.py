@@ -7,6 +7,7 @@ in test_timezone.py / test_cron_utils.py; here we assert the composition.
 
 from datetime import UTC, datetime
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import (
     PlaybookDiscard,
     PublicWorkflowRow,
@@ -86,6 +87,7 @@ class TestTriggerConfigUpdateNextRun:
 
 def _stored_workflow(**overrides: object) -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id="wf_1",
         user_id="u_1",
         title="Daily agenda",
@@ -133,6 +135,7 @@ class TestPublicWorkflowSteps:
             title="Daily agenda",
             steps=list(steps),
             trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+            delivery=WorkflowDelivery.NOW,
         )
 
     def test_a_categorised_step_keeps_its_category(self) -> None:
@@ -156,7 +159,14 @@ class TestPublicWorkflowSteps:
 
 def _workflow(trigger: TriggerConfig, **fields: object) -> Workflow:
     return Workflow.model_validate(
-        {"user_id": "u1", "title": "Digest", "steps": [], "trigger_config": trigger, **fields}
+        {
+            "user_id": "u1",
+            "title": "Digest",
+            "steps": [],
+            "trigger_config": trigger,
+            "delivery": WorkflowDelivery.NOW,
+            **fields,
+        }
     )
 
 

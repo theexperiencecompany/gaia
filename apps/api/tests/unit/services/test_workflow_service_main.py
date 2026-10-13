@@ -8,6 +8,7 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
 from app.models.scheduler_models import (
     UNSET,
     DeactivationReason,
@@ -95,6 +96,7 @@ def _make_workflow(
     if trigger_config is None:
         trigger_config = _make_trigger_config()
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=USER_ID,
         title="Test Workflow",
@@ -121,6 +123,7 @@ def _make_create_request(
     if trigger_config is None:
         trigger_config = _make_trigger_config()
     return CreateWorkflowRequest(
+        delivery=WorkflowDelivery.NOW,
         title=title,
         prompt=prompt,
         description=description,

@@ -3041,6 +3041,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/preferences/quiet-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Quiet Hours
+         * @description The daily window, on the user's clock, in which GAIA holds proactive pushes.
+         */
+        get: operations["notification_read_quiet_hours"];
+        /**
+         * Update Quiet Hours
+         * @description Replace the user's quiet hours; echoes back what was stored.
+         */
+        put: operations["notification_update_quiet_hours"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/register-device": {
         parameters: {
             query?: never;
@@ -7680,6 +7704,8 @@ export interface components {
          * @description Request model for creating a new workflow.
          */
         CreateWorkflowRequest: {
+            /** @description How a finished run's result reaches the user. Required: every creator (the user, the agent from the user's intent, a system definition) decides it explicitly. */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Short optional display description (1-2 sentences)
@@ -7712,12 +7738,6 @@ export interface components {
              * @default false
              */
             is_system_workflow?: boolean;
-            /**
-             * Notify On Completion
-             * @description Whether GAIA sends the automatic completion notification when a run finishes.
-             * @default true
-             */
-            notify_on_completion?: boolean;
             /**
              * Prompt
              * @description Detailed execution instructions for the AI
@@ -12100,6 +12120,19 @@ export interface components {
             success: boolean;
         };
         /**
+         * QuietHours
+         * @description A daily window, on the user's own clock, when GAIA holds proactive pushes.
+         *
+         *     Whole local hours; the window may span midnight (start 22, end 8 is 22:00 to
+         *     08:00). The end hour is the first hour outside the window.
+         */
+        QuietHours: {
+            /** End Hour */
+            end_hour: number;
+            /** Start Hour */
+            start_hour: number;
+        };
+        /**
          * RecordedCall
          * @description One tool call as it actually ran.
          *
@@ -13705,7 +13738,7 @@ export interface components {
             labels?: string[];
             /**
              * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.
+             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.
              * @default true
              */
             notify_on_run?: boolean;
@@ -13820,7 +13853,7 @@ export interface components {
             labels: string[];
             /**
              * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.
+             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.
              * @default true
              */
             notify_on_run: boolean;
@@ -14646,6 +14679,7 @@ export interface components {
         UpdateWorkflowRequest: {
             /** Activated */
             activated?: boolean | null;
+            delivery?: components["schemas"]["WorkflowDelivery"] | null;
             /** Description */
             description?: string | null;
             /** Icon */
@@ -14654,8 +14688,6 @@ export interface components {
             icon_color?: string | null;
             /** Integration Ids */
             integration_ids?: string[] | null;
-            /** Notify On Completion */
-            notify_on_completion?: boolean | null;
             /** Prompt */
             prompt?: string | null;
             /** Steps */
@@ -15047,6 +15079,16 @@ export interface components {
             name: string;
         };
         /**
+         * WorkflowDelivery
+         * @description How a finished workflow run's result reaches the user.
+         *
+         *     Failures always notify, whatever the mode: a broken workflow needs the user
+         *     now. A run whose narration decides there is nothing worth reporting reaches
+         *     nobody in any mode.
+         * @enum {string}
+         */
+        WorkflowDelivery: "now" | "brief" | "silent";
+        /**
          * WorkflowExecution
          * @description A single workflow execution record.
          */
@@ -15334,6 +15376,8 @@ export interface components {
             current_step_index: number;
             /** @description Why the workflow is not activated. None means the user turned it off themselves — only system-paused workflows may be resumed automatically. */
             deactivated_reason: components["schemas"]["DeactivationReason"] | null;
+            /** @description How a finished run's result reaches the user: pushed now, held for the next brief, or kept silent in the workflow's conversation. Failures always notify. */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Short display description for cards/UI (1-2 sentences)
@@ -15406,12 +15450,6 @@ export interface components {
              * @description Required integrations the user has not connected yet.
              */
             missing_integrations: components["schemas"]["IntegrationRef"][] | null;
-            /**
-             * Notify On Completion
-             * @description Whether GAIA sends the automatic completion notification when a run finishes. When False the run is silent (failures still notify) and the agent only notifies if the workflow's own instructions ask it to.
-             * @default true
-             */
-            notify_on_completion: boolean;
             /**
              * Occurrence Count
              * @description Number of times this task has been executed
@@ -15911,6 +15949,7 @@ export type PublishIntegrationResponse = components['schemas']['PublishIntegrati
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
+export type QuietHours = components['schemas']['QuietHours'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
@@ -16062,6 +16101,7 @@ export type VoiceSelectionResponse = components['schemas']['VoiceSelectionRespon
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
+export type WorkflowDelivery = components['schemas']['WorkflowDelivery'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];
@@ -24462,6 +24502,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelPreferences"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notification_read_quiet_hours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuietHours"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notification_update_quiet_hours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuietHours"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuietHours"];
                 };
             };
             /** @description Unprocessable Entity */

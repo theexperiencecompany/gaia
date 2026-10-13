@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.workflows import WorkflowDelivery
 from app.models.reminder_models import (
     CreateReminderRequest,
     CreateReminderToolRequest,
@@ -43,7 +44,10 @@ ENTRY_POINTS: dict[str, Callable[[str], BaseModel]] = {
     "update_reminder_tool": lambda cron: ReminderUpdate(repeat=cron),
     "scheduler": lambda cron: ScheduleConfig(repeat=cron),
     "POST /workflows": lambda cron: CreateWorkflowRequest(
-        title="Digest", prompt="Summarize", trigger_config=_workflow_trigger(cron)
+        delivery=WorkflowDelivery.NOW,
+        title="Digest",
+        prompt="Summarize",
+        trigger_config=_workflow_trigger(cron),
     ),
     "PUT /workflows": lambda cron: UpdateWorkflowRequest(trigger_config=_workflow_trigger(cron)),
 }

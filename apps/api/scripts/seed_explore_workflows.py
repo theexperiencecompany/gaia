@@ -27,6 +27,7 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
 from app.db.mongodb.collections import get_async_collection
 from app.models.workflow_models import (
     TriggerConfig,
@@ -1090,6 +1091,9 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
         "steps": steps,
         "trigger_config": trigger_config.model_dump(mode="json"),
         "activated": True,
+        # A template never runs for anyone; a user who adds it picks their own
+        # delivery when they save their copy.
+        "delivery": WorkflowDelivery.NOW.value,
         "is_public": True,
         "is_explore": True,
         "use_case_categories": config.get("categories", ["featured"]),

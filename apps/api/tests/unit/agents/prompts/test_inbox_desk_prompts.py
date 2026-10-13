@@ -309,10 +309,7 @@ def test_a_mail_woken_run_alerts_only_for_what_cannot_wait_for_the_briefing() ->
         "the Needs you items you "
         "opened this run and the events you added or proposed for today or tomorrow"
     ) in alert
-    assert (
-        f"between {todo_constants.INBOX_DESK_QUIET_HOURS_START:02d}:00 and "
-        f"{todo_constants.INBOX_DESK_QUIET_HOURS_END:02d}:00 the user's local time"
-    ) in alert
+    assert "or during the user's quiet hours, it is only that nothing is new" in alert
     assert "it is only that nothing is new, and the next briefing carries the rest" in alert
 
 

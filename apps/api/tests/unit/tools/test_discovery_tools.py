@@ -199,6 +199,7 @@ def _row(title: str, description: str, **extra: Any) -> PublicWorkflowRow:
             "prompt": "do the thing",
             "steps": [{"title": "step", "category": "gmail", "description": "d"}],
             "trigger_config": {"type": "manual"},
+            "delivery": "now",
             **extra,
         }
     )

@@ -7,6 +7,7 @@ reaches these symbols through the re-export.
 
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_config import (
     CONFIGURABLE_KEY,
     AgentConfigurableView,
@@ -47,7 +48,7 @@ class TestReadAgentConfigurable:
         assert isinstance(view, AgentConfigurableView)
         assert view.user_id is None
         assert view.workflow_title == ""
-        assert view.workflow_notify_on_completion is True
+        assert view.workflow_delivery is WorkflowDelivery.NOW
 
     def test_the_declared_keys_are_parsed_onto_attributes(self) -> None:
         view = read_agent_configurable(

@@ -6224,6 +6224,34 @@
       }
     },
     {
+      "event": "settings:quiet_hours_updated",
+      "class": "SettingsQuietHoursUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed the daily window in which GAIA holds proactive pushes.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed the daily window in which GAIA holds proactive pushes.",
+        "properties": {
+          "start_hour": {
+            "title": "Start Hour",
+            "type": "integer"
+          },
+          "end_hour": {
+            "title": "End Hour",
+            "type": "integer"
+          }
+        },
+        "required": ["start_hour", "end_hour"],
+        "title": "SettingsQuietHoursUpdated",
+        "type": "object"
+      }
+    },
+    {
       "event": "skill:disabled",
       "class": "SkillDisabled",
       "owner": "server",
@@ -8174,6 +8202,31 @@
             ],
             "default": null,
             "title": "Is Todo Workflow"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "enum": ["now", "brief", "silent"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delivery"
+          },
+          "created_by_agent": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Created By Agent"
           }
         },
         "title": "WorkflowCreated",
@@ -8338,7 +8391,21 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user edited a workflow.",
-        "properties": {},
+        "properties": {
+          "delivery": {
+            "anyOf": [
+              {
+                "enum": ["now", "brief", "silent"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delivery"
+          }
+        },
         "title": "WorkflowUpdated",
         "type": "object"
       }

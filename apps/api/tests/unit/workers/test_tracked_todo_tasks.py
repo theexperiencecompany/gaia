@@ -73,6 +73,8 @@ from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
+    QuietHours,
+    default_quiet_hours,
 )
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
@@ -139,6 +141,7 @@ KOLKATA = ZoneInfo("Asia/Kolkata")
 # A daytime clock: quiet hours are pinned by their own tests.
 _DAYTIME = datetime(2026, 10, 3, 11, 0, tzinfo=KOLKATA)
 _LATE = datetime(2026, 10, 3, 23, 8, tzinfo=KOLKATA)
+_EARLY = datetime(2026, 10, 3, 8, 30, tzinfo=KOLKATA)
 
 
 def _prompt(
@@ -148,6 +151,7 @@ def _prompt(
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
     local_now: datetime = _DAYTIME,
+    quiet_hours: QuietHours | None = None,
 ) -> str:
     return build_execution_prompt(
         doc,
@@ -155,6 +159,7 @@ def _prompt(
         origin=origin,
         coalesced=coalesced,
         local_now=local_now,
+        quiet_hours=quiet_hours or default_quiet_hours(),
     )
 
 
@@ -713,6 +718,23 @@ class TestDeliveryContractInThePrompt:
         note = todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE
         assert note.format(local_time="23:08") in quiet
         assert note.split("{")[0] not in daytime
+
+    def test_the_users_own_quiet_hours_decide_not_the_default(self) -> None:
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
+        )
+        late_riser = QuietHours(start_hour=1, end_hour=10)
+        late = _prompt(
+            _doc(external_ref=desk), origin=origin, local_now=_LATE, quiet_hours=late_riser
+        )
+        morning = _prompt(
+            _doc(external_ref=desk), origin=origin, local_now=_EARLY, quiet_hours=late_riser
+        )
+
+        note = todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE
+        assert note.split("{")[0] not in late
+        assert note.format(local_time="08:30") in morning
 
     def test_quiet_hours_leave_a_thread_todo_alone(self) -> None:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")

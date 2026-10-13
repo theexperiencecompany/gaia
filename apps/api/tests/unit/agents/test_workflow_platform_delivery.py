@@ -13,13 +13,15 @@ from app.agents.core.background.workflow_platform_delivery import deliver_result
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
+from app.models.user_models import AuthenticatedUser
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.workflow_platform_delivery"
+PLATFORM_CHAT = "app.agents.core.background.platform_chat"
 
-USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
+USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 USER_ID = "user-1"
 TEXT = f"Report is ready.{NEW_MESSAGE_BREAKER}It has 3 pages."
 
@@ -44,7 +46,7 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_no_usable_platform_is_a_no_op(self) -> None:
         with (
             _channel(None),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock()) as session,
+            patch(f"{PLATFORM_CHAT}.BotService.get_or_create_session", AsyncMock()) as session,
         ):
             await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
@@ -55,7 +57,7 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_channel_lookup_failure_is_logged_and_sends_nothing(self) -> None:
         with (
             patch(f"{MODULE}.resolve_chat_channel", AsyncMock(side_effect=RuntimeError("db down"))),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock()) as session,
+            patch(f"{PLATFORM_CHAT}.BotService.get_or_create_session", AsyncMock()) as session,
         ):
             async with captured_wide_event() as event:
                 await deliver_result_to_platforms(
@@ -72,11 +74,12 @@ class TestDeliverWorkflowResultToPlatforms:
         with (
             _channel(TELEGRAM) as resolve,
             patch(
-                f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="tg-conv"),
             ) as session,
-            patch(f"{MODULE}.update_messages", AsyncMock()) as update,
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()) as update,
             patch(
-                f"{MODULE}.publish_outbound_message",
+                f"{PLATFORM_CHAT}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
         ):
@@ -113,13 +116,16 @@ class TestDeliverWorkflowResultToPlatforms:
         """A wrong verdict makes a skipped delivery look delivered in the metrics."""
         with (
             _channel(TELEGRAM),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
-                f"{MODULE}.publish_outbound_message",
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="tg-conv"),
+            ),
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()),
+            patch(
+                f"{PLATFORM_CHAT}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ),
-            patch(f"{MODULE}.record_platform_delivery", AsyncMock()),
+            patch(f"{PLATFORM_CHAT}.record_platform_delivery", AsyncMock()),
         ):
             delivered = await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
@@ -130,10 +136,13 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_a_skipped_publish_reports_nobody_was_reached(self) -> None:
         with (
             _channel(TELEGRAM),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
-                f"{MODULE}.publish_outbound_message",
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="tg-conv"),
+            ),
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()),
+            patch(
+                f"{PLATFORM_CHAT}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.SKIPPED),
             ),
         ):
@@ -146,10 +155,13 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_a_failed_publish_reports_nobody_was_reached(self) -> None:
         with (
             _channel(TELEGRAM),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
-                f"{MODULE}.publish_outbound_message",
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="tg-conv"),
+            ),
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()),
+            patch(
+                f"{PLATFORM_CHAT}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.FAILED),
             ),
         ):
@@ -171,10 +183,13 @@ class TestDeliverWorkflowResultToPlatforms:
         """A failed publish is swallowed but observable: log.error lands in the wide event's errors[]."""
         with (
             _channel(TELEGRAM),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
-                f"{MODULE}.publish_outbound_message",
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="tg-conv"),
+            ),
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()),
+            patch(
+                f"{PLATFORM_CHAT}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.FAILED),
             ),
         ):
@@ -186,7 +201,7 @@ class TestDeliverWorkflowResultToPlatforms:
         errors = [
             e
             for e in event["errors"]
-            if e["msg"] == f"{LogTag.AGENT} workflow platform publish failed"
+            if e["msg"] == f"{LogTag.AGENT} proactive platform publish failed"
         ]
         assert [e["platform"] for e in errors] == ["telegram"]
         assert errors[0]["conversation_id"] == "tg-conv"
@@ -194,8 +209,8 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_the_platform_that_already_has_the_result_is_not_pinged_again(self) -> None:
         with (
             _channel(TELEGRAM),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock()) as session,
-            patch(f"{MODULE}.publish_outbound_message", AsyncMock()) as publish,
+            patch(f"{PLATFORM_CHAT}.BotService.get_or_create_session", AsyncMock()) as session,
+            patch(f"{PLATFORM_CHAT}.publish_outbound_message", AsyncMock()) as publish,
         ):
             await deliver_result_to_platforms(
                 user=USER,
@@ -213,10 +228,13 @@ class TestDeliverWorkflowResultToPlatforms:
     ) -> None:
         with (
             _channel(TELEGRAM),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
-                f"{MODULE}.publish_outbound_message",
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="tg-conv"),
+            ),
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()),
+            patch(
+                f"{PLATFORM_CHAT}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
         ):
@@ -234,10 +252,10 @@ class TestDeliverWorkflowResultToPlatforms:
         with (
             _channel(TELEGRAM),
             patch(
-                f"{MODULE}.BotService.get_or_create_session",
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
                 AsyncMock(side_effect=RuntimeError("mongo down")),
             ),
-            patch(f"{MODULE}.publish_outbound_message", AsyncMock()) as publish,
+            patch(f"{PLATFORM_CHAT}.publish_outbound_message", AsyncMock()) as publish,
         ):
             await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
@@ -260,10 +278,15 @@ class TestDeliveredResultsReachTheSessionThread:
         recorder = AsyncMock()
         with (
             _channel(TELEGRAM),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
-            patch(f"{MODULE}.publish_outbound_message", AsyncMock(return_value=publish_result)),
-            patch(f"{MODULE}.record_platform_delivery", recorder),
+            patch(
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="tg-conv"),
+            ),
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()),
+            patch(
+                f"{PLATFORM_CHAT}.publish_outbound_message", AsyncMock(return_value=publish_result)
+            ),
+            patch(f"{PLATFORM_CHAT}.record_platform_delivery", recorder),
         ):
             await deliver_result_to_platforms(
                 user=USER,
@@ -297,13 +320,16 @@ class TestDeliveredResultsReachTheSessionThread:
         recorder = AsyncMock()
         with (
             _channel(ChatChannel(source=ConversationSource.WHATSAPP, platform_user_id="wa-1")),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="wa-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
-                f"{MODULE}.publish_outbound_message",
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="wa-conv"),
+            ),
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()),
+            patch(
+                f"{PLATFORM_CHAT}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ),
-            patch(f"{MODULE}.record_platform_delivery", recorder),
+            patch(f"{PLATFORM_CHAT}.record_platform_delivery", recorder),
         ):
             await deliver_result_to_platforms(
                 user=USER,
@@ -320,13 +346,16 @@ class TestDeliveredResultsReachTheSessionThread:
         recorder = AsyncMock()
         with (
             _channel(ChatChannel(source=ConversationSource.IMESSAGE, platform_user_id="im-1")),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="im-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
-                f"{MODULE}.publish_outbound_message",
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="im-conv"),
+            ),
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()),
+            patch(
+                f"{PLATFORM_CHAT}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ),
-            patch(f"{MODULE}.record_platform_delivery", recorder),
+            patch(f"{PLATFORM_CHAT}.record_platform_delivery", recorder),
         ):
             await deliver_result_to_platforms(
                 user=USER,
@@ -352,10 +381,13 @@ class TestVariantBreakTokens:
 
         with (
             _channel(ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-123")),
-            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
-            patch(f"{MODULE}.update_messages", AsyncMock()),
             patch(
-                f"{MODULE}.publish_outbound_message",
+                f"{PLATFORM_CHAT}.BotService.get_or_create_session",
+                AsyncMock(return_value="tg-conv"),
+            ),
+            patch(f"{PLATFORM_CHAT}.update_messages", AsyncMock()),
+            patch(
+                f"{PLATFORM_CHAT}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
         ):

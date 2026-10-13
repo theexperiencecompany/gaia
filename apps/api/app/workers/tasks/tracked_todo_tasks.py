@@ -614,6 +614,7 @@ async def _execute_on_executor(
         origin=origin,
         coalesced=coalesced,
         local_now=datetime.now(user_tz.tzinfo),
+        quiet_hours=user_data.quiet_hours,
     )
 
     # A fresh conversation per run: runs are independent, and history must not

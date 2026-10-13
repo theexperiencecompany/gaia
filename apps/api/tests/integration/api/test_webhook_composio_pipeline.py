@@ -13,6 +13,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.constants.workflows import WorkflowDelivery
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.services.triggers.batching import PER_EMAIL_FALLBACK_WINDOW_SECONDS
@@ -119,6 +120,7 @@ def _expired_connection_delivery() -> dict:
 
 def _workflow(trigger_name: str = "gmail_new_message") -> Workflow:
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=WORKFLOW_ID,
         user_id=USER_ID,
         title="Pipeline Workflow",

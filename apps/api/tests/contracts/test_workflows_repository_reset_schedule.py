@@ -18,6 +18,7 @@ import uuid
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.workflows import SystemWorkflowDefinition, WorkflowsRepository
 from app.models.workflow_models import (
     TriggerConfig,
@@ -32,6 +33,7 @@ RESET_CRON = "0 9 * * *"
 
 def _scheduled_system_workflow() -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         user_id=f"u_{uuid.uuid4().hex[:12]}",
         title="Test Workflow",
         prompt="do the thing",

@@ -30,6 +30,7 @@ from app.agents.prompts.playbook_prompts import (
 from app.agents.tools.playbook_tools import write_playbook
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.playbook_models import (
     DeclineKind,
     HandoffStep,
@@ -56,6 +57,7 @@ WORKFLOW_ID = "wf-1"
 
 def _workflow(*, declines: int = 0, declined_hash: str | None = None) -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id=WORKFLOW_ID,
         user_id=USER_ID,
         title="Daily agenda",

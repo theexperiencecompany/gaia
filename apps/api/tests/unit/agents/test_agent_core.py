@@ -26,6 +26,7 @@ from app.constants.agents import (
 )
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.llm import DEV_MODEL_OPTIONS
+from app.constants.workflows import WorkflowDelivery
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentLane,
@@ -1537,7 +1538,7 @@ class TestTheWorkflowKeysTheRunStashes:
         trigger = {
             "workflow_id": "wf-1",
             "workflow_title": "Daily digest",
-            "workflow_notify_on_completion": False,
+            "workflow_delivery": WorkflowDelivery.SILENT,
             PLAYBOOK_FALLBACK_CONTEXT_KEY: "hash_drift at step 3",
             WORKFLOW_LOCK_CONTEXT_KEY: ":fire-task-1",
             PLAYBOOK_REPLAYED_CALLS_KEY: [{"tool_name": "GMAIL_FETCH_EMAILS"}],
@@ -1571,7 +1572,7 @@ class TestTheWorkflowKeysTheRunStashes:
             "model": "gpt-4o",
             "workflow_id": "wf-1",
             "workflow_title": "Daily digest",
-            "workflow_notify_on_completion": False,
+            "workflow_delivery": WorkflowDelivery.SILENT,
             "playbook_fallback": "hash_drift at step 3",
             # The claim its fire took on this conversation, carried through so
             # call_executor adopts it instead of queueing the run behind it. Read
@@ -1613,7 +1614,7 @@ class TestTheWorkflowKeysTheRunStashes:
             "model": "gpt-4o",
             "workflow_id": "wf-1",
             "workflow_title": "",
-            "workflow_notify_on_completion": True,
+            "workflow_delivery": WorkflowDelivery.NOW,
             "playbook_fallback": None,
             "executor_lock_reservation": None,
             "playbook_replayed_calls": None,

@@ -126,7 +126,7 @@ class TodoBase(BaseModel):
         description=(
             "Deliver this tracked todo's run result to the user's chat platform when a "
             "scheduled or triggered run finishes. The tracked-todo equivalent of a "
-            "workflow's notify_on_completion; unrelated to the todo being marked completed."
+            "workflow's delivery mode; unrelated to the todo being marked completed."
         ),
     )
 

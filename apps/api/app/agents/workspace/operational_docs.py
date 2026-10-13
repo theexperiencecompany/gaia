@@ -547,12 +547,14 @@ Offer to pause it instead, or point them to the app to delete.
 
 ## Results & notifications
 
-By default (`notify_on_completion` on) the final result is delivered
-automatically: posted as real messages into the user's linked messaging
-platforms (WhatsApp/Telegram/Discord/Slack) and surfaced as an in-app completion
-notification. A silent workflow delivers nothing on success; it only reaches the
-user if its own prompt sends something (e.g. an explicit `send_notification`).
-Failures always notify. So do NOT add a `send_notification` to announce a result
+Every workflow has a `delivery` mode that decides what a successful run does:
+`now` posts the result as real messages into the user's preferred messaging
+platform (WhatsApp/Telegram/Discord/Slack) and raises an in-app completion
+notification; `brief` holds it for the user's next brief and pushes nothing;
+`silent` keeps it in the workflow's conversation only. A `brief` or `silent`
+workflow reaches the user mid-run only if its own prompt sends something (e.g.
+an explicit `send_notification`). A run with nothing worth reporting reaches
+nobody in any mode. Failures always notify. So do NOT add a `send_notification` to announce a result
 that completion delivery already sends, and do NOT double-send if the prompt
 already messages the user. See the `notifications` doc for channel details.
 

@@ -375,6 +375,10 @@ ignore_imports = [
   "app.utils.stream_utils -> langchain_core",
   "app.utils.todo_vector_utils -> langchain_core",
   "app.utils.workflow_utils -> langgraph",
+  # The chat-platform notification adapter posts into the user's DM conversation
+  # and records the message in that conversation's LangGraph thread, so the
+  # user's reply is answered with it in mind. The checkpoint write IS the work.
+  "app.utils.notification.channels.external -> app.agents.core.background.platform_chat",
   "app.utils.integration_checker -> langgraph",
   "app.utils.integration_checker -> app.models.agent_models",
   "app.utils.composio_hooks.gmail_hooks -> app.models.agent_models",

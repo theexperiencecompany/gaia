@@ -30,6 +30,7 @@ from app.agents.tools.playbook_tools import (
 )
 from app.constants.agents import PLAYBOOK_DECLINE_LIMIT, PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.playbook_models import (
     DeclineKind,
     PlaybookBody,
@@ -117,6 +118,7 @@ def _config_for_run(run_id: str) -> RunnableConfig:
 
 def _workflow() -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id=WORKFLOW_ID,
         user_id=USER_ID,
         title="Daily agenda",

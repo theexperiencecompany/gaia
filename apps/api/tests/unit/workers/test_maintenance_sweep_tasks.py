@@ -23,6 +23,7 @@ from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, TodoActivityEvent
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
+    QuietHours,
 )
 from app.models.todo_models import TodoDocument
 from app.models.user_models import UserDocument
@@ -39,9 +40,9 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     _health_check_expired,
     _health_check_verdict,
     _is_dormant,
-    _is_user_daytime,
     _normalize_all_canvases,
     _notify_overdue,
+    _outside_quiet_hours,
     _register_notification,
     _send_user_dormant_digest,
     maintenance_sweep_tracked_todos,
@@ -111,7 +112,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
             create=True,
         ),
         patch(f"{MODULE}.RedisPoolManager.get_pool", mocks["get_pool"]),
-        patch(f"{MODULE}._is_user_daytime", mocks["daytime"]),
+        patch(f"{MODULE}._outside_quiet_hours", mocks["daytime"]),
         patch(f"{MODULE}._read_canvas", mocks["canvas"]),
         patch(f"{MODULE}._health_check_verdict", mocks["health"]),
         patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", mocks["archive"]),
@@ -520,45 +521,51 @@ class TestRegisterNotification:
 
 
 # ---------------------------------------------------------------------------
-# _is_user_daytime — quiet-hours gate
+# _outside_quiet_hours — quiet-hours gate
 # ---------------------------------------------------------------------------
 
 
-class TestIsUserDaytime:
-    async def test_utc_noon_is_daytime(self):
+class TestOutsideQuietHours:
+    async def test_utc_noon_is_outside_the_default_window(self):
         with patch(
             f"{MODULE}.get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
         ):
-            assert await _is_user_daytime("user-1", NOW, {}) is True
+            assert await _outside_quiet_hours("user-1", NOW, {}) is True
 
-    async def test_utc_3am_is_night(self):
+    async def test_utc_3am_is_inside_the_default_window(self):
         night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
         with patch(
             f"{MODULE}.get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
         ):
-            assert await _is_user_daytime("user-1", night, {}) is False
+            assert await _outside_quiet_hours("user-1", night, {}) is False
 
     async def test_local_timezone_wins(self):
         night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
         with patch(
             f"{MODULE}.get_user_by_id", AsyncMock(return_value=UserDocument(timezone="Asia/Tokyo"))
         ):
-            assert await _is_user_daytime("user-1", night, {}) is True
+            assert await _outside_quiet_hours("user-1", night, {}) is True
+
+    async def test_the_users_own_window_replaces_the_default(self):
+        """Noon UTC is outside the default window but inside a user's 11-14 quiet hours."""
+        user = UserDocument(timezone="UTC", quiet_hours=QuietHours(start_hour=11, end_hour=14))
+        with patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value=user)):
+            assert await _outside_quiet_hours("user-1", NOW, {}) is False
 
     async def test_result_is_cached_per_sweep(self):
         lookup = AsyncMock(return_value=UserDocument(timezone="UTC"))
         cache: dict[str, bool] = {}
         with patch(f"{MODULE}.get_user_by_id", lookup):
-            first = await _is_user_daytime("user-1", NOW, cache)
-            second = await _is_user_daytime("user-1", NOW, cache)
+            first = await _outside_quiet_hours("user-1", NOW, cache)
+            second = await _outside_quiet_hours("user-1", NOW, cache)
 
         assert first == second
         lookup.assert_awaited_once()
 
-    async def test_user_lookup_failure_does_not_raise(self):
+    async def test_user_lookup_failure_falls_back_to_the_default_window_on_utc(self):
         night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
         with patch(f"{MODULE}.get_user_by_id", AsyncMock(side_effect=Exception("mongo down"))):
-            result = await _is_user_daytime("user-1", night, {})
+            result = await _outside_quiet_hours("user-1", night, {})
         assert result is False
 
 

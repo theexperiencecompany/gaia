@@ -43,6 +43,7 @@ from app.constants.onboarding import (
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.models.notification.notification_models import QuietHours
 from app.models.onboarding_models import (
     PersistedTriageSummary,
     SocialProfile,
@@ -457,6 +458,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"chat_channel_priority": priority}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def set_quiet_hours(self, user_id: str, quiet_hours: QuietHours) -> None:
+        """Store the daily window in which proactive pushes hold."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"quiet_hours": quiet_hours.model_dump()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
