@@ -8,7 +8,7 @@ a collection is actually used rather than paid at import time.
 
 from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorCollection
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 from app.constants.log_tags import LogTag
 from app.db.mongodb.mongodb import MongoDB
@@ -52,3 +52,8 @@ def get_async_collection(collection_name: str) -> AsyncIOMotorCollection[dict[st
     not this.
     """
     return _get_collection(collection_name)
+
+
+def get_async_database() -> AsyncIOMotorDatabase[dict[str, Any]]:
+    """Return the Motor database handle, for server-level commands no repository owns."""
+    return _get_mongodb_instance().database

@@ -25,3 +25,21 @@ class DegradedHealthResponse(BaseModel):
     status: Literal["degraded"] = "degraded"
     event_loop_lag_ms: float
     detail: str
+
+
+class DependencyStatus(BaseModel):
+    """One backing service's answer to a real round-trip, as /health/ready reports it."""
+
+    name: str
+    ok: bool
+    latency_ms: float
+    error_type: str | None = Field(
+        default=None, description="Exception class name when the check failed; never its message"
+    )
+
+
+class ReadinessResponse(BaseModel):
+    """``GET /health/ready``: whether every backing service answered a real request."""
+
+    status: Literal["ready", "not_ready"]
+    dependencies: list[DependencyStatus]

@@ -5946,6 +5946,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness Check
+         * @description Report whether every backing service answers a real request; 503 names the ones that do not.
+         */
+        get: operations["health_readiness_check"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/live/{code}/decision": {
         parameters: {
             query?: never;
@@ -8083,6 +8103,23 @@ export interface components {
             message: string;
             /** Success */
             success: boolean;
+        };
+        /**
+         * DependencyStatus
+         * @description One backing service's answer to a real round-trip, as /health/ready reports it.
+         */
+        DependencyStatus: {
+            /**
+             * Error Type
+             * @description Exception class name when the check failed; never its message
+             */
+            error_type?: string | null;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Name */
+            name: string;
+            /** Ok */
+            ok: boolean;
         };
         /**
          * DeregisterServerResponse
@@ -12499,6 +12536,19 @@ export interface components {
             success: boolean;
         };
         /**
+         * ReadinessResponse
+         * @description ``GET /health/ready``: whether every backing service answered a real request.
+         */
+        ReadinessResponse: {
+            /** Dependencies */
+            dependencies: components["schemas"]["DependencyStatus"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "not_ready";
+        };
+        /**
          * RecordedCall
          * @description One tool call as it actually ran.
          *
@@ -16131,6 +16181,7 @@ export type DeactivationReason = components['schemas']['DeactivationReason'];
 export type DegradedHealthResponse = components['schemas']['DegradedHealthResponse'];
 export type DeleteAllConversationsResponse = components['schemas']['DeleteAllConversationsResponse'];
 export type DeleteMemoryResponse = components['schemas']['DeleteMemoryResponse'];
+export type DependencyStatus = components['schemas']['DependencyStatus'];
 export type DeregisterServerResponse = components['schemas']['DeregisterServerResponse'];
 export type DesktopReleaseAsset = components['schemas']['DesktopReleaseAsset'];
 export type DesktopReleaseResponse = components['schemas']['DesktopReleaseResponse'];
@@ -16374,6 +16425,7 @@ export type PublishIntegrationResponse = components['schemas']['PublishIntegrati
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
+export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
@@ -32473,6 +32525,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DegradedHealthResponse"];
+                };
+            };
+        };
+    };
+    health_readiness_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessResponse"];
                 };
             };
         };

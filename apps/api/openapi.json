@@ -4646,6 +4646,42 @@
         "title": "DeleteMemoryResponse",
         "type": "object"
       },
+      "DependencyStatus": {
+        "description": "One backing service's answer to a real round-trip, as /health/ready reports it.",
+        "properties": {
+          "error_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exception class name when the check failed; never its message",
+            "title": "Error Type"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ok",
+          "latency_ms"
+        ],
+        "title": "DependencyStatus",
+        "type": "object"
+      },
       "DeregisterServerResponse": {
         "description": "Result of the daemon deregistering one of its MCP servers.",
         "properties": {
@@ -13863,6 +13899,32 @@
           "message"
         ],
         "title": "PushTokenResponse",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "description": "``GET /health/ready``: whether every backing service answered a real request.",
+        "properties": {
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/DependencyStatus"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "dependencies"
+        ],
+        "title": "ReadinessResponse",
         "type": "object"
       },
       "RecordedCall": {
@@ -42091,6 +42153,68 @@
           }
         },
         "summary": "Health Check",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Report whether every backing service answers a real request; 503 names the ones that do not.",
+        "operationId": "health_readiness_check",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Readiness Check",
         "tags": [
           "Health"
         ]
