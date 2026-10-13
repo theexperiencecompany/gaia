@@ -13,9 +13,12 @@ import { parseAssignedEnvKeys } from "../../src/lib/machine-secrets.js";
 import { type CLIStore, createStore } from "../../src/ui/store.js";
 
 /** Headless store: answers every pipeline prompt so runEnvSetup never blocks. */
-function makeHeadlessStore(): CLIStore {
+function makeHeadlessStore(
+  onAsk?: (id: string, meta: unknown) => void,
+): CLIStore {
   const store = createStore();
-  store.pushAnswerResolver((id) => {
+  store.pushAnswerResolver((id, meta) => {
+    onAsk?.(id, meta);
     switch (id) {
       case "env_method":
         return "manual";
@@ -31,6 +34,24 @@ function makeHeadlessStore(): CLIStore {
     }
   });
   return store;
+}
+
+/** Every group and variable name runEnvSetup asked about, in a temp repo. */
+async function askedNames(
+  repo: string,
+  mode: "selfhost" | "developer",
+): Promise<string[]> {
+  const asked: string[] = [];
+  const store = makeHeadlessStore((id, meta) => {
+    const { groupName, varName } = (meta ?? {}) as {
+      groupName?: string;
+      varName?: string;
+    };
+    if (id === "env_group" && groupName) asked.push(groupName);
+    if (id === "env_var" && varName) asked.push(varName);
+  });
+  await runEnvSetup(store, repo, mode);
+  return asked;
 }
 
 describe("runEnvSetup env policy", () => {
@@ -81,6 +102,25 @@ describe("runEnvSetup env policy", () => {
 
     // Infra defaults applied for selfhost.
     expect(content).toMatch(/^MONGO_DB=mongodb:\/\/mongo:27017\/gaia$/m);
+  });
+
+  it("never asks a self-host install about hosted-only groups", async () => {
+    const hostedOnly = [
+      "WorkOS Authentication",
+      "Cloudinary Media Storage",
+      "Browser Host",
+      "Dodo Payments",
+      "BLOG_BEARER_TOKEN",
+      "SENTRY_DSN",
+      "Posthog Analytics",
+    ];
+
+    const selfhost = await askedNames(makeRepo(), "selfhost");
+    const developer = await askedNames(makeRepo(), "developer");
+
+    expect(selfhost.filter((name) => hostedOnly.includes(name))).toEqual([]);
+    expect(selfhost).toContain("TAVILY_API_KEY");
+    expect(developer).toEqual(expect.arrayContaining(hostedOnly));
   });
 
   it("developer mode keeps ENV=development without AUTH_MODE", async () => {

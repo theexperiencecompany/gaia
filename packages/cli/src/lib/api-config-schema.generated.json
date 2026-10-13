@@ -2,6 +2,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "MONGO_DB",
@@ -21,6 +22,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "REDIS_URL",
@@ -40,6 +42,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "POSTGRES_URL",
@@ -59,6 +62,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "CHROMADB_HOST",
@@ -87,6 +91,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "RABBITMQ_URL",
@@ -106,6 +111,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": false,
     "variables": [
       {
         "name": "WORKOS_API_KEY",
@@ -143,13 +149,14 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": false,
     "variables": [
       {
         "name": "CLOUDINARY_CLOUD_NAME",
         "required": false,
         "category": "Cloudinary Media Storage",
         "description": "Cloudinary media storage service",
-        "affectedFeatures": "File uploads, image storage, and support ticket attachments on hosted deployments (a self-hosted instance stores them on a local volume)",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments when BLOB_STORE is cloudinary (hosted, or a self-host that chose it)",
         "defaultValue": null,
         "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
       },
@@ -158,7 +165,7 @@
         "required": false,
         "category": "Cloudinary Media Storage",
         "description": "Cloudinary media storage service",
-        "affectedFeatures": "File uploads, image storage, and support ticket attachments on hosted deployments (a self-hosted instance stores them on a local volume)",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments when BLOB_STORE is cloudinary (hosted, or a self-host that chose it)",
         "defaultValue": null,
         "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
       },
@@ -167,19 +174,20 @@
         "required": false,
         "category": "Cloudinary Media Storage",
         "description": "Cloudinary media storage service",
-        "affectedFeatures": "File uploads, image storage, and support ticket attachments on hosted deployments (a self-hosted instance stores them on a local volume)",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments when BLOB_STORE is cloudinary (hosted, or a self-host that chose it)",
         "defaultValue": null,
         "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
       }
     ],
     "name": "Cloudinary Media Storage",
     "description": "Cloudinary media storage service",
-    "affectedFeatures": "File uploads, image storage, and support ticket attachments on hosted deployments (a self-hosted instance stores them on a local volume)",
+    "affectedFeatures": "File uploads, image storage, and support ticket attachments when BLOB_STORE is cloudinary (hosted, or a self-host that chose it)",
     "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
   },
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "SHARE_GRANT_SECRET",
@@ -198,6 +206,7 @@
   {
     "requiredInProd": true,
     "allRequired": false,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "DEEPGRAM_API_KEY",
@@ -217,6 +226,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "OPENAI_API_KEY",
@@ -237,6 +247,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "GOOGLE_API_KEY",
@@ -257,6 +268,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "TAVILY_API_KEY",
@@ -276,6 +288,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "FIRECRAWL_API_KEY",
@@ -295,6 +308,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "LLAMA_INDEX_KEY",
@@ -314,6 +328,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "RESEND_API_KEY",
@@ -351,6 +366,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "OPENWEATHER_API_KEY",
@@ -370,6 +386,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "COMPOSIO_KEY",
@@ -398,6 +415,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": true,
     "variables": [
       {
         "name": "E2B_API_KEY",
@@ -417,6 +435,7 @@
   {
     "requiredInProd": false,
     "allRequired": true,
+    "selfhostSetup": false,
     "variables": [
       {
         "name": "BROWSER_HOST_URL",
@@ -453,6 +472,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": false,
     "variables": [
       {
         "name": "DODO_PAYMENTS_API_KEY",
@@ -481,6 +501,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": false,
     "variables": [
       {
         "name": "BLOG_BEARER_TOKEN",
@@ -499,6 +520,7 @@
   {
     "requiredInProd": true,
     "allRequired": true,
+    "selfhostSetup": false,
     "variables": [
       {
         "name": "SENTRY_DSN",
@@ -518,6 +540,7 @@
   {
     "requiredInProd": false,
     "allRequired": true,
+    "selfhostSetup": false,
     "variables": [
       {
         "name": "POSTHOG_PROJECT_TOKEN",

@@ -32,6 +32,7 @@ class _ExpectedGroup(NamedTuple):
     all_required: bool
     docs_url: str | None
     alternative_group: str | None
+    selfhost_setup: bool = True
 
 
 # The full, in-order registration list `_register_predefined_groups()` builds.
@@ -97,6 +98,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://workos.com/docs/reference/api-keys",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Cloudinary Media Storage",
@@ -108,6 +110,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://cloudinary.com/documentation/cloudinary_credentials",
         None,
+        False,
     ),
     _ExpectedGroup(
         "File Sharing",
@@ -228,6 +231,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         None,
         None,
+        False,
     ),
     _ExpectedGroup(
         "Dodo Payments",
@@ -238,6 +242,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://docs.dodopayments.com/",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Blog Management",
@@ -248,6 +253,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         None,
         None,
+        False,
     ),
     _ExpectedGroup(
         "Sentry Monitoring",
@@ -258,6 +264,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://docs.sentry.io/platforms/python/",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Posthog Analytics",
@@ -268,6 +275,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://posthog.com/docs/api",
         None,
+        False,
     ),
 ]
 
@@ -303,6 +311,7 @@ def test_predefined_group_fields_match_exactly(expected: _ExpectedGroup) -> None
     assert group.all_required == expected.all_required
     assert group.docs_url == expected.docs_url
     assert group.alternative_group == expected.alternative_group
+    assert group.selfhost_setup == expected.selfhost_setup
 
 
 def test_a_configured_posthog_is_not_reported_missing() -> None:

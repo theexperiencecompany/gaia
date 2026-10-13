@@ -12,6 +12,7 @@ _CONSTANT_KEYWORDS = {
     "all_required": "allRequired",
     "docs_url": "docsUrl",
     "alternative_group": "alternativeGroup",
+    "selfhost_setup": "selfhostSetup",
 }
 
 
@@ -29,6 +30,7 @@ def extract_settings_validator(file_path):
                 group = {
                     "requiredInProd": True,  # Default
                     "allRequired": True,  # Default
+                    "selfhostSetup": True,  # Default
                     "variables": [],
                 }
 

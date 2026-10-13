@@ -35,6 +35,7 @@ function makeCategory(overrides?: Partial<EnvCategory>): EnvCategory {
     affectedFeatures: "testing",
     requiredInProd: false,
     allRequired: false,
+    selfhostSetup: true,
     variables: [makeVar()],
     ...overrides,
   };

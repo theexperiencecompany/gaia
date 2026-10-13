@@ -16,7 +16,8 @@ class SettingsGroup:
     """One group of related config keys, and what breaks without them.
 
     all_required False means any one key in the group suffices;
-    alternative_group names a mutually exclusive group that can stand in.
+    alternative_group names a mutually exclusive group that can stand in;
+    selfhost_setup False keeps a group a self-hosted instance does not use out of its setup.
     """
 
     name: str
@@ -27,6 +28,7 @@ class SettingsGroup:
     all_required: bool = True
     docs_url: str | None = None
     alternative_group: str | None = None
+    selfhost_setup: bool = True
 
 
 class SettingsValidator:
@@ -101,6 +103,7 @@ class SettingsValidator:
                 affected_features="User authentication, login, and session management",
                 all_required=True,
                 docs_url="https://workos.com/docs/reference/api-keys",
+                selfhost_setup=False,
             )
         )
 
@@ -120,6 +123,7 @@ class SettingsValidator:
                 ),
                 all_required=True,
                 docs_url="https://cloudinary.com/documentation/cloudinary_credentials",
+                selfhost_setup=False,
             )
         )
 
@@ -254,6 +258,7 @@ class SettingsValidator:
                 # Always-on capability: no enable flag exists. A loud CRITICAL for
                 # every box that simply doesn't run the browser is noise.
                 required_in_prod=False,
+                selfhost_setup=False,
             )
         )
 
@@ -266,6 +271,7 @@ class SettingsValidator:
                 affected_features="Payment processing and subscription management",
                 all_required=True,
                 docs_url="https://docs.dodopayments.com/",
+                selfhost_setup=False,
             )
         )
 
@@ -276,6 +282,7 @@ class SettingsValidator:
                 keys=["BLOG_BEARER_TOKEN"],
                 description="Blog content management",
                 affected_features="Blog creation and management",
+                selfhost_setup=False,
             )
         )
 
@@ -287,6 +294,7 @@ class SettingsValidator:
                 description="Sentry error tracking and monitoring",
                 affected_features="Error reporting and application monitoring",
                 docs_url="https://docs.sentry.io/platforms/python/",
+                selfhost_setup=False,
             )
         )
         self.register_group(
@@ -297,6 +305,7 @@ class SettingsValidator:
                 affected_features="User behavior analytics and event tracking",
                 required_in_prod=False,
                 docs_url="https://posthog.com/docs/api",
+                selfhost_setup=False,
             )
         )
 

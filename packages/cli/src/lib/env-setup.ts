@@ -202,10 +202,9 @@ async function collectManualEnv(
   setupMode: envParser.SetupMode,
 ): Promise<void> {
   store.setStatus("Parsing environment variables...");
-  const categories = envParser.applyModeDefaults(
-    envParser.loadVendoredSchema(),
-    setupMode,
-  );
+  const categories = envParser
+    .applyModeDefaults(envParser.loadVendoredSchema(), setupMode)
+    .filter((category) => setupMode !== "selfhost" || category.selfhostSetup);
 
   const { alternativePairs, alternativeGroupNames } =
     pairAlternativeGroups(categories);
