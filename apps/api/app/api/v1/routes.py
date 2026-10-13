@@ -77,12 +77,11 @@ router.include_router(calendar.router, tags=["Calendar"])
 router.include_router(notes.router, tags=["Notes/Memories"])
 router.include_router(memory.router, tags=["Memory"], prefix="/memory")
 router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
-# Self-host-only surfaces: under AUTH_MODE=workos these routers are not mounted
-# at all, so hosted deployments expose no password registration or setup probe.
-# The in-module 404 guards in setup.py are a second layer on this mount gate.
-if settings.AUTH_MODE == "local":
+# Hosted production mounts neither: it exposes no password registration and
+# no runtime credential store.
+if settings.deployment.local_auth:
     router.include_router(auth_local.router, prefix="/auth", tags=["Auth"])
-if settings.AUTH_MODE == "local" or settings.ENV == "selfhost":
+if settings.deployment.runtime_credentials:
     router.include_router(setup.router, prefix="/setup", tags=["Setup"])
 router.include_router(integrations_router, prefix="/integrations", tags=["Integrations"])
 router.include_router(mcp.router, prefix="/mcp", tags=["MCP"])

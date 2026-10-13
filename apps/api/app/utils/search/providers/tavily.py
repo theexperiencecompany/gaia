@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, cast
 from pydantic import BaseModel, ConfigDict, Field
 from tavily import TavilyClient
 
-from app.config.settings import settings
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolved_config,
@@ -73,8 +72,6 @@ class TavilyProvider(SearchProvider):
         Settings, so an env-only check reports the engine unconfigured and the
         whole search chain silently skips it.
         """
-        if settings.TAVILY_API_KEY:
-            return True
         # resolved_config, not the LLM client's alias of it: app.utils must
         # never import app.agents (model-stack layer contract) — and both read
         # the same snapshot dict.

@@ -1021,6 +1021,34 @@ class TestGetCachedPlanType:
         assert event["payment"]["plan_source"] == "subscription"
         assert event["payment"]["plan_type"] == "pro"
 
+    async def test_every_user_is_pro_where_plans_are_not_enforced(
+        self, payment_service, mock_redis_cache, mock_subscription_repository, monkeypatch
+    ):
+        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        mock_redis_cache.get = AsyncMock(side_effect=AssertionError("no cache read"))
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            side_effect=AssertionError("no subscription read")
+        )
+
+        async with captured_wide_event() as event:
+            plan = await payment_service.get_cached_plan_type(FAKE_USER_ID)
+
+        assert plan is PlanType.PRO
+        assert event["payment"]["plan_source"] == "unenforced"
+
+    async def test_the_status_the_web_reads_is_pro_where_plans_are_not_enforced(
+        self, payment_service, mock_subscription_repository, monkeypatch
+    ):
+        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            side_effect=AssertionError("no subscription read")
+        )
+
+        status = await payment_service.get_user_subscription_status(FAKE_USER_ID)
+
+        assert status.plan_type is PlanType.PRO
+        assert status.can_upgrade is False
+
 
 @pytest.mark.unit
 @pytest.mark.usefixtures("mock_redis_cache")

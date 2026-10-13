@@ -106,7 +106,9 @@ def clean_state(monkeypatch):
         "INSTANCE_SECRET",
     ):
         monkeypatch.setattr(settings, field, None)
-    monkeypatch.setattr(settings, "ENV", "production")
+    # The store is live only where runtime credentials are; production is
+    # pinned env-only in test_prod_isolation.
+    monkeypatch.setattr(settings, "ENV", "selfhost")
     yield
     service_module._cache.clear()
 

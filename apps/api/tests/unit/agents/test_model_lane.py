@@ -234,7 +234,7 @@ class TestTheMonthlySpendRead:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Stand the guard down on self-host, even at the cap."""
-        monkeypatch.setattr(type(lane_module.settings), "is_selfhost", property(lambda self: True))
+        monkeypatch.setattr(lane_module.settings, "ENV", "selfhost")
         with _spend(PRO_MONTHLY_COST_BUDGET_USD):
             assert await _pro_monthly_budget_exhausted(USER) is False
 

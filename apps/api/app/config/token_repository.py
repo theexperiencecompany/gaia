@@ -39,9 +39,8 @@ async def resolve_google_oauth_credentials() -> tuple[str, str] | None:
     Google must never reach an OAuth endpoint.
     """
     config: ProviderConfig | None = await resolve_provider_config("google_oauth")
-    stored_secret = config["api_key"] if config else None
     client_id = settings.GOOGLE_CLIENT_ID
-    client_secret = stored_secret or settings.GOOGLE_CLIENT_SECRET
+    client_secret = config["api_key"] if config else None
     if not (client_id and client_secret):
         return None
     return client_id, client_secret

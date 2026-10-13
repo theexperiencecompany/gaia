@@ -8,6 +8,7 @@ contributor development - use local .env files instead.
 Local environment variables take precedence over Infisical secrets.
 
 Resolution:
+- ENV=selfhost -> skip always (self-host resolves configuration locally)
 - All machine-identity vars set -> fetch remote secrets
 - None set in dev -> skip (local .env only); in prod -> raise
 - Partially set -> warn in dev, raise in prod
@@ -22,6 +23,9 @@ from shared.py.wide_events import log
 class InfisicalConfigError(Exception):
     """Raised when Infisical configuration is missing or invalid."""
 
+
+# The ENV value of a self-hosted instance, which never contacts Infisical.
+SELFHOST_ENV = "selfhost"
 
 _INFISICAL_VARS = (
     "INFISICAL_PROJECT_ID",
@@ -42,6 +46,10 @@ def inject_infisical_secrets() -> None:
     production).
     """
     env = os.getenv("ENV", "production")
+    if env == SELFHOST_ENV:
+        # Even with identity vars present (a dotenv fallback can leak them in).
+        log.info("Infisical skipped: self-host mode uses local configuration")
+        return
     is_production = env == "production"
 
     present = [name for name in _INFISICAL_VARS if os.getenv(name)]

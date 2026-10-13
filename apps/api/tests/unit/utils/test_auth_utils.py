@@ -41,7 +41,7 @@ def _as_user(db_doc: dict) -> UserDocument:
 _PATCH_SETTINGS = "app.utils.auth_utils.settings"
 _PATCH_USER_REPO = "app.utils.auth_utils.user_repository"
 _PATCH_LOG = "app.utils.auth_utils.log"
-_PATCH_WORKOS_CLIENT = "app.utils.auth_utils.AsyncWorkOSClient"
+_PATCH_WORKOS_CLIENT = "app.utils.auth_utils.get_async_workos_client"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -477,8 +477,7 @@ class TestAuthenticateWorkosSession:
         mock_cls.assert_not_called()
         client.user_management.load_sealed_session.assert_awaited_once()
 
-    async def test_creates_workos_client_when_none_provided(self) -> None:
-        """When no workos_client is provided, create one with settings credentials."""
+    async def test_uses_the_shared_workos_client_when_none_provided(self) -> None:
         workos_user = _make_workos_user()
         auth_response = _make_auth_response(authenticated=True, user=workos_user)
         session = _make_session(auth_response)
@@ -488,22 +487,14 @@ class TestAuthenticateWorkosSession:
         with (
             patch(_PATCH_USER_REPO) as mock_col,
             patch(_PATCH_LOG),
-            patch(_PATCH_WORKOS_CLIENT, return_value=mock_client) as mock_cls,
-            patch(_PATCH_SETTINGS) as mock_settings,
+            patch(_PATCH_WORKOS_CLIENT, return_value=mock_client) as get_client,
         ):
-            mock_settings.WORKOS_API_KEY = "sk_test_key"  # pragma: allowlist secret
-            mock_settings.WORKOS_CLIENT_ID = "client_id_123"  # pragma: allowlist secret
-            mock_settings.WORKOS_COOKIE_PASSWORD = (
-                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
-            )
             mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             await authenticate_workos_session(session_token="tok", workos_client=None)
 
-        mock_cls.assert_called_once_with(
-            api_key="sk_test_key",  # pragma: allowlist secret
-            client_id="client_id_123",
-        )
+        get_client.assert_called_once_with()
+        mock_client.user_management.load_sealed_session.assert_awaited_once()
 
     # -- Verify correct MongoDB query --------------------------------------
 

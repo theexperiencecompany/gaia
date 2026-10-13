@@ -1,9 +1,10 @@
-"""Runtime-configurable provider credentials for self-host instances.
+"""Provider credentials: the one read path for every provider key.
 
-Credentials live in Mongo as Fernet-encrypted JSON keyed by the instance
-secret and never as plaintext. Resolve is the single read path with a
-60 second cache: stored credential wins, then environment, then None.
-Writes invalidate locally and publish so other pods rebuild too.
+Where the deployment allows runtime credentials, they live in Mongo as
+Fernet-encrypted JSON keyed by the instance secret, never as plaintext; resolve
+reads them with a 60 second cache: stored credential wins, then environment,
+then None. Everywhere else the environment is the only source and the store is
+never read. Writes invalidate locally and publish so other pods rebuild too.
 """
 
 import importlib
@@ -60,16 +61,27 @@ resolved_configs: dict[str, ProviderConfig | None] = {}
 
 
 def resolved_config(provider: str) -> ProviderConfig | None:
-    """Return the last-known resolve result for a provider, readable synchronously.
+    """Return the provider's config synchronously: the last resolve, else the environment.
 
-    None means not resolved yet, not unconfigured; async callers should await
-    resolve instead.
+    Before any resolve has run a stored credential is not visible yet; async
+    callers should await resolve when that matters.
     """
-    return resolved_configs.get(provider)
+    if settings.deployment.runtime_credentials and provider in resolved_configs:
+        return resolved_configs[provider]
+    return _env_fallback(provider)
 
 
 async def resolve(provider: str) -> ProviderConfig | None:
-    """Return the provider's active config: stored credential → env fallback → None."""
+    """Return the provider's active config: stored credential, then env, then None.
+
+    Without runtime credentials this is the environment alone and the store is
+    never touched.
+    """
+    if not settings.deployment.runtime_credentials:
+        env_config = _env_fallback(provider)
+        resolved_configs[provider] = env_config
+        return env_config
+
     hit, cached = _cache_get(provider)
     if hit:
         return cached
@@ -102,7 +114,7 @@ async def upsert(
     preset: str | None = None,
 ) -> None:
     """Store (or replace) a provider's encrypted credential and fan out invalidation."""
-    _ensure_known(provider)
+    _ensure_writable(provider)
     payload = json.dumps(
         ProviderConfig(api_key=api_key, base_url=base_url, model=model, preset=preset)
     )
@@ -122,7 +134,7 @@ async def upsert(
 
 async def delete(provider: str) -> None:
     """Remove a stored credential (idempotent) and fan out invalidation."""
-    _ensure_known(provider)
+    _ensure_writable(provider)
     await provider_credentials_repository.delete(provider)
     log.info(f"{LogTag.API} Provider credential removed", provider=provider)
     await invalidate(provider)
@@ -184,8 +196,13 @@ async def invalidate(provider: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _ensure_known(provider: str) -> None:
-    """Raise on anything outside the credential-store provider set."""
+def _ensure_writable(provider: str) -> None:
+    """Raise unless this deployment stores credentials and provider is one of the store's."""
+    if not settings.deployment.runtime_credentials:
+        raise RuntimeError(
+            "This deployment reads provider credentials from the environment only; "
+            "the credential store is not writable here"
+        )
     if provider not in CREDENTIAL_PROVIDERS:
         raise ValueError(
             f"Unknown provider '{provider}' — expected one of {', '.join(CREDENTIAL_PROVIDERS)}"

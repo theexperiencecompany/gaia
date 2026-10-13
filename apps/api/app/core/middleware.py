@@ -14,7 +14,6 @@ from limits import RateLimitItem
 from limits.errors import StorageError
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from workos import AsyncWorkOSClient
 
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware, WorkOSAuthMiddleware
 from app.api.v1.middleware.entitlement import EntitlementMiddleware
@@ -25,6 +24,7 @@ from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
 from app.api.v1.middleware.unhandled_exception import UnhandledExceptionMiddleware
 from app.api.v1.middleware.websocket_wide_event import WebSocketWideEventMiddleware
 from app.config.settings import settings
+from app.config.workos import get_async_workos_client
 from app.constants.http import RETRY_AFTER_HEADER
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.schemas.errors import ErrorEnvelope, error_response
@@ -135,11 +135,7 @@ def configure_middleware(app: FastAPI) -> None:
     # WorkOS authentication — inside the logging boundary, so its rejections
     # are logged and its log.set()/log.error() calls reach the wide event.
     # Local-auth instances have no WorkOS credentials, so no client is built.
-    workos_client = (
-        AsyncWorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
-        if settings.AUTH_MODE == "workos"
-        else None
-    )
+    workos_client = None if settings.deployment.local_auth else get_async_workos_client()
     app.add_middleware(WorkOSAuthMiddleware, workos_client=workos_client)
 
     # Wide-event boundary — outermost (see block comment above).

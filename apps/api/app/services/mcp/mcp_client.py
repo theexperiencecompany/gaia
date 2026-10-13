@@ -25,7 +25,6 @@ from mcp_use.client.session import MCPSession
 from pydantic import AnyHttpUrl, AnyUrl, BaseModel, ConfigDict, JsonValue
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.settings import settings
 from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.execute import TICKET_NAMES
@@ -497,9 +496,7 @@ class MCPClient:
             # Resolved store-first so a key configured in Settings applies
             # without a restart; env remains the fallback.
             composio_config: ProviderConfig | None = await resolve_composio_config("composio")
-            composio_api_key = (
-                composio_config["api_key"] if composio_config else settings.COMPOSIO_KEY
-            )
+            composio_api_key = composio_config["api_key"] if composio_config else None
             if composio_api_key:
                 server_config.setdefault("headers", {})["x-api-key"] = composio_api_key
 

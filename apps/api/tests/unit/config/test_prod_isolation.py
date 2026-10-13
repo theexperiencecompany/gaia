@@ -174,6 +174,23 @@ def test_local_mode_releases_workos_credentials():
     assert settings_obj.AUTH_MODE == "local"
 
 
+def test_development_boots_with_local_auth(monkeypatch):
+    """Let contributors run development without WorkOS: local auth is allowed there."""
+    from app.config.settings import DevelopmentSettings, get_settings
+
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("AUTH_MODE", "local")
+    for var in _DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+    settings_obj = get_settings()
+
+    assert isinstance(settings_obj, DevelopmentSettings)
+    assert settings_obj.deployment.local_auth is True
+    assert settings_obj.deployment.runtime_credentials is True
+    assert settings_obj.deployment.bills is False
+
+
 # ---------------------------------------------------------------------------
 # Case 4 — development dummy-ok semantics are unchanged
 # ---------------------------------------------------------------------------
@@ -354,20 +371,23 @@ def _real_infisical_inject() -> tuple[Any, Any]:
 
 def test_selfhost_never_calls_infisical(monkeypatch):
     """Skip the vault entirely under ENV selfhost, even with identity vars present."""
+    import sys
     from unittest.mock import MagicMock
 
     from app.config import settings as settings_module
 
-    spy = MagicMock(return_value=None)
+    real_inject, _ = _real_infisical_inject()
+    sdk_client = MagicMock()
+    monkeypatch.setitem(sys.modules, "infisical_sdk", MagicMock(InfisicalSDKClient=sdk_client))
+    monkeypatch.setattr(settings_module, "inject_infisical_secrets", real_inject)
     monkeypatch.setattr(settings_module, "_infisical_secrets_loaded", False)
-    monkeypatch.setattr(settings_module, "inject_infisical_secrets", spy)
     for var in _INFISICAL_IDENTITY_VARS:
         monkeypatch.setenv(var, "fake-identity-value")
     monkeypatch.setenv("ENV", "selfhost")
 
     settings_module._ensure_infisical_loaded()
 
-    spy.assert_not_called()
+    sdk_client.assert_not_called()
     assert settings_module._infisical_secrets_loaded is True
 
 
@@ -501,3 +521,67 @@ def test_production_local_auth_still_blocked_before_workos_guard(monkeypatch):
 
     with pytest.raises(RuntimeError, match="self-host"):
         get_settings()
+
+
+# ---------------------------------------------------------------------------
+# Case 10 — production reads provider credentials from env only
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def production_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run the shared settings object as hosted production with WorkOS auth."""
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+    monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", False)
+
+
+async def test_production_resolve_never_reads_the_credential_store(
+    monkeypatch: pytest.MonkeyPatch, production_profile: None
+) -> None:
+    """A stored row must never override env in production; the store is not even queried."""
+    from unittest.mock import AsyncMock
+
+    from app.config.settings import settings
+    from app.services.providers import provider_credentials_service as service
+
+    store_read = AsyncMock(side_effect=AssertionError("production read the credential store"))
+    monkeypatch.setattr(service.provider_credentials_repository, "find_by_provider", store_read)
+    monkeypatch.setattr(settings, "RESEND_API_KEY", "env-resend-key")
+    service._cache.clear()
+
+    config = await service.resolve("resend")
+
+    assert config is not None
+    assert config["api_key"] == "env-resend-key"
+    store_read.assert_not_awaited()
+
+
+def test_production_snapshot_ignores_a_stored_credential(
+    monkeypatch: pytest.MonkeyPatch, production_profile: None
+) -> None:
+    """The sync read serves env even when a stored credential sits in the snapshot."""
+    from app.config.settings import settings
+    from app.services.providers import provider_credentials_service as service
+
+    monkeypatch.setattr(settings, "COMPOSIO_KEY", "env-composio-key")
+    monkeypatch.setitem(
+        service.resolved_configs,
+        "composio",
+        service.ProviderConfig(api_key="stored-key", base_url=None, model=None, preset=None),
+    )
+
+    config = service.resolved_config("composio")
+
+    assert config is not None
+    assert config["api_key"] == "env-composio-key"
+
+
+async def test_production_refuses_to_store_a_credential(production_profile: None) -> None:
+    """Production has no runtime credential store to write to."""
+    from app.services.providers import provider_credentials_service as service
+
+    with pytest.raises(RuntimeError, match="environment only"):
+        await service.upsert("resend", api_key="k")

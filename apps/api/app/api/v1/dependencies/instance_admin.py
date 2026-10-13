@@ -1,11 +1,9 @@
-"""Instance-admin authorization for the self-host-only setup surface.
+"""Instance-admin authorization for the setup surface.
 
-The self-host deployment has one principal that matters: the administrator who
-owns the single row in auth_credentials, since signup closes after the first
-account via an atomic single-slot claim. Owning a local credential is therefore
-equivalent to being the instance admin. Routes are additionally unmounted
-outside selfhost; the ENV check here is a fail-closed second layer so a wiring
-mistake surfaces as 403 instead of silently exposing credential management.
+Administering the instance means holding a local credential: the first account
+to sign up gets one, and signup closes after it today. Routes are unmounted
+without runtime credentials; the local-auth check here is a fail-closed second
+layer so a wiring mistake surfaces as 403 instead of exposing credential management.
 """
 
 from typing import Annotated
@@ -25,12 +23,11 @@ async def require_instance_admin(
 ) -> AuthenticatedUser:
     """403 unless the caller authenticates as this instance's administrator.
 
-    Both gates fail closed: the instance must run the canonical self-host auth
-    stack (selfhost ENV with local AUTH_MODE), and the caller must own the
-    single local credential row. Returns the user so handlers keep their user
-    parameter.
+    Both gates fail closed: the instance must run local auth, and the caller
+    must hold a local credential (the first account to sign up administers the
+    instance). Returns the user so handlers keep their user parameter.
     """
-    if not settings.is_selfhost or settings.AUTH_MODE != "local":
+    if not settings.deployment.local_auth:
         raise HTTPException(status_code=403, detail=_NOT_INSTANCE_ADMIN)
     credential = await local_credentials_repository.get_by_user_id(user.user_id)
     if credential is None:

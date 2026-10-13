@@ -28,6 +28,7 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 from e2b import AsyncSandbox
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.config.deployment import DeploymentKind
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
@@ -93,7 +94,7 @@ async def use_local_sandbox() -> bool:
     (paused-VM) experience. Checked per acquire so adding a key — to .env or
     Settings — switches the backend on the next call with no restart.
     """
-    if settings.ENV != "selfhost":
+    if settings.deployment.kind is not DeploymentKind.SELFHOST:
         return False
     return await _resolved_e2b_api_key() is None
 

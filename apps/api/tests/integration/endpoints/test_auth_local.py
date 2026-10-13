@@ -1143,7 +1143,7 @@ class TestLocalMiddlewareDispatch:
 
     async def test_local_mode_does_not_construct_workos_client(self, monkeypatch):
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
-        with patch("app.api.v1.middleware.auth.AsyncWorkOSClient") as mock_client:
+        with patch("app.api.v1.middleware.auth.get_async_workos_client") as mock_client:
             from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 
             middleware = WorkOSAuthMiddleware(app=MagicMock())

@@ -12,6 +12,7 @@ Provider-level unit tests live in tests/unit/utils/search/.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.config.settings import settings
 from app.utils.search import ResearchSearchResult, perform_search, search_for_research
 from app.utils.search.models import SearchResponse, SearchResultItem
 
@@ -197,15 +198,13 @@ class TestTavilyProvider:
     def test_is_configured_true_when_key_present(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
 
-        with patch("app.utils.search.providers.tavily.settings") as mock_settings:
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
+        with patch.object(settings, "TAVILY_API_KEY", "tvly-key"):  # pragma: allowlist secret
             assert TavilyProvider().is_configured() is True
 
     def test_is_configured_false_when_key_empty(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
 
-        with patch("app.utils.search.providers.tavily.settings") as mock_settings:
-            mock_settings.TAVILY_API_KEY = ""
+        with patch.object(settings, "TAVILY_API_KEY", ""):
             assert TavilyProvider().is_configured() is False
 
     def test_is_configured_true_via_runtime_credential_snapshot(self) -> None:
@@ -214,10 +213,9 @@ class TestTavilyProvider:
 
         provider = TavilyProvider()
         with (
-            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch.object(settings, "TAVILY_API_KEY", ""),
             patch("app.utils.search.providers.tavily.resolved_config") as mock_runtime,
         ):
-            mock_settings.TAVILY_API_KEY = ""
             mock_runtime.return_value = {"api_key": "stored-key"}  # pragma: allowlist secret
             assert provider.is_configured() is True
 
@@ -243,10 +241,9 @@ class TestTavilyProvider:
             patch(
                 "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
             ) as mock_thread,
-            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch.object(settings, "TAVILY_API_KEY", ""),
             patch("app.utils.search.providers.tavily.TavilyClient") as mock_client_cls,
         ):
-            mock_settings.TAVILY_API_KEY = ""
             # The active key now resolves through the credential service
             # (store entry → env fallback); pin that seam, not Mongo.
             with patch.object(
@@ -283,7 +280,7 @@ class TestTavilyProvider:
             patch(
                 "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
             ) as mock_thread,
-            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch.object(settings, "TAVILY_API_KEY", "tvly-key"),  # pragma: allowlist secret
             # _active_api_key reaches the resolver through importlib on the
             # service module, so THAT is the seam — patching a name in this
             # module would not intercept it and the real resolver runs.
@@ -293,7 +290,6 @@ class TestTavilyProvider:
                 return_value={"api_key": "tvly-key"},  # pragma: allowlist secret
             ),
         ):
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
             mock_thread.return_value = payload
             result = await TavilyProvider().search("q", 3)
 
@@ -318,9 +314,8 @@ class TestTavilyProvider:
             patch(
                 "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
             ) as mock_thread,
-            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch.object(settings, "TAVILY_API_KEY", "tvly-key"),  # pragma: allowlist secret
         ):
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
             with patch.object(
                 TavilyProvider, "_active_api_key", new_callable=AsyncMock
             ) as mock_key:

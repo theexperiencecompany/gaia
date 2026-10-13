@@ -6,7 +6,16 @@ key), and default models. Brand icons resolve client-side from the favicon
 service via favicon_domain.
 """
 
+from enum import StrEnum
 from typing import TypedDict
+
+
+class CredentialSource(StrEnum):
+    """Where a provider's active credential comes from: a saved one wins over env."""
+
+    STORED = "stored"
+    ENV = "env"
+    UNSET = "unset"
 
 
 class ProviderPreset(TypedDict):

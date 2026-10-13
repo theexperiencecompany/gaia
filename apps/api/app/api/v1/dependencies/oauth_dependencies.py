@@ -172,7 +172,7 @@ async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
         )
         raise _ws_unauthenticated("dev bypass target has no Mongo user")
 
-    if settings.AUTH_MODE == "local":
+    if settings.deployment.local_auth:
         return await _local_ws_user(websocket)
 
     wos_session = _ws_token(websocket, WOS_SESSION_COOKIE)

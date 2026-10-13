@@ -51,7 +51,7 @@ class TestValidateStartupRequirements:
 
     async def test_raises_when_payment_is_not_set_up(self) -> None:
         with (
-            patch(f"{MODULE}.settings", MagicMock(billing_enabled=True)),
+            patch(f"{MODULE}.settings", MagicMock(deployment=MagicMock(bills=True))),
             patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=False)),
             pytest.raises(RuntimeError, match="Startup requirements not met"),
         ):
@@ -59,7 +59,7 @@ class TestValidateStartupRequirements:
 
     async def test_boots_without_plans_when_billing_is_disabled(self) -> None:
         with (
-            patch(f"{MODULE}.settings", MagicMock(billing_enabled=False)),
+            patch(f"{MODULE}.settings", MagicMock(deployment=MagicMock(bills=False))),
             patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=False)),
             patch(f"{MODULE}.backfill_plan_tiers", AsyncMock(return_value=0)) as backfill,
         ):
@@ -71,7 +71,7 @@ class TestValidateStartupRequirements:
         # ./scripts/setup.sh, which does not exist in the repo, so an operator who
         # followed it got "no such file" instead of a seeded database.
         with (
-            patch(f"{MODULE}.settings", MagicMock(billing_enabled=True)),
+            patch(f"{MODULE}.settings", MagicMock(deployment=MagicMock(bills=True))),
             patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=False)),
             pytest.raises(RuntimeError) as excinfo,
         ):

@@ -454,11 +454,11 @@ class TestUpdateHoloCardColors:
 class TestLogout:
     """POST /api/v1/user/logout."""
 
-    @patch("app.api.v1.endpoints.user._workos_client", create=True)
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_success(self, mock_workos: MagicMock, client: AsyncClient):
         session = MagicMock()
         session.get_logout_url.return_value = "https://auth.example.com/logout"
-        mock_workos.user_management.load_sealed_session.return_value = session
+        mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
         with patch("app.api.v1.endpoints.user.capture") as mock_capture:
             response = await client.post(f"{USER_BASE}/logout")
@@ -466,7 +466,7 @@ class TestLogout:
         assert response.json()["logout_url"] == "https://auth.example.com/logout"
         mock_capture.assert_called_once_with(UserId("507f1f77bcf86cd799439011"), UserLoggedOut())
 
-    @patch("app.api.v1.endpoints.user._workos_client", create=True)
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_track_failure_is_logged_not_fatal(
         self,
         mock_workos: MagicMock,
@@ -479,7 +479,7 @@ class TestLogout:
         posthog_provider(available=True, client=posthog_client)
         session = MagicMock()
         session.get_logout_url.return_value = "https://auth.example.com/logout"
-        mock_workos.user_management.load_sealed_session.return_value = session
+        mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
         with patch("app.services.analytics_service.log") as mock_log:
             response = await client.post(f"{USER_BASE}/logout")
@@ -494,17 +494,17 @@ class TestLogout:
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 401
 
-    @patch("app.api.v1.endpoints.user._workos_client", create=True)
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_invalid_session(self, mock_workos: MagicMock, client: AsyncClient):
         # The HTTPException(401) is inside a bare except that re-raises as 500
-        mock_workos.user_management.load_sealed_session.return_value = None
+        mock_workos.return_value.user_management.load_sealed_session.return_value = None
         client.cookies.set("wos_session", "bad_token")
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 500
 
-    @patch("app.api.v1.endpoints.user._workos_client", create=True)
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_exception(self, mock_workos: MagicMock, client: AsyncClient):
-        mock_workos.user_management.load_sealed_session.side_effect = Exception("boom")
+        mock_workos.return_value.user_management.load_sealed_session.side_effect = Exception("boom")
         client.cookies.set("wos_session", "sealed_token")
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 500

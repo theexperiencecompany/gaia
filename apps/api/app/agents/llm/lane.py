@@ -381,7 +381,7 @@ async def _pro_monthly_budget_exhausted(user_id: str) -> bool:
     Fails open (False) on infra errors — never punish a paying user for a
     Redis hiccup.
     """
-    if settings.is_selfhost:
+    if not settings.deployment.enforces_plans:
         # No paid lane on a self-hosted instance ⇒ no economic guard; the
         # configured model always serves. Dev keeps the guard.
         return False
