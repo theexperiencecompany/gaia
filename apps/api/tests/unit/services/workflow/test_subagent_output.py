@@ -54,7 +54,7 @@ def test_a_clarifying_payload_without_a_question_asks_with_the_whole_reply() -> 
 
     result = parse_subagent_response(reply)
 
-    assert (result.mode, result.message) == ("clarifying", reply)
+    assert (result.mode, result.message, result.raw_response) == ("clarifying", reply, reply)
 
 
 def test_a_payload_of_another_type_is_not_ours() -> None:
