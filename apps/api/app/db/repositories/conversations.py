@@ -45,6 +45,7 @@ from app.models.conversation_models import (
     ConversationSummary,
     ConversationUpdate,
     _ConversationIdRow,
+    _ConversationOwnerRow,
     _MessageProjectionRow,
     _SourceRow,
     _SystemGeneratedRow,
@@ -717,6 +718,20 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         Intentionally unscoped (a maintenance sweep).
         """
         return await self._distinct("conversation_id")
+
+    async def owners_of(self, conversation_ids: Sequence[str]) -> dict[str, str]:
+        """Map each existing conversation id to its owner's user id.
+
+        Intentionally unscoped (a maintenance migration that has ids but no user).
+        """
+        rows = await self._aggregate(
+            [
+                {"$match": {"conversation_id": {"$in": list(conversation_ids)}}},
+                {"$project": {"_id": 0, "conversation_id": 1, "user_id": 1}},
+            ],
+            _ConversationOwnerRow,
+        )
+        return {row.conversation_id: row.user_id for row in rows}
 
     async def active_user_ids_since(self, cutoff: datetime) -> list[str]:
         """User ids with a conversation updated since cutoff — the workspace sync sweep's active-user set.

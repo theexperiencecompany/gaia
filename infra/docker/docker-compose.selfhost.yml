@@ -171,6 +171,9 @@ services:
       # object store on every restart.
       - juicefs_cache:/var/cache/juicefs
       - models_cache:/models
+      # Every user's workspace (users/<uid>, skills/<uid>, _system). A local
+      # code sandbox mounts only its own user's subpaths of this volume.
+      - workspace:/mnt/jfs
     restart: on-failure
     tty: true
     stdin_open: true
@@ -217,6 +220,7 @@ services:
     volumes:
       - juicefs_cache:/var/cache/juicefs
       - models_cache:/models
+      - workspace:/mnt/jfs
     depends_on:
       redis:
         condition: service_healthy
@@ -300,6 +304,9 @@ volumes:
   rabbitmq_data:
   juicefs_cache:
   models_cache:
+  # Pinned: the API names it to the Docker daemon when it creates a sandbox.
+  workspace:
+    name: gaia-selfhost_workspace
   caddy_data:
   caddy_config:
 

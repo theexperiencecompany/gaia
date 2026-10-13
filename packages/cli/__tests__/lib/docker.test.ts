@@ -6,6 +6,8 @@ vi.mock("execa", () => ({
 }));
 
 import {
+  assertEngineSupportsCodeSandbox,
+  dockerVolumeExists,
   getContainerStatuses,
   getProjectPublishedPorts,
   isDockerRunning,
@@ -91,5 +93,44 @@ describe("isDockerRunning", () => {
     const result = await isDockerRunning();
 
     expect(result).toBe(false);
+  });
+});
+
+describe("assertEngineSupportsCodeSandbox", () => {
+  const engine = (stdout: string) =>
+    mockedExeca.mockResolvedValueOnce({ stdout } as Awaited<ResultPromise>);
+
+  it.each(["26.0.0", "29.1.3"])("accepts Docker Engine %s", async (v) => {
+    engine(v);
+    await expect(assertEngineSupportsCodeSandbox()).resolves.toBeUndefined();
+  });
+
+  it.each(["25.0.5", "20.10.24", ""])(
+    "refuses Docker Engine '%s'",
+    async (v) => {
+      engine(v);
+      await expect(assertEngineSupportsCodeSandbox()).rejects.toThrow(
+        "Docker Engine 26 or newer",
+      );
+    },
+  );
+});
+
+describe("dockerVolumeExists", () => {
+  it("matches the exact volume name only", async () => {
+    mockedExeca.mockResolvedValueOnce({
+      stdout: "gaia-sandbox-workspace",
+    } as Awaited<ResultPromise>);
+    expect(await dockerVolumeExists("gaia-sandbox-workspace")).toBe(true);
+    expect(mockedExeca).toHaveBeenCalledWith("docker", [
+      "volume",
+      "ls",
+      "--quiet",
+      "--filter",
+      "name=^gaia-sandbox-workspace$",
+    ]);
+
+    mockedExeca.mockResolvedValueOnce({ stdout: "" } as Awaited<ResultPromise>);
+    expect(await dockerVolumeExists("gaia-sandbox-workspace")).toBe(false);
   });
 });

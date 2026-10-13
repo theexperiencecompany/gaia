@@ -136,3 +136,43 @@ export async function getDiskFreeKb(path: string): Promise<string> {
   const { stdout } = await execa("df", ["-k", path]);
   return stdout;
 }
+
+/**
+ * First Docker Engine major with `volume-subpath` mounts (API 1.45), which the
+ * code sandbox uses to give each user's container only that user's files.
+ */
+export const MIN_CODE_SANDBOX_ENGINE_MAJOR = 26;
+
+/** The daemon's Docker Engine version, e.g. "29.1.3". */
+export async function getDockerServerVersion(): Promise<string> {
+  const { stdout } = await execa("docker", [
+    "version",
+    "--format",
+    "{{.Server.Version}}",
+  ]);
+  return stdout.trim();
+}
+
+/** Throw unless the daemon can isolate code-sandbox users (see MIN_CODE_SANDBOX_ENGINE_MAJOR). */
+export async function assertEngineSupportsCodeSandbox(): Promise<void> {
+  const version = await getDockerServerVersion();
+  const major = Number.parseInt(version, 10);
+  if (Number.isNaN(major) || major < MIN_CODE_SANDBOX_ENGINE_MAJOR) {
+    throw new Error(
+      `The code sandbox needs Docker Engine ${MIN_CODE_SANDBOX_ENGINE_MAJOR} or newer (this daemon is ${version || "unknown"}): ` +
+        "it mounts only each user's own files into their sandbox. Upgrade Docker, or run `gaia up --no-code-sandbox` and save an E2B key instead.",
+    );
+  }
+}
+
+/** Whether a named Docker volume exists; throws when the daemon is unreachable. */
+export async function dockerVolumeExists(name: string): Promise<boolean> {
+  const { stdout } = await execa("docker", [
+    "volume",
+    "ls",
+    "--quiet",
+    "--filter",
+    `name=^${name}$`,
+  ]);
+  return stdout.trim().split("\n").includes(name);
+}

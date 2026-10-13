@@ -8,6 +8,7 @@ on exit.
 
 from __future__ import annotations
 
+import os
 import shutil
 from typing import Any
 from unittest.mock import AsyncMock
@@ -16,7 +17,7 @@ import uuid
 import pytest
 
 from app.config.settings import settings
-from app.services.sandbox import lifecycle
+from app.services.sandbox import lifecycle, local_sandbox
 from app.services.sandbox.local_sandbox import LocalDockerSandbox
 
 pytestmark = pytest.mark.skipif(
@@ -26,6 +27,49 @@ pytestmark = pytest.mark.skipif(
 
 def _uid() -> str:
     return f"lsbx-{uuid.uuid4().hex[:12]}"
+
+
+async def _docker(*args: str) -> None:
+    proc = await local_sandbox._spawn_process(["docker", *args])
+    _, stderr = await proc.communicate()
+    assert proc.returncode == 0, stderr.decode()
+
+
+@pytest.fixture(autouse=True)
+async def throwaway_workspace_volume(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Give each test a throwaway workspace volume, its subpaths made inside the daemon.
+
+    This process runs on the host, not in the API container, so it cannot see
+    the volume to create the subpaths itself the way _prepare_workspace does.
+    """
+    volume = f"gaia-test-workspace-{uuid.uuid4().hex[:12]}"
+    monkeypatch.setattr(local_sandbox, "SELFHOST_WORKSPACE_VOLUME", volume)
+
+    async def prepare_in_daemon(self: LocalDockerSandbox) -> None:
+        root = settings.JUICEFS_HOST_MOUNT_PATH
+        user_root = local_sandbox.user_workspace_path(self.user_id).relative_to(root)
+        dirs = [
+            f"/v/{m.source.relative_to(root).as_posix()}"
+            for m in local_sandbox._workspace_mounts(self.user_id)
+        ]
+        dirs += [f"/v/{user_root.as_posix()}/skills", f"/v/{user_root.as_posix()}/.system"]
+        await _docker(
+            "run",
+            "--rm",
+            "-v",
+            f"{volume}:/v",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "--entrypoint",
+            "mkdir",
+            self.image,
+            "-p",
+            *dirs,
+        )
+
+    monkeypatch.setattr(LocalDockerSandbox, "_prepare_workspace", prepare_in_daemon)
+    yield
+    await _docker("volume", "rm", "-f", volume)
 
 
 @pytest.fixture

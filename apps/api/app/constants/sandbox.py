@@ -64,15 +64,29 @@ LOCAL_SANDBOX_IMAGE = "python:3.12-slim"
 # Per-user containers are named ``<prefix><sanitized user_id>``.
 LOCAL_SANDBOX_CONTAINER_PREFIX = "gaia-sandbox-"
 
-# Named Docker volume mounted at /workspace in every local sandbox container.
-# The compose file pins this exact literal so ad hoc API containers land on the
-# same durable workspace volume instead of a project-prefixed copy.
-LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
+# The self-host workspace volume (users/<uid>, skills/<uid>, _system). The API
+# mounts it whole at JUICEFS_HOST_MOUNT_PATH; a local sandbox container mounts
+# only its own user's subpaths of it. The compose file pins this exact name.
+SELFHOST_WORKSPACE_VOLUME = "gaia-selfhost_workspace"
+
+# The volume every local sandbox mounted whole before per-user isolation; only
+# the one-shot legacy migration still reads it.
+LEGACY_LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
+
+# Container label recording the mount layout a sandbox was created with, so a
+# container from an older layout is replaced instead of restarted as-is.
+LOCAL_SANDBOX_LAYOUT_LABEL = "gaia.sandbox.layout"
+LOCAL_SANDBOX_LAYOUT = "per-user-subpath-v1"
+
 
 # Workspace mountpoint inside local sandbox containers. Must equal
 # WORKSPACE_ROOT (app.agents.workspace.paths) — the tools address files under
 # /workspace and expect the container to see them there.
 LOCAL_SANDBOX_WORKSPACE_MOUNT = "/workspace"
+
+# HOME for the unprivileged sandbox user, which has no home directory in the
+# image; pip --user and tool caches persist in the user's own workspace.
+LOCAL_SANDBOX_HOME = f"{LOCAL_SANDBOX_WORKSPACE_MOUNT}/.gaia/home"
 
 # Upper bound on one ensure_started() cycle. Covers a cold-host image pull
 # (~50 MB class) plus daemon latency; the API container itself talks to the

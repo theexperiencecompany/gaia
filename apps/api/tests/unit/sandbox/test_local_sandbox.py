@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 import io
+import itertools
+import os
+from pathlib import Path
 import tarfile
 from typing import Any
 
@@ -17,6 +20,8 @@ from e2b import CommandExitException, TimeoutException
 from e2b.sandbox.filesystem.filesystem import FileType
 import pytest
 
+from app.config.settings import settings
+from app.constants.sandbox import SELFHOST_WORKSPACE_VOLUME
 from app.services.sandbox import local_sandbox
 from app.services.sandbox.local_sandbox import (
     LocalDockerSandbox,
@@ -25,6 +30,7 @@ from app.services.sandbox.local_sandbox import (
     get_local_sandbox,
     pop_local_sandbox,
 )
+from app.services.storage.juicefs import JuiceFSUnavailable
 
 # --------------------------------------------------------------------------
 # fake subprocess layer
@@ -283,14 +289,16 @@ async def test_write_creates_parents_then_copies_an_in_memory_tar(
 
     mkdir_argv, cp_argv = recorder.argv(0), recorder.argv(1)
     assert mkdir_argv[mkdir_argv.index("mkdir") :] == ["mkdir", "-p", "--", "/workspace/.gaia"]
-    assert cp_argv[:3] == ["docker", "cp", "-"]
-    assert cp_argv[3] == "gaia-sandbox-u1:/workspace/.gaia"
+    assert cp_argv[:4] == ["docker", "cp", "--archive", "-"]
+    assert cp_argv[4] == "gaia-sandbox-u1:/workspace/.gaia"
     tar_payload = recorder.stdins[1]
     assert tar_payload is not None
     with tarfile.open(fileobj=io.BytesIO(tar_payload)) as tar:
         members = tar.getmembers()
         assert len(members) == 1
         assert members[0].name == "canary.txt"
+        # --archive keeps these, so the file belongs to the sandbox user, not root.
+        assert (members[0].uid, members[0].gid) == (os.getuid(), os.getgid())
         assert tar.extractfile(members[0]).read() == b"ts-1"  # type: ignore[union-attr]  # tarfile stubs: extractfile is Optional only for sparse/odd members
     assert info.name == "canary.txt"
     assert info.type is FileType.FILE
@@ -445,16 +453,45 @@ async def test_garbled_stat_output_is_a_loud_error_not_default_fields(
 # --------------------------------------------------------------------------
 
 
-def _inspect_response(running: str, rc: int = 0) -> FakeProcess:
+_CURRENT_LAYOUT = f"true {local_sandbox.LOCAL_SANDBOX_LAYOUT}"
+
+
+def _inspect_response(state: str = _CURRENT_LAYOUT, rc: int = 0) -> FakeProcess:
     return FakeProcess(
-        stdout=running.encode(), stderr=b"" if rc == 0 else b"No such object\n", returncode=rc
+        stdout=state.encode(), stderr=b"" if rc == 0 else b"No such object\n", returncode=rc
     )
+
+
+@pytest.fixture
+def workspace_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the API at a tmpdir workspace; a tmpdir is not a real mountpoint."""
+    monkeypatch.setattr(settings, "JUICEFS_HOST_MOUNT_PATH", str(tmp_path))
+    monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: True)
+    return tmp_path
+
+
+def _mount_specs(run: list[str]) -> list[dict[str, str]]:
+    specs = []
+    for flag, value in itertools.pairwise(run):
+        if flag == "--mount":
+            specs.append(dict(part.partition("=")[::2] for part in value.split(",")))
+    return specs
+
+
+async def _create(recorder: SpawnRecorder, user_id: str) -> list[str]:
+    recorder._responses = [
+        FakeProcess(stderr=b"No such object", returncode=1),
+        FakeProcess(returncode=0),
+        _inspect_response(),
+    ]
+    await _sandbox(user_id).ensure_started()
+    return next(argv for argv in recorder.argvs if argv[:2] == ["docker", "run"])
 
 
 async def test_ensure_started_short_circuits_when_already_running(
     recorder: SpawnRecorder,
 ) -> None:
-    recorder._responses = [_inspect_response("true")]
+    recorder._responses = [_inspect_response()]
     await _sandbox().ensure_started()
     assert len(recorder.argvs) == 1
     assert "inspect" in " ".join(recorder.argv())
@@ -464,31 +501,103 @@ async def test_ensure_started_starts_an_existing_stopped_container(
     recorder: SpawnRecorder,
 ) -> None:
     recorder._responses = [
-        _inspect_response("false"),
+        _inspect_response(f"false {local_sandbox.LOCAL_SANDBOX_LAYOUT}"),
         FakeProcess(returncode=0),
-        _inspect_response("true"),
+        _inspect_response(),
     ]
     await _sandbox().ensure_started()
     assert recorder.argv(1)[:2] == ["docker", "start"]
 
 
-async def test_ensure_started_creates_a_missing_container_on_the_shared_volume(
-    recorder: SpawnRecorder,
+async def test_a_users_sandbox_mounts_only_that_users_subtree(
+    recorder: SpawnRecorder, workspace_root: Path
 ) -> None:
-    recorder._responses = [
-        FakeProcess(stderr=b"No such object", returncode=1),
-        FakeProcess(returncode=0),
-        _inspect_response("true"),
+    (workspace_root / "users" / "userA").mkdir(parents=True)
+    (workspace_root / "users" / "userA" / "secret.txt").write_text("A's data")
+
+    run = await _create(recorder, "userB")
+
+    assert "--volume" not in run and "-v" not in run
+    specs = _mount_specs(run)
+    assert {spec["dst"]: spec["volume-subpath"] for spec in specs} == {
+        "/workspace": "users/userB",
+        "/workspace/skills": "skills/userB",
+        "/workspace/.system": "_system",
+    }
+    assert all(spec["src"] == SELFHOST_WORKSPACE_VOLUME for spec in specs)
+    assert [spec["dst"] for spec in specs if "readonly" in spec] == [
+        "/workspace/skills",
+        "/workspace/.system",
     ]
-    await _sandbox().ensure_started()
-    run = recorder.argv(1)
-    assert run[:2] == ["docker", "run"]
-    assert run[run.index("--name") + 1] == "gaia-sandbox-u1"
-    assert run[run.index("--volume") + 1] == "gaia-sandbox-workspace:/workspace"
+    assert not any("userA" in arg for arg in run)
+
+
+async def test_the_mounted_subpaths_exist_before_docker_run(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    # The daemon refuses a volume-subpath that does not exist yet.
+    await _create(recorder, "userB")
+
+    for rel in (
+        "users/userB",
+        "users/userB/skills",
+        "users/userB/.system",
+        "skills/userB",
+        "_system",
+    ):
+        assert (workspace_root / rel).is_dir(), rel
+
+
+async def test_the_sandbox_runs_as_the_api_user_so_both_can_write_the_workspace(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    run = await _create(recorder, "userB")
+
+    assert run[run.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
+    assert run[run.index("--label") + 1] == "gaia.sandbox.user=userB"
+    assert f"{local_sandbox.LOCAL_SANDBOX_LAYOUT_LABEL}={local_sandbox.LOCAL_SANDBOX_LAYOUT}" in run
     assert run[-3:] == ["python:3.12-slim", "sleep", "infinity"]
 
 
-async def test_ensure_started_surfaces_a_failed_create(recorder: SpawnRecorder) -> None:
+async def test_a_container_from_the_shared_volume_era_is_replaced_not_restarted(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    recorder._responses = [
+        _inspect_response("true "),
+        FakeProcess(returncode=0),
+        FakeProcess(returncode=0),
+        _inspect_response(),
+    ]
+    await _sandbox("userB").ensure_started()
+
+    assert recorder.argv(1)[:3] == ["docker", "rm", "-f"]
+    assert recorder.argv(2)[:2] == ["docker", "run"]
+    assert not any(argv[:2] == ["docker", "start"] for argv in recorder.argvs)
+
+
+@pytest.mark.parametrize("user_id", ["a,volume-subpath=..", "../userA", "a b"])
+async def test_a_user_id_that_could_rewrite_the_mount_spec_never_reaches_docker_run(
+    recorder: SpawnRecorder, workspace_root: Path, user_id: str
+) -> None:
+    recorder._responses = [FakeProcess(stderr=b"No such object", returncode=1)]
+    with pytest.raises(ValueError, match="unsafe user_id"):
+        await _sandbox(user_id).ensure_started()
+    assert not any(argv[:2] == ["docker", "run"] for argv in recorder.argvs)
+
+
+async def test_no_sandbox_starts_without_the_workspace_volume(
+    recorder: SpawnRecorder, workspace_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: False)
+    recorder._responses = [FakeProcess(stderr=b"No such object", returncode=1)]
+    with pytest.raises(JuiceFSUnavailable):
+        await _sandbox("userB").ensure_started()
+    assert not any(argv[:2] == ["docker", "run"] for argv in recorder.argvs)
+
+
+async def test_ensure_started_surfaces_a_failed_create(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
         FakeProcess(stderr=b"daemon unreachable", returncode=125),
@@ -498,7 +607,7 @@ async def test_ensure_started_surfaces_a_failed_create(recorder: SpawnRecorder) 
 
 
 async def test_ensure_started_fails_if_the_container_never_runs(
-    recorder: SpawnRecorder,
+    recorder: SpawnRecorder, workspace_root: Path
 ) -> None:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
@@ -510,9 +619,9 @@ async def test_ensure_started_fails_if_the_container_never_runs(
 
 
 async def test_is_running_reflects_inspect(recorder: SpawnRecorder) -> None:
-    recorder._responses = [_inspect_response("true")]
+    recorder._responses = [_inspect_response()]
     assert await _sandbox().is_running(request_timeout=4) is True
-    recorder._responses = [_inspect_response("false")]
+    recorder._responses = [_inspect_response(f"false {local_sandbox.LOCAL_SANDBOX_LAYOUT}")]
     assert await _sandbox().is_running() is False
 
 

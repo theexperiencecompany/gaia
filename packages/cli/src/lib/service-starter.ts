@@ -1,6 +1,10 @@
 import * as fs from "fs";
 import * as path from "path";
 import { readConfig, updateConfig } from "./config.js";
+import {
+  assertEngineSupportsCodeSandbox,
+  dockerVolumeExists,
+} from "./docker.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 
@@ -68,17 +72,42 @@ function selfhostComposeFiles(options: {
   return files;
 }
 
+/** The volume every code sandbox shared before per-user isolation. */
+const LEGACY_SANDBOX_VOLUME = "gaia-sandbox-workspace";
+const LEGACY_SANDBOX_MOUNT = "/legacy-sandbox-workspace";
+
+/**
+ * One-shot copy of the pre-isolation shared sandbox volume into per-user
+ * workspaces, mounted read-only; the script's report makes reruns no-ops.
+ */
+function legacySandboxMigrationArgs(
+  files: string[],
+  envArgs: string[],
+): string[] {
+  return [
+    "compose",
+    ...files.flatMap((file) => ["-f", file]),
+    ...envArgs,
+    "run",
+    "--rm",
+    "--no-deps",
+    "-v",
+    `${LEGACY_SANDBOX_VOLUME}:${LEGACY_SANDBOX_MOUNT}:ro`,
+    "gaia-backend",
+    "python",
+    "-m",
+    "app.scripts.migrate_legacy_sandbox_workspace",
+    "--legacy-root",
+    LEGACY_SANDBOX_MOUNT,
+  ];
+}
+
 /** Build the `docker compose ... up` argument list for self-host mode. */
 function buildSelfhostUpArgs(
+  files: string[],
   envArgs: string[],
   options?: StartServicesOptions,
 ): string[] {
-  // The sandbox opt-in is read from the saved config on every start, so a
-  // restart or update can never silently drop (or add) the Docker socket.
-  const files = selfhostComposeFiles({
-    build: options?.build,
-    codeSandbox: readConfig()?.codeSandbox === true,
-  });
   const upArgs = [
     "compose",
     ...files.flatMap((file) => ["-f", file]),
@@ -139,16 +168,33 @@ export async function startServices(
     portOverrides && Object.keys(portOverrides).length > 0
       ? portOverridesToDockerEnv(portOverrides)
       : undefined;
+  // The sandbox opt-in is read from the saved config on every start, so a
+  // restart or update can never silently drop (or add) the Docker socket.
+  const codeSandbox = readConfig()?.codeSandbox === true;
+  if (codeSandbox) await assertEngineSupportsCodeSandbox();
+  const files = selfhostComposeFiles({ build: options?.build, codeSandbox });
+  const envArgs = getEnvFileArgs(dockerComposePath);
 
   await runCommand(
     "docker",
-    buildSelfhostUpArgs(getEnvFileArgs(dockerComposePath), options),
+    buildSelfhostUpArgs(files, envArgs, options),
     dockerComposePath,
     undefined,
     onLog,
     dockerEnv,
     resolveStartTimeoutMs(),
   );
+  if (await dockerVolumeExists(LEGACY_SANDBOX_VOLUME)) {
+    onStatus?.("Moving code-sandbox files into per-user workspaces...");
+    await runCommand(
+      "docker",
+      legacySandboxMigrationArgs(files, envArgs),
+      dockerComposePath,
+      undefined,
+      onLog,
+      dockerEnv,
+    );
+  }
   onStatus?.("All services started in Docker!");
 }
 

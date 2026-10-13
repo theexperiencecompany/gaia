@@ -353,8 +353,12 @@ With neither, the coding tools answer with *"code execution is not enabled on th
 The local sandbox runs each user's code in its own `gaia-sandbox-*` container. To create those containers, `gaia-backend` and `arq_worker` need the host Docker socket, so `--code-sandbox` adds the `docker-compose.sandbox.yml` override, which mounts `/var/run/docker.sock` into both services and adds them to the socket's group (`DOCKER_SOCKET_GID`, which `gaia up` writes to `infra/docker/.env`). The CLI saves the choice, so `gaia start` and `gaia update` keep it. Turn it off again with `gaia up --no-code-sandbox`.
 
 <Warning>
-Access to the Docker socket is equivalent to root on the host. With the local sandbox on, anyone who compromises `gaia-backend` or `arq_worker` (for example through a prompt-injected agent that escapes its sandbox) controls the whole machine. Every user's sandbox container also mounts the same `gaia-sandbox-workspace` volume, so users on one instance can read each other's sandbox files. Only turn it on for an instance you alone use, on a machine that runs nothing else you care about. An E2B key gives the same coding tools without either exposure.
+Access to the Docker socket is equivalent to root on the host. With the local sandbox on, anyone who compromises `gaia-backend` or `arq_worker` (for example through a prompt-injected agent that escapes its sandbox) controls the whole machine. Only turn it on for a machine that runs nothing else you care about. An E2B key gives the same coding tools without that exposure.
 </Warning>
+
+Each sandbox container sees only its own user's files: it mounts that user's folder of the `gaia-selfhost_workspace` volume at `/workspace` (with their installed skills and GAIA's shared system files read-only on top), never the whole volume. This uses Docker's `volume-subpath` mounts, so the local sandbox needs **Docker Engine 26 or newer**; `gaia start` refuses to start it on an older engine.
+
+Sandboxes created by an older version mounted one `gaia-sandbox-workspace` volume shared by every user. The first `gaia start`, `gaia up` or `gaia update` after upgrading replaces those containers and copies each conversation's files from the old volume into its owner's workspace. Files whose owner cannot be proven (anything outside a conversation folder) stay in the old volume and are listed in the command output and in `_migrations/legacy-sandbox-workspace.json` on the workspace volume. Nothing is deleted: remove the old volume yourself with `docker volume rm gaia-sandbox-workspace` once you have checked the report.
 
 When an E2B key is saved, E2B wins even with the local sandbox on, and the next tool call switches over with no restart. Driving Compose by hand, layer the override yourself:
 

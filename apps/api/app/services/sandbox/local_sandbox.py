@@ -7,7 +7,9 @@ keep matching.
 
 Divergences are intentional: set timeout is a validated no-op, beta pause
 stops the container, remove is idempotent, and background runs are rejected.
-Files survive recreation on the shared workspace volume.
+Like E2B's per-user JuiceFS subdir, a container mounts only its own user's
+subtree of the workspace volume, so files survive recreation and no user can
+reach another's.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import errno
 import hashlib
 import io
 import os
+from pathlib import Path
 import posixpath
 import re
 import signal
@@ -36,14 +39,27 @@ from e2b import (
 )
 from e2b.sandbox.filesystem.filesystem import FileType
 
+from app.agents.workspace.paths import SKILLS_DIRNAME
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
     LOCAL_SANDBOX_CONTAINER_PREFIX,
+    LOCAL_SANDBOX_HOME,
     LOCAL_SANDBOX_IMAGE,
+    LOCAL_SANDBOX_LAYOUT,
+    LOCAL_SANDBOX_LAYOUT_LABEL,
     LOCAL_SANDBOX_START_TIMEOUT_SECONDS,
-    LOCAL_SANDBOX_VOLUME,
     LOCAL_SANDBOX_WORKSPACE_MOUNT,
+    SELFHOST_WORKSPACE_VOLUME,
 )
+from app.services.storage.juicefs import (
+    ensure_safe_path_id,
+    ensure_user_skills_dir,
+    ensure_user_workspace,
+    user_skills_path,
+    user_workspace_path,
+)
+from app.services.storage.system_workspace import SANDBOX_SYSTEM_DIR, SYSTEM_SUBDIR
 from shared.py.wide_events import log
 
 __all__ = [
@@ -90,6 +106,8 @@ def _tar_bytes(name: str, content: bytes) -> bytes:
         info = tarfile.TarInfo(name=name)
         info.size = len(content)
         info.mtime = int(time.time())
+        # The sandbox runs as the API's uid; `docker cp --archive` keeps this owner.
+        info.uid, info.gid = os.getuid(), os.getgid()
         tar.addfile(info, io.BytesIO(content))
     return buffer.getvalue()
 
@@ -125,10 +143,53 @@ def container_name_for(user_id: str) -> str:
 
 @dataclass(frozen=True)
 class _ContainerState:
-    """Result of inspecting a container."""
+    """Result of inspecting a container; layout is its LOCAL_SANDBOX_LAYOUT_LABEL value."""
 
     exists: bool
     running: bool
+    layout: str = ""
+
+
+@dataclass(frozen=True)
+class _WorkspaceMount:
+    """One subtree of the workspace volume and where the container sees it."""
+
+    source: Path
+    target: str
+    read_only: bool
+
+
+# The container's view of the workspace volume, mirroring mount_juicefs.sh's
+# E2B layout: the user's root read-write, their skills and the shared system
+# files read-only on top. Nothing else on the volume is ever mounted.
+def _workspace_mounts(user_id: str) -> tuple[_WorkspaceMount, ...]:
+    return (
+        _WorkspaceMount(user_workspace_path(user_id), LOCAL_SANDBOX_WORKSPACE_MOUNT, False),
+        _WorkspaceMount(
+            user_skills_path(user_id), f"{LOCAL_SANDBOX_WORKSPACE_MOUNT}/{SKILLS_DIRNAME}", True
+        ),
+        _WorkspaceMount(
+            Path(settings.JUICEFS_HOST_MOUNT_PATH) / SYSTEM_SUBDIR, SANDBOX_SYSTEM_DIR, True
+        ),
+    )
+
+
+def _mount_arg(mount: _WorkspaceMount) -> str:
+    subpath = mount.source.relative_to(settings.JUICEFS_HOST_MOUNT_PATH).as_posix()
+    spec = (
+        f"type=volume,src={SELFHOST_WORKSPACE_VOLUME},dst={mount.target},volume-subpath={subpath}"
+    )
+    return f"{spec},readonly" if mount.read_only else spec
+
+
+def _make_mount_sources(user_id: str) -> None:
+    """Create every mounted subpath and nested mountpoint; the daemon refuses missing ones."""
+    user_root = user_workspace_path(user_id)
+    for mount in _workspace_mounts(user_id):
+        mount.source.mkdir(parents=True, exist_ok=True)
+        if mount.target != LOCAL_SANDBOX_WORKSPACE_MOUNT:
+            nested = posixpath.relpath(mount.target, LOCAL_SANDBOX_WORKSPACE_MOUNT)
+            (user_root / nested).mkdir(parents=True, exist_ok=True)
 
 
 async def _spawn_process(
@@ -156,13 +217,11 @@ class LocalDockerSandbox:
         user_id: str,
         *,
         image: str = LOCAL_SANDBOX_IMAGE,
-        volume: str = LOCAL_SANDBOX_VOLUME,
     ) -> None:
         if not user_id:
             raise ValueError("user_id is required")
         self.user_id = user_id
         self.image = image
-        self.volume = volume
         # Guards ensure_started() against concurrent first acquires racing two
         # `docker run`s into a name clash.
         self._start_lock = asyncio.Lock()
@@ -222,7 +281,11 @@ class LocalDockerSandbox:
 
     async def _container_state(self) -> _ContainerState:
         rc, stdout, stderr = await self._run_docker(
-            "container", "inspect", "-f", "{{.State.Running}}", self.container_name
+            "container",
+            "inspect",
+            "-f",
+            f'{{{{.State.Running}}}} {{{{index .Config.Labels "{LOCAL_SANDBOX_LAYOUT_LABEL}"}}}}',
+            self.container_name,
         )
         if rc != 0:
             stderr_lower = stderr.lower()
@@ -231,10 +294,49 @@ class LocalDockerSandbox:
             raise LocalSandboxError(
                 f"docker inspect failed for {self.container_name}: {stderr.strip()}"
             )
-        return _ContainerState(
-            exists=True,
-            running=stdout.decode("utf-8", errors="replace").strip().lower() == "true",
+        running, _, layout = stdout.decode("utf-8", errors="replace").strip().partition(" ")
+        return _ContainerState(exists=True, running=running.lower() == "true", layout=layout)
+
+    async def _prepare_workspace(self) -> None:
+        """Validate the user id for the mount spec and create its subpaths on the volume.
+
+        Raises JuiceFSUnavailable when the workspace volume is not mounted, so a
+        sandbox never starts without its user's files.
+        """
+        ensure_safe_path_id(self.user_id, label="user_id")
+        await ensure_user_workspace(self.user_id)
+        await ensure_user_skills_dir(self.user_id)
+        await asyncio.to_thread(_make_mount_sources, self.user_id)
+
+    async def _create_container(self) -> tuple[int, str]:
+        await self._prepare_workspace()
+        mount_args = [
+            arg
+            for mount in _workspace_mounts(self.user_id)
+            for arg in ("--mount", _mount_arg(mount))
+        ]
+        rc, _, stderr = await self._run_docker(
+            "run",
+            "-d",
+            "--name",
+            self.container_name,
+            "--label",
+            f"gaia.sandbox.user={self.user_id}",
+            "--label",
+            f"{LOCAL_SANDBOX_LAYOUT_LABEL}={LOCAL_SANDBOX_LAYOUT}",
+            *mount_args,
+            # Same uid as the API, so files either side creates stay writable by both.
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "--env",
+            f"HOME={LOCAL_SANDBOX_HOME}",
+            "--restart",
+            "unless-stopped",
+            self.image,
+            "sleep",
+            "infinity",
         )
+        return rc, stderr
 
     async def ensure_started(self) -> None:
         """Start the user container, creating it on first acquire.
@@ -244,26 +346,21 @@ class LocalDockerSandbox:
         """
         async with self._start_lock, asyncio.timeout(LOCAL_SANDBOX_START_TIMEOUT_SECONDS):
             state = await self._container_state()
+            if state.exists and state.layout != LOCAL_SANDBOX_LAYOUT:
+                # Created before per-user isolation: it mounts every user's files.
+                log.info(
+                    f"{LogTag.SANDBOX} replacing local container from an older mount layout",
+                    container=self.container_name,
+                    layout=state.layout,
+                )
+                await self.kill()
+                state = _ContainerState(exists=False, running=False)
             if not state.running:
                 if state.exists:
                     rc, _, stderr = await self._run_docker("start", self.container_name)
                     action = "start"
                 else:
-                    rc, _, stderr = await self._run_docker(
-                        "run",
-                        "-d",
-                        "--name",
-                        self.container_name,
-                        "--label",
-                        f"gaia.sandbox.user={self.user_id}",
-                        "--volume",
-                        f"{self.volume}:{LOCAL_SANDBOX_WORKSPACE_MOUNT}",
-                        "--restart",
-                        "unless-stopped",
-                        self.image,
-                        "sleep",
-                        "infinity",
-                    )
+                    rc, stderr = await self._create_container()
                     action = "run"
                 if rc != 0:
                     raise LocalSandboxError(
@@ -306,7 +403,7 @@ class LocalDockerSandbox:
             raise ValueError(f"timeout must be positive, got {timeout}")
 
     async def beta_pause(self) -> None:
-        """Stop the container (filesystem survives on the shared volume)."""
+        """Stop the container (its files survive on the workspace volume)."""
         rc, _, stderr = await self._run_docker("stop", self.container_name)
         if rc != 0:
             raise LocalSandboxError(
@@ -478,6 +575,7 @@ class LocalDockerSandbox:
             # on stdin and unpack it straight into the parent directory.
             exit_code, _, stderr = await sbx._run_docker(
                 "cp",
+                "--archive",
                 "-",
                 f"{sbx.container_name}:{parent}",
                 stdin=_tar_bytes(name, data),
