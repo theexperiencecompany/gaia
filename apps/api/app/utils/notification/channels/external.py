@@ -24,7 +24,7 @@ from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
 )
-from app.services.delivery.chat_channel import ChatChannel
+from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.auth_utils import build_user_context
@@ -102,12 +102,18 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
         if not content.text.strip():
             return self._skipped(f"{self.channel_type}: nothing to publish")
         user_doc = await user_repository.get(user_id)
-        link = linked_platforms_of(user_doc).get(self.platform.value) if user_doc else None
-        if user_doc is None or link is None:
+        # This adapter's platform only, ignoring preferences: the orchestrator
+        # already decided this channel should get the notification.
+        channel = (
+            pick_chat_channel([self.platform.value], linked_platforms_of(user_doc), {})
+            if user_doc
+            else None
+        )
+        if user_doc is None or channel is None:
             return self._skipped(f"{self.channel_type}: not linked")
         result = await post_to_platform_chat(
             user=build_user_context(user_doc, auth_provider=None),
-            channel=ChatChannel(source=self.platform, platform_user_id=link["platformUserId"]),
+            channel=channel,
             text=content.text,
             origin=content.origin,
         )

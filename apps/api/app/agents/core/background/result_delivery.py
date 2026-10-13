@@ -28,7 +28,10 @@ from app.agents.core.background.comms_narrator import narrate_executor_result
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.thread_record import record_platform_delivery
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
-from app.agents.core.background.workflow_completion import deliver_workflow_completion
+from app.agents.core.background.workflow_completion import (
+    CompletedWorkflowRun,
+    deliver_workflow_completion,
+)
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
 from app.agents.prompts.comms_prompts import (
@@ -413,13 +416,15 @@ async def _deliver_workflow_result(
         )
     else:
         await deliver_workflow_completion(
-            user=run.user,
-            workflow_id=run.workflow_id,
-            workflow_title=run.workflow_title,
-            delivery=run.workflow_delivery,
-            conversation_id=target.conversation_id,
-            text=notification_text,
-            origin=_delivery_origin(run),
+            run.user,
+            CompletedWorkflowRun(
+                workflow_id=run.workflow_id,
+                workflow_title=run.workflow_title,
+                delivery=run.workflow_delivery,
+                conversation_id=target.conversation_id,
+                text=notification_text,
+                origin=_delivery_origin(run),
+            ),
         )
     log.info(
         f"{LogTag.AGENT} deliver_result: workflow result routed",

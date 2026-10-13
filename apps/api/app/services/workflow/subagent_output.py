@@ -9,11 +9,12 @@ The expected JSON block format lives in the subagent prompt
 (app/agents/prompts/workflow_prompts.py); this module validates it.
 """
 
+from collections.abc import Mapping
 import json
 import re
-from typing import Any, Literal
+from typing import Literal, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
@@ -32,6 +33,35 @@ TRIGGER_TYPE_BY_DRAFT_TYPE: dict[str, TriggerType] = {
 # =============================================================================
 # PYDANTIC MODELS FOR STRUCTURED OUTPUT
 # =============================================================================
+
+
+class WorkflowDraftPayload(TypedDict):
+    """The workflow_draft frame the frontend's draft card renders."""
+
+    suggested_title: str
+    suggested_description: str
+    prompt: str
+    trigger_type: str
+    trigger_slug: str | None
+    integration_ids: list[str]
+    cron_expression: str | None
+    direct_create: bool
+    delivery: str
+
+
+class WorkflowDraftFrame(TypedDict):
+    """One streamed frame carrying a workflow draft."""
+
+    workflow_draft: WorkflowDraftPayload
+
+
+class _PayloadEnvelope(BaseModel):
+    """The two keys read off a decoded payload before it is validated as its own type."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    type: str | None = None
+    message: object = None
 
 
 class ClarifyingOutput(BaseModel):
@@ -80,7 +110,7 @@ class FinalizedOutput(BaseModel):
         """Return this draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
-    def to_stream_payload(self, delivery: WorkflowDelivery) -> dict[str, Any]:
+    def to_stream_payload(self, delivery: WorkflowDelivery) -> WorkflowDraftFrame:
         """Convert to the format expected by frontend stream handler.
 
         delivery is not the assistant's to choose: the calling agent sets it from
@@ -129,13 +159,14 @@ class ParseResult:
 # =============================================================================
 
 
-def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | None:
+def _result_from_payload(data: Mapping[str, object], response: str) -> ParseResult | None:
     """Turn one decoded JSON object into a ParseResult, or None if it isn't ours."""
-    output_type = data.get("type")
+    envelope = _PayloadEnvelope.model_validate(data)
+    output_type = envelope.type
 
     if output_type == "finalized":
         try:
-            draft = FinalizedOutput(**data)
+            draft = FinalizedOutput.model_validate(data)
         except Exception as e:
             log.warning(
                 f"{LogTag.WORKFLOW} Failed to parse finalized output",
@@ -167,13 +198,13 @@ def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | N
 
     if output_type == "clarifying":
         try:
-            clarifying = ClarifyingOutput(**data)
+            clarifying = ClarifyingOutput.model_validate(data)
             log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
             return ParseResult(mode="clarifying", message=clarifying.message, raw_response=response)
         except Exception:
             return ParseResult(
                 mode="clarifying",
-                message=data.get("message", response),
+                message=envelope.message if isinstance(envelope.message, str) else response,
                 raw_response=response,
             )
 

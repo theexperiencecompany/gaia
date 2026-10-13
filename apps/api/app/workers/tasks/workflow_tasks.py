@@ -15,7 +15,10 @@ from app.agents.core.background.executor_queue import (
     release_lock_if_owned,
     try_acquire_lock,
 )
-from app.agents.core.background.workflow_completion import deliver_workflow_completion
+from app.agents.core.background.workflow_completion import (
+    CompletedWorkflowRun,
+    deliver_workflow_completion,
+)
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FALLBACK_TEMPLATE,
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
@@ -892,13 +895,15 @@ async def _notify_replay_finished(
     """
     try:
         await deliver_workflow_completion(
-            user=user,
-            workflow_id=workflow.id or "",
-            workflow_title=workflow.title,
-            delivery=workflow.delivery,
-            conversation_id=conversation_id,
-            text=text,
-            origin=f'workflow "{workflow.title}" (id {workflow.id})',
+            user,
+            CompletedWorkflowRun(
+                workflow_id=workflow.id or "",
+                workflow_title=workflow.title,
+                delivery=workflow.delivery,
+                conversation_id=conversation_id,
+                text=text,
+                origin=f'workflow "{workflow.title}" (id {workflow.id})',
+            ),
         )
     except Exception as e:
         log.warning(
