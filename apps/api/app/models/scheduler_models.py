@@ -41,6 +41,8 @@ class DeactivationReason(str, Enum):
     INVALID_SCHEDULE = "invalid_schedule"
     #: The owner is no user (the template owner, or a deleted account): it never resumes.
     OWNER_NOT_FOUND = "owner_not_found"
+    #: A self-host administrator removed the owner; nothing resumes it automatically.
+    MEMBER_REMOVED = "member_removed"
 
 
 class TaskOutcome(str, Enum):

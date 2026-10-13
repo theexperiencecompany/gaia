@@ -33,7 +33,7 @@ export function MemberListSection({
     const name = member.name ?? member.email ?? "This member";
     const confirmed = await confirm({
       title: "Remove member?",
-      message: `${name} will be signed out and can't sign in again. Their chats and data stay on this instance.`,
+      message: `${name} will be signed out and can't sign in again. Their workflows and reminders stop and their chat apps are unlinked; their chats and data stay on this instance.`,
       confirmText: "Remove",
       variant: "destructive",
     });

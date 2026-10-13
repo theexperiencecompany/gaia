@@ -7,7 +7,7 @@ repositories they read and write, and the analytics capture, are in-memory.
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 import hashlib
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from bson import ObjectId
 from fastapi import FastAPI
@@ -143,6 +143,13 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     capture = MagicMock()
     monkeypatch.setattr(members_service, "capture", capture)
     return capture
+
+
+@pytest.fixture(autouse=True)
+def offboarding(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    stop = AsyncMock()
+    monkeypatch.setattr(members_service, "stop_acting_for_removed_member", stop)
+    return stop
 
 
 @pytest.fixture
@@ -301,9 +308,28 @@ class TestRemoveMember:
         assert resp.json()["code"] == "cannot_remove_admin"
         assert instance.credentials[admin.id].disabled_at is None
 
-    async def test_unknown_or_already_removed_member_is_404(
-        self, admin_client: AsyncClient, member: UserDocument
+    async def test_removal_stops_everything_running_for_the_member(
+        self, admin_client: AsyncClient, member: UserDocument, offboarding: AsyncMock
     ) -> None:
         assert (await admin_client.delete(f"{API}/{member.id}")).status_code == 204
-        assert (await admin_client.delete(f"{API}/{member.id}")).status_code == 404
+
+        offboarding.assert_awaited_once_with(member.id)
+
+    async def test_removing_again_succeeds_and_finishes_what_a_failed_removal_left(
+        self, admin_client: AsyncClient, member: UserDocument, offboarding: AsyncMock, instance
+    ) -> None:
+        offboarding.side_effect = [RuntimeError("telegram unreachable"), None]
+        with pytest.raises(RuntimeError):
+            await admin_client.delete(f"{API}/{member.id}")
+        disabled_at = instance.credentials[member.id].disabled_at
+        assert disabled_at is not None
+
+        assert (await admin_client.delete(f"{API}/{member.id}")).status_code == 204
+        assert offboarding.await_count == 2
+        assert instance.credentials[member.id].disabled_at == disabled_at
+
+    async def test_an_unknown_member_is_404(
+        self, admin_client: AsyncClient, offboarding: AsyncMock
+    ) -> None:
         assert (await admin_client.delete(f"{API}/{ObjectId()}")).status_code == 404
+        offboarding.assert_not_awaited()

@@ -4715,7 +4715,8 @@
           "subscription_lapsed",
           "integration_never_connected",
           "invalid_schedule",
-          "owner_not_found"
+          "owner_not_found",
+          "member_removed"
         ],
         "title": "DeactivationReason",
         "type": "string"
@@ -30954,7 +30955,7 @@
     },
     "/api/v1/members/{user_id}": {
       "delete": {
-        "description": "Remove a member: their login stops working and their sessions end.",
+        "description": "Remove a member: their login stops, and their workflows, reminders and bot links stop too.",
         "operationId": "members_delete_member",
         "parameters": [
           {

@@ -62,6 +62,10 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
             }
         )
 
+    async def find_scheduled_for_user(self, user_id: str) -> list[ReminderDocument]:
+        """Return every reminder of a user that is armed to fire."""
+        return await self._find({"user_id": user_id, "status": ReminderStatus.SCHEDULED.value})
+
     async def find_paused_for_reason(
         self, user_id: str, reason: DeactivationReason
     ) -> list[ReminderDocument]:

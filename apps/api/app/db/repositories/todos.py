@@ -537,6 +537,17 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             limit=limit,
         )
 
+    async def find_running_tracked_for_user(self, user_id: str) -> list[TodoDocument]:
+        """Return a user's open tracked todos that are not paused, i.e. the ones that can still fire."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "labels": GAIA_TRACKED_LABEL,
+                "completed": False,
+                "pause_reason": None,
+            }
+        )
+
     async def find_paused_for_reason(
         self, user_id: str, reason: DeactivationReason
     ) -> list[TodoDocument]:

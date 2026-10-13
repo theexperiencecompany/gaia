@@ -70,7 +70,7 @@ async def put_registration(
 
 @router.delete("/{user_id}", status_code=204)
 async def delete_member(user_id: str, admin: Admin) -> None:
-    """Remove a member: their login stops working and their sessions end."""
+    """Remove a member: their login stops, and their workflows, reminders and bot links stop too."""
     log.set(user={"id": admin.user_id}, operation="members_remove", target_user_id=user_id)
     await remove_member(user_id)
     log.audit("member removed", actor=admin.user_id, target_user_id=user_id)

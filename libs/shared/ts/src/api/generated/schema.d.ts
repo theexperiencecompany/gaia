@@ -2744,7 +2744,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Member
-         * @description Remove a member: their login stops working and their sessions end.
+         * @description Remove a member: their login stops, and their workflows, reminders and bot links stop too.
          */
         delete: operations["members_delete_member"];
         options?: never;
@@ -8299,7 +8299,7 @@ export interface components {
          *     the user switched off themselves (no reason) is never silently re-enabled.
          * @enum {string}
          */
-        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found";
+        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found" | "member_removed";
         /**
          * DegradedHealthResponse
          * @description The 503 body returned when the event loop is lagged past the threshold.

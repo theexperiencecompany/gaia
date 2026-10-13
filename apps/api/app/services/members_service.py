@@ -27,6 +27,7 @@ from app.models.member_models import (
     RegistrationSetting,
 )
 from app.services.analytics_service import capture
+from app.services.member_offboarding import stop_acting_for_removed_member
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceInviteCreated, InstanceMemberJoined
@@ -151,13 +152,13 @@ async def list_overview() -> MembersOverviewResponse:
 
 
 async def remove_member(user_id: str) -> None:
-    """Disable a member's login and revoke their sessions; their data stays untouched.
+    """Disable a member's login and stop everything that runs for them; their data stays untouched.
 
-    Administrators cannot be removed, which also keeps an admin from removing
-    themselves or the last admin.
+    Idempotent: removing an already removed member re-runs the stop, finishing
+    whatever a failed removal left. Administrators cannot be removed.
     """
     credential = await local_credentials_repository.get_by_user_id(user_id)
-    if credential is None or credential.disabled_at is not None:
+    if credential is None:
         raise AppError(message="Member not found", status_code=404)
     user = await user_repository.get(user_id)
     if user is not None and user.role is InstanceRole.ADMIN:
@@ -166,6 +167,8 @@ async def remove_member(user_id: str) -> None:
             status_code=409,
             code=CANNOT_REMOVE_ADMIN,
         )
-    await local_credentials_repository.update(
-        credential.id, LocalCredentialUpdate(disabled_at=datetime.now(UTC))
-    )
+    if credential.disabled_at is None:
+        await local_credentials_repository.update(
+            credential.id, LocalCredentialUpdate(disabled_at=datetime.now(UTC))
+        )
+    await stop_acting_for_removed_member(user_id)
