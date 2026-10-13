@@ -17,7 +17,7 @@ Everything runs as Docker containers managed by Compose:
 | Web                | Next.js app, served by the proxy at `/`                            |
 | Backend            | FastAPI plus a background worker, served by the proxy at `/api/v1` |
 | Databases/Infra    | PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ                     |
-| Workspace storage  | JuiceFS — agent workspace, artifacts, installed skills (optional, needs your own bucket) |
+| File storage       | Local Docker volumes for uploads and each user's workspace (artifacts, installed skills) |
 
 Only the proxy publishes a port on your machine; the API and databases stay on the internal Docker network. Because the browser talks to a single origin, GAIA works on any hostname or IP with no URL configuration.
 
@@ -100,7 +100,7 @@ Self-hosted instances run the same code as GAIA Cloud, with a configuration prof
 - **Unlimited usage.** Usage is tracked locally for insights, but plan limits are never enforced.
 - **No payments, no plans.** There is no billing integration in self-host mode: every user gets every feature, and billing UI is hidden.
 - **Opt-in code execution.** The coding tools need either an E2B key or the local sandbox (`gaia up --code-sandbox`), which gives the containers root-equivalent access to the host. See [Local coding sandbox](/self-hosting/docker-setup#local-coding-sandbox).
-- **File uploads need Cloudinary.** Attaching files in chat needs your own Cloudinary account; without it uploads fail with a clear message. See [Required configuration](/self-hosting/docker-setup#required-configuration).
+- **Files stay on your server.** Uploads, generated images and each user's workspace live on local Docker volumes, with no Cloudinary or object-storage account. See [File storage](/self-hosting/docker-setup#file-storage).
 
 ## Using Ollama
 
@@ -109,14 +109,6 @@ The backend runs inside a container, so `localhost` inside the container is not 
 <Tip>
   On Linux hosts, Ollama listens on `127.0.0.1` by default, which the container cannot reach. Start it with `OLLAMA_HOST=0.0.0.0 ollama serve` so it accepts connections through the gateway.
 </Tip>
-
-## Advanced: workspace storage on macOS and Windows
-
-You only need this if you plan to run the backend outside the default Docker setup.
-
-<Note>
-Run the backend in a container on every platform. Its workspace storage (file uploads, artifacts, skills) uses JuiceFS, which mounts through Linux FUSE, a native backend on macOS or Windows can't provide it. Docker Desktop covers this on all platforms. See [Docker setup](/self-hosting/docker-setup#persistent-workspace-storage-juicefs-and-fuse) for the FUSE requirements and configuration.
-</Note>
 
 ## Keeping GAIA up to date
 

@@ -86,8 +86,8 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | **Secrets** | Infisical vault (required in production) | Local `.env` only; never contacts Infisical; `INSTANCE_SECRET` auto-generated into Mongo (`instance_settings`) on first boot |
 | **Required config** | Full SaaS keys (OpenRouter, Gemini, Tavily, Composio, R2, LiveKit, etc.) required to boot | Only infra + 3 machine secrets (`MONGO_DB`, `REDIS_URL`, `POSTGRES_URL`, `CHROMADB_*`, `RABBITMQ_URL`, `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) — everything else is optional and disables gracefully; providers configured at runtime via the setup wizard |
 | **LLM providers** | Managed keys via Infisical | Bring your own — OpenAI / OpenRouter / Gemini / Ollama / any OpenAI-compatible gateway via Settings; keys encrypted with the instance secret |
-| **File uploads** | Cloudinary (managed) | Bring your own Cloudinary account via `CLOUDINARY_*`; without it, attaching a file fails with a clear "not set up" message — see [Required configuration](#required-configuration) |
-| **Workspace storage** | Hosted R2 + JuiceFS (managed) | Bring your own R2/S3 + Postgres meta DB via `R2_*` / `JUICEFS_META_URL_TEMPLATE`; without it the agent cannot open uploads or keep artifacts, and the backend logs `JuiceFSUnavailable` |
+| **File uploads** | Cloudinary (managed) | Local `gaia-selfhost_files` volume, served to the owner only; no account needed — see [File storage](#file-storage) |
+| **Workspace storage** | Hosted R2 + JuiceFS (managed) | Local `gaia-selfhost_workspace` volume; no object store or FUSE needed — see [File storage](#file-storage) |
 | **Sandbox** | E2B (required) with warm pool | Off until you save an E2B key or opt into the local Docker-socket sandbox with `gaia up --code-sandbox` — see [Local coding sandbox](#local-coding-sandbox) |
 | **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Bring your own LiveKit or leave unset to disable voice |
 | **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | Same providers but opt-in via env; unset skips that lane |
@@ -181,14 +181,14 @@ The build override keeps the same image tags, so a later plain `up` reuses your 
     browser ──► proxy (WEB_HOST_PORT, default 3000)
                   ├─ /api/v1/* ──► gaia-backend (8000) ──► postgres │ mongo │ redis │ chromadb │ rabbitmq
                   │                     ├─ host.docker.internal ──► Ollama (host, optional)
-                  │                     └─ /mnt/jfs (FUSE) ──────► R2/S3 + JuiceFS meta DB (optional)
+                  │                     └─ workspace + files volumes (local)
                   └─ everything else ──► gaia-web (3000)
     arq_worker ──► redis + mongo
     ```
 
     - `proxy` is Caddy, the only service that publishes a host port. `/api/v1/*` — REST, SSE streams and the WebSocket — goes to `gaia-backend`; everything else goes to `gaia-web`.
     - `gaia-web` is the Next.js frontend. The browser calls the same-origin `/api/v1/`, so the stack works on any hostname or IP with no URL configuration; server-side fetches reach the backend directly at `http://gaia-backend:8000`.
-    - `gaia-backend` + `arq_worker` are the same image with different `WORKER_TYPE`; both mount the JuiceFS FUSE cache and share `extra_hosts: host.docker.internal:host-gateway` for host services.
+    - `gaia-backend` + `arq_worker` are the same image with different `WORKER_TYPE`; both mount the `workspace` and `files` volumes and share `extra_hosts: host.docker.internal:host-gateway` for host services.
     - The API and all datastores are reachable only on the internal network — see [Networking](#networking).
 
     For the full container spec see `infra/docker/docker-compose.selfhost.yml`.
@@ -221,7 +221,7 @@ The self-host Compose file includes the following services:
     - Internal port 8000, served through the proxy at `/api/v1`
     - RESTful API and WebSocket support
     - Liveness at `/health`; per-dependency readiness at `/health/ready` (also served through the proxy, and what `gaia status` / `gaia doctor` read)
-    - Mounts the JuiceFS workspace (see [below](#persistent-workspace-storage-juicefs-and-fuse)) and reaches host services via `host.docker.internal`
+    - Mounts the workspace and files volumes (see [File storage](#file-storage)) and reaches host services via `host.docker.internal`
 
   </Accordion>
 
@@ -250,94 +250,24 @@ The self-host Compose file includes the following services:
   </Accordion>
 </AccordionGroup>
 
-## Persistent Workspace Storage (JuiceFS and FUSE)
+## File storage
 
-GAIA's per-user workspace (file uploads, agent artifacts, installed skills) is backed by [JuiceFS](https://juicefs.com), a filesystem that stores file **data** in object storage (Cloudflare R2, S3, or any S3-compatible store) and file **metadata** in a database. The backend mounts it at `/mnt/jfs` and reads and writes files there like a local disk.
+A self-hosted instance keeps every file on two local Docker volumes. No Cloudinary, R2 or other storage account is needed, and attaching files works on a fresh install.
 
-JuiceFS mounts through **FUSE** (Filesystem in Userspace), a Linux kernel feature. This has direct consequences for where and how you can run the backend.
-
-### Run the backend in a container
-
-Because the mount needs Linux FUSE, run the backend in a container on every platform:
-
-| Host OS | Native (`uvicorn` on the host) | Containerized (Docker) |
+| Volume | Mounted at | Holds |
 | --- | --- | --- |
-| Linux | Works if `juicefs` is installed and `/dev/fuse` is accessible | Works |
-| macOS | Not supported (no Linux FUSE) | Works, Docker Desktop's Linux VM provides `/dev/fuse` |
-| Windows | Not supported (no Linux FUSE) | Works, Docker Desktop / WSL2 provides `/dev/fuse` |
+| `gaia-selfhost_files` | `/var/lib/gaia/files` | Files you attach in chat, generated images, profile pictures and support attachments |
+| `gaia-selfhost_workspace` | `/mnt/jfs` | Each user's workspace: the copy of their uploads the agent opens, agent artifacts, and installed skills |
 
-The self-host Compose stack already runs the backend in a container, so all three platforms are covered. The native path is a development-only convenience on Linux.
+Both are mounted into `gaia-backend` and `arq_worker`. The browser loads a stored file from `/api/v1/blobs/...` on your own domain, with your session, and only its owner can open it. AI models never fetch a file by URL: they get its contents.
+
+The workspace is a plain volume. Hosted GAIA keeps workspaces in JuiceFS on object storage so cloud sandboxes can mount them, which is why the hosted stack needs FUSE; a self-hosted instance does not use JuiceFS, and its containers run without extra privileges. With the [local coding sandbox](#local-coding-sandbox) on, each user's sandbox container mounts only that user's folder of the workspace volume.
 
 <Note>
-Run the backend in a container even on macOS and Windows. Docker Desktop runs a Linux VM that exposes `/dev/fuse`, so the FUSE mount works inside the container even though the host OS cannot mount it directly.
+`CLOUDINARY_*`, `R2_*` and `JUICEFS_META_URL_TEMPLATE` are used only by the hosted deployment. A self-hosted instance ignores them.
 </Note>
 
-### How the mount works
-
-FUSE lets a userspace program act as a filesystem instead of the kernel:
-
-1. The kernel exposes a device at `/dev/fuse`.
-2. The `juicefs mount` process opens that device and attaches itself as the driver for `/mnt/jfs`.
-3. When the backend reads or writes a path under `/mnt/jfs`, the kernel routes the call to the JuiceFS process.
-4. JuiceFS looks up metadata in its database, fetches or stores the file's chunks in object storage, and serves the result back through `/dev/fuse`.
-
-The backend never sees any of this, it just reads and writes files under `/mnt/jfs`.
-
-### Container settings that make it work
-
-A Docker container is unprivileged by default: it cannot mount filesystems, cannot see host devices, and runs under an AppArmor profile that blocks `mount`. The Compose file grants exactly what FUSE needs and nothing more:
-
-```yaml
-gaia-backend:
-  environment:
-    # Where the backend expects the mount. Must match the mountpoint.
-    JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
-    # FUSE filesystems can't be watched with inotify, so artifact
-    # detection tails the JuiceFS access log instead.
-    ARTIFACT_DETECTION_MODE: accesslog
-  cap_add:
-    - SYS_ADMIN # the mount() syscall requires this capability
-  devices:
-    - /dev/fuse:/dev/fuse # pass the FUSE device into the container
-  security_opt:
-    - apparmor:unconfined # lift the default profile that denies mount
-  volumes:
-    - juicefs_cache:/var/cache/juicefs # keep the local chunk cache warm
-```
-
-<AccordionGroup>
-  <Accordion icon="key" title="cap_add: SYS_ADMIN">
-    The `mount(2)` syscall requires the `CAP_SYS_ADMIN` capability, which Docker drops by default. Without it, `juicefs` cannot perform the mount and fails before it starts. This grants only that one capability, not full `privileged` access.
-  </Accordion>
-  <Accordion icon="microchip" title="devices: /dev/fuse">
-    The JuiceFS process opens `/dev/fuse` to talk to the kernel's FUSE module. Containers see no host devices by default, so this passes the device through. Without it you get `fusermount3: cannot open /dev/fuse: No such file or directory`.
-  </Accordion>
-  <Accordion icon="shield" title="security_opt: apparmor:unconfined">
-    On Ubuntu and Debian hosts, Docker applies a default AppArmor profile that denies the `mount` operation even when the container holds `CAP_SYS_ADMIN`. This lifts that profile. On hosts without AppArmor it has no effect.
-  </Accordion>
-  <Accordion icon="database" title="volumes: juicefs_cache">
-    JuiceFS keeps a local disk cache of file chunks so repeat reads don't go back to object storage. Persisting it in a named volume keeps the cache warm across restarts. This affects speed only, not correctness.
-  </Accordion>
-</AccordionGroup>
-
-<Warning>
-Avoid `privileged: true` as a shortcut. It grants every capability and device to the container, which is a much larger attack surface. The four scoped settings above are the least-privilege way to enable a single FUSE mount.
-</Warning>
-
-### Required configuration
-
-File features need two cloud services today. Neither is required to boot, and chat, memory and integrations work without them:
-
-| What you want | What it needs | Variables in `apps/api/.env` |
-| --- | --- | --- |
-| Attach files in chat | A [Cloudinary](https://cloudinary.com) account (the free tier is enough), which stores the uploaded file | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` |
-| Let the agent open uploads, keep artifacts, install skills | An S3-compatible bucket (Cloudflare R2 works well) for file data, plus a PostgreSQL database for JuiceFS metadata | `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `JUICEFS_META_URL_TEMPLATE` |
-
-Without Cloudinary, attaching a file fails with *"File uploads are not set up on this instance"*, and nothing is stored. Without the workspace store, uploads still save (when Cloudinary is set), but the agent cannot open them from its sandbox, the artifacts panel stays empty, and the backend logs `JuiceFSUnavailable`. Restart the API after adding either: `gaia start`.
-
-<Note>
-There is no local-disk option yet. Uploaded files are served to the browser and to AI providers by a public Cloudinary URL, and the workspace is shared with cloud sandboxes through JuiceFS, so a disk-only store needs a file-serving endpoint and a different sandbox mount. It is on the roadmap.
-</Note>
+If the files volume is missing (for example, a platform deploy without a disk at `/var/lib/gaia/files`), attaching a file fails with *"File uploads are not set up on this instance"* and names the fix, rather than saving into a container that a restart would wipe.
 
 ## Local coding sandbox
 
@@ -504,7 +434,7 @@ Keep SSE responses unbuffered and allow WebSocket upgrades on `/api/v1`. Your pr
 
 ## Data Persistence
 
-Data is persisted using Docker volumes (prefixed `gaia-selfhost_`, except `gaia-sandbox-workspace` which is pinned by name):
+Data is persisted using Docker volumes, all prefixed `gaia-selfhost_`:
 
 | Volume                  | Contents              |
 | ----------------------- | --------------------- |
@@ -513,9 +443,9 @@ Data is persisted using Docker volumes (prefixed `gaia-selfhost_`, except `gaia-
 | `gaia-selfhost_redis_data`  | Redis data        |
 | `gaia-selfhost_chroma_data` | ChromaDB vectors  |
 | `gaia-selfhost_rabbitmq_data` | RabbitMQ messages |
-| `gaia-selfhost_juicefs_cache` | JuiceFS local chunk cache (speed only, safe to delete) |
+| `gaia-selfhost_files` | Uploaded and generated files |
+| `gaia-selfhost_workspace` | Every user's workspace: uploads the agent opens, artifacts, installed skills |
 | `gaia-selfhost_models_cache` | fastembed ONNX model cache (~1.85 GB, safe to delete — re-downloads) |
-| `gaia-sandbox-workspace` | Local sandbox workspace, shared by every user's sandbox container — only with [`--code-sandbox`](#local-coding-sandbox) |
 | `gaia-selfhost_caddy_data` | Proxy TLS certificates and keys |
 | `gaia-selfhost_caddy_config` | Proxy runtime config |
 
@@ -550,12 +480,14 @@ docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgr
 See the collapsed sections below for consistent-snapshot variants, ChromaDB/RabbitMQ, and restore steps.
 </Tip>
 
-Two stores hold data you cannot rebuild:
+Four stores hold data you cannot rebuild:
 
 - **MongoDB** — users, sessions, chats, settings, provider credentials (encrypted at rest), and the [instance secret](#day-2-operations). Lose it and every login and stored provider key is gone with it.
 - **PostgreSQL** — agent and conversation state (LangGraph checkpoints).
+- **`gaia-selfhost_files`** — the files users attached and the images GAIA generated.
+- **`gaia-selfhost_workspace`** — each user's workspace and installed skills.
 
-Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content), RabbitMQ (transient messages), and the JuiceFS workspace (file bytes already live in your object store) are lower-stakes.
+`gaia backup` archives both volumes (as `files-<date>.tar.gz` and `workspace-<date>.tar.gz`) next to the database dumps, and `gaia restore --from` puts them back. Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content) and RabbitMQ (transient messages) are lower-stakes.
 
 <AccordionGroup>
   <Accordion title="Advanced: Manual backup & restore details">
@@ -701,8 +633,6 @@ On first boot GAIA generates a root secret and persists it inside MongoDB (the `
     # INSTANCE_SECRET=$(openssl rand -hex 32)
     # Optional integrations — leave unset to disable that lane (see Self-Host vs Cloud):
     # OPENROUTER_API_KEY=...
-    # R2_ACCOUNT_ID=... R2_BUCKET=... R2_ACCESS_KEY=... R2_SECRET_KEY=...
-    # JUICEFS_META_URL_TEMPLATE=postgres://juicefs:pass@postgres:5432/gaia_juicefs_{shard}
     # LIVEKIT_URL=... LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=...
     ```
 
@@ -722,16 +652,7 @@ On first boot GAIA generates a root secret and persists it inside MongoDB (the `
 
 <AccordionGroup>
   <Accordion icon="triangle-exclamation" title="Logs show JuiceFSUnavailable">
-    The backend can't reach the workspace mount. Check, in order:
-    - **Object store and metadata are configured**: `R2_*` and `JUICEFS_META_URL_TEMPLATE` must be set in `apps/api/.env`. Without them JuiceFS never mounts.
-    - **FUSE settings are present**, confirm `cap_add: SYS_ADMIN`, `devices: /dev/fuse`, and `security_opt: apparmor:unconfined` are on `gaia-backend` and `arq_worker`.
-    - **The mount came up**, run `docker compose -f docker-compose.selfhost.yml exec gaia-backend mountpoint /mnt/jfs`. A non-zero result means the mount failed; check the backend logs for the JuiceFS error.
-  </Accordion>
-  <Accordion icon="microchip" title="fusermount3: cannot open /dev/fuse">
-    The FUSE device isn't reaching the container. Confirm the `devices: /dev/fuse:/dev/fuse` mapping is present. On a Linux host, verify the device exists with `ls -l /dev/fuse` and load the module if missing: `sudo modprobe fuse`. On macOS and Windows, make sure Docker Desktop is running (it provides the device from its Linux VM).
-  </Accordion>
-  <Accordion icon="lock" title="Mount fails with permission denied">
-    The container holds the capability but the host's security profile is blocking the mount. Confirm `security_opt: apparmor:unconfined` is set. On SELinux hosts, you may also need to allow the mount in your local policy.
+    The backend can't see the workspace volume. Confirm `gaia-backend` and `arq_worker` both mount `workspace:/mnt/jfs` in `docker-compose.selfhost.yml`, and check it with `docker compose -f docker-compose.selfhost.yml exec gaia-backend mountpoint /mnt/jfs`. A compose file from before local storage lacks the mount: `gaia update` brings it in.
   </Accordion>
   <Accordion icon="plug" title="Ollama connection test fails">
     The backend reaches Ollama through `http://host.docker.internal:11434`, which the Compose file wires via `extra_hosts: host.docker.internal:host-gateway`. If the test fails: confirm Ollama is running (`curl http://localhost:11434/api/tags` on the host), and on Linux start it with `OLLAMA_HOST=0.0.0.0 ollama serve` so it accepts connections from the Docker gateway.
