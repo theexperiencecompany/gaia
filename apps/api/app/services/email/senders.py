@@ -15,14 +15,24 @@ from app.constants.email import (
     WHATSAPP_URL,
 )
 from app.constants.log_tags import LogTag
+from app.constants.referrals import (
+    INVITE_CTA_LABEL,
+    INVITE_EMAIL_TEMPLATE,
+    INVITE_SENDER_TEMPLATE,
+    INVITE_SUBJECT_TEMPLATE,
+)
 from app.db.repositories.users import user_repository
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.models.user_models import UserDocument
-from app.services.email.models import EmailMessage
+from app.services.email.models import EmailMessage, ReferralInviteEmail
 from app.services.email.providers import get_email_provider
 from app.services.email.providers.base import MarketingContactsProvider
 from app.services.email.service import render_email_template, send_email
-from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
+from app.utils.notification.unsubscribe import (
+    build_unsubscribe_headers,
+    build_unsubscribe_url,
+    one_click_unsubscribe_headers,
+)
 from shared.py.wide_events import log
 
 
@@ -254,6 +264,29 @@ async def send_inactive_user_email(
             error_type=type(e).__name__,
         )
         raise
+
+
+async def send_referral_invite_email(invite: ReferralInviteEmail) -> None:
+    """Send a friend's invite from GAIA's domain; raises when the provider refuses it."""
+    await send_email(
+        EmailMessage(
+            sender=INVITE_SENDER_TEMPLATE.format(name=invite.referrer_name),
+            to=[invite.to],
+            subject=INVITE_SUBJECT_TEMPLATE.format(name=invite.referrer_name),
+            html=render_email_template(
+                INVITE_EMAIL_TEMPLATE,
+                referrer_name=invite.referrer_name,
+                referrer_picture=invite.referrer_picture,
+                price_line=invite.price_line,
+                regular_price_line=invite.regular_price_line,
+                cta_url=invite.invite_link,
+                cta_label=INVITE_CTA_LABEL,
+                unsubscribe_url=invite.unsubscribe_url,
+            ),
+            reply_to=invite.referrer_email,
+            headers=one_click_unsubscribe_headers(invite.unsubscribe_url),
+        )
+    )
 
 
 async def send_badge_earned_email(

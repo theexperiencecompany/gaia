@@ -231,6 +231,24 @@ def mock_queue_inbox_desk():
 
 
 @pytest.fixture
+def mock_no_referral():
+    """Treat every payer as never referred: no checkout gift, no conversion; opted in like the ones below."""
+    with (
+        patch(
+            "app.services.payments.payment_service.pending_gift_referral",
+            AsyncMock(return_value=None),
+        ) as gift,
+        patch(
+            "app.services.payments.payment_webhook_service.record_friend_payment", AsyncMock()
+        ) as conversion,
+        patch(
+            "app.services.payments.subscription_events._queue_banked_referral_months", AsyncMock()
+        ) as banked,
+    ):
+        yield SimpleNamespace(gift=gift, conversion=conversion, banked=banked)
+
+
+@pytest.fixture
 def mock_activation_workflow_reactivation():
     """Patch the reducer that resumes lapsed workflows on activation, at its source module (import deferred to break a cycle).
 

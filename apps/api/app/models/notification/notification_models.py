@@ -45,6 +45,7 @@ class NotificationSourceEnum(str, Enum):
     USAGE_LIMIT = "usage_limit"
     INTEGRATION_EXPIRED = "integration_expired"
     TODO_TRIGGER = "todo_trigger"
+    REFERRAL_REWARD = "referral_reward"
 
 
 class ActionType(str, Enum):

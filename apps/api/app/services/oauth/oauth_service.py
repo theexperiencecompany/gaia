@@ -31,6 +31,7 @@ from app.services.integrations.integration_status import (
 )
 from app.services.integrations.user_integration_status import publish_connected
 from app.services.onboarding.intelligence_job import enqueue_gmail_personalization
+from app.services.referrals.attribution import ReferralAttribution, attribute_signup
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.inbox_desk import queue_inbox_desk_provision
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
@@ -118,11 +119,13 @@ async def store_user_info(
     *,
     auth_method: AuthenticationMethod | None,
     external_side_effects: bool = True,
+    referral: ReferralAttribution | None = None,
 ) -> tuple[str, bool]:
     """Store user info from a Google callback, updating or creating the user.
 
     external_side_effects=False skips signup emails/analytics/workspace
     provisioning while keeping the stored data shape identical, for dev/test minting.
+    referral is the invite link's attribution; only a brand-new account takes it.
     """
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
@@ -177,6 +180,8 @@ async def store_user_info(
             marketing_contact_added_at=settled_at,
         )
     )
+    if referral is not None:
+        await attribute_signup(created.id, referral)
 
     if not external_side_effects:
         return created.id, True
