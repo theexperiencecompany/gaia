@@ -124,7 +124,8 @@ export async function mintDevUser(): Promise<void> {
 /**
  * Seed deterministic todos + conversations for the dev user. The dev seeder
  * also marks onboarding complete, so specs land on the app shell rather than
- * being bounced to `/onboarding` by the onboarding guard.
+ * being bounced to `/onboarding` by the onboarding guard, and grants Pro, so
+ * the paywall does not cover the app.
  */
 export async function seedDevData(): Promise<void> {
   await devRequest("/dev/seed", {
@@ -133,6 +134,7 @@ export async function seedDevData(): Promise<void> {
       email: DEV_USER,
       todos: SEED_TODOS,
       conversations: SEED_CONVERSATIONS,
+      pro: true,
     }),
   });
 }

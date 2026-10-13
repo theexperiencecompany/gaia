@@ -1,16 +1,27 @@
 """Reminder scheduler for managing reminder tasks."""
 
 from datetime import UTC, datetime
+import hashlib
+import json
 
 from arq.connections import RedisSettings
 
+from app.constants.reminders import (
+    REMINDER_CREATE_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+    REMINDER_CREATE_LOCK_LEASE_SECONDS,
+    REMINDER_CREATE_LOCK_MAX_HOLD_SECONDS,
+    REMINDER_CREATE_LOCK_PREFIX,
+    REMINDER_CREATE_LOCK_RENEW_SECONDS,
+)
 from app.db.repositories.reminders import reminder_repository
 from app.models.reminder_models import (
     CreateReminderRequest,
+    ReminderCreation,
     ReminderDocument,
     ReminderModel,
     ReminderStatus,
     ReminderUpdate,
+    StaticReminderPayload,
 )
 from app.models.scheduler_models import (
     BaseScheduledTask,
@@ -24,9 +35,24 @@ from app.models.scheduler_models import (
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
+from app.utils.redis_lock import DistributedLock
 from app.utils.schedule import InvalidScheduleError, validate_recurring_schedule
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
+
+
+def _creation_lease(
+    user_id: str, payload: StaticReminderPayload, repeat: str | None, scheduled_at: datetime
+) -> DistributedLock:
+    """Build the cross-replica lease held while one reminder is checked for a twin and inserted."""
+    identity = json.dumps([user_id, payload.title, payload.body, repeat, scheduled_at.isoformat()])
+    return DistributedLock(
+        f"{REMINDER_CREATE_LOCK_PREFIX}{hashlib.sha256(identity.encode()).hexdigest()}",
+        lease_seconds=REMINDER_CREATE_LOCK_LEASE_SECONDS,
+        acquire_timeout_seconds=REMINDER_CREATE_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+        renew_seconds=REMINDER_CREATE_LOCK_RENEW_SECONDS,
+        max_hold_seconds=REMINDER_CREATE_LOCK_MAX_HOLD_SECONDS,
+    )
 
 
 class ReminderScheduler(BaseSchedulerService):
@@ -40,8 +66,13 @@ class ReminderScheduler(BaseSchedulerService):
         """Get the ARQ job name for reminder processing."""
         return "process_reminder"
 
-    async def create_reminder(self, reminder_data: CreateReminderRequest, user_id: str) -> str:
-        """Create a new reminder and schedule it. Returns the reminder ID."""
+    async def create_reminder(
+        self, reminder_data: CreateReminderRequest, user_id: str
+    ) -> ReminderCreation:
+        """Create and schedule a reminder, or return the user's active one with the same text and schedule.
+
+        A re-asked reminder (a retry, a reply the user never saw) must not fire twice.
+        """
         is_recurring = reminder_data.repeat is not None
         now = datetime.now(UTC)
         scheduled_at = reminder_data.scheduled_at
@@ -59,34 +90,44 @@ class ReminderScheduler(BaseSchedulerService):
                 "seconds_until_scheduled": seconds_until_scheduled,
             }
         )
-        # Create schedule config
+        # Without an explicit time, compute the first fire in the reminder's own
+        # zone so it (and the recurrence, which reads reminder.timezone) fire at
+        # the right local hour, not in UTC.
+        first_run = reminder_data.scheduled_at
+        if first_run is None:
+            if not reminder_data.repeat:
+                raise ValueError("scheduled_at must be provided or repeat must be specified")
+            first_run = get_next_run_time(
+                reminder_data.repeat, tz=Timezone.parse(reminder_data.timezone)
+            )
         schedule_config = ScheduleConfig(
             repeat=reminder_data.repeat,
-            scheduled_at=reminder_data.scheduled_at,
+            scheduled_at=first_run,
             max_occurrences=reminder_data.max_occurrences,
             stop_after=reminder_data.stop_after,
         )
 
-        # Set scheduled_at if not provided — compute the first fire in the
-        # reminder's own zone so it (and the recurrence, which reads
-        # reminder.timezone) fire at the right local hour, not in UTC.
-        if not schedule_config.scheduled_at:
-            if schedule_config.repeat:
-                schedule_config.scheduled_at = get_next_run_time(
-                    schedule_config.repeat, tz=Timezone.parse(reminder_data.timezone)
-                )
-            else:
-                raise ValueError("scheduled_at must be provided or repeat must be specified")
-
         # reminder_data.timezone flows through model_dump() onto the persisted
         # ReminderModel.timezone; handle_recurring_task reads it on re-arm.
         reminder_dict = reminder_data.model_dump()
-        reminder_dict["scheduled_at"] = schedule_config.scheduled_at
+        reminder_dict["scheduled_at"] = first_run
         reminder = ReminderDocument(**reminder_dict, user_id=user_id)
 
-        created = await reminder_repository.create(reminder)
-        reminder_id = created.id
+        lease = _creation_lease(user_id, reminder_data.payload, reminder_data.repeat, first_run)
+        async with lease.hold() as held:
+            if not held:
+                raise RuntimeError(
+                    "could not take the reminder-creation lease (Redis unavailable or contended)"
+                )
+            twin = await reminder_repository.find_active_twin(
+                user_id, reminder_data.payload, reminder_data.repeat, first_run
+            )
+            if twin is not None:
+                log.set_ns("reminder", deduplicated=True, reminder_id=twin.id)
+                return ReminderCreation(reminder_id=twin.id, created=False)
+            created = await reminder_repository.create(reminder)
 
+        reminder_id = created.id
         # Schedule the task using base scheduler
         await self.schedule_task(reminder_id, schedule_config)
 
@@ -95,7 +136,7 @@ class ReminderScheduler(BaseSchedulerService):
             reminder_id=reminder_id,
             scheduled_at=created.scheduled_at,
         )
-        return reminder_id
+        return ReminderCreation(reminder_id=reminder_id, created=True)
 
     async def update_reminder(self, reminder_id: str, update: ReminderUpdate, user_id: str) -> bool:
         """Update an existing reminder, rescheduling if scheduled_at changed.
