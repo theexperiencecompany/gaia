@@ -57,7 +57,7 @@ function tokensOf(line: string): string[] {
 
 /** The utility family a token belongs to, so a swap is paired with its counterpart. */
 function familyOf(token: string): string {
-  if (token.includes("=")) return "prop";
+  if (/^(radius|variant|color|size|shadow)=/.test(token)) return "prop";
   const base = token
     .replace(/^.*:/, "")
     .replace(/^!|!$/g, "")
