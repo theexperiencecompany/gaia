@@ -38,19 +38,34 @@ async function settle(page: Page): Promise<void> {
 
 for (const surface of collectSurfaces(process.env.VISUAL_APP === "1")) {
   test(`${surface.group} ${surface.path}`, async ({ page }) => {
-    // Live third-party data (GitHub stars, status feeds) differs between runs; force the fallback.
+    // Off-site: a page navigation means the route redirects away (not our UI);
+    // live data (GitHub stars, status feeds) differs between runs, so force the fallback.
+    let leftSite = false;
     await page.route(
       (url) => url.hostname !== "localhost",
-      (route) =>
-        LIVE_DATA_TYPES.has(route.request().resourceType())
+      (route) => {
+        const request = route.request();
+        if (
+          request.isNavigationRequest() &&
+          request.frame() === page.mainFrame()
+        ) {
+          leftSite = true;
+          return route.abort();
+        }
+        return LIVE_DATA_TYPES.has(request.resourceType())
           ? route.abort()
-          : route.continue(),
+          : route.continue();
+      },
     );
     await page.clock.setFixedTime(FROZEN_NOW);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize(VIEWPORTS[surface.group]);
 
-    const response = await page.goto(surface.path);
+    const response = await page.goto(surface.path).catch((error: Error) => {
+      if (leftSite) return null;
+      throw error;
+    });
+    test.skip(leftSite, `${surface.path} redirects off-site`);
     expect(response?.status(), `${surface.path} did not render`).toBeLessThan(
       400,
     );

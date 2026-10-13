@@ -9,7 +9,7 @@ import { chromium } from "@playwright/test";
  * Usage: node e2e/visual/compose.ts <out-dir> <base-label> <head-label>
  */
 
-type Outcome = "unchanged" | "changed" | "new" | "failed";
+type Outcome = "unchanged" | "changed" | "new" | "failed" | "skipped";
 
 interface Attachment {
   name: string;
@@ -80,6 +80,7 @@ function classify(spec: Spec): SurfaceResult {
   );
   let outcome: Outcome;
   if (result.status === "passed") outcome = "unchanged";
+  else if (result.status === "skipped") outcome = "skipped";
   else if (message.includes("A snapshot doesn't exist")) outcome = "new";
   else if (images.base && images.head) outcome = "changed";
   else outcome = "failed";
@@ -156,7 +157,7 @@ function summaryMarkdown(
   return [
     `# Visual diff: ${baseLabel} → ${headLabel}`,
     "",
-    `${items.length} surfaces · ${count("changed")} changed · ${count("unchanged")} unchanged · ${count("new")} new · ${count("failed")} failed`,
+    `${items.length} surfaces · ${count("changed")} changed · ${count("unchanged")} unchanged · ${count("new")} new · ${count("failed")} failed · ${count("skipped")} skipped (redirect off-site)`,
     "",
     "## Changed (largest first)",
     "",
@@ -171,6 +172,10 @@ function summaryMarkdown(
     "## Failed to render",
     "",
     listed("failed"),
+    "",
+    "## Skipped (redirect off-site, not our UI)",
+    "",
+    listed("skipped"),
     "",
   ].join("\n");
 }
