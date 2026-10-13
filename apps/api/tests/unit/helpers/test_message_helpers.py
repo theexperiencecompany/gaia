@@ -378,6 +378,18 @@ class TestFormatFilesList:
         assert format_files_list(None) == ""
         assert format_files_list([]) == ""
 
+    @pytest.mark.parametrize("guide", [True, False])
+    def test_an_agent_never_receives_the_blob_url(self, guide: bool) -> None:
+        """Models get bytes (summaries, inline images), never a URL: a self-hosted blob URL is private."""
+        url = "/api/v1/blobs/u1/file_f1_a.png"
+        files = [
+            FileData(fileId="f1", url=url, filename="a.png", description="a cat"),
+            FileData(fileId="f2", url=url, filename="b.png", sandbox_path="/m/b.png"),
+        ]
+        assert url not in format_files_list(
+            files, conversation_id="c1", include_processing_guide=guide
+        )
+
     def test_empty_file_ids(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="test.txt")]
         assert format_files_list(files, file_ids=[]) == ""
