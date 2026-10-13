@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@heroui/table";
+import { cn } from "@/lib/utils";
 
 export interface ComparisonColumn {
   key: string;
@@ -48,7 +49,8 @@ export default function ComparisonTable({ columns, rows, ariaLabel }: Props) {
             <TableRow key={row[columns[0]?.key ?? ""] ?? ""}>
               {columns.map((col) => (
                 <TableCell key={col.key}>
-                  <span className={col.cellClassName}>
+                  {/* Marketing rows stay airy; TableCell itself takes no spacing overrides. */}
+                  <span className={cn("block px-1 py-2", col.cellClassName)}>
                     {row[col.key] ?? ""}
                   </span>
                 </TableCell>
