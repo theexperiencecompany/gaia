@@ -16,6 +16,7 @@ import * as git from "../../lib/git.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
 import {
   findRepoRoot,
+  isGaiaCheckout,
   runCommand,
   startServices,
 } from "../../lib/service-starter.js";
@@ -109,11 +110,7 @@ export async function runInitFlow(
         }
 
         // Check if it's already a gaia repo
-        const isGaiaRepo = fs.existsSync(
-          path.join(repoPath, "apps/api/app/config/settings_validator.py"),
-        );
-
-        if (isGaiaRepo) {
+        if (isGaiaCheckout(repoPath)) {
           store.updateData("existingRepoPath", repoPath);
           const action = (await store.waitForInput("existing_repo")) as string;
 

@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
 import { dockerVolumeExists, isDockerRunning } from "../../lib/docker.js";
-import { findRepoRoot } from "../../lib/service-starter.js";
+import { findInstallRoot } from "../../lib/service-starter.js";
 import { VOLUME_BACKUPS, type VolumeFile } from "../../lib/volume-backups.js";
 
 export interface BackupOptions {
@@ -77,7 +77,7 @@ export function resolveBackupOutputDir(
 export async function runBackup(
   options: BackupOptions = {},
 ): Promise<BackupResult> {
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   if (!repoPath) {
     throw new Error(
       "Could not find GAIA repository. Run from within a cloned gaia repo or set the recorded install path.",

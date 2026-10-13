@@ -1,6 +1,6 @@
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import {
-  findRepoRoot,
+  findInstallRoot,
   type StopServicesOptions,
   stopServices,
 } from "../../lib/service-starter.js";
@@ -13,7 +13,7 @@ export async function runStopFlow(
   store.setStep("Stopping");
   store.setStatus("Locating GAIA repository...");
 
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   if (!repoPath) {
     store.setError(
       new Error(

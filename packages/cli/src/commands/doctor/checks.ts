@@ -319,6 +319,28 @@ export async function checkComposeContainers(options: {
   };
 }
 
+/** The compose check's result when there is no configured install to inspect. */
+export function unconfiguredInstallCheck(repoPath: string | null): CheckResult {
+  const base: Pick<CheckResult, "id" | "label" | "severity" | "state"> = {
+    id: "compose-containers",
+    label: "Compose containers",
+    severity: "blocker",
+    state: "fail",
+  };
+  if (!repoPath) {
+    return {
+      ...base,
+      detail: "No GAIA installation found",
+      fix: "Run 'gaia up' to install GAIA.",
+    };
+  }
+  return {
+    ...base,
+    detail: `${repoPath} has no apps/api/.env, so it is not a configured install`,
+    fix: "Run 'gaia doctor' from your install, or 'gaia up' to install GAIA (self-host) / 'gaia setup' to configure this checkout (developer).",
+  };
+}
+
 async function fetchWithTimeout(
   url: string,
   init?: RequestInit,

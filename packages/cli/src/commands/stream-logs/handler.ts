@@ -11,7 +11,7 @@ import {
 import {
   DEV_LOG_FILE,
   detectSetupMode,
-  findRepoRoot,
+  findInstallRoot,
   isPidAlive,
   readStoredDevPid,
 } from "../../lib/service-starter.js";
@@ -25,7 +25,7 @@ function getDockerEnvFileArgs(dockerDir: string): string[] {
 }
 
 export async function runLogs(): Promise<void> {
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   if (!repoPath) {
     throw new Error(
       "Could not find GAIA repository. Run from within a cloned gaia repo.",

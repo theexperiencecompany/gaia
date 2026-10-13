@@ -6,7 +6,7 @@ import {
 } from "../../lib/prerequisites.js";
 import {
   detectSetupMode,
-  findRepoRoot,
+  findInstallRoot,
   type StartServicesOptions,
   startServices,
 } from "../../lib/service-starter.js";
@@ -22,7 +22,7 @@ export async function runStartFlow(
   store.setStep("Starting");
   store.setStatus("Locating GAIA repository...");
 
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   if (!repoPath) {
     store.setError(
       new Error(

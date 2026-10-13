@@ -353,10 +353,10 @@ export async function stopServices(
 export async function detectSetupMode(
   repoPath: string,
 ): Promise<SetupMode | null> {
-  const apiEnvPath = path.join(repoPath, "apps", "api", ".env");
-  if (!fs.existsSync(apiEnvPath)) return null;
+  const envPath = apiEnvPath(repoPath);
+  if (!fs.existsSync(envPath)) return null;
 
-  const content = fs.readFileSync(apiEnvPath, "utf-8");
+  const content = fs.readFileSync(envPath, "utf-8");
 
   // First, check for explicit SETUP_MODE marker (most robust)
   const setupModeMatch = content.match(/^SETUP_MODE=(.+)$/m);
@@ -447,33 +447,63 @@ export async function runCommand(
   });
 }
 
-export function findRepoRoot(startDir?: string): string | null {
-  let currentDir = startDir || process.cwd();
+/** The file whose presence marks a directory as a GAIA checkout. */
+const CHECKOUT_MARKER = "apps/api/app/config/settings_validator.py";
+
+/** The API env file `gaia up` / `gaia setup` write; a checkout without it is unconfigured. */
+function apiEnvPath(repoPath: string): string {
+  return path.join(repoPath, "apps", "api", ".env");
+}
+
+export function isGaiaCheckout(dir: string): boolean {
+  return fs.existsSync(path.join(dir, CHECKOUT_MARKER));
+}
+
+/** The nearest GAIA checkout at or above startDir. */
+function findCheckoutAbove(startDir: string): string | null {
+  let currentDir = startDir;
   while (currentDir !== path.dirname(currentDir)) {
-    if (
-      fs.existsSync(
-        path.join(currentDir, "apps/api/app/config/settings_validator.py"),
-      )
-    ) {
-      return currentDir;
-    }
+    if (isGaiaCheckout(currentDir)) return currentDir;
     currentDir = path.dirname(currentDir);
   }
-
-  const config = readConfig();
-  if (config?.repoPath) {
-    if (
-      fs.existsSync(
-        path.join(config.repoPath, "apps/api/app/config/settings_validator.py"),
-      )
-    ) {
-      return config.repoPath;
-    }
-    console.warn(
-      `Warning: Saved repo path "${config.repoPath}" is no longer a valid GAIA installation. Resetting config.`,
-    );
-    updateConfig({ repoPath: "", setupComplete: false });
-  }
-
   return null;
+}
+
+/** The install recorded in ~/.gaia/config.json; a stale record is reset. */
+function findRecordedCheckout(): string | null {
+  const config = readConfig();
+  if (!config?.repoPath) return null;
+  if (isGaiaCheckout(config.repoPath)) return config.repoPath;
+  console.warn(
+    `Warning: Saved repo path "${config.repoPath}" is no longer a valid GAIA installation. Resetting config.`,
+  );
+  updateConfig({ repoPath: "", setupComplete: false });
+  return null;
+}
+
+/** The checkout to configure: the one at or above cwd, else the recorded install. */
+export function findRepoRoot(startDir?: string): string | null {
+  return findCheckoutAbove(startDir ?? process.cwd()) ?? findRecordedCheckout();
+}
+
+/**
+ * The installation to inspect or run: a configured checkout at or above cwd,
+ * else the recorded install. An unconfigured checkout (a source clone) never
+ * shadows the install `gaia up` recorded.
+ */
+export function findInstallRoot(startDir?: string): string | null {
+  const local = findCheckoutAbove(startDir ?? process.cwd());
+  if (local && fs.existsSync(apiEnvPath(local))) return local;
+  return findRecordedCheckout() ?? local;
+}
+
+/** "path (mode)": which installation a command is inspecting. */
+export function describeInstall(
+  repoPath: string | null,
+  mode: SetupMode | null,
+): string {
+  if (!repoPath) return "no GAIA installation found";
+  return mode
+    ? `${repoPath} (${mode} mode)`
+    : `${repoPath} (not configured: no apps/api/.env)`;
 }

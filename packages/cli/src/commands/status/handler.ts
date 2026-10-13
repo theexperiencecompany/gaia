@@ -46,6 +46,7 @@ function printStatusSnapshot(store: CLIStore): void {
   const readiness = store.currentState.data.readiness as
     | DependencyReadiness
     | undefined;
+  console.log(`\nInstallation: ${store.currentState.data.install}`);
   printServices(services);
   printReadiness(readiness);
   printDocker(docker);

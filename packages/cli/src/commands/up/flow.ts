@@ -9,9 +9,7 @@
  */
 
 import { execFile } from "node:child_process";
-import * as fs from "node:fs";
 import * as os from "node:os";
-import * as path from "node:path";
 import {
   createUpAnswerResolver,
   DEFAULT_INSTALL_DIR,
@@ -27,7 +25,11 @@ import { delay, runPortChecks } from "../../lib/flow-utils.js";
 import * as git from "../../lib/git.js";
 import { checkGit, ensureDocker } from "../../lib/prerequisites.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
-import { detectSetupMode, startServices } from "../../lib/service-starter.js";
+import {
+  detectSetupMode,
+  isGaiaCheckout,
+  startServices,
+} from "../../lib/service-starter.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import { LOG_BUFFER_LINES } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
@@ -113,9 +115,7 @@ export async function runUpFlow(
     git: gitStatus,
   });
 
-  const needsClone = !fs.existsSync(
-    path.join(targetPath, "apps/api/app/config/settings_validator.py"),
-  );
+  const needsClone = !isGaiaCheckout(targetPath);
   if (gitStatus === "error") {
     if (needsClone) {
       store.setError(

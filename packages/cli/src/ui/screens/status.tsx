@@ -81,6 +81,7 @@ export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
                 </Text>
               )}
             </Box>
+            <Text color="gray">Installation: {state.data.install}</Text>
             <Box marginTop={1} flexDirection="column">
               <Box>
                 <Box width={22}>

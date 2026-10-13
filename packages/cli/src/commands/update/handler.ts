@@ -5,7 +5,7 @@
 
 import * as readline from "node:readline";
 import { isInteractive } from "../../lib/non-tty.js";
-import { findRepoRoot } from "../../lib/service-starter.js";
+import { findInstallRoot } from "../../lib/service-starter.js";
 import { GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import {
   applyGitUpdate,
@@ -131,7 +131,7 @@ async function runGitUpdate(
 }
 
 export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   if (!repoPath) {
     err("Error: No GAIA installation found.");
     err("Fix: Run 'gaia up' to install GAIA first.");

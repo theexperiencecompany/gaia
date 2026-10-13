@@ -13,7 +13,6 @@
  * @module lib/answers
  */
 
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readConfig } from "./config.js";
@@ -25,6 +24,7 @@ import {
   type SetupMode,
 } from "./env-parser.js";
 import { isInteractive } from "./non-tty.js";
+import { isGaiaCheckout } from "./service-starter.js";
 
 /** Providers `gaia up --llm-provider` accepts. */
 export const LLM_PROVIDERS = [
@@ -88,15 +88,7 @@ export const DEFAULT_INSTALL_DIR = path.join(os.homedir(), "gaia");
  */
 export function resolveRecordedInstall(): string | null {
   const recorded = readConfig()?.repoPath;
-  if (
-    recorded &&
-    fs.existsSync(
-      path.join(recorded, "apps/api/app/config/settings_validator.py"),
-    )
-  ) {
-    return recorded;
-  }
-  return null;
+  return recorded && isGaiaCheckout(recorded) ? recorded : null;
 }
 
 /**

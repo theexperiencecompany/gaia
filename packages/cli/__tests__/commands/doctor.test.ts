@@ -26,6 +26,7 @@ import {
   MIN_DISK_HEADROOM_BYTES,
   parseDfAvailableKb,
   resolvePort,
+  unconfiguredInstallCheck,
 } from "../../src/commands/doctor/checks.js";
 import { hasBlockingFailure } from "../../src/commands/doctor/flow.js";
 // Import after mocks are registered so the modules pick them up.
@@ -403,6 +404,24 @@ describe("checkComposeContainers", () => {
   });
 });
 
+describe("unconfiguredInstallCheck", () => {
+  it("names the checkout it inspected instead of sending the user to setup", () => {
+    const result = unconfiguredInstallCheck("/home/me/gaia-src");
+
+    expect(result.state).toBe("fail");
+    expect(result.detail).toContain("/home/me/gaia-src");
+    expect(result.detail).toContain("apps/api/.env");
+    expect(result.fix).toContain("gaia up");
+  });
+
+  it("says no installation was found when there is no checkout at all", () => {
+    const result = unconfiguredInstallCheck(null);
+
+    expect(result.detail).toBe("No GAIA installation found");
+    expect(result.fix).toContain("gaia up");
+  });
+});
+
 describe("checkApiHealth", () => {
   it("pings the API base it is given (the proxy origin on self-host)", async () => {
     stubFetch(async () => okResponse());
@@ -690,8 +709,8 @@ describe("hasBlockingFailure", () => {
     ],
     ["all ok → exit 0", { severity: "blocker", state: "ok" }, false],
   ])("%s", (_name, overrides, expected) => {
-    expect(hasBlockingFailure({ results: [makeResult(overrides)] })).toBe(
-      expected,
-    );
+    expect(
+      hasBlockingFailure({ install: "", results: [makeResult(overrides)] }),
+    ).toBe(expected);
   });
 });

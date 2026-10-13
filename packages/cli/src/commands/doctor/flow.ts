@@ -16,7 +16,11 @@ import {
 import { localApiUrl, localOrigin } from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
-import { detectSetupMode, findRepoRoot } from "../../lib/service-starter.js";
+import {
+  describeInstall,
+  detectSetupMode,
+  findInstallRoot,
+} from "../../lib/service-starter.js";
 import {
   checkApiHealth,
   checkComposeContainers,
@@ -30,10 +34,13 @@ import {
   checkWebReachable,
   EXPECTED_SERVICES,
   resolvePort,
+  unconfiguredInstallCheck,
 } from "./checks.js";
 import type { CheckResult } from "./types.js";
 
 export interface DoctorReport {
+  /** Which installation the checks ran against, e.g. "/home/me/gaia (selfhost mode)". */
+  install: string;
   results: CheckResult[];
 }
 
@@ -63,7 +70,7 @@ interface DoctorContext {
 }
 
 async function resolveContext(): Promise<DoctorContext> {
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   const overrides = repoPath ? readDockerComposePortOverrides(repoPath) : {};
   const mode = repoPath ? await detectSetupMode(repoPath) : null;
 
@@ -91,14 +98,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
 
   // 2. Compose project containers.
   if (!ctx.project) {
-    results.push({
-      id: "compose-containers",
-      label: "Compose containers",
-      severity: "blocker",
-      state: "fail",
-      detail: "Could not determine setup mode",
-      fix: "Run 'gaia setup' to configure the repository first.",
-    });
+    results.push(unconfiguredInstallCheck(ctx.repoPath));
   } else {
     results.push(
       await checkComposeContainers({
@@ -142,5 +142,5 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   // 8. Release drift — warns when the images are not this CLI's release.
   results.push(checkReleaseVersion(ctx.repoPath, ctx.mode));
 
-  return { results };
+  return { install: describeInstall(ctx.repoPath, ctx.mode), results };
 }

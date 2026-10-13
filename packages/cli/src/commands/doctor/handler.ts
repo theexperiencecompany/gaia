@@ -41,6 +41,7 @@ function printCheck(result: CheckResult): void {
 
 export function printDoctorReport(report: DoctorReport): void {
   out("\ngaia doctor");
+  out(`  Installation: ${report.install}`);
   for (const result of report.results) {
     printCheck(result);
   }

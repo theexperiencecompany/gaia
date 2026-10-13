@@ -3,7 +3,11 @@ import { COMPOSE_PROJECT_BY_MODE } from "../../lib/docker.js";
 import { localOrigin } from "../../lib/endpoints.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import { checkAllServices, getDockerStatus } from "../../lib/healthcheck.js";
-import { detectSetupMode, findRepoRoot } from "../../lib/service-starter.js";
+import {
+  describeInstall,
+  detectSetupMode,
+  findInstallRoot,
+} from "../../lib/service-starter.js";
 import type { CLIStore } from "../../ui/store.js";
 
 export async function runStatusChecks(store: CLIStore): Promise<void> {
@@ -11,11 +15,13 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
   store.setStatus("Checking service health...");
   store.updateData("refreshable", false);
 
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   const portOverrides = repoPath
     ? readDockerComposePortOverrides(repoPath)
     : undefined;
-  const mode = (repoPath && (await detectSetupMode(repoPath))) || "developer";
+  const detectedMode = repoPath ? await detectSetupMode(repoPath) : null;
+  store.updateData("install", describeInstall(repoPath, detectedMode));
+  const mode = detectedMode ?? "developer";
 
   const [services, docker, readiness] = await Promise.all([
     checkAllServices(mode, portOverrides),
