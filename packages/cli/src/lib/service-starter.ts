@@ -390,7 +390,6 @@ export async function runCommand(
     const proc = spawn(cmd, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      shell: true,
       env: env ? { ...process.env, ...env } : undefined,
     });
 
