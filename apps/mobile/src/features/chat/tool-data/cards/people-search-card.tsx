@@ -13,10 +13,9 @@ export interface PeopleSearchData {
   resource_name?: string;
 }
 
-// PersonRow mirrors web's row 1:1 (apps/web/src/features/mail/components/PeopleSearchCard.tsx):
-//   - Container: items-start gap-4 p-3, no press state (web is cursor-default)
-//   - Name column: w-40, text-sm font-medium text-zinc-300 (= web's text-gray-300)
-//   - Details column: flex-1, icons at 14px zinc-400 (= web's text-gray-400), text-sm
+// PersonRow mirrors web's row 1:1 (PeopleSearchCard.tsx): container items-start
+// gap-4 p-3 (no press state); name column w-40 text-sm font-medium text-zinc-300;
+// details column flex-1, icons 14px zinc-400, text-sm.
 function PersonRow({ person }: { person: PeopleSearchData }) {
   return (
     <View className="flex-row items-start gap-4 p-3">

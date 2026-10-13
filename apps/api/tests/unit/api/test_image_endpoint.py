@@ -15,6 +15,11 @@ from app.models.image_models import ImageToTextResponse
 
 API = "/api/v1"
 
+# client's dependency override (get_current_user -> FAKE_USER) is FastAPI
+# DI, not the request context the entitlement gate reads; the test app
+# strips WorkOSAuthMiddleware, so gate tests set the context directly.
+_GET_AUTHENTICATED_USER = "app.core.request_context.get_authenticated_user"
+
 
 def _image_data(**overrides) -> ImageData:
     base = {
@@ -32,7 +37,7 @@ def _image_data(**overrides) -> ImageData:
 
 
 class TestImageGenerate:
-    """POST /api/v1/image/generate"""
+    """POST /api/v1/image/generate."""
 
     @patch("app.api.v1.endpoints.image.api_generate_image", new_callable=AsyncMock)
     async def test_generate_success(self, mock_generate: AsyncMock, client: AsyncClient):
@@ -66,7 +71,7 @@ class TestImageGenerate:
 
 
 class TestImageToText:
-    """POST /api/v1/image/text"""
+    """POST /api/v1/image/text."""
 
     @patch("app.api.v1.endpoints.image.image_to_text_endpoint", new_callable=AsyncMock)
     async def test_image_to_text_success(self, mock_convert: AsyncMock, client: AsyncClient):
@@ -117,7 +122,7 @@ class TestImageToText:
 
 
 class TestImageStream:
-    """POST /api/v1/image/generate/stream"""
+    """POST /api/v1/image/generate/stream."""
 
     async def test_stream_emits_status_image_and_done_frames(self, client: AsyncClient):
         async def fake_stream(query_text: str):

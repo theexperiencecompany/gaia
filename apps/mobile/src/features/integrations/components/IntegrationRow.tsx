@@ -15,19 +15,11 @@ interface IntegrationRowProps {
 }
 
 /**
- * One row in the integrations list. Mirrors the web pattern in
- * `apps/web/src/features/integrations/components/IntegrationsList.tsx`:
- *
- *  - 40px logo + name (medium 600) + truncated description.
- *  - Trailing action is exactly one of:
- *      • `Connected` flat success chip (when connected)
- *      • `Disconnected` chip + `Reconnect` button (when the grant died)
- *      • `Connect` flat primary button (when available + not connected)
- *      • nothing (unavailable / pending)
- *  - Tapping the row anywhere opens the detail sheet, which is where
- *    "Disconnect" lives. The row never offers a destructive action.
- *  - Auth-type / managed-by / category badges live in the detail header,
- *    never on the row itself.
+ * One row in the integrations list, mirroring web's IntegrationsList.tsx: 40px
+ * logo + name + truncated description; trailing action is exactly one of
+ * Connected chip, Disconnected chip + Reconnect, Connect button, or nothing.
+ * Tapping opens the detail sheet (where Disconnect lives); auth-type/managed-by/
+ * category badges live only in the detail header, never on the row.
  */
 export function IntegrationRow({
   integration,
@@ -36,12 +28,6 @@ export function IntegrationRow({
   onPressConnect,
 }: IntegrationRowProps) {
   const { fontSize, spacing } = useResponsive();
-
-  const state = integrationConnectionState(integration.status);
-  const isConnected = state === "connected";
-  const isExpired = state === "expired";
-  const isAvailable =
-    integration.source === "custom" || integration.available !== false;
 
   return (
     <PressableFeedback
@@ -81,36 +67,86 @@ export function IntegrationRow({
       </View>
 
       <View style={{ alignItems: "flex-end" }}>
-        {isPending ? (
-          <IntegrationStatusPill status={integration.status} isPending />
-        ) : isConnected ? (
-          <IntegrationStatusPill status={integration.status} />
-        ) : (isAvailable || isExpired) && state !== "pending" ? (
-          <Pressable
-            onPress={() => onPressConnect(integration)}
-            hitSlop={6}
-            className={
-              isExpired
-                ? "rounded-full bg-amber-500/15 px-3 py-1.5 active:bg-amber-500/25"
-                : "rounded-full bg-primary/15 px-3 py-1.5 active:bg-primary/25"
-            }
-            accessibilityRole="button"
-            accessibilityLabel={`${CONNECT_ACTION_LABEL[state]} ${integration.name}`}
-          >
-            <Text
-              className={
-                isExpired
-                  ? "text-amber-500 text-[13px] font-semibold"
-                  : "text-primary text-[13px] font-semibold"
-              }
-            >
-              {CONNECT_ACTION_LABEL[state]}
-            </Text>
-          </Pressable>
-        ) : state === "pending" ? (
-          <IntegrationStatusPill status="created" />
-        ) : null}
+        <IntegrationRowAction
+          integration={integration}
+          isPending={isPending}
+          onPressConnect={onPressConnect}
+        />
       </View>
     </PressableFeedback>
   );
+}
+
+type RowActionKind = "pending" | "connected" | "connect" | "awaiting" | "none";
+
+function resolveRowAction(
+  integration: Integration,
+  isPending: boolean,
+): RowActionKind {
+  const state = integrationConnectionState(integration.status);
+  if (isPending) return "pending";
+  if (state === "connected") return "connected";
+  if (state === "pending") return "awaiting";
+  const isAvailable =
+    integration.source === "custom" || integration.available !== false;
+  if (isAvailable || state === "expired") return "connect";
+  return "none";
+}
+
+function ConnectButton({
+  integration,
+  onPressConnect,
+}: {
+  integration: Integration;
+  onPressConnect: (integration: Integration) => void;
+}) {
+  const state = integrationConnectionState(integration.status);
+  const isExpired = state === "expired";
+  return (
+    <Pressable
+      onPress={() => onPressConnect(integration)}
+      hitSlop={6}
+      className={
+        isExpired
+          ? "rounded-full bg-amber-500/15 px-3 py-1.5 active:bg-amber-500/25"
+          : "rounded-full bg-primary/15 px-3 py-1.5 active:bg-primary/25"
+      }
+      accessibilityRole="button"
+      accessibilityLabel={`${CONNECT_ACTION_LABEL[state]} ${integration.name}`}
+    >
+      <Text
+        className={
+          isExpired
+            ? "text-amber-500 text-[13px] font-semibold"
+            : "text-primary text-[13px] font-semibold"
+        }
+      >
+        {CONNECT_ACTION_LABEL[state]}
+      </Text>
+    </Pressable>
+  );
+}
+
+function IntegrationRowAction({
+  integration,
+  isPending,
+  onPressConnect,
+}: Pick<IntegrationRowProps, "integration" | "isPending" | "onPressConnect">) {
+  const kind = resolveRowAction(integration, isPending);
+  if (kind === "pending") {
+    return <IntegrationStatusPill status={integration.status} isPending />;
+  }
+  if (kind === "connected") {
+    return <IntegrationStatusPill status={integration.status} />;
+  }
+  if (kind === "awaiting") return <IntegrationStatusPill status="created" />;
+  if (kind === "connect") {
+    return (
+      <ConnectButton
+        integration={integration}
+        onPressConnect={onPressConnect}
+      />
+    );
+  }
+  return null;
 }

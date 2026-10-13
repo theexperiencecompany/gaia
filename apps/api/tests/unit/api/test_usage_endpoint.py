@@ -17,20 +17,22 @@ from app.schemas.usage import (
     UsageBudget,
     UsageSummary,
 )
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import UsageQueried
+from tests.conftest import FAKE_USER
 
 SUMMARY_URL = "/api/v1/usage/summary"
 HISTORY_URL = "/api/v1/usage/history"
 ACTIVITY_URL = "/api/v1/usage/activity"
-ANALYTICS_PATCH = "app.api.v1.endpoints.usage.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.usage.capture"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -98,8 +100,10 @@ class TestGetUsageSummary:
             response = await client.get(SUMMARY_URL)
 
         assert response.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.USAGE_QUERIED, {"plan_type": "free"})
-        assert type(mock_capture.call_args.args[1]["plan_type"]) is str
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER.user_id), UsageQueried(plan_type="free")
+        )
+        assert type(mock_capture.call_args.args[1].to_properties()["plan_type"]) is str
 
     async def test_get_summary_pro_plan(self, client: AsyncClient):
         with patch(
@@ -217,7 +221,7 @@ class TestGetUsageHistory:
             response = await client.get(HISTORY_URL, params={"feature_key": "nonexistent"})
 
         assert response.status_code == 400
-        assert "Unknown feature" in response.json()["detail"]
+        assert "Unknown feature" in response.json()["message"]
 
     async def test_get_history_days_below_min_returns_422(self, client: AsyncClient):
         response = await client.get(HISTORY_URL, params={"days": 0})
@@ -290,4 +294,4 @@ class TestGetUsageActivity:
             response = await client.get(ACTIVITY_URL)
 
         assert response.status_code == 500
-        assert response.json()["detail"] == "Failed to get usage activity"
+        assert response.json()["message"] == "Failed to get usage activity"

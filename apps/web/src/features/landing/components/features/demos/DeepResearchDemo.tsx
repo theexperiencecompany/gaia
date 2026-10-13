@@ -44,11 +44,8 @@ const SOURCES: Source[] = [
   },
 ];
 
-// Each source takes 2s per status phase: searching → reading → done
-// Source 0: starts at 0ms
-// Source 1: starts at 500ms (0.5s stagger)
-// Source 2: starts at 1000ms (1s stagger)
-// Summary appears after all sources are done
+// Each source cycles searching → reading → done (2s/phase, statusPhaseDuration)
+// staggered by source*Start; the summary appears once every source is done.
 const TIMINGS = {
   source0Start: 200,
   source1Start: 700,

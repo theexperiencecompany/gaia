@@ -1,37 +1,41 @@
 """Repository for the workflows collection.
 
 A global (non-user-scoped) repository: its hottest paths cross users — the
-scheduler scans every due workflow, webhook routing matches by Composio trigger
-id, the community/explore marketplace reads are public, and system provisioning
-runs per user without a request in context. Identity is the string business key
-``id`` (persisted as ``_id``; the two are equal ``wf_…`` UUIDs), so
-``uses_object_id=False`` and Mongo filters key on ``_id``/``slug`` (both indexed),
-never the redundant persisted ``id`` field.
+scheduler scans every due workflow, webhook routing matches by Composio
+trigger id, marketplace reads are public, and provisioning runs per user
+without a request in context. Identity is the string business key id
+(persisted as _id), so uses_object_id=False and filters key on _id/slug.
 
-Owned CRUD is expressed as ``*_for_user`` named methods that add the ``user_id``
-guard. Nested (``trigger_config.*``) and operator (``$inc`` stats, the atomic
-status claim) writes go through the raw-update seam — a flat ``WorkflowUpdate``
-``$set`` cannot express them.
+Owned CRUD is expressed as *_for_user methods that add the user_id guard.
+Nested and operator writes go through the raw-update seam — a flat
+WorkflowUpdate $set can't express them.
 
-No ``CachePolicy``: workflows are written on nearly every scheduler tick (status
-claim, re-arm, execution-count ``$inc``), so an entity/generation cache would
-churn its generation constantly for little read benefit, and the cross-user
-scan/routing reads are not keyed by id. Matches the ``workflow_executions``
-repository. Revisit only with evidence of a hot by-id read path.
+No CachePolicy: workflows are written on nearly every scheduler tick, so an
+entity/generation cache would churn constantly for little read benefit, and
+the cross-user scan/routing reads are not keyed by id.
 """
 
-from dataclasses import dataclass
+from collections.abc import Sequence
 from datetime import UTC, datetime
 import re
 from typing import Any
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
+from app.constants.cache import (
+    REPO_GLOBAL_SCOPE,
+    WORKFLOW_LIMIT_NOTICE_PREFIX,
+    WORKFLOW_LIMIT_NOTICE_TTL,
+)
+from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
-from app.models.scheduler_models import ScheduledTaskStatus
-from app.models.workflow_models import (
+from app.models.scheduler_models import (
     DeactivationReason,
+    ScheduledTaskStatus,
+    TaskRearm,
+    _Unset,
+)
+from app.models.workflow_models import (
     PublicWorkflowRow,
-    TriggerConfig,
+    SystemWorkflowDefinition,
     TriggerType,
     WorkflowDocument,
     WorkflowStep,
@@ -39,6 +43,7 @@ from app.models.workflow_models import (
 )
 from app.utils.creator import creator_lookup_stage
 from app.utils.occurrence import occurrence_window
+from shared.py.wide_events import log
 
 # The scheduler's occurrence field, written by every arm/re-arm path and pinned
 # by the stale-fire claim gate. One constant keeps the dotted key from drifting
@@ -64,42 +69,6 @@ _COMMUNITY_MATCH: dict[str, Any] = {
 }
 
 
-class _Unset:
-    """Sentinel for a ``set_status`` field that was not provided — distinct from an
-    explicit ``None``, which the recovery scan legitimately writes (a reaped
-    non-recurring workflow clears its ``scheduled_at``)."""
-
-
-UNSET = _Unset()
-
-
-@dataclass(frozen=True, slots=True)
-class WorkflowReArm:
-    """The scheduler's re-arm fields for ``set_status``, grouped into one argument.
-
-    ``scheduled_at``/``next_run`` keep the ``UNSET`` sentinel because ``None`` is a
-    meaningful clear the recovery scan writes; ``occurrence_count``/``repeat`` are
-    applied only when provided.
-    """
-
-    scheduled_at: datetime | _Unset | None = UNSET
-    occurrence_count: int | None = None
-    repeat: str | None = None
-    next_run: datetime | _Unset | None = UNSET
-
-
-@dataclass(frozen=True, slots=True)
-class SystemWorkflowDefinition:
-    """A system workflow's canonical definition, re-applied on ``reset_system_workflow``."""
-
-    title: str
-    description: str
-    prompt: str
-    steps: list[WorkflowStep]
-    trigger_config: TriggerConfig
-    composio_trigger_ids: list[str]
-
-
 class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     collection_name = "workflows"
     document_model = WorkflowDocument
@@ -111,20 +80,26 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     # ------------------------------------------------------------------ reads
 
     async def get_for_user(self, workflow_id: str, user_id: str) -> WorkflowDocument | None:
-        """A workflow by id, scoped to its owner — the owned-read path."""
+        """Return a workflow by id, scoped to its owner — the owned-read path."""
         return await self._find_one({"_id": workflow_id, "user_id": user_id})
 
     @staticmethod
-    def _list_query(user_id: str, *, exclude_todo_workflows: bool) -> dict[str, Any]:
-        """The shared filter for a user's listed workflows — the single source of
-        truth for both ``list_for_user`` and ``count_for_user`` so a paginated
-        list and its total can never drift out of the same predicate."""
-        query: dict[str, Any] = {"user_id": user_id}
+    def _list_query(
+        user_id: str, *, exclude_todo_workflows: bool, exclude_system_workflows: bool = False
+    ) -> dict[str, object]:
+        """Build the shared filter for a user's listed workflows.
+
+        The single source of truth for both list_for_user and count_for_user,
+        so a paginated list and its total can never drift apart.
+        """
+        query: dict[str, object] = {"user_id": user_id}
         if exclude_todo_workflows:
             query["$or"] = [
                 {"is_todo_workflow": {"$exists": False}},
                 {"is_todo_workflow": False},
             ]
+        if exclude_system_workflows:
+            query["is_system_workflow"] = {"$ne": True}
         return query
 
     async def list_for_user(
@@ -135,16 +110,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         limit: int | None = None,
         offset: int = 0,
     ) -> list[WorkflowDocument]:
-        """A user's workflows, newest first. Auto-generated todo workflows are
-        excluded by default (they are an implementation detail, not user-authored).
-        ``limit=None`` fetches every match; pass ``limit``/``offset`` to paginate
-        (``count_for_user`` gives the full match count for the same filter).
+        """Return a user's workflows, newest first (auto-generated todo workflows excluded by default).
 
-        A single legacy-malformed row is skipped and logged loudly rather than
-        failing the whole read — one corrupt document must not blank a user's
-        entire workflow list. This graceful degradation is scoped to the LIST read
-        only: the single-document reads (``get``/``get_for_user``) stay strict so a
-        fetch of a known id surfaces the corruption instead of hiding it.
+        limit=None fetches every match. A single legacy-malformed row is
+        skipped and logged rather than failing the whole read; get/get_for_user
+        stay strict so a fetch of a known id surfaces the corruption instead.
         """
         return await self._find_lenient(
             self._list_query(user_id, exclude_todo_workflows=exclude_todo_workflows),
@@ -153,15 +123,28 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             skip=offset,
         )
 
-    async def count_for_user(self, user_id: str, *, exclude_todo_workflows: bool = True) -> int:
-        """Total workflows a user has under the same filter as ``list_for_user`` —
-        the ``total`` a paginated list reports, independent of ``limit``/``offset``."""
+    async def count_for_user(
+        self,
+        user_id: str,
+        *,
+        exclude_todo_workflows: bool = True,
+        exclude_system_workflows: bool = False,
+    ) -> int:
+        """Total workflows a user has under the same filter as list_for_user.
+
+        exclude_system_workflows additionally drops the auto-provisioned ones,
+        for callers asking what the user authored themselves.
+        """
         return await self._count(
-            self._list_query(user_id, exclude_todo_workflows=exclude_todo_workflows)
+            self._list_query(
+                user_id,
+                exclude_todo_workflows=exclude_todo_workflows,
+                exclude_system_workflows=exclude_system_workflows,
+            )
         )
 
     async def find_by_ids(self, workflow_ids: list[str]) -> list[WorkflowDocument]:
-        """Workflows whose ids are in ``workflow_ids`` (no user scoping)."""
+        """Return workflows whose ids are in workflow_ids (no user scoping)."""
         if not workflow_ids:
             return []
         return await self._find({"_id": {"$in": workflow_ids}})
@@ -169,7 +152,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def find_by_ids_for_user(
         self, workflow_ids: list[str], user_id: str
     ) -> list[WorkflowDocument]:
-        """The user's workflows whose ids are in ``workflow_ids``."""
+        """Return the user's workflows whose ids are in workflow_ids."""
         if not workflow_ids:
             return []
         return await self._find({"_id": {"$in": workflow_ids}, "user_id": user_id})
@@ -177,8 +160,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def find_system_workflow(
         self, user_id: str, system_workflow_key: str
     ) -> WorkflowDocument | None:
-        """The user's system workflow for ``system_workflow_key`` — the provisioner's
-        idempotency probe (a partial-unique index guards concurrent creation)."""
+        """Return the user's system workflow for system_workflow_key (the provisioner's idempotency probe).
+
+        A partial-unique index guards concurrent creation.
+        """
         return await self._find_one(
             {
                 "user_id": user_id,
@@ -187,10 +172,23 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             }
         )
 
+    async def find_live_system_workflows(self, system_workflow_key: str) -> list[WorkflowDocument]:
+        """Every user's system workflow under system_workflow_key that runs or that GAIA may resume.
+
+        A row the user switched off themselves (no deactivated_reason) is not live.
+        """
+        return await self._find(
+            {
+                "system_workflow_key": system_workflow_key,
+                "is_system_workflow": True,
+                "$or": [{"activated": True}, {"deactivated_reason": {"$ne": None}}],
+            }
+        )
+
     async def get_system_workflow_for_user(
         self, workflow_id: str, user_id: str
     ) -> WorkflowDocument | None:
-        """A user's system workflow by id — the reset-to-default load."""
+        """Return a user's system workflow by id — the reset-to-default load."""
         return await self._find_one(
             {"_id": workflow_id, "user_id": user_id, "is_system_workflow": True}
         )
@@ -198,8 +196,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def find_active_integration_workflows(
         self, user_id: str, trigger_names: list[str]
     ) -> list[WorkflowDocument]:
-        """A user's activated integration workflows for the given trigger slugs — the
-        set re-registered against a fresh Composio account after a (re)connect."""
+        """Return a user's activated integration workflows for the given trigger slugs.
+
+        The set re-registered against a fresh Composio account after a (re)connect.
+        """
         if not trigger_names:
             return []
         return await self._find(
@@ -215,10 +215,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def find_active_by_composio_trigger(
         self, trigger_id: str, *, trigger_name: str | None = None
     ) -> list[WorkflowDocument]:
-        """Activated integration workflows registered under a Composio ``trigger_id`` —
-        the fan-out target when a webhook arrives for that id. ``trigger_name`` narrows
-        to a single trigger slug for the caller that must disambiguate (Gmail's poll
-        path, where account-level and poll workflows share the handler)."""
+        """Activated integration workflows under a Composio trigger_id (the webhook fan-out target).
+
+        trigger_name narrows to a single trigger slug for callers that must
+        disambiguate (Gmail's poll path, where two workflows share a handler).
+        """
         query: dict[str, Any] = {
             "activated": True,
             "trigger_config.type": TriggerType.INTEGRATION.value,
@@ -236,16 +237,17 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def find_paused_for_reason(
         self, user_id: str, reason: DeactivationReason
     ) -> list[WorkflowDocument]:
-        """A user's workflows the system paused for ``reason`` — the only ones an
-        automatic resume may touch. A workflow the user switched off themselves
-        carries no reason and is therefore never matched."""
+        """Return a user's workflows the system paused for reason — the only ones an auto-resume may touch.
+
+        A workflow the user switched off themselves carries no reason and is
+        never matched.
+        """
         return await self._find(
             {"user_id": user_id, "activated": False, "deactivated_reason": reason.value}
         )
 
     async def find_stale_executing(self, cutoff: datetime) -> list[WorkflowDocument]:
-        """Activated workflows wedged in EXECUTING since before ``cutoff`` — the
-        recovery sweep's re-arm candidates (a worker died mid-fire)."""
+        """Activated workflows wedged in EXECUTING since before cutoff (a worker died mid-fire)."""
         return await self._find(
             {
                 "activated": True,
@@ -255,11 +257,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
 
     async def find_pending_before(self, current_time: datetime) -> list[WorkflowDocument]:
-        """Recurring (cron) workflows that are scheduled and due at ``current_time``.
+        """Recurring (cron) workflows that are scheduled and due at current_time.
 
-        The due filter (``status="scheduled"`` and ``scheduled_at <= now``) is the
-        shared scheduler semantics — kept identical to ``ReminderRepository`` so the
-        two scans can never diverge on the ``$lte`` operator again.
+        The due filter (status="scheduled" and scheduled_at <= now) is the
+        shared scheduler semantics — kept identical to ReminderRepository so the
+        two scans can never diverge on the $lte operator again.
         """
         return await self._find(
             {
@@ -273,9 +275,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def count_trigger_references(
         self, composio_trigger_id: str, *, excluding_workflow_id: str | None = None
     ) -> int:
-        """How many workflows still reference ``composio_trigger_id`` — a Composio
-        trigger is only safe to delete at zero. ``excluding_workflow_id`` drops the
-        workflow being deleted/updated from the count."""
+        """How many workflows still reference composio_trigger_id (safe to delete only at zero).
+
+        excluding_workflow_id drops the workflow being deleted/updated from the count.
+        """
         query: dict[str, Any] = {"trigger_config.composio_trigger_ids": composio_trigger_id}
         if excluding_workflow_id:
             query["_id"] = {"$ne": excluding_workflow_id}
@@ -284,8 +287,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def find_public_slug_conflict(
         self, slug: str, *, exclude_id: str | None = None
     ) -> WorkflowDocument | None:
-        """A public workflow already holding ``slug`` (excluding ``exclude_id``), or
-        ``None`` when the slug is free — the pre-write uniqueness probe."""
+        """Return a public workflow already holding slug (excluding exclude_id), or None if free.
+
+        The pre-write uniqueness probe.
+        """
         query: dict[str, Any] = {"slug": slug, "is_public": True}
         if exclude_id:
             query["_id"] = {"$ne": exclude_id}
@@ -294,8 +299,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     # ------------------------------------------------- public marketplace reads
 
     async def get_public_with_creator(self, ref: str, *, by_slug: bool) -> PublicWorkflowRow | None:
-        """A single public workflow by id (``by_slug=False``) or slug, with its
-        creator hydrated. ``None`` when no public workflow matches ``ref``."""
+        """Return a single public workflow by id (by_slug=False) or slug, with its creator hydrated.
+
+        None when no public workflow matches ref.
+        """
         match: dict[str, Any] = (
             {"slug": ref, "is_public": True} if by_slug else {"_id": ref, "is_public": True}
         )
@@ -306,8 +313,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return rows[0] if rows else None
 
     async def find_community(self, *, limit: int, offset: int) -> list[PublicWorkflowRow]:
-        """A page of community-marketplace workflows (public, non-explore), newest
-        first, each with its creator hydrated."""
+        """Return a page of community-marketplace workflows (public, non-explore), newest first.
+
+        Each with its creator hydrated.
+        """
         return await self._aggregate(
             [
                 {"$match": _COMMUNITY_MATCH},
@@ -321,17 +330,48 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
 
     async def count_community(self) -> int:
-        """Total community-marketplace workflows (matches ``find_community``)."""
+        """Total community-marketplace workflows (matches find_community)."""
         return await self._count(_COMMUNITY_MATCH)
 
-    async def find_explore(self, *, limit: int, offset: int) -> list[PublicWorkflowRow]:
-        """A page of explore/featured workflows, most-run first.
+    async def find_public_matching(
+        self, patterns: Sequence[str], *, limit: int
+    ) -> list[PublicWorkflowRow]:
+        """Return public templates matching any of patterns in title, description or source integration.
 
-        Uses a plain ``localField``/``foreignField`` ``$lookup``: ``created_by`` is
-        a string while ``users._id`` is an ``ObjectId``, so this never matches and
-        ``creator_info`` is always empty — explore (GAIA-curated) workflows resolve
-        to the ``SYSTEM_CREATOR_NAME`` fallback by design. Preserved verbatim from
-        the pre-repository aggregation.
+        Featured first, then most-run. No patterns means nothing matches, not everything.
+        """
+        if not patterns:
+            return []
+        searchable = ("title", "description", "source_integration")
+        return await self._aggregate(
+            [
+                {
+                    "$match": {
+                        "$and": [
+                            {"$or": [_COMMUNITY_MATCH, {"is_explore": True}]},
+                            {
+                                "$or": [
+                                    {field: {"$regex": re.escape(pattern), "$options": "i"}}
+                                    for pattern in patterns
+                                    for field in searchable
+                                ]
+                            },
+                        ]
+                    }
+                },
+                {"$sort": {"is_explore": -1, "total_executions": -1, "updated_at": -1}},
+                {"$limit": limit},
+                _ADD_ID_STAGE,
+            ],
+            PublicWorkflowRow,
+        )
+
+    async def find_explore(self, *, limit: int, offset: int) -> list[PublicWorkflowRow]:
+        """Return a page of explore/featured workflows, most-run first.
+
+        The $lookup never matches (created_by is a string, users._id an
+        ObjectId), so explore workflows resolve to SYSTEM_CREATOR_NAME by
+        design.
         """
         return await self._aggregate(
             [
@@ -353,16 +393,17 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
 
     async def count_explore(self) -> int:
-        """Total explore/featured workflows (matches ``find_explore``)."""
+        """Total explore/featured workflows (matches find_explore)."""
         return await self._count({"is_explore": True})
 
     async def find_public_by_step_category(
         self, category: str, *, limit: int, offset: int
     ) -> list[PublicWorkflowRow]:
-        """Public or explore workflows with a step whose ``category`` matches
-        ``category`` (case-insensitive), most-run first, each with its creator
-        hydrated. ``category`` is regex-escaped here so it is matched literally —
-        the boundary owns the ReDoS/injection guard."""
+        """Return public/explore workflows with a step category matching category, most-run first.
+
+        category is regex-escaped here so it is matched literally — the
+        boundary owns the ReDoS/injection guard.
+        """
         return await self._aggregate(
             [
                 {"$match": self._step_category_match(category)},
@@ -376,11 +417,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
 
     async def count_public_by_step_category(self, category: str) -> int:
-        """Total workflows matching ``find_public_by_step_category``."""
+        """Total workflows matching find_public_by_step_category."""
         return await self._count(self._step_category_match(category))
 
     @staticmethod
-    def _step_category_match(category: str) -> dict[str, Any]:
+    def _step_category_match(category: str) -> dict[str, object]:
         return {
             "$or": [{"is_public": True}, {"is_explore": True}],
             "steps": {"$elemMatch": {"category": {"$regex": re.escape(category), "$options": "i"}}},
@@ -391,15 +432,13 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def update_for_user(
         self, workflow_id: str, user_id: str, update: WorkflowUpdate
     ) -> WorkflowDocument | None:
-        """Apply a flat ``$set`` update to the user's workflow. Returns the after
-        state, or ``None`` when no matching workflow exists."""
+        """Apply a flat $set update to the user's workflow; None when no matching workflow exists."""
         return await self._apply_update(
             workflow_id, REPO_GLOBAL_SCOPE, {"user_id": user_id}, update
         )
 
     async def touch(self, workflow_id: str, user_id: str) -> WorkflowDocument | None:
-        """Bump only ``updated_at`` on the user's workflow (execute/generation
-        heartbeat). Returns the after state, or ``None`` if not found."""
+        """Bump only updated_at on the user's workflow (execute/generation heartbeat); None if not found."""
         return await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id}, {}, scope=REPO_GLOBAL_SCOPE
         )
@@ -407,8 +446,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def mark_error(
         self, workflow_id: str, user_id: str, *, deactivate: bool = False
     ) -> WorkflowDocument | None:
-        """Record an error heartbeat (bump ``updated_at``), optionally deactivating
-        the workflow so an unrunnable one stops firing."""
+        """Record an error heartbeat (bump updated_at), optionally deactivating an unrunnable workflow."""
         ops: dict[str, dict[str, Any]] = {}
         if deactivate:
             ops["$set"] = {"activated": False}
@@ -435,9 +473,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         deactivate: bool = False,
         integration_ids: list[str] | None = None,
     ) -> WorkflowDocument | None:
-        """Replace a workflow's steps (LLM generation/regeneration). When the new
-        steps need integrations the user hasn't connected, ``deactivate`` forces the
-        workflow inactive so an enabled-but-unrunnable workflow can't keep firing."""
+        """Replace a workflow's steps (LLM generation/regeneration).
+
+        deactivate forces the workflow inactive when the new steps need
+        integrations the user hasn't connected, so it can't keep firing unrunnable.
+        """
         set_fields: dict[str, Any] = {"steps": [s.model_dump() for s in steps]}
         if integration_ids is not None:
             set_fields["integration_ids"] = integration_ids
@@ -453,8 +493,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def record_execution(
         self, workflow_id: str, user_id: str, *, successful: bool = False
     ) -> bool:
-        """Bump execution counters and stamp ``last_executed_at``. Returns whether a
-        workflow was matched."""
+        """Bump execution counters and stamp last_executed_at, returning whether a workflow was matched."""
         inc_fields: dict[str, Any] = {"total_executions": 1}
         if successful:
             inc_fields["successful_executions"] = 1
@@ -473,9 +512,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         trigger_ids: list[str],
         next_run: datetime | None,
     ) -> WorkflowDocument | None:
-        """Activate the user's workflow: set liveness (``activated``) and re-arm its
-        run-state to idle (``status="scheduled"``) with a freshly recomputed run
-        time. Returns the after state, or ``None`` when not found."""
+        """Activate the user's workflow and re-arm its run-state to idle with a freshly recomputed run time.
+
+        None when not found.
+        """
         return await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id},
             {
@@ -493,32 +533,38 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
 
     async def deactivate(
-        self, workflow_id: str, user_id: str, *, reason: DeactivationReason | None = None
+        self,
+        workflow_id: str,
+        user_id: str,
+        *,
+        reason: DeactivationReason | None = None,
+        blocked_on_integrations: list[str] | None = None,
     ) -> WorkflowDocument | None:
-        """Deactivate the user's workflow (disable its trigger and clear Composio
-        ids). Liveness is governed by ``activated``; a deferred fire is rejected by
-        the claim gate. ``reason`` marks a system pause so an automatic resume can
-        tell it apart from a user switching the workflow off (which passes none).
-        Returns the after state, or ``None`` when not found."""
+        """Deactivate the user's workflow: disable its trigger and clear Composio ids.
+
+        reason marks a system pause so auto-resume can tell it apart from a
+        user-initiated one. blocked_on_integrations is written alongside the
+        pause it explains, since a pause with no blockers could never resume.
+        """
+        fields: dict[str, object] = {
+            "activated": False,
+            "trigger_config.enabled": False,
+            "trigger_config.composio_trigger_ids": [],
+            "deactivated_reason": reason.value if reason else None,
+        }
+        if blocked_on_integrations is not None:
+            fields["blocked_on_integrations"] = blocked_on_integrations
         return await self._apply_raw_update(
-            {"_id": workflow_id, "user_id": user_id},
-            {
-                "$set": {
-                    "activated": False,
-                    "trigger_config.enabled": False,
-                    "trigger_config.composio_trigger_ids": [],
-                    "deactivated_reason": reason.value if reason else None,
-                }
-            },
-            scope=REPO_GLOBAL_SCOPE,
+            {"_id": workflow_id, "user_id": user_id}, {"$set": fields}, scope=REPO_GLOBAL_SCOPE
         )
 
     async def mark_activated_with_triggers(
         self, workflow_id: str, *, trigger_ids: list[str]
     ) -> WorkflowDocument | None:
-        """Flip a freshly-created pending workflow live (``activated`` + trigger
-        ``enabled``), storing any registered Composio ids. Keyed by id alone — the
-        create saga owns the row and no other user can hold this id."""
+        """Flip a freshly-created pending workflow live, storing any registered Composio ids.
+
+        Keyed by id alone — the create saga owns the row and no other user can hold it.
+        """
         set_fields: dict[str, Any] = {"activated": True, "trigger_config.enabled": True}
         if trigger_ids:
             set_fields["trigger_config.composio_trigger_ids"] = trigger_ids
@@ -531,16 +577,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     ) -> bool:
         """Atomically claim a live, idle workflow for a fire (SCHEDULED -> EXECUTING).
 
-        Returns ``False`` — and the caller skips the fire — when the workflow is not
-        both ``activated`` and ``status="scheduled"`` (a concurrent recovery scan
-        already claimed it, or it was deactivated but a deferred job fired anyway).
-
-        ``expected_next_run`` pins the occurrence the fire was armed for: ARQ has
-        no job cancellation, so after a reschedule the old deferred job still
-        fires — but ``trigger_config.next_run`` has moved on, and the mismatch
-        rejects it. Matched at second resolution (``occurrence_window``), the
-        resolution the stamp survives. Jobs enqueued before this stamp existed
-        pass ``None`` and claim exactly as before.
+        False means it isn't both activated and status="scheduled" (a recovery
+        scan already claimed it, or a deferred job fired after deactivation).
+        expected_next_run pins the occurrence, rejecting a stale deferred job
+        that fired after a reschedule moved trigger_config.next_run on.
         """
         filter_: dict[str, Any] = {
             "_id": workflow_id,
@@ -556,24 +596,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
         return result is not None
 
-    async def set_status(
-        self,
-        workflow_id: str,
-        status: ScheduledTaskStatus,
-        *,
-        user_id: str | None = None,
-        rearm: WorkflowReArm | None = None,
-    ) -> bool:
-        """Set a workflow's run-state ``status`` plus the scheduler's re-arm fields.
-        Returns whether a workflow matched. ``user_id`` adds the owner guard where
-        the caller has one; the worker paths update by id alone. The re-arm fields
-        (``scheduled_at``/``occurrence_count``/``repeat``/``next_run``) are grouped
-        in ``rearm`` — see ``WorkflowReArm`` for the per-field write semantics."""
-        rearm = rearm or WorkflowReArm()
-        filter_: dict[str, Any] = {"_id": workflow_id}
-        if user_id:
-            filter_["user_id"] = user_id
-        set_fields: dict[str, Any] = {"status": status.value}
+    @staticmethod
+    def _rearm_set_fields(rearm: TaskRearm) -> dict[str, object]:
+        """Translate a TaskRearm into a Mongo $set fragment (see TaskRearm for UNSET-vs-None)."""
+        set_fields: dict[str, object] = {}
         if not isinstance(rearm.scheduled_at, _Unset):
             set_fields["scheduled_at"] = rearm.scheduled_at
         if rearm.occurrence_count is not None:
@@ -582,6 +608,28 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             set_fields["repeat"] = rearm.repeat
         if not isinstance(rearm.next_run, _Unset):
             set_fields[NEXT_RUN_FIELD] = rearm.next_run
+        return set_fields
+
+    async def set_status(
+        self,
+        workflow_id: str,
+        status: ScheduledTaskStatus,
+        *,
+        user_id: str | None = None,
+        rearm: TaskRearm | None = None,
+    ) -> bool:
+        """Set a workflow's run-state status plus the scheduler's re-arm fields.
+
+        user_id adds the owner guard where the caller has one; the worker
+        paths update by id alone.
+        """
+        filter_: dict[str, Any] = {"_id": workflow_id}
+        if user_id:
+            filter_["user_id"] = user_id
+        set_fields: dict[str, Any] = {
+            "status": status.value,
+            **self._rearm_set_fields(rearm or TaskRearm()),
+        }
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
@@ -598,10 +646,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
 
     async def backfill_public_slug(self, workflow_id: str, slug: str) -> WorkflowDocument | None:
-        """Set ``slug`` on a public workflow only while it is still unset — the lazy
-        legacy backfill. Returns the after state on success, or ``None`` when another
-        writer won the race (matched nothing). May raise ``DuplicateKeyError`` on a
-        true slug collision; the caller retries with a fresh slug."""
+        """Set slug on a public workflow only while it is still unset (the lazy legacy backfill).
+
+        None when another writer won the race. May raise DuplicateKeyError on
+        a true slug collision; the caller retries with a fresh slug.
+        """
         return await self._apply_raw_update(
             {"_id": workflow_id},
             {"$set": {"slug": slug}},
@@ -612,8 +661,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def publish(
         self, workflow_id: str, *, created_by: str, slug: str
     ) -> WorkflowDocument | None:
-        """Publish a workflow to the community marketplace. May raise
-        ``DuplicateKeyError`` on a slug collision; the caller retries."""
+        """Publish a workflow to the community marketplace; may raise DuplicateKeyError on a slug collision."""
         return await self._apply_raw_update(
             {"_id": workflow_id},
             {"$set": {"is_public": True, "created_by": created_by, "slug": slug}},
@@ -631,11 +679,16 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def reset_system_workflow(
         self, workflow_id: str, definition: SystemWorkflowDefinition
     ) -> WorkflowDocument | None:
-        """Re-apply a system workflow's original definition (title/description/prompt/
-        steps/trigger_config), preserving liveness, stats and ``created_at``. ``next_run``
-        stays a native datetime (python-mode dump), consistent with create/re-arm."""
+        """Re-apply a system workflow's original definition, preserving liveness, stats and created_at.
+
+        Top-level scheduled_at/repeat are rewritten alongside trigger_config
+        because that's what the scheduler actually reads; the model validator
+        only fills them when absent, so a stored document otherwise keeps its
+        pre-reset values.
+        """
         trigger_doc = definition.trigger_config.model_dump()
         trigger_doc["composio_trigger_ids"] = definition.composio_trigger_ids
+        is_scheduled = definition.trigger_config.type == TriggerType.SCHEDULE
         return await self._apply_raw_update(
             {"_id": workflow_id},
             {
@@ -645,6 +698,8 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                     "prompt": definition.prompt,
                     "steps": [s.model_dump() for s in definition.steps],
                     "trigger_config": trigger_doc,
+                    "scheduled_at": definition.trigger_config.next_run if is_scheduled else None,
+                    "repeat": definition.trigger_config.cron_expression if is_scheduled else None,
                 }
             },
             scope=REPO_GLOBAL_SCOPE,
@@ -654,14 +709,73 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """Delete the user's workflow. Returns whether a document was removed."""
         return await self._remove(workflow_id, REPO_GLOBAL_SCOPE, {"user_id": user_id})
 
-    async def delete_many_for_user(self, workflow_ids: list[str], user_id: str) -> int:
-        """Delete many of the user's workflows in one round trip (idempotency purge
-        of stale suggestions). Returns the count deleted."""
-        if not workflow_ids:
-            return 0
-        return await self._delete_many(
-            {"_id": {"$in": workflow_ids}, "user_id": user_id}, scope=REPO_GLOBAL_SCOPE
+    async def distinct_users_with_activated_workflows(self) -> list[str]:
+        """Every user id owning at least one activated workflow (the paid-only migration's candidate pool)."""
+        return await self._distinct("user_id", {"activated": True})
+
+    async def claim_limit_notice(self, user_id: str, workflow_id: str) -> bool:
+        """Whether this run may send the workflow's limit-wall notice.
+
+        A Redis SET NX EX gate allows one notice per workflow per window,
+        since a quota/budget wall is hit again by every occurrence until reset.
+        Fails open (and logs) if Redis can't answer, so a degradation is
+        visible rather than silently repeating the notice.
+        """
+        client = redis_cache.redis
+        if client is None:
+            return True
+        try:
+            acquired = await client.set(
+                f"{WORKFLOW_LIMIT_NOTICE_PREFIX}{user_id}:{workflow_id}",
+                "1",
+                nx=True,
+                ex=WORKFLOW_LIMIT_NOTICE_TTL,
+            )
+        except Exception as e:
+            log.warning(
+                "Limit-notice dedup unavailable, sending the notice anyway",
+                workflow_id=workflow_id,
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return True
+        return bool(acquired)
+
+    async def count_playbook_decline(
+        self, workflow_id: str, user_id: str, *, run_id: str, workflow_hash: str
+    ) -> int | None:
+        """Count one run's decision not to write a playbook, once per run.
+
+        Matched on the run that last grew the tally, since parallel calls in
+        one turn can't see each other's answer. A different workflow_hash (the
+        workflow was edited) restarts the tally at one. None when this run
+        already counted.
+        """
+        key = {**self._identity_filter(workflow_id), "user_id": user_id}
+        grown = await self._apply_raw_update(
+            {
+                **key,
+                "playbook_declined_hash": workflow_hash,
+                "playbook_declined_run": {"$ne": run_id},
+            },
+            {"$inc": {"playbook_declines": 1}, "$set": {"playbook_declined_run": run_id}},
+            scope=REPO_GLOBAL_SCOPE,
         )
+        if grown is not None:
+            return grown.playbook_declines
+        fresh = await self._apply_raw_update(
+            {**key, "playbook_declined_hash": {"$ne": workflow_hash}},
+            {
+                "$set": {
+                    "playbook_declines": 1,
+                    "playbook_declined_hash": workflow_hash,
+                    "playbook_declined_run": run_id,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return None if fresh is None else fresh.playbook_declines
 
 
 workflow_repository = WorkflowsRepository()

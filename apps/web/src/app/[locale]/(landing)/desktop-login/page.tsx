@@ -7,13 +7,8 @@ import { useEffect, useState } from "react";
 import { ArrowUpRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { authApi } from "@/features/auth/api/authApi";
-import HeroImage from "@/features/landing/components/hero/HeroImage";
-import {
-  getTimeOfDay,
-  type TimeOfDay,
-} from "@/features/landing/utils/timeOfDay";
 import { useElectron } from "@/hooks/useElectron";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 /**
  * Desktop Login Page
@@ -23,9 +18,8 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
  * Located in (landing) to avoid sidebar layout.
  */
 export default function DesktopLoginPage() {
-  const { isElectron, openExternal } = useElectron();
+  const { isElectron, openExternal, signalReady } = useElectron();
   const router = useRouter();
-  const [timeOfDay] = useState<TimeOfDay>(() => getTimeOfDay());
   const [status, setStatus] = useState<
     "ready" | "opened" | "waiting" | "redirecting" | "error"
   >("ready");
@@ -43,25 +37,24 @@ export default function DesktopLoginPage() {
     return () => clearTimeout(timeout);
   }, [isElectron, router]);
 
-  // Already signed in? The wos_session cookie persists across launches,
-  // so skip the login screen entirely when the session is still valid.
+  // The wos_session cookie persists across launches, so a valid session skips the
+  // login screen. The splash stays up until something signals ready: on success
+  // that is /c's ElectronRouteGuard, on failure here — this page has no guard.
   useEffect(() => {
     if (!isElectron) return;
     let cancelled = false;
     authApi
       .fetchUserInfo()
       .then(() => {
-        if (!cancelled) {
-          setStatus("redirecting");
-        }
+        if (!cancelled) setStatus("redirecting");
       })
       .catch(() => {
-        // No valid session — stay on the login screen.
+        if (!cancelled) signalReady();
       });
     return () => {
       cancelled = true;
     };
-  }, [isElectron]);
+  }, [isElectron, signalReady]);
 
   // Listen for the main process signalling it's about to navigate to /c
   useEffect(() => {
@@ -72,10 +65,9 @@ export default function DesktopLoginPage() {
     return cleanup;
   }, []);
 
-  // Session verified (or the Electron main process signalled completion) —
-  // hand off to the app. Resolved during render (not in an effect) so the
-  // login screen never paints before navigating; `redirect` performs the same
-  // client-side navigation router.replace did.
+  // Session verified (or Electron signalled completion) — hand off to the
+  // app. Resolved during render, not an effect, so this screen never paints
+  // before navigating; `redirect` does the same as router.replace.
   if (status === "redirecting") {
     redirect("/c", RedirectType.replace);
   }
@@ -85,7 +77,7 @@ export default function DesktopLoginPage() {
       process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.heygaia.io/api/v1/";
     const loginUrl = `${apiBaseUrl}oauth/login/workos/desktop`;
 
-    trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+    track("navigation:cta_clicked", {
       location: "desktop_login_page",
       destination: "workos_oauth",
     });
@@ -105,11 +97,7 @@ export default function DesktopLoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center">
-      <div className="fixed inset-0 z-0 opacity-60">
-        <HeroImage timeOfDay={timeOfDay} />
-      </div>
-
+    <div className="flex min-h-screen w-full items-center justify-center bg-black">
       <div className="relative z-10 w-full max-w-xl px-6">
         <div className="rounded-4xl bg-zinc-100/10 p-8 backdrop-blur-lg flex items-center flex-col">
           <div className="mb-8 flex justify-center">

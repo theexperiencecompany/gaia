@@ -10,7 +10,6 @@ from app.models.workflow_execution_models import RecordedCall, WorkflowExecution
 from app.services.workflow.execution_service import (
     PlaybookFallbackFailed,
     WorkflowFireOverlapped,
-    WorkflowFireQueued,
     WorkflowFireTimedOut,
     get_last_run_brief,
 )
@@ -20,7 +19,7 @@ MODULE = "app.services.workflow.execution_service"
 
 
 def _previous_run() -> WorkflowExecutionDocument:
-    """A finished run that recorded a trace, as the finder hands it back."""
+    """Build a finished run that recorded a trace, as the finder hands it back."""
     return WorkflowExecutionDocument(
         execution_id="ex_1",
         workflow_id="wf_1",
@@ -36,17 +35,16 @@ def _previous_run() -> WorkflowExecutionDocument:
 @pytest.mark.unit
 class TestLastRunBriefFailsOpen:
     async def test_a_first_run_has_no_brief(self) -> None:
-        lookup = AsyncMock(return_value=None)
-        with patch(f"{MODULE}.workflow_executions_repository.find_latest_with_trace", lookup):
+        lookup = AsyncMock(return_value=[])
+        with patch(f"{MODULE}.workflow_executions_repository.find_recent_with_trace", lookup):
             assert await get_last_run_brief("wf_1", "u_1") == ""
-        lookup.assert_awaited_once_with("wf_1", "u_1")
+        lookup.assert_awaited_once_with("wf_1", "u_1", limit=1)
 
     async def test_a_failed_lookup_yields_no_brief_and_a_warning(self) -> None:
-        """The brief is read before the executor is dispatched. A store hiccup
-        here must cost the run its history, not the run itself."""
+        """The brief is read before the executor dispatches; a store hiccup here must cost the run its history, not itself."""
         lookup = AsyncMock(side_effect=RuntimeError("mongo unavailable"))
         with (
-            patch(f"{MODULE}.workflow_executions_repository.find_latest_with_trace", lookup),
+            patch(f"{MODULE}.workflow_executions_repository.find_recent_with_trace", lookup),
             patch(f"{MODULE}.log") as log,
         ):
             assert await get_last_run_brief("wf_1", "u_1") == ""
@@ -55,13 +53,10 @@ class TestLastRunBriefFailsOpen:
         assert log.warning.call_args.kwargs["error_type"] == "RuntimeError"
 
     async def test_the_warning_names_the_workflow_and_the_real_error(self) -> None:
-        """The whole point of the swallow is that the wide event still says what
-        broke and for which workflow. A message, id or error dropped or None'd
-        here turns a silent no-brief run into an unexplainable one, and nothing
-        else in the system records it."""
+        """The swallow's whole point is that the wide event still names what broke and for which workflow — nothing else records it."""
         lookup = AsyncMock(side_effect=RuntimeError("mongo unavailable"))
         with (
-            patch(f"{MODULE}.workflow_executions_repository.find_latest_with_trace", lookup),
+            patch(f"{MODULE}.workflow_executions_repository.find_recent_with_trace", lookup),
             patch(f"{MODULE}.log") as log,
         ):
             await get_last_run_brief("wf_1", "u_1")
@@ -76,11 +71,10 @@ class TestLastRunBriefFailsOpen:
         }
 
     async def test_a_recorded_previous_run_is_rendered_as_the_brief(self) -> None:
-        """The brief IS that execution rendered — the found document is what gets
-        rendered, not some other value that happens to render to a string."""
+        """The brief IS that execution rendered — the found document itself, not some other value that renders to a string."""
         previous = _previous_run()
-        lookup = AsyncMock(return_value=previous)
-        with patch(f"{MODULE}.workflow_executions_repository.find_latest_with_trace", lookup):
+        lookup = AsyncMock(return_value=[previous])
+        with patch(f"{MODULE}.workflow_executions_repository.find_recent_with_trace", lookup):
             brief = await get_last_run_brief("wf_1", "u_1")
 
         assert brief == render_last_run(previous)
@@ -89,15 +83,7 @@ class TestLastRunBriefFailsOpen:
 
 @pytest.mark.unit
 class TestTheFireSignalsSayExactlyWhatHappened:
-    """The fire exceptions ARE user- and log-facing copy: the timed-out text is
-    delivered to the user as the run summary, and the queued/overlapped strings
-    are what the worker logs as the reason a fire never ran."""
-
-    def test_a_queued_fire_names_its_task(self) -> None:
-        queued = WorkflowFireQueued(task_id="task_9", user_id="u1", conversation_id="c1", trace=[])
-
-        assert str(queued) == "Workflow fire queued behind an in-flight run (task_id: task_9)"
-        assert queued.task_id == "task_9"
+    """The fire exceptions ARE user- and log-facing copy: the timed-out text is delivered to the user as the run summary, and the overlapped string is what the worker logs as the reason a fire never ran."""
 
     def test_an_overlapped_fire_names_its_holder(self) -> None:
         overlapped = WorkflowFireOverlapped(user_id="u1", conversation_id="c1", holder="run_3")

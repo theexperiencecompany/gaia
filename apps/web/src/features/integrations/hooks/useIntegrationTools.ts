@@ -2,8 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { formatToolName, toTitleCase } from "@/features/chat/utils/chatUtils";
 
-import { integrationsApi } from "../api/integrationsApi";
-import { integrationKeys } from "../api/queryKeys";
+import { integrationQueries } from "../api/queries";
 import type { Integration } from "../types";
 import { escapeRegExp } from "../utils/toolMentions";
 
@@ -29,10 +28,9 @@ export const useIntegrationTools = (
   integration: Integration,
   categoryPrefix?: string,
 ): UseIntegrationToolsReturn => {
-  const { data, isLoading } = useQuery({
-    queryKey: integrationKeys.tools(integration.id),
-    queryFn: () => integrationsApi.getIntegrationTools(integration.id),
-  });
+  const { data, isLoading } = useQuery(
+    integrationQueries.tools(integration.id),
+  );
 
   const { tools, mentionNames } = useMemo(() => {
     const prefixRegex = categoryPrefix

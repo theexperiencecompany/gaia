@@ -1,9 +1,9 @@
 """Backend-agnostic contract every user-scoped repository inherits.
 
-A concrete test class subclasses ``UserScopedRepositoryContract`` and provides
-three fixtures: ``repo`` (the repository singleton), ``make_doc(**overrides)``
-and ``make_update(**fields)``. The ``raw_collection`` and ``redis`` fixtures come
-from the contract ``conftest``. Every assertion is on a concrete value — never a
+A concrete test class subclasses UserScopedRepositoryContract and provides
+three fixtures: repo (the repository singleton), make_doc(**overrides)
+and make_update(**fields). The raw_collection and redis fixtures come
+from the contract conftest. Every assertion is on a concrete value — never a
 spy or a "was called". This suite is the Postgres-migration certificate: the same
 class will run against a Postgres repository unchanged.
 """
@@ -22,7 +22,7 @@ class UserScopedRepositoryContract:
     async def list_via_cache(self, repo, user_id: str) -> list:
         """Invoke the repository's cached list finder for a user.
 
-        Override per repository (e.g. ``return await repo.list_notes(user_id=user_id)``)
+        Override per repository (e.g. return await repo.list_notes(user_id=user_id))
         so the query-cache contract runs against that repository's real finder.
         """
         raise NotImplementedError("provide list_via_cache for the query-cache contract")

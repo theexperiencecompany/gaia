@@ -7,7 +7,7 @@ import {
   getRelevantThinkingMessage,
 } from "@/utils/playfulThinking";
 
-export interface ToolInfo {
+export interface ActiveToolInfo {
   toolName?: string;
   toolCategory?: string;
   integrationName?: string;
@@ -16,14 +16,13 @@ export interface ToolInfo {
 }
 
 /**
- * Turn lifecycle phases. A session entry exists only while a turn is active —
- * absence means idle. Terminal states (done/error/aborted) remove the entry.
+ * Turn lifecycle phases. A session entry exists only while a turn is active — absence means
+ * idle; terminal states (done/error/aborted) remove the entry.
  *
  * - connecting: send fired, SSE not yet delivering events
- * - streaming: SSE open (covers the background-executor tail that streams over
- *   the same connection after `main_response_complete`)
- * - awaiting_executor: SSE closed but a delegated background executor still owes
- *   its result message (delivered via the `conversation.new_message` WebSocket)
+ * - streaming: SSE open (covers the background-executor tail after `main_response_complete`)
+ * - awaiting_executor: SSE closed, a delegated background executor still owes its result
+ *   (delivered via the `conversation.new_message` WebSocket)
  */
 export type TurnPhase = "connecting" | "streaming" | "awaiting_executor";
 
@@ -41,7 +40,7 @@ export interface TurnUiState {
   composerLocked: boolean;
   loadingText: string;
   loadingTextKey: number;
-  toolInfo?: ToolInfo;
+  toolInfo?: ActiveToolInfo;
 }
 
 /** Loading UI owned by non-turn flows (voice agent, file upload). */
@@ -49,7 +48,17 @@ interface AuxLoadingState {
   active: boolean;
   text: string;
   key: number;
-  toolInfo?: ToolInfo;
+  toolInfo?: ActiveToolInfo;
+}
+
+/** A detached background executor run streaming into the active conversation.
+ *  Turn sessions belong to the chat SSE, which is long closed by the time a
+ *  ticket redeem runs — so background runs track their own indicator state
+ *  instead of borrowing (and clobbering) the turn's. */
+interface BackgroundRunState {
+  loadingText: string;
+  loadingTextKey: number;
+  toolInfo?: ActiveToolInfo;
 }
 
 interface StreamState {
@@ -62,6 +71,8 @@ interface StreamState {
   auxLoading: AuxLoadingState | null;
   /** Abort persistence in flight — background sync must not race it. */
   pendingSaveCount: number;
+  /** Detached executor runs currently streaming, keyed by conversation id. */
+  backgroundRuns: Record<string, BackgroundRunState>;
 }
 
 interface StreamActions {
@@ -72,12 +83,22 @@ interface StreamActions {
   setSessionLoadingText: (
     key: string,
     text: string,
-    toolInfo?: ToolInfo,
+    toolInfo?: ActiveToolInfo,
   ) => void;
   resetSessionLoadingText: (key: string) => void;
   /** The user decided this conversation's open approval gate. */
   clearAwaitingApproval: (key: string) => void;
-  setAuxLoading: (active: boolean, text?: string, toolInfo?: ToolInfo) => void;
+  setAuxLoading: (
+    active: boolean,
+    text?: string,
+    toolInfo?: ActiveToolInfo,
+  ) => void;
+  setBackgroundLoading: (
+    key: string,
+    text: string,
+    toolInfo?: ActiveToolInfo,
+  ) => void;
+  clearBackgroundLoading: (key: string) => void;
   /** Overwrite a session from an external snapshot (desktop popup mirror). */
   mirrorSession: (key: string, session: TurnUiState | null) => void;
   beginPendingSave: () => void;
@@ -92,6 +113,7 @@ export const useStreamStore = create<StreamStore>()(
       sessions: {},
       pendingNewConversationKey: null,
       auxLoading: null,
+      backgroundRuns: {},
       pendingSaveCount: 0,
 
       startSession: (key, userMessage) =>
@@ -252,6 +274,34 @@ export const useStreamStore = create<StreamStore>()(
           "setAuxLoading",
         ),
 
+      setBackgroundLoading: (key, text, toolInfo) =>
+        set(
+          (state) => ({
+            backgroundRuns: {
+              ...state.backgroundRuns,
+              [key]: {
+                loadingText: text,
+                loadingTextKey:
+                  (state.backgroundRuns[key]?.loadingTextKey ?? 0) + 1,
+                toolInfo,
+              },
+            },
+          }),
+          false,
+          "setBackgroundLoading",
+        ),
+
+      clearBackgroundLoading: (key) =>
+        set(
+          (state) => {
+            if (!state.backgroundRuns[key]) return state;
+            const { [key]: _removed, ...rest } = state.backgroundRuns;
+            return { backgroundRuns: rest };
+          },
+          false,
+          "clearBackgroundLoading",
+        ),
+
       mirrorSession: (key, session) =>
         set(
           (state) => {
@@ -344,31 +394,46 @@ const useActiveTurn = (): TurnUiState | null => {
 };
 
 /** Loading indicator state for the active conversation: turn spinner, the
- *  executor-await bridge, or auxiliary (voice/upload) loading. */
+ *  executor-await bridge, a detached background run, or auxiliary
+ *  (voice/upload) loading. */
 export const useActiveLoading = (): {
   isLoading: boolean;
   loadingText: string;
   loadingTextKey: number;
-  toolInfo?: ToolInfo;
-  awaitingApproval: boolean;
+  toolInfo?: ActiveToolInfo;
 } => {
   const turn = useActiveTurn();
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
+  const backgroundRun = useStreamStore((state) =>
+    activeConversationId
+      ? (state.backgroundRuns[activeConversationId] ?? null)
+      : null,
+  );
   const aux = useStreamStore((state) => state.auxLoading);
 
+  // Track real activity, never the approval gate: a turn paused on the user's
+  // decision shows nothing, and post-resume activity arrives via the background
+  // run below — so a stuck approval flag can never freeze the line.
   if (
     turn &&
     (turn.spinnerActive ||
-      turn.awaitingApproval ||
-      turn.phase === "awaiting_executor")
+      (turn.phase === "awaiting_executor" && !turn.awaitingApproval))
   ) {
-    // While awaiting approval the indicator owns its own copy/icon, so drop the
-    // stale tool info/text from the last streamed step.
     return {
       isLoading: true,
-      loadingText: turn.awaitingApproval ? "" : turn.loadingText,
+      loadingText: turn.loadingText,
       loadingTextKey: turn.loadingTextKey,
-      toolInfo: turn.awaitingApproval ? undefined : turn.toolInfo,
-      awaitingApproval: turn.awaitingApproval,
+      toolInfo: turn.toolInfo,
+    };
+  }
+  if (backgroundRun) {
+    return {
+      isLoading: true,
+      loadingText: backgroundRun.loadingText,
+      loadingTextKey: backgroundRun.loadingTextKey,
+      toolInfo: backgroundRun.toolInfo,
     };
   }
   if (aux?.active) {
@@ -377,7 +442,6 @@ export const useActiveLoading = (): {
       loadingText: aux.text,
       loadingTextKey: aux.key,
       toolInfo: aux.toolInfo,
-      awaitingApproval: false,
     };
   }
   return {
@@ -385,7 +449,6 @@ export const useActiveLoading = (): {
     loadingText: turn?.loadingText ?? "",
     loadingTextKey: turn?.loadingTextKey ?? 0,
     toolInfo: undefined,
-    awaitingApproval: false,
   };
 };
 

@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.db.mongodb import indexes as indexes_module
-from app.db.mongodb.indexes import create_playbook_indexes
+from app.db.mongodb.indexes import create_payment_indexes, create_playbook_indexes
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
 # ---------------------------------------------------------------------------
@@ -341,8 +341,7 @@ class TestCollectionsLazyLoading:
 
 
 class TestGetAsyncCollection:
-    """The single supported accessor — the named per-collection module
-    attributes were removed once every domain moved behind a repository."""
+    """The single supported accessor; named per-collection module attributes were removed once every domain moved behind a repository."""
 
     def test_resolves_by_mongo_name(self) -> None:
         with patch("app.db.mongodb.collections._get_collection") as mock_get:
@@ -379,8 +378,7 @@ class TestCreatePlaybookIndexes:
     async def test_one_playbook_per_workflow_is_a_unique_index(
         self, mock_get_collection: MagicMock
     ) -> None:
-        """The repository's atomic upsert relies on the (workflow_id, user_id)
-        unique index to reject the loser of two concurrent first authorings."""
+        """The repository's atomic upsert relies on the (workflow_id, user_id) unique index to reject the loser of a concurrent race."""
         collection = MagicMock()
         collection.create_index = AsyncMock()
         mock_get_collection.return_value = collection
@@ -391,6 +389,34 @@ class TestCreatePlaybookIndexes:
         collection.create_index.assert_awaited_once_with(
             [("workflow_id", 1), ("user_id", 1)], unique=True
         )
+
+
+class TestCreatePaymentIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_checkout_sessions_indexes_back_the_webhook_race_lookups(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """A checkout session is looked up by its unique provider session_id and listed per user newest-first."""
+        collections: dict[str, MagicMock] = {}
+
+        def collection_for(name: str) -> MagicMock:
+            if name not in collections:
+                collection = MagicMock()
+                collection.create_index = AsyncMock()
+                collections[name] = collection
+            return collections[name]
+
+        mock_get_collection.side_effect = collection_for
+
+        await create_payment_indexes()
+
+        assert "checkout_sessions" in collections
+        checkout_calls = collections["checkout_sessions"].create_index.await_args_list
+        assert [call.args for call in checkout_calls] == [
+            ("session_id",),
+            ([("user_id", 1), ("created_at", -1)],),
+        ]
+        assert [call.kwargs for call in checkout_calls] == [{"unique": True}, {}]
 
 
 class TestCreateAllIndexes:

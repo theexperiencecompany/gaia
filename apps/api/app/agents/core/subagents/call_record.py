@@ -14,7 +14,7 @@ from langchain_core.messages import AnyMessage, ToolMessage
 
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import FINISH_TASK_NAME
-from app.models.workflow_execution_models import largest_list_len
+from app.models.workflow_execution_models import carries_no_data, parse_result
 
 #: Longest serialized form a single recorded arg value may take; anything past
 #: it is cut with the marker so the record's token cost stays bounded.
@@ -38,7 +38,7 @@ def _compact_json(value: object) -> str:
 
 
 def _truncated_arg(value: object) -> object:
-    """The value itself when small, else its serialized form cut to the cap."""
+    """Return the value itself when small, else its serialized form cut to the cap."""
     rendered = value if isinstance(value, str) else _compact_json(value)
     if len(rendered) <= MAX_RECORDED_ARG_CHARS:
         return value
@@ -46,21 +46,15 @@ def _truncated_arg(value: object) -> object:
 
 
 def parsed_result(message: ToolMessage) -> object | None:
-    """The tool result as JSON when its content is a JSON document, else ``None``."""
+    """Return the tool result parsed as the record parses it; None for block content."""
     content = message.content
-    if not isinstance(content, str):
-        return None
-    try:
-        parsed: object = json.loads(content)
-    except ValueError:
-        return None
-    return parsed
+    return parse_result(content) if isinstance(content, str) else None
 
 
 def is_error_envelope(result: object) -> bool:
-    """A "successful" tool message whose body says the call failed.
+    """Return whether this is a "successful" tool message whose body says the call failed.
 
-    Many tools answer with ``{"success": false, ...}`` or ``{"error": "..."}``
+    Many tools answer with {"success": false, ...} or {"error": "..."}
     under a normal status, so status alone does not say the call worked.
     """
     if not isinstance(result, dict):
@@ -72,13 +66,11 @@ def is_error_envelope(result: object) -> bool:
 
 
 def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
-    """One ``TOOL_NAME({"arg":value})`` line per successful call, in call order.
+    """Return one TOOL_NAME({"arg":value}) line per successful call, in call order.
 
-    A call counts as successful only when a non-error ``ToolMessage`` answers its
-    id and its body is not an error envelope. ``finish_task`` is infrastructure,
-    never a playbook step, so it is dropped even when it succeeded. A call whose
-    result carried no items is kept but marked, so the executor sees an empty
-    step before freezing it.
+    A call counts as successful only when a non-error ToolMessage answers its
+    id and its body is not an error envelope. finish_task is dropped even on
+    success. A result with no items is kept but marked.
     """
     results: dict[str, object | None] = {}
     for message in messages:
@@ -98,15 +90,18 @@ def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
                 continue
             args = {key: _truncated_arg(value) for key, value in (call.get("args") or {}).items()}
             line = f"{name}({_compact_json(args)})"
-            if largest_list_len(results[call_id]) == 0:
+            # ``parsed_result`` answers None for content that is not JSON, which
+            # means "cannot say", not "returned nothing" — a tool that replies
+            # with prose has no emptiness to report.
+            recorded = results[call_id]
+            if recorded is not None and carries_no_data(recorded):
                 line += EMPTY_RESULT_SUFFIX
             lines.append(line)
     return lines
 
 
 def append_call_record(text: str, messages: Sequence[AnyMessage]) -> str:
-    """``text`` with the run's call record appended, unchanged when there is
-    nothing to record."""
+    """Return text with the run's call record appended, unchanged when there is nothing to record."""
     lines = successful_call_lines(messages)
     if not lines:
         return text

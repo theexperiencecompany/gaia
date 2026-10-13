@@ -1,6 +1,6 @@
 """Layer 2 — atomic_write: atomicity sequence + the naive-UTC mtime fix.
 
-Mocks only the E2B `files` boundary; the write→rename ordering, the
+Mocks only the E2B files boundary; the write→rename ordering, the
 temp-suffix, and the mtime-tagging are real production logic.
 """
 
@@ -19,7 +19,7 @@ from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
 
 
 def _fake_sbx(entry_mtime: datetime | None) -> tuple[AsyncMock, dict]:
-    """A sandbox whose files.rename returns EntryInfo-like obj with given mtime.
+    """Build a sandbox whose files.rename returns an EntryInfo-like object with the given mtime.
 
     Records the write/rename calls so the test can assert the atomic sequence.
     """
@@ -56,11 +56,9 @@ async def test_writes_to_temp_then_renames_into_place() -> None:
 
 
 async def test_mtime_is_true_utc_epoch_regardless_of_worker_timezone() -> None:
-    # E2B's EntryInfo.modified_time is a NAIVE datetime in UTC. A bare
-    # .timestamp() reinterprets it in the worker's local TZ. epoch 1700000000
-    # == 2023-11-14T22:13:20Z. On a non-UTC worker the buggy code returned
-    # 1699980200 (off by the offset). The dedup signature must match the host
-    # st_mtime / bash %T@ which are true UTC epoch.
+    # E2B's modified_time is naive UTC; a bare .timestamp() uses the worker's local TZ.
+    # epoch 1700000000 == 2023-11-14T22:13:20Z; buggy code returned 1699980200 on a non-UTC worker.
+    # Must match host st_mtime / bash %T@ (true UTC epoch).
     naive_utc = datetime(2023, 11, 14, 22, 13, 20)
     sbx, _ = _fake_sbx(naive_utc)
 

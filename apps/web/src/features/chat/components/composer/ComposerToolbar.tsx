@@ -1,15 +1,15 @@
 import type React from "react";
 
-import type { SearchMode } from "@/types/shared/searchTypes";
+import type { ComposerMode } from "@/types/shared/searchTypes";
 
 import ComposerLeft from "./ComposerLeft";
 import SearchbarRightSendBtn from "./ComposerRight";
 
 interface SearchbarToolbarProps {
-  selectedMode: Set<SearchMode>;
+  selectedMode: Set<ComposerMode>;
   openFilePicker: () => void;
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
-  handleSelectionChange: (mode: SearchMode) => void;
+  handleSelectionChange: (mode: ComposerMode) => void;
   searchbarText: string;
   selectedTool?: string | null;
   onToggleSlashCommandDropdown?: () => void;

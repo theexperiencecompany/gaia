@@ -39,16 +39,9 @@ _LATENCY_PROBE_QUERIES = (
     "what food does Arjun like",
     "which Jira ticket is Arjun working on",
 )
-# The production target is <150ms P95 (see app/memory/retrieval.py), measured on
-# prod hardware under real concurrency. On CI runners this pipeline lands around
-# 300-500ms in practice (a 506ms run once failed a 500ms bound — the flake this
-# replaced), and multiples of that on a CPU laptop. This test can't reproduce that: its
-# wall-clock cost is dominated by fastembed + a cross-encoder rerank whose speed
-# swings ~10x across a GPU CI runner, a CPU laptop, and a contended `-n 4` worker,
-# and a single test run is not a P95. So the number below is NOT the P95 SLO — it
-# is a loose sanity ceiling (~10x the prod target) that is printed, never
-# asserted. A hard wall-clock bound here only produced flakes (what this replaced);
-# the real latency SLO is owned by prod telemetry, not this correctness test.
+# Prod target is <150ms P95 (see app/memory/retrieval.py); CI lands ~300-500ms
+# (a 506ms run once failed a 500ms bound — the flake this replaced) and swings
+# ~10x across hardware, so this is a loose ceiling, printed but never asserted.
 _RECALL_LATENCY_SOFT_TARGET_MS = 1500
 
 # 60+ memories across 10 folders. Several share vocabulary on purpose.
@@ -181,7 +174,7 @@ _CORPUS: list[MemorySpec] = [
 
 @pytest.fixture
 async def corpus_user(memory_user: str) -> str:
-    """The standard adversarial corpus, seeded for a dedicated user."""
+    """Seed the standard adversarial corpus for a dedicated user."""
     await seed_memories(memory_user, _CORPUS)
     return memory_user
 
@@ -318,10 +311,8 @@ async def test_cross_user_isolation_is_absolute(make_memory_user: Callable[[], s
 async def test_graph_expansion_surfaces_relevant_sibling_not_incidental(
     memory_user: str,
 ) -> None:
-    # Both non-relationship facts are excluded by the category filter, so the
-    # only path back is the 1-hop entity expansion through "Nadia". Expansion
-    # then reranks them against the query: the gift-relevant sibling survives,
-    # the incidental work fact (shares only the entity) is dropped as noise.
+    # Both facts are excluded by the category filter; the only path back is
+    # 1-hop entity expansion through "Nadia", reranked against the query.
     relevant_sibling = "Nadia's ideal birthday gift is a vintage film camera."
     incidental_sibling = "Nadia works at Stripe in the payments division."
     await seed_memories(
@@ -379,21 +370,7 @@ async def test_empty_index_recall_returns_empty_gracefully(memory_user: str) -> 
 
 
 async def test_warm_recall_returns_results_and_reports_latency(corpus_user: str) -> None:
-    """Exercise the full uncached recall pipeline and REPORT its latency.
-
-    The hard assertion is a correctness one: every probe must come back with
-    memories (a dropped index / broken hydrate / empty rerank surfaces here).
-    Models are warmed by the session fixture, so each probe measures the full
-    uncached path (embed + ANN + FTS + RRF + rerank + hydrate); DISTINCT queries
-    are used because ``recall`` is ``@Cacheable`` and a repeat would time Redis.
-
-    Latency is printed against a soft target, NOT asserted. This replaced a
-    single-sample wall-clock ``assert`` that flaked: the pipeline's cost is
-    reranker-bound and swings ~10x across GPU CI / CPU laptop / contended
-    workers, so no fixed bound is a stable line here. Latency regressions belong
-    in a dedicated perf environment with a stable baseline, not a correctness
-    gate that runs on every PR across heterogeneous hardware.
-    """
+    """Latency is printed against a soft target, never asserted — a fixed wall-clock bound flaked, swinging ~10x across GPU CI / CPU laptop / contended workers."""
     timings_ms: list[float] = []
     for query in _LATENCY_PROBE_QUERIES:
         started = time.perf_counter()
@@ -418,12 +395,7 @@ async def test_warm_recall_returns_results_and_reports_latency(corpus_user: str)
 async def test_graph_expansion_drops_incidental_sibling(
     memory_user: str,
 ) -> None:
-    """An entity sibling unrelated to the query must not be injected.
-
-    Expansion reranks siblings in the same pool as the base results, so a fact
-    pulled in only because it shares an entity ("Nadia changed jobs") stays out
-    of a birthday-gift recall — the relevance cutoff drops it.
-    """
+    """Expansion reranks siblings in the same pool as base results, so an off-topic sibling sharing only the entity is dropped by the relevance cutoff."""
     await seed_memories(
         memory_user,
         [
@@ -456,12 +428,7 @@ async def test_graph_expansion_drops_incidental_sibling(
 async def test_graph_expansion_siblings_respect_kinds_filter(
     memory_user: str,
 ) -> None:
-    """Expansion siblings must obey the kinds filter.
-
-    Graph expansion intentionally crosses category boundaries (that is the
-    feature), but it must still honour the ``kinds`` filter so callers that
-    request only facts do not receive experience siblings.
-    """
+    """Expansion intentionally crosses category boundaries, but siblings must still obey the kinds filter."""
     from app.constants.memory import MemoryKind
 
     await seed_memories(

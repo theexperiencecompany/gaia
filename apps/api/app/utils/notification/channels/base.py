@@ -14,12 +14,12 @@ TContent = TypeVar("TContent")
 class ChannelAdapter(ABC, Generic[TContent]):
     """Base class for all notification channel adapters.
 
-    Generic over the payload ``transform`` produces and ``deliver`` consumes,
+    Generic over the payload transform produces and deliver consumes,
     because every channel's payload is its own shape (a WebSocket frame for
     in-app, CommonMark parts for the bot queues). The type parameter is what
     keeps each adapter's two halves checked against each other; the
     orchestrator's registry holds them erased, since it only ever pipes one
-    adapter's ``transform`` straight into that same adapter's ``deliver``.
+    adapter's transform straight into that same adapter's deliver.
     """
 
     @property

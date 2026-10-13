@@ -119,12 +119,10 @@ def sample_config() -> dict:
 async def real_redis(monkeypatch):
     """Real Redis connection, patched into the app's redis_cache singleton.
 
-    When USE_REAL_SERVICES=1 (Dagger CI), Redis is guaranteed to be running
-    and connection failures are fatal. Otherwise, the test is skipped if
-    Redis is not reachable so local runs without Docker still work.
-
-    Each xdist worker uses its own Redis DB so parallel tests cannot wipe
-    each other's keys during ``flushdb()`` teardown.
+    USE_REAL_SERVICES=1 (Dagger CI) makes connection failure fatal; otherwise
+    the test skips if Redis is unreachable, so local runs without Docker still
+    work. Each xdist worker gets its own Redis DB so parallel flushdb()
+    teardowns can't clobber each other.
     """
     url = worker_redis_url(_REDIS_URL)
     client = Redis.from_url(url, decode_responses=True)
@@ -144,13 +142,10 @@ async def real_redis(monkeypatch):
     await client.aclose()
 
 
-# chromadb's EphemeralClient is a process-global singleton that raises
-# "already exists for ephemeral with different settings" if a later call
-# differs from the first. All test call sites use default settings, so
-# pre-creating the canonical instance at session start makes every later
-# bare call hit the reuse path — order-independent (pytest-randomly can
-# shuffle the two ephemeral-using files into any order without the clash).
-@pytest.fixture(scope="session", autouse=True)
+# Pre-created so later default-settings EphemeralClient calls reuse it. Opt-in
+# from the fixtures that build one, never autouse: chroma cannot survive fork(),
+# so an autouse client hangs every mutmut mutant of any module tested here.
+@pytest.fixture(scope="session")
 def _precreate_ephemeral_chroma() -> None:
     import chromadb
 

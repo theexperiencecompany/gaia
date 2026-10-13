@@ -1,9 +1,18 @@
 """Unit tests for app.utils.stream_utils."""
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
+from langchain_core.messages import AIMessage, HumanMessage
+import pytest
+
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.models.chat_models import ToolDataEntry
+from app.utils.agent_utils import IntegrationMetadata
 from app.utils.stream_utils import (
+    ReasoningEvent,
+    absorb_collector_event,
+    absorb_reasoning_delta,
     extract_tool_entries_from_update,
     reconstruct_subagent_groups,
 )
@@ -15,17 +24,14 @@ from app.utils.stream_utils import (
 
 def _make_ai_message(
     tool_calls: list[dict[str, Any]] | None = None,
-) -> MagicMock:
-    """Return a mock AIMessage with a .tool_calls attribute."""
-    msg = MagicMock()
-    msg.tool_calls = tool_calls or []
-    return msg
+) -> AIMessage:
+    """Build an AIMessage carrying these tool calls verbatim, malformed ones included."""
+    return AIMessage.model_construct(content="", tool_calls=tool_calls or [])
 
 
-def _make_plain_message() -> MagicMock:
-    """Return a mock message without a tool_calls attribute (e.g. HumanMessage)."""
-    msg = MagicMock(spec=[])  # spec=[] means no attributes
-    return msg
+def _make_plain_message() -> HumanMessage:
+    """Build a message that carries no tool calls at all."""
+    return HumanMessage(content="hi")
 
 
 # ---------------------------------------------------------------------------
@@ -179,11 +185,9 @@ class TestExtractToolEntriesFromUpdate:
     )
     async def test_integration_metadata_forwarded(self, mock_format: AsyncMock) -> None:
         mock_format.return_value = {"tool_name": "tool_calls_data"}
-        metadata = {
-            "icon_url": "https://img.com/icon.png",
-            "integration_id": "gmail",
-            "name": "Gmail",
-        }
+        metadata = IntegrationMetadata(
+            icon_url="https://img.com/icon.png", integration_id="gmail", name="Gmail"
+        )
         tc = {"id": "tc-m", "name": "send_email", "args": {}}
         msg = _make_ai_message([tc])
 
@@ -259,7 +263,7 @@ class TestExtractToolEntriesFromUpdate:
     async def test_partial_integration_metadata(self, mock_format: AsyncMock) -> None:
         """integration_metadata with only icon_url set."""
         mock_format.return_value = {"tool_name": "tool_calls_data"}
-        metadata: dict[str, Any] = {"icon_url": "https://icon.com/x.png"}
+        metadata = IntegrationMetadata(icon_url="https://icon.com/x.png")
         tc = {"id": "tc-p", "name": "search", "args": {}}
         msg = _make_ai_message([tc])
 
@@ -365,3 +369,220 @@ class TestReconstructSubagentGroups:
 
         assert self._group(td, "done")["completed_at"] is not None
         assert self._group(td, "cut")["completed_at"] is not None
+
+    def test_the_lifecycle_accumulators_are_consumed(self) -> None:
+        td = self._data(
+            starts={"sub-1": {"subagent_name": "gmail"}},
+            ends={"sub-1": {"duration_ms": 10}},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        assert "subagent_starts" not in td
+        assert "subagent_ends" not in td
+
+    def test_a_group_starts_and_is_stamped_at_its_start_events_time(self) -> None:
+        started_at = "2026-01-01T00:00:00+00:00"
+        td = self._data(
+            starts={"sub-1": {"subagent_name": "gmail", "started_at": started_at}},
+            ends={},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        [entry] = td["tool_data"]
+        assert entry["data"]["started_at"] == started_at
+        assert entry["timestamp"] == started_at
+
+    def test_only_a_known_subagents_tool_calls_move_into_its_group(self) -> None:
+        own_call = {"tool_name": "tool_calls_data", "subagent_id": "sub-1", "data": {"id": "a"}}
+        unknown_subagent = {"tool_name": "tool_calls_data", "subagent_id": "ghost", "data": {}}
+        other_kind = {"tool_name": "search_results", "subagent_id": "sub-1", "data": {}}
+        td = self._data(
+            starts={"sub-1": {"subagent_name": "gmail"}},
+            ends={},
+            entries=[own_call, unknown_subagent, other_kind],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        assert td["tool_data"][:2] == [unknown_subagent, other_kind]
+        assert self._group(td, "sub-1")["tool_calls"] == [{"id": "a"}]
+
+    def test_a_child_group_nests_inside_its_parent_instead_of_the_root(self) -> None:
+        td = self._data(
+            starts={
+                "parent": {"subagent_name": "executor"},
+                "child": {"subagent_name": "gmail", "parent_subagent_id": "parent"},
+            },
+            ends={},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        [root] = td["tool_data"]
+        assert root["data"]["subagent_id"] == "parent"
+        assert [nested["subagent_id"] for nested in root["data"]["nested_subagents"]] == ["child"]
+
+
+class TestAbsorbCollectorEventReasoning:
+    """absorb_collector_event's reasoning branch (delegates to absorb_reasoning)."""
+
+    def test_reasoning_with_content_appends_exactly_one_reasoning_entry(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+        tool_outputs: dict[str, str] = {}
+
+        absorb_collector_event(
+            {"reasoning": {"content": "Thinking about the weather", "subagent_id": "sub-9"}},
+            accumulated,
+            tool_outputs,
+        )
+
+        assert accumulated["tool_data"] == [
+            {
+                "tool_name": "tool_calls_data",
+                "tool_category": "reasoning",
+                "data": {
+                    "tool_name": "reasoning",
+                    "tool_category": "reasoning",
+                    "message": "",
+                    "reasoning": "Thinking about the weather",
+                },
+                "subagent_id": "sub-9",
+            }
+        ]
+        assert tool_outputs == {}
+
+    def test_reasoning_without_a_subagent_id_omits_the_key(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+
+        absorb_collector_event({"reasoning": {"content": "musing"}}, accumulated, {})
+
+        [entry] = accumulated["tool_data"]
+        assert "subagent_id" not in entry
+
+    def test_empty_reasoning_content_adds_nothing(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+
+        absorb_collector_event(
+            {"reasoning": {"content": "", "subagent_id": "sub-9"}}, accumulated, {}
+        )
+
+        assert accumulated["tool_data"] == []
+
+    def test_event_without_a_reasoning_key_adds_nothing(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+
+        absorb_collector_event({}, accumulated, {})
+
+        assert accumulated["tool_data"] == []
+
+
+@pytest.mark.unit
+def test_a_groups_stable_subagent_id_comes_from_its_start_event() -> None:
+    """The row id is per dispatch; subagent is what a playbook names."""
+    accumulated: dict[str, Any] = {
+        "tool_data": [],
+        "subagent_starts": {
+            "row-1": {"subagent_id": "row-1", "subagent_name": "Todos", "subagent": "todos"},
+            "row-2": {"subagent_id": "row-2", "subagent_name": "Spawned"},
+        },
+        "subagent_ends": {},
+    }
+    reconstruct_subagent_groups(accumulated)
+    groups = {entry["data"]["subagent_id"]: entry["data"] for entry in accumulated["tool_data"]}
+    assert groups["row-1"]["subagent"] == "todos"
+    assert groups["row-2"]["subagent"] is None
+
+
+class TestAbsorbCollectorEvent:
+    """absorb_collector_event files each collector event into the turn's accumulator."""
+
+    def test_a_first_tool_event_starts_the_turns_tool_data(self) -> None:
+        accumulated: dict[str, object] = {}
+        entry: ToolDataEntry = {"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}
+
+        absorb_collector_event({"tool_data": entry}, accumulated, {})
+
+        assert accumulated["tool_data"] == [entry]
+
+    def test_a_later_event_appends_after_what_the_turn_already_holds(self) -> None:
+        earlier: ToolDataEntry = {"tool_name": "tool_calls_data", "data": {"tool_call_id": "a"}}
+        later: ToolDataEntry = {"tool_name": "tool_calls_data", "data": {"tool_call_id": "b"}}
+        accumulated: dict[str, object] = {"tool_data": [earlier]}
+
+        absorb_collector_event({"tool_data": [later]}, accumulated, {})
+
+        assert accumulated["tool_data"] == [earlier, later]
+
+    def test_a_resolved_approval_frame_replaces_its_pending_one(self) -> None:
+        pending: ToolDataEntry = {
+            "tool_name": APPROVAL_REQUEST_TOOL_NAME,
+            "data": {"approval_id": "appr-1", "status": "pending"},
+        }
+        resolved: ToolDataEntry = {
+            "tool_name": APPROVAL_REQUEST_TOOL_NAME,
+            "data": {"approval_id": "appr-1", "status": "approved"},
+        }
+        accumulated: dict[str, object] = {"tool_data": [pending]}
+
+        absorb_collector_event({"tool_data": resolved}, accumulated, {})
+
+        assert accumulated["tool_data"] == [resolved]
+
+
+def _step(text: str, subagent_id: str | None = None) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "tool_name": "tool_calls_data",
+        "tool_category": "reasoning",
+        "data": {
+            "tool_name": "reasoning",
+            "tool_category": "reasoning",
+            "message": "",
+            "reasoning": text,
+        },
+    }
+    if subagent_id:
+        entry["subagent_id"] = subagent_id
+    return entry
+
+
+class TestAbsorbReasoningDelta:
+    """Comms streams thinking per chunk; deltas with nothing between them are one step."""
+
+    def test_consecutive_deltas_join_into_one_step(self) -> None:
+        entries: list[Any] = []
+
+        for delta in ("weighing ", "it ", "up"):
+            absorb_reasoning_delta(ReasoningEvent(content=delta), entries)
+
+        assert entries == [_step("weighing it up")]
+
+    def test_a_tool_card_between_deltas_starts_a_new_step(self) -> None:
+        card = {"tool_name": "calendar_options", "data": {}}
+        entries: list[Any] = []
+
+        absorb_reasoning_delta(ReasoningEvent(content="first"), entries)
+        entries.append(card)
+        absorb_reasoning_delta(ReasoningEvent(content="second"), entries)
+
+        assert entries == [_step("first"), card, _step("second")]
+
+    def test_another_agents_thinking_is_its_own_step(self) -> None:
+        entries: list[Any] = []
+
+        absorb_reasoning_delta(ReasoningEvent(content="root"), entries)
+        absorb_reasoning_delta(ReasoningEvent(content="sub", subagent_id="s1"), entries)
+        absorb_reasoning_delta(ReasoningEvent(content=" more", subagent_id="s1"), entries)
+
+        assert entries == [_step("root"), _step("sub more", "s1")]
+
+    def test_an_empty_delta_changes_nothing(self) -> None:
+        entries: list[Any] = [_step("kept")]
+
+        absorb_reasoning_delta(ReasoningEvent(content=""), entries)
+
+        assert entries == [_step("kept")]

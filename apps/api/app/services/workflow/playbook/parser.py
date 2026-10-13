@@ -1,21 +1,15 @@
 """Check a playbook against the live tool registry, and render it for reading.
 
-``validate_playbook`` asks the registry whether an authored document could
-actually run: the tools exist, their args are real, and every reference points
-at something the document already declared. Its messages are read back by the
-authoring agent, so each one names the offending step and says what would be
-valid rather than reporting "invalid".
+validate_playbook asks whether an authored document could actually run: the
+tools exist, their args are real, and every reference resolves. Messages
+name the offending step and what would be valid, not just "invalid".
 
-Given the authoring run's own results it asks a second, sharper question: did
-these calls actually happen, and did they return what the document claims to
-read? A playbook freezes calls that ran, so the run writing it holds every
-answer — ``pb_c7d357db77dd`` froze ``$steps.fetch_msgs.threadId`` on a tool that
-returns no ``threadId`` and broke on its first replay, with the real result
-sitting in the same conversation.
+Given the authoring run's own results, it also checks whether those calls
+actually happened and returned what the document claims — a playbook can
+freeze a call that ran but never really produced what it references.
 
-``dump_playbook`` renders a body as YAML. That rendering is for humans and for
-the agent reading its own playbook back; the structured body is the only stored
-form, so nothing ever parses the YAML again.
+dump_playbook renders a body as YAML for humans; the structured body is the
+only stored form, so nothing parses the YAML back.
 """
 
 from collections.abc import Mapping, Sequence
@@ -31,20 +25,33 @@ import yaml
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.models.playbook_models import (
+    TIME_KEY,
     AskSlot,
+    ForEachStep,
+    HandoffStep,
     PlaybookBody,
     PlaybookStep,
+    TimeSlot,
+    ToolStep,
     is_ask_slot,
+    is_time_slot,
     walk_ask_slots,
 )
-from app.models.workflow_execution_models import largest_list_len
+from app.models.workflow_execution_models import carries_no_data
 from app.services.workflow.playbook.evaluator import (
+    NO_ITEM,
     STEP_FILE_FIELD,
     PlaceholderError,
     StepResult,
+    resolve_item,
     resolve_step,
 )
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, placeholder_tokens
+from app.services.workflow.playbook.time_layouts import (
+    ISO_DATE_LAYOUT,
+    ISO_DATETIME_LAYOUT,
+    detect_layout,
+)
 from app.services.workflow.playbook.tool_space import (
     ToolSpace,
     handoff_tool_space,
@@ -77,14 +84,18 @@ _ARGS_IN_MESSAGE_MAX_CHARS = 200
 class RecordedResult:
     """One call the authoring run made, with what it actually returned.
 
-    ``result`` is parsed the way the replay parses a result (JSON when it is
+    result is parsed the way the replay parses a result (JSON when it is
     JSON, the raw text otherwise), so a check here reads exactly the value a
-    ``$steps`` placeholder would resolve against at replay.
+    $steps placeholder would resolve against at replay.
     """
 
     tool_name: str
     args: Mapping[str, Any]
     result: object
+    #: The stable id of the subagent that made the call (``todos``), or
+    #: ``None`` for the executor's own — a step inside ``handoff: todos``
+    #: is matched only against that subagent's calls.
+    subagent: str | None = None
 
 
 #: The authoring run's calls, in call order. The order IS part of the matching
@@ -115,7 +126,7 @@ def dump_playbook(body: PlaybookBody) -> str:
     """
     document: dict[str, Any] = {
         "description": body.description,
-        "steps": [_dump_step(step) for step in body.steps],
+        "steps": [step.to_document() for step in body.steps],
     }
     # Args are dumped as authored, so an inline ask slot renders as a nested
     # ``$ask:`` mapping right where its value belongs — which is exactly how the
@@ -126,40 +137,15 @@ def dump_playbook(body: PlaybookBody) -> str:
     return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)  # pragma: no mutate
 
 
-def _dump_step(step: PlaybookStep) -> dict[str, Any]:
-    node: dict[str, Any] = {}
-    if step.id:
-        node["id"] = step.id
-    if step.tool:
-        node["tool"] = step.tool
-    if step.args:
-        node["args"] = step.args
-    if step.handoff:
-        node["handoff"] = step.handoff
-    if step.steps:
-        node["steps"] = [_dump_step(child) for child in step.steps]
-    return node
-
-
 async def validate_playbook(
     body: PlaybookBody, user_id: str, results: RunResults | None = None
 ) -> PlaybookValidation:
     """Check a parsed playbook against the tools it would actually reach.
 
-    Three classes of problem, all fatal for a replay: a tool that does not
-    exist, an arg the tool does not take (or takes with another type), and a
-    reference to a step the document never declares before that point.
-
-    ``user_id`` is required because "does this tool exist" has no user-independent
-    answer: a handoff's children run in that subagent's space, and an MCP
-    integration's tools live on that user's own client.
-
-    ``results`` are the calls the run writing this playbook actually made. With
-    them a fourth class of problem is answerable here rather than on the first
-    replay: a step naming a tool that never ran, a step freezing a call that
-    came back empty or errored, and a ``$steps`` reference into a shape the
-    tool does not return. Without them nothing changes — the dev executor route
-    and any caller with no run behind it get exactly the checks above.
+    Fatal always: unknown tool, bad arg, or forward step reference. user_id
+    matters since tool existence is per-user (handoff subagent space, per-user
+    MCP tools). With results (the run's real calls), also flags an unused
+    tool, an empty/errored frozen call, or a bad $steps shape.
     """
     registry = await get_tool_registry()
     walk = _Walk(user_id=user_id, registry=registry, results=results)
@@ -179,6 +165,10 @@ class _Walk:
     user_id: str
     registry: ToolRegistry
     declared_steps: set[str] = field(default_factory=set)
+    #: The declared ids that are handoffs. A handoff records no result of its
+    #: own, so ``$steps.<handoff>...`` never resolves — seen live as
+    #: ``$steps.sweep.list.todos`` being accepted, then stopping the replay.
+    handoff_ids: set[str] = field(default_factory=set)
     issues: list[PlaybookIssue] = field(default_factory=list)
     #: The authoring run's calls, or ``None`` when there is no run to check
     #: against. ``None`` and an empty run are different: an empty run means
@@ -192,6 +182,8 @@ class _Walk:
     #: is one call; two steps matched to it would replay it twice and double a
     #: side effect the run performed once.
     consumed: set[int] = field(default_factory=set)
+    #: The subagent whose steps are being walked, ``None`` at the top level.
+    scope: str | None = None
 
 
 async def _check_steps(
@@ -199,27 +191,22 @@ async def _check_steps(
     path: str,
     space: ToolSpace,
     walk: _Walk,
-    *,
-    in_handoff: bool = False,
 ) -> None:
-    """Walk the steps in document order, so a reference can only resolve
-    backwards: ``declared_steps`` holds exactly what ran before this node.
+    """Walk the steps in document order so a reference can only resolve backwards.
 
-    Descending into a handoff switches tool space, exactly as the replay does.
-    Checking a subagent's children against the executor's registry refuses every
+    declared_steps holds exactly what ran before this node. Descending into a
+    handoff switches tool space, exactly as the replay does. Checking a
+    subagent's children against the executor's registry refuses every
     integration whose tools are fetched per user.
     """
     for index, step in enumerate(steps):
         here = f"{path}[{index}]"
-        if step.tool:
-            _check_tool_step(step, here, space, walk, in_handoff=in_handoff)
+        if not isinstance(step, HandoffStep):
+            _check_tool_step(step, here, space, walk)
         else:
-            handoff = step.handoff
-            if handoff is None:
-                # exactly_one_shape forbids a step with neither shape; narrowed
-                # here because mypy cannot see the validator.
-                continue
-            subagent = await resolve_subagent_tools(handoff, walk.user_id, walk.registry)
+            if step.id:
+                walk.handoff_ids.add(step.id)
+            subagent = await resolve_subagent_tools(step.handoff, walk.user_id, walk.registry)
             if subagent is None:
                 walk.issues.append(
                     PlaybookIssue(
@@ -228,9 +215,11 @@ async def _check_steps(
                     )
                 )
             else:
-                await _check_steps(
-                    step.steps, f"{here}.steps", handoff_tool_space(subagent), walk, in_handoff=True
-                )
+                # Playbooks are one level deep, so the scope outside a handoff
+                # is always the executor's own.
+                walk.scope = step.handoff
+                await _check_steps(step.steps, f"{here}.steps", handoff_tool_space(subagent), walk)
+                walk.scope = None
         if step.id:
             # The runner keys its record on the id, so a second step with the
             # same id would overwrite the first's result for every later $steps.
@@ -247,27 +236,22 @@ async def _check_steps(
 
 
 def _check_tool_step(
-    step: PlaybookStep, path: str, space: ToolSpace, walk: _Walk, *, in_handoff: bool
+    step: ToolStep | ForEachStep, path: str, space: ToolSpace, walk: _Walk
 ) -> None:
-    if step.tool is None:
-        # exactly_one_shape forbids a tool-less step reaching here; this guard
-        # narrows the type where mypy cannot see the validator.
-        return
     tool_name = step.tool
     denial = tool_space_denial(tool_name, space)
     if denial is not None:
         walk.issues.append(PlaybookIssue(where=path, problem=denial))
         return
 
-    # A handoff's children are not matched at all. The record a handoff appends
-    # (``call_record.py``) carries the subagent's tool names and args but NOT
-    # their outputs, so the run's results hold nothing for them — and matching
-    # them anyway would let a child consume a top-level call of the same tool.
-    # Said by the walk, not read off the space: a subagent without a config
-    # yields a space whose subagent_id is None, and a child is still a child.
-    if walk.results is not None and not in_handoff:
-        _check_recorded_call(step, tool_name, path, walk)
+    # Matched within the walk's scope: a top-level step against the executor's
+    # own calls, a handoff's child against that subagent's — seen live as
+    # $item.todo_id accepted over elements carrying id, then stopping the replay.
+    recorded = (
+        _check_recorded_call(step, tool_name, path, walk) if walk.results is not None else None
+    )
 
+    sample = _check_for_each_source(step, path, walk) if isinstance(step, ForEachStep) else NO_ITEM
     schema: dict[str, Any] = space.tools[tool_name].args
     _check_required_args(step, tool_name, path, space, walk)
     for key, value in step.args.items():
@@ -300,9 +284,16 @@ def _check_tool_step(
             continue
         # The evaluator's own scanner, so a placeholder embedded in text
         # ("Email $steps.mail.to") is checked exactly as a whole-value one is.
+        if is_time_slot(value):
+            _check_time_slot(value, key, where, recorded, walk)
+            continue
         arg_tokens = list(placeholder_tokens(value))
         for token in arg_tokens:
-            _check_placeholder(token, where, walk)
+            _check_placeholder(
+                token, where, walk, in_for_each=isinstance(step, ForEachStep), sample=sample
+            )
+        if any(t.group("root") in _TIME_ROOTS for t in arg_tokens):
+            _check_time_layout(value, arg_tokens, key, where, recorded, walk)
         slots = [slot for _, slot in walk_ask_slots(value)]
         if slots and not step.id:
             # A slot is addressed by its step's id; without one it falls back to
@@ -324,16 +315,18 @@ def _check_tool_step(
             _check_value_type(value, arg_schema, where, walk.issues)
 
 
-def _check_recorded_call(step: PlaybookStep, tool_name: str, path: str, walk: _Walk) -> None:
-    """Check one top-level tool step against the call it froze in the run writing it.
+def _check_recorded_call(
+    step: ToolStep | ForEachStep, tool_name: str, path: str, walk: _Walk
+) -> RecordedResult | None:
+    """Check one tool step against the call it froze in the run writing it.
 
-    Matching the step back to a recorded call is also what makes the ``$steps``
+    Matching the step back to a recorded call is also what makes the $steps
     references checkable: the matched result is what later steps read from.
     """
     matched = _matched_call(step, walk)
     if matched is None:
         walk.issues.append(PlaybookIssue(where=path, problem=_unmatched_problem(tool_name, walk)))
-        return
+        return None
     index, call = matched
     walk.consumed.add(index)
     if step.id:
@@ -341,15 +334,15 @@ def _check_recorded_call(step: PlaybookStep, tool_name: str, path: str, walk: _W
     refusal = _result_refusal(tool_name, call)
     if refusal is not None:
         walk.issues.append(PlaybookIssue(where=path, problem=refusal))
+    return call
 
 
 def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
-    """Why no recorded call answers to this step, told apart by what the run
-    did make: nothing, calls all frozen already, or calls with other args."""
+    """Return why no recorded call answers to this step: none made, all frozen already, or only calls with other args."""
     same_tool = [
         (index, call)
         for index, call in enumerate(walk.results or ())
-        if call.tool_name == tool_name
+        if call.tool_name == tool_name and call.subagent == walk.scope
     ]
     if not same_tool:
         return (
@@ -370,29 +363,19 @@ def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
     )
 
 
-def _matched_call(step: PlaybookStep, walk: _Walk) -> tuple[int, RecordedResult] | None:
-    """The recorded call this step froze, with its position, or ``None`` when
-    no call of that tool is left for it.
+def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, RecordedResult] | None:
+    """Return the recorded call this step froze, with its position, or None.
 
-    A step's args are the only evidence of WHICH call it froze: a tool called
-    three times with different queries left three results, and checking the step
-    against the wrong one reports a shape the author never claimed. Agreement is
-    structural (``_agrees``) rather than per-arg, because the deciding
-    difference between two calls is routinely nested inside an arg that also
-    carries a placeholder — treating that whole arg as a wildcard matches on the
-    parts that say nothing. Among the calls that agree the LAST wins: a run
-    that repeats a tool settles on its final call, which is the one worth
-    freezing. A step that agrees with none is not matched at all — handing it
-    an unrelated call's result would validate a shape its own args do not
-    produce, and approve ``$steps`` references into that shape.
-
-    A call already frozen by an earlier step is not offered again: the run made
-    it once, and a playbook listing it twice would replay it twice.
+    Agreement is structural (_agrees), not per-arg — a deciding difference is
+    often nested under an arg that itself carries a placeholder. Among calls
+    that agree, the LAST wins; a step agreeing with none is unmatched, and an
+    already-consumed call is never offered again.
     """
     agreeing = [
         (index, call)
         for index, call in enumerate(walk.results or ())
         if call.tool_name == step.tool
+        and call.subagent == walk.scope
         and index not in walk.consumed
         and all(
             key in call.args and _agrees(value, call.args[key]) for key, value in step.args.items()
@@ -404,17 +387,12 @@ def _matched_call(step: PlaybookStep, walk: _Walk) -> tuple[int, RecordedResult]
 def _agrees(step_value: object, recorded_value: object) -> bool:
     """Whether a step's authored value could be the recorded call's value.
 
-    Anything that does not exist until replay agrees with everything: an
-    ``$ask`` slot, and a string that is nothing but a placeholder token. A
-    string that merely *embeds* a token ("Email $steps.mail.to") agrees with any
-    string, since the text it renders to is unknowable here but its type is not.
-
-    Containers are compared through, which is the whole point: a mapping agrees
-    when every key the step authored is present and agrees (recorded keys the
-    step omitted are fine — the model may have left a default unwritten), and a
-    list agrees elementwise at the same length. Everything else is equality.
+    An $ask/$time slot or a bare placeholder token agrees with anything
+    (unknowable until replay); an embedded token agrees with any string. A
+    mapping agrees if every step-written key is present and agrees (extra
+    recorded keys are fine); a list agrees elementwise at equal length.
     """
-    if is_ask_slot(step_value):
+    if is_ask_slot(step_value) or is_time_slot(step_value):
         return True
     if isinstance(step_value, str):
         if PLACEHOLDER_TOKEN.fullmatch(step_value):
@@ -442,7 +420,7 @@ def _agrees(step_value: object, recorded_value: object) -> bool:
 
 
 def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
-    """Why the call this step froze is not worth freezing, or ``None``.
+    """Why the call this step froze is not worth freezing, or None.
 
     The error envelope is tested first: a tool that reports its own failure
     often does so with an empty list beside it, and "returned no items" would
@@ -453,9 +431,10 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
             f"{tool_name} failed in this run ({_envelope_error(call.result)}); a playbook "
             "freezes calls that succeeded — fix the call and run it again, or drop the step"
         )
-    # None means the result carries no list at all (a single object, a string),
-    # which says nothing about emptiness; only a list of length zero does.
-    if largest_list_len(call.result) == 0:
+    # Not a list length: a write tool answers with the record it just made, and
+    # that record's own empty attributes are not the call returning nothing.
+    # See carries_no_data.
+    if carries_no_data(call.result):
         return (
             f"{tool_name} returned no items in this run (args: {_rendered_args(call.args)}); "
             "freeze a call that produced data — widen the args or decline the playbook"
@@ -464,7 +443,7 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
 
 
 def _envelope_error(result: object) -> str:
-    """What a failed tool said about its own failure, as one phrase."""
+    """Return what a failed tool said about its own failure, as one phrase."""
     if isinstance(result, dict):
         reported = result.get("error") or result.get("message")
         if reported:
@@ -481,32 +460,46 @@ def _rendered_args(args: Mapping[str, Any]) -> str:
     return rendered[:_ARGS_IN_MESSAGE_MAX_CHARS] + "..."
 
 
-def _check_step_reference(token: str, path: str, where: str, walk: _Walk) -> None:
-    """Resolve one ``$steps`` reference against what that step returned in this run.
+#: What ``_check_step_reference`` hands back when there was nothing to resolve
+#: against, or the reference did not resolve; distinct from a resolved ``None``.
+_UNRESOLVED = object()
+#: The elements of an ``$ask`` source: text values the model picks at replay.
+ASK_PICK = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _Elements:
+    """The elements a for_each will run over, as the authoring run saw them."""
+
+    items: tuple[object, ...]
+
+
+def _check_step_reference(token: str, path: str, where: str, walk: _Walk) -> object:
+    """Resolve one $steps reference against what that step returned in this run.
 
     Through the evaluator's own resolver, so an accepted reference is one the
-    replay can actually resolve rather than one a second path-walker agreed
-    with. ``.file`` is exempt: the offloaded file exists only at replay, and the
-    authoring run's result has no path to it.
+    replay can actually resolve. .file is exempt (offloaded only at replay).
+    Returns the resolved value, or _UNRESOLVED.
     """
     step_id, _, rest = path.partition(".")
     if rest == STEP_FILE_FIELD:
-        return
+        return _UNRESOLVED
     result = walk.step_results.get(step_id)
     if result is None:
         # The step is declared but its own call was never matched (a handoff
         # child, or a tool this run did not call — both already reported).
-        return
+        return _UNRESOLVED
     try:
-        resolve_step(token, path, walk.step_results)
+        return resolve_step(token, path, walk.step_results)
     except PlaceholderError as error:
         walk.issues.append(
             PlaybookIssue(where=where, problem=error.message + _shape_hint(result.value))
         )
+        return _UNRESOLVED
 
 
 def _shape_hint(value: object) -> str:
-    """The keys the result does have, so the author can address one of them."""
+    """Return the keys the result does have, so the author can address one of them."""
     if not isinstance(value, Mapping):
         return ""
     keys = sorted(str(key) for key in value)
@@ -517,9 +510,9 @@ def _shape_hint(value: object) -> str:
 
 
 def _check_required_args(
-    step: PlaybookStep, tool_name: str, path: str, space: ToolSpace, walk: _Walk
+    step: ToolStep | ForEachStep, tool_name: str, path: str, space: ToolSpace, walk: _Walk
 ) -> None:
-    """A missing required arg is a call that fails at replay before it starts.
+    """Flag a missing required arg: a call that fails at replay before it starts.
 
     Nothing else catches it: the per-arg checks walk the args the step HAS, and
     a run-result match agrees with an empty mapping trivially.
@@ -536,12 +529,12 @@ def _check_required_args(
 
 
 def _required_args(tool: BaseTool) -> set[str]:
-    """The arg names a tool cannot be called without, from its own call schema.
+    """Return the arg names a tool cannot be called without, from its own call schema.
 
-    ``tool.args`` is only the property map; the ``required`` list lives one
-    level up, on the schema that ``tool_call_schema`` renders. langchain hands
+    tool.args is only the property map; the required list lives one
+    level up, on the schema that tool_call_schema renders. langchain hands
     that back as a v2 model for decorated tools, a v1 model for legacy ones and
-    a raw JSON document for MCP tools; all three spell ``required`` the same way.
+    a raw JSON document for MCP tools; all three spell required the same way.
     """
     schema = tool.tool_call_schema
     if isinstance(schema, dict):
@@ -572,14 +565,75 @@ def _check_ask_slot(slot: Mapping[str, Any], where: str, walk: _Walk) -> None:
         )
 
 
-def _check_placeholder(match: re.Match[str], where: str, walk: _Walk) -> None:
-    # The tokenizer only matches known roots; any other ``$word`` is literal text.
+def _check_placeholder(
+    match: re.Match[str],
+    where: str,
+    walk: _Walk,
+    *,
+    in_for_each: bool,
+    sample: object = NO_ITEM,
+) -> None:
+    """Check one placeholder: $item against the loop it is in, $steps against the steps declared before it."""
+    if match.group("root") == "item":
+        _check_item_placeholder(match, where, walk, in_for_each=in_for_each, sample=sample)
+    else:
+        _check_step_placeholder(match, where, walk)
+
+
+def _check_item_placeholder(
+    match: re.Match[str], where: str, walk: _Walk, *, in_for_each: bool, sample: object
+) -> None:
+    token = match.group(0)
+    path = match.group("path").removeprefix(".")
+    if not in_for_each:
+        walk.issues.append(
+            PlaybookIssue(
+                where=where,
+                problem=f"{token} addresses the element of a for_each, and this step is not one",
+            )
+        )
+    elif sample is ASK_PICK:
+        # Seen live (D3): ``$item.title`` over an $ask pick. A pick is the text
+        # the model copied from the results, so there is no field under it.
+        if path:
+            walk.issues.append(
+                PlaybookIssue(
+                    where=where,
+                    problem=(
+                        f"{token} reads a field of an $ask pick, but each pick is one text "
+                        "value; write $item on its own, or make for_each a $steps list and "
+                        "read the field off its elements"
+                    ),
+                )
+            )
+    elif isinstance(sample, _Elements):
+        # Checked against every element the loop can reach: a field the first
+        # element has but a later one lacks would stop the loop after the
+        # earlier calls already ran.
+        for index, element in enumerate(sample.items):
+            try:
+                resolve_item(token, path, element)
+            except PlaceholderError as error:
+                at = f" (element {index})" if index else ""
+                walk.issues.append(
+                    PlaybookIssue(where=where, problem=error.message + at + _shape_hint(element))
+                )
+                return
+
+
+def _check_step_placeholder(match: re.Match[str], where: str, walk: _Walk) -> object:
+    """Check a $steps reference names a declared step, not a handoff.
+
+    When the run is in hand, also resolves the value that step returned, or
+    _UNRESOLVED. Other roots are never seen here — the tokenizer only matches
+    known roots.
+    """
     token = match.group(0)
     root = match.group("root")
     path = match.group("path").lstrip(".")
     name = path.partition(".")[0]
     if root != "steps":
-        return
+        return _UNRESOLVED
     if name not in walk.declared_steps:
         walk.issues.append(
             PlaybookIssue(
@@ -587,9 +641,142 @@ def _check_placeholder(match: re.Match[str], where: str, walk: _Walk) -> None:
                 problem=f"{token} points at a step that no earlier node declares",
             )
         )
+        return _UNRESOLVED
+    if name in walk.handoff_ids:
+        child = path.split(".")[1] if "." in path else "<child>"
+        walk.issues.append(
+            PlaybookIssue(
+                where=where,
+                problem=(
+                    f"{token} addresses the handoff {name!r}, which records no result of "
+                    f"its own; address the call inside it by its own id, $steps.{child}..."
+                ),
+            )
+        )
+        return _UNRESOLVED
+    if walk.results is None:
+        return _UNRESOLVED
+    return _check_step_reference(token, path, where, walk)
+
+
+def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
+    """Return one element of the for_each list this run can name, or NO_ITEM.
+
+    Checked against a real element from the run's results so $item.<field> is
+    validated here instead of on the first replay iteration. An $ask source
+    has nothing to check; a $steps source is also checked for shape — a
+    count or title is not a list.
+    """
+    source = step.for_each
+    if isinstance(source, AskSlot):
+        return ASK_PICK
+    where = f"{path}.for_each"
+    match = PLACEHOLDER_TOKEN.fullmatch(source)
+    if match is None:  # the model validator already refused anything else
+        return NO_ITEM
+    if match.group("root") == "item":
+        walk.issues.append(
+            PlaybookIssue(
+                where=where,
+                problem=(
+                    f"{source} addresses the element of a for_each, and the list itself "
+                    "cannot be one of its own elements"
+                ),
+            )
+        )
+        return NO_ITEM
+    resolved = _check_step_placeholder(match, where, walk)
+    if resolved is _UNRESOLVED:
+        return NO_ITEM
+    if isinstance(resolved, list):
+        return _Elements(tuple(resolved[: step.max_items])) if resolved else NO_ITEM
+    result = walk.step_results[match.group("path").removeprefix(".").partition(".")[0]]
+    walk.issues.append(
+        PlaybookIssue(
+            where=where,
+            problem=(
+                f"{source} resolved to {type(resolved).__name__}, and for_each needs a list "
+                "to repeat over" + _shape_hint(result.value)
+            ),
+        )
+    )
+    return NO_ITEM
+
+
+_TIME_ROOTS = frozenset({"now", "today"})
+
+
+def _time_slot_hint(placeholder: str, layout: str) -> str:
+    return json.dumps({TIME_KEY: placeholder, "format": layout})
+
+
+def _check_time_slot(
+    value: Mapping[str, Any], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
+) -> None:
+    """Check a $time slot is well-formed and its layout is the one the tool took."""
+    try:
+        slot = TimeSlot.model_validate(value)
+    except ValidationError as error:
+        walk.issues.append(PlaybookIssue(where=where, problem=_first_validation_message(error)))
         return
-    if walk.results is not None:
-        _check_step_reference(token, path, where, walk)
+    layout = detect_layout(recorded.args.get(key)) if recorded is not None else None
+    if layout is not None and layout != slot.format:
+        walk.issues.append(
+            PlaybookIssue(
+                where=where,
+                problem=(
+                    f"{key!r} was {recorded.args.get(key)!r} in this run, whose layout is "
+                    f"{layout!r}, not {slot.format!r}; write "
+                    f"{_time_slot_hint(slot.placeholder, layout)}"
+                ),
+            )
+        )
+
+
+def _check_time_layout(
+    value: object,
+    tokens: Sequence[re.Match[str]],
+    key: str,
+    where: str,
+    recorded: RecordedResult | None,
+    walk: _Walk,
+) -> None:
+    """Check a time placeholder renders in the tool's layout, or refuse it.
+
+    Prose around a placeholder renders to a sentence no tool parses, and a
+    bare placeholder renders to ISO 8601, which isn't every tool's layout.
+    The recorded argument is the example layout; a mismatch is refused with
+    the exact slot to write instead.
+    """
+    if not isinstance(value, str):
+        return
+    if recorded is None:
+        return
+    example = recorded.args.get(key)
+    layout = detect_layout(example)
+    if layout is None:
+        return
+    whole = PLACEHOLDER_TOKEN.fullmatch(value)
+    placeholder = whole.group(0) if whole is not None else tokens[0].group(0)
+    if whole is not None:
+        date_only = whole.group("root") == "today" and whole.group("clock") is None
+        if layout == (ISO_DATE_LAYOUT if date_only else ISO_DATETIME_LAYOUT):
+            return
+        problem = (
+            f"{key!r} was {example!r} in this run, whose layout is {layout!r}; {value} "
+            f"renders as ISO 8601, so write {_time_slot_hint(placeholder, layout)}"
+        )
+    else:
+        problem = (
+            f"{key!r} was {example!r} in this run; {value!r} renders its placeholder as "
+            f"ISO 8601 inside that text, which is not this layout. Write the whole value as "
+            f"{_time_slot_hint(placeholder, layout)}, with the clock inside the placeholder"
+        )
+    walk.issues.append(PlaybookIssue(where=where, problem=problem))
+
+
+def _first_validation_message(error: ValidationError) -> str:
+    return error.errors()[0]["msg"].removeprefix("Value error, ")
 
 
 def _check_value_type(

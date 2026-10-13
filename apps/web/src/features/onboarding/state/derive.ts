@@ -1,165 +1,85 @@
+import type { OnboardingData } from "@/features/auth/api/authApi";
 /**
- * Linear stage cursor. The flow is a fixed queue of stages; the user
- * advances forward only, never sideways. Each stage has two checks:
- *
- * - `isStageReady` — does the backend have the data for this stage yet?
- * - `isStageDone`  — is the user past this stage (either acked, or the
- *   backend told us there is nothing to show here)?
- *
- * `getStage` walks the queue once and returns the first stage that is not
- * done. If that stage isn't ready, we render `processing` instead of
- * skipping ahead — this is what prevents an out-of-order event from
- * teleporting the user to a later stage.
- *
- * The queue is picked once from `hasGmail`: the no-Gmail branch literally
- * has no writing-style reveal, so we don't include it.
+ * Linear stage cursor over the fixed queue (Q1/Q2, payment, receipt, platform
+ * pick, chat handoff) — forward only, never sideways. `getStage` returns the
+ * first stage not yet past; payment's "done" lives outside this state (true
+ * when the backend reports the user subscribed). `isPaid` must be definitive —
+ * while unknown, `useIsPaid().isPaid` is false, parking the user on payment's neutral loading state rather than skipping an unchecked gate.
  */
 
-import { FIELD_NAMES, questions } from "../constants";
-import type { OnboardingStage } from "../types/websocket";
+import {
+  FIELD_NAMES,
+  isKnownNeed,
+  NEEDS_MAX_SELECTION,
+  NEEDS_MIN_SELECTION,
+  questions,
+} from "../constants";
 import type { OnboardingState, Stage } from "./types";
 
-export function hasGmail(s: OnboardingState): boolean {
-  return s.responses[FIELD_NAMES.GMAIL] === "connected";
+function isQuestionsComplete(s: OnboardingState): boolean {
+  return s.questionIndex >= questions.length;
 }
 
-function needsFocus(s: OnboardingState): boolean {
+/** Q2 picks so far: chips plus "Something else" once its field is open. */
+function pickCount(s: OnboardingState): number {
+  return s.selectedNeeds.length + (s.otherNeedOpen ? 1 : 0);
+}
+
+/** Whether Q2 has spent all its picks. The reducer refuses further picks on
+ * this; the chip row only reads it to dim what can no longer be chosen. */
+export function isAtNeedsCap(s: OnboardingState): boolean {
+  return pickCount(s) >= NEEDS_MAX_SELECTION;
+}
+
+export function canSubmitNeeds(s: OnboardingState): boolean {
   return (
-    s.responses[FIELD_NAMES.GMAIL] === "skipped" &&
-    s.responses[FIELD_NAMES.FOCUS] == null
+    s.selectedNeeds.length >= NEEDS_MIN_SELECTION || s.otherNeed.trim() !== ""
   );
 }
 
-function needsClarify(s: OnboardingState): boolean {
-  if (s.responses[FIELD_NAMES.GMAIL] !== "skipped") return false;
-  if (s.responses[FIELD_NAMES.FOCUS] == null) return false;
-  return !s.clarifySubmitted;
+/**
+ * The answers the account already gave, as a wizard draft — what a browser
+ * with no cache resumes from, instead of re-asking Q1/Q2 and overwriting them.
+ *
+ * `null` means the account has answered nothing (also the signal a local
+ * draft's `preferencesPersisted` is stale). `GET /user/me` reports unset
+ * onboarding as `preferences: {}`, never a missing field, so presence alone says nothing — a recorded profession is the first thing saved.
+ */
+export function draftFromServerPreferences(
+  onboarding: OnboardingData | undefined,
+): Partial<OnboardingState> | null {
+  const preferences = onboarding?.preferences;
+  if (!preferences?.profession) return null;
+
+  const otherNeed = preferences.other_need ?? "";
+  return {
+    responses: { [FIELD_NAMES.PROFESSION]: preferences.profession },
+    questionIndex: questions.length,
+    // A need the API no longer accepts must not come back as a chip.
+    selectedNeeds: (preferences.needs ?? []).filter(isKnownNeed),
+    otherNeed,
+    otherNeedOpen: otherNeed !== "",
+    preferencesPersisted: true,
+  };
 }
 
-export function isResponsesComplete(s: OnboardingState): boolean {
-  return (
-    s.questionIndex >= questions.length && !needsFocus(s) && !needsClarify(s)
-  );
-}
-
-const GMAIL_QUEUE: readonly Stage[] = [
-  "revealWriting",
-  "revealTodos",
-  "workflows",
-  "platforms",
-  "chat",
-];
-
-const NO_GMAIL_QUEUE: readonly Stage[] = [
-  "revealTodos",
-  "workflows",
-  "platforms",
-  "chat",
-];
-
-function isStageReady(s: OnboardingState, stage: Stage): boolean {
-  if (stage === "platforms") return true;
-  const b = s.server;
-  if (!b) return false;
-  switch (stage) {
-    case "revealWriting":
-      return !!b.writing_style?.style_summary;
-    case "revealTodos":
-      return (b.onboarding_todos?.length ?? 0) > 0;
-    case "workflows":
-      return (b.suggested_workflows?.length ?? 0) > 0;
-    case "chat":
-      return !!b.first_message_conversation_id;
-    default:
-      return false;
-  }
-}
-
-// revealWriting waits for revealTodos to be ready before it's marked done,
-// preserving the holding block on the writing-style card after the user acks.
-function isWritingStageDone(s: OnboardingState): boolean {
-  if (s.ackedWritingStyle && isStageReady(s, "revealTodos")) return true;
-  return (
-    s.completedStages.has("writing_style_ready") &&
-    !s.server?.writing_style?.style_summary
-  );
-}
-
-function isTodosStageDone(s: OnboardingState): boolean {
-  if (s.ackedTodos) return true;
-  return (
-    s.completedStages.has("todos_ready") && !s.server?.onboarding_todos?.length
-  );
-}
-
-function isWorkflowsStageDone(s: OnboardingState): boolean {
-  if (s.workflowsConfirmed) return true;
-  return (
-    s.completedStages.has("workflows_ready") &&
-    !s.server?.suggested_workflows?.length
-  );
-}
-
-function isStageDone(s: OnboardingState, stage: Stage): boolean {
-  switch (stage) {
-    case "revealWriting":
-      return isWritingStageDone(s);
-    case "revealTodos":
-      return isTodosStageDone(s);
-    case "workflows":
-      return isWorkflowsStageDone(s);
-    case "platforms":
-      return s.platformsConfirmed;
-    default:
-      return false;
-  }
-}
-
-export function getStage(s: OnboardingState): Stage {
-  if (s.questionIndex < questions.length) return "questions";
-  if (needsFocus(s)) return "focus";
-  if (needsClarify(s)) return "clarify";
-  if (!s.integrationSelectDone) return "integrationSelect";
-
-  const queue = hasGmail(s) ? GMAIL_QUEUE : NO_GMAIL_QUEUE;
-
-  for (const stage of queue) {
-    if (isStageDone(s, stage)) continue;
-    if (isStageReady(s, stage)) return stage;
-    return "processing";
-  }
-
+export function getStage(s: OnboardingState, isPaid: boolean): Stage {
+  if (!isQuestionsComplete(s)) return "questions";
+  if (!isPaid) return "payment";
+  if (!s.paidRevealAcked) return "paidReveal";
+  if (!s.platformsConfirmed) return "platformPick";
   return "chat";
-}
-
-const POST_WRITING_PROGRESS_STAGES: readonly OnboardingStage[] = [
-  "workflows_creating",
-  "todos_creating",
-  "triage_analyzing",
-];
-
-export function getCurrentProgress(s: OnboardingState): string | null {
-  for (const stage of POST_WRITING_PROGRESS_STAGES) {
-    const value = s.progressByStage[stage];
-    if (value) return value;
-  }
-  return null;
 }
 
 const STAGE_PROGRESS: Record<Stage, number> = {
   questions: 0,
-  focus: 3,
-  clarify: 4,
-  integrationSelect: 5,
-  processing: 5,
-  revealWriting: 6,
-  revealTodos: 7,
-  workflows: 8,
-  platforms: 9,
-  chat: 10,
+  payment: 2,
+  paidReveal: 3,
+  platformPick: 4,
+  chat: 5,
 };
 
-export const PROGRESS_TOTAL_STEPS = 10;
+export const PROGRESS_TOTAL_STEPS = 5;
 
 export function getProgress(s: OnboardingState, stage: Stage): number {
   if (s.isRestarting) return 0;

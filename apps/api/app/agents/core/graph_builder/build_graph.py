@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from langchain_core.language_models import LanguageModelLike
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agents.core.graph_builder.checkpointer_manager import (
@@ -18,22 +19,37 @@ from app.agents.core.nodes.pre_model_hooks import (
     worker_pre_model_hooks,
 )
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
+from app.agents.core.subagents.integration_activation import activate_integration
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.llm.client import init_llm
-from app.agents.middleware import create_comms_middleware, create_executor_middleware
-from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.middleware import (
+    SubagentStackOptions,
+    create_comms_middleware,
+    create_executor_middleware,
+)
+from app.agents.middleware.subagent import SubagentMiddleware, bind_spawner
 from app.agents.tools import memory_tools
+from app.agents.tools.browser_chat_tools import (
+    browser_step_done,
+    stop_browser_task,
+    tell_browser_task,
+)
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
 )
+from app.agents.tools.discovery_tools import find_integration, search_public_workflows
 from app.agents.tools.executor_tool import call_executor, cancel_executor
+from app.agents.tools.subagent_control_tool import (
+    cancel_subagent,
+    list_running_subagents,
+    message_subagent,
+)
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
-from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
-from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
+from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.agent_config import (
@@ -44,13 +60,59 @@ from app.override.langgraph_bigtool.agent_config import (
 from app.override.langgraph_bigtool.create_agent import create_agent
 from shared.py.wide_events import log
 
+#: Tools the executor binds before its first turn, ahead of any retrieve_tools call.
+#: "activate_integration" is always bound. `handoff` stays for per-user MCP
+#: integrations that cannot be activated in-context — see build_executor_graph.
+EXECUTOR_INITIAL_TOOL_IDS = [
+    "handoff",
+    "execute",
+    "get_tool_schema",
+    "plan_tasks",
+    "update_tasks",
+    "read",
+    "write",
+    "edit",
+    "bash",
+    "deep_research",
+    "list_running_subagents",
+    "message_subagent",
+    "cancel_subagent",
+    "read_manual",
+    "create_tracked_todo",
+    "update_tracked_todo",
+    "complete_tracked_todo",
+    "search_todo_context",
+    "list_tracked_todos",
+    "list_trigger_fields",
+    "subscribe_todo_to_trigger",
+    "unsubscribe_todo_from_trigger",
+    "save_learned_skill",
+    # Bound, not retrieved: fetching it cost two retrieve_tools rounds
+    # and two model calls (about 8s) before the browser even started.
+    "browser_task",
+    # Bound statically, not left to retrieve_tools: prompts name these
+    # directly, so a run whose semantic retrieval misses them could read
+    # the instruction and silently never act on it.
+    "write_playbook",
+    "decline_playbook",
+    "read_playbook",
+    "disable_playbook",
+    # Same rule as playbook tools: not in the retrieval index, so
+    # retrieve_tools once improvised a nonexistent `gaia bridge approve`.
+    # approve_device_pairing stays gated regardless of binding.
+    "add_device",
+    "approve_device_pairing",
+    "list_devices",
+    "run_on_device",
+]
+
 
 @asynccontextmanager
 async def build_executor_graph(
     chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
 ) -> AsyncIterator[CompiledAgentGraph]:
-    """Construct and compile the executor agent graph with handoff tools."""
+    """Construct and compile the executor agent graph with handoff (per-user MCP only) + activation tools."""
     if chat_llm is None:
         chat_llm = init_llm()
 
@@ -62,19 +124,39 @@ async def build_executor_graph(
     todo_tools = create_todo_tools(source="executor")
 
     tool_dict = tool_registry.get_tool_dict()
-    tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({t.name: t for t in todo_tools})
-    tool_dict.update({WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool})
 
+    # handoff stays bound for per-user MCP integrations, whose tools never
+    # enter the global registry; activate_integration routes those to
+    # handoff rather than dead-ending them.
+    tool_dict.update({"handoff": handoff_tool})
+    tool_dict.update({"activate_integration": activate_integration})
+    # Executor-only tools to steer or cancel a specific running subagent by id.
+    tool_dict.update(
+        {t.name: t for t in (list_running_subagents, message_subagent, cancel_subagent)}
+    )
     todo_hook = create_todo_pre_model_hook(source="executor")
 
-    # Spawned subagents must not see executor-only orchestration tools.
-    excluded_subagent_tools = {"handoff", WAIT_FOR_SUBAGENTS_NAME}
+    # Spawned subagents must not see executor-only orchestration tools, and
+    # activate_integration is executor-level: subagents reach integrations
+    # through handoff, never by activating in-context themselves.
+    excluded_subagent_tools = {
+        "handoff",
+        "list_running_subagents",
+        "message_subagent",
+        "cancel_subagent",
+        "activate_integration",
+    }
 
     middleware = create_executor_middleware(
         chat_llm=chat_llm,
-        subagent_excluded_tools=excluded_subagent_tools,
-        subagent_tool_runtime_config=build_executor_child_tool_runtime_config(),
+        subagent=SubagentStackOptions(
+            excluded_tools=excluded_subagent_tools,
+            tool_runtime_config=build_executor_child_tool_runtime_config(),
+            # The executor binds an integration's tools in its own turn, so a
+            # spawn it delegates to must inherit them to do the work.
+            inherit_parent_tools=True,
+        ),
     )
 
     # Wire SubagentMiddleware with LLM and full tool registry
@@ -92,42 +174,18 @@ async def build_executor_graph(
         subagent_mw.set_store(store)
         subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
-    pre_model_hooks = worker_pre_model_hooks(todo_hook)
+    pre_model_hooks = worker_pre_model_hooks(todo_hook, drains_inbox=True)
+
+    # activate_integration leads; handoff stays for the per-user MCP
+    # integrations activation cannot bind in-context (routed there).
+    initial_tools = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
 
     builder = create_agent(
         chat_llm,
         tool_dict,
         tools_config=ToolRetrievalConfig(
             retrieve_tools_coroutine=get_retrieve_tools_function(),
-            initial_tool_ids=[
-                "handoff",
-                "plan_tasks",
-                "update_tasks",
-                "read",
-                "bash",
-                "deep_research",
-                "wait_for_subagents",
-                "read_manual",
-                "create_tracked_todo",
-                "update_tracked_todo",
-                "update_tracked_todo_canvas",
-                "complete_tracked_todo",
-                "search_todo_context",
-                "list_tracked_todos",
-                "list_trigger_fields",
-                "subscribe_todo_to_trigger",
-                "unsubscribe_todo_from_trigger",
-                "save_learned_skill",
-                # Bound statically, not left to retrieve_tools: the <playbook_check>
-                # and heal briefs name these directly, so a run whose semantic
-                # retrieval happens to miss them would read the instruction, be
-                # unable to act on it, and silently never decide. A tool a prompt
-                # names by hand has to be reachable by hand.
-                "write_playbook",
-                "decline_playbook",
-                "read_playbook",
-                "disable_playbook",
-            ],
+            initial_tool_ids=initial_tools,
         ),
         hooks_config=HookConfig(
             pre_model_hooks=pre_model_hooks,
@@ -143,6 +201,8 @@ async def build_executor_graph(
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
         graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
+        if subagent_mw is not None:
+            bind_spawner(graph, subagent_mw)
         # Surface fallback at WARNING — users silently lose conversation memory
         # when Postgres checkpointer is unavailable.
         if not in_memory_checkpointer:
@@ -159,6 +219,8 @@ async def build_executor_graph(
     else:
         postgres_checkpointer = checkpointer_manager.get_checkpointer()
         graph = builder.compile(checkpointer=postgres_checkpointer, store=store)
+        if subagent_mw is not None:
+            bind_spawner(graph, subagent_mw)
         log.info("graph_compiled_postgres", graph="comms", model=model_name)
         log.set(agent={"model": model_name})
         yield graph
@@ -188,11 +250,7 @@ async def build_comms_graph(
     if chat_llm is None:
         chat_llm = init_llm()
 
-    tool_registry = {
-        "call_executor": call_executor,
-        "cancel_executor": cancel_executor,
-        **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
-    }
+    tool_registry = comms_tools()
     store = await get_tools_store()
 
     middleware = create_comms_middleware(chat_llm=chat_llm)
@@ -204,11 +262,7 @@ async def build_comms_graph(
         tool_registry,
         tools_config=ToolRetrievalConfig(
             disable_retrieve_tools=True,
-            initial_tool_ids=[
-                "call_executor",
-                "cancel_executor",
-                *[memory_tool.name for memory_tool in memory_tools.tools],
-            ],
+            initial_tool_ids=list(tool_registry),
         ),
         hooks_config=HookConfig(
             pre_model_hooks=pre_model_hooks,
@@ -239,6 +293,27 @@ async def build_comms_graph(
         log.debug(f"{LogTag.AGENT} Comms graph compiled with PostgreSQL checkpointer")
         log.set(agent={"model": model_name})
         yield graph
+
+
+def comms_tools() -> dict[str, BaseTool]:
+    """Return the comms agent's whole tool set, by name; all bound from the start.
+
+    The discovery pair are read-only catalogue lookups, so they do not breach
+    "delegate every real ask". Connecting an integration is a real ask and
+    goes to the executor. The browser trio acts on a task already running.
+    """
+    return {
+        "call_executor": call_executor,
+        "cancel_executor": cancel_executor,
+        browser_step_done.name: browser_step_done,
+        stop_browser_task.name: stop_browser_task,
+        tell_browser_task.name: tell_browser_task,
+        "find_integration": find_integration,
+        "search_public_workflows": search_public_workflows,
+        web_search_tool.name: web_search_tool,
+        fetch_webpages.name: fetch_webpages,
+        **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
+    }
 
 
 @lazy_provider(

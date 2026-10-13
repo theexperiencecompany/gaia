@@ -11,7 +11,7 @@ from shared.py.wide_events import log
 class DeviceConnectionManager:
     """Singleton tracking device sockets held by *this* pod.
 
-    Cross-pod delivery is Redis pub/sub (see ``bridge.py``); this only maps a
+    Cross-pod delivery is Redis pub/sub (see bridge.py); this only maps a
     device_id to the local socket so the down-relay task can write to it.
     """
 

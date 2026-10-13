@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import NotificationSettings from "@/features/settings/components/NotificationSettings";
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 import { NotificationsAPI } from "@/services/api/notifications";
 
 /**
@@ -19,13 +19,8 @@ vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
-vi.mock("@/lib/analytics", () => ({
-  trackEvent: vi.fn(),
-  ANALYTICS_EVENTS: { SETTINGS_NOTIFICATIONS_TOGGLED: "settings:toggled" },
-}));
-
-vi.mock("@/lib/api/service", () => ({
-  apiService: { get: vi.fn() },
+vi.mock("@/lib/api/typed", () => ({
+  api: { get: vi.fn() },
 }));
 
 vi.mock("@/services/api/notifications", () => ({
@@ -35,8 +30,8 @@ vi.mock("@/services/api/notifications", () => ({
   },
 }));
 
-vi.mock("@/features/briefing/components/ChannelPriorityList", () => ({
-  ChannelPriorityList: () => null,
+vi.mock("@/features/settings/components/ChatChannelSettings", () => ({
+  ChatChannelSettings: () => null,
 }));
 
 function renderSettings() {
@@ -52,8 +47,8 @@ function renderSettings() {
 
 describe("NotificationSettings", () => {
   beforeEach(() => {
-    vi.mocked(apiService.get).mockReset();
-    vi.mocked(apiService.get).mockResolvedValue({
+    vi.mocked(api.get).mockReset();
+    vi.mocked(api.get).mockResolvedValue({
       platform_links: { telegram: { platformUserId: "tg-1" } },
     });
     vi.mocked(NotificationsAPI.getChannelPreferences).mockReset();

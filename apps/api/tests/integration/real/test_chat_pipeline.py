@@ -9,13 +9,14 @@ Real: stream_manager (real Redis), _save_conversation_async -> update_messages
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from bson import ObjectId
 import pytest
 
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
+from tests.factories import make_authenticated_user
 
 
 def _fake_stream(*chunks):
@@ -62,7 +63,7 @@ class TestChatPipelineReal:
         with (
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_stream()),
+                new=MagicMock(return_value=agent_stream()),
             ),
             patch(
                 "app.services.chat.stream.UsageMetadataCallbackHandler",
@@ -72,7 +73,7 @@ class TestChatPipelineReal:
             await run_chat_stream_background(
                 stream_id=f"stream_{ObjectId()}",
                 body=body,
-                user={"user_id": "pipe-user-1"},
+                user=make_authenticated_user(user_id="pipe-user-1"),
                 conversation_id=conv_id,
             )
 
@@ -107,7 +108,7 @@ class TestChatPipelineReal:
         with (
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=agent_stream()),
+                new=MagicMock(return_value=agent_stream()),
             ),
             patch(
                 "app.services.chat.stream.UsageMetadataCallbackHandler",
@@ -117,7 +118,7 @@ class TestChatPipelineReal:
             await run_chat_stream_background(
                 stream_id=stream_id,
                 body=body,
-                user={"user_id": "pipe-user-3"},
+                user=make_authenticated_user(user_id="pipe-user-3"),
                 conversation_id=conv_id,
             )
 
@@ -141,7 +142,7 @@ class TestChatPipelineReal:
         with (
             patch(
                 "app.services.chat.stream.call_agent",
-                new=AsyncMock(side_effect=RuntimeError("agent exploded")),
+                new=MagicMock(side_effect=RuntimeError("agent exploded")),
             ),
             patch(
                 "app.services.chat.stream.UsageMetadataCallbackHandler",
@@ -151,7 +152,7 @@ class TestChatPipelineReal:
             await run_chat_stream_background(
                 stream_id=stream_id,
                 body=body,
-                user={"user_id": "pipe-user-4"},
+                user=make_authenticated_user(user_id="pipe-user-4"),
                 conversation_id=conv_id,
             )
 

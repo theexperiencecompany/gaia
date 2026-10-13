@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 
+from scripts.evals.core.app_boot import ensure_app_registered
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.gates import score_gates, validate_gates
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
@@ -41,7 +42,7 @@ async def _stub_is_up(client: httpx.AsyncClient) -> bool:
 
 
 def _spawn_stub() -> subprocess.Popen[bytes]:
-    """Launch the stub. Sync, and called off the loop via ``to_thread``."""
+    """Launch the stub. Sync, and called off the loop via to_thread."""
     return subprocess.Popen(
         ["uv", "run", "tools/llm-stub/server.py"],
         cwd=_REPO_ROOT,
@@ -54,10 +55,10 @@ def _spawn_stub() -> subprocess.Popen[bytes]:
 async def ensure_stub() -> None:
     """Start the scripted LLM stub if it is not already answering.
 
-    Async throughout: the poll used to be ``httpx.get`` + ``time.sleep`` inside a
+    Async throughout: the poll used to be httpx.get + time.sleep inside a
     coroutine, which blocks the event loop for up to fifteen seconds while the
     stub boots — long enough to stall every other case the run has in flight.
-    The process is registered with ``atexit`` so a stub this run started does not
+    The process is registered with atexit so a stub this run started does not
     outlive it and hold the port against the next one.
     """
     global _STUB_PROCESS
@@ -83,16 +84,6 @@ def _terminate_stub() -> None:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
-
-
-async def _ensure_registered() -> None:
-    """Register the app's lazy providers + services the executor graph needs."""
-    from app.core.provider_registration import register_lazy_providers
-    from app.db.redis import redis_cache
-    from app.helpers.lifespan_helpers import init_mongodb_async
-
-    register_lazy_providers("arq_worker")
-    await asyncio.gather(init_mongodb_async(), redis_cache.verify_connection())
 
 
 @register_suite("regression")
@@ -206,7 +197,7 @@ class RegressionSuite(Suite):
                 error="regression suite requires --sim (GAIA_SIM_MODE)",
             )
         await ensure_stub()
-        await _ensure_registered()
+        await ensure_app_registered()
         tokens_in_before = tracker.input_tokens.get(provider.name, 0)
         tokens_out_before = tracker.output_tokens.get(provider.name, 0)
         config = {

@@ -1,0 +1,220 @@
+From 71a751995356ae231b722447cd5f923d3747684e Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 06:14:18 +0530
+Subject: [PATCH] perf(render): the shadow sheet cache counts a component's
+ style text once
+
+Each ShadowRoot's entry kept its own copy of its <style> text and counted
+it against the 8 MB bound, and every miss summed all entries again. A page
+with many instances of one component spent the bound on copies (a 100 KB
+component sheet: 80 instances remembered, the rest restyled on every
+render) and paid a quadratic sum on its first render. Entries now share one
+copy per distinct text, counted once and released with its last entry, and
+the running total is kept instead of recomputed.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-render/src/css.rs | 146 ++++++++++++++++++++++---------
+ 1 file changed, 106 insertions(+), 40 deletions(-)
+
+diff --git a/crates/obscura-render/src/css.rs b/crates/obscura-render/src/css.rs
+index b302539..c5426b1 100644
+--- a/crates/obscura-render/src/css.rs
++++ b/crates/obscura-render/src/css.rs
+@@ -2781,17 +2781,26 @@ pub struct StylesheetCache {
+     /// media type) is the entry's fingerprint: a retained restyle may reuse a
+     /// shadow tree's computed styles only while its fingerprint is unchanged.
+     shadow: HashMap<NodeId, CachedShadowStylesheet>,
++    /// The distinct `<style>` texts the shadow entries hold, each stored once
++    /// however many component instances share it, with how many entries use
++    /// it. The byte bound counts each distinct text once.
++    shadow_texts: HashMap<Arc<Vec<String>>, ShadowText>,
++    shadow_text_bytes: usize,
+ }
+ 
+ struct CachedShadowStylesheet {
+     host: NodeId,
+-    sources: Vec<String>,
++    sources: Arc<Vec<String>>,
+     viewport_bits: (u32, u32),
+     media_type: CssMediaType,
+-    source_bytes: usize,
+     sheet: Arc<Stylesheet>,
+ }
+ 
++struct ShadowText {
++    entries: usize,
++    bytes: usize,
++}
++
+ /// Outcome of looking up one ShadowRoot's sheet in [`StylesheetCache`].
+ pub(crate) struct ShadowSheetLookup {
+     pub sheet: Arc<Stylesheet>,
+@@ -2875,7 +2884,7 @@ impl StylesheetCache {
+             if entry.host == host
+                 && entry.viewport_bits == viewport_bits
+                 && entry.media_type == media_type
+-                && entry.sources == sources
++                && *entry.sources == sources
+             {
+                 let sheet = Arc::clone(&entry.sheet);
+                 shared
+@@ -2897,36 +2906,20 @@ impl StylesheetCache {
+                 sheet
+             }
+         };
+-        let source_bytes = sources
+-            .iter()
+-            .try_fold(0usize, |total, source| total.checked_add(source.len()));
+-        let retained_bytes = self
+-            .shadow
+-            .iter()
+-            .filter(|(cached_root, _)| **cached_root != root)
+-            .map(|(_, entry)| entry.source_bytes)
+-            .sum::<usize>();
+-        match source_bytes {
+-            // Past the byte bound the root is simply not remembered, so every
+-            // render reports it changed and restyles its host conservatively.
+-            Some(bytes)
+-                if bytes.saturating_add(retained_bytes) <= MAX_STYLESHEET_CACHE_SOURCE_BYTES =>
+-            {
+-                self.shadow.insert(
+-                    root,
+-                    CachedShadowStylesheet {
+-                        host,
+-                        sources,
+-                        viewport_bits,
+-                        media_type,
+-                        source_bytes: bytes,
+-                        sheet: Arc::clone(&sheet),
+-                    },
+-                );
+-            }
+-            _ => {
+-                self.shadow.remove(&root);
+-            }
++        self.forget_shadow_root(root);
++        // Past the byte bound the root is simply not remembered, so every
++        // render reports it changed and restyles its host conservatively.
++        if let Some(sources) = self.retain_shadow_text(sources) {
++            self.shadow.insert(
++                root,
++                CachedShadowStylesheet {
++                    host,
++                    sources,
++                    viewport_bits,
++                    media_type,
++                    sheet: Arc::clone(&sheet),
++                },
++            );
+         }
+         ShadowSheetLookup {
+             sheet,
+@@ -2937,7 +2930,51 @@ impl StylesheetCache {
+     /// Forget roots that are no longer connected, so a root that returns later
+     /// is treated as new rather than matched against a stale fingerprint.
+     pub(crate) fn retain_shadow_roots(&mut self, live: &std::collections::HashSet<NodeId>) {
+-        self.shadow.retain(|root, _| live.contains(root));
++        let gone: Vec<NodeId> = self
++            .shadow
++            .keys()
++            .filter(|root| !live.contains(root))
++            .copied()
++            .collect();
++        for root in gone {
++            self.forget_shadow_root(root);
++        }
++    }
++
++    /// The shared copy of `sources` for one more entry, or None when a new
++    /// distinct text would take the shadow texts past the byte bound.
++    fn retain_shadow_text(&mut self, sources: Vec<String>) -> Option<Arc<Vec<String>>> {
++        if let Some(shared) = self.shadow_texts.get_key_value(&sources).map(|(key, _)| Arc::clone(key)) {
++            if let Some(text) = self.shadow_texts.get_mut(&sources) {
++                text.entries += 1;
++            }
++            return Some(shared);
++        }
++        let bytes = sources
++            .iter()
++            .try_fold(0usize, |total, source| total.checked_add(source.len()))?;
++        if self.shadow_text_bytes.saturating_add(bytes) > MAX_STYLESHEET_CACHE_SOURCE_BYTES {
++            return None;
++        }
++        let shared = Arc::new(sources);
++        self.shadow_text_bytes += bytes;
++        self.shadow_texts
++            .insert(Arc::clone(&shared), ShadowText { entries: 1, bytes });
++        Some(shared)
++    }
++
++    fn forget_shadow_root(&mut self, root: NodeId) {
++        let Some(entry) = self.shadow.remove(&root) else {
++            return;
++        };
++        let Some(text) = self.shadow_texts.get_mut(&entry.sources) else {
++            return;
++        };
++        text.entries -= 1;
++        if text.entries == 0 {
++            self.shadow_text_bytes -= text.bytes;
++            self.shadow_texts.remove(&entry.sources);
++        }
+     }
+ 
+     pub fn hit_count(&self) -> u64 {
+@@ -2949,12 +2986,7 @@ impl StylesheetCache {
+     }
+ 
+     pub fn retained_source_bytes(&self) -> usize {
+-        self.entry.as_ref().map_or(0, |entry| entry.source_bytes)
+-            + self
+-                .shadow
+-                .values()
+-                .map(|entry| entry.source_bytes)
+-                .sum::<usize>()
++        self.entry.as_ref().map_or(0, |entry| entry.source_bytes) + self.shadow_text_bytes
+     }
+ }
+ 
+@@ -7901,6 +7933,40 @@ fn split_media_query_list(query: &str) -> Vec<&str> {
+ mod tests {
+     use super::*;
+ 
++    /// Many instances of one component share one `<style>` text: the byte
++    /// bound counts it once, so every instance is remembered, and the text is
++    /// released with its last instance.
++    #[test]
++    fn shadow_sheet_cache_counts_a_shared_text_once() {
++        let tree = obscura_dom::parse_html("<html><body></body></html>");
++        let text = vec![format!(".a{{color:red}}/*{}*/", "x".repeat(512 * 1024))];
++        let instances = 2 * MAX_STYLESHEET_CACHE_SOURCE_BYTES / text[0].len();
++        let mut cache = StylesheetCache::default();
++        let look = |cache: &mut StylesheetCache, root: u32| {
++            cache.get_or_parse_shadow(
++                &tree,
++                NodeId::new(root),
++                NodeId::new(root + 100_000),
++                text.clone(),
++                (640.0, 480.0),
++                CssMediaType::Screen,
++                &mut HashMap::new(),
++            )
++        };
++        for root in 0..instances as u32 {
++            assert!(!look(&mut cache, root).unchanged);
++        }
++        for root in 0..instances as u32 {
++            assert!(look(&mut cache, root).unchanged, "instance {root} was forgotten");
++        }
++        assert_eq!(cache.retained_source_bytes(), text[0].len());
++
++        cache.retain_shadow_roots(&std::collections::HashSet::from([NodeId::new(0)]));
++        assert_eq!(cache.retained_source_bytes(), text[0].len());
++        cache.retain_shadow_roots(&std::collections::HashSet::new());
++        assert_eq!(cache.retained_source_bytes(), 0);
++    }
++
+     fn test_invalidation_map(css: &str) -> InvalidationMap {
+         let tree = obscura_dom::parse_html("<html><body></body></html>");
+         Stylesheet::parse(&tree, &[css.to_string()])

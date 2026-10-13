@@ -36,18 +36,13 @@ def sample_user() -> UserDocument:
 
 
 class TestGetUserById:
-    async def test_returns_exact_legacy_dict(self, mock_repo, sample_user):
+    async def test_returns_exact_user_document(self, mock_repo, sample_user):
         mock_get, _ = mock_repo
         mock_get.return_value = sample_user
 
         result = await get_user_by_id(sample_user.id)
 
-        assert result == {
-            "email": "alice@example.com",
-            "name": "Alice",
-            "picture": "https://example.com/alice.jpg",
-            "_id": sample_user.id,
-        }
+        assert result is sample_user
 
     async def test_queries_repository_with_exact_id(self, mock_repo, sample_user):
         mock_get, _ = mock_repo
@@ -142,9 +137,7 @@ class TestUpdateUserProfile:
     async def test_a_legacy_account_with_no_name_or_email_degrades_to_empty_strings(
         self, mock_repo
     ):
-        """The response schema types name/email as `str`, but a legacy account
-        can carry neither. Both degrade to "" — not to None (which would fail
-        validation and 500 the whole update) and not to any other filler."""
+        """A legacy account with no name/email degrades both to "" — not None, which would fail validation and 500."""
         mock_get, mock_update = mock_repo
         bare = UserDocument(id=str(ObjectId()), email=None, name=None)
         mock_get.return_value = bare

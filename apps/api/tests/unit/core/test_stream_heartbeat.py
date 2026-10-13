@@ -1,16 +1,16 @@
-"""Tests for `with_heartbeat` — the socket-level SSE keepalive.
+"""Tests for with_heartbeat — the socket-level SSE keepalive.
 
-`subscribe_stream` keeps the connection alive only while the Redis event log is
+subscribe_stream keeps the connection alive only while the Redis event log is
 IDLE. That is not the same as the socket being idle: the bot translator drops
 every web-only frame, so a busy turn can produce a long silence on the wire and
-a reverse proxy will hang up on it (nginx's stock `proxy_read_timeout` is 60s —
+a reverse proxy will hang up on it (nginx's stock proxy_read_timeout is 60s —
 this is what killed the Discord turns on 2026-08-18). These tests pin the
 guarantee that no silence longer than the interval can reach the socket.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator
-import contextlib
+from collections.abc import AsyncGenerator, Coroutine
+import selectors
 
 import pytest
 
@@ -20,45 +20,58 @@ from app.core.stream_manager import with_heartbeat
 INTERVAL = 0.05
 
 
+class _VirtualClockSelector(selectors.DefaultSelector):
+    """A selector that never waits: it advances the clock by the timeout it was given."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.now = 0.0
+
+    def select(self, timeout: float | None = None) -> list[tuple[selectors.SelectorKey, int]]:
+        if timeout is None:
+            raise RuntimeError("virtual-time loop would block forever: nothing is scheduled")
+        self.now += max(timeout, 0.0)
+        return super().select(0)
+
+
+class _VirtualTimeLoop(asyncio.SelectorEventLoop):
+    """An event loop whose clock jumps to the next timer instead of waiting for it.
+
+    Every sleep and wait_for timeout resolves in exact virtual time, so a test of
+    interval arithmetic is deterministic however loaded the machine is.
+    """
+
+    def __init__(self) -> None:
+        self._clock = _VirtualClockSelector()
+        super().__init__(self._clock)
+
+    def time(self) -> float:
+        return self._clock.now
+
+
+def _run_on_virtual_time(coro: Coroutine[object, object, list[str]]) -> list[str]:
+    loop = _VirtualTimeLoop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 async def _drain(frames: AsyncGenerator[str, None]) -> list[str]:
     return [frame async for frame in frames]
 
 
-@pytest.mark.asyncio
-async def test_silent_producer_still_writes_to_the_socket() -> None:
-    """A producer that yields nothing for several intervals is padded.
-
-    This is the regression: the bot translator swallows web-only frames, so the
-    inner generator can be busy and silent at the same time.
-    """
-
-    # The producer stays silent until three keepalives have actually reached the
-    # consumer, rather than for a fixed 3.5 intervals. Sleeping a wall-clock
-    # multiple assumes the loop fires each timer on schedule, which a loaded CI
-    # box does not: the keepalives simply came out short (2 for a `>= 3` bound)
-    # while the padding worked correctly. Waiting on the condition the test is
-    # about makes the count exact instead of hoped for.
-    speak = asyncio.Event()
+def test_silent_producer_still_writes_to_the_socket() -> None:
+    """A producer that yields nothing for several intervals is padded, since the bot translator swallows web-only frames."""
 
     async def silent_then_speak() -> AsyncGenerator[str, None]:
-        # The bound is an escape hatch, not a schedule: it is orders of
-        # magnitude above INTERVAL, so it cannot flake, and it exists only so a
-        # regression fails on the assertion below instead of hanging the loop
-        # until pytest's global timeout.
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(speak.wait(), timeout=INTERVAL * 100)
+        await asyncio.sleep(INTERVAL * 5.5)
         yield "data: real\n\n"
 
-    frames: list[str] = []
-    async for frame in with_heartbeat(silent_then_speak(), interval=INTERVAL):
-        frames.append(frame)
-        if frames.count(SSE_KEEPALIVE_FRAME) >= 3:
-            speak.set()
+    frames = _run_on_virtual_time(_drain(with_heartbeat(silent_then_speak(), interval=INTERVAL)))
 
-    assert frames.count(SSE_KEEPALIVE_FRAME) >= 3, (
-        f"expected the gap to be padded with keepalives, got {frames!r}"
-    )
-    assert frames[-1] == "data: real\n\n", "the real frame must still arrive, last and intact"
+    # One keepalive per elapsed interval of silence, then the real frame, intact.
+    assert frames == [SSE_KEEPALIVE_FRAME] * 5 + ["data: real\n\n"]
 
 
 @pytest.mark.asyncio
@@ -74,19 +87,17 @@ async def test_real_frames_are_forwarded_in_order_and_unmodified() -> None:
     assert frames == [f"data: {index}\n\n" for index in range(5)]
 
 
-@pytest.mark.asyncio
-async def test_no_keepalive_when_the_producer_keeps_talking() -> None:
-    """A stream that never goes quiet gets no padding — keepalives are for gaps."""
+def test_no_keepalive_when_the_producer_keeps_talking() -> None:
+    """Frames spaced just under the interval, across many intervals, are never padded: each frame restarts the wait."""
 
     async def steady() -> AsyncGenerator[str, None]:
-        for index in range(4):
-            await asyncio.sleep(INTERVAL / 4)
+        for index in range(10):
+            await asyncio.sleep(INTERVAL * 0.9)
             yield f"data: {index}\n\n"
 
-    frames = await _drain(with_heartbeat(steady(), interval=INTERVAL))
+    frames = _run_on_virtual_time(_drain(with_heartbeat(steady(), interval=INTERVAL)))
 
-    assert SSE_KEEPALIVE_FRAME not in frames
-    assert len(frames) == 4
+    assert frames == [f"data: {index}\n\n" for index in range(10)]
 
 
 @pytest.mark.asyncio
@@ -103,15 +114,7 @@ async def test_producer_errors_propagate() -> None:
 
 @pytest.mark.asyncio
 async def test_closing_mid_heartbeat_closes_the_wrapped_producer() -> None:
-    """A disconnect while a read is in flight must still tear the read down.
-
-    This is the ordinary disconnect for the case the heartbeat exists to serve:
-    the turn is quiet (busy with tool work), so a pull from the event log is
-    always in flight when the client drops. Cancelling that pull without
-    awaiting it leaves the wrapped generator running, and `aclose()` then
-    raises "asynchronous generator is already running" — the subscription is
-    left to GC instead of being closed here.
-    """
+    """A disconnect while a read is in flight must still tear the read down, or aclose() raises "already running" and leaks to GC."""
     closed = asyncio.Event()
 
     async def never_speaks() -> AsyncGenerator[str, None]:

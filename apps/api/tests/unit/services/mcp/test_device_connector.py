@@ -1,10 +1,10 @@
-"""``DeviceConnector._drain_inbox``: a malformed MCP frame must not kill the read loop.
+"""DeviceConnector._drain_inbox: a malformed MCP frame must not kill the read loop.
 
-The bug this pins: a device can send a corrupted/truncated ``mcp.msg`` frame
-(a flaky tunnel, a half-written buffer on the other end). ``_drain_inbox``
-guards ``JSONRPCMessage.model_validate_json`` and forwards the parse failure
+The bug this pins: a device can send a corrupted/truncated mcp.msg frame
+(a flaky tunnel, a half-written buffer on the other end). _drain_inbox
+guards JSONRPCMessage.model_validate_json and forwards the parse failure
 as a stream error instead of letting it propagate — propagating would hit the
-loop's own broad ``except Exception``, which tears the whole session down
+loop's own broad except Exception, which tears the whole session down
 (closing the read stream and ending the loop) instead of just failing the one
 bad frame. These tests prove a bad frame is reported but the loop survives to
 process the next, good, frame.

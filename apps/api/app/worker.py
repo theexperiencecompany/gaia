@@ -2,13 +2,25 @@ from typing import cast
 
 from arq import cron
 from arq.typing import WorkerCoroutine
+from arq.worker import func
+import stackprinter
 
-# The worker runs the executor agent + Composio custom tools, so it needs the
-# same monkey-patches as the API process (main.py). Without this, custom tools
-# 500 with "Missing user_id in auth_credentials" because the CustomTool
-# user_id-injection patch never loads in this process.
+# Needs the same monkey-patches as the API process (main.py) — without this,
+# custom tools 500 with "Missing user_id in auth_credentials" because the
+# CustomTool user_id-injection patch never loads here.
+from app.config.sentry import init_sentry
+from app.constants.email import SIGNUP_EMAIL_TASK
+from app.constants.onboarding import INTELLIGENCE_TASK
+from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.todos import (
+    EXECUTE_TRACKED_TODO_TASK,
+    PROVISION_INBOX_DESK_TASK,
+    TODO_RUN_FINISH_MAX_TRIES,
+    TODO_RUN_FINISH_TASK,
+)
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
-from app.workers.config.worker_settings import WorkerSettings
+from app.workers.browser_worker import browser_reaper_cron
+from app.workers.config.worker_settings import WorkerFunction, WorkerSettings
 from app.workers.lifecycle import shutdown, startup
 from app.workers.task_envelope import arq_task
 from app.workers.tasks import (
@@ -17,11 +29,11 @@ from app.workers.tasks import (
     check_inactive_users,
     cleanup_expired_reminders,
     cleanup_stuck_personalization,
+    deliver_signup_emails,
     execute_workflow_by_id,
     generate_workflow_steps,
     process_gmail_emails_to_memory,
     process_onboarding_intelligence_task,
-    process_onboarding_workflows_task,
     process_reminder,
     process_workflow_generation_task,
     promote_usage_badges,
@@ -32,21 +44,38 @@ from app.workers.tasks import (
     sweep_abandoned_imessage_registrations,
     sweep_expired_memories,
     sweep_idle_sandboxes,
+    sweep_undelivered_signup_emails,
 )
+from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
+from app.workers.tasks.inbox_desk_tasks import (
+    provision_inbox_desk_task,
+)
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
+from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
+from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
+    finish_tracked_todo_run,
+    resume_tracked_todo,
     safety_net_check_orphaned_todos,
 )
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
 from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
-# Wrap every task in the standard envelope (wide event + Prometheus histogram)
-# so arq-worker.json can show real p50/p95/p99 latency per task name and every
-# run emits one correlated worker_task event. Cron jobs reference the same
-# wrapped functions so scheduled runs get both too.
+# Rich tracebacks for anything that escapes to the top of this process, the same
+# way main.py sets them for the API process. Process policy, so it lives in the
+# entrypoint and not in app/__init__.py.
+stackprinter.set_excepthook(style="darkbg2")
+
+# At import, not on_startup: ArqIntegration wraps job functions inside arq's
+# create_worker, which runs before on_startup, so a later init reports no job.
+init_sentry()
+
+# Wraps every task in the standard envelope (wide event + Prometheus histogram)
+# so arq-worker.json shows real p50/p95/p99 latency and each run emits one
+# correlated worker_task event; cron jobs reuse these same wrapped functions.
 _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
 _sweep_hil_approvals = arq_task(sweep_hil_approvals)
@@ -56,15 +85,24 @@ _execute_workflow_by_id = arq_task(execute_workflow_by_id)
 _regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
 _generate_workflow_steps = arq_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = arq_task(process_gmail_emails_to_memory)
-_process_onboarding_intelligence_task = arq_task(process_onboarding_intelligence_task)
-_process_onboarding_workflows_task = arq_task(process_onboarding_workflows_task)
+# The job id is per user and doubles as the "one run at a time" claim
+# (`intelligence_job.personalization_job_id`); a kept result would make ARQ
+# refuse the next enqueue for an hour after a failed run, so keep none.
+_process_onboarding_intelligence_task = func(
+    arq_task(process_onboarding_intelligence_task),
+    name=INTELLIGENCE_TASK,
+    keep_result=0,
+)
 _cleanup_stuck_personalization = arq_task(cleanup_stuck_personalization)
 _backfill_active_users = arq_task(backfill_active_users)
 _backfill_user_memories = arq_task(backfill_user_memories)
 _sweep_idle_sandboxes = arq_task(sweep_idle_sandboxes)
 _prune_inactive_sessions = arq_task(prune_inactive_sessions)
 _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
-_execute_tracked_todo = arq_task(execute_tracked_todo)
+# Named from the constant its per-occurrence job ids are built from.
+_execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
+_provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION_INBOX_DESK_TASK)
+_resume_tracked_todo = arq_task(resume_tracked_todo)
 _dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)
 _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
@@ -74,8 +112,35 @@ _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
+# keep_result=0: the per-user job id means a kept result blocks re-enqueue for
+# an hour, including the hourly recovery sweep's retry of an ESP-rejected
+# delivery. Re-runs are made harmless by delivery stamps, not by the result.
+_deliver_signup_emails = func(
+    arq_task(deliver_signup_emails),
+    name=SIGNUP_EMAIL_TASK,
+    keep_result=0,
+)
+_sweep_undelivered_signup_emails = arq_task(sweep_undelivered_signup_emails)
+_warm_device_servers = arq_task(warm_device_servers)
+# Named from the constant delivery enqueues by; finish_tracked_todo_run bounds its own tries.
+_finish_tracked_todo_run = func(
+    arq_task(finish_tracked_todo_run),
+    name=TODO_RUN_FINISH_TASK,
+    max_tries=TODO_RUN_FINISH_MAX_TRIES,
+)
+# Named from the constant the webhook enqueues by, so the two cannot drift.
+_sync_workflows_for_subscription_state = func(
+    arq_task(sync_workflows_for_subscription_state),
+    name=SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+)
+_sync_paid_person_properties = func(
+    arq_task(sync_paid_person_properties_task),
+    name=PAID_PERSON_SYNC_TASK,
+)
 
-WorkerSettings.functions = [
+# Every job on the default queue. Browser jobs have their own worker
+# (app.workers.browser_worker), started from the worker lifecycle.
+TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_hil_approvals,
     _process_reminder,
     _cleanup_expired_reminders,
@@ -87,12 +152,13 @@ WorkerSettings.functions = [
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
     _process_onboarding_intelligence_task,
-    _process_onboarding_workflows_task,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
     _prune_inactive_sessions,
     _prune_checkpoint_versions,
     _execute_tracked_todo,
+    _resume_tracked_todo,
+    _finish_tracked_todo_run,
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,
@@ -100,7 +166,14 @@ WorkerSettings.functions = [
     _sweep_dormant_user_workflows,
     _sweep_abandoned_imessage_registrations,
     _sweep_expired_memories,
+    _deliver_signup_emails,
+    _sweep_undelivered_signup_emails,
+    _warm_device_servers,
+    _sync_workflows_for_subscription_state,
+    _sync_paid_person_properties,
+    _provision_inbox_desk,
 ]
+WorkerSettings.functions = TASK_FUNCTIONS
 
 WorkerSettings.cron_jobs = [
     cron(
@@ -110,6 +183,9 @@ WorkerSettings.cron_jobs = [
         _sweep_hil_approvals,
         second=0,
     ),
+    # Every few seconds: a browser job whose worker died is ended, and a result no
+    # run was woken for is told, within moments rather than a lock's TTL.
+    browser_reaper_cron(),
     cron(
         _cleanup_expired_reminders,
         hour=0,  # At midnight
@@ -190,6 +266,14 @@ WorkerSettings.cron_jobs = [
         cast(WorkerCoroutine, _sweep_dormant_user_workflows),
         hour=6,  # Daily at 06:00 UTC
         minute=0,
+        second=0,
+    ),
+    # Finish the signup deliveries of anyone whose enqueue was lost (a Redis
+    # hiccup during signup) or whose job failed. Hourly, off the other sweeps'
+    # minutes; idempotent via the per-user job id and the delivery stamps.
+    cron(
+        cast(WorkerCoroutine, _sweep_undelivered_signup_emails),
+        minute=40,
         second=0,
     ),
     # Retire memories whose forget_after has passed. Without this, expiry is

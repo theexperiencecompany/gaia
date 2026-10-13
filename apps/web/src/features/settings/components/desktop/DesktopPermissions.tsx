@@ -2,10 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import type {
-  DesktopPermissionPane,
-  DesktopPermissionStatus,
-} from "@shared/desktop-tools";
+import type { DesktopPermissionStatus } from "@shared/desktop-tools";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { getElectronAPI } from "@/lib/electron/api";
@@ -15,7 +12,9 @@ import { toast } from "@/lib/toast";
 const REFRESH_INTERVAL_MS = 2000;
 
 interface PermissionRowConfig {
-  pane: DesktopPermissionPane;
+  // Only the panes that report a status here; Full Disk Access (which has no
+  // readable status) is granted from the This Mac card, not this settings page.
+  pane: keyof DesktopPermissionStatus;
   label: string;
   description: string;
   /** Whether the OS offers a real prompt (vs Settings-only granting). */
@@ -141,7 +140,7 @@ export function DesktopPermissions() {
             label={row.label}
             description={
               needsRestart
-                ? "Enabled it in System Settings? Restart GAIA to apply — macOS only applies this permission on launch."
+                ? "Enabled it in System Settings? Restart GAIA to apply. macOS only applies this permission on launch."
                 : row.description
             }
           >

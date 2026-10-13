@@ -1,23 +1,17 @@
-"""Logging config handed to arq's CLI via ``--custom-log-dict``.
+"""Logging config handed to arq's CLI via --custom-log-dict.
 
-arq's CLI runs ``logging.config.dictConfig`` *after* importing ``WorkerSettings``,
-so whatever ``configure_loguru()`` set up for the ``arq`` logger at import time is
-overwritten — arq re-attaches its own stderr ``StreamHandler`` and leaves
-propagation on. Every arq line is then emitted twice: once as plaintext on stderr
-and once as JSON through the root interceptor. Loki's ``| json`` drops the
-plaintext copies and double-counts the rest, and the plaintext copy is written
-straight to the descriptor, outside the structured sink's size cap.
-``basicConfig(force=True)`` cannot prevent it: that only clears *root* handlers.
+arq's CLI runs dictConfig AFTER importing WorkerSettings, undoing
+configure_loguru(): it re-attaches its own stderr handler with propagation
+on, so every line emits twice (plaintext + JSON) — Loki's | json drops the
+plaintext copies and double-counts the rest. basicConfig(force=True) can't
+fix this; it only clears root handlers.
 
-Passing this dict instead leaves arq's logger with no handlers of its own and
-propagation on, so its records reach the root interceptor installed by
-``configure_loguru()`` and come out as ordinary structured events — the same
-treatment ``_route_through_root`` gives uvicorn.
+This dict leaves arq's logger with no handlers and propagation on, so its
+records reach the root interceptor and come out as ordinary structured
+events, like _route_through_root does for uvicorn.
 
-Every command that launches the worker must pass it::
-
-    arq app.worker.WorkerSettings \\
-        --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG
+Every launch command must pass it: arq app.worker.WorkerSettings
+--custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG
 """
 
 from typing import Any
@@ -33,11 +27,9 @@ ARQ_LOG_CONFIG: dict[str, Any] = {
         "arq": {
             "handlers": [],
             "propagate": True,
-            # arq describes our own process (job start/finish/retry, worker
-            # lifecycle), so it belongs on LOG_LEVEL like the other framework
-            # namespaces configure_loguru() owns — not on the third-party floor
-            # the root logger sits at, which would swallow every one of its
-            # INFO lines the moment its own handler is removed.
+            # arq describes our own process, so it belongs on LOG_LEVEL like other
+            # framework namespaces configure_loguru() owns — not the third-party
+            # floor the root logger sits at, which would swallow its INFO lines.
             "level": LOG_CONFIG["level"],
         }
     },

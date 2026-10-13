@@ -1,12 +1,12 @@
 ---
 name: gaia-custom-instructions
-description: How per-integration custom instructions work — reading them, updating them, and when to persist a user's preference (e.g. "for Slack focus on #eng"). Read this when a user states how a specific integration should be used, or asks where their integration instructions live.
+description: How per-integration custom instructions work, reading them, updating them, and when to persist a user's preference (e.g. "for Slack focus on #eng"). Read this when a user states how a specific integration should be used, or asks where their integration instructions live.
 target: executor
 ---
 
 # Per-Integration Custom Instructions
 
-Every connected integration can carry a block of custom instructions — standing
+Every connected integration can carry a block of custom instructions. Standing
 guidance for how the user wants that service used (focus channels, default
 projects, conventions). This is the per-integration equivalent of a project's
 README: durable, scoped to one integration, honored on every future task.
@@ -15,10 +15,10 @@ README: durable, scoped to one integration, honored on every future task.
 
 - **Source of truth:** the user's account (one record per integration).
 - **Surfaced to the matching subagent** automatically every turn, as a
-  "CUSTOM INSTRUCTIONS FOR <INTEGRATION>" block — the slack subagent always sees
+  "CUSTOM INSTRUCTIONS FOR <INTEGRATION>" block. The slack subagent always sees
   the slack instructions without reading a file.
 - **Mirrored read-only** to `integrations/<id>/agent/instructions.md` in the
-  workspace, so it's also greppable. Never edit that file directly — it's a
+  workspace, so it's also greppable. Never edit that file directly. It's a
   projection and the edit won't stick.
 - **Editable by the user** on the integrations page in the app.
 
@@ -36,7 +36,7 @@ already in context), merge, then write the whole thing back.
 
 ## When to persist (and when NOT to)
 
-Persist only DURABLE preferences — things that should apply to every future task
+Persist only DURABLE preferences: things that should apply to every future task
 on that integration:
 
 - "Always post to #eng and #design, never #general."

@@ -20,7 +20,7 @@ class SearchEngine:
     A provider is *skipped* when it is unconfigured or out of free-tier budget,
     and *failed over* when it raises or returns no results. Budget recording and
     Redis reads are best-effort so external-state faults never break search. Every
-    attempt is captured in a single ``search_engine`` wide-event field for
+    attempt is captured in a single search_engine wide-event field for
     per-provider observability (outcome, latency, result count, error type).
     """
 

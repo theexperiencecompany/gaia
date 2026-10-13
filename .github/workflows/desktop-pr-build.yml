@@ -18,6 +18,9 @@ on:
       # regressions live in these paths.
       - "apps/desktop/**"
       - "libs/shared/ts/**"
+      # Generated API types are `export type` only: erased at compile time, so
+      # they cannot change a packaged binary, and every API model edit touches them.
+      - "!libs/shared/ts/src/api/generated/**"
       - ".github/workflows/desktop-pr-build.yml"
   workflow_dispatch:
 
@@ -109,15 +112,50 @@ jobs:
         with:
           name: desktop-payload
       - name: Unpack payload (restores apps/desktop/out + .next-server-prepared)
+        if: matrix.target != 'win'
         shell: bash
         run: tar -xzf desktop-payload.tar.gz
+
+      # Windows-only two passes: GNU tar under Git-bash can only create a
+      # symlink once its target already exists, but the archive stores the
+      # top-level links (node_modules/react -> .pnpm/…) before their targets,
+      # so the first pass fails exactly those links with exit 2. The second
+      # pass (--skip-old-files: silently keep what the first pass extracted,
+      # still errors on real failures) then finds every target present and
+      # completes the links. (--keep-old-files/-k looks identical but exits 2
+      # on every skipped file, and macOS bsdtar has no --skip-old-files at
+      # all — so POSIX runners stay on the single pass, which creates dangling
+      # links freely.)
+      - name: Unpack payload on Windows (two-pass for symlinks)
+        if: matrix.target == 'win'
+        shell: bash
+        run: |
+          tar -xzf desktop-payload.tar.gz || true
+          tar --skip-old-files -xzf desktop-payload.tar.gz
 
       # --dir = unpacked app, no installer: fast, and enough to catch asar /
       # dependency / prune regressions. macOS ad-hoc-signs via the afterSign hook
       # (CSC_IDENTITY_AUTO_DISCOVERY=false) so the seal can be verified below.
+      # Linux instead builds the REAL installers (AppImage/deb/rpm): --dir skips
+      # target-specific validation, which is exactly how the electron-builder 26
+      # executableName rejection shipped in desktop-v0.7.0 with green PR checks.
+      - name: Install Linux packaging dependencies
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
       - name: Package (electron-builder --dir)
+        if: matrix.target != 'linux'
         working-directory: apps/desktop
         run: pnpm exec electron-builder --${{ matrix.target }} --dir --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Build Linux installers (electron-builder --linux)
+        if: matrix.target == 'linux'
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder --linux --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 

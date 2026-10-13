@@ -2,15 +2,15 @@
 
 This module runs once per container start and decides whether to *format* a
 shared volume and whether to *lazy-unmount* a path. Both are destructive if the
-idempotency guards misfire — reformatting a live volume or `fusermount -u -z`
+idempotency guards misfire — reformatting a live volume or fusermount -u -z
 against a healthy mount takes every user's workspace offline, and neither shows
 up as an exception. So the guards, not the happy path, are what is attacked here.
 
-Boundaries mocked: `_run` (the juicefs/fusermount subprocess), `_is_mounted`
+Boundaries mocked: _run (the juicefs/fusermount subprocess), _is_mounted
 (needs a real kernel mount), and the clock. Everything else — path creation,
 key materialization, argv construction, error classification, backoff maths,
 thread supervision — is the real production code running against a real
-`tmp_path` filesystem.
+tmp_path filesystem.
 """
 
 from __future__ import annotations
@@ -45,10 +45,10 @@ META = "postgres://gaia:secret@meta.example.com:5432/jfs"
 
 
 def _init_juicefs_mount() -> Any:
-    """The real provider coroutine, unwrapped from @lazy_provider's closure.
+    """Return the real provider coroutine, unwrapped from @lazy_provider's closure.
 
-    `lazy_provider` replaces the module attribute with a zero-arg registration
-    function; the coroutine we need is the `func` free variable it closed over.
+    lazy_provider replaces the module attribute with a zero-arg registration
+    function; the coroutine we need is the func free variable it closed over.
     """
     registrar = bootstrap.init_juicefs_mount
     freevars = registrar.__code__.co_freevars
@@ -65,7 +65,7 @@ def completed(returncode: int = 0, stderr: str = "") -> subprocess.CompletedProc
 
 
 class RunRecorder:
-    """Stand-in for `_run` — the only subprocess boundary in this module."""
+    """Stand-in for _run — the only subprocess boundary in this module."""
 
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
@@ -111,7 +111,7 @@ class Clock:
 
 
 def mounted_after(n: int) -> Any:
-    """`_is_mounted` stub that flips to True on the (n+1)-th call."""
+    """_is_mounted stub that flips to True on the (n+1)-th call."""
     state = {"calls": 0}
 
     def check(path: Path) -> bool:
@@ -126,7 +126,7 @@ def flag_value(argv: list[str], flag: str) -> str:
 
 
 class StatRaiser:
-    """Minimal Path stand-in whose `stat()` fails with a chosen errno."""
+    """Minimal Path stand-in whose stat() fails with a chosen errno."""
 
     def __init__(self, code: int) -> None:
         self._code = code
@@ -157,7 +157,7 @@ def runs(monkeypatch: pytest.MonkeyPatch) -> RunRecorder:
 
 @pytest.fixture
 def cfg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """A fully-configured bootstrap rooted in tmp_path. Returns the mount path."""
+    """Configure a bootstrap rooted in tmp_path and return the mount path."""
     mount = tmp_path / "mnt" / "jfs"
     for name, value in (
         ("R2_ACCOUNT_ID", "acct123"),
@@ -179,8 +179,7 @@ def cfg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 @pytest.fixture(autouse=True)
 def _clean_thread_state() -> Iterator[None]:
-    """The bootstrap thread handle is module state; leaking it across tests
-    would make the "spawns exactly one thread" assertions depend on ordering."""
+    """Reset the module-global bootstrap thread handle so "spawns exactly one thread" assertions don't depend on test order."""
     bootstrap._bootstrap_thread = None
     yield
     thread = bootstrap._bootstrap_thread
@@ -983,10 +982,8 @@ async def test_an_unresponsive_mount_probe_still_starts_the_bootstrap(
     monkeypatch.setattr(bootstrap, "_MOUNT_PROBE_TIMEOUT_SECONDS", 0.05)
 
     def wedged(_path: Path) -> bool:
-        # Block LONGER than the probe timeout (0.05s, set above) so the
-        # wait_for fires while this thread is still wedged — simulating a
-        # stat that never returns. 0.5s is enough; the loop joins this
-        # thread at close, so a long sleep is pure teardown cost.
+        # Block longer than the probe timeout (0.05s, set above) so wait_for fires
+        # while this thread is still wedged, simulating a stat that never returns.
         real_time.sleep(0.5)
         return True
 

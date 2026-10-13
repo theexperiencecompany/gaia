@@ -1,71 +1,50 @@
-import { apiService } from "@/lib/api/service";
+import type {
+  AuthenticatedUserResponse,
+  OnboardingPreferences,
+  OnboardingRequest,
+  OnboardingStatusResponse,
+} from "@shared/api/generated";
+import {
+  type ApiBody,
+  api,
+  FORM_URLENCODED_HEADERS,
+  formDataSerializer,
+} from "@/lib/api/typed";
 
-export interface UserInfo {
-  user_id: string;
-  name: string;
-  email: string;
-  picture: string;
-  timezone?: string;
-  onboarding?: {
-    completed: boolean;
-    completed_at?: string;
-    phase?: string;
-    preferences?: {
-      profession?: string;
-      response_style?: string;
-      custom_instructions?: string;
-    };
-  };
-  selected_model?: string;
-}
+/** The onboarding block as `GET /user/me` and the onboarding endpoints return it. */
+export type OnboardingData = OnboardingStatusResponse;
 
-export interface GoogleLoginResponse {
-  url: string;
-}
+/** `GET /user/me`. */
+export type UserInfo = AuthenticatedUserResponse;
 
 export const authApi = {
   // Fetch current user info
-  fetchUserInfo: async (): Promise<UserInfo> => {
-    return apiService.get<UserInfo>("/user/me", {
-      silent: true,
-    });
-  },
-
-  // Initiate Google login
-  googleLogin: async (): Promise<GoogleLoginResponse> => {
-    return apiService.get<GoogleLoginResponse>("/oauth/login/google", {
-      errorMessage: "Failed to initiate Google login",
-    });
-  },
+  fetchUserInfo: () => api.get("/api/v1/user/me", { silent: true }),
 
   // Update user profile (name/picture)
-  updateProfile: async (formData: FormData): Promise<UserInfo> => {
-    return apiService.patch<UserInfo>("/user/me", formData, {
+  updateProfile: (body: ApiBody<"patch", "/api/v1/user/me">) =>
+    api.patch("/api/v1/user/me", {
+      body,
+      bodySerializer: formDataSerializer,
       successMessage: "Profile updated successfully",
       errorMessage: "Failed to update profile",
-    });
-  },
+    }),
 
   // Update user name only
-  updateName: async (name: string): Promise<UserInfo> => {
-    const formData = new FormData();
-    formData.append("name", name);
-    return apiService.patch<UserInfo>("/user/name", formData, {
+  updateName: (name: string) =>
+    api.patch("/api/v1/user/name", {
+      body: { name },
+      headers: FORM_URLENCODED_HEADERS,
       successMessage: "Name updated successfully",
       errorMessage: "Failed to update name",
-    });
-  },
+    }),
 
   // Logout user
   logout: async (): Promise<void> => {
-    const response = await apiService.post<{ logout_url?: string }>(
-      "/user/logout",
-      {},
-      {
-        successMessage: "Logged out successfully",
-        errorMessage: "Failed to logout",
-      },
-    );
+    const response = await api.post("/api/v1/user/logout", {
+      successMessage: "Logged out successfully",
+      errorMessage: "Failed to logout",
+    });
 
     // Redirect to the logout URL returned by the backend
     // Validate URL scheme to prevent XSS/open-redirect via javascript:/data: URLs
@@ -84,44 +63,21 @@ export const authApi = {
   },
 
   // Complete onboarding
-  completeOnboarding: async (onboardingData: {
-    name: string;
-    profession: string;
-    timezone?: string;
-    focus?: string;
-    clarify_answers?: {
-      id: string;
-      kind: string;
-      question: string;
-      value: string | null;
-    }[];
-    selected_integrations?: string[];
-    defer_workflows?: boolean;
-  }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
-    return apiService.post("/onboarding", onboardingData, {
-      silent: true,
-    });
-  },
+  completeOnboarding: (onboardingData: OnboardingRequest) =>
+    api.post("/api/v1/onboarding", { body: onboardingData, silent: true }),
 
   // Update user preferences (renamed for clarity)
-  updateOnboardingPreferences: async (preferences: {
-    profession?: string;
-    response_style?: string;
-    custom_instructions?: string | null;
-  }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
-    return apiService.patch("/onboarding/preferences", preferences, {
+  updateOnboardingPreferences: (preferences: OnboardingPreferences) =>
+    api.patch("/api/v1/onboarding/preferences", {
+      body: preferences,
       silent: true,
-    });
-  },
+    }),
 
   // Update user timezone separately
-  updateUserTimezone: async (
-    timezone: string,
-  ): Promise<{ success: boolean; message: string; timezone: string }> => {
-    const formData = new FormData();
-    formData.append("timezone", timezone);
-    return apiService.patch("/user/timezone", formData, {
+  updateUserTimezone: (timezone: string) =>
+    api.patch("/api/v1/user/timezone", {
+      body: { timezone },
+      headers: FORM_URLENCODED_HEADERS,
       silent: true,
-    });
-  },
+    }),
 };

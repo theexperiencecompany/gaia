@@ -188,18 +188,7 @@ class TestProviderRegistryExtended:
             await registry.aget("does_not_exist")
 
     def test_warn_once_strategy_logs_once(self):
-        """WARN_ONCE strategy should emit the warning exactly once at registration.
-
-        The warning is emitted in _check_availability_and_warn() during
-        LazyLoader.__init__. Registering twice (re-registering) should still
-        only ever call _log_warning once per LazyLoader instance because the
-        second instance is a brand-new object.  What we verify here is that a
-        single LazyLoader with WARN_ONCE only logs one warning at construction
-        time rather than logging on every get() call.
-
-        The app uses loguru (not stdlib logging), so we mock `logger.warning`
-        at the module level rather than using pytest's caplog fixture.
-        """
+        """A single LazyLoader with WARN_ONCE logs once at construction, not per get() — loguru is mocked at module level since caplog won't capture it."""
         from unittest.mock import patch
 
         registry = ProviderRegistry()

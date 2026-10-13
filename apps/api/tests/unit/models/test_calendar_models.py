@@ -10,7 +10,6 @@ from app.models.calendar_models import (
     BatchEventDeleteRequest,
     BatchEventUpdateRequest,
     CalendarEventsQueryRequest,
-    # CalendarEventToolRequest,  # Unwired as of 2026-06; see calendar_models.py
     CalendarPreferencesUpdateRequest,
     CreateEventInput,
     DeleteEventInput,
@@ -349,9 +348,7 @@ class TestRecurrenceRuleToRruleString:
 
 
 class TestUntilRruleValueUnparseableFallbacks:
-    """The RFC 5545 formatter's fallbacks for `until` values that slip past
-    validation (e.g. constructed via model_construct): a bare date degrades to
-    its compact form, an unparseable datetime is passed through verbatim."""
+    """The RFC 5545 formatter's fallbacks for until values that slip past validation: a bare date degrades to its compact form, an unparseable datetime passes through verbatim."""
 
     def test_unparseable_bare_date_degrades_to_its_compact_form(self):
         m = RecurrenceRule.model_construct(frequency="DAILY", until="31-12-2025")
@@ -498,13 +495,7 @@ class TestEventCreateRequest:
         assert m.is_all_day is True
 
     def test_valid_unpadded_date_is_accepted(self):
-        """The date-only fallback (strptime %Y-%m-%d) accepts unpadded dates.
-
-        fromisoformat rejects e.g. "2025-6-1", but the fallback's lenient parse
-        accepts it — that acceptance is the fallback branch's only observable
-        language, and the only thing that distinguishes the format string from
-        a mutated lookalike (so a corrupted format is caught).
-        """
+        """The fromisoformat parser rejects "2025-6-1"; the strptime %Y-%m-%d fallback accepts it."""
         m = EventCreateRequest(
             summary="Holiday",
             start="2025-6-1",
@@ -591,8 +582,7 @@ class TestSingleEventInput:
     def test_valid_minimal(self):
         m = SingleEventInput(summary="Test", start_datetime="2025-06-01T10:00:00")
         assert m.summary == "Test"
-        assert m.duration_hours == 0
-        assert m.duration_minutes == 30
+        assert m.end_datetime is None
         assert m.calendar_id == "primary"
         assert m.is_all_day is False
         assert m.create_meeting_room is False
@@ -601,8 +591,7 @@ class TestSingleEventInput:
         m = SingleEventInput(
             summary="Full Event",
             start_datetime="2025-06-01T10:00:00",
-            duration_hours=2,
-            duration_minutes=15,
+            end_datetime="2025-06-01T12:15:00",
             calendar_id="work",
             description="Description",
             location="Office",
@@ -610,26 +599,8 @@ class TestSingleEventInput:
             is_all_day=False,
             create_meeting_room=True,
         )
-        assert m.duration_hours == 2
+        assert m.end_datetime == "2025-06-01T12:15:00"
         assert m.location == "Office"
-
-    @pytest.mark.parametrize("hours", [-1, 24])
-    def test_duration_hours_out_of_range(self, hours):
-        with pytest.raises(ValidationError):
-            SingleEventInput(
-                summary="Bad",
-                start_datetime="2025-06-01T10:00:00",
-                duration_hours=hours,
-            )
-
-    @pytest.mark.parametrize("minutes", [-1, 60])
-    def test_duration_minutes_out_of_range(self, minutes):
-        with pytest.raises(ValidationError):
-            SingleEventInput(
-                summary="Bad",
-                start_datetime="2025-06-01T10:00:00",
-                duration_minutes=minutes,
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -642,12 +613,6 @@ class TestCreateEventInput:
         event = SingleEventInput(summary="A", start_datetime="2025-06-01T10:00:00")
         m = CreateEventInput(events=[event])
         assert len(m.events) == 1
-        assert m.confirm_immediately is False
-
-    def test_confirm_immediately_true(self):
-        event = SingleEventInput(summary="A", start_datetime="2025-06-01T10:00:00")
-        m = CreateEventInput(events=[event], confirm_immediately=True)
-        assert m.confirm_immediately is True
 
     def test_missing_events(self):
         with pytest.raises(ValidationError):
@@ -677,7 +642,10 @@ class TestListCalendarsInput:
 class TestFetchEventsInput:
     def test_defaults(self):
         m = FetchEventsInput()
-        assert m.calendar_ids == []
+        # Defaults to None ("all selected calendars"); the field also accepts an
+        # explicit None, which the tool contract tells the model to send.
+        assert m.calendar_ids is None
+        assert FetchEventsInput(calendar_ids=None).calendar_ids is None
         assert m.time_min is None
         assert m.time_max is None
         assert m.max_results == 30

@@ -9,11 +9,13 @@ Run with:
 """
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 import pytest
 
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
+from app.models.integrations.reddit_hooks import RedditCommentThing, RedditPostThing
 from app.services.composio.custom_tools.context_tool import (
     PROVIDER_TOOLS,
     tool_namespace,
@@ -22,6 +24,7 @@ from app.services.composio.custom_tools.registry import CustomToolsRegistry
 from app.utils.composio_hooks.gmail_hooks import (
     gmail_attachment_after_hook,
     gmail_compose_before_hook,
+    gmail_create_draft_after_hook,
     gmail_drafts_after_hook,
     gmail_message_detail_after_hook,
     gmail_send_email_schema_modifier,
@@ -43,7 +46,6 @@ from app.utils.composio_hooks.twitter_hooks import (
     twitter_search_after_hook,
     twitter_search_schema_modifier,
 )
-from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -414,7 +416,7 @@ class TestGmailBeforeHooks:
             }
         )
 
-        with patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer") as mock_writer:
+        with patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer") as mock_writer:
             mock_writer.return_value = MagicMock()
             result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
 
@@ -435,7 +437,7 @@ class TestGmailBeforeHooks:
         assert result is params
 
     def test_compose_hook_streams_email_compose_data_for_draft(self) -> None:
-        """Creating a draft sends email_compose_data to the stream writer."""
+        """The before/after pair sends one email_compose_data, after the tool runs."""
 
         writer_mock = MagicMock()
         params = _make_params(
@@ -447,15 +449,24 @@ class TestGmailBeforeHooks:
         )
 
         with patch(
-            "app.utils.composio_hooks.gmail_hooks.get_stream_writer",
+            "app.utils.composio_hooks.gmail_hooks.current_stream_writer",
             return_value=writer_mock,
         ):
             gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", params)
+            # Nothing streams yet: a card with attachments needs the draft id its
+            # Send button uses, and that only exists once the tool has run.
+            writer_mock.assert_not_called()
+            gmail_create_draft_after_hook(
+                "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "draft-77"}}
+            )
 
         writer_mock.assert_called_once()
         payload = writer_mock.call_args[0][0]
         assert "email_compose_data" in payload
         assert payload["email_compose_data"][0]["subject"] == "Draft subject"
+        # This draft has no attachments, so the card stays editable: carrying the
+        # id would make Send ignore the user's edits and post the stored draft.
+        assert "draft_id" not in payload["email_compose_data"][0]
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +548,12 @@ class TestGmailSchemaModifiers:
 
 @pytest.mark.integration
 class TestUserIdExtractionHook:
-    """Test user_id extraction from RunnableConfig metadata."""
+    """Test user_id extraction from RunnableConfig metadata.
+
+    Identity is resolved by the master before-hook, ahead of the hook chain, so
+    every registered hook sees the same user. These drive it through the real
+    chain rather than a helper, which is what the tools themselves do.
+    """
 
     def test_extracts_user_id_from_runnable_config(self) -> None:
         """User ID is extracted from __runnable_config__ metadata and set on params."""
@@ -551,10 +567,30 @@ class TestUserIdExtractionHook:
             }
         )
 
-        result = extract_user_id_from_params("GMAIL_FETCH_EMAILS", "gmail", params)
+        record = UserIntegrationDocument(
+            user_id="user_abc123",
+            integration_id="gmail",
+            status="connected",
+            accounts=[
+                IntegrationAccount(
+                    id="ca_work", connected_account_id="ca_work", label="work@acme.com"
+                ),
+                IntegrationAccount(
+                    id="ca_home", connected_account_id="ca_home", label="me@gmail.com"
+                ),
+            ],
+            primary_account_id="ca_home",
+        )
+        with patch(
+            "app.services.integrations.integration_accounts.user_integration_repository.get_for_user",
+            AsyncMock(return_value=record),
+        ):
+            result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
 
         assert result["user_id"] == "user_abc123"
         assert result["entity_id"] == "user_abc123"
+        # Composio never picks among several accounts: the call names the primary.
+        assert result["connected_account_id"] == "ca_home"
         # __runnable_config__ should be popped from arguments
         assert "__runnable_config__" not in result["arguments"]
 
@@ -562,7 +598,7 @@ class TestUserIdExtractionHook:
         """Without __runnable_config__, params are returned unchanged."""
 
         params = _make_params(arguments={"query": "test"})
-        result = extract_user_id_from_params("GMAIL_FETCH_EMAILS", "gmail", params)
+        result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
 
         assert "user_id" not in result
         assert "entity_id" not in result
@@ -576,7 +612,7 @@ class TestUserIdExtractionHook:
             }
         )
 
-        result = extract_user_id_from_params("SLACK_SEND_MSG", "slack", params)
+        result = master_before_execute_hook("SLACK_SEND_MSG", "slack", params)
         assert "user_id" not in result
 
     def test_no_user_id_in_metadata_returns_params_unchanged(self) -> None:
@@ -588,14 +624,14 @@ class TestUserIdExtractionHook:
             }
         )
 
-        result = extract_user_id_from_params("TOOL", "tk", params)
+        result = master_before_execute_hook("TOOL", "tk", params)
         assert "user_id" not in result
 
     def test_empty_arguments_returns_params_unchanged(self) -> None:
         """If arguments dict is empty, hook returns params as-is."""
 
         params: ToolExecuteParams = {"arguments": {}}
-        result = extract_user_id_from_params("TOOL", "tk", params)
+        result = master_before_execute_hook("TOOL", "tk", params)
         assert result == params
 
 
@@ -644,10 +680,6 @@ class TestEndToEndHookChain:
     """Test a complete before -> execute -> after pipeline."""
 
     def test_full_chain_transforms_input_and_output(self) -> None:
-        """
-        Simulate: user_id extraction (before) -> Composio execute (mocked) ->
-        response processing (after) -> verify transformed result.
-        """
         registry = ComposioHookRegistry()
 
         # Before hook: extract user_id and add a tracking field
@@ -817,7 +849,7 @@ class TestTwitterHooks:
         }
 
         with patch(
-            "app.utils.composio_hooks.twitter_hooks.get_stream_writer",
+            "app.utils.composio_hooks.twitter_hooks.current_stream_writer",
             return_value=MagicMock(),
         ):
             result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "twitter", raw_response)
@@ -865,7 +897,7 @@ class TestRedditHooks:
         }
 
         with patch(
-            "app.utils.composio_hooks.reddit_hooks.get_stream_writer",
+            "app.utils.composio_hooks.reddit_hooks.current_stream_writer",
             return_value=MagicMock(),
         ):
             result = reddit_search_after_hook(
@@ -895,7 +927,7 @@ class TestRedditHooks:
             },
         }
 
-        result = process_reddit_post(raw_post)
+        result = process_reddit_post(RedditPostThing.model_validate(raw_post).data)
 
         assert result["id"] == "abc123"
         assert result["title"] == "My Post"
@@ -918,7 +950,7 @@ class TestRedditHooks:
             },
         }
 
-        result = process_reddit_comment(raw_comment)
+        result = process_reddit_comment(RedditCommentThing.model_validate(raw_comment).data)
 
         assert result["id"] == "comment1"
         assert result["body"] == "Great post!"

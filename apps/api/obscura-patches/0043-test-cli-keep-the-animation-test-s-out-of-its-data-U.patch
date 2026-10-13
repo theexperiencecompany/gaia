@@ -1,0 +1,29 @@
+From 7fdf689585516daf7bb77d428de1edd3a16d1589 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 06:12:51 +0530
+Subject: [PATCH] test(cli): keep the animation test's # out of its data URL
+ fragment
+
+The live-animation screenshot test wrote #cover inside a data: URL, so
+everything from the selector on was the URL's fragment, the page had no
+cover, and the live and T=0 captures matched: the test failed on every run.
+It is written %23, as the CDP animation test already is.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cli/tests/screenshot_after_eval.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/crates/obscura-cli/tests/screenshot_after_eval.rs b/crates/obscura-cli/tests/screenshot_after_eval.rs
+index 6c62e82..c053c4b 100644
+--- a/crates/obscura-cli/tests/screenshot_after_eval.rs
++++ b/crates/obscura-cli/tests/screenshot_after_eval.rs
+@@ -81,7 +81,7 @@ fn screenshots_use_live_animation_time_unless_harness_pins_a_sample() {
+     let url = concat!(
+         "data:text/html,<html style=\"margin:0\"><head><style>",
+         "@keyframes hide{from{opacity:1}to{opacity:0}}",
+-        "#cover{width:80px;height:60px;background:red;",
++        "%23cover{width:80px;height:60px;background:red;",
+         "animation:hide 50ms linear forwards}",
+         "</style></head><body style=\"margin:0;background:lime\">",
+         "<div id=\"cover\"></div></body></html>"

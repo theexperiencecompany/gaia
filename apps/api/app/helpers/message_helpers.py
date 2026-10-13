@@ -1,7 +1,9 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Literal, TypedDict, cast
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER
 from app.agents.prompts.onboarding_prompts import (
@@ -10,6 +12,7 @@ from app.agents.prompts.onboarding_prompts import (
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
+    TRIGGERED_ACCOUNT_SECTION,
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_EXECUTION_PROMPT,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -21,7 +24,6 @@ from app.agents.templates.agent_template import (
 from app.agents.workspace.paths import safe_upload_filename
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
-from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.models.message_models import (
     FileData,
@@ -29,7 +31,9 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
-from app.models.user_models import OnboardingPhase
+from app.models.onboarding_models import PersistedTriageSummary
+from app.models.user_models import OnboardingPhase, OnboardingSubdocument
+from app.models.webhook_models import TriggerEventAccount
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
@@ -43,15 +47,10 @@ def create_system_message(
 ) -> SystemMessage:
     """Return the STATIC main system prompt for the given agent.
 
-    The content is byte-identical across every user on the same channel so
-    the provider's implicit prompt cache can match across users — the first
-    web user of the day warms the cache, every subsequent web user hits it
-    on turn 1. For comms, the per-channel variants embed the output-format
-    addendum (OpenUI on web/mobile/desktop; text-only restrictions on
-    messaging platforms). The executor prompt is single-variant.
-
-    All user, time, and memory context is assembled by ``app.agents.context``
-    and delivered in its own messages — never in this static prefix.
+    Byte-identical across every user on the same channel so the provider's prompt
+    cache matches across users; comms variants embed the per-channel output-format
+    addendum. All user/time/memory context is assembled by app.agents.context and
+    delivered in its own messages, never in this static prefix.
     """
     del user_id, user_name  # intentionally unused — static prefix only
     if agent_type == "executor":
@@ -64,15 +63,9 @@ def build_current_time_message(
 ) -> HumanMessage:
     """Return a tiny HumanMessage carrying the current UTC + local time.
 
-    We keep the clock OUT of ``system_instruction`` and put it in
-    ``contents`` instead. Reason: Gemini's implicit cache matches the
-    longest common prefix. Any byte in ``system_instruction`` that ticks
-    every minute would push the cache boundary back to just before that
-    byte, so a call at 00:59 and a call at 01:01 would share less prefix
-    than they need to. Since ``contents`` already differ per turn anyway
-    (the user's actual message differs), attaching the clock to contents
-    costs us nothing on the cache budget but keeps ``system_instruction``
-    fully stable.
+    Kept out of system_instruction and put in contents instead: Gemini's
+    implicit cache matches the longest common prefix, and a per-minute-ticking
+    byte in system_instruction would push the cache boundary back every call.
     """
     utc_now = datetime.now(UTC).strftime("%A, %B %d, %Y, %H:%M UTC")
     parts = [f"[Current UTC Time: {utc_now}]"]
@@ -98,7 +91,7 @@ def format_tool_selection_message(
     """Format tool selection message, handling both standalone and combined requests.
 
     The comms_agent delegates to executor via call_executor. The executor will
-    use semantic search to find the right tool/subagent, then execute.
+    activate the integration and run its tools itself.
     """
     tool_name = selected_tool.replace("_", " ").title()
     search_hint = f"{selected_tool} {tool_category}" if tool_category else selected_tool
@@ -110,9 +103,8 @@ def format_tool_selection_message(
 **TOOL SELECTION:** The user has specifically selected the '{tool_name}' tool (category: {tool_category or "general"}).
 
 Use call_executor to delegate this task. The executor should:
-1. Use `retrieve_tools(query="{search_hint}")` to find the tool or subagent
-2. If a subagent is returned (e.g. subagent:{tool_category}), use `handoff(subagent_id="{tool_category}", task="Use {selected_tool} to [user's request]")`
-3. If a direct tool is returned, bind it with `retrieve_tools(exact_tool_names=[...])` and execute
+1. Use `activate_integration(integration_id="{tool_category}")` to load the integration (or `retrieve_tools(query="{search_hint}")` to find the tool first)
+2. Run it via `execute(task_description="...", tool_name="{selected_tool}", data={{...}})` built from its schema
 
 Execute immediately without asking for clarification."""
 
@@ -120,22 +112,79 @@ Execute immediately without asking for clarification."""
     return f"""**TOOL EXECUTION REQUEST:** The user has selected the '{tool_name}' tool (category: {tool_category or "general"}).
 
 Use call_executor to delegate this task. The executor should:
-1. Use `retrieve_tools(query="{search_hint}")` to find the tool or subagent
-2. If a subagent is returned (e.g. subagent:{tool_category}), use `handoff(subagent_id="{tool_category}", task="Use {selected_tool} to execute the user's request")`
-3. If a direct tool is returned, bind it with `retrieve_tools(exact_tool_names=[...])` and execute
+1. Use `activate_integration(integration_id="{tool_category}")` to load the integration (or `retrieve_tools(query="{search_hint}")` to find the tool first)
+2. Run it via `execute(task_description="...", tool_name="{selected_tool}", data={{...}})` built from its schema
 
 Execute immediately without asking for clarification."""
+
+
+class TriggerEmailData(BaseModel):
+    """The ``email_data`` of a Gmail-triggered run, as the prompt reads it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sender: str = "Unknown"
+    subject: str = "No Subject"
+    message_text: str = ""
+
+
+class _BatchedTriggerPayload(TypedDict, total=False):
+    """A batched run's payload: its events, unchecked, as providers send anything."""
+
+    events: object
+
+
+def _event_accounts(payload: Mapping[str, object]) -> list[str]:
+    """Name the accounts a trigger payload (or each event of a batched one) arrived on.
+
+    Provider payloads have no fixed shape, so this reads the one key GAIA adds and
+    ignores anything else rather than validating the payload.
+    """
+    batch: _BatchedTriggerPayload = cast(_BatchedTriggerPayload, payload)
+    events = batch.get("events")
+    sources = [payload, *(events if isinstance(events, list) else [])]
+    names: set[object] = set()
+    for source in sources:
+        if isinstance(source, Mapping):
+            tagged: TriggerEventAccount = cast(TriggerEventAccount, source)
+            names.add(tagged.get("gaia_account"))
+    return sorted(name for name in names if isinstance(name, str) and name)
+
+
+class WorkflowTriggerContext(BaseModel):
+    """The keys ``format_workflow_execution_message`` reads off a run's trigger context.
+
+    The bag itself is open by construction — schedulers spread arbitrary provider
+    trigger data through it alongside the agent's own keys — so this is a view of
+    it, parsed once here, not its full shape.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    tracked_todos_context: str = ""
+    workflow_id: str | None = None
+    workflow_notify_on_completion: bool = True
+    playbook_fallback: str | None = Field(
+        default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
+    )
+    type: str | None = None
+    email_data: TriggerEmailData = Field(default_factory=TriggerEmailData)
+    triggered_at: str = "Unknown"
+    # Provider payload of a trigger-fired run: open shape, read via _event_accounts.
+    trigger_data: dict[str, object] = Field(default_factory=dict)
 
 
 async def format_workflow_execution_message(
     selected_workflow: SelectedWorkflowData,
     user_id: str | None = None,
     # Open by construction: schedulers spread arbitrary provider trigger data
-    # through this alongside the agent's own keys, so there is no fixed shape.
-    trigger_context: dict[str, Any] | None = None,
+    # through this alongside the agent's own keys, so there is no fixed shape;
+    # WorkflowTriggerContext names the keys this prompt reads.
+    trigger_context: Mapping[str, object] | None = None,
     existing_content: str = "",
 ) -> str:
     """Format workflow execution message, handling both manual and automated triggers."""
+    trigger = WorkflowTriggerContext.model_validate(trigger_context or {})
     # Fetch the latest workflow data from database
     workflow = None
     if user_id:
@@ -161,16 +210,14 @@ async def format_workflow_execution_message(
     else:
         # Fallback to passed data
         steps_text = "\n".join(
-            f"{i}. **{step['title']}** (Category: {step['category']})\n   Description: {step['description']}"
+            f"{i}. **{step.title}** (Category: {step.category})\n   Description: {step.description}"
             for i, step in enumerate(selected_workflow.steps, 1)
         )
         workflow_title = selected_workflow.title
         workflow_description = selected_workflow.prompt or selected_workflow.description
 
     # Build signal matching section from tracked todos
-    tracked_todos_ctx = ""
-    if trigger_context:
-        tracked_todos_ctx = trigger_context.get("tracked_todos_context", "")
+    tracked_todos_ctx = trigger.tracked_todos_context
 
     signal_matching_section = ""
     if tracked_todos_ctx:
@@ -178,17 +225,13 @@ async def format_workflow_execution_message(
             tracked_todos_context=tracked_todos_ctx
         )
 
-    # Background workflow runs (workflow_id in trigger_context) send an automatic
-    # completion notification unless the workflow opted out — tell the agent which
-    # mode it's in so it neither double-notifies nor stays silent when the
-    # workflow's own instructions ask for an alert. Interactive runs get neither
-    # section: no automatic notification exists there.
+    # Background workflow runs send an automatic completion notification unless
+    # opted out; tell the agent which mode it's in so it neither double-notifies
+    # nor stays silent. Interactive runs get neither section.
     notification_section = ""
-    if trigger_context and trigger_context.get("workflow_id"):
+    if trigger.workflow_id:
         notify_on_completion = (
-            workflow.notify_on_completion
-            if workflow
-            else trigger_context.get("workflow_notify_on_completion", True)
+            workflow.notify_on_completion if workflow else trigger.workflow_notify_on_completion
         )
         notification_section = (
             WORKFLOW_AUTO_NOTIFY_SECTION if notify_on_completion else WORKFLOW_SILENT_NOTIFY_SECTION
@@ -202,23 +245,24 @@ async def format_workflow_execution_message(
         "notification_section": notification_section,
     }
 
-    # This run already replayed the workflow's playbook and it stopped partway,
-    # so some of the steps below have ALREADY happened. Appended rather than
-    # folded into the templates because it is per-run evidence, not part of the
-    # workflow's standing instructions.
-    fallback_section = (trigger_context or {}).get(PLAYBOOK_FALLBACK_CONTEXT_KEY) or ""
+    # This run already replayed the playbook and stopped partway; appended
+    # rather than folded into the templates since it's per-run evidence.
+    fallback_section = trigger.playbook_fallback or ""
+    accounts = _event_accounts(trigger.trigger_data)
+    if accounts:
+        fallback_section += TRIGGERED_ACCOUNT_SECTION.format(accounts=", ".join(accounts))
 
     # Email-triggered workflows get enhanced context
-    if trigger_context and trigger_context.get("type") == "gmail":
-        email_data = trigger_context.get("email_data", {})
-        msg_text = email_data.get("message_text", "")
+    if trigger.type == "gmail":
+        email_data = trigger.email_data
+        msg_text = email_data.message_text
 
         return (
             EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
-                email_sender=email_data.get("sender", "Unknown"),
-                email_subject=email_data.get("subject", "No Subject"),
+                email_sender=email_data.sender,
+                email_subject=email_data.subject,
                 email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
-                trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
+                trigger_timestamp=trigger.triggered_at,
                 **common_args,
             )
             + fallback_section
@@ -242,9 +286,9 @@ def format_calendar_event_context(
 
     # Format time
     if event.isAllDay:
-        time = f"All day on {event.start.get('date', 'Unknown date')}"
+        time = f"All day on {event.start.date or 'Unknown date'}"
     else:
-        time = f"{event.start.get('dateTime', 'Unknown')} to {event.end.get('dateTime', 'Unknown')}"
+        time = f"{event.start.dateTime or 'Unknown'} to {event.end.dateTime or 'Unknown'}"
 
     # Build context
     context = f"""**CALENDAR EVENT:** {event.summary}
@@ -279,40 +323,30 @@ async def get_onboarding_system_prompt_if_applicable(
     conversation_id: str,
     latest_user_message: str | None = None,
 ) -> str | None:
-    """Return the onboarding system prompt for onboarding/demo turns, else ``None``."""
+    """Return the onboarding system prompt for a run-now demo turn, else None."""
     try:
-        probe = await conversation_repository.get_onboarding_probe(conversation_id)
-        is_tagged_onboarding = bool(probe and probe.is_onboarding_conversation)
         is_run_now_demo = bool(
             latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
         )
-
-        if not is_tagged_onboarding and not is_run_now_demo:
+        if not is_run_now_demo:
             return None
-
-        if is_tagged_onboarding:
-            message_count = probe.message_count if probe else 0
-            if message_count >= 7:
-                await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED)
-                log.info(
-                    "[onboarding_prompt] Auto-completed onboarding for after messages",
-                    user_id=user_id,
-                    message_count=message_count,
-                )
-                return None
 
         user_doc = await user_repository.get(user_id)
         if not user_doc:
             return None
 
-        onboarding = user_doc.onboarding or {}
-        phase = onboarding.get("phase", "initial")
-        if phase == OnboardingPhase.COMPLETED:
+        onboarding = user_doc.onboarding or OnboardingSubdocument()
+        if onboarding.phase == OnboardingPhase.COMPLETED:
             return None
 
         name = user_doc.name or "there"
-        profession = onboarding.get("preferences", {}).get("profession", "")
-        triage_summary = onboarding.get("triage_summary", "")
+        profession = (onboarding.preferences.profession if onboarding.preferences else None) or ""
+        # Persisted as the triage model's dump; only its summary line belongs in a
+        # prompt. No default: the only consumer is the truthiness check below, so
+        # `""` and None were indistinguishable — two mutants no test could kill.
+        triage_summary = PersistedTriageSummary.model_validate(
+            onboarding.triage_summary or {}
+        ).summary
 
         onboarding_context = (
             f"Profession: {profession}" if profession else "Profession: not specified"
@@ -339,7 +373,7 @@ async def get_onboarding_system_prompt_if_applicable(
 def _uploaded_file_lines(
     file: FileData, conversation_id: str | None, include_processing_guide: bool
 ) -> tuple[list[str], bool] | None:
-    """One file's lines and whether it is on disk; ``None`` for an unsafe filename."""
+    """One file's lines and whether it is on disk; None for an unsafe filename."""
     try:
         on_disk = safe_upload_filename(file.filename)
     except ValueError:
@@ -348,11 +382,9 @@ def _uploaded_file_lines(
         path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
     else:
         path = f"./user-uploaded/{on_disk}"
-    # Only advertise the path when the file really reached the workspace.
-    # The mirror is best-effort (it needs JuiceFS), so on a native API — or
-    # any deployment where it failed — this path does not exist, and naming
-    # it anyway sends the executor into read/bash attempts that can only
-    # fail. `search_uploaded_files` needs no mount and is the honest route.
+    # Only advertise the path when the file really reached the workspace (the
+    # mirror needs JuiceFS); naming a path that doesn't exist sends the
+    # executor into read/bash attempts that can only fail.
     on_disk_available = file.sandbox_path is not None
     lines: list[str] = []
     # The id is shown because `search_uploaded_files(file_id=...)` needs one;
@@ -362,7 +394,7 @@ def _uploaded_file_lines(
         lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
     else:
         lines.append(
-            f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+            f"- {file.filename}  (id: {file.fileId}), not on disk, use `search_uploaded_files`"
         )
     if file.description:
         summary = file.description.strip()
@@ -381,19 +413,11 @@ def format_files_list(
     *,
     include_processing_guide: bool = True,
 ) -> str:
-    """Surface uploaded files to an agent with path and summary.
+    """Surface uploaded files to an agent with path and summary. Pure — no DB/FS access.
 
-    Each attachment is shown with its on-disk path and a truncated summary (so
-    the reader knows what the file is without a tool call). The summary text is
-    enriched server-side by the caller; this helper only formats. Pure — no
-    DB/FS access.
-
-    ``include_processing_guide`` controls the audience:
-    - ``True`` (executor): adds the `full summary` sidecar pointer and the full
-      read/bash/scratch/artifacts how-to — the executor holds those tools.
-    - ``False`` (comms): a lean block — name, path, summary, and a single line
-      telling it to delegate real file work. Comms has no file tools; the
-      executor-voice how-to only baits it into over-delegating.
+    include_processing_guide=True (executor) adds the full read/bash/scratch
+    how-to; False (comms, which has no file tools) is a lean block that tells
+    it to delegate real file work instead.
     """
     if not files_data or (file_ids is not None and not file_ids):
         return ""
@@ -439,14 +463,14 @@ def format_files_list(
 {file_block}
 
 How to work with these files:
-- What is it? — the `summary` above already says; read the `full summary` file
+- What is it? The `summary` above already says; read the `full summary` file
   for the complete write-up.
-- Need the raw content? — read the file at its path with read/bash. Files shown
+- Need the raw content? Read the file at its path with read/bash. Files shown
   without a path are not on disk; use `search_uploaded_files` for those.
-- Searching across several uploaded files? — use `search_uploaded_files`.
+- Searching across several uploaded files? Use `search_uploaded_files`.
 The files live in `./user-uploaded/` (read-only). To process them: copy into
 `./scratch/`, do your work, and write user-visible output into `./artifacts/`
-— files written there render as cards in the chat immediately.
+Files written there render as cards in the chat immediately.
 
 See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
 full layout and conventions, and `/workspace/INDEX.md` for the top level.

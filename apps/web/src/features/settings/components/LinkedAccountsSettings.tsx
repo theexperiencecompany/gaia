@@ -5,23 +5,22 @@ import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import {
+  PhoneLinkModal,
+  type PhoneLinkTarget,
+} from "@/components/shared/PhoneLinkModal";
+import {
   BOT_AUTH_COMMAND,
   BOT_PLATFORM_ICONS,
   BOT_PLATFORM_LABELS,
 } from "@/config/botPlatforms";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
-import {
-  PhoneLinkModal,
-  type PhoneLinkTarget,
-} from "@/features/settings/components/PhoneLinkModal";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
-import type { PlatformLink } from "@/types/platform";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
+import type { PlatformLinks } from "@/types/platform";
 
 interface PlatformConfig {
   id: string;
@@ -80,9 +79,7 @@ const PLATFORMS: PlatformConfig[] = [
 ];
 
 export default function LinkedAccountsSettings() {
-  const [platformLinks, setPlatformLinks] = useState<
-    Record<string, PlatformLink | null>
-  >({});
+  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
   const [isLoading, setIsLoading] = useState(true);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
     null,
@@ -97,8 +94,8 @@ export default function LinkedAccountsSettings() {
   // starting over) invalidates that request, so a late reply cannot drop the
   // previous attempt's number into the session the user is now in.
   const connectAttemptRef = useRef(0);
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const { isPaid, isUnknown } = useIsPaid();
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
   const clearPollTimer = () => {
     if (pollTimerRef.current) {
@@ -114,15 +111,10 @@ export default function LinkedAccountsSettings() {
     };
   }, []);
 
-  const fetchPlatformLinks = async (): Promise<Record<
-    string,
-    PlatformLink | null
-  > | null> => {
+  const fetchPlatformLinks = async (): Promise<PlatformLinks | null> => {
     try {
       setIsLoading(true);
-      const data = await apiService.get<{
-        platform_links: Record<string, PlatformLink | null>;
-      }>("/platform-links", { silent: true });
+      const data = await api.get("/api/v1/platform-links", { silent: true });
       setPlatformLinks(data.platform_links || {});
       return data.platform_links || {};
     } catch {
@@ -134,8 +126,14 @@ export default function LinkedAccountsSettings() {
   };
 
   const startConnect = (platform: PlatformConfig) => {
-    if (platform.premium && !subscriptionStatus?.is_subscribed) {
-      openPricingModal();
+    // While subscription status is unknown, let the connect attempt proceed
+    // instead of paywalling — the backend enforces the gate server-side, so a
+    // brief permissive window is safe, but blocking a paying customer is not.
+    if (platform.premium && !isUnknown && !isPaid) {
+      openUpgradeModal(undefined, {
+        dismissible: true,
+        source: "settings_linked_accounts",
+      });
       return;
     }
     if (platform.requiresPhone) {
@@ -151,19 +149,11 @@ export default function LinkedAccountsSettings() {
     try {
       setConnectingPlatform(platformId);
 
-      const wasConnected = platformLinks[platformId]?.platformUserId != null;
-
-      const data = await apiService.post<{
-        auth_url?: string;
-        instructions?: string;
-        action_link?: string;
-        contact_number?: string;
-        auth_type: string;
-      }>(
-        `/platform-links/${platformId}/connect`,
-        phoneNumber ? { phone: phoneNumber } : {},
-        { silent: true },
-      );
+      const data = await api.post("/api/v1/platform-links/{platform}/connect", {
+        path: { platform: platformId },
+        body: phoneNumber ? { phone: phoneNumber } : {},
+        silent: true,
+      });
 
       if (attempt !== connectAttemptRef.current) return;
 
@@ -183,15 +173,7 @@ export default function LinkedAccountsSettings() {
         pollTimerRef.current = setInterval(() => {
           if (popup?.closed) {
             clearPollTimer();
-            void fetchPlatformLinks().then((links) => {
-              if (
-                !wasConnected &&
-                links?.[platformId]?.platformUserId != null
-              ) {
-                trackEvent(ANALYTICS_EVENTS.BOT_CONNECTED, {
-                  bot_id: platformId,
-                });
-              }
+            void fetchPlatformLinks().then(() => {
               setConnectingPlatform(null);
             });
           }
@@ -202,7 +184,7 @@ export default function LinkedAccountsSettings() {
         setPhoneLinkTarget({
           contactNumber: data.contact_number,
           command: BOT_AUTH_COMMAND,
-          actionLink: data.action_link,
+          actionLink: data.action_link ?? undefined,
         });
         setConnectingPlatform(null);
       } else if (data.auth_type === "manual" && data.instructions) {
@@ -222,7 +204,8 @@ export default function LinkedAccountsSettings() {
           ...(data.action_link && {
             action: {
               label: "Open",
-              onClick: () => window.open(data.action_link, "_blank"),
+              onClick: () =>
+                window.open(data.action_link ?? undefined, "_blank"),
             },
           }),
         });
@@ -239,10 +222,10 @@ export default function LinkedAccountsSettings() {
 
   const handleDisconnect = async (platformId: string) => {
     try {
-      await apiService.delete(`/platform-links/${platformId}`, {
+      await api.delete("/api/v1/platform-links/{platform}", {
+        path: { platform: platformId },
         silent: true,
       });
-      trackEvent(ANALYTICS_EVENTS.BOT_DISCONNECTED, { bot_id: platformId });
       toast.success(`Disconnected from ${platformId}`);
       await fetchPlatformLinks();
     } catch {
@@ -287,7 +270,7 @@ export default function LinkedAccountsSettings() {
               }
             >
               <div className="flex items-center gap-3">
-                {platform.premium && !subscriptionStatus?.is_subscribed && (
+                {platform.premium && !isUnknown && !isPaid && (
                   <Chip size="sm" variant="flat" color="warning">
                     Pro
                   </Chip>

@@ -2,30 +2,58 @@
 
 Three things decide whether a destructive call runs unattended, and each is attacked:
 
-* the user's mode and per-tool overrides (``resolve_policy`` / ``is_gated``);
-* the fail-open in ``_preferences``, which is only safe while HIL is off — it must
+* the user's mode and per-tool overrides (resolve_policy / is_gated);
+* the fail-open in _preferences, which is only safe while HIL is off — it must
   re-raise the moment the default becomes a gating mode;
-* ``has_pausing_sibling``, which suppresses auto-approval when a sibling call will
+* has_pausing_sibling, which suppresses auto-approval when a sibling call will
   pause the node — the guard that stopped one send becoming two. A sibling pauses
-  either at its own gate or, for ``HIL_PAUSING_TOOLS``, without ever being gated.
+  either at its own gate or, for HIL_PAUSING_TOOLS, without ever being gated.
 """
 
+from dataclasses import replace
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
+from langchain.agents.middleware.types import ToolCallRequest
+from langchain_core.messages import ToolCall
+from langchain_core.tools import BaseTool
 import pytest
 
+from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.hil_models import HILPreferences
-from app.services.hil.policy import has_pausing_sibling, is_gated, resolve_policy
+from app.services.hil.policy import (
+    gated_tool_object,
+    has_pausing_sibling,
+    is_gated,
+    resolve_policy,
+)
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
-from .conftest import USER_ID, ai_message_with_calls, make_request, make_tool
+from .conftest import (
+    USER_ID,
+    ai_message_with_calls,
+    make_request,
+    make_tool,
+    resolver_returning,
+)
 
 MODULE = "app.services.hil.policy"
 
 
 def prefs(mode: str = "always_ask", **overrides: bool) -> HILPreferences:
     return HILPreferences(mode=mode, tool_overrides=overrides)
+
+
+def _proxied(real_name: str, proxy: BaseTool | None = None) -> ToolCallRequest:
+    return make_request(
+        name=EXECUTE_TOOL_NAME,
+        args={"tool_name": real_name, "data": {}},
+        tool=proxy or make_tool(name=EXECUTE_TOOL_NAME, description="Run any tool."),
+    )
+
+
+_HINTED = {MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}}
 
 
 @pytest.fixture(autouse=True)
@@ -36,9 +64,7 @@ def _quiet_log():
 
 @pytest.fixture(autouse=True)
 def _registry_without_stamps():
-    """Default registry for tests that don't care about forced-ask stamps:
-    every tool looks up as unregistered (meta None → never always-gated).
-    Tests exercising the stamp patch ``get_tool_registry`` themselves."""
+    """Default registry where every tool looks up as unregistered (meta None → never always-gated); tests exercising the stamp patch get_tool_registry themselves."""
     with patch(
         f"{MODULE}.get_tool_registry",
         new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda name: None)),
@@ -134,33 +160,42 @@ class TestOverrides:
 
 
 class TestPreferencesFailure:
-    async def test_an_unreachable_store_fails_open_only_because_hil_is_off(self) -> None:
-        # Today HIL_DEFAULT_MODE is always_allow, so a Redis/Mongo blip must not start
-        # gating every tool call for the ~100% of users who have HIL off.
+    @pytest.mark.regression
+    async def test_an_unreadable_store_asks_for_a_destructive_call(self) -> None:
+        """Regression: an owner whose preferences could not load ran every tool as always_allow."""
         with (
-            patch(f"{MODULE}.HIL_DEFAULT_MODE", "always_allow"),
             patch(f"{MODULE}.get_hil_preferences", side_effect=ConnectionError("redis down")),
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
         ):
-            assert await resolve_policy(make_request(), USER_ID, "delete_everything") == "allow"
+            assert await resolve_policy(make_request(), USER_ID, "delete_everything") == "ask"
 
-    async def test_once_the_default_is_a_gating_mode_an_unreachable_store_must_raise(self) -> None:
-        # THE launch-safety test. The day HIL_DEFAULT_MODE flips to always_ask, this
-        # fail-open becomes "a Redis blip disables the approval gate for everyone".
-        # The guard must re-raise so the gate's own fail-closed handler denies the call.
-        for gating_mode in ("always_ask", "auto"):
-            with (
-                patch(f"{MODULE}.HIL_DEFAULT_MODE", gating_mode),
-                patch(f"{MODULE}.get_hil_preferences", side_effect=ConnectionError("redis down")),
-                pytest.raises(ConnectionError),
-            ):
-                await resolve_policy(make_request(), USER_ID, "delete_everything")
+    async def test_an_unreadable_store_still_lets_a_harmless_call_through(self) -> None:
+        with (
+            patch(f"{MODULE}.get_hil_preferences", side_effect=ConnectionError("redis down")),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "list_todos") == "allow"
+
+    @pytest.mark.regression
+    async def test_the_failure_is_logged_as_a_warning_with_its_reason(self) -> None:
+        with (
+            patch(f"{MODULE}.get_hil_preferences", side_effect=ConnectionError("redis down")),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
+            patch(f"{MODULE}.log") as log_mock,
+        ):
+            await resolve_policy(make_request(), USER_ID, "delete_everything")
+
+        log_mock.error.assert_not_called()
+        (fields,) = [
+            c.kwargs for c in log_mock.warning.call_args_list if "Preferences" in c.args[0]
+        ]
+        assert fields["error_type"] == "ConnectionError"
+        assert fields["error"] == "redis down"
+        assert fields["user_id"] == USER_ID
 
 
 class TestHasPausingSibling:
-    """Auto-approval is only safe when the call is the turn's *only* pausing action.
-    A sibling that pauses re-runs the whole node, so anything that already ran runs
-    twice — verified in production: one send became two."""
+    """Auto-approval is only safe when the call is the turn's only pausing action — a pausing sibling re-runs the whole node, so anything that already ran runs twice (verified in production: one send became two)."""
 
     @pytest.fixture(autouse=True)
     def _unregistered_siblings(self):
@@ -226,10 +261,8 @@ class TestHasPausingSibling:
             assert await has_pausing_sibling(request, USER_ID, "call-1") is False
 
     async def test_an_unclassifiable_sibling_suppresses_auto_approval(self) -> None:
-        # Fail closed: an unknown sibling might pause, so the pending call must not
-        # auto-run and risk the double-execution. The registry is broken here — the REAL
-        # classifier runs, so this exercises the whole fail-closed chain rather than a
-        # mocked-in verdict.
+        # Fail closed: an unknown sibling might pause, so the call must not auto-run.
+        # The registry is broken here so the REAL classifier runs, not a mocked verdict.
         state_messages = [
             ai_message_with_calls(
                 {"id": "call-1", "name": "send_email", "args": {}},
@@ -248,11 +281,9 @@ class TestHasPausingSibling:
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
     async def test_a_sibling_is_classified_with_its_own_tool_object(self) -> None:
-        # The regression: resolving a sibling by bare name loses its MCP
-        # destructiveHint, so a tool its OWN gate will pause on looks safe here —
-        # the pending call auto-runs and then executes twice when the node re-runs
-        # on resume. The classifier below calls the sibling safe, so the only thing
-        # that can gate it is the hint on the tool object itself.
+        # Regression: resolving a sibling by bare name loses its MCP destructiveHint,
+        # so a tool its OWN gate would pause on looks safe and auto-runs (executing
+        # twice on resume). The classifier here calls it safe; only the tool object's hint gates it.
         sibling = make_tool(
             name="mcp_wipe",
             description="Tidy up the workspace.",
@@ -275,6 +306,43 @@ class TestHasPausingSibling:
         with (
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(sibling)),
+            patch(
+                "app.services.hil.classification.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.hil.classification._classify_unknown_tool",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+    async def test_an_mcp_sibling_absent_from_the_registry_still_carries_its_hint(self) -> None:
+        # The registry-only resolution this replaced could not see an MCP tool at
+        # all (they never enter the global registry), so the sibling classified from
+        # a bare name with empty description — the double-run the test above guards.
+        sibling = make_tool(
+            name="notion_mcp_delete_page",
+            description="Remove a page.",
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}},
+        )
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "notion_mcp_delete_page", "args": {}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(
+            get_tool_meta=lambda _name: None,
+            is_tool_destructive=lambda _name: None,
+            mark_tool_destructive=lambda *_: None,
+        )
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(sibling)),
             patch(
                 "app.services.hil.classification.get_tool_registry",
                 new=AsyncMock(return_value=registry),
@@ -287,13 +355,7 @@ class TestHasPausingSibling:
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
     async def test_a_forced_gate_sibling_suppresses_auto_approval_with_hil_off(self) -> None:
-        """The stamp scan runs BEFORE the always_allow fast path.
-
-        Every other case in this class resolves siblings to no tool meta, so
-        the forced-gate branch never runs. A sibling stamped always_gate WILL
-        interrupt, and this call auto-running before it means the replay runs
-        it twice.
-        """
+        """The stamp scan runs BEFORE the always_allow fast path; this is the only case in the class where a sibling is forced-gated rather than unregistered."""
         state_messages = [
             ai_message_with_calls(
                 {"id": "call-1", "name": "send_email", "args": {}},
@@ -322,13 +384,7 @@ class TestHasPausingSibling:
         read_prefs.assert_not_awaited()
 
     async def test_a_sibling_gated_by_its_arguments_suppresses_auto_approval(self) -> None:
-        """The argument gate reads the sibling's OWN args.
-
-        ``manage_linked_account`` only pauses when it is disconnecting, so the
-        args have to travel with the name. Passing None (or the wrong key)
-        makes a disconnect look like an ordinary call and auto-approve beside
-        it.
-        """
+        """The argument gate reads the sibling's OWN args — passing None instead would misclassify a disconnect as an ordinary call and auto-approve beside it."""
         state_messages = [
             ai_message_with_calls(
                 {"id": "call-1", "name": "send_email", "args": {}},
@@ -352,11 +408,7 @@ class TestHasPausingSibling:
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
     async def test_the_same_tool_with_non_gating_arguments_does_not_suppress(self) -> None:
-        """The mirror of the case above: generate_link is not a disconnect.
-
-        Without this, a scan that ignored the args and paused on the tool NAME
-        alone would look correct.
-        """
+        """Mirrors the case above with a non-disconnect action, catching a scan that ignored args and paused on the tool NAME alone."""
         state_messages = [
             ai_message_with_calls(
                 {"id": "call-1", "name": "send_email", "args": {}},
@@ -380,12 +432,7 @@ class TestHasPausingSibling:
             assert await has_pausing_sibling(request, USER_ID, "call-1") is False
 
     async def test_a_siblings_arguments_reach_the_preference_gate(self) -> None:
-        """In a gating mode, the per-sibling classification also gets the args.
-
-        ``is_gated`` re-checks the argument gate and can key on args itself, so
-        a scan that passed None there would classify every sibling as if it had
-        been called bare.
-        """
+        """is_gated must receive the sibling's own args, not None, or every sibling classifies as if it had been called bare."""
         state_messages = [
             ai_message_with_calls(
                 {"id": "call-1", "name": "send_email", "args": {}},
@@ -410,11 +457,7 @@ class TestHasPausingSibling:
         assert seen == [("delete_file", {"path": "/tmp/x"})]
 
     async def test_a_sibling_called_with_no_arguments_gates_on_none(self) -> None:
-        """An empty args dict is normalized to None, not passed as ``{}``.
-
-        The gate treats "no arguments" as absent; forwarding a falsy dict makes
-        the argument-gate checks read a value that was never supplied.
-        """
+        """An empty args dict is normalized to None before reaching the gate, not forwarded as {}."""
         state_messages = [
             ai_message_with_calls(
                 {"id": "call-1", "name": "send_email", "args": {}},
@@ -522,12 +565,9 @@ class TestAlwaysGate:
             assert await is_gated(prefs(), "web_search", tool) is False
 
     async def test_an_unreachable_registry_still_asks_for_the_users_gated_tool(self) -> None:
-        # THE regression. The stamp read sits ahead of everything, so raising out
-        # of it takes the WHOLE gate down: decide_tool_call fails closed on any
-        # exception by DENYING, so a process where the tool_registry provider was
-        # never registered refused every gated call outright — no card, no record,
-        # no way for the user to say yes. The stamp is an escalation; when it
-        # cannot be read the rest of the policy must still run.
+        # THE regression: the stamp read sits ahead of everything, so raising out of it
+        # took the WHOLE gate down (fails closed by DENYING) — a missing tool_registry
+        # provider refused every gated call outright. The stamp is an escalation; the rest of the policy must still run when it can't be read.
         with (
             patch(
                 f"{MODULE}.get_tool_registry",
@@ -557,10 +597,8 @@ class TestAlwaysGate:
             assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "allow"
 
     async def test_the_unreachable_registry_is_reported_with_the_failure_it_hit(self) -> None:
-        # A stamp that silently stops being read is a gate that silently stops
-        # asking, so the warning has to carry WHICH failure it was — a bare
-        # "registry unavailable" line cannot tell a missing provider apart from
-        # a dead Chroma, and that is the whole diagnosis.
+        # The warning has to carry WHICH failure it was — a bare "registry unavailable"
+        # line cannot tell a missing provider apart from a dead Chroma.
         with (
             patch(f"{MODULE}.log") as logger,
             patch(
@@ -671,3 +709,62 @@ class TestArgumentGate:
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
         ):
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+
+class TestTheRealToolBehindACall:
+    """Classification reads the tool that will actually run, resolved for the caller."""
+
+    async def test_a_direct_call_reads_the_requests_own_tool(self) -> None:
+        own = make_tool(name="send_email", description="Send.")
+        request = make_request(name="send_email", tool=own)
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning()) as resolve:
+            assert await gated_tool_object(request, USER_ID, "send_email") is own
+        resolve.assert_not_awaited()
+
+    async def test_an_object_shaped_direct_call_reads_the_requests_own_tool(self) -> None:
+        own = make_tool(name="send_email", description="Send.")
+        shaped = cast(ToolCall, SimpleNamespace(name="send_email", id="call-1", args={}))
+        request = replace(make_request(tool=own), tool_call=shaped)
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning()):
+            assert await gated_tool_object(request, USER_ID, "send_email") is own
+
+    async def test_a_proxied_call_resolves_the_real_tool_for_this_user(self) -> None:
+        real = make_tool(name="mcp_wipe", description="Wipe.")
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)):
+            assert await gated_tool_object(_proxied("mcp_wipe"), USER_ID, "mcp_wipe") is real
+
+    async def test_a_failed_resolution_is_reported_and_reads_as_no_tool(self) -> None:
+        with (
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(side_effect=RuntimeError("mcp down"))),
+            patch(f"{MODULE}.log") as log,
+        ):
+            assert await gated_tool_object(_proxied("mcp_wipe"), USER_ID, "mcp_wipe") is None
+
+        log.warning.assert_called_once()
+        assert "tool resolution failed; classifying by name alone" in log.warning.call_args.args[0]
+        assert log.warning.call_args.kwargs == {
+            "tool_name": "mcp_wipe",
+            "error": "mcp down",
+            "error_type": "RuntimeError",
+        }
+
+    async def test_a_proxied_calls_real_hint_gates_it(self) -> None:
+        real = make_tool(name="mcp_wipe", description="Tidy up.", metadata=_HINTED)
+        registry = SimpleNamespace(
+            get_tool_meta=lambda _name: None,
+            is_tool_destructive=lambda _name: None,
+            mark_tool_destructive=lambda *_: None,
+        )
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)),
+            patch(
+                "app.services.hil.classification.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.hil.classification._classify_unknown_tool",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            assert await resolve_policy(_proxied("mcp_wipe"), USER_ID, "mcp_wipe") == "ask"

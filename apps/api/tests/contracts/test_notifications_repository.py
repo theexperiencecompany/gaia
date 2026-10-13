@@ -1,4 +1,4 @@
-"""Contract tests for NotificationRepository (business-key identity = UUID ``id``)."""
+"""Contract tests for NotificationRepository (business-key identity = UUID id)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ import pytest
 
 from app.db.repositories.notifications import NotificationRepository
 from app.models.notification.notification_models import (
+    ChannelDeliveryStatus,
     NotificationContent,
+    NotificationListFilters,
     NotificationRecord,
     NotificationRequest,
     NotificationSourceEnum,
@@ -65,5 +67,87 @@ class TestNotificationRepository:
     async def test_list_filters_by_status(self, repo):
         await repo.create(_record(id="p", user_id="f", status=NotificationStatus.PENDING))
         await repo.create(_record(id="r", user_id="f", status=NotificationStatus.READ))
-        read = await repo.list_for_user("f", status=NotificationStatus.READ)
+        read = await repo.list_for_user(
+            "f", filters=NotificationListFilters(status=NotificationStatus.READ)
+        )
         assert [i.id for i in read] == ["r"]
+
+
+class TestMarkAllReadForUser:
+    async def test_marks_every_delivered_notification_not_just_a_page(self, repo):
+        # Regression: "mark all as read" must cover every DELIVERED notification for the
+        # user, not only however many a paginated client loaded. 5 is arbitrary but exceeds
+        # any single-item/page assumption a caller could silently rely on.
+        ids = [f"bulk-{i}" for i in range(5)]
+        for notification_id in ids:
+            await repo.create(
+                _record(
+                    id=notification_id, user_id="bulk-user", status=NotificationStatus.DELIVERED
+                )
+            )
+
+        updated_count = await repo.mark_all_read_for_user("bulk-user")
+
+        assert updated_count == 5
+        for notification_id in ids:
+            fetched = await repo.get_for_user(notification_id, "bulk-user")
+            assert fetched is not None
+            assert fetched.status == NotificationStatus.READ
+            assert fetched.read_at is not None
+
+    async def test_only_touches_the_target_user(self, repo):
+        await repo.create(_record(id="mine", user_id="owner", status=NotificationStatus.DELIVERED))
+        await repo.create(
+            _record(id="theirs", user_id="other", status=NotificationStatus.DELIVERED)
+        )
+
+        updated_count = await repo.mark_all_read_for_user("owner")
+
+        assert updated_count == 1
+        theirs = await repo.get_for_user("theirs", "other")
+        assert theirs is not None
+        assert theirs.status == NotificationStatus.DELIVERED
+
+    async def test_leaves_non_delivered_statuses_untouched(self, repo):
+        await repo.create(
+            _record(id="already-read", user_id="statuses", status=NotificationStatus.READ)
+        )
+        await repo.create(
+            _record(id="pending", user_id="statuses", status=NotificationStatus.PENDING)
+        )
+
+        updated_count = await repo.mark_all_read_for_user("statuses")
+
+        assert updated_count == 0
+        pending = await repo.get_for_user("pending", "statuses")
+        assert pending is not None
+        assert pending.status == NotificationStatus.PENDING
+
+    async def test_channel_type_filter_scopes_the_update(self, repo):
+        await repo.create(
+            _record(
+                id="inapp",
+                user_id="channels",
+                status=NotificationStatus.DELIVERED,
+                channels=[
+                    ChannelDeliveryStatus(channel_type="inapp", status=NotificationStatus.DELIVERED)
+                ],
+            )
+        )
+        await repo.create(
+            _record(
+                id="email",
+                user_id="channels",
+                status=NotificationStatus.DELIVERED,
+                channels=[
+                    ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.DELIVERED)
+                ],
+            )
+        )
+
+        updated_count = await repo.mark_all_read_for_user("channels", channel_type="inapp")
+
+        assert updated_count == 1
+        email_notification = await repo.get_for_user("email", "channels")
+        assert email_notification is not None
+        assert email_notification.status == NotificationStatus.DELIVERED

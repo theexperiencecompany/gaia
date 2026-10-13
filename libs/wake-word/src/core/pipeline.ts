@@ -9,20 +9,12 @@ import {
 } from "../types/index";
 
 /**
- * openWakeWord-compatible 3-stage streaming pipeline.
+ * openWakeWord-compatible 3-stage streaming pipeline: PCM → melspec → embedding → classifier.
  *
- *   PCM(1280) ─► melspec(480+1280) ─► mel(8×32) ─► append to melBuffer
- *   melBuffer(76×32) ─► embedding ─► emb(96) ─► push to embeddingRing
- *   embeddingRing(16×96) ─► classifier ─► score
- *
- * Verified against v0.5.1 model exports:
- *   • melspectrogram.onnx input "input" [batch, samples] → output [1,1,T,32]
- *     where T = (samples − 480) / 160. So 1280 samples alone gives 5 frames,
- *     but feeding (last 480 of previous frame) + 1280 new samples = 1760 samples
- *     yields exactly 8 NEW mel frames per 80 ms — matching the 10 ms hop the
- *     embedding model was trained against.
- *   • embedding_model.onnx input "input_1" [N, 76, 32, 1] → "conv2d_19" [N,1,1,96]
- *   • classifier (e.g. hey_jarvis_v0.1) input "x.1" [1, 16, 96] → [1, 1] scalar
+ * Verified against v0.5.1 model exports: melspectrogram.onnx output T = (samples − 480) / 160,
+ * so feeding (last 480 of prev frame) + 1280 new samples = 1760 samples yields exactly 8 NEW
+ * mel frames per 80 ms, matching the 10 ms hop the embedding model was trained against.
+ * embedding_model.onnx: [N,76,32,1] → [N,1,1,96]. classifier (e.g. hey_jarvis_v0.1): [1,16,96] → [1,1].
  */
 
 const MELSPEC_WINDOW = 480; // analysis window in samples (30 ms)

@@ -44,7 +44,7 @@ import { DynamicTriggerForm } from "./dynamic-trigger-form";
 // Public types kept for backwards-compat with create/edit modals
 // ---------------------------------------------------------------------------
 
-export interface TriggerOption {
+export interface TriggerPickerOption {
   id: string;
   label: string;
   description: string;
@@ -59,8 +59,8 @@ export interface TriggerPickerSheetRef {
 }
 
 interface TriggerPickerSheetProps {
-  onSelect: (trigger: TriggerOption) => void;
-  onSaveConfig?: (trigger: TriggerOption, config: TriggerConfig) => void;
+  onSelect: (trigger: TriggerPickerOption) => void;
+  onSaveConfig?: (trigger: TriggerPickerOption, config: TriggerConfig) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -321,8 +321,6 @@ export const TriggerPickerSheet = forwardRef<
     });
   }, [groupedIntegrations, search]);
 
-  // ---- Step transitions ----
-
   const handlePickBuiltin = (builtin: BuiltinTriggerMeta) => {
     setTriggerConfig(buildDefaultTriggerConfig(builtin.id));
     onSelect({
@@ -389,8 +387,6 @@ export const TriggerPickerSheet = forwardRef<
     setIsOpen(false);
     setStep({ kind: "integrations" });
   };
-
-  // ---- Renderers per step ----
 
   type IntegrationsListItem =
     | { kind: "builtin"; meta: BuiltinTriggerMeta }

@@ -1,13 +1,13 @@
 """Property-based never-raises tests for string parsers.
 
 Each parser is documented as having a defined outcome on arbitrary input
-(return a value or raise a specific ``ValueError``). Hypothesis sweeps all of
-``str`` — including the strings no unit test would think to write — to prove
+(return a value or raise a specific ValueError). Hypothesis sweeps all of
+str — including the strings no unit test would think to write — to prove
 no unexpected exception type can leak out of these boundaries.
 
 The fail-case each property guards: a parser change that lets a new exception
-escape (a raw ``httpx`` error, a ``ZoneInfo`` lookup failure, a bare
-``AttributeError`` on a malformed URL) would surface here as an unexpected
+escape (a raw httpx error, a ZoneInfo lookup failure, a bare
+AttributeError on a malformed URL) would surface here as an unexpected
 exception type.
 """
 

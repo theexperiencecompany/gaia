@@ -1,22 +1,17 @@
 """A finished spawn is recovered, not re-run, when a later sibling pauses the node.
 
-The scenario the spawn-thread lifecycle exists for: one AI message carries two
-``spawn_subagent`` calls. The tool node runs them sequentially — spawn A finishes
-(side effect done), spawn B pauses on an approval ``interrupt()``. LangGraph
-re-runs the WHOLE node on resume, so spawn A's tool function is entered a second
-time. Its checkpoint thread — deliberately retained instead of deleted at finish —
-is what tells that replay A already ran, via ``recover_from_checkpoint``.
+One AI message carries two spawn_subagent calls. The tool node runs them sequentially: spawn A
+finishes (side effect done), spawn B pauses on an approval interrupt(). LangGraph re-runs the
+WHOLE node on resume, so spawn A's tool function is entered a second time; A's checkpoint thread,
+deliberately retained instead of deleted at finish, is what tells that replay A already ran, via
+recover_from_checkpoint.
 
-Real: ``SubagentMiddleware._run_spawn``/``_drive``, the compiled spawn graph
-(``_build_spawn_graph`` via ``get_spawn_graph``), LangGraph interrupt/resume on a
-checkpointer, and ``recover_from_checkpoint``. Replaced, and only these: the LLM
-(message-driven fake, so it behaves identically on a replay), the dynamic-context
-message (external retrieval I/O), and the checkpointer manager (``InMemorySaver``).
-
-The pause is a tool calling ``interrupt()`` before its side effect — the exact
-shape of the HIL gate's pause (which has its own coverage in
-``tests/unit/services/hil/``); the claim under test here is the node-replay
-recovery, not the gate's policy.
+Real: the spawn_subagent tool (blocking) on the delegation runner, the compiled spawn graph, LangGraph interrupt/resume
+on a checkpointer, and recover_from_checkpoint. Replaced, and only these: the LLM (message-driven
+fake, so it behaves identically on a replay), the dynamic-context message (external retrieval I/O)
+and the checkpointer manager (InMemorySaver). The pause is a tool calling interrupt() before its
+side effect -- the HIL gate's exact shape, covered on its own in tests/unit/services/hil/ -- but
+the claim under test here is node-replay recovery, not the gate's policy.
 """
 
 from types import SimpleNamespace
@@ -98,6 +93,20 @@ def spawn_tools(effects: dict[str, int]) -> dict[str, Any]:
     return {"record_note": record_note, "publish_update": publish_update}
 
 
+async def _blocking_spawn(
+    middleware: SubagentMiddleware, config: RunnableConfig, task: str, tool_call_id: str
+) -> str:
+    """Run one spawn_subagent call the way the tool node does, waiting for its result."""
+    command = await middleware.tools[0].coroutine(
+        task=task,
+        tool_call_id=tool_call_id,
+        selected_tool_ids=[],
+        config=config,
+        background=False,
+    )
+    return str(command.update["messages"][0].content)
+
+
 async def test_finished_spawn_is_recovered_not_rerun_when_a_sibling_pauses(
     effects: dict[str, int], spawn_tools: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -141,12 +150,8 @@ async def test_finished_spawn_is_recovered_not_rerun_when_a_sibling_pauses(
     async def tool_node(_state: MessagesState, config: RunnableConfig) -> dict:
         # Two spawn calls from one AI message, run sequentially — the production
         # tool node's loop. On resume LangGraph re-runs this whole function.
-        text_a = await middleware._run_spawn(
-            task=TASK_A, context="", config=config, tool_call_id="tc-a", inherited_tool_names=[]
-        )
-        text_b = await middleware._run_spawn(
-            task=TASK_B, context="", config=config, tool_call_id="tc-b", inherited_tool_names=[]
-        )
+        text_a = await _blocking_spawn(middleware, config, TASK_A, "tc-a")
+        text_b = await _blocking_spawn(middleware, config, TASK_B, "tc-b")
         return {"messages": [AIMessage(content=f"{text_a} | {text_b}")]}
 
     builder = StateGraph(MessagesState)
@@ -198,6 +203,8 @@ async def test_finished_spawn_is_recovered_not_rerun_when_a_sibling_pauses(
             "app.utils.agent_utils.get_tool_registry",
             AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
         ),
+        # The HIL preference read (Mongo users): no stored preferences, so HIL is off.
+        patch("app.services.hil.preferences.user_repository.get", AsyncMock(return_value=None)),
     ):
         # First pass: A finishes, B pauses, the parent parks.
         first_events = [

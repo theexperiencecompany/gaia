@@ -14,7 +14,7 @@ class PlatformType(str, Enum):
     ANDROID = "android"
 
 
-class DeviceTokenRequest(BaseModel):
+class PushTokenRequest(BaseModel):
     """Request model for registering a device token"""
 
     token: str = Field(..., description="Expo push token")
@@ -22,7 +22,7 @@ class DeviceTokenRequest(BaseModel):
     device_id: str | None = Field(None, description="Optional device identifier")
 
 
-class DeviceTokenResponse(BaseModel):
+class PushTokenResponse(BaseModel):
     """Response model for device token operations"""
 
     success: bool = Field(..., description="Operation success status")

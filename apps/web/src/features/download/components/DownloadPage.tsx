@@ -23,7 +23,7 @@ import {
   GITHUB_RELEASES_BASE,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
 const DESKTOP_OSES: DesktopOS[] = ["mac", "windows", "linux"];
 
@@ -86,7 +86,7 @@ function DownloadSectionLayout({
         <div
           className={`flex flex-col items-center gap-6 text-center ${CONTENT_ALIGNMENT_CLASSES[contentAlignment]}`}
         >
-          {chip && chip}
+          {chip}
           <div className="flex flex-col gap-2">
             <h2 className="text-5xl font-medium text-white font-serif">
               {title}
@@ -103,10 +103,9 @@ function DownloadSectionLayout({
   );
 }
 
-// One download control for a desktop OS. Renders an arch chooser (x64 / ARM)
-// when more than one binary is published, a single button when only one is, a
-// loading state while the release resolves, and a releases-page fallback if the
-// lookup failed entirely — so a click always does something sensible.
+// One download control for a desktop OS: an arch chooser (x64/ARM) when more
+// than one binary is published, a single button when only one is, a loading
+// state while resolving, and a releases-page fallback if the lookup fails.
 function DesktopDownloadButton({
   os,
   isPrimary = false,
@@ -158,7 +157,7 @@ function DesktopDownloadButton({
         variant={buttonVariant}
         startContent={icon}
         onPress={() => {
-          trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+          track("navigation:cta_clicked", {
             destination: "github_releases",
             os,
           });
@@ -194,7 +193,7 @@ function DesktopDownloadButton({
       variant={buttonVariant}
       startContent={icon}
       onPress={() => {
-        trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+        track("navigation:cta_clicked", {
           destination: "download",
           os,
         });
@@ -316,9 +315,7 @@ function MobileSection() {
             target="_blank"
             rel="noopener noreferrer"
             onPress={() => {
-              trackEvent(ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED, {
-                button_text: "mobile_waitlist",
-              });
+              track("cta:get_started_clicked", {});
             }}
           >
             Sign up for waitlist <ChevronRight width={17} height={17} />

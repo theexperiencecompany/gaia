@@ -29,7 +29,7 @@ from app.models.calendar_models import (
     GoogleConferenceData,
     GoogleConferenceSolutionKey,
 )
-from app.services.composio.proxy_client import ProxyMethod, proxy_request
+from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request
 from app.utils.calendar_utils import CALENDAR_API_BASE, calendar_events_endpoint
 from app.utils.errors import AppError
 from shared.py.wide_events import log
@@ -49,35 +49,33 @@ async def _proxy(
     body: GoogleCalendarEventWrite | None = None,
     query: QueryParams | None = None,
 ) -> object:
-    """Wrapper that converts Composio proxy errors to FastAPI HTTPException.
+    """Send a calendar proxy request, normalizing AppError into HTTPException.
 
-    Returns Google's raw JSON as ``object`` — this is the provider boundary and
-    the shape varies per endpoint, so the type stays opaque and every caller
-    feeds it straight into a ``model_validate`` rather than reading fields off it.
-
-    Calendar callers (FastAPI endpoints, custom tools) historically expect
-    HTTPException-shaped failures, so we normalize AppError here.
+    Returns Google's raw JSON as object since the shape varies per endpoint
+    and callers model_validate it directly.
     """
     try:
         return await proxy_request(
-            user_id=user_id,
-            toolkit=CALENDAR_TOOLKIT,
-            endpoint=endpoint,
-            method=method,
-            body=body.model_dump(exclude_none=True) if body is not None else None,
-            query=query,
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=CALENDAR_TOOLKIT,
+                endpoint=endpoint,
+                method=method,
+                body=body.model_dump(exclude_none=True) if body is not None else None,
+                query=query,
+            )
         )
     except AppError as exc:
         # Integration not connected → emit the structured "integration" detail
         # the web client already understands (same shape as require_integration),
         # so it shows an actionable reconnect toast instead of the login modal.
-        if exc.meta.get("error_code") == INTEGRATION_NOT_CONNECTED:
+        if exc.code == INTEGRATION_NOT_CONNECTED:
             raise HTTPException(
                 status_code=exc.status_code,
                 detail={
                     "type": "integration",
-                    "error_code": INTEGRATION_NOT_CONNECTED,
-                    "toolkit": exc.meta.get("toolkit"),
+                    "code": INTEGRATION_NOT_CONNECTED,
+                    "toolkit": exc.public.get("toolkit"),
                     "message": "Reconnect Google Calendar to load your events.",
                 },
             ) from exc
@@ -260,8 +258,11 @@ async def _resolve_selected_calendars(
     calendars: list[GoogleCalendarListEntry],
     selected_calendars: list[str] | None,
 ) -> list[str]:
-    """The calendar ids to read from. An explicit selection is persisted; absent
-    one, stored preferences win, and a user with neither gets all their calendars."""
+    """Resolve the calendar ids to read from.
+
+    An explicit selection is persisted; absent one, stored preferences win,
+    and a user with neither gets all their calendars.
+    """
     if selected_calendars is not None:
         await calendar_repository.set_selected_calendars(user_id, selected_calendars)
         return selected_calendars
@@ -280,8 +281,11 @@ def _tag_with_source_calendar(
     cal: GoogleCalendarListEntry,
     seen_event_ids: set[str],
 ) -> list[GoogleCalendarEventResource]:
-    """Stamp each event with the calendar it came from, skipping ids already
-    stamped by an earlier calendar (the same event can be on several)."""
+    """Stamp each event with the calendar it came from.
+
+    Skips ids already stamped by an earlier calendar, since the same event
+    can be on several.
+    """
     for event in events:
         if event.id and event.id in seen_event_ids:
             continue
@@ -384,7 +388,7 @@ async def get_calendar_events_by_id(
 
 
 def _date_part(timestamp: str) -> str:
-    """The date half of an ISO timestamp — Google's all-day events carry no time."""
+    """Return the date half of an ISO timestamp; Google's all-day events carry no time."""
     return timestamp.split("T", maxsplit=1)[0]
 
 
@@ -398,17 +402,18 @@ def _with_utc_suffix(timestamp: str) -> str:
 def _all_day_bounds(
     event: EventCreateRequest,
 ) -> tuple[GoogleCalendarEventDateTime, GoogleCalendarEventDateTime]:
-    """All-day bounds, defaulting a missing end to the next day and a missing
-    start to today (Google's end date is exclusive)."""
+    """Build all-day event bounds.
+
+    Defaults a missing end to the next day and a missing start to today;
+    Google's end date is exclusive.
+    """
     if event.start and event.end:
         start_date = _date_part(event.start)
         end_date = _date_part(event.end)
     elif event.start:
         start_date = _date_part(event.start)
-        # The bounds are date-only strings, so the +1 day is plain calendar
-        # arithmetic on the parsed wall date — no tz attachment needed (and a
-        # tz here would be invisible to the output, which is exactly the kind
-        # of dead surface mutation-equivalent mutants survive on).
+        # Date-only string, so +1 day is plain calendar arithmetic on the wall
+        # date; no tz attachment needed.
         end_date = (datetime.strptime(start_date, _DATE_FORMAT) + timedelta(days=1)).strftime(
             _DATE_FORMAT
         )
@@ -449,8 +454,10 @@ def _create_recurrence_rules(
     start_obj: GoogleCalendarEventDateTime,
     end_obj: GoogleCalendarEventDateTime,
 ) -> list[str] | None:
-    """Google's RRULE list, re-stamping the timezone onto both bounds — a
-    recurring series expands against it, so it has to be explicit."""
+    """Build the RRULE list, re-stamping the timezone onto both bounds.
+
+    A recurring series expands against the timezone, so it must be explicit.
+    """
     if not event.recurrence:
         return None
     try:
@@ -546,8 +553,10 @@ async def _selected_search_calendars(
     user_id: str,
     calendars: list[GoogleCalendarListEntry],
 ) -> list[GoogleCalendarListEntry]:
-    """The calendars a native search covers: stored preferences when present,
-    otherwise every calendar the user has."""
+    """Resolve the calendars a native search covers.
+
+    Uses stored preferences when present, otherwise every calendar the user has.
+    """
     preferences = await calendar_repository.get_for_user(user_id)
     if preferences is not None and preferences.selected_calendars:
         user_selected_calendars = preferences.selected_calendars
@@ -576,8 +585,10 @@ async def _search_calendars(
     time_min: str | None,
     time_max: str | None,
 ) -> tuple[list[GoogleCalendarEventResource], int]:
-    """Run the native search across each calendar, tagging hits with their
-    source; a failing calendar is logged and skipped, not fatal to the search."""
+    """Run the native search across each calendar, tagging hits with their source.
+
+    A failing calendar is logged and skipped, not fatal to the search.
+    """
     all_matching_events: list[GoogleCalendarEventResource] = []
     total_events_searched = 0
 
@@ -711,7 +722,7 @@ async def delete_calendar_event(
 def _update_recurrence_rules(
     event: EventUpdateRequest, existing_event: GoogleCalendarEventResource
 ) -> list[str] | None:
-    """The requested RRULE list, or the stored one when the update omits it."""
+    """Return the requested RRULE list, or the stored one when the update omits it."""
     if event.recurrence is None:
         return existing_event.recurrence
     try:
@@ -757,8 +768,11 @@ def _merge_event_bounds(
     existing_start: GoogleCalendarEventDateTime,
     existing_end: GoogleCalendarEventDateTime,
 ) -> tuple[GoogleCalendarEventDateTime, GoogleCalendarEventDateTime]:
-    """Overlay the requested start/end onto the stored ones. An update that
-    touches neither (nor all-day-ness) leaves the existing bounds alone."""
+    """Overlay the requested start/end onto the stored ones.
+
+    An update that touches neither (nor all-day-ness) leaves the existing
+    bounds alone.
+    """
     if event.start is None and event.end is None and event.is_all_day is None:
         return existing_start, existing_end
 

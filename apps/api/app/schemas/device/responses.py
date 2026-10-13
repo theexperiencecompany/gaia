@@ -1,12 +1,14 @@
 """Response schemas for the device bridge."""
 
 from datetime import datetime
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel
 
+from app.schemas.common import ResponseModel
 
-class StartPairingResponse(BaseModel):
+
+class StartPairingResponse(ResponseModel):
     """Returned to the daemon after it starts pairing."""
 
     device_code: str
@@ -16,19 +18,19 @@ class StartPairingResponse(BaseModel):
     interval: int
 
 
-class PollPairingResponse(BaseModel):
+class PollPairingResponse(ResponseModel):
     """Result of a pairing poll.
 
-    ``status`` is ``pending`` (keep polling), ``approved`` (``refresh_token`` set),
-    or ``denied`` / ``expired`` (stop).
+    ``status`` is ``pending`` (keep polling), ``approved`` (``device_id`` and
+    ``refresh_token`` set) or ``expired`` (stop).
     """
 
-    status: str
+    status: Literal["pending", "approved", "expired"]
     device_id: str | None = None
     refresh_token: str | None = None
 
 
-class DeviceTokenResponse(BaseModel):
+class DeviceTokenResponse(ResponseModel):
     """Short-lived connect JWT plus the rotated refresh credential."""
 
     access_token: str
@@ -43,6 +45,7 @@ class DeviceServerResponse(BaseModel):
     server_key: str
     display_name: str
     integration_id: str
+    kind: str = "stdio"
     status: str
     tools_synced_at: datetime | None = None
 
@@ -74,10 +77,29 @@ class RegisterServerResponse(BaseModel):
     server_key: str
 
 
+class DeregisterServerResponse(BaseModel):
+    """Result of the daemon deregistering one of its MCP servers."""
+
+    server_key: str
+    removed: bool
+
+
 class DevicePairApproveResponse(BaseModel):
     """Result of approving a pending device pairing."""
 
     device_id: str
+    name: str
+
+
+class SelfPairResponse(BaseModel):
+    """Result of a one-call self-pair: the device plus its refresh credential.
+
+    Mirrors the approve response but also returns ``refresh_token`` inline, since
+    the caller that pairs is the same host that stores the credential.
+    """
+
+    device_id: str
+    refresh_token: str
     name: str
 
 

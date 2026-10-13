@@ -1,38 +1,18 @@
-"""
-LANGGRAPH BIGTOOL OVERRIDE
+"""Override create_agent from langgraph_bigtool for dynamic model config and AgentMiddleware support.
 
-This overrides `create_agent` from langgraph_bigtool to support dynamic model configuration
-and LangChain AgentMiddleware integration.
+Import create_agent from here instead of langgraph_bigtool in build_graph.py.
 
-WHY THIS EXISTS:
-- Need to switch between OpenAI and Gemini models dynamically at runtime
-- Extract model_name and provider from config and apply to LLM before tool binding
-- Support LangChain's official AgentMiddleware system (before_model, after_model, wrap_model_call, wrap_tool_call)
-
-WHAT'S MODIFIED:
-In acall_model():
-- Dynamic model configuration from config.configurable
-- Middleware execution via MiddlewareExecutor
-
-IMPORT CHANGE REQUIRED:
-Replace library import in build_graph.py:
-```python
-# Change this:
-from langgraph_bigtool import create_agent
-
-# To this:
-from app.override.langgraph_bigtool.create_agent import create_agent
-```
-
-NOTE: Type/linting errors in this file are expected since it's copied from external library.
+Type/lint errors here are expected: adapted from an external library.
 """
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import dataclasses
 import functools
+import math
 from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
@@ -44,10 +24,12 @@ from langchain_core.messages import (
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 
-# Imported from the defining module, as langgraph's own prebuilt/ package does.
-# langgraph.utils.runnable is a compat shim ("to be removed in v1" — we are on
-# 1.2.7) that re-exports without __all__, so it is both deprecated and invisible
-# to no_implicit_reexport.
+# LangGraph's default limit (env-overridable) has no public export.
+from langgraph._internal._config import DEFAULT_RECURSION_LIMIT
+
+# Compat shim marked "to be removed in v1" (we're on 1.2.7); re-exports
+# without __all__, so it's invisible to no_implicit_reexport — imported
+# from the defining module instead, like langgraph's own prebuilt/ package.
 from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt.tool_node import ToolCallWithContext
@@ -55,7 +37,13 @@ from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
-from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm, invoke_llm
+from app.agents.llm.client import (
+    LLMInvokeOptions,
+    _is_openai_wire,
+    _is_openrouter_wire,
+    ainvoke_llm,
+    invoke_llm,
+)
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.completion import (
     completion_nudges_spent,
@@ -64,6 +52,8 @@ from app.agents.middleware.completion import (
     work_looks_unfinished,
 )
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
+from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
@@ -73,8 +63,8 @@ from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
-    RECURSION_WRAPUP_THRESHOLD_STEPS,
-    STICKY_ROUTING_PROVIDERS,
+    RECURSION_WRAPUP_MIN_STEPS,
+    RECURSION_WRAPUP_REMAINING_FRACTION,
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -97,20 +87,21 @@ from app.override.langgraph_bigtool.hooks import (
     sync_execute_hooks,
 )
 from app.override.langgraph_bigtool.utils import (
+    REMAINING_STEPS_KEY,
     State,
     dedupe_str_list,
     dedupe_tool_bindings,
     format_selected_tools,
+    pop_injected_messages,
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
-#: Graph node that answers a tool call the model made without binding the tool.
-#: Named here because the router, both edges and the registration must agree —
-#: langgraph derives the same name from ``reject_unbound_tools`` itself, so the
-#: registration below deliberately does not repeat it.
+#: Graph node that answers a tool call the model made without binding the
+#: tool. langgraph derives this same name from reject_unbound_tools itself,
+#: so the router, both edges, and the registration below must all agree.
 REJECT_UNBOUND_TOOLS_NODE = "reject_unbound_tools"
 
 
@@ -134,7 +125,7 @@ class _AgentDeps:
 
 
 def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfig:
-    """``config`` rebound onto ``lane`` — the config the fallback attempt runs under."""
+    """Config rebound onto lane — the config the fallback attempt runs under."""
     return cast(
         RunnableConfig,
         {**config, "configurable": lane.rebind(config.get("configurable") or {})},
@@ -146,15 +137,12 @@ def _prepare_fallback(
     tools_to_bind: list[BaseTool],
     model_configurations: AgentConfigurable,
 ) -> tuple[Callable[[], Runnable], "ModelLane"] | None:
-    """Factory that re-binds this run on the NEXT configured provider, with the
-    same tools. Zero-arg so the (per-turn, tool-list-sized) binding only happens
-    if the primary actually fails. ``None`` when no other provider is configured.
+    """Rebind this run onto the next configured provider; None if none exists.
 
-    The fallback target is a different PROVIDER, not a different model on the
-    same one. Falling back to ``get_default_llm()`` was inert in production: it
-    was skipped whenever the run already selected the default model, and since
-    every tier resolves to that model the graph had no fallback at all — one 402
-    or 401 from OpenRouter killed the whole turn on every execution path.
+    Zero-arg so the per-turn binding only happens if the primary actually fails.
+    Falls back across PROVIDERS, not models on one: get_default_llm() used to
+    silently no-op when the run already picked the default model, so one 402/401
+    killed the whole turn with no fallback at all.
     """
     lane = ModelLane.from_configurable(model_configurations.get(LANE_FIELD_ID))
     fallback_lane = lane.fallback() if lane else None
@@ -171,46 +159,33 @@ def _bind_session_id(
     model_configurations: AgentConfigurable,
     agent_name: str | None = None,
 ) -> Runnable:
-    """Bind the sticky-routing session id onto ``llm_with_tools``, if applicable.
+    """Bind the sticky-routing session id onto llm_with_tools, if applicable.
 
-    ``agent_name`` gives each agent CLASS its own cache chain, extending the
-    ``-aux`` suffix that already exists for one-shot calls.
-
-    Why: every agent in a turn previously shared the conversation's bare session
-    id, so comms, the executor, the subagents and the memory lane all wrote into
-    one chain and evicted each other. Measured end-to-end on the real graph, the
-    executor — which runs in a burst and re-reads its own chain immediately —
-    held 72.2%, while comms, which idles across a turn while the others run,
-    collapsed to 26.8%. A byte-identical re-send of comms' own request read
-    99.9% seconds later, which is the proof the bytes were always cacheable: the
-    chain existed, something else had taken the slot by the next turn.
+    agent_name gives each agent class its own cache chain (extends the -aux
+    suffix used for one-shot calls) — measured end-to-end, sharing one bare
+    session id left the executor at 72.2% cache hits and comms at 26.8%; a
+    byte-identical resend of comms' own request still hit 99.9% seconds later.
     """
-    # Must run AFTER bind_tools (which rebuilds the runnable and drops outer bindings), so the
-    # call pins to the conversation's provider and its prompt cache chains across turns.
-    # Gated on the provider the same way ainvoke_llm gates it: session_id is an
-    # OpenRouter routing hint, and Gemini has no stickiness to pin, so sending
-    # it there is an unsupported argument on every graph call.
+    # Must run AFTER bind_tools, which rebuilds the runnable and drops outer bindings.
+    # Each key goes only to the client that speaks it, judged by the real client rather
+    # than the configured provider: any other endpoint rejects it and fails the call.
     key = _agent_sticky_key(model_configurations, agent_name)
-    return llm_with_tools.bind(session_id=key) if key else llm_with_tools
+    if key and _is_openrouter_wire(llm_with_tools):
+        return llm_with_tools.bind(session_id=key)
+    if key and _is_openai_wire(llm_with_tools):
+        return llm_with_tools.bind(prompt_cache_key=key)
+    return llm_with_tools
 
 
 def _agent_sticky_key(
     model_configurations: AgentConfigurable, agent_name: str | None
 ) -> str | None:
-    """This agent's sticky-routing key for this run, or ``None``.
+    """Compute this agent's sticky-routing key, shared by the primary bind and the fallback.
 
-    One computation, used by the primary's bind AND handed to ``invoke_llm``
-    for the fallback. They used to derive it separately — the fallback from
-    config, which yields the BARE session id — so a provider hiccup dropped
-    every agent back into one shared chain and they resumed evicting each
-    other, the exact failure the per-agent key exists to prevent.
-
-    Gated on the provider the same way ainvoke_llm gates it: session_id is an
-    OpenRouter routing hint, and Gemini has no stickiness to pin, so sending
-    it there is an unsupported argument on every graph call.
+    Deriving it separately used to leave the fallback on the bare session id,
+    dropping every agent back into one shared chain. None when no session_id is
+    configured; whether a client may receive it is judged by its wire, not here.
     """
-    if model_configurations.get("provider") not in STICKY_ROUTING_PROVIDERS:
-        return None
     session_id = model_configurations.get("session_id")
     if not session_id:
         return None
@@ -236,7 +211,7 @@ def _extract_middleware(
 def _build_retrieve_tools(
     tools_config: ToolRetrievalConfig,
 ) -> tuple[StructuredTool | None, str | None]:
-    """The retrieve_tools tool plus the store kwarg name it expects to be invoked with."""
+    """Build the retrieve_tools tool and the store kwarg name it expects to be invoked with."""
     if tools_config.disable_retrieve_tools:
         return None, None
 
@@ -252,22 +227,32 @@ def _build_retrieve_tools(
     return retrieve_tools, get_store_arg(retrieve_tools)
 
 
-def _maybe_inject_wrapup(state: State) -> State:
-    """Warn the model to finish when the recursion budget is nearly spent.
+def _maybe_inject_wrapup(state: State, config: RunnableConfig) -> State:
+    """Tell the model to answer now once its remaining steps reach the wrap-up window.
 
-    Injected per model call (never persisted): a trailing HumanMessage,
-    because Gemini drops trailing SystemMessages. Without this, the run
-    dies mid-exploration with a hard GraphRecursionError the model never
-    saw coming.
+    A trailing HumanMessage (Gemini drops trailing SystemMessages) on each model
+    call in the window, never persisted: the executor thread spans delegations,
+    and a stored notice would greet the next one.
     """
-    remaining = state.get("remaining_steps")
-    if not isinstance(remaining, int) or remaining > RECURSION_WRAPUP_THRESHOLD_STEPS:
+    remaining = state.get(REMAINING_STEPS_KEY)
+    # LangGraph strips a limit equal to its default from the node's config.
+    recursion_limit = config.get("recursion_limit", DEFAULT_RECURSION_LIMIT)
+    threshold = max(
+        RECURSION_WRAPUP_MIN_STEPS,
+        math.ceil(recursion_limit * RECURSION_WRAPUP_REMAINING_FRACTION),
+    )
+    if not isinstance(remaining, int) or remaining > threshold:
         return state
+    log.info(
+        f"{LogTag.AGENT} Recursion wrap-up notice shown",
+        remaining_steps=remaining,
+        recursion_limit=recursion_limit,
+    )
     notice = HumanMessage(
         content=(
             "[System notice: you are almost out of steps for this run "
-            f"(~{remaining} left). Stop exploring now — summarize what you "
-            "found and what remains to be done, and finish your reply.]"
+            f"(~{remaining} left). Stop calling tools and give your final answer now. "
+            "Summarize what you did, what you found and what remains to be done.]"
         )
     )
     return cast(State, {**state, "messages": [*state.get("messages", []), notice]})
@@ -276,14 +261,10 @@ def _maybe_inject_wrapup(state: State) -> State:
 def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
     """Assemble the bound-tool list with a cache-stable ordering.
 
-    Fixed tools (``retrieve_tools``, the agent's initial set, middleware)
-    are bound first so they form a byte-stable prefix for the whole
-    conversation. Dynamically retrieved tools (``selected_tool_ids``, which
-    only ever grows via the append-only reducer) are bound LAST, so each
-    retrieval appends to the tail instead of shifting the fixed tools. That
-    keeps the request's function-declaration prefix stable and lets the
-    provider's implicit prompt cache survive across turns instead of
-    resetting on every tool retrieval.
+    Fixed tools (retrieve_tools, initial set, middleware) go first as a
+    byte-stable prefix; selected_tool_ids (append-only) go last, so each
+    retrieval extends the tail instead of shifting the prefix and resetting
+    the provider's implicit prompt cache.
     """
     # Skip unknown ids (a stale id in the append-only selected_tool_ids must
     # not crash the model invocation) rather than indexing blindly.
@@ -322,27 +303,25 @@ def _log_message_preview(state: State) -> None:
         preview = []
         for msg in recent_messages:
             role = msg.__class__.__name__
-            # extract_text_content, not the raw content: a tool result carrying
-            # inline media holds megabytes of base64 that must never reach a log.
+            # The text's length, not the raw content's: inline media is megabytes of base64.
             content = extract_text_content(getattr(msg, "content", ""))
-            if len(content) > 200:
-                content = content[:197] + "..."
-            preview.append({"role": role, "content": content})
+            preview.append({"role": role, "content_length": len(content)})
         log.info("acall_model message preview", preview=preview)
     except Exception as e:
         log.debug("Failed to log message preview", error_type=type(e).__name__, error=str(e))
 
 
 def _after_model_result(
-    tombstones: list[Any], response: AIMessage, updated_state: State
+    tombstones: list[Any],
+    injected: list[Any],
+    response: AIMessage,
+    updated_state: State,
 ) -> dict[str, object]:
-    # Return partial state update: new message + any keys added by
-    # after_model (e.g. todos). Messages use an append reducer, so only
-    # return the new response — not the full list. Tombstones prune the
-    # slot-stale prompt copies the pre-model hooks dropped, so the
-    # checkpointed thread stays bounded too.
-    result: dict[str, object] = {"messages": [*tombstones, response]}
-    base_keys = {"messages", "selected_tool_ids"}
+    # Messages use an append reducer, so only the new response is returned,
+    # not the full list. Tombstones prune slot-stale prompt copies; injected
+    # messages are committed AHEAD of the response so the thread reads in order.
+    result: dict[str, object] = {"messages": [*tombstones, *injected, response]}
+    base_keys = {"messages", "selected_tool_ids", REMAINING_STEPS_KEY}
     result.update({key: value for key, value in updated_state.items() if key not in base_keys})
     return result
 
@@ -355,6 +334,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         state = sync_execute_hooks(pre_model_hooks, state, config, store)
         tombstones = pop_pruned_tombstones(state)
+        injected = pop_injected_messages(state)
 
         if middleware_executor:
             raise RuntimeError(
@@ -370,7 +350,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
         llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
-        state = _maybe_inject_wrapup(state)
+        state = _maybe_inject_wrapup(state, config)
         response = invoke_llm(
             llm_with_tools,
             state["messages"],
@@ -379,21 +359,29 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             label=deps.agent_name,
             options=LLMInvokeOptions(
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )
 
-        return {"messages": [*tombstones, _finalize_model_response(response, deps.agent_name)]}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
+        return {
+            "messages": [
+                *tombstones,
+                *injected,
+                _finalize_model_response(response, deps.agent_name),
+            ]
+        }  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     async def acall_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         """Async model invocation with middleware support."""
         state = await execute_hooks(pre_model_hooks, state, config, store)
         tombstones = pop_pruned_tombstones(state)
+        injected = pop_injected_messages(state)
 
         if middleware_executor:
             state = await middleware_executor.execute_before_model(state, config, store)
 
-        state = _maybe_inject_wrapup(state)
+        state = _maybe_inject_wrapup(state, config)
 
         # The raw bag goes back to LangChain untouched (it owns the keys it
         # merged in); the typed view is what GAIA reads its own keys through.
@@ -415,6 +403,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             options=LLMInvokeOptions(
                 meter_auxiliary=False,
                 fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                fallback_model=prepared[1].model if prepared else None,
                 sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
             ),
         )
@@ -448,13 +437,13 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
                 updated_state, config, store
             )
 
-        return _after_model_result(tombstones, response, updated_state)  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
+        return _after_model_result(tombstones, injected, response, updated_state)  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     return RunnableCallable(call_model, acall_model)
 
 
 def _retrieval_call_kwargs(
-    tool_call: dict[str, Any],
+    tool_call: Mapping[str, Any],
     store_arg: str | None,
     store: BaseStore,
     config: RunnableConfig,
@@ -474,8 +463,7 @@ def _resolve_retrieval_result(
     tool_call_id: str,
     response_texts: dict[str, str],
 ) -> tuple[list[str], list[str]]:
-    """Split one retrieve_tools result into (ids to bind, ids to echo back),
-    recording any rendered response text under the call's id."""
+    """Split a retrieve_tools result into ids to bind vs ids to echo, recording response text by call id."""
     # Handle both RetrieveToolsResult dict and plain list
     if isinstance(result, dict):
         tools_to_bind = [
@@ -496,6 +484,41 @@ def _resolve_retrieval_result(
     # Filter out subagent: prefixed tools from binding
     filtered_bind = [tool_id for tool_id in tools_to_bind if not tool_id.startswith("subagent:")]
     return filtered_bind, response
+
+
+def _retrieval_request(
+    tool_call: Mapping[str, Any],
+    retrieve_tools: BaseTool,
+    config: RunnableConfig,
+    store: BaseStore,
+) -> ToolCallRequest:
+    """Wrap one select_tools call as the request the tool node would hand its middleware."""
+    return ToolCallRequest(
+        # Every call routed here is a retrieve_tools call (see should_continue).
+        tool_call=ToolCall(name=retrieve_tools.name, args=tool_call["args"], id=tool_call["id"]),
+        tool=retrieve_tools,
+        state={},
+        runtime=BigtoolToolRuntime.from_graph_context(
+            config=config, store=store, tool_name=retrieve_tools.name
+        ),
+    )
+
+
+async def _through_loop_guard(
+    loop_guard: LoopGuardMiddleware | None,
+    request: ToolCallRequest,
+    retrieve: Callable[[ToolCallRequest], Awaitable[ToolMessage]],
+) -> ToolMessage:
+    """Answer one retrieve_tools call, letting the stack's loop guard warn on or block it."""
+    if loop_guard is None:
+        return await retrieve(request)
+    guarded = await loop_guard.awrap_tool_call(request, retrieve)
+    if not isinstance(guarded, ToolMessage):
+        raise TypeError(
+            f"loop guard returned {type(guarded).__name__} for retrieve_tools call "
+            f"{request.tool_call['id']}; select_tools only renders ToolMessages"
+        )
+    return guarded
 
 
 def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any]:
@@ -524,23 +547,48 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
     async def aselect_tools(
         tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
     ) -> State:
-        """Async twin of ``select_tools`` — resolve retrieve_tools calls into bindings."""
-        if deps.retrieve_tools is None:
+        """Async twin of select_tools — resolve retrieve_tools calls into bindings.
+
+        Each call passes through the stack's loop guard: retrieve_tools never
+        reaches the tool node, the only other place the guard sits, so without
+        this a model re-issuing the same search is never warned or stopped.
+        """
+        retrieve_tools = deps.retrieve_tools
+        if retrieve_tools is None:
             raise RuntimeError("retrieve_tools is disabled and aselect_tools should not be called")
+        loop_guard = deps.middleware_executor.loop_guard if deps.middleware_executor else None
 
-        selected_tools = {}
-        response_tools = {}
-        response_texts: dict[str, str] = {}
-        for tool_call in tool_calls:
-            kwargs = _retrieval_call_kwargs(tool_call, deps.store_arg, store, config)
-            result = await deps.retrieve_tools.ainvoke(kwargs, config=config)
+        selected_tools: dict[str, list[str]] = {}
+
+        async def retrieve(request: ToolCallRequest) -> ToolMessage:
+            """Run one retrieve_tools call; record what it binds, return what the model reads."""
+            tool_call_id = request.tool_call["id"]
+            if tool_call_id is None:
+                raise ValueError("retrieve_tools call carries no id to answer it under")
+            kwargs = _retrieval_call_kwargs(request.tool_call, deps.store_arg, store, config)
+            result = await retrieve_tools.ainvoke(kwargs, config=config)
+            response_texts: dict[str, str] = {}
             filtered_bind, response = _resolve_retrieval_result(
-                result, tool_call["id"], response_texts
+                result, tool_call_id, response_texts
             )
-            selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
-            response_tools[tool_call["id"]] = dedupe_str_list(response)
+            selected_tools[tool_call_id] = dedupe_str_list(filtered_bind)
+            messages, _ = format_selected_tools(
+                {tool_call_id: dedupe_str_list(response)},
+                deps.tool_registry,  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+                response_texts,
+            )
+            return messages[0]
 
-        tool_messages, _ = format_selected_tools(response_tools, deps.tool_registry, response_texts)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+        tool_messages = [
+            await _through_loop_guard(
+                loop_guard,
+                _retrieval_request(tool_call, retrieve_tools, config, store),
+                retrieve,
+            )
+            for tool_call in tool_calls
+        ]
+
+        # A call the guard blocked never ran, so it binds nothing.
         _, bind_ids = format_selected_tools(selected_tools, deps.tool_registry)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
@@ -596,7 +644,7 @@ def reject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) 
 
 
 async def areject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) -> State:
-    """Async twin of ``reject_unbound_tools`` for the async graph path."""
+    """Async twin of reject_unbound_tools for the async graph path."""
     return reject_unbound_tools(tool_calls, store=store)
 
 
@@ -617,7 +665,7 @@ def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State: 
 
 
 async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
-    """Async twin of ``finish_task_node`` for the async graph path."""
+    """Async twin of finish_task_node for the async graph path."""
     return finish_task_node(tool_calls, store=store)
 
 
@@ -631,12 +679,12 @@ def _owes_playbook_decision(state: State) -> bool:
 
 
 def _after_finish_task(exit_node: str) -> Callable[[State], str]:
-    """Route out of the finish node: ``finish_task`` is the executor's other
-    way to stop, so a briefed workflow run that finishes without deciding
-    about its playbook is nudged here exactly as a plain-text stop is. Same
-    bound (MAX_PLAYBOOK_DECISION_NUDGES), so a model that finishes twice
-    without deciding still ends; the later finish_task result is the one the
-    runner reports."""
+    """Route out of the finish node: an executor stop without a playbook decision.
+
+    Nudged here exactly as a plain-text stop is, same bound
+    (MAX_PLAYBOOK_DECISION_NUDGES); the later finish_task result is what the
+    runner reports if the model finishes twice without deciding.
+    """
 
     def route(state: State) -> str:
         if _owes_playbook_decision(state):
@@ -660,13 +708,12 @@ def nudge_continue_node(state: State) -> State:
 
 
 def _last_tool_calling_message(state: State) -> AIMessage | None:
-    """The AI message whose calls this turn is executing.
+    """Find the AI message whose calls this turn is executing.
 
-    NOT ``messages[-1]``: a resume prepends a current-time HumanMessage
-    (``subagent_runner._with_current_time``), so by the time the approvals node has
-    paused and woken, the tool-calling message is no longer last. Matches
-    ``hil/utils.current_tool_calls``, which the gate resolves siblings with — the two
-    must agree on which message is being executed or they gate different call sets.
+    Not messages[-1]: a resume prepends a current-time HumanMessage
+    (_with_current_time), so the tool-calling message is no longer last once
+    approvals wakes. Must match hil/utils.current_tool_calls, or the two gate
+    different call sets.
     """
     for message in reversed(state["messages"]):
         if isinstance(message, AIMessage) and message.tool_calls:
@@ -696,11 +743,12 @@ def _get_bound_tool_names(deps: _AgentDeps, state: State) -> set[str]:
 
 
 def _executable_calls(deps: _AgentDeps, state: State) -> list[ToolCall]:
-    """The message's tool calls that the tools node will run, names canonicalized.
+    """Return the message's tool calls that the tools node will run, names canonicalized.
 
-    Mutates each call's name in place when it maps to a bound tool, so the tools
-    node's registry lookup hits the actual BaseTool. Separate from routing because
-    both the router and the approvals node's outgoing edge need this same list.
+    Mutates each call's name in place when it maps to a bound tool, so the
+    tools node's registry lookup hits the actual BaseTool. Separate from
+    routing because the router and the approvals node's outgoing edge both
+    need this same list.
     """
     last_message = _last_tool_calling_message(state)
     if last_message is None:
@@ -745,11 +793,9 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
         messages = state["messages"]
         last_message = messages[-1]
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
-            # The model is trying to end by replying in plain text. For the
-            # executor (require_finish_to_end), don't take that at face value
-            # when work is demonstrably unfinished — nudge once and loop instead
-            # of ending early. Bounded by MAX_COMPLETION_NUDGES so a genuinely
-            # tool-free answer can't loop. Comms never opts in and ends normally.
+            # Plain-text end. For require_finish_to_end (the executor), nudge once
+            # and loop instead of ending early when work looks unfinished, bounded
+            # by MAX_COMPLETION_NUDGES. Comms never opts in and ends normally.
             if deps.require_finish_to_end and (
                 _owes_playbook_decision(state)
                 or (
@@ -779,10 +825,9 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
             ):
                 unbound_calls.append(call)
 
-        # ONE task for the whole message, and it runs before any tool: the approvals node
-        # settles every HIL decision in its own superstep, then fans out to the tools node.
-        # Sending straight to "tools" here is what used to let an ungated call execute
-        # beside one that paused — and a pause discards and replays that whole step.
+        # One task for the whole message, before any tool: the approvals node
+        # settles every HIL decision in its own superstep. Sending straight to
+        # "tools" used to let an ungated call run beside one that paused.
         destinations.extend(_dispatch_tools(deps, state))
 
         if unbound_calls:
@@ -797,11 +842,9 @@ def _tool_node(deps: _AgentDeps) -> DynamicToolNode:
     return DynamicToolNode(
         deps.tool_registry,
         ToolNodeOptions(
-            # Parent-routed tools (InjectedState / middleware tools) previously
-            # re-raised non-validation exceptions and crashed the whole run;
-            # convert every failure into an error ToolMessage, matching the
-            # middleware dispatch path. The per-call timeout wrapper bounds
-            # hung tools (orchestration tools exempt).
+            # Parent-routed tools used to re-raise non-validation exceptions and
+            # crash the run; every failure now becomes an error ToolMessage,
+            # matching the middleware path (timeout wrapper exempts orchestration tools).
             handle_tool_errors=format_tool_error,
             awrap_tool_call=hil_and_timeout_guarded_tool_call,
         ),
@@ -860,31 +903,11 @@ def create_agent(
     hooks_config: HookConfig | None = None,
     agent_config: AgentConfig | None = None,
 ) -> StateGraph:
-    """Create an agent with a registry of tools.
+    """Create a ReAct agent that starts with only a tool-retrieval tool and binds retrieved tools as it runs.
 
-    The agent will function as a typical ReAct agent, but is equipped with a tool
-    for retrieving tools from a registry. The agent will start with only this tool.
-    As it is executed, retrieved tools will be bound to the model.
-
-    Args:
-        llm: Language model to use for the agent.
-        tool_registry: a dict mapping string IDs to BaseTool instances.
-        tools_config: how tools are retrieved and bound (semantic-retrieval
-            settings, custom retrieval functions, initial tool IDs, or full
-            disablement of the retrieval mechanism).
-        hooks_config: lifecycle hooks and end-of-run gating:
-            - pre_model_hooks: process state before each model call.
-            - end_graph_hooks: final processing before the graph ends; when set,
-              routing goes through the end_graph_hooks node before END.
-            - require_finish_to_end: nudge-and-loop instead of ending early on
-              plain-text replies while work looks unfinished.
-        agent_config: identity and middleware:
-            - agent_name: label attached to LLM invocations; "comms_agent"
-              additionally gets NEW_MESSAGE_BREAKER appended to string replies.
-            - context_schema: per-run context schema declared on the graph.
-            - middleware: LangChain AgentMiddleware instances providing hooks:
-              before_model, after_model, wrap_model_call, wrap_tool_call
-              (wrap_tool_call replaces post_tool_hooks).
+    hooks_config.require_finish_to_end nudges-and-loops instead of ending early
+    on an unfinished plain-text reply; agent_config.agent_name == "comms_agent"
+    appends NEW_MESSAGE_BREAKER to string replies.
     """
     tools = tools_config or ToolRetrievalConfig()
     hooks = hooks_config or HookConfig()
@@ -914,10 +937,9 @@ def create_agent(
     builder.set_entry_point("agent")
     builder.add_node("agent", _model_node(deps))
     if retrieve_tools is not None:
-        # Tool retrieval is a pure read (Chroma/Postgres searches), so the
-        # default retry predicate is safe here. The tools node deliberately has
-        # NO retry policy: exceptions escaping it come from parent-routed tool
-        # execution, and re-running a side-effectful tool can double-execute it.
+        # Tool retrieval is a pure read, so the default retry predicate is
+        # safe. The tools node has NO retry policy: its exceptions come from
+        # parent-routed tools, and retrying could double-execute a side effect.
         builder.add_node(
             "select_tools",
             _select_tools_node(deps),

@@ -1,18 +1,28 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Skeleton } from "@heroui/skeleton";
 import { CancelIcon, ZapIcon } from "@icons";
 import { useEffect, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import type { PaywallCopy } from "@/features/pricing/constants";
 
 const STORAGE_KEY = "sidebar-promo-collapsed:v1";
 
 interface SidebarPromoProps {
-  price: number;
+  /** The live Pro monthly price; null while loading or when the plans could not be read. */
+  price: number | null;
+  isPriceLoading: boolean;
+  copy: PaywallCopy;
   onUpgrade: () => void;
 }
 
-export function SidebarPromo({ price, onUpgrade }: SidebarPromoProps) {
+export function SidebarPromo({
+  price,
+  isPriceLoading,
+  copy,
+  onUpgrade,
+}: SidebarPromoProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
@@ -41,7 +51,7 @@ export function SidebarPromo({ price, onUpgrade }: SidebarPromoProps) {
       {!isCollapsed && (
         <>
           <div className="flex w-full justify-between items-center gap-1">
-            <div className="font-medium text-sm">You Deserve This!</div>
+            <div className="font-medium text-sm">{copy.heading}</div>
             <Button
               isIconOnly
               variant="light"
@@ -53,10 +63,13 @@ export function SidebarPromo({ price, onUpgrade }: SidebarPromoProps) {
               <CancelIcon width={15} height={15} />
             </Button>
           </div>
-          <p className="text-xs text-zinc-400">
-            Unlock near-unlimited usage and priority support for ${price} a
-            month
-          </p>
+          {price !== null ? (
+            <p className="text-xs text-zinc-400">{copy.sidebarBody(price)}</p>
+          ) : (
+            isPriceLoading && (
+              <Skeleton className="mt-1 h-8 w-full rounded-lg" />
+            )
+          )}
         </>
       )}
 
@@ -67,7 +80,7 @@ export function SidebarPromo({ price, onUpgrade }: SidebarPromoProps) {
         onClick={onUpgrade}
       >
         <ZapIcon fill="black" width={17} height={17} />
-        Upgrade to Pro
+        {copy.cta}
       </RaisedButton>
     </div>
   );

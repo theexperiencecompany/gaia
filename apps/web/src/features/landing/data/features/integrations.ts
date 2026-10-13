@@ -461,28 +461,28 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     category: "Integrations",
     icon: "BotIcon",
     title: "Specialized Agents",
-    tagline: "37 purpose-built agents, one for every integration",
-    headline: "A specialist for every integration.",
+    tagline: "Deep expertise for every integration",
+    headline: "Every integration, deeply understood.",
     subheadline:
-      "GAIA has 37 purpose-built subagents, one for each integration, each with scoped tools, specialized instructions, and deep knowledge of that platform's API.",
+      "GAIA carries specialized prompts, workflows, and standing instructions for each integration, and loads the right one in-context the moment a task needs it — no handoffs, no cold starts.",
     benefits: [
       {
         icon: "RouteIcon",
         title: "Automatic routing",
         description:
-          "GAIA detects which integration a task involves and routes to the right specialist agent automatically.",
+          "GAIA detects which integration a task involves and activates it automatically.",
       },
       {
         icon: "BrainIcon",
         title: "Platform expertise",
         description:
-          "Each subagent carries specialized prompts and workflows for its service.",
+          "Each integration carries specialized prompts and workflows for its service.",
       },
       {
         icon: "Layers01Icon",
         title: "Parallel execution",
         description:
-          "Multiple subagents can run simultaneously for complex multi-platform tasks.",
+          "Multiple integrations can be active at once, and bulky work splits into parallel background workers.",
       },
     ],
     howItWorks: [
@@ -494,50 +494,50 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
       },
       {
         number: "02",
-        title: "GAIA routes to the right specialist",
+        title: "GAIA activates the right integration",
         description:
-          "The main agent detects which integration is needed and hands off to the dedicated subagent for that platform.",
+          "The main agent loads that integration's tools, instructions, and account context directly.",
       },
       {
         number: "03",
-        title: "Specialist executes with deep platform knowledge",
+        title: "Specialist execution with deep platform knowledge",
         description:
-          "The subagent uses scoped tools and platform-specific instructions to complete the task and return the result.",
+          "GAIA uses scoped tools and platform-specific instructions to complete the task and return the result.",
       },
     ],
     faqs: [
       {
-        question: "How many subagents are there?",
+        question: "How many integrations are deeply supported?",
         answer:
-          "There are 37 specialized subagents, one for each supported integration including Gmail, Slack, GitHub, Notion, Linear, HubSpot, Google Calendar, and more.",
+          "37 integrations including Gmail, Slack, GitHub, Notion, Linear, HubSpot, Google Calendar, and more, each with dedicated tools and instructions.",
       },
       {
-        question: "Can multiple subagents run at the same time?",
+        question: "Can multiple integrations run at the same time?",
         answer:
-          "Yes. For tasks spanning multiple integrations, GAIA can run subagents in parallel, for example fetching from GitHub and Slack simultaneously, then merge the results.",
+          "Yes. For tasks spanning multiple integrations, GAIA activates each one and works across them in a single turn, for example fetching from GitHub and Slack simultaneously, then merging the results.",
       },
       {
-        question: "Can I customize a subagent's behavior?",
+        question: "Can I customize an integration's behavior?",
         answer:
-          "Subagent instructions are fixed per integration to ensure reliability. Custom behaviors are handled through custom skills or workflow steps built on top of subagent outputs.",
+          "Yes. Per-integration instructions let you set standing preferences like which Slack channels to focus on, and custom skills or workflow steps build on top.",
       },
       {
         question:
-          "Do subagents have access to the same memory as the main agent?",
+          "Do background workers have access to the same memory as the main agent?",
         answer:
-          "Yes. Subagents inherit the current conversation context and long-term memory from the main agent, so they know who you are and what you've asked before.",
+          "Yes. Workers inherit the current conversation context and long-term memory from the main agent, so they know who you are and what you've asked before.",
       },
     ],
     useCases: [
       {
         title: "Cross-platform task in one message",
         description:
-          "Ask GAIA to create a GitHub issue from a Slack message thread: the Slack subagent reads the thread, the GitHub subagent creates the issue, both in the same conversation.",
+          "Ask GAIA to create a GitHub issue from a Slack message thread: it reads the thread and creates the issue, both in the same conversation.",
       },
       {
         title: "Parallel multi-source research",
         description:
-          "A product manager asks for a competitive analysis. GAIA spawns Notion, Gmail, and web research subagents in parallel and combines the results into a single summary.",
+          "A product manager asks for a competitive analysis. GAIA activates Notion and Gmail, splits research across parallel background workers, and combines the results into a single summary.",
       },
       {
         title: "Deep HubSpot CRM update",

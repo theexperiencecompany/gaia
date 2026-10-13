@@ -1,89 +1,65 @@
-import { apiService } from "@/lib/api/service";
-import type {
-  BuiltinSkillsResponse,
-  DiscoverSkillsResponse,
-  Skill,
-  SkillInlineCreateRequest,
-  SkillListResponse,
-  SkillTargetsResponse,
-  SkillUpdateRequest,
-} from "./types";
+import { api } from "@/lib/api/typed";
+import type { SkillInlineCreateRequest, SkillUpdateRequest } from "./types";
 
 export const skillsApi = {
   /** List the current user's installed skills. */
-  listSkills: async (): Promise<SkillListResponse> => {
-    return await apiService.get<SkillListResponse>("/skills");
-  },
+  listSkills: () => api.get("/api/v1/skills"),
 
   /** List the targets a skill can run in (executor + connected subagents). */
-  listTargets: async (): Promise<SkillTargetsResponse> => {
-    return await apiService.get<SkillTargetsResponse>("/skills/targets", {
-      silent: true,
-    });
-  },
+  listTargets: () => api.get("/api/v1/skills/targets", { silent: true }),
 
   /** List the read-only built-in skills shipped with GAIA. */
-  listBuiltinSkills: async (): Promise<BuiltinSkillsResponse> => {
-    return await apiService.get<BuiltinSkillsResponse>("/skills/builtin", {
-      silent: true,
-    });
-  },
+  listBuiltinSkills: () => api.get("/api/v1/skills/builtin", { silent: true }),
 
   /** Create a skill from inline components. */
-  createSkill: async (body: SkillInlineCreateRequest): Promise<Skill> => {
-    return await apiService.post<Skill>("/skills/install/inline", body);
-  },
+  createSkill: (body: SkillInlineCreateRequest) =>
+    api.post("/api/v1/skills/install/inline", { body }),
 
   /** Edit an existing skill (description / instructions / target). */
-  updateSkill: async (
-    skillId: string,
-    body: SkillUpdateRequest,
-  ): Promise<Skill> => {
-    return await apiService.put<Skill>(`/skills/${skillId}`, body);
-  },
+  updateSkill: (skillId: string, body: SkillUpdateRequest) =>
+    api.put("/api/v1/skills/{skill_id}", { path: { skill_id: skillId }, body }),
 
   /** Uninstall a skill and delete its files. */
   deleteSkill: async (skillId: string): Promise<void> => {
-    await apiService.delete(`/skills/${skillId}`);
+    await api.delete("/api/v1/skills/{skill_id}", {
+      path: { skill_id: skillId },
+    });
   },
 
   /** Enable a disabled skill. */
   enableSkill: async (skillId: string): Promise<void> => {
-    await apiService.patch(`/skills/${skillId}/enable`, {}, { silent: true });
+    await api.patch("/api/v1/skills/{skill_id}/enable", {
+      path: { skill_id: skillId },
+      silent: true,
+    });
   },
 
   /** Disable a skill without uninstalling it. */
   disableSkill: async (skillId: string): Promise<void> => {
-    await apiService.patch(`/skills/${skillId}/disable`, {}, { silent: true });
+    await api.patch("/api/v1/skills/{skill_id}/disable", {
+      path: { skill_id: skillId },
+      silent: true,
+    });
   },
 
   /** Preview the skills available in a GitHub repo without installing. */
-  discoverSkills: async (
-    repo: string,
-    branch = "main",
-  ): Promise<DiscoverSkillsResponse> => {
-    return await apiService.get<DiscoverSkillsResponse>(
-      `/skills/discover?repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(branch)}`,
-    );
-  },
+  discoverSkills: (repo: string, branch = "main") =>
+    api.get("/api/v1/skills/discover", { query: { repo, branch } }),
 
   /** Install a skill from a GitHub repo using its exact discovered path
    * (avoids picking the wrong skill when a repo has duplicate names). */
-  installFromGithub: async (
+  installFromGithub: (
     repoUrl: string,
     skillName: string,
     skillPath: string,
     target?: string,
-  ): Promise<Skill> => {
-    const params = new URLSearchParams({
-      repo_url: repoUrl,
-      skill_name: skillName,
-      skill_path: skillPath,
-    });
-    if (target) params.set("target", target);
-    return await apiService.post<Skill>(
-      `/skills/install/github?${params.toString()}`,
-      {},
-    );
-  },
+  ) =>
+    api.post("/api/v1/skills/install/github", {
+      query: {
+        repo_url: repoUrl,
+        skill_name: skillName,
+        skill_path: skillPath,
+        target,
+      },
+    }),
 };

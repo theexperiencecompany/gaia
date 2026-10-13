@@ -17,7 +17,7 @@ R = TypeVar("R")
 
 
 def async_timer(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-    """Timing decorator for async functions."""
+    """Time an async function's execution."""
 
     @functools.wraps(func)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -50,7 +50,7 @@ def async_timer(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
 
 
 def sync_timer(func: Callable[P, R]) -> Callable[P, R]:
-    """Timing decorator for sync functions."""
+    """Time a sync function's execution."""
 
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:

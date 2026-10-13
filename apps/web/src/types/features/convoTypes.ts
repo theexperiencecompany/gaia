@@ -2,7 +2,6 @@
 // This type represents an individual message, including details about whether it's from the user or bot,
 
 import type {
-  CalendarOptions,
   ConversationMessage,
   DeepResearchResults,
   EmailComposeData,
@@ -19,7 +18,6 @@ import type {
 
 // Re-export types for external consumption
 export type {
-  CalendarOptions,
   ConversationMessage,
   DeepResearchResults,
   EmailComposeData,

@@ -11,7 +11,10 @@ only stop running here by someone editing THIS file, which a reviewer sees.
 
 from __future__ import annotations
 
+import ast
+import json
 from pathlib import Path
+import subprocess
 from typing import Any
 
 import pytest
@@ -19,6 +22,9 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MAIN_YML = REPO_ROOT / ".github" / "workflows" / "main.yml"
+SLICES_FILE = REPO_ROOT / "scripts" / "ci" / "lib" / "test-slices.json"
+PYTEST_SH = REPO_ROOT / "scripts" / "ci" / "pytest.sh"
+DAGGER_MODULE = REPO_ROOT / ".dagger" / "src" / "gaia_ci" / "main.py"
 
 
 @pytest.fixture(scope="module")
@@ -32,15 +38,70 @@ def test_python(workflow: dict[str, Any]) -> dict[str, Any]:
 
 
 @pytest.fixture(scope="module")
-def slices(test_python: dict[str, Any]) -> list[dict[str, Any]]:
-    return test_python["strategy"]["matrix"]["slice"]
+def slices() -> list[dict[str, Any]]:
+    return json.loads(SLICES_FILE.read_text())["slices"]
 
 
-def test_the_gaia_shared_suite_still_runs(test_python: dict[str, Any]) -> None:
+def _step_running(job: dict[str, Any], command: str) -> dict[str, Any]:
+    (step,) = [s for s in job["steps"] if command in str(s.get("run", ""))]
+    return step
+
+
+def test_the_matrix_is_the_shared_slice_file(workflow: dict[str, Any]) -> None:
+    # One definition, read by CI and by the Dagger harness alike: an inline
+    # matrix is a second copy, and the local run drifts from it silently.
+    for job, key in (("test-python", "python_slices"), ("test-python-engines", "engine_slices")):
+        matrix = workflow["jobs"][job]["strategy"]["matrix"]["slice"]
+        assert matrix == f"${{{{ fromJSON(needs.detect.outputs.{key}) }}}}"
+        detect = workflow["jobs"]["detect"]
+        assert detect["outputs"][key] == f"${{{{ steps.slices.outputs.{key} }}}}"
+    step = next(s for s in detect["steps"] if s.get("id") == "slices")
+    assert step["run"].startswith("bash scripts/ci/pytest.sh slices")
+
+
+def test_pytest_sh_publishes_exactly_the_slice_file_split_by_engine_need(
+    slices: list[dict[str, Any]],
+) -> None:
+    lines = subprocess.run(
+        ["bash", str(PYTEST_SH), "slices"], check=True, capture_output=True, text=True
+    ).stdout.splitlines()
+    published = {
+        key: json.loads(payload) for key, _, payload in (line.partition("=") for line in lines)
+    }
+    assert published == {
+        "python_slices": [s for s in slices if s["engines"] == "false"],
+        "engine_slices": [s for s in slices if s["engines"] == "true"],
+    }
+
+
+def test_the_engine_slices_wait_on_the_engine_build_and_no_other_slice_does(
+    workflow: dict[str, Any],
+) -> None:
+    # A cold Obscura build is tens of minutes: inside a slice's cap it timed the
+    # browser slice out before it tested anything, and as a need of every slice
+    # it would hold the unit slices behind it.
+    jobs = workflow["jobs"]
+    assert "obscura-bin" in jobs["test-python-engines"]["needs"]
+    assert "obscura-bin" not in jobs["test-python"]["needs"]
+    assert jobs["test-python-engines"]["steps"] is jobs["test-python"]["steps"]
+    assert jobs["obscura-bin"]["timeout-minutes"] >= 60
+
+
+def test_the_dagger_harness_runs_the_same_slices_through_the_same_script() -> None:
+    module = DAGGER_MODULE.read_text()
+    assert '"scripts/ci/lib/test-slices.json"' in module
+    assert "bash /app/scripts/ci/pytest.sh {step}" in module
+
+
+def test_the_gaia_shared_suite_still_runs(
+    test_python: dict[str, Any], slices: list[dict[str, Any]]
+) -> None:
     # gaia-shared is imported by the API; its tests had their own step in the
     # retired coverage job and went with it.
-    steps = [s for s in _steps(test_python) if "libs/shared/py/tests" in str(s.get("run", ""))]
-    assert steps, "nothing runs libs/shared/py/tests — the gaia-shared suite is not running"
+    step = _step_running(test_python, "pytest.sh shared-suite")
+    assert step["if"] == "contains(matrix.slice.after, 'shared-suite')"
+    assert any("shared-suite" in s["after"] for s in slices), "no slice runs the shared suite"
+    assert "../../libs/shared/py/tests" in PYTEST_SH.read_text()
 
 
 def test_gaia_shared_runs_in_its_own_pytest_invocation(test_python: dict[str, Any]) -> None:
@@ -48,7 +109,7 @@ def test_gaia_shared_runs_in_its_own_pytest_invocation(test_python: dict[str, An
     # rootdir to the repo root, apps/api/pytest.ini stops being the inifile,
     # and asyncio_mode/marker registration vanish — which killed the whole
     # slice (2145 failed, 891 errors) the one time it was tried.
-    for entry in test_python["strategy"]["matrix"]["slice"]:
+    for entry in json.loads(SLICES_FILE.read_text())["slices"]:
         assert "libs/shared" not in entry["paths"], (
             f"slice {entry['name']} lists libs/shared in its paths; it needs its own run"
         )
@@ -79,24 +140,23 @@ def _steps(job: dict[str, Any]) -> list[dict[str, Any]]:
 
 def test_the_schemathesis_contract_fuzz_still_runs(test_python: dict[str, Any]) -> None:
     # It cannot ride inside a slice: the slice runs deselect `-m schemathesis`,
-    # and it needs a real server, serially. So it is its own step, and this is
-    # what notices if that step disappears again.
-    fuzz = [s for s in _steps(test_python) if "-m schemathesis" in str(s.get("run", ""))]
-    assert fuzz, "no step runs the schemathesis contract fuzz"
-    (step,) = fuzz
-    assert step.get("env", {}).get("USE_REAL_SERVICES") == "1", (
-        "the fuzz must run against real services, or it fuzzes mocks"
-    )
-    assert "test_schemathesis.py" in step["run"]
+    # and it needs a real server, serially. So it is its own run, and this is
+    # what notices if it disappears again.
+    step = _step_running(test_python, "pytest.sh contract-fuzz")
+    assert step["if"] == "contains(matrix.slice.after, 'contract-fuzz')"
+    script = PYTEST_SH.read_text()
+    fuzz = script[script.index("cmd_contract_fuzz() {") :]
+    fuzz = fuzz[: fuzz.index("\n}\n")]
+    assert "USE_REAL_SERVICES=1" in fuzz, "the fuzz must run against real services"
+    assert "test_schemathesis.py" in fuzz
+    assert "-m schemathesis" in fuzz
 
 
-def test_the_schemathesis_step_runs_in_a_slice_that_has_services(
-    test_python: dict[str, Any], slices: list[dict[str, Any]]
+def test_the_schemathesis_run_rides_a_slice_that_has_services(
+    slices: list[dict[str, Any]],
 ) -> None:
-    (step,) = [s for s in _steps(test_python) if "-m schemathesis" in str(s.get("run", ""))]
-    condition = str(step.get("if", ""))
-    named = [s for s in slices if f"'{s['name']}'" in condition]
-    assert named, f"the fuzz step's `if` names no slice: {condition!r}"
+    named = [s for s in slices if "contract-fuzz" in s["after"]]
+    assert named, "no slice runs the contract fuzz"
     assert all(s["services"] == "true" for s in named), (
         "the fuzz boots a real server — it must run in a slice with services up"
     )
@@ -117,3 +177,26 @@ def test_the_quality_gate_requires_the_job_that_runs_them(workflow: dict[str, An
     # branch-protection target fails when test-python does.
     gate = workflow["jobs"]["quality-gate"]
     assert "test-python" in gate["needs"]
+
+
+def test_local_dagger_quality_checks_run_sequentially_with_bounded_workers() -> None:
+    """A local full gate must not fan out every heavy lane onto one developer Mac."""
+    dagger_source = DAGGER_MODULE.read_text()
+    tree = ast.parse(dagger_source)
+    gaia_ci = next(
+        node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GaiaCi"
+    )
+    quality = next(
+        node
+        for node in gaia_ci.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "quality_checks"
+    )
+    source = ast.get_source_segment(DAGGER_MODULE.read_text(), quality)
+    assert source is not None
+    assert "asyncio.gather" not in source
+    assert "worker_limit=2" in source
+    assert "parallelism=1" in source
+    assert source.count('"--parallel=1"') == 3
+    assert '.with_env_variable("GAIA_BUILD_WORKERS", "2")' in source
+    next_config = (REPO_ROOT / "apps" / "web" / "next.config.mjs").read_text()
+    assert "process.env.GAIA_BUILD_WORKERS" in next_config

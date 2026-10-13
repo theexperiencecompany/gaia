@@ -35,8 +35,26 @@ TESTS_DIR = Path("apps/api/tests")
 LOCAL_BASE_BRANCH = "master"
 
 
+def _base_ref() -> str:
+    """Return the branch this diff is scoped to: the PR's base on CI, master locally.
+
+    GAIA_PR_BASE before GITHUB_BASE_REF, and the order is load-bearing rather
+    than defensive. For a PR in a native GitHub stack the `pull_request` payload
+    carries the STACK'S TRUNK in base.ref, not the PR's parent — measured
+    2026-09-11, when #1175 (parent feat/first-steps-activation, a one-module
+    diff) planned 119 modules against master. `changes.sh base` asks the API,
+    which is the only source that names the parent, and the run hands that
+    answer to every lane as GAIA_PR_BASE.
+    """
+    return (
+        os.environ.get("GAIA_PR_BASE", "")
+        or os.environ.get("GITHUB_BASE_REF", "")
+        or LOCAL_BASE_BRANCH
+    )
+
+
 def _merge_base() -> str:
-    """The merge-base commit between HEAD and the PR's base ref, or "" outside CI.
+    """Return the merge-base commit between HEAD and the PR's base ref, or "" outside CI.
 
     The single source of truth both diff-against-base computations in this
     file use (line ranges below, and comment-only detection). Resolving the
@@ -57,7 +75,7 @@ def _merge_base() -> str:
     origin and no local master). Callers must treat "" as "scope unknown" and
     refuse to run — never as "nothing changed".
     """
-    base = os.environ.get("GITHUB_BASE_REF", "") or LOCAL_BASE_BRANCH
+    base = _base_ref()
     for ref in (f"origin/{base}", base):
         try:
             return subprocess.check_output(
@@ -67,7 +85,9 @@ def _merge_base() -> str:
             ).strip()
         except subprocess.CalledProcessError:
             continue
-    if os.environ.get("GITHUB_BASE_REF"):
+    # Either variable means "a PR run told us a base", and an unresolvable base
+    # there is a hard error rather than the local fallback below.
+    if os.environ.get("GAIA_PR_BASE") or os.environ.get("GITHUB_BASE_REF"):
         print(
             f"::error::mutation gate: could not resolve merge-base with origin/{base}",
             file=sys.stderr,
@@ -76,41 +96,61 @@ def _merge_base() -> str:
     return ""
 
 
-def _tokens_without_comments(source: str) -> list[tuple[int, str]] | None:
-    """``source``'s tokens with COMMENT and NL (comment-only-line terminator)
-    stripped, or None if it fails to tokenize.
+def _is_triple_quoted(source: str, node: ast.expr) -> bool:
+    """Return True when every string literal in node's source segment is triple-quoted.
 
-    Stripping only COMMENT would leave a stray NL where a whole-line comment
-    used to be, making a deleted comment-only line look like a structural
-    change. Stripping both makes the comparison see straight through both
-    forms: a trailing ``# noqa: X`` sliced off a code line, and a whole line
-    that was nothing but a comment to begin with.
+    mutmut's operator_string (mutmut/mutation/mutators.py) skips a SimpleString only
+    when it is triple-quoted, so a single-quoted leading string IS mutated. Implicit
+    concatenation is several SimpleStrings to mutmut but one Constant here, hence the
+    tokenize walk rather than a check of the first quote alone.
     """
-    tokens: list[tuple[int, str]] = []
+    segment = ast.get_source_segment(source, node)
+    if segment is None:
+        return False
     try:
-        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
-            if tok.type in (tokenize.COMMENT, tokenize.NL, tokenize.ENCODING):
-                continue
-            tokens.append((tok.type, tok.string))
+        tokens = list(tokenize.generate_tokens(io.StringIO(segment).readline))
     except (tokenize.TokenError, IndentationError, SyntaxError):
+        return False
+    literals = [token.string for token in tokens if token.type == tokenize.STRING]
+    if not literals:
+        return False
+    return all(
+        literal[len(literal) - len(literal.lstrip("rRbBuUfF")) :].startswith(('"""', "'''"))
+        for literal in literals
+    )
+
+
+def _code_without_docs(source: str) -> str | None:
+    """Return source's AST dump with triple-quoted docstrings removed, or None on a parse error.
+
+    Comments never reach the AST, so two sources with equal dumps differ only in
+    text that cannot produce a mutant. Only TRIPLE-quoted leading strings are
+    dropped, matching exactly what mutmut refuses to mutate.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
         return None
-    return tokens
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            body = node.body
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+                and _is_triple_quoted(source, body[0].value)
+            ):
+                del body[0]
+    return ast.dump(tree)
 
 
 def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
-    """True when ``module_path``'s diff against ``merge_base`` changes only
-    comments — i.e. it has zero possible mutants, so requiring a test file
-    for it would be meaningless.
+    """Return True when ``module_path``'s diff against ``merge_base`` changes only comments or docstrings.
 
-    A pragmatic line-based diff (skip lines whose changed side starts with
-    ``#``) is not enough here: this codebase's suppressions are routinely
-    trailing comments on a code line (``except Exception as e:  # noqa:
-    BLE001``), and after the comment is deleted the changed line no longer
-    starts with ``#`` at all — a line-prefix check would misclassify that as
-    a code change. Tokenizing both sides and comparing with COMMENT/NL
-    stripped catches both the trailing-comment and whole-line-comment forms
-    correctly, because it compares what the code actually *is*, not how the
-    diff happens to be shaped.
+    Such a diff has zero mutants, so no test file is required. Compared by AST,
+    not line prefix: deleting a trailing ``# noqa`` leaves a changed line that
+    does not start with ``#``.
     """
     try:
         old_source = subprocess.check_output(
@@ -123,11 +163,11 @@ def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
     new_full_path = Path(module_path)
     if not new_full_path.exists():
         return False  # deleted file — not comment-only
-    old_tokens = _tokens_without_comments(old_source)
-    new_tokens = _tokens_without_comments(new_full_path.read_text())
-    if old_tokens is None or new_tokens is None:
+    old_code = _code_without_docs(old_source)
+    new_code = _code_without_docs(new_full_path.read_text())
+    if old_code is None or new_code is None:
         return False  # unparseable on either side — don't guess, enforce normally
-    return old_tokens == new_tokens
+    return old_code == new_code
 
 
 @cache
@@ -189,7 +229,7 @@ def _collect_module_strings(refs: set[str], node: ast.AST) -> None:
 
 
 def _is_bare_module_path(candidate: str) -> bool:
-    """True for ``app.some.module`` / ``app.some.module.thing`` and nothing else.
+    """Return True for ``app.some.module`` / ``app.some.module.thing`` and nothing else.
 
     Rejects strings that embed a module name in surrounding syntax (quotes,
     parens, spaces) — those are fixture data, not references.
@@ -224,15 +264,29 @@ def _importers_of(module: str) -> tuple[str, ...]:
     return sorted(importers)
 
 
-def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
+def _test_files_for(
+    module_rel: str, tests_dir: Path = TESTS_DIR, _seen: set[str] | None = None
+) -> list[str]:
     """Test files (repo-root-relative) referencing the module, unit tier first.
 
-    Real-tier suites (tests/integration/real/...) skip without
-    USE_REAL_SERVICES=1, which would leave the mutation run with zero
-    covering tests; prefer hermetic tests/unit/ hits so the lane can
-    actually exercise the module.
+    Ordered rather than filtered here: ``with_unit_mirror`` decides which
+    tiers the lane runs. Unit sorts first because it is hermetic; the contract
+    tier needs USE_REAL_SERVICES=1 and live Mongo/Redis, which the lane now
+    inherits from its job the way every other lane does.
     """
     module = f"app.{module_rel.replace('/', '.')}"
+    if _seen is None:
+        _seen = set()
+    # The consumer fallback below walks the importer graph, which has cycles:
+    # two modules that import each other (or a module that imports itself)
+    # recurse A -> B -> A -> ... until the interpreter gives up. A module with
+    # no direct test hit would therefore crash the plan step with a
+    # RecursionError instead of reporting "no test file". Track the modules
+    # already on this traversal's path and stop at a revisit — the revisit
+    # adds no test file the first visit did not already collect.
+    if module in _seen:
+        return []
+    _seen.add(module)
     module_py = f"{module}.py"
     hits: list[str] = []
     for path in _py_files(tests_dir):
@@ -254,7 +308,7 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
         # app.memory.engine, whose real-tier tests drive every store line.)
         consumers = _importers_of(module)
         for consumer in consumers:
-            hits.extend(_test_files_for(consumer.replace("app.", "", 1), tests_dir))
+            hits.extend(_test_files_for(consumer.replace("app.", "", 1), tests_dir, _seen))
     hits.sort(key=lambda p: (not p.startswith(str(tests_dir / "unit")), p))
     return hits
 
@@ -288,7 +342,15 @@ def with_unit_mirror(
     # Kept as a filter rather than a cap: dropping the slow tiers is what makes
     # the run finish, and dropping *arbitrary* files is what re-introduces the
     # false-green this function exists to prevent — so every unit file stays.
-    unit_only = [hit for hit in ordered if hit.startswith("tests/unit/")]
+    #
+    # The contract tier stays too. It is the ONLY tier that exercises a
+    # repository's query shapes against real Mongo, it runs in ~2s per
+    # repository, and dropping it was how every changed repository method
+    # reported "no covering test" while the gate passed (users.py, 19 lines,
+    # on one PR). The cost this filter guards against is e2e graph compilation,
+    # which contracts never do.
+    fast_tiers = ("tests/unit/", "tests/contracts/")
+    unit_only = [hit for hit in ordered if hit.startswith(fast_tiers)]
     # A module whose only coverage is integration/e2e keeps it: measuring it
     # slowly beats not measuring it, and reporting "no test file" would be a lie.
     ordered = unit_only or ordered
@@ -334,6 +396,16 @@ def main() -> int:
         return scope(sys.argv[2].removeprefix("apps/api/"))
     changed = [line.strip() for line in sys.stdin if line.strip()]
     merge_base = _merge_base()
+    # The base is the single input that decides the entire matrix, and nothing
+    # in the lane used to print it. PR #1202 packed 119 modules into 6 shards
+    # for an 11-module diff because it was still targeting master rather than
+    # the branch it is stacked on, and the only way to find that out was to
+    # read a shard's module list and diff the two branches by hand.
+    print(
+        f"mutation gate: diffing against {_base_ref()} "
+        f"(merge-base {merge_base[:12] or 'unresolved'})",
+        file=sys.stderr,
+    )
     matrix: list[dict[str, object]] = []
     failures: list[str] = []
     for module in changed:
@@ -354,7 +426,7 @@ def main() -> int:
         if merge_base and _is_comment_only_change(module, merge_base):
             print(
                 f"::notice::mutation gate: {rel}'s diff vs {merge_base[:12]} is "
-                "comment-only (no mutable code changed) — skipping",
+                "comment/docstring-only (no mutable code changed) — skipping",
                 file=sys.stderr,
             )
             continue
@@ -362,7 +434,21 @@ def main() -> int:
         rel_py = rel_py.removesuffix(".py")
         testfiles = with_unit_mirror(rel_py, _test_files_for(rel_py))
         if testfiles:
-            matrix.append(_entry(rel, testfiles, merge_base))
+            entry = _entry(rel, testfiles, merge_base)
+            # A diff that only DELETES lines adds nothing to mutate, the same
+            # way a comment-only one does — and it has to be dropped HERE.
+            # `mutation.sh module` refuses an empty scope (exit 2) because an
+            # empty scope classifies every survivor as out-of-scope and exits 0,
+            # so passing this module on would fail the shard for a module with
+            # no work in it. Printed, never silent.
+            if merge_base and not entry["changed_lines"]:
+                print(
+                    f"::notice::mutation gate: {rel}'s diff vs {merge_base[:12]} only "
+                    "deletes lines (nothing added to mutate) — skipping",
+                    file=sys.stderr,
+                )
+                continue
+            matrix.append(entry)
             continue
         unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
         failures.append(
@@ -378,7 +464,7 @@ def main() -> int:
 
 
 def _entry(module_rel: str, testfiles: list[str], merge_base: str) -> dict[str, object]:
-    """Module matrix entry with the PR's changed line ranges for this file.
+    """Return the module matrix entry with the PR's changed line ranges for this file.
 
     The gate is diff-driven: a survivor only fails the lane when its mutation
     lands on a line the PR changed. Mutants on untouched lines are noted, not
@@ -418,8 +504,19 @@ def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
         if not match:
             continue
         start = int(match.group(1))
-        count = int(match.group(2) or "1")
-        ranges.append([start, start + max(count, 1) - 1])
+        # A missing count is git's shorthand for exactly one line (`@@ +446 @@`).
+        # An EXPLICIT zero is the opposite: `@@ -447 +446,0 @@` is a pure
+        # deletion, which adds nothing and so leaves nothing to mutate. The old
+        # `max(count, 1)` collapsed the two, and the range it invented —
+        # [446, 446] — points at the line that happened to follow the deleted
+        # one: unchanged code the PR never touched. Every consumer believed it.
+        # On #1175 the gate failed conversation_service.py for "1 changed line
+        # no test reaches (line 446)" against a line the diff only deleted
+        # above, and mutmut's covered_lines scope carried the same phantom.
+        count = int(match.group(2)) if match.group(2) is not None else 1
+        if count == 0:
+            continue
+        ranges.append([start, start + count - 1])
     return ranges
 
 

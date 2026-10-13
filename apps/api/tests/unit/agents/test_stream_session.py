@@ -13,24 +13,17 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
-    claim_bg_integration,
     claim_tool_output,
     create_session,
-    decrement_pending_subagents,
     get_or_create_session,
-    get_pending_subagents,
     get_session,
-    has_bg_integration,
-    increment_pending_subagents,
-    mark_executor_queued,
     mark_executor_spawned,
     note_tool_output_owner,
-    queued_without_run,
-    release_bg_integration,
+    run_user_from_configurable,
     signal_executor_done,
     teardown_session,
-    was_executor_spawned,
 )
+from app.models.user_models import AuthenticatedUser
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +38,6 @@ class TestSessionRegistry:
     def test_create_then_get_returns_same_session(self) -> None:
         created = create_session("s1", RunKind.LIVE)
         assert get_session("s1") is created
-        assert created.kind is RunKind.LIVE
         assert created.executor_spawned is False
 
     def test_create_overwrites_existing_session(self) -> None:
@@ -60,15 +52,10 @@ class TestSessionRegistry:
     def test_teardown_leaves_no_residue(self) -> None:
         create_session("s1", RunKind.QUEUED)
         mark_executor_spawned("s1")
-        increment_pending_subagents("s1")
-        claim_bg_integration("s1", "gmail")
 
         teardown_session("s1")
 
         assert get_session("s1") is None
-        assert was_executor_spawned("s1") is False
-        assert get_pending_subagents("s1") == 0
-        assert has_bg_integration("s1", "gmail") is False
 
     def test_teardown_is_idempotent(self) -> None:
         create_session("s1", RunKind.LIVE)
@@ -81,15 +68,14 @@ class TestSessionRegistry:
         # unregistered stream must work (and not crash callers like handoff).
         session = get_or_create_session("ghost")
         assert get_session("ghost") is session
-        assert session.kind is RunKind.LIVE
 
 
 class TestExecutorLifecycleFlags:
     def test_spawned_flag_lifecycle(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        assert was_executor_spawned("s1") is False
+        session = create_session("s1", RunKind.LIVE)
+        assert session.executor_spawned is False
         mark_executor_spawned("s1")
-        assert was_executor_spawned("s1") is True
+        assert session.executor_spawned is True
 
     def test_signal_executor_done_sets_event(self) -> None:
         session = create_session("s1", RunKind.LIVE)
@@ -99,33 +85,6 @@ class TestExecutorLifecycleFlags:
 
     def test_signal_without_session_is_safe(self) -> None:
         signal_executor_done("missing")  # must not raise
-
-
-class TestQueuedWithoutRun:
-    """``queued_without_run`` is the "nothing happened yet" signal the turn's
-    final message is built from, so each of its three answers is load-bearing."""
-
-    def test_a_stream_with_no_session_reports_nothing(self) -> None:
-        # A stream nobody registered has no queued dispatch to report, and the
-        # missing session must be answered rather than dereferenced.
-        assert queued_without_run("never-seen") is None
-
-    def test_a_queue_with_no_spawn_reports_the_task(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        mark_executor_queued("s1", "task-1")
-        assert queued_without_run("s1") == "task-1"
-
-    def test_a_spawned_executor_hides_the_queued_task(self) -> None:
-        # The turn did real work, so the queued dispatch is extra work alongside
-        # it, not the substitute the caller would otherwise narrate.
-        create_session("s1", RunKind.LIVE)
-        mark_executor_queued("s1", "task-1")
-        mark_executor_spawned("s1")
-        assert queued_without_run("s1") is None
-
-    def test_a_session_that_never_queued_reports_nothing(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        assert queued_without_run("s1") is None
 
 
 class TestOwnershipRule:
@@ -187,7 +146,7 @@ class TestOwnershipRule:
                 user_message_id="m1",
             ),
         )
-        assert run.user == {"user_id": "u1", "email": "u1@x.com", "name": "Uno", "timezone": None}
+        assert run.user == AuthenticatedUser(user_id="u1", email="u1@x.com", name="Uno")
         assert run.workflow_id == "wf-9"
         assert run.workflow_title == "Daily digest"
         assert run.workflow_notify_on_completion is False
@@ -206,39 +165,6 @@ class TestOwnershipRule:
         assert run.workflow_id is None
         assert run.workflow_notify_on_completion is True
         assert run.executor_owns_tool_data is False
-
-
-class TestSubagentCoordination:
-    def test_counter_increments_and_decrements(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        assert increment_pending_subagents("s1") == 1
-        assert increment_pending_subagents("s1") == 2
-        assert decrement_pending_subagents("s1") == 1
-        assert get_pending_subagents("s1") == 1
-
-    def test_counter_floors_at_zero(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        assert decrement_pending_subagents("s1") == 0
-        assert get_pending_subagents("s1") == 0
-
-    def test_counter_for_missing_session_is_zero(self) -> None:
-        assert get_pending_subagents("missing") == 0
-        assert decrement_pending_subagents("missing") == 0
-
-    def test_integration_slot_claim_is_exclusive_until_released(self) -> None:
-        # The slot is what stops two concurrent background handoffs to the same
-        # integration from sharing (and corrupting) one checkpoint thread.
-        create_session("s1", RunKind.LIVE)
-        assert claim_bg_integration("s1", "gmail") is True
-        assert claim_bg_integration("s1", "gmail") is False  # second claim loses
-        assert claim_bg_integration("s1", "slack") is True  # other integrations unaffected
-
-        release_bg_integration("s1", "gmail")
-        assert claim_bg_integration("s1", "gmail") is True  # reusable after release
-
-    def test_integration_slot_for_missing_session_is_safe(self) -> None:
-        release_bg_integration("missing", "gmail")  # must not raise
-        assert has_bg_integration("missing", "gmail") is False
 
 
 class TestToolOutputOwnership:
@@ -287,9 +213,7 @@ class TestToolOutputOwnership:
 
 @pytest.mark.regression
 class TestExecutorRunCarriesWorkflowExecution:
-    """The execution id lives only on the workflow task's wide event, never in
-    ``configurable``; the run built inside that boundary has to pick it up or
-    every executor call it makes is unattributable to the run in the ledger."""
+    """The execution id lives only on the workflow task's wide event, never in configurable; the run built inside that boundary has to pick it up or every executor call it makes is unattributable to the run in the ledger."""
 
     async def test_from_configurable_reads_the_execution_id_off_the_boundary(self) -> None:
         from shared.py.wide_events import WorkflowContext, log, wide_task
@@ -322,3 +246,31 @@ class TestExecutorRunCarriesWorkflowExecution:
         )
 
         assert run.workflow_execution_id is None
+
+
+class TestRunUserFromConfigurable:
+    """A detached run acts for the user its configurable names, rebuilt field by field."""
+
+    def test_every_carried_field_is_the_users_own(self) -> None:
+        user = run_user_from_configurable(
+            {
+                "user_id": "u1",
+                "email": "u1@x.com",
+                "user_name": "Uno",
+                "user_timezone": "Asia/Kolkata",
+            }
+        )
+
+        assert user == AuthenticatedUser(
+            user_id="u1", email="u1@x.com", name="Uno", timezone="Asia/Kolkata"
+        )
+
+    def test_absent_identity_keys_rebuild_as_empty(self) -> None:
+        user = run_user_from_configurable({"conversation_id": "c1"})
+
+        assert (user.user_id, user.email, user.name, user.timezone) == ("", "", "", None)
+
+    def test_an_identity_carried_as_none_stays_none(self) -> None:
+        user = run_user_from_configurable({"user_id": None, "email": None, "user_name": None})
+
+        assert (user.user_id, user.email, user.name) == ("", None, None)

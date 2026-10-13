@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+
 import aio_pika
 from aio_pika import Message
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
@@ -8,6 +11,10 @@ from app.constants.log_tags import LogTag
 from app.constants.outbound import (
     OUTBOUND_DLX,
     OUTBOUND_QUEUES,
+    RABBITMQ_CONNECT_TIMEOUT_SECONDS,
+    RABBITMQ_HEARTBEAT_SECONDS,
+    RABBITMQ_PUBLISH_TIMEOUT_SECONDS,
+    RABBITMQ_TOPOLOGY_TIMEOUT_SECONDS,
     dlq_name,
     work_queue_arguments,
 )
@@ -22,12 +29,19 @@ class RabbitMQPublisher:
         self.channel: AbstractChannel | None = None
         self.declared_queues: set[str] = set()
         self._outbound_topology_declared: bool = False
+        # Serializes reconnects so concurrent publishers cannot each open a
+        # connection (and leak all but the last one).
+        self._connect_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         """Connect to RabbitMQ and create channel."""
         if self.connection is None:
             log.debug(f"{LogTag.STARTUP} Establishing RabbitMQ connection")
-            self.connection = await aio_pika.connect_robust(self.amqp_url)
+            self.connection = await aio_pika.connect_robust(
+                self.amqp_url,
+                timeout=RABBITMQ_CONNECT_TIMEOUT_SECONDS,
+                heartbeat=RABBITMQ_HEARTBEAT_SECONDS,
+            )
             self.channel = await self.connection.channel()
             log.set(db={"connection_status": "connected", "backend": "rabbitmq"})
             log.info(f"{LogTag.STARTUP} RabbitMQ connection established")
@@ -58,8 +72,20 @@ class RabbitMQPublisher:
         during long-running tasks. FastAPI main app stays connected via
         the WebSocket consumer, but ARQ workers only publish sporadically.
         """
-        if not await self.is_connected():
+        if await self.is_connected():
+            return
+        async with self._connect_lock:
+            # Double-checked: another waiter may have reconnected while we
+            # queued on the lock.
+            if await self.is_connected():
+                return
             log.info(f"{LogTag.STARTUP} RabbitMQ connection not active, reconnecting...")
+            # A connection can be open with no channel (connect() timed out
+            # between the two); forgetting it would leak the socket and its
+            # heartbeat task, once per timeout.
+            if self.connection is not None and not self.connection.is_closed:
+                with contextlib.suppress(Exception):
+                    await self.connection.close()
             # Reset connection state
             self.connection = None
             self.channel = None
@@ -69,15 +95,19 @@ class RabbitMQPublisher:
             await self.connect()
             log.info(f"{LogTag.STARTUP} RabbitMQ reconnected successfully")
 
-    async def _publish_with_retry(self, queue_name: str, body: bytes, *, declare: bool) -> None:
+    async def _publish_with_retry(
+        self, queue_name: str, body: bytes, *, declare: bool, expiration: int | None = None
+    ) -> None:
         """Publish to the default exchange, reconnecting and retrying once.
 
         The reconnect path handles ARQ-worker idle timeouts (workers publish
-        sporadically). ``declare`` controls whether the queue is declared first:
+        sporadically). declare controls whether the queue is declared first:
         the WebSocket relay queue is declared on demand, while outbound work
-        queues are pre-declared by ``declare_outbound_topology`` and pass False.
+        queues are pre-declared by declare_outbound_topology and pass False.
         """
-        message = Message(body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT)
+        message = Message(
+            body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT, expiration=expiration
+        )
 
         async def _attempt() -> None:
             await self.ensure_connected()
@@ -88,78 +118,85 @@ class RabbitMQPublisher:
             await self.channel.default_exchange.publish(message, routing_key=queue_name)
 
         try:
-            await _attempt()
+            await asyncio.wait_for(_attempt(), timeout=RABBITMQ_PUBLISH_TIMEOUT_SECONDS)
         except Exception as e:
-            log.error(
-                f"{LogTag.STARTUP} Failed to publish to RabbitMQ: . Attempting recovery...",
+            log.warning(
+                f"{LogTag.STARTUP} Failed to publish to RabbitMQ, attempting recovery",
+                queue_name=queue_name,
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            await _attempt()
-            log.info(f"{LogTag.STARTUP} Successfully published after reconnection")
+            try:
+                await asyncio.wait_for(_attempt(), timeout=RABBITMQ_PUBLISH_TIMEOUT_SECONDS)
+            except Exception as retry_error:
+                # Where a bot reply is actually lost. One attempt failing is
+                # routine and recovers; both failing is the incident, and the
+                # propagating exception does not say which queue it was.
+                log.error(
+                    f"{LogTag.STARTUP} Publish to RabbitMQ failed after retry — message dropped",
+                    queue_name=queue_name,
+                    error=str(retry_error),
+                    error_type=type(retry_error).__name__,
+                )
+                raise
+            log.info(
+                f"{LogTag.STARTUP} Successfully published after reconnection",
+                queue_name=queue_name,
+            )
 
     async def publish(self, queue_name: str, body: bytes) -> None:
-        """Publish to ``queue_name`` (declared on demand) with one retry."""
+        """Publish to queue_name (declared on demand) with one retry."""
         await self._publish_with_retry(queue_name, body, declare=True)
 
     async def declare_outbound_topology(self) -> None:
         """Idempotently declare the outbound DLX, work queues, and DLQs.
 
         Declaration arguments MUST match the bot consumer's (see
-        ``libs/shared/ts/src/bots/consumer/topology.ts``) or RabbitMQ rejects
+        libs/shared/ts/src/bots/consumer/topology.ts) or RabbitMQ rejects
         the redeclare with PRECONDITION_FAILED. Safe to call on every startup;
         the durable queues persist so messages survive while a bot is offline.
         """
-        await self.ensure_connected()
-        if not self.channel:
-            raise RuntimeError("Failed to establish RabbitMQ connection")
 
-        dlx = await self.channel.declare_exchange(
-            OUTBOUND_DLX, aio_pika.ExchangeType.DIRECT, durable=True
-        )
-        for queue_name in OUTBOUND_QUEUES.values():
-            dlq = await self.channel.declare_queue(dlq_name(queue_name), durable=True)
-            await dlq.bind(dlx, routing_key=dlq_name(queue_name))
-            await self.channel.declare_queue(
-                queue_name, durable=True, arguments=work_queue_arguments(queue_name)
+        async def _declare() -> None:
+            await self.ensure_connected()
+            if not self.channel:
+                raise RuntimeError("Failed to establish RabbitMQ connection")
+
+            dlx = await self.channel.declare_exchange(
+                OUTBOUND_DLX, aio_pika.ExchangeType.DIRECT, durable=True
             )
+            for queue_name in OUTBOUND_QUEUES.values():
+                dlq = await self.channel.declare_queue(dlq_name(queue_name), durable=True)
+                await dlq.bind(dlx, routing_key=dlq_name(queue_name))
+                await self.channel.declare_queue(
+                    queue_name, durable=True, arguments=work_queue_arguments(queue_name)
+                )
+
+        await asyncio.wait_for(_declare(), timeout=RABBITMQ_TOPOLOGY_TIMEOUT_SECONDS)
         self._outbound_topology_declared = True
 
-    async def publish_outbound(self, queue_name: str, body: bytes) -> None:
+    async def publish_outbound(
+        self, queue_name: str, body: bytes, *, expiration: int | None = None
+    ) -> None:
         """Publish to an outbound work queue with one retry.
 
-        Declares the outbound topology once (lazily) before the first publish so
-        a message can never outrun the startup declaration and be silently
-        dropped on the default exchange. The flag resets on reconnect so a fresh
-        channel re-declares.
+        expiration is the broker-side TTL in seconds; past it the message dead-letters. Topology
+        is declared lazily before the first publish and re-declared after reconnect.
         """
         if not self._outbound_topology_declared:
             try:
                 await self.declare_outbound_topology()
             except ChannelPreconditionFailed as e:
-                # A queue already exists with divergent arguments. The redeclare
-                # is rejected (and closes the channel), but the queue IS present,
-                # so publishing to it via the default exchange still works.
-                # Mark the topology declared so we stop re-attempting the failing
-                # redeclare on every publish (which would otherwise wedge all
-                # outbound delivery), and surface the drift loudly for an
-                # operator to reconcile.
-                #
-                # Residual: declare_outbound_topology declares the exchange then
-                # each queue in a loop, so if the FIRST declaration is the one
-                # that diverges, later queues in the same call are skipped and the
-                # flag still flips. That's acceptable here because
-                # declare_outbound_topology_on_startup eagerly declares the full
-                # topology at boot for both the API and the worker — this lazy
-                # path only runs as a post-reconnect fallback, by which point the
-                # durable queues already exist.
+                # Queue exists with divergent arguments; redeclare closes the channel but the
+                # queue still works via the default exchange. Mark declared, stop retrying, and
+                # log the drift for an operator to reconcile.
                 self._outbound_topology_declared = True
                 log.error(
                     f"{LogTag.STARTUP} Outbound topology redeclare rejected (divergent queue arguments); "
                     "publishing to the existing queue. Delete or migrate it to reconcile.",
                     error=str(e),
                 )
-        await self._publish_with_retry(queue_name, body, declare=False)
+        await self._publish_with_retry(queue_name, body, declare=False, expiration=expiration)
 
     async def close(self) -> None:
         """Close RabbitMQ connection and channel."""
@@ -195,14 +232,10 @@ async def init_rabbitmq_publisher() -> RabbitMQPublisher:
 
 
 async def get_rabbitmq_publisher() -> RabbitMQPublisher:
-    """
-    Get the RabbitMQ publisher from lazy provider.
-
-    Returns:
-        RabbitMQPublisher: The RabbitMQ publisher instance
+    """Get the RabbitMQ publisher from the lazy provider.
 
     Raises:
-        RuntimeError: If RabbitMQ publisher is not available
+        RuntimeError: If the publisher is not available.
     """
     publisher_instance: RabbitMQPublisher | None = await providers.aget("rabbitmq_publisher")
     if publisher_instance is None:
@@ -219,10 +252,8 @@ async def declare_outbound_topology_on_startup() -> None:
         publisher = await get_rabbitmq_publisher()
         await publisher.declare_outbound_topology()
     except ChannelPreconditionFailed as e:
-        # A queue already exists with divergent arguments. Unlike a missing
-        # broker, the lazy first-publish re-declare CANNOT self-heal this —
-        # every outbound publish keeps failing until an operator deletes or
-        # migrates the queue, so surface it loudly instead of as a warning.
+        # Queue exists with divergent arguments; unlike a missing broker this can't self-heal,
+        # so surface it loudly instead of as a warning.
         log.error(
             f"{LogTag.STARTUP} Outbound topology rejected: a queue exists with divergent arguments. "
             "Delete or migrate it — outbound delivery will fail until resolved.",

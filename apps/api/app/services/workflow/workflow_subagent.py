@@ -1,8 +1,8 @@
 """
 Workflow subagent factory and runner.
 
-This module provides the dedicated workflow subagent that is:
-- NOT registered in oauth_config.py (hidden from handoff discovery)
+This module provides the dedicated workflow authoring worker that is:
+- NOT registered in oauth_config.py (not an integration)
 - Invoked directly by create_workflow tool
 - Uses structured JSON output for workflow drafts
 
@@ -12,12 +12,14 @@ The subagent has access to:
 - search_memory: Access user memories
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 from typing import Any, cast
 
 from langchain_core.messages import (
     AIMessageChunk,
+    BaseMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
@@ -28,7 +30,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 
 from app.agents.context.assemble import assemble_context
-from app.agents.context.section_context import SectionContext
+from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
 from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.llm.client import init_llm
@@ -38,7 +40,12 @@ from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
 from app.helpers.message_helpers import build_current_time_message
-from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
+from app.models.agent_models import (
+    AgentConfigurable,
+    AgentUserContext,
+    StreamChunkMetadata,
+    agent_configurable,
+)
 from app.services.workflow.knowledge import build_connected_integrations_hint
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.utils.stream_utils import extract_tool_entries_from_update
@@ -49,10 +56,9 @@ from shared.py.wide_events import log
 # corrected draft before giving up (the persist-time filter is the final backstop).
 MAX_DRAFT_CORRECTIONS = 2
 
-# When the authoring loop exhausts its step budget (a wandering model that keeps
-# calling discovery tools without answering), we force one final turn with this
-# directive. The step budget resets and filter_messages_node drops the dangling
-# tool calls, so the model can only reply with text.
+# Forced final turn when the authoring loop exhausts its step budget. The
+# budget resets and filter_messages_node drops dangling tool calls, so the
+# model can only reply with text.
 FORCE_FINALIZE_DIRECTIVE = (
     "You have already gathered enough information. STOP calling tools now. "
     "Reply with your final answer as exactly one fenced ```json block and nothing "
@@ -111,10 +117,9 @@ async def get_workflow_subagent() -> CompiledStateGraph:
 
     llm = init_llm()
 
-    # Authoring-only: the workflow assistant emits a draft, it does not execute.
-    # This strips the always-available execution tools (bash/read/web/research),
-    # the plan_tasks/spawn_subagent machinery, and finish_task, so it can only
-    # use its discovery tools and then return the finalized JSON.
+    # Authoring-only: strips the always-available execution tools, the
+    # plan_tasks/spawn_subagent machinery, and finish_task — only discovery
+    # tools remain, so the agent emits a draft rather than executing.
     _workflow_subagent_graph = await SubAgentFactory.create_provider_subagent(
         provider="workflow",
         name="workflow_agent",
@@ -159,7 +164,7 @@ class WorkflowSubagentRunner:
     ) -> str:
         """Execute the workflow subagent with streaming, returning the complete response text.
 
-        ``base_configurable`` is the parent (executor) configurable so the subagent
+        base_configurable is the parent (executor) configurable so the subagent
         inherits its plan tier, plan-routed model, provider pin, and root_request_id
         — keeping pro users on the paid model and the budget wall enforced across the
         whole turn tree, exactly like other handoff subagents.
@@ -195,10 +200,8 @@ class WorkflowSubagentRunner:
         )
         configurable = agent_configurable(config)
 
-        # Authoring only needs a few discovery calls before it emits JSON. Cap the
-        # loop below a full agent's budget so a wandering model can't burn ~20 tool
-        # cycles, and so the forced-finalize fallback (see the execute loop) kicks
-        # in quickly instead of after a long stall.
+        # Cap below a full agent's budget so a wandering model can't burn ~20
+        # tool cycles before the forced-finalize fallback kicks in.
         config["recursion_limit"] = WORKFLOW_SUBAGENT_RECURSION_LIMIT
 
         # Build messages
@@ -211,15 +214,12 @@ class WorkflowSubagentRunner:
             SectionContext.from_configurable(
                 AgentTier.WORKFLOW_AUTHORING,
                 configurable,
-                query=task,
-                user_id=user_id,
+                SectionScope(query=task, user_id=user_id),
             )
         )
 
-        # Compact ground truth (which integrations THIS user has connected) folded
-        # into the task. It must NOT be a separate SystemMessage: it would occupy
-        # the static slot and evict WORKFLOW_AGENT_SYSTEM_PROMPT, losing the whole
-        # role/rules/output-format prompt.
+        # Must NOT be a separate SystemMessage: it would occupy the static slot
+        # and evict WORKFLOW_AGENT_SYSTEM_PROMPT, losing the whole prompt.
         hint = await build_connected_integrations_hint(user_id)
         human_message = HumanMessage(
             content=f"{hint}\n\n---\n\nRequest: {task}",
@@ -231,7 +231,7 @@ class WorkflowSubagentRunner:
         # is made of. This tier was the only one seeded without a clock.
         time_message = build_current_time_message(user_timezone=user_timezone)
 
-        initial_state: dict[str, Any] = {
+        initial_state: dict[str, object] = {
             "messages": [
                 system_message,
                 *assembled.messages(),
@@ -248,7 +248,7 @@ class WorkflowSubagentRunner:
         # structure or integration_ids that name a non-existent integration), hand the
         # error back and let it re-emit, up to MAX_DRAFT_CORRECTIONS times.
         emitted_tool_calls: set[str] = set()
-        state: dict[str, Any] = initial_state
+        state: dict[str, object] = initial_state
         complete_message = ""
         for attempt in range(MAX_DRAFT_CORRECTIONS + 1):
             complete_message, hit_limit = await WorkflowSubagentRunner._stream_turn(
@@ -324,7 +324,7 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     async def _emit_update_entries(
-        payload: dict[str, Any],
+        payload: Mapping[str, object],
         stream_writer: StreamWriter | None,
         emitted_tool_calls: set[str],
     ) -> None:
@@ -340,11 +340,12 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     def _consume_message_chunk(
-        payload: tuple[Any, Any],
+        payload: tuple[BaseMessage, StreamChunkMetadata],
         stream_writer: StreamWriter | None,
         complete_message: str,
     ) -> str:
         """Fold one messages-mode event into the running assistant text."""
+        metadata: StreamChunkMetadata
         chunk, metadata = payload
         if metadata.get("silent"):
             return complete_message
@@ -367,7 +368,7 @@ class WorkflowSubagentRunner:
     @staticmethod
     async def _stream_turn(
         subagent_graph: CompiledStateGraph,
-        state: dict[str, Any],
+        state: Mapping[str, object],
         config: RunnableConfig,
         stream_writer: StreamWriter | None,
         emitted_tool_calls: set[str],
@@ -408,8 +409,10 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     async def _draft_correction_needed(text: str) -> str | None:
-        """If the agent's reply is a finalized/parseable draft with only real integration
-        ids, return None. Otherwise return a correction instruction to hand back to it."""
+        """Return None if the reply is a finalized draft with only real integration ids.
+
+        Otherwise return a correction instruction to hand back to the agent.
+        """
         result = parse_subagent_response(text)
         if result.mode == "parse_error":
             return (

@@ -3,29 +3,29 @@ One-time, idempotent migration: repair workflow + reminder scheduling state.
 
 Two defects left existing documents stuck:
 
-1. ``scheduled_at`` / ``stop_after`` / ``trigger_config.next_run`` (and the audit
-   fields ``created_at`` / ``updated_at``) were persisted as ISO **strings** instead
+1. scheduled_at / stop_after / trigger_config.next_run (and the audit
+   fields created_at / updated_at) were persisted as ISO **strings** instead
    of native datetimes. The scheduler selects due work with
-   ``scheduled_at: {"$lte": now}``, which never matches a string — so those tasks are
+   scheduled_at: {"$lte": now}, which never matches a string — so those tasks are
    invisible to the recovery scan — and date-range/sort queries on the audit fields
    behave inconsistently across the mixed string/date population.
 2. The workflow executor never re-armed recurrence, so a recurring workflow fired
-   once and then sat at a stale ``scheduled_at`` forever.
+   once and then sat at a stale scheduled_at forever.
 
 For workflows this script converts the scheduling/audit timestamps to datetimes and,
 for every active recurring workflow, recomputes the next *future* run, marks it
 scheduled, and enqueues it in ARQ. It advances from now (never replays missed runs)
-and honours ``max_occurrences`` / ``stop_after``. Cancelled, paused and one-time
+and honours max_occurrences / stop_after. Cancelled, paused and one-time
 workflows are left untouched.
 
 For reminders it converts the same string timestamps to datetimes. A reminder whose
-``scheduled_at`` lands in the past once it is a native datetime would be fired
-immediately by the startup recovery scan (``status=scheduled`` + ``scheduled_at <=
-now``) — replaying a long-missed reminder at the user. The scheduler's own policy is to
+scheduled_at lands in the past once it is a native datetime would be fired
+immediately by the startup recovery scan (status=scheduled + scheduled_at <=
+now) — replaying a long-missed reminder at the user. The scheduler's own policy is to
 advance from now and never replay a missed run, so this migration settles overdue
-reminders the same way: a one-time overdue reminder is marked ``completed`` and a
+reminders the same way: a one-time overdue reminder is marked completed and a
 recurring overdue reminder is re-armed to its next *future* occurrence (and re-enqueued
-in ARQ), honouring ``max_occurrences`` / ``stop_after``. Future-dated reminders are only
+in ARQ), honouring max_occurrences / stop_after. Future-dated reminders are only
 type-fixed and left scheduled, so a legitimately upcoming reminder still fires.
 
 Idempotent: re-running recomputes a future run and the deterministic ARQ job id dedupes
@@ -76,9 +76,9 @@ def _build_type_fixes(doc: dict) -> dict:
     """$set payload that converts string-typed datetime fields to datetimes.
 
     Covers the top-level scheduling/audit fields and (for workflows) the nested
-    ``trigger_config.next_run``. The nested field is only set when ``trigger_config``
-    is an object, so a missing/null ``trigger_config`` is never turned into a malformed
-    subdocument (``TriggerConfig.type`` is required).
+    trigger_config.next_run. The nested field is only set when trigger_config
+    is an object, so a missing/null trigger_config is never turned into a malformed
+    subdocument (TriggerConfig.type is required).
     """
     fixes: dict[str, datetime] = {}
     for field in _DATE_FIELDS:
@@ -100,12 +100,10 @@ def _plan_reminder_recovery(
 ) -> tuple[dict[str, object], str, datetime | None] | None:
     """Decide how to stop an overdue reminder from replaying on the next scan.
 
-    Returns ``(set_fields, outcome, enqueue_at)`` where outcome is ``"settled"`` or
-    ``"rearmed"``, or ``None`` when the reminder is future-dated or not in the resting
-    scheduled state (type-fix only — leave its run-state alone). A re-armed reminder
-    carries ``enqueue_at`` so the caller re-adds its deferred ARQ job; the startup scan
-    only re-enqueues overdue tasks, so a future-armed reminder would otherwise be
-    orphaned once its original (long-expired) job is gone.
+    Returns (set_fields, outcome, enqueue_at); outcome is "settled" or
+    "rearmed", or None for a future-dated/non-scheduled reminder (type-fix
+    only). A re-armed reminder carries enqueue_at so the caller re-adds its
+    deferred ARQ job, since the startup scan only re-enqueues overdue tasks.
     """
     if doc.get("status") != ScheduledTaskStatus.SCHEDULED.value:
         return None
@@ -132,8 +130,7 @@ def _plan_reminder_recovery(
 async def _migrate_reminders(
     scheduler: ReminderScheduler, now: datetime, apply: bool
 ) -> dict[str, int]:
-    """Type-repair reminder datetimes, then settle/re-arm any overdue reminder so the
-    startup recovery scan never replays a long-missed fire."""
+    """Type-repair reminder datetimes, then settle/re-arm any overdue reminder so the startup recovery scan never replays a long-missed fire."""
     counts = {"type_fixed": 0, "rearmed": 0, "settled": 0}
     async for doc in reminders_collection.find({}):
         set_fields: dict[str, object] = dict(_build_type_fixes(doc))

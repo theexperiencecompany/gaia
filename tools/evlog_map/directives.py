@@ -68,7 +68,7 @@ def collect_suppressions(source: str) -> list[Suppression]:
 def find_suppression(
     suppressions: list[Suppression], check_id: str, finding_lines: tuple[int, ...]
 ) -> Suppression | None:
-    """A file-level suppression, or a line-scoped one covering a finding line.
+    """Return a file-level suppression, or a line-scoped one covering a finding line.
 
     ``finding_lines`` carries every line the finding may anchor to — the exact
     flagged line, the handler's ``def`` line, and its first decorator's line —

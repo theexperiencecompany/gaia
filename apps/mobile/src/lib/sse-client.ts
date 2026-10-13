@@ -1,3 +1,5 @@
+import type { SubscriptionRequiredDetail } from "@gaia/shared";
+import { parseSubscriptionRequiredBody } from "@gaia/shared";
 import EventSource from "react-native-sse";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { API_BASE_URL } from "./constants";
@@ -12,6 +14,13 @@ export interface SSECallbacks {
   onMessage: (event: SSEEvent) => void;
   onError?: (error: Error) => void;
   onClose?: () => void;
+  /**
+   * The request was refused with 402 `subscription_required`. Terminal and
+   * never retried — no amount of backoff turns a free plan into a paid one —
+   * so the caller gets the offer (checkout link, discount code) instead of a
+   * transport error, and `onError` is not also called.
+   */
+  onSubscriptionRequired?: (detail: SubscriptionRequiredDetail) => void;
 }
 
 export interface SSEOptions {
@@ -27,6 +36,7 @@ export interface SSEOptions {
   stallTimeoutMs?: number;
 }
 
+const HTTP_PAYMENT_REQUIRED = 402;
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_INITIAL_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 16000;
@@ -42,7 +52,8 @@ function getTimezone(): string {
 function computeRetryDelay(attempt: number, initialDelayMs: number): number {
   const exponential = initialDelayMs * 2 ** attempt;
   const capped = Math.min(exponential, MAX_RETRY_DELAY_MS);
-  const jitter = capped * 0.2 * Math.random();
+  // retry jitter only spreads reconnects; predictability costs nothing
+  const jitter = capped * 0.2 * Math.random(); // NOSONAR typescript:S2245
   return Math.round(capped + jitter);
 }
 
@@ -170,6 +181,22 @@ export async function createSSEConnection(
       controller.signal.removeEventListener("abort", handleAbort);
       es.removeAllEventListeners();
       es.close();
+
+      // The paid-only gate: react-native-sse surfaces an HTTP error status as an
+      // `error` event carrying the 402's {code, message, checkout_url,
+      // discount_code} body. Retrying would burn the backoff budget on a request that can only ever fail.
+      if ("xhrStatus" in event && event.xhrStatus === HTTP_PAYMENT_REQUIRED) {
+        const detail = parseSubscriptionRequiredBody(event.message);
+        cleanup();
+        if (detail) {
+          callbacks.onSubscriptionRequired?.(detail);
+        } else {
+          // A 402 whose body we cannot read is still a hard stop, but we have
+          // nothing to offer — surface it rather than swallowing it.
+          callbacks.onError?.(new Error("Subscription required"));
+        }
+        return;
+      }
 
       if (retryCount < maxRetries) {
         retryCount += 1;

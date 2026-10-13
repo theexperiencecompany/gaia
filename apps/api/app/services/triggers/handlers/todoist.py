@@ -1,6 +1,4 @@
-"""
-Todoist trigger handler.
-"""
+"""Todoist trigger handler."""
 
 from typing import Any, ClassVar
 

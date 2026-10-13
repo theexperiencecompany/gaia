@@ -1,14 +1,17 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
 from langchain_core.messages import ToolCall
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.agents.tools.execute.unwrap import ExecuteCallArgs, unwrap_execute_call
 from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
+from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
@@ -22,42 +25,93 @@ from app.models.stream_events import (
     ToolCallsDataEntry,
     ToolCallsDataEntryData,
 )
+from app.services.browser.captions import describe_action
 from app.services.chat.chunks import extract_tool_data
+from app.utils.stream_publishers import ExtractedToolData
 from shared.py.wide_events import log
 
 # Type for the stream_writer callable used across agent execution paths.
 StreamWriterCallable = Callable[[dict[str, Any]], None]
 
 
-def strip_internal_agent_tags(text: str) -> str:
-    """Remove internal channel tags an agent may have echoed into user text.
+class ToolCallView(BaseModel):
+    """A LangChain ``ToolCall`` parsed once — the TypedDict is only readable by key.
 
-    Tags like ``<executor_result>`` frame the payload handed to comms for
-    re-voicing; they are context for the agent, never part of the user-facing
-    reply. A weak model occasionally parrots them verbatim, so strip them
-    deterministically as a hard backstop before delivery. Only the tags go — the
-    text they framed is the answer the model wrote around.
+    ``args`` is the LLM-authored argument bag: open per tool, never read here
+    beyond forwarding it as the card's ``inputs``.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = None
+    args: dict[str, object] = Field(default_factory=dict)
+    id: str | None = None
+
+
+class HandoffCallArgs(BaseModel):
+    """The ``handoff`` tool's arguments, as far as the display path reads them."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    subagent_id: str | None = None
+
+
+class IntegrationDisplayMetadata(BaseModel):
+    """Icon, id and name for a custom integration's tool card.
+
+    Redis-cached under two prefixes (handoff lookups by subagent id, MCP icon
+    lookups by integration id); an all-``None`` instance is the cached negative
+    result, written as ``{}``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    icon_url: str | None = None
+    integration_id: str | None = None
+    integration_name: str | None = None
+
+
+class NodeMessagesUpdate(BaseModel):
+    """One node's "updates" stream payload, read for the messages it wrote.
+
+    ``object`` elements: the drivers narrow each to ``AIMessage`` themselves, so
+    a node writing anything else (a tombstone, a message-like) is skipped, not fatal.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    messages: list[object] = Field(default_factory=list)
+
+
+class _McpToolMetadata(BaseModel):
+    """The MCP keys the adapter stamps on a tool's ``metadata`` (see resilient_adapter)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: Forwarded to the client verbatim — whatever keys the adapter stamped.
+    mcp_ui: dict[str, object] | None = None
+    mcp_server_url: str | None = None
+
+
+def strip_internal_agent_tags(text: str) -> str:
+    """Remove internal channel tags (e.g. <executor_result>) an agent may echo into user text.
+
+    Tags frame payloads for comms re-voicing and are never part of the user-facing reply; strip them as a hard backstop against a model parroting them, keeping only the framed text.
     """
     return INTERNAL_AGENT_TAG_PATTERN.sub("", text).strip()
 
 
-class IntegrationMetadata(TypedDict, total=False):
+@dataclass(slots=True, frozen=True)
+class IntegrationMetadata:
     """Metadata for a custom MCP integration, used to decorate tool events."""
 
-    icon_url: str | None
-    integration_id: str | None
-    name: str | None
+    icon_url: str | None = None
+    integration_id: str | None = None
+    name: str | None = None
 
 
 def parse_subagent_id(subagent_id: str) -> tuple[str, str | None]:
-    """Parse subagent ID from various formats and extract clean ID and display name.
-
-    Handles:
-      - 'subagent:Name [uuid]' -> ('uuid', 'Name')
-      - 'subagent:id (Name)' -> ('id', 'Name')
-      - 'subagent:id' -> ('id', None)
-      - 'id' -> ('id', None)
-    """
+    """Parse a subagent id into (clean_id, display_name) from 'subagent:Name [uuid]', 'subagent:id (Name)', or a bare id."""
     clean = subagent_id.replace("subagent:", "").strip()
 
     if " [" in clean:
@@ -114,10 +168,12 @@ def format_subagent_start_event(
     agent_type: str,
     subagent_id: str,
     details: SubagentStartDetails | None = None,
-) -> dict[str, Any]:
+    subagent: str | None = None,
+) -> dict[str, object]:
     """Format a subagent_start SSE payload."""
     details = details or SubagentStartDetails()
     return SubagentStartPayload(
+        subagent=subagent,
         subagent_id=subagent_id,
         subagent_name=subagent_name,
         agent_type=agent_type,
@@ -132,7 +188,7 @@ def format_subagent_end_event(
     subagent_id: str,
     duration_ms: int,
     token_count: int | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Format a subagent_end SSE payload."""
     return SubagentEndPayload(
         subagent_id=subagent_id,
@@ -148,43 +204,45 @@ async def format_tool_call_entry(
     integration_name: str | None = None,
     user_id: str | None = None,
 ) -> ToolDataEntry | None:
-    """Format a tool call as a tool_data entry for frontend streaming.
-
-    Emitted once per tool call from the 'updates' stream when complete args
-    are available; the frontend appends it to the message's tool_data array.
+    """Format a tool call as a tool_data entry for frontend streaming, or None if the tool name is missing.
 
     Args:
-        tool_call: LangChain ToolCall object.
-        icon_url: Icon URL for custom integrations.
-        integration_id: Integration ID to use as category (for custom MCPs).
-        integration_name: Friendly display name (e.g. 'Researcher').
-        user_id: Used to resolve MCP tool provenance via the user's MCPClient
-            (MCP tools no longer live in the global registry).
-
-    Returns:
-        tool_data entry dict, or None if the tool name is missing.
+        user_id: resolves MCP tool provenance via the user's MCPClient (MCP tools no longer live in the global registry).
     """
     tool_registry = await get_tool_registry()
-    tool_name_raw = tool_call.get("name")
+    call = ToolCallView.model_validate(tool_call)
+    tool_name_raw = call.name
     if not tool_name_raw:
         return None
+
+    # An execute-proxied call renders as its REAL tool (name/category/icon/inputs
+    # from the unwrapped identity), else every card collapses to a generic
+    # "Execute" row. The proxy's task_description becomes the card's label.
+    call_args: dict[str, object] = tool_call.get("args", {}) or {}
+    task_description: str | None = None  # pragma: no mutate — only read as truthy; "" equals None
+    unwrapped_name, unwrapped_args = unwrap_execute_call(tool_name_raw, call_args)
+    if unwrapped_name != tool_name_raw:
+        # A renamed call is by construction an execute call, so these are its args.
+        execute_args: ExecuteCallArgs = cast(ExecuteCallArgs, call_args)
+        raw_description = execute_args.get("task_description")
+        task_description = raw_description if isinstance(raw_description, str) else None
+        tool_name_raw = unwrapped_name
+        call_args = unwrapped_args
 
     is_core_tool = False  # set inside the non-special branch; safe default for short-circuits below
 
     if tool_name_raw in _SPECIAL_TOOLS:
         tool_category, tool_display_name, show_category = await _special_tool_display(
-            tool_name_raw, tool_call
+            tool_name_raw, call
         )
     else:
         tool_category, integration_id, is_core_tool = await _general_tool_category(
             tool_registry, tool_name_raw, integration_id, user_id
         )
         tool_display_name = humanize_tool_name(tool_name_raw, tool_category)
-        # show_category=False marks "the primary is a custom/curated label" (the
-        # tool name isn't already in the primary text). The frontend uses this as
-        # the single signal: the live LoadingIndicator drops the "Category:" prefix,
-        # and the tool thread shows the raw tool name as the secondary line. When
-        # uncurated, the primary IS the tool name, so the category is shown instead.
+        # show_category=False means the primary label is curated (not the raw tool
+        # name); the frontend uses this as the single signal to drop the "Category:"
+        # prefix and show the raw tool name as the secondary line instead.
         show_category = tool_name_raw not in TOOL_DISPLAY_NAMES
 
         # When a core tool runs inside an MCP subagent, also drop the
@@ -193,6 +251,12 @@ async def format_tool_call_entry(
         if integration_id and is_core_tool:
             icon_url = None
             integration_name = None
+
+    if task_description:
+        # A curated, user-facing primary label — the thread shows the raw tool
+        # name as the secondary line (same contract as TOOL_DISPLAY_NAMES).
+        tool_display_name = task_description
+        show_category = False
 
     timestamp = datetime.now(UTC).isoformat()
 
@@ -220,8 +284,8 @@ async def format_tool_call_entry(
                 tool_category=tool_category or "",
                 message=tool_display_name,
                 show_category=show_category,
-                tool_call_id=tool_call.get("id"),
-                inputs=tool_call.get("args", {}),
+                tool_call_id=call.id,
+                inputs=call_args,
                 icon_url=icon_url,
                 integration_name=integration_name,
             ),
@@ -232,15 +296,58 @@ async def format_tool_call_entry(
     )
 
 
+def format_browser_action_entry(
+    *,
+    name: str,
+    inputs: dict[str, object],
+    target: str | None,
+    subagent_id: str,
+    tool_call_id: str,
+) -> ToolDataEntry:
+    """Format one browser-agent action as a tool_calls_data entry.
+
+    The browser agent runs its own loop inside the browser_task tool, so its
+    actions never pass through the graph's tool node and cannot be formatted by
+    format_tool_call_entry. Tagging them with subagent_id is what nests them
+    under the run's "Browser" group in the chat thread.
+    """
+    return cast(
+        ToolDataEntry,
+        {
+            **ToolCallsDataEntry(
+                tool_name="tool_calls_data",
+                tool_category=BROWSER_TOOL_CATEGORY,
+                data=ToolCallsDataEntryData(
+                    tool_name=name,
+                    tool_category=BROWSER_TOOL_CATEGORY,
+                    message=describe_action(name, inputs, target),
+                    show_category=False,
+                    tool_call_id=tool_call_id,
+                    inputs=inputs,
+                    icon_url=None,
+                    integration_name=None,
+                ),
+                timestamp=datetime.now(UTC).isoformat(),
+                mcp_ui=None,
+                mcp_server_url=None,
+            ).model_dump(),
+            "subagent_id": subagent_id,
+        },
+    )
+
+
 # Special tools with custom display names and categories
 # Format: (category, display_name, show_category)
 _SPECIAL_TOOLS: dict[str, tuple[str, str | None, bool]] = {
     "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
     "call_executor": ("executor", "Delegating to executor", False),
     "cancel_executor": ("cancel_executor", "Cancelling the task", False),
+    "browser_step_done": (BROWSER_TOOL_CATEGORY, "Continuing the browser task", False),
+    "stop_browser_task": (BROWSER_TOOL_CATEGORY, "Stopping the browser task", False),
+    "tell_browser_task": (BROWSER_TOOL_CATEGORY, "Telling the browser task", False),
     "handoff": ("handoff", None, False),  # message will be set from args
     "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
-    "wait_for_subagents": ("wait_for_subagents", "Wait for subagents", False),
+    "activate_integration": ("integrations", "Activating integration", False),
     "plan_tasks": ("plan_tasks", "Plan tasks", False),
     # Synthetic card a replayed workflow run leads with — never a callable
     # tool. The playbooks category carries the icon the authoring tools use.
@@ -251,14 +358,13 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str | None, bool]] = {
 
 
 async def _special_tool_display(
-    tool_name_raw: str, tool_call: ToolCall
+    tool_name_raw: str, tool_call: ToolCallView
 ) -> tuple[str, str | None, bool]:
-    """Category, display name and show_category for a tool in ``_SPECIAL_TOOLS``."""
+    """Category, display name and show_category for a tool in _SPECIAL_TOOLS."""
     tool_category, tool_display_name, show_category = _SPECIAL_TOOLS[tool_name_raw]
 
     if tool_name_raw == "handoff":
-        args = tool_call.get("args", {})
-        subagent_id = args.get("subagent_id", "subagent")
+        subagent_id = HandoffCallArgs.model_validate(tool_call.args).subagent_id or "subagent"
         display_name = await _resolve_handoff_display_name(subagent_id)
         tool_display_name = f"Handing off to {display_name}"
     return tool_category, tool_display_name, show_category
@@ -270,12 +376,10 @@ async def _general_tool_category(
     integration_id: str | None,
     user_id: str | None,
 ) -> tuple[str | None, str | None, bool]:
-    """Category for a general tool, the integration it resolved to, and whether
-    it is a core tool. General tools (vfs_cmd, web_search_tool, tracked_todo
-    helpers, etc.) called inside an MCP subagent keep their own category so the
-    frontend renders the right icon, not the subagent's integration logo. Only
-    fall back to integration_id when the tool has no known core category (i.e.
-    it's an MCP tool)."""
+    """Return the general tool's category, its resolved integration, and whether it is a core tool.
+
+    Core tools (vfs_cmd, web_search_tool, tracked_todo helpers, etc.) called inside an MCP subagent keep their own category so the frontend renders the right icon instead of the subagent's integration logo; only fall back to integration_id when the tool has no known core category (i.e. it's an MCP tool).
+    """
     registry_category = tool_registry.get_category_of_tool(tool_name_raw)
     is_core_tool = bool(
         registry_category
@@ -300,9 +404,9 @@ async def _general_tool_category(
 
 def _registry_mcp_ui_metadata(
     tool_registry: ToolRegistry, tool_name_raw: str
-) -> tuple[dict[str, Any] | None, str | None]:
-    """The mcp_ui metadata the global registry holds for a tool, if any."""
-    mcp_ui: dict[str, Any] | None = None
+) -> tuple[dict[str, object] | None, str | None]:
+    """Return the mcp_ui metadata the global registry holds for a tool, if any."""
+    mcp_ui: dict[str, object] | None = None
     mcp_server_url: str | None = None
     try:
         registry_tools = tool_registry.get_all_tools_for_search()
@@ -311,14 +415,13 @@ def _registry_mcp_ui_metadata(
                 base_tool = registry_tool.tool
                 tool_meta = getattr(base_tool, "metadata", None)
                 if tool_meta and isinstance(tool_meta, dict):
-                    mcp_ui = tool_meta.get("mcp_ui")
-                    mcp_server_url = tool_meta.get("mcp_server_url")
+                    mcp_meta = _McpToolMetadata.model_validate(tool_meta)
+                    mcp_ui = mcp_meta.mcp_ui
+                    mcp_server_url = mcp_meta.mcp_server_url
                 break
     except Exception as registry_error:
-        # A registry miss is recoverable — the per-user MCPClient lookup below is
-        # the fallback — but it must not be silent: an outage here strips the UI
-        # metadata from every platform tool at once, and the card just renders
-        # plain with nothing to explain why.
+        # Recoverable via the per-user MCPClient fallback below, but must not be
+        # silent: an outage here strips the UI metadata from every platform tool.
         log.debug(
             f"{LogTag.AGENT} Tool registry lookup failed for mcp_ui metadata",
             error=str(registry_error),
@@ -354,7 +457,7 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
 
 async def _resolve_mcp_ui_metadata(
     tool_name: str, user_id: str
-) -> tuple[dict[str, Any] | None, str | None]:
+) -> tuple[dict[str, object] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
     from app.services.mcp.mcp_client import get_mcp_client
 
@@ -365,7 +468,8 @@ async def _resolve_mcp_ui_metadata(
                 if tool.name == tool_name:
                     meta = getattr(tool, "metadata", None)
                     if meta and isinstance(meta, dict):
-                        return meta.get("mcp_ui"), meta.get("mcp_server_url")
+                        mcp_meta = _McpToolMetadata.model_validate(meta)
+                        return mcp_meta.mcp_ui, mcp_meta.mcp_server_url
                     return None, None
     except Exception as e:
         log.warning(
@@ -387,22 +491,22 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
     from app.db.redis import get_cache, set_cache
 
     cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
-    cached = await get_cache(cache_key)
+    cached = await get_cache(cache_key, IntegrationDisplayMetadata)
     if cached:
-        return cached.get("icon_url"), cached.get("integration_name")
+        return cached.icon_url, cached.integration_name
 
     try:
         integration = await integration_repository.get(integration_id)
         if not integration:
             await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
             return None, None
-        metadata: dict[str, str | None] = {
-            "icon_url": integration.icon_url,
-            "integration_id": integration_id,
-            "integration_name": integration.name,
-        }
+        metadata = IntegrationDisplayMetadata(
+            icon_url=integration.icon_url,
+            integration_id=integration_id,
+            integration_name=integration.name,
+        )
         await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
-        return metadata["icon_url"], metadata["integration_name"]
+        return metadata.icon_url, metadata.integration_name
     except Exception as e:
         log.warning(
             f"{LogTag.AGENT} MCP icon/name lookup failed for",
@@ -414,26 +518,25 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
 
 
 def format_sse_response(content: str) -> str:
-    """Wrap text content as a JSON-encoded SSE ``data:`` line."""
+    """Wrap text content as a JSON-encoded SSE data: line."""
     return f"data: {json.dumps(ResponseFrame(response=content).model_dump())}\n\n"
 
 
-def format_sse_data(data: dict[str, Any]) -> str:
-    """Wrap a dict as a JSON-encoded SSE ``data:`` line."""
+def format_sse_data(data: Mapping[str, object]) -> str:
+    """Wrap a mapping as a JSON-encoded SSE data: line."""
     return f"data: {json.dumps(data)}\n\n"
 
 
-def process_custom_event_for_tools(payload: dict[str, Any]) -> dict[str, Any]:
+def process_custom_event_for_tools(payload: Mapping[str, object] | None) -> ExtractedToolData:
     """Extract tool execution data from a custom LangGraph event payload.
 
-    Returns the extracted tool data, or an empty dict on failure / no data.
+    Returns the extracted tool data, empty on failure / no data.
     """
     try:
         serialized = json.dumps(payload) if payload else "{}"
-        new_data = extract_tool_data(serialized)
-        return new_data or {}
+        return ExtractedToolData.model_validate(extract_tool_data(serialized) or {})
     except Exception as e:
         log.error(
             f"{LogTag.AGENT} Error extracting tool data", error=str(e), error_type=type(e).__name__
         )
-        return {}
+        return ExtractedToolData()

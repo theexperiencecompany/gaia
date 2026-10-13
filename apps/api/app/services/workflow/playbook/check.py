@@ -5,7 +5,7 @@ replay. A playbook that ran cleanly has already answered the question, and
 re-asking would spend output tokens re-deciding it on every fire.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_CHECK_BRIEF,
@@ -19,14 +19,17 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import (
+    ForEachStep,
+    HandoffStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
     PlaybookStep,
+    ToolStep,
 )
-from app.models.workflow_execution_models import RecordedCall, largest_list_len
+from app.models.workflow_execution_models import RecordedCall, carries_no_data, parse_result
 from app.models.workflow_models import WorkflowDocument
-from app.services.workflow.playbook.evaluator import parse_result
+from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from shared.py.wide_events import log
 
@@ -34,21 +37,12 @@ from shared.py.wide_events import log
 async def playbook_check_brief(
     workflow_id: str, user_id: str, *, fallback_note: str | None = None
 ) -> str:
-    """The ``<playbook_check>`` block for this run, or ``""`` to stay silent.
+    """Return the <playbook_check> block for this run, or "" to stay silent.
 
-    The check brief when the workflow has no playbook at all, unless earlier
-    runs have declined it ``PLAYBOOK_DECLINE_LIMIT`` times for the workflow as
-    it stands. The heal brief, carrying the recorded reason, when it has one
-    whose last replay stopped or finished with a result that was not trusted.
-    Silent when a playbook ran cleanly or has not been tried yet.
-
-    ``fallback_note`` is the record of a replay that stopped partway in THIS
-    fire. It is merged into the heal brief verbatim, so the executor reads
-    "these steps already ran" next to "do the work yourself" instead of only
-    the second.
-
-    Never raises: a lookup failure means the run proceeds without the check,
-    which costs a deferred playbook, not a failed workflow.
+    The check brief with no playbook (unless declined too many times), the
+    heal brief when the last replay stopped or was untrusted, or "" when it
+    ran cleanly. fallback_note (a replay that stopped partway this fire)
+    merges into the heal brief. Never raises — a failure just costs a playbook.
     """
     try:
         playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
@@ -82,9 +76,6 @@ async def playbook_check_brief(
     return ""
 
 
-HEAL_STATUSES = frozenset({PlaybookRunStatus.FAILED, PlaybookRunStatus.SUSPECT})
-
-
 def declined_for_good(workflow: WorkflowDocument) -> bool:
     """Declined past the limit for the workflow exactly as it stands now."""
     return (
@@ -94,7 +85,7 @@ def declined_for_good(workflow: WorkflowDocument) -> bool:
 
 
 def heal_brief(playbook: PlaybookDocument, *, fallback_note: str | None = None) -> str:
-    """The heal brief for a playbook whose last replay stopped or was not trusted."""
+    """Build the heal brief for a playbook whose last replay stopped or was not trusted."""
     verdict = PLAYBOOK_HEAL_VERDICTS.get(playbook.last_run_status.value, "did not hold")
     reason = (playbook.last_run_reason or "").strip() or PLAYBOOK_HEAL_NO_REASON
     already_ran = (
@@ -105,29 +96,28 @@ def heal_brief(playbook: PlaybookDocument, *, fallback_note: str | None = None) 
     return PLAYBOOK_HEAL_BRIEF.format(verdict=verdict, reason=reason, already_ran=already_ran)
 
 
-def _frozen_tool_names(steps: Sequence[PlaybookStep]) -> list[str]:
-    names: list[str] = []
-    for step in steps:
-        if step.tool:
-            names.append(step.tool)
-        names.extend(_frozen_tool_names(step.steps))
-    return names
-
-
 def frozen_on_empty(playbook: PlaybookDocument, trace: Sequence[RecordedCall]) -> str | None:
-    """Why a playbook written this run is already suspect: a frozen call returned no items.
+    """Return why a playbook written this run is already suspect, or None.
 
-    Read by tool name, LAST match, the same way the replay's empty-vs-previous
-    check reads the previous run: an attempt that came back empty and a retry
-    that found items is discovery, and the retry is what was frozen. A result
-    with no list in it at all (plain text, a single record) has nothing to be
-    empty of.
+    Reads by tool name, LAST match: an empty attempt then a retry that found
+    items means the retry — not this attempt — was the one frozen. "Nothing in
+    it" means carries_no_data, not an empty list; a write tool's own empty
+    result attributes don't count as returning nothing.
     """
-    for tool_name in _frozen_tool_names(playbook.steps):
-        call = next((c for c in reversed(trace) if c.tool_name == tool_name), None)
-        if call is not None and largest_list_len(parse_result(call.result_digest)) == 0:
-            return f"{tool_name} returned no items in the run that wrote this playbook"
+    for step in _calls(playbook.steps):
+        call = next((c for c in reversed(trace) if c.tool_name == step.tool), None)
+        if call is not None and carries_no_data(parse_result(call.result_digest)):
+            return f"{step.tool} returned no items in the run that wrote this playbook"
     return None
+
+
+def _calls(steps: Sequence[PlaybookStep]) -> Iterator[ToolStep | ForEachStep]:
+    """Every call in the document, a handoff's children included."""
+    for step in steps:
+        if isinstance(step, HandoffStep):
+            yield from step.steps
+        else:
+            yield step
 
 
 def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:
@@ -146,15 +136,9 @@ async def distrust_fresh_playbook(
     """After a run that wrote a playbook, distrust it if it froze an empty result.
 
     The replay's own check compares against the previous run, so a playbook
-    frozen on emptiness replays emptiness with nothing to compare to. The run
-    that wrote it is the one place the frozen calls' results are on record.
-    Marked suspect, the next fire heals instead of replaying: it probes more
-    broadly and rewrites, or confirms the source really has nothing.
-
-    A heal run is exempt: its brief makes it probe more broadly before it may
-    rewrite the same sequence, so an empty result it froze is one it checked.
-    Auditing it again would send every fire of a quiet source back to the agent
-    for good.
+    frozen on emptiness has nothing to compare to; marking it suspect heals
+    the next fire instead of replaying it. A heal run is exempt — its brief
+    already probes broadly before it may rewrite.
     """
     if healing or not _wrote_a_playbook(trace):
         return None

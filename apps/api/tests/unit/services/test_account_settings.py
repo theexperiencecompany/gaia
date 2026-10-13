@@ -1,5 +1,4 @@
-"""Account settings mutations: validation, the owning repo/service seam, and
-the confirmation contract.
+"""Account settings mutations: validation, the owning repo/service seam, the confirmation contract.
 
 The appliers are the real write path behind the account tools — a wrong value
 that reached Mongo from here would ship straight into the user's account, so
@@ -188,7 +187,7 @@ class TestSetPreferencesEdges:
 
         assert excinfo.value.message == "Response style cannot be empty"
         assert excinfo.value.fix == (
-            "Use one of brief, detailed, casual, professional — or pass a custom label"
+            "Use one of brief, detailed, casual, professional, or pass a custom label"
         )
         assert excinfo.value.status_code == 400
         repo.update_prefs.assert_not_awaited()

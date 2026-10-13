@@ -221,7 +221,7 @@ def test_a_boundary_inside_a_nested_helper_is_credited(tmp_path: Path) -> None:
 
 
 def _write_router_tree(tmp_path: Path) -> tuple[Path, Path, list[Path]]:
-    """app → v1 → integrations → gmail, the real three-level nesting."""
+    """App → v1 → integrations → gmail, the real three-level nesting."""
     factory = _write(
         tmp_path,
         "core/app_factory.py",
@@ -466,9 +466,34 @@ def test_a_registry_whose_wiring_moved_raises_instead_of_finding_nothing(tmp_pat
         collect_router_mounts(factory, tmp_path / "apps/api")
 
 
+def test_the_voice_turn_entry_is_the_stream_livekit_drives(tmp_path: Path) -> None:
+    agent = _write(
+        tmp_path,
+        "voice/agent.py",
+        "def entrypoint(ctx):\n    return None\n"
+        "cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))\n",
+    )
+    llm = _write(
+        tmp_path,
+        "voice/llm.py",
+        "class VoiceLLM(LLM):\n"
+        "    def chat(self, *, chat_ctx):\n"
+        "        return VoiceStream(self, Turn(chat_ctx))\n"
+        "class VoiceStream(LLMStream):\n"
+        "    async def _run(self):\n"
+        "        ...\n"
+        "class Turn:\n"
+        "    async def chunks(self):\n"
+        "        ...\n",
+    )
+
+    registry = collect_voice_registry(agent, llm)
+
+    assert registry[llm.resolve().as_posix()] == frozenset({"VoiceStream._run"})
+
+
 def test_a_map_with_no_entry_points_scores_zero_not_100(tmp_path: Path) -> None:
-    """An empty map is the scanner going blind, not a perfect score — it must
-    fail the --min-score gate instead of reporting 100 over nothing."""
+    """An empty map is the scanner going blind; it must fail --min-score, not score 100."""
     path = _write(
         tmp_path,
         "services/helpers.py",

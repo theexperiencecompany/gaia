@@ -1,13 +1,13 @@
-"""Repository for the ``playbooks`` collection — one active playbook per workflow.
+"""Repository for the playbooks collection — one active playbook per workflow.
 
-Global, keyed by the business ``playbook_id``. There is no version history: the
+Global, keyed by the business playbook_id. There is no version history: the
 agent revises a playbook by writing the whole document again, so
-``upsert_for_workflow`` overwrites the workflow's single record in place and a
+upsert_for_workflow overwrites the workflow's single record in place and a
 stale sequence can never be replayed by accident. The unique
-``(workflow_id, user_id)`` index (``app.db.mongodb.indexes``) is what makes "one
+(workflow_id, user_id) index (app.db.mongodb.indexes) is what makes "one
 per workflow" a property of the data rather than of the callers' timing.
 
-Uncached (``cache_policy = None``): a playbook is read once per run, and the
+Uncached (cache_policy = None): a playbook is read once per run, and the
 overwrite-on-revise shape is exactly what an entity cache would misrepresent.
 """
 
@@ -21,6 +21,7 @@ from app.models.playbook_models import (
     PlaybookRunStatus,
     PlaybookUpdate,
 )
+from app.services.workflow.playbook.lifecycle import HEAL_STATUSES, grows_from_untrusted
 
 
 class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
@@ -32,37 +33,52 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
     cache_policy = None
 
     async def get_for_workflow(self, workflow_id: str, user_id: str) -> PlaybookDocument | None:
-        """The workflow's active playbook, or ``None`` when it has never been written."""
+        """Return the workflow's active playbook, or None when it has never been written."""
         return await self._find_one({"workflow_id": workflow_id, "user_id": user_id})
 
     async def upsert_for_workflow(self, playbook: PlaybookDocument) -> PlaybookDocument:
         """Write the workflow's playbook, replacing whatever it had, in one round trip.
 
-        A revision resets the run outcome (status, reason and suspect streak):
-        the previous run's verdict described the sequence that was just thrown
-        away. ``playbook_id`` and ``created_at`` are only ever set on insert, so
-        a rewrite keeps the id the worker may be replaying under.
-
-        Two first authorings racing on the same workflow can both miss the match
-        and both insert; the unique ``(workflow_id, user_id)`` index rejects the
-        loser with ``DuplicateKeyError``, and the retry then matches the winner
-        and overwrites it — the same result as if the two had run in sequence.
+        A revision resets the run outcome (status, reason, suspect streak); playbook_id
+        and created_at are only ever set on insert. Racing first authorings insert
+        against the unique (workflow_id, user_id) index; the loser's DuplicateKeyError
+        retry then matches and overwrites the winner.
         """
         body = PlaybookUpdate(
             description=playbook.description,
             steps=playbook.steps,
             result_brief=playbook.result_brief,
             workflow_hash=playbook.workflow_hash,
+            authored_run=playbook.authored_run,
             last_run_status=PlaybookRunStatus.NOT_RUN,
             last_run_reason=None,
-            heal_attempts=0,
         ).model_dump(exclude_unset=True)
+        key = {"workflow_id": playbook.workflow_id, "user_id": playbook.user_id}
+        # A heal-run rewrite carries its attempt count (lifecycle.Rewritten),
+        # matched on stored status so two writers cannot both read and rewrite
+        # the count; a non-heal body falls through to the reset below.
+        healed = await self._apply_raw_update(
+            {**key, "last_run_status": {"$in": sorted(status.value for status in HEAL_STATUSES)}},
+            {"$set": body, "$inc": {"revision": 1, "heal_attempts": 1}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        if healed is not None:
+            return healed
+        # A body never replayed (a second write in the same run) carries the
+        # count unchanged: the body it replaces spent nothing, and the count is
+        # the heal run's, not the body's. Seen live: the second write reset it.
+        unreplayed = await self._apply_raw_update(
+            {**key, "last_run_status": PlaybookRunStatus.NOT_RUN.value},
+            {"$set": body, "$inc": {"revision": 1}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        if unreplayed is not None:
+            return unreplayed
         # The streak survives a rewrite on purpose: a rewrite is how a heal run
         # answers a suspect replay, and a playbook that keeps coming back suspect
-        # must still reach the limit. Only a trusted replay clears it. The heal
-        # attempts do NOT survive: they count runs spent on the body just replaced.
+        # must still reach the limit. Only a trusted replay clears it.
         update = {
-            "$set": body,
+            "$set": {**body, "heal_attempts": 0},
             "$inc": {"revision": 1},
             "$setOnInsert": {
                 "playbook_id": playbook.playbook_id,
@@ -70,7 +86,6 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
                 "suspect_streak": 0,
             },
         }
-        key = {"workflow_id": playbook.workflow_id, "user_id": playbook.user_id}
         try:
             stored = await self._apply_raw_update(key, update, scope=REPO_GLOBAL_SCOPE, upsert=True)
         except DuplicateKeyError:
@@ -90,48 +105,32 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
     ) -> PlaybookDocument | None:
         """Record how the replay that just finished went.
 
-        An outcome that does not count toward the streak records a suspect that
-        must not move the playbook toward deletion: the narration's verdict is
-        the model's opinion and sends the fire to the agent, but only the
-        deterministic record check (empty where the previous replay had items)
-        is trusted to delete.
-
-        ``reason`` is why a run failed or was not trusted; a success clears it.
-        ``suspect_streak`` counts consecutive suspect replays: it grows on
-        ``SUSPECT``, resets on ``SUCCESS`` and is left alone by ``FAILED``, so
-        the worker can disable a playbook that keeps completing with results
-        nobody trusts. A suspect landing on a playbook already marked suspect
-        does not grow it again: two replays of one body racing to the same
-        verdict are one suspect, not two.
-
-        ``playbook_id`` and ``revision`` scope the write to the body that was
-        actually replayed. The id alone is not enough, since a rewrite keeps it;
-        the revision is what changes. ``None`` when the workflow has no playbook
-        (an agentic run has nothing to record) or when the replayed body has
-        since been rewritten or deleted.
+        A suspect outcome doesn't move the playbook toward deletion (only the
+        deterministic record check does). suspect_streak grows on SUSPECT, resets on
+        SUCCESS, untouched by FAILED. playbook_id/revision scope the write to the
+        actual replayed body — a rewrite keeps the id but bumps the revision.
         """
-        status, reason = outcome.status, outcome.reason
         key: dict[str, object] = {"workflow_id": workflow_id, "user_id": user_id}
         if playbook_id is not None:
             key["playbook_id"] = playbook_id
         if revision is not None:
             key["revision"] = revision
-        if status is not PlaybookRunStatus.SUSPECT or not outcome.counts_toward_streak:
+        if not grows_from_untrusted(outcome):
             return await self._apply_raw_update(
-                key, _outcome_update(status, reason), scope=REPO_GLOBAL_SCOPE
+                key, _outcome_update(outcome, grow_streak=False), scope=REPO_GLOBAL_SCOPE
             )
-        # A plain ``$inc`` cannot be conditional on the stored status, so the
-        # growing write is tried first against a not-yet-suspect document and
-        # the plain one only when that matched nothing.
+        # A plain $inc can't be conditional on stored status, so the growing
+        # write is tried first against a not-yet-suspect document, falling back
+        # to the plain write when that matches nothing.
         grown = await self._apply_raw_update(
             {**key, "last_run_status": {"$ne": PlaybookRunStatus.SUSPECT.value}},
-            _outcome_update(status, reason, grow_streak=True),
+            _outcome_update(outcome, grow_streak=True),
             scope=REPO_GLOBAL_SCOPE,
         )
         if grown is not None:
             return grown
         return await self._apply_raw_update(
-            key, _outcome_update(status, reason, grow_streak=False), scope=REPO_GLOBAL_SCOPE
+            key, _outcome_update(outcome, grow_streak=False), scope=REPO_GLOBAL_SCOPE
         )
 
     async def increment_heal_attempts(
@@ -139,9 +138,9 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
     ) -> PlaybookDocument | None:
         """Count one completed heal run against the body it was healing.
 
-        ``revision`` scopes the count to that body: a heal run that rewrote the
+        revision scopes the count to that body: a heal run that rewrote the
         playbook bumped the revision, and its attempt must not land on the new
-        body. ``None`` when the body is no longer the workflow's.
+        body. None when the body is no longer the workflow's.
         """
         key: dict[str, object] = {
             "workflow_id": workflow_id,
@@ -155,23 +154,46 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         )
 
     async def delete_for_workflow(self, workflow_id: str, user_id: str) -> bool:
-        """Drop the workflow's playbook. ``False`` when there was none."""
+        """Drop the workflow's playbook. False when there was none."""
         existing = await self.get_for_workflow(workflow_id, user_id)
         if existing is None:
             return False
         return await self.delete(existing.playbook_id)
 
+    async def delete_revision(
+        self, workflow_id: str, user_id: str, *, playbook_id: str, revision: int
+    ) -> bool:
+        """Drop one body the worker has given up on, and only that body.
+
+        Keyed on the revision as well as the id: a heal run rewrites in place
+        and bumps the revision, so a discard decided against the old body must
+        not take the replacement with it. False when that body is already
+        gone, replaced or not.
+        """
+        return await self._remove(
+            playbook_id,
+            REPO_GLOBAL_SCOPE,
+            {"workflow_id": workflow_id, "user_id": user_id, "revision": revision},
+        )
+
 
 def _outcome_update(
-    status: PlaybookRunStatus, reason: str | None, *, grow_streak: bool = False
+    outcome: PlaybookRunOutcome, *, grow_streak: bool
 ) -> dict[str, dict[str, object]]:
-    """The update a run outcome writes, shaped by what the status means for the streak."""
-    if status is PlaybookRunStatus.SUCCESS:
-        return {"$set": {"last_run_status": status, "last_run_reason": None, "suspect_streak": 0}}
-    update: dict[str, dict[str, object]] = {
-        "$set": {"last_run_status": status, "last_run_reason": reason}
+    """Build the $set/$inc update a run outcome writes.
+
+    Split into the part independent of stored state ($set) and the part that
+    depends on it ($inc), which the caller settles by matching on status;
+    test_playbooks_repository proves the two agree for every outcome/status pair.
+    """
+    fields: dict[str, object] = {
+        "last_run_status": outcome.status,
+        "last_run_reason": None if outcome.status is PlaybookRunStatus.SUCCESS else outcome.reason,
     }
-    if status is PlaybookRunStatus.SUSPECT and grow_streak:
+    if outcome.status is PlaybookRunStatus.SUCCESS:
+        fields["suspect_streak"] = 0
+    update: dict[str, dict[str, object]] = {"$set": fields}
+    if grow_streak:
         update["$inc"] = {"suspect_streak": 1}
     return update
 

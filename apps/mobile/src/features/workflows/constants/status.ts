@@ -1,7 +1,8 @@
 import type { AppStatusChipStatus } from "@/shared/components/ui/app-status-chip";
+import type { WorkflowExecution } from "../types/workflow-types";
 import { WORKFLOW_COLORS } from "./colors";
 
-export type ExecutionStatus = "running" | "success" | "failed";
+export type ExecutionStatus = WorkflowExecution["status"];
 
 export type ActivationStatus = "activated" | "deactivated";
 
@@ -55,5 +56,11 @@ export const EXECUTION_STATUS: Record<
     label: "Running",
     fgColor: WORKFLOW_COLORS.primary,
     bgColor: WORKFLOW_COLORS.primarySubtleAlt,
+  },
+  skipped: {
+    chipStatus: "inactive",
+    label: "Skipped",
+    fgColor: WORKFLOW_COLORS.warningText,
+    bgColor: WORKFLOW_COLORS.warningBg,
   },
 };

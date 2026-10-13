@@ -11,14 +11,9 @@ def derive_integration_namespace(
 ) -> str:
     """Derive namespace for ChromaDB indexing and retrieval.
 
-    For custom MCPs: uses URL-derived namespace (domain + path).
-    For platform MCPs: uses configured tool_space from subagent_config.
-    Fallback: integration_id.
-
-    Note: This assumes each custom integration has a unique server URL.
-    If two integrations point to the same domain+path (e.g. api.example.com/v1),
-    their tools will share a namespace. This is intentional — same-endpoint tools
-    are semantically equivalent and deduplication is desirable.
+    Custom MCPs use a URL-derived namespace (domain + path); platform MCPs
+    use their configured tool_space. Two integrations at the same domain+path
+    intentionally share a namespace, since same-endpoint tools dedup cleanly.
     """
     if is_custom and server_url:
         namespace = get_tool_namespace_from_url(server_url, fallback=integration_id)

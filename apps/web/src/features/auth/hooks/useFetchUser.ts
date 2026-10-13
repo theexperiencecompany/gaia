@@ -1,66 +1,54 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { parseUserId } from "@gaia/shared/analytics/identity";
+import { ApiError } from "@shared/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RedirectType, redirect, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { authApi } from "@/features/auth/api/authApi";
+import { PUBLIC_PAGES, SESSION_RESUMED_KEY } from "@/features/auth/constants";
 import {
-  ONBOARDING_PROCESSING_PHASES,
-  PUBLIC_PAGES,
-  SESSION_RESUMED_KEY,
-} from "@/features/auth/constants";
-import { useUserActions } from "@/features/auth/hooks/useUser";
+  clearCurrentUser,
+  currentUserQueryOptions,
+} from "@/features/auth/hooks/useCurrentUser";
 import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
 import { usePathname } from "@/i18n/navigation";
-import {
-  ANALYTICS_EVENTS,
-  identifyUser,
-  resetUser,
-  trackEvent,
-} from "@/lib/analytics";
+import { identifyUser, resetUser, track } from "@/lib/analytics";
+import { HTTP_UNAUTHORIZED } from "@/lib/api/outcome";
 
 // Exactly-once guard for the OAuth login analytics event — module scope so it
 // can be flipped during the render-phase redirect without writing a ref.
 let hasTrackedOAuthLogin = false;
 
 const useFetchUser = () => {
-  const { setUser, clearUser } = useUserActions();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
+  const hasClearedOnError = useRef(false);
+  const hasResetOnUnauthorized = useRef(false);
 
+  // The one place the current-user query is driven — the cache *is* the
+  // state, nothing is copied out. Persisted for instant paint, so this
+  // driver always re-validates on mount (one round-trip/load); others stay fresh-only.
   const { data, error } = useQuery({
-    queryKey: ["current-user"],
-    queryFn: () => authApi.fetchUserInfo(),
-    staleTime: Infinity, // mutations update Zustand directly, so this only needs to fetch once per session
-    retry: false, // auth failures shouldn't be retried
+    ...currentUserQueryOptions,
+    refetchOnMount: "always",
   });
 
-  // Sync fetched data into Zustand store and run one-time side effects
   useEffect(() => {
     if (!data) return;
 
-    setUser({
-      userId: data.user_id,
-      name: data.name,
-      email: data.email,
-      profilePicture: data.picture,
-      timezone: data.timezone,
-      onboarding: data.onboarding,
-      selected_model: data.selected_model,
-    });
-
     // Identify the persisted client session with the stable backend user ID.
     if (data.user_id && !hasIdentified.current) {
-      identifyUser(data.user_id, {
-        email: data.email,
-        name: data.name,
-        timezone: data.timezone,
+      identifyUser(parseUserId(data.user_id), {
+        email: data.email ?? undefined,
+        name: data.name ?? undefined,
+        timezone: data.timezone ?? undefined,
         onboarding_completed: data.onboarding?.completed ?? false,
       });
       hasIdentified.current = true;
     }
-  }, [data, setUser]);
+  }, [data]);
 
   // Track session resume once, independent from store-syncing.
   useEffect(() => {
@@ -71,7 +59,7 @@ const useFetchUser = () => {
       sessionStorage.getItem(SESSION_RESUMED_KEY);
 
     if (!isAuthRedirectPage && !hasTrackedSessionResumed) {
-      trackEvent(ANALYTICS_EVENTS.USER_SESSION_RESUMED, {
+      track("user:session_resumed", {
         method: "wos_session_cookie",
         has_completed_onboarding: data.onboarding?.completed ?? false,
       });
@@ -79,16 +67,15 @@ const useFetchUser = () => {
     }
   }, [data, currentPath]);
 
-  // OAuth redirect routing — isolated from store syncing so route changes
-  // don't overwrite user state with stale query data. Resolved during render
-  // (not in an effect) so the callback page never paints before redirecting;
-  // `redirect` performs the same client-side navigation router.push did.
+  // OAuth redirect routing, isolated from store syncing so route changes
+  // don't overwrite state with stale data. Resolved during render, not an
+  // effect, so the callback page never paints before redirecting; same as router.push.
   const accessToken = searchParams.get("access_token");
   const refreshToken = searchParams.get("refresh_token");
 
-  // Analytics for the OAuth login — fired pre-redirect (redirect() aborts the
-  // render, so an effect here would never run). A module flag, not a ref:
-  // refs must not be written during render. Exactly-once per page load.
+  // OAuth redirect resolved during render (not an effect) so the callback page
+  // never paints before redirecting. Login analytics are server-side only
+  // (track_login on the OAuth callback); emitting here would double-count.
   if (
     data &&
     accessToken &&
@@ -97,37 +84,43 @@ const useFetchUser = () => {
     !hasTrackedOAuthLogin
   ) {
     hasTrackedOAuthLogin = true;
-    trackEvent(ANALYTICS_EVENTS.USER_LOGGED_IN, {
-      method: "workos_oauth",
-    });
 
     // A pending checkout takes priority; useCheckoutResume redirects to Dodo.
     const needsOnboarding = !data.onboarding?.completed;
-    const phase = data.onboarding?.phase;
-    const isStillProcessing =
-      !!phase && ONBOARDING_PROCESSING_PHASES.has(phase);
 
     if (needsOnboarding && currentPath !== "/onboarding") {
-      redirect("/onboarding", RedirectType.push);
+      redirect("/onboarding", RedirectType.replace);
     }
 
     if (
       !needsOnboarding &&
-      !isStillProcessing &&
       (currentPath === "/onboarding" || PUBLIC_PAGES.includes(currentPath))
     ) {
-      redirect("/c", RedirectType.push);
+      redirect("/c", RedirectType.replace);
     }
   }
 
-  // Clear user state on auth failure
+  // Clear user state on a failed /me, dropping it from the persisted cache too.
+  // Guarded by a ref: removing the query makes this observer refetch, so an
+  // unguarded effect would remove it again on the next failure, in a loop.
   useEffect(() => {
-    if (!error) return;
+    if (!error || hasClearedOnError.current) return;
+    hasClearedOnError.current = true;
     console.error("Error fetching user info:", error);
-    clearUser();
-    resetUser();
+    clearCurrentUser(queryClient);
     hasIdentified.current = false;
-  }, [error, clearUser]);
+  }, [error, queryClient]);
+
+  // Only a 401 ends the identified session, so it is guarded on its own: a 5xx
+  // that cleared the cache first must not swallow the 401 a refetch then returns.
+  useEffect(() => {
+    if (hasResetOnUnauthorized.current) return;
+    if (!(error instanceof ApiError && error.status === HTTP_UNAUTHORIZED))
+      return;
+    hasResetOnUnauthorized.current = true;
+    // resetUser leaves an anonymous visitor's 401 alone.
+    resetUser();
+  }, [error]);
 };
 
 export default useFetchUser;

@@ -13,6 +13,13 @@ from app.utils.cache_utils import create_cache_key_hash
 pytestmark = pytest.mark.unit
 
 
+class _Recall(BaseModel):
+    """A result shaped like one that can come from a fallback path."""
+
+    answer: str
+    degraded: bool
+
+
 class TestPatternToKeyErrors:
     async def test_missing_placeholder_raises_with_exact_message_and_cause(self):
         with pytest.raises(ValueError) as exc_info:
@@ -176,6 +183,35 @@ class TestCacheableHitMissFlow:
         assert result == "sync-result"
         assert calls == ["x"]
 
+    async def test_a_degraded_result_is_returned_but_not_stored(self):
+        @Cacheable(key_pattern="static-key", ttl=120)
+        async def compute() -> _Recall:
+            return _Recall(answer="partial", degraded=True)
+
+        with (
+            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock) as mock_set,
+        ):
+            result = await compute()
+
+        assert result == _Recall(answer="partial", degraded=True)
+        mock_set.assert_not_called()
+
+    async def test_a_full_result_that_can_degrade_is_stored(self):
+        @Cacheable(key_pattern="static-key", ttl=120)
+        async def compute() -> _Recall:
+            return _Recall(answer="complete", degraded=False)
+
+        with (
+            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock) as mock_set,
+        ):
+            await compute()
+
+        mock_set.assert_awaited_once_with(
+            key="static-key", value=_Recall(answer="complete", degraded=False), ttl=120, model=None
+        )
+
 
 class TestCacheableValidation:
     def test_no_key_strategy_raises_at_construction(self):
@@ -187,8 +223,7 @@ class TestCacheableValidation:
 
 
 class TestCacheableKeyGeneratorArgs:
-    """The generator is called with (func_name, *args, **kwargs) — every part
-    load-bearing, since two call sites share the helper."""
+    """The generator is called with (func_name, *args, **kwargs) — every part load-bearing, since two call sites share the helper."""
 
     async def test_sync_generator_receives_func_name_args_and_kwargs(self):
         seen: dict[str, Any] = {}
@@ -305,8 +340,7 @@ class TestCacheableUnresolvedKeyGuard:
 
 
 class TestCacheInvalidatorKeyGeneratorArgs:
-    """Both generator flavours receive (func.__name__, *args, **kwargs) and
-    their return decides exactly which keys get busted."""
+    """Both generator flavours receive (func.__name__, *args, **kwargs) and their return decides exactly which keys get busted."""
 
     async def test_async_generator_receives_func_name_args_and_kwargs(self):
         seen: dict[str, Any] = {}

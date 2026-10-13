@@ -8,12 +8,16 @@ holds the executor to. The user's verbatim request rides along separately.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
+from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF
 from app.agents.tools.executor_tool import call_executor
+from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
+from tests.helpers import load_llm_stub_module
 
 
 class TestComposeTaskBrief:
@@ -54,14 +58,12 @@ class TestComposeTaskBrief:
             "\n\n"
             "<last_run>\nat: 2026-08-27T09:00:00+00:00\n</last_run>"
             "\n\n"
-            "Definition of done (every item must be true before you finish):\n- digest sent"
+            "Definition of done (every item must be true before you finish):\n- digest sent\n"
+            f"{DONE_EVIDENCE_RULE}"
         )
 
     def test_the_brief_layout_is_exact(self):
-        """The executor reads this back as its own instructions, so the layout is
-        the contract: sections separated by a blank line, criteria one per line.
-        Run the criteria together and the definition of done becomes one unreadable
-        line the model is asked to satisfy item by item."""
+        """The layout is the contract: sections separated by a blank line, criteria one per line."""
         out = compose_executor_brief(
             "triage my inbox",
             ["promos archived", "offer flagged"],
@@ -74,7 +76,7 @@ class TestComposeTaskBrief:
             "triage my inbox"
             "\n\n"
             "Definition of done (every item must be true before you finish):\n"
-            "- promos archived\n- offer flagged"
+            f"- promos archived\n- offer flagged\n{DONE_EVIDENCE_RULE}"
         )
 
 
@@ -112,7 +114,7 @@ class TestVerbatimRequestComesFromTheServer:
     Routing it through the model made it a model output: asked to emit the full
     task AND re-transcribe a request that may run to MAX_MESSAGE_LENGTH, the
     comms model degenerates — repeating tokens and spilling the schema's own key
-    names into `acceptance_criteria`. The server already holds the user's words,
+    names into acceptance_criteria. The server already holds the user's words,
     so the model is no longer asked for them.
     """
 
@@ -129,9 +131,7 @@ class TestVerbatimRequestComesFromTheServer:
         assert "verbatim_request" not in call_executor.args
 
     async def test_a_long_request_is_carried_unclipped(self):
-        """`user_messages` is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim
-        backstop must not be, or long asks — exactly the ones that broke the model —
-        silently lose their tail."""
+        """user_messages is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim backstop must not be."""
         long_request = "archive the promo from " + ", ".join(
             f"sender{n}@example.com" for n in range(200)
         )
@@ -156,8 +156,10 @@ class TestVerbatimRequestComesFromTheServer:
 
 
 class TestPreviousRunReachesTheExecutor:
-    """A workflow run's checkpoint threads are dropped before it starts, so the
-    previous run reaches the worker tier here or not at all."""
+    """A workflow run's checkpoint threads are dropped before it starts.
+
+    The previous run reaches the worker tier here or not at all.
+    """
 
     async def test_a_workflow_run_carries_its_previous_run_into_the_brief(self):
         last_run = '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>\n'
@@ -175,9 +177,7 @@ class TestPreviousRunReachesTheExecutor:
         assert '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>' in dispatched_task
 
     async def test_the_playbook_check_is_asked_about_this_workflow_and_this_user(self):
-        """The check reads the workflow's playbook and the user's own run history —
-        asked about the wrong one (or about nobody), it answers about a run that
-        never happened and the executor writes a playbook from it."""
+        """Asked about the wrong workflow or user, the check answers about a run that never happened."""
         with (
             patch(
                 "app.agents.tools.executor_tool.get_last_run_brief",
@@ -212,6 +212,62 @@ class TestPreviousRunReachesTheExecutor:
 
         mock_last_run.assert_not_awaited()
         assert "last_run" not in dispatched_task
+
+
+_SCRIPT = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+_LAST_RUN = wrap_agent_payload(AgentTag.LAST_RUN, "status: completed\ncreate_reminder({})")
+_FALLBACK_NOTE = wrap_agent_payload(AgentTag.PLAYBOOK_FALLBACK, "Replay stopped at step 2.")
+
+
+class TestTheSimStubRunsABriefsScriptOnce:
+    """Under --sim the brief carries the script twice (quote, then task); one turn once made two reminders."""
+
+    @pytest.mark.parametrize(
+        "sections",
+        [
+            {"acceptance_criteria": ["done"]},
+            {"acceptance_criteria": ["done"], "last_run": _LAST_RUN},
+            {"acceptance_criteria": [], "last_run": _LAST_RUN},
+            {
+                "acceptance_criteria": [],
+                "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
+            },
+            {
+                "acceptance_criteria": ["done"],
+                "last_run": _LAST_RUN,
+                "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
+            },
+        ],
+        ids=["criteria", "last-run", "last-run-no-criteria", "playbook-note", "every-section"],
+    )
+    def test_a_brief_quoting_the_request_yields_one_tool_call(
+        self, sections: dict[str, Any]
+    ) -> None:
+        stub = load_llm_stub_module("directives")
+        criteria = sections.pop("acceptance_criteria")
+        brief = compose_executor_brief(_SCRIPT, criteria, verbatim_request=_SCRIPT, **sections)
+        tools = frozenset({"create_reminder"})
+        turn: list[dict[str, object]] = [{"role": "user", "content": brief}]
+        after_one: list[dict[str, object]] = [
+            *turn,
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "create_reminder", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "ok"},
+        ]
+
+        assert stub.resolve_response(turn, tools) == stub.ToolCallResponse(
+            name="create_reminder", args={"title": "stretch"}
+        )
+        assert stub.resolve_response(after_one, tools) == stub.SayResponse(text="Reminder set!")
 
 
 if __name__ == "__main__":

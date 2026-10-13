@@ -7,7 +7,8 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { wideLog } from "../utils/wide-events";
+import { reportCommandFailure } from "../utils/commands";
+import { recordBotFailure } from "../utils/failure-reasons";
 
 /** `/status` command definition. */
 export const statusCommand: BotCommand = {
@@ -35,15 +36,16 @@ export const statusCommand: BotCommand = {
             `❌ Not linked yet.\n\n🔗 Link your account: ${authUrl}`,
           );
         } catch (error) {
-          wideLog.error("status_command_error", undefined, error);
+          recordBotFailure("create_link_token_failed", error);
           await target.sendEphemeral(
             "❌ Not linked yet. Use /auth to link your account.",
           );
         }
       }
     } catch (error) {
-      wideLog.error("status_command_error", undefined, error);
-      await target.sendEphemeral("Error checking status. Please try again.");
+      await target.sendEphemeral(
+        reportCommandFailure("check_auth_status", error, ctx),
+      );
     }
   },
 };

@@ -2,14 +2,22 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 import json
 import time
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-from livekit import rtc  # type: ignore[attr-defined]  # livekit __init__ untyped upstream
-from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
+from livekit import rtc
+from livekit.agents import DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, APIConnectOptions, NotGivenOr
+from livekit.agents.llm import (
+    LLM,
+    ChatChunk,
+    ChatContext,
+    ChoiceDelta,
+    LLMStream,
+    Tool,
+    ToolChoice,
+)
 
 from shared.py.wide_events import VoiceContext, get_trace_id, log, log_context, wide_task
 from src.constants import (
@@ -161,7 +169,7 @@ class CustomLLM(LLM):
         The drain deliberately outlives the turn, so it gets its own wide event
         rather than writing into the turn's — that one has already been emitted
         by the time the executor answers, and anything the drain logged into it
-        would be dropped. ``trace_id`` is the turn's, so the two events join.
+        would be dropped. trace_id is the turn's, so the two events join.
         """
         task = asyncio.create_task(self._drain_in_event(resp, trace_id, turn_index))
         self._drain_tasks.add(task)
@@ -190,8 +198,8 @@ class CustomLLM(LLM):
         """Forward the post-reply UI events and speak each executor answer.
 
         Mirrors what's shown on screen: forward what's displayed (tool cards,
-        follow-ups), speak what's a bot message (each ``voice_tts`` answer, in
-        order, as its own utterance via ``session.say``).
+        follow-ups), speak what's a bot message (each voice_tts answer, in
+        order, as its own utterance via session.say).
         """
         try:
             async for raw in resp.content:
@@ -208,7 +216,7 @@ class CustomLLM(LLM):
             await resp.release()
 
     async def _handle_drain_event(self, data: str) -> None:
-        """Speak a ``voice_tts`` answer, or forward a plumbing event to the screen."""
+        """Speak a voice_tts answer, or forward a plumbing event to the screen."""
         try:
             event = json.loads(data)
         except json.JSONDecodeError:
@@ -243,25 +251,25 @@ class CustomLLM(LLM):
         if event.keys() & PLUMBING_EVENT_KEYS:
             await self.forward_stream_event_to_frontend(data)
 
-    # The base class declares chat() -> LLMStream, but the LiveKit pipeline calls it as
-    # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly
-    # what @asynccontextmanager + yield gen() provides.
-    # The pipeline also passes tools/tool_choice/conn_options (voice/agent.py), which
-    # this override does not use — the catch-all has to stay or those calls TypeError.
-    # `object`, not Any: nothing here ever reads them.
-    @asynccontextmanager
-    async def chat(
-        self, *, chat_ctx: ChatContext, **_kwargs: object
-    ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:
-        """Stream SSE from the backend and yield ChatChunks for TTS."""
-
-        async def gen() -> AsyncGenerator[ChatChunk, None]:
-            self._turn_index += 1
-            turn = _VoiceTurn(self, chat_ctx, self._turn_index)
-            async for chunk in turn.run():
-                yield chunk
-
-        yield gen()
+    def chat(
+        self,
+        *,
+        chat_ctx: ChatContext,
+        tools: list[Tool] | None = None,
+        conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS,
+        parallel_tool_calls: NotGivenOr[bool] = NOT_GIVEN,
+        tool_choice: NotGivenOr[ToolChoice] = NOT_GIVEN,
+        extra_kwargs: NotGivenOr[dict[str, Any]] = NOT_GIVEN,
+    ) -> LLMStream:
+        """Start one voice turn; the backend chooses tools, so the tool settings go unused."""
+        self._turn_index += 1
+        return _VoiceStream(
+            self,
+            _VoiceTurn(self, chat_ctx, self._turn_index),
+            chat_ctx=chat_ctx,
+            tools=tools or [],
+            conn_options=conn_options,
+        )
 
     async def aclose(self) -> None:
         """Clean up HTTP session and room reference."""
@@ -273,6 +281,41 @@ class CustomLLM(LLM):
             log.warning(f"{LogTag.LLM} Failed to close backend HTTP session", error=str(e))
         finally:
             await super().aclose()
+
+
+class _VoiceStream(LLMStream):
+    """A voice turn as the LLMStream LiveKit reads: each TTS chunk the turn flushes, in order."""
+
+    def __init__(
+        self,
+        llm: CustomLLM,
+        turn: "_VoiceTurn",
+        *,
+        chat_ctx: ChatContext,
+        tools: list[Tool],
+        conn_options: APIConnectOptions,
+    ) -> None:
+        self._turn = turn
+        super().__init__(llm, chat_ctx=chat_ctx, tools=tools, conn_options=conn_options)
+
+    async def _run(self) -> None:
+        """Drive the whole turn under its own wide event; LiveKit runs this as the turn's task."""
+        turn = self._turn
+        # Every line in this turn carries the same identity + turn fields, so Loki can slice by any of them.
+        async with wide_task(
+            "voice_turn",
+            user_id=turn.llm.user_id,
+            conversation_id=turn.llm.conversation_id,
+        ):
+            log.set(
+                voice=VoiceContext(
+                    operation="turn",
+                    room=turn.llm.room.name if turn.llm.room else None,
+                    turn_index=turn.turn_index,
+                )
+            )
+            async for chunk in turn.chunks():
+                self._event_ch.send_nowait(chunk)
 
 
 def _tts_chunk(content: str) -> ChatChunk:
@@ -324,26 +367,8 @@ class _VoiceTurn:
         # there's nothing left to drain.
         self.stream_done = False
 
-    async def run(self) -> AsyncGenerator[ChatChunk, None]:
-        """Drive the whole turn; yields sanitized TTS chunks as they flush."""
-        # Per-turn wide-event scope: every line in this turn carries the same
-        # identity + turn fields, so Loki can slice by any of them.
-        async with wide_task(
-            "voice_turn",
-            user_id=self.llm.user_id,
-            conversation_id=self.llm.conversation_id,
-        ):
-            log.set(
-                voice=VoiceContext(
-                    operation="turn",
-                    room=self.llm.room.name if self.llm.room else None,
-                    turn_index=self.turn_index,
-                )
-            )
-            async for chunk in self._run():
-                yield chunk
-
-    async def _run(self) -> AsyncGenerator[ChatChunk, None]:
+    async def chunks(self) -> AsyncGenerator[ChatChunk, None]:
+        """Stream the backend reply and yield each sanitized TTS chunk as it flushes."""
         if not self.user_message:
             log.warning(f"{LogTag.LLM} empty user message, skipping LLM turn", phase="turn_skip")
             return
@@ -351,7 +376,6 @@ class _VoiceTurn:
         log.info(
             f"{LogTag.LLM} chat turn start",
             phase="chat_turn_start",
-            user_msg=self.user_message,
             user_msg_len=len(self.user_message),
         )
 
@@ -361,7 +385,6 @@ class _VoiceTurn:
             phase="backend_request",
             elapsed_ms=ms_since(self.turn_start),
             conversation_id=self.llm.conversation_id,
-            user_message=self.user_message,
             history_turns=len(self.messages),
         )
 
@@ -473,7 +496,7 @@ class _VoiceTurn:
 
             # Comms reply done — end the audio turn now so the ack plays at
             # once. The rest of the stream (executor events + answer) is handled
-            # by the background drain spawned in run().
+            # by the background drain spawned in chunks().
             if self.comms_complete:
                 return
 
@@ -552,7 +575,7 @@ class _VoiceTurn:
             f"{LogTag.LLM} backend event",
             phase="backend_event",
             event_keys=list(event_keys),
-            event_data=data[:300],
+            event_len=len(data),
             is_plumbing=is_plumbing,
             elapsed_ms=ms_since(self.turn_start),
         )
@@ -692,7 +715,7 @@ class _VoiceTurn:
         """Forward the raw buffer to the frontend, sanitize it for TTS, and clear it.
 
         The frontend gets the full display chunk (markdown + OpenUI preserved);
-        TTS gets the sanitised copy, only when it clears ``min_chars``.
+        TTS gets the sanitised copy, only when it clears min_chars.
         """
         if not self.text_buffer:
             return None

@@ -11,85 +11,61 @@ import { NotificationsList } from "@/features/notification/components/Notificati
 import { UnreadCountChip } from "@/features/notification/components/UnreadCountChip";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useHeader } from "@/hooks/layout/useHeader";
-import { toast } from "@/lib/toast";
-import { NotificationsAPI } from "@/services/api/notifications";
 import {
   type ModalConfig,
+  type ModalProps,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
 
+const INAPP_CHANNEL = "inapp";
+
 export default function NotificationsPage() {
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
+  // `props` is untyped on the wire; the component name is what makes it an EmailPreview payload.
+  const modalProps = modalConfig?.props as ModalProps | undefined;
   const [selectedTab, setSelectedTab] = useState<string>("unread");
   const { setHeader } = useHeader();
 
-  // Get unread notifications
+  // Both views read the same store entry, so this is a single fetch.
   const {
     notifications: unreadNotifications,
     loading: unreadLoading,
-    refetch: refetchUnread,
+    refetch: refreshNotifications,
+    markAsRead,
+    markAllAsRead,
+    hasMoreUnseen,
   } = useNotifications({
     status: NotificationStatus.DELIVERED,
     limit: 100,
-    channel_type: "inapp",
+    channel_type: INAPP_CHANNEL,
   });
 
-  // Get all notifications data
-  const {
-    notifications: allNotifications,
-    loading: allLoading,
-    refetch: refetchAll,
-  } = useNotifications({
-    limit: 100,
-    channel_type: "inapp",
-  });
+  // The loaded page can undercount unread notifications, so a button gated on
+  // it alone could hide even though an older delivered notification exists.
+  const canMarkAllAsRead = unreadNotifications.length > 0 || hasMoreUnseen;
 
-  // Simple mark as read that refreshes both lists
-  const handleMarkAsRead = async (notificationId: string) => {
-    try {
-      await NotificationsAPI.markAsRead(notificationId);
-      // Refresh both lists in parallel after marking as read
-      await Promise.all([refetchUnread(), refetchAll()]);
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-    }
-  };
+  const { notifications: allNotifications, loading: allLoading } =
+    useNotifications({
+      limit: 100,
+      channel_type: INAPP_CHANNEL,
+    });
 
-  // Simple refresh function
-  const refreshNotifications = useCallback(async () => {
-    await Promise.all([refetchAll(), refetchUnread()]);
-  }, [refetchAll, refetchUnread]);
-
-  // Handle modal opening from notification actions
   const handleModalOpen = (config: ModalConfig) => {
     setModalConfig(config);
   };
 
-  // Handle modal closing
   const handleModalClose = () => {
     setModalConfig(null);
   };
 
-  // Handle email sent callback to refresh notifications
   const handleEmailSent = () => {
-    // Refresh notifications after email is sent
     refreshNotifications();
   };
 
   const handleMarkAllAsRead = useCallback(async () => {
-    const notificationIds = unreadNotifications.map((n) => n.id);
-    try {
-      if (notificationIds.length === 0) {
-        toast.error("No notifications to mark as read");
-        return;
-      }
-      await NotificationsAPI.bulkMarkAsRead(notificationIds);
-      // Refresh both lists in parallel
-      await Promise.all([refetchUnread(), refetchAll()]);
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-    }
-  }, [unreadNotifications, refetchUnread, refetchAll]);
+    if (!canMarkAllAsRead) return;
+    await markAllAsRead(INAPP_CHANNEL);
+  }, [canMarkAllAsRead, markAllAsRead]);
 
   useEffect(() => {
     setHeader(<NotificationsHeader />);
@@ -124,7 +100,7 @@ export default function NotificationsPage() {
               <Tab key="all" title="All" />
             </Tabs>
 
-            {unreadNotifications.length > 0 && (
+            {canMarkAllAsRead && (
               <Button
                 size="sm"
                 variant="light"
@@ -149,23 +125,23 @@ export default function NotificationsPage() {
                 : "Notifications will appear here when you receive them."
             }
             onRefresh={refreshNotifications}
-            onMarkAsRead={handleMarkAsRead}
+            onMarkAsRead={markAsRead}
             onModalOpen={handleModalOpen}
           />
         </div>
       </div>
 
-      {modalConfig?.component === "EmailPreviewModal" && modalConfig.props && (
+      {modalConfig?.component === "EmailPreviewModal" && modalProps && (
         <EmailPreviewModal
           isOpen={true}
           onClose={handleModalClose}
-          subject={modalConfig.props.subject || ""}
-          body={modalConfig.props.body || ""}
-          recipients={modalConfig.props.recipients || []}
-          mode={modalConfig.props.mode === "view" ? "view" : "edit"}
+          subject={modalProps.subject || ""}
+          body={modalProps.body || ""}
+          recipients={modalProps.recipients || []}
+          mode={modalProps.mode === "view" ? "view" : "edit"}
           onEmailSent={handleEmailSent}
-          notificationId={modalConfig.props.notificationId}
-          actionId={modalConfig.props.actionId}
+          notificationId={modalProps.notificationId}
+          actionId={modalProps.actionId}
         />
       )}
     </div>

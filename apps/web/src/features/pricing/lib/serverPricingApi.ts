@@ -1,36 +1,22 @@
-import axios from "axios";
-import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
+import { serverApi, serverApiError } from "@/lib/api/server";
 
 import type { Plan } from "../api/pricingApi";
 
+const PLANS_TIMEOUT_MS = 10_000;
+
 export async function getPlansServer(activeOnly = true): Promise<Plan[]> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const client = serverApi();
+  if (!client) return [];
 
-  try {
-    const apiBaseUrl = getServerApiBaseUrl();
-    if (!apiBaseUrl) return [];
-
-    const response = await axios.get<Plan[]>(`${apiBaseUrl}/payments/plans`, {
-      headers,
-      params: { active_only: activeOnly },
-      timeout: 10000, // 10 second timeout
+  const { data, error, response } = await client.GET("/api/v1/payments/plans", {
+    params: { query: { active_only: activeOnly } },
+    signal: AbortSignal.timeout(PLANS_TIMEOUT_MS),
+  });
+  if (error !== undefined || data === undefined) {
+    const failure = serverApiError(response, error);
+    throw new Error(`Failed to fetch plans from backend: ${failure.message}`, {
+      cause: failure,
     });
-
-    if (!Array.isArray(response.data)) {
-      console.warn(
-        "Failed to fetch plans server-side: backend returned non-array payload",
-      );
-      return [];
-    }
-
-    return response.data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const message = error.response?.data?.detail || error.message;
-      throw new Error(`Failed to fetch plans from backend: ${message}`);
-    }
-    throw error;
   }
+  return data;
 }

@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 from typing import Any
 
-from livekit import rtc  # type: ignore[attr-defined]  # livekit __init__ untyped upstream
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentFalseInterruptionEvent,
@@ -28,7 +28,9 @@ from livekit.agents import (
 from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from shared.py.analytics import PostHogAnalytics, VoiceAnalyticsEvents
+from shared.py.analytics import PostHogAnalytics, UserId
+from shared.py.analytics.catalog.voice import VoiceSessionEnded, VoiceSessionStarted
+from shared.py.analytics.context import analytics_context
 from shared.py.logging import configure_file_logging
 from shared.py.secrets import inject_infisical_secrets
 from shared.py.wide_events import ModelContext, VoiceContext, get_trace_id, log, log_context
@@ -38,6 +40,7 @@ from src.constants import (
     MIN_ENDPOINTING_DELAY_S,
     PROMETHEUS_METRICS_PORT,
     PROMETHEUS_MULTIPROC_DIR,
+    VOICE_SESSION_ANALYTICS,
     VOICE_SYSTEM_PROMPT,
     LogTag,
 )
@@ -95,10 +98,10 @@ def prewarm(proc: JobProcess) -> None:
 class _SessionStats:
     """Per-session counters accumulated by the AgentSession lifecycle callbacks.
 
-    Those callbacks fire after ``entrypoint`` has returned — i.e. after its
-    wide event has already been emitted — so a ``log.set()`` from them reaches
+    Those callbacks fire after entrypoint has returned — i.e. after its
+    wide event has already been emitted — so a log.set() from them reaches
     nothing. They accumulate here instead, and the shutdown callback reports
-    the whole aggregate as one ``voice_session_end`` event.
+    the whole aggregate as one voice_session_end event.
 
     Transcript *content* stays out of the aggregate on purpose: only lengths
     and counts are carried into the queryable event.
@@ -125,14 +128,15 @@ def _register_session_logging(
     identity: dict[str, Any],
     trace_id: str,
     analytics: PostHogAnalytics,
+    user: UserId,
 ) -> None:
     """Wire per-session lifecycle logging: user/agent state, STT, metrics, usage.
 
-    ``identity`` carries the room/user/job fields onto every event so one Loki
+    identity carries the room/user/job fields onto every event so one Loki
     filter reconstructs the session timeline; these callbacks fire outside the
     entrypoint's context, so the fields are passed explicitly rather than bound.
-    ``trace_id`` is the entrypoint's, so the session-end event joins its
-    ``voice_session_start`` counterpart.
+    trace_id is the entrypoint's, so the session-end event joins its
+    voice_session_start counterpart.
     """
     stats = _SessionStats()
 
@@ -164,7 +168,7 @@ def _register_session_logging(
             log.info(
                 f"{LogTag.AGENT} STT final",
                 phase="stt_final",
-                transcript=ev.transcript,
+                transcript_length=len(ev.transcript),
                 language=ev.language,
                 stt_latency_ms=stt_latency_ms,
                 **identity,
@@ -173,7 +177,7 @@ def _register_session_logging(
             log.debug(
                 f"{LogTag.AGENT} STT interim",
                 phase="stt_interim",
-                transcript=ev.transcript,
+                transcript_length=len(ev.transcript),
                 **identity,
             )
 
@@ -209,11 +213,11 @@ def _register_session_logging(
     async def log_session_end(reason: str) -> None:
         """Emit the session's aggregated turn stats and STT/TTS/LLM usage.
 
-        The boundary lives here, not in ``entrypoint``: LiveKit runs shutdown
+        The boundary lives here, not in entrypoint: LiveKit runs shutdown
         callbacks only after the entrypoint task has returned and the
         AgentSession has closed, so this is the first moment the whole session
-        is knowable. It reuses the entrypoint's ``trace_id`` so this event and
-        its ``voice_session_start`` counterpart join on it.
+        is knowable. It reuses the entrypoint's trace_id so this event and
+        its voice_session_start counterpart join on it.
         """
         summary = usage_collector.get_summary()
         async with log_context("voice_session_end", trace_id=trace_id or None, **identity):
@@ -242,20 +246,20 @@ def _register_session_logging(
         # answers "what happened in this session", PostHog answers "how much do
         # people use voice", so this carries only the usage shape. Outside the
         # log_context: a PostHog failure must not colour the event's outcome.
-        user_id = identity.get("user_id")
-        if user_id:
+        with analytics_context(VOICE_SESSION_ANALYTICS):
             analytics.capture(
-                str(user_id),
-                VoiceAnalyticsEvents.SESSION_ENDED,
-                {
-                    "shutdown_reason": reason,
-                    "user_turns": stats.user_turns,
-                    "user_speaking_ms": round(stats.user_speaking_ms, 2),
-                    "tts_characters": summary.tts_characters_count,
-                    "stt_audio_duration_s": round(summary.stt_audio_duration, 2),
-                    "tokens_used": summary.llm_prompt_tokens + summary.llm_completion_tokens,
-                },
+                user,
+                VoiceSessionEnded(
+                    user_turns=stats.user_turns,
+                    user_speaking_ms=round(stats.user_speaking_ms, 2),
+                    tts_characters=summary.tts_characters_count,
+                    stt_audio_duration_s=round(summary.stt_audio_duration, 2),
+                    tokens_used=summary.llm_prompt_tokens + summary.llm_completion_tokens,
+                ),
             )
+        # One job per process, and LiveKit exits it through multiprocessing,
+        # which skips atexit: without this the queued batch is dropped.
+        await asyncio.to_thread(analytics.shutdown)
 
     ctx.add_shutdown_callback(log_session_end)
 
@@ -327,13 +331,13 @@ def _spawn_credential_task(
     identity: dict[str, Any],
     trace_id: str,
 ) -> None:
-    """Run a credential coroutine in its own wide event, kept alive in `tasks`.
+    """Run a credential coroutine in its own wide event, kept alive in tasks.
 
     This work applies the session's agent token, backend URL, TTS voice and
     conversation id — if it fails the session talks to the wrong backend or
     none at all — and it is spawned from room callbacks that fire long after
     the entrypoint's event emitted. Its own boundary (carrying the
-    entrypoint's ``trace_id``) makes a credential failure one queryable event
+    entrypoint's trace_id) makes a credential failure one queryable event
     instead of a lone real-time line.
     """
 
@@ -381,10 +385,12 @@ async def entrypoint(ctx: JobContext) -> None:
     # reconstructs the full session timeline in Loki. The session event
     # callbacks fire outside this task's context, so identity is passed
     # explicitly into each log call rather than bound.
-    user_id = user_id_from_room(ctx.room.name)
+    # Resolved before any session work: a room /token did not mint is refused here,
+    # so the session-end capture can never fail on its identity.
+    user = user_id_from_room(ctx.room.name)
     identity: dict[str, Any] = {
         "room": ctx.room.name,
-        "user_id": user_id,
+        "user_id": user.value,
         "job_id": getattr(ctx.job, "id", None),
     }
     # LiveKit invokes entrypoint with no logging middleware, so a boundary is
@@ -408,14 +414,9 @@ async def entrypoint(ctx: JobContext) -> None:
         session_trace_id = get_trace_id()
         # Attributed to the stable GAIA user id recovered from the room name —
         # the same id the API and web capture against, so a voice session lands
-        # on the user's real profile. A room not minted by /token has no user to
-        # attribute to, so it is left uncaptured rather than sent anonymously.
-        if user_id:
-            analytics.capture(
-                user_id,
-                VoiceAnalyticsEvents.SESSION_STARTED,
-                {"room": ctx.room.name},
-            )
+        # on the user's real profile.
+        with analytics_context(VOICE_SESSION_ANALYTICS):
+            analytics.capture(user, VoiceSessionStarted(room=ctx.room.name))
 
         room_start = time.monotonic()
 
@@ -424,7 +425,7 @@ async def entrypoint(ctx: JobContext) -> None:
             room=ctx.room,
             request_timeout_s=BACKEND_REQUEST_TIMEOUT_S,
         )
-        custom_llm.user_id = user_id
+        custom_llm.user_id = user.value
 
         tts = elevenlabs.TTS(
             api_key=settings.ELEVENLABS_API_KEY,
@@ -447,7 +448,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # once the comms turn has ended.
         custom_llm.session = session
 
-        _register_session_logging(ctx, session, identity, session_trace_id, analytics)
+        _register_session_logging(ctx, session, identity, session_trace_id, analytics, user)
 
         # Tracks the currently-applied TTS voice so repeated metadata events
         # (join + metadata_changed) don't re-apply the same voice.
@@ -548,7 +549,7 @@ def download_files() -> None:
     """Pre-download plugin model files (turn detector, etc.) into the local cache.
 
     Required before the worker can run turn detection: the MultilingualModel loads
-    with ``local_files_only=True`` at inference time and never fetches at runtime.
+    with local_files_only=True at inference time and never fetches at runtime.
     No secrets needed — this only fetches public model files — so Infisical is not
     injected, which lets it run at Docker-build time.
     """

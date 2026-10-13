@@ -1,18 +1,15 @@
 /**
- * Canonical filenames for bundled integration logos.
+ * Canonical filenames for bundled integration logos — the single source of truth for which
+ * file represents each integration across platforms. Each value is a relative path under
+ * `/images/icons/` (web) or the marketing-site CDN (mobile).
  *
- * Each value is a relative path under `/images/icons/` (web) or under the
- * marketing-site CDN (`https://heygaia.io/images/icons/`) used by mobile.
- * This is the single source of truth for which file represents each
- * integration logo across platforms.
- *
- * For new integrations: add the asset under `apps/web/public/images/icons/`
- * and add an entry here. Web reads it via {@link getWebIntegrationLogoPath};
- * mobile reads it via {@link getMobileIntegrationLogoUrl}.
+ * For new integrations: add the asset under `apps/web/public/images/icons/` and an entry here.
+ * Web reads it via {@link getWebIntegrationLogoPath}; mobile via {@link getMobileIntegrationLogoUrl}.
  */
 export const INTEGRATION_LOGO_FILES: Record<string, string> = {
   gmail: "gmail.webp",
   googledocs: "googledocs.webp",
+  googledrive: "googledrive.webp",
   googlesheets: "googlesheets.webp",
   search: "google.webp",
   weather: "weather.webp",
@@ -53,10 +50,13 @@ export const INTEGRATION_LOGO_FILES: Record<string, string> = {
  * Mobile reuses the same URLs verbatim — they are CDN-served already.
  */
 export const INTEGRATION_LOGO_EXTERNAL_URLS: Record<string, string> = {
-  browserbase:
-    "https://www.google.com/s2/favicons?domain=browserbase.com&sz=128",
   agentmail:
     "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://agentmail.to&size=256",
+  calcom: "https://www.google.com/s2/favicons?domain=cal.com&sz=128",
+  calendly: "https://www.google.com/s2/favicons?domain=calendly.com&sz=128",
+  outlook: "https://www.google.com/s2/favicons?domain=outlook.live.com&sz=128",
+  jira: "https://www.google.com/s2/favicons?domain=jira.atlassian.com&sz=128",
+  dropbox: "https://www.google.com/s2/favicons?domain=dropbox.com&sz=128",
 };
 
 /**

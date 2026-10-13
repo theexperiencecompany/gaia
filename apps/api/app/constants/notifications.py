@@ -1,6 +1,4 @@
-"""
-Push Notification Constants
-"""
+"""Push Notification Constants."""
 
 from enum import StrEnum
 import re
@@ -17,8 +15,7 @@ class NotificationChannel(StrEnum):
 
     Single source of truth: the preference model, the endpoint, the repository
     writes and the delivery-time preference lookup all derive from these members,
-    so a new channel cannot be honoured by delivery while staying invisible in the
-    API.
+    so a channel cannot be honoured by delivery while staying invisible in the API.
     """
 
     INAPP = "inapp"
@@ -30,7 +27,7 @@ class NotificationChannel(StrEnum):
     EMAIL = "email"
 
 
-# External channel types that are auto-injected based on platform links
+# External channel types a notification can be delivered on
 EXTERNAL_NOTIFICATION_CHANNELS = (
     NotificationChannel.TELEGRAM,
     NotificationChannel.DISCORD,
@@ -39,23 +36,23 @@ EXTERNAL_NOTIFICATION_CHANNELS = (
     NotificationChannel.IMESSAGE,
 )
 
+# Every channel type a notification may name explicitly (the tool validates
+# against this). One naming none goes in-app plus the user's preferred chat
+# platform; see ``NotificationOrchestrator._default_channels``.
+NOTIFICATION_CHANNEL_TYPES = (NotificationChannel.INAPP, *EXTERNAL_NOTIFICATION_CHANNELS)
+
 # Channels the user can switch on and off. inapp is excluded: it is always
 # delivered, so it has no preference to store.
 USER_CONFIGURABLE_CHANNELS = (*EXTERNAL_NOTIFICATION_CHANNELS, NotificationChannel.EMAIL)
 
-# All channel types that are auto-injected when no channels are explicitly specified.
-# inapp is always available; every other channel respects the user's preference.
-ALL_AUTO_INJECTED_CHANNELS = (NotificationChannel.INAPP, *USER_CONFIGURABLE_CHANNELS)
-
-# Default enabled state for every user-configurable channel. Email defaults on so
-# daily briefings/weekly digests reach a user's inbox until they opt out.
+# Default enabled state for every user-configurable channel
 DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     channel.value: True for channel in USER_CONFIGURABLE_CHANNELS
 }
 
-# Default order in which a briefing picks its ONE chat platform. The daily brief
+# Default order in which a proactive message picks its ONE chat platform. It
 # lands on the first platform in this list that the user has linked and enabled,
-# not on every linked platform (users.briefing_channel_priority overrides it).
+# never on every linked platform (``users.chat_channel_priority`` overrides it).
 DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
     NotificationChannel.TELEGRAM,
     NotificationChannel.WHATSAPP,
@@ -64,35 +61,16 @@ DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
     NotificationChannel.DISCORD,
 )
 
-# Notification metadata "kind" values that select an email template. Anything
-# else (including unset) falls back to the plain-notification template.
-NOTIFICATION_KIND_BRIEFING_DAILY = "briefing_daily"
-NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"
+# In-app route a notification action redirects to. Shared so the memory-backfill
+# and Gmail-personalization notifications can't drift onto different pages.
+MEMORY_SETTINGS_URL = "/settings/memory"
 
-# Todo-lifecycle notification kinds (plain template; used for filtering/analytics).
-NOTIFICATION_KIND_TODO_NEEDS_YOU = "todo_needs_you"
-# A genuinely time-critical signal alert (see the daily-briefing-run spec's
-# urgent-signal requirement): gated by urgency, not by count.
-NOTIFICATION_KIND_URGENT_SIGNAL = "urgent_signal"
-
-# An urgent alert unread this long is treated as ignored: the maintenance sweep
-# writes a rejection-strike memory signal for its signal_kind so the model
-# learns the user's urgency bar.
-URGENT_ALERT_IGNORE_HOURS = 48
-
-# Per-sweep cap on ignore-strike processing (cheap Mongo scan, bounded anyway).
-URGENT_STRIKE_SWEEP_LIMIT = 200
-NOTIFICATION_KIND_TODO_DONE = "todo_done"
-
-# Workflow-completion notification copy. GAIA texts like a friend (first person,
-# casual), not a status bar. Each entry is (title, body); {title} is the workflow
-# name. One pair is picked per run so repeats don't read like a robot. This is the
-# in-app (web) heads-up and it carries a "View Results" button, so bodies stay warm
-# and channel-agnostic: they never claim a specific place ("in your chat"), since a
-# web user has no external chat and reaches the result through the button.
+# Workflow-completion copy: first-person and casual. Each entry is (title, body);
+# {title} is the workflow name, one pair picked per run. In-app (web) heads-up
+# with a "View Results" button, so bodies never claim a place like "in your chat".
 WORKFLOW_DONE_COPY: tuple[tuple[str, str], ...] = (
     ("sorted {title} for you", "it's all ready whenever you are 🙌"),
-    ("{title} is done", "had a proper look — everything's ready for you"),
+    ("{title} is done", "had a proper look, everything's ready for you"),
     ("just wrapped up {title}", "pulled it all together, take a peek"),
     ("handled {title} for you", "all done end to end, give it a look"),
     ("finished {title}", "got everything ready for you to check out"),
@@ -103,7 +81,7 @@ WORKFLOW_DONE_COPY: tuple[tuple[str, str], ...] = (
 def pick_workflow_done_copy(workflow_id: str, title: str, salt: str) -> tuple[str, str]:
     """Pick one human completion title/body, rotating per run, no RNG.
 
-    ``salt`` (a per-run value such as a timestamp) only seeds the rotation so the
+    salt (a per-run value such as a timestamp) only seeds the rotation so the
     same workflow doesn't always read identically; it is never shown to the user.
     """
     seed = sum(ord(c) for c in f"{workflow_id}{salt}")

@@ -234,7 +234,8 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args()
 
-    args.out.mkdir(parents=True, exist_ok=True)
+    # offline training tool writing features where its operator asks; no trust boundary crossed
+    args.out.mkdir(parents=True, exist_ok=True)  # NOSONAR pythonsecurity:S8707
 
     f = Featurizer(
         mel_path=args.models / "melspectrogram.onnx",

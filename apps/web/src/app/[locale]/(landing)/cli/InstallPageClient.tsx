@@ -42,15 +42,18 @@ function CodeBlock({ code }: { code: string }) {
   };
 
   return (
-    <Tooltip content={copied ? "Copied!" : "Click to copy"} closeDelay={0}>
-      <div
-        onClick={handleCopy}
-        className="relative flex items-center gap-2 rounded-2xl bg-zinc-900 p-1 px-4 cursor-pointer hover:bg-zinc-800/80 transition-colors"
-      >
-        <code className="flex-1 text-sm text-primary">{code}</code>
-        <CopyButton textToCopy={code} copied={copied} onCopy={handleCopy} />
-      </div>
-    </Tooltip>
+    <div className="relative flex items-center gap-2 rounded-2xl bg-zinc-900 p-1 px-4 hover:bg-zinc-800/80 transition-colors">
+      <Tooltip content={copied ? "Copied!" : "Click to copy"} closeDelay={0}>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex-1 cursor-pointer text-left"
+        >
+          <code className="text-sm text-primary">{code}</code>
+        </button>
+      </Tooltip>
+      <CopyButton textToCopy={code} copied={copied} onCopy={handleCopy} />
+    </div>
   );
 }
 

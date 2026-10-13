@@ -256,8 +256,7 @@ async def _revoke_external_access(d: _Footprint) -> None:
 
 
 def _delete_mongo_data(d: _Footprint) -> None:
-    """Mongo collections + GridFS; users doc last so a partial failure leaves
-    the account findable."""
+    """Delete Mongo collections and GridFS; users doc last so a partial failure leaves the account findable."""
     try:
         bucket = gridfs.GridFSBucket(d.db)
         for file_doc in d.db["fs.files"].find({"metadata.user_id": d.uid}, {"_id": 1}):
@@ -287,10 +286,12 @@ def _delete_mongo_data(d: _Footprint) -> None:
 
 
 def _delete_postgres_data(d: _Footprint) -> None:
-    """Per-user tables + the LangGraph checkpoint threads of the user's
-    conversations (base thread == conversation_id plus derived executor/workflow
-    threads that embed it — same contract as
-    conversation_service._delete_checkpoint_threads)."""
+    """Delete per-user tables and the user's LangGraph checkpoint threads.
+
+    Matches conversation_id-based thread ids (base thread plus derived
+    executor/workflow threads that embed it) — same contract as
+    conversation_service._delete_checkpoint_threads.
+    """
     try:
         with d.pg.cursor() as cur:
             for table in PG_USER_TABLES:

@@ -6,7 +6,6 @@ import type { Dispatch } from "react";
 import type { BaseMessageData } from "@/config/registries/baseMessageRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
 
-import type { CalendarOptions } from "./calendarTypes";
 import type { EmailComposeData } from "./mailTypes";
 import type { DeepResearchResults, SearchResults } from "./searchTypes";
 import type { ImageData } from "./toolDataTypes";
@@ -74,7 +73,6 @@ export interface ConversationMessage extends Partial<BaseMessageData> {
 
 // Re-export all tool data types for convenience
 export type {
-  CalendarOptions,
   DeepResearchResults,
   EmailComposeData,
   ImageData,

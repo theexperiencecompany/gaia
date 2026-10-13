@@ -1,6 +1,6 @@
 """Render a user's active tracked todos as signal-matching prompt context.
 
-Extracted from ``tracked_todo_service`` so the trigger dispatch path can build this
+Extracted from tracked_todo_service so the trigger dispatch path can build this
 context without importing the todo lifecycle: the lifecycle now tears down trigger
 subscriptions, which imports the trigger stack back, and the two together were a
 genuine import cycle. This module reads todos and canvases and nothing else, so

@@ -6,7 +6,7 @@ export interface Author {
   twitter?: string;
 }
 
-export interface BlogPost {
+export interface BlogContentPost {
   slug: string;
   title: string;
   date: string;
@@ -17,5 +17,5 @@ export interface BlogPost {
   featured?: boolean;
 }
 
-/** BlogPost without content — safe to pass across RSC→client boundaries */
-export type BlogPostMeta = Omit<BlogPost, "content">;
+/** BlogContentPost without content — safe to pass across RSC→client boundaries */
+export type BlogPostMeta = Omit<BlogContentPost, "content">;

@@ -1,0 +1,745 @@
+"""Constants for the Browser-Use browser-automation capability.
+
+Single source of truth for the SSE card-event keys, the Redis key namespaces,
+the run's bounds and the copy the agent, the executor and the user read.
+Values a deployment may tune live in settings; values that are part of the
+wire/UI contract live here so backend and frontend cannot drift.
+
+The startup gate ("do you want me to use a browser?") is handled by the shared
+HIL system (browser_task is registered destructive). Mid-run, the agent itself
+decides when a payment, credential, CAPTCHA or irreversible step goes to the
+user, through its handoff actions.
+"""
+
+from enum import Enum, StrEnum
+from typing import Literal
+
+# ---------------------------------------------------------------------------
+# Tool identity
+# ---------------------------------------------------------------------------
+BROWSER_TOOL_CATEGORY = "browser"
+
+
+class BrowserEngine(StrEnum):
+    """Which browser binary gaia-browser-host launches behind its CDP plane.
+
+    CHROMIUM is the default headless-shell path. OBSCURA runs the Obscura CDP
+    server beside it, a drop-in over the same CDP, selected by BROWSER_ENGINE."""
+
+    CHROMIUM = "chromium"
+    OBSCURA = "obscura"
+
+
+class EngineFailure(StrEnum):
+    """How the browser engine under a run failed it, as its host reports it.
+
+    Either one sends the run to the fallback engine; a run that failed on an
+    engine still serving its session did not fail because of the engine.
+    """
+
+    #: The engine process died or the host lost the session: 404, or not live.
+    SESSION_GONE = "session_gone"
+    #: The host did not answer for the session: the engine is wedged or the host is down.
+    UNRESPONSIVE = "unresponsive"
+
+
+class EngineSwitchReason(StrEnum):
+    """Why an Obscura run moved to Chrome: the breakage the fast engine causes, or the task asking for it."""
+
+    RENDERS_WRONG = "renders_wrong"
+    CONTROL_BROKEN = "control_broken"
+    STAYS_EMPTY = "stays_empty"
+    #: The task or the user asked for the full browser.
+    ASKED = "asked"
+    #: A CAPTCHA or bot check: the full browser is tried before the user is asked to pass it.
+    BOT_CHALLENGE = "bot_challenge"
+    #: Jev's own page script hit a feature the fast engine lacks.
+    SCRIPT_UNSUPPORTED = "script_unsupported"
+
+
+class StateCarry(StrEnum):
+    """Whether a run moving to the fallback engine took the primary's live cookies and localStorage with it."""
+
+    CARRIED = "carried"
+    #: The primary engine had already failed under the run, so there was nothing to read.
+    ENGINE_FAILED = "engine_failed"
+    #: Reading the primary failed: the host lost the session or did not answer.
+    UNREADABLE = "unreadable"
+
+
+# ---------------------------------------------------------------------------
+# SSE card-event key (must match tool_fields in chat_models.py and the frontend TOOL_RENDERERS/toolRegistry registration).
+# ---------------------------------------------------------------------------
+BROWSER_TASK_EVENT = "browser_task_data"
+
+
+class BrowserEventKind(str, Enum):
+    """Discriminator for a single browser_task_data snapshot entry."""
+
+    SESSION = "session"
+    STEP = "step"
+    HANDOFF = "handoff"
+    RESULT = "result"
+
+
+class BrowserSessionStatus(str, Enum):
+    """Lifecycle state of a browser session: working, then how it ended."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class SensitiveCategory(str, Enum):
+    """Why a planned browser step is sensitive."""
+
+    NONE = "none"
+    PAYMENT = "payment"
+    CREDENTIALS = "credentials"
+    IRREVERSIBLE = "irreversible"
+
+
+# Shown on a CREDENTIALS handoff where BROWSER_PERSIST_LOGINS keeps logins: the
+# session is saved (Fernet-encrypted per user+site) and reused so the next task
+# skips the login. The Browser settings page can list/remove saved sites.
+BROWSER_CREDENTIALS_SAVED_NOTE = (
+    "Once you're signed in, I'll save this site's session, encrypted, so I can "
+    "skip the login next time. You can remove saved sites anytime in "
+    "your Browser settings."
+)
+
+
+class HandoffStatus(str, Enum):
+    """State of a live-view handoff: pending, completed, cancelled, expired, or failed."""
+
+    PENDING = "pending"
+    COMPLETED = "completed"  # user finished the step in live-view → resume
+    CANCELLED = "cancelled"  # user cancelled, or the run was stopped → abort
+    TIMEOUT = "timeout"  # nobody acted → abort
+    FAILED = "failed"  # the browser the user was sent to is gone → abort
+
+
+class HandoffDecision(str, Enum):
+    """User decision on a pending handoff, or a note-only reply."""
+
+    CONTINUE = "continue"
+    CANCEL = "cancel"
+
+
+#: The status a handoff settles with on each decision.
+HANDOFF_DECISION_STATUS: dict[HandoffDecision, HandoffStatus] = {
+    HandoffDecision.CONTINUE: HandoffStatus.COMPLETED,
+    HandoffDecision.CANCEL: HandoffStatus.CANCELLED,
+}
+
+
+class BrowserLoginSource(StrEnum):
+    """Where a saved login came from.
+
+    Absent for logins acquired by browsing; stamped on the per-host docs the
+    gaia connect CLI import writes."""
+
+    IMPORT = "import"
+
+
+# Defined here rather than beside JevOperation because BROWSER_HUMAN_CHECKS
+# below interpolates it at import time.
+class BrowserHandoffAction(StrEnum):
+    """The actions GAIA registers with Browser-Use to hand a step to the human."""
+
+    REQUEST_HUMAN_TAKEOVER = "request_human_takeover"
+    SOLVE_CAPTCHA_WITH_HELP = "solve_captcha_with_help"
+
+
+# --- Redis handoff bridge ---
+# Browser-session continue/cancel signal only, not tool-call approval
+# (the shared HIL system owns that).
+BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
+# Maps where the user's chat reply arrives (handoff.reply_address) to the one
+# in-flight handoff, so a plain reply ("yeah I paid, continue") can resolve it,
+# the text-channel equivalent of the card's buttons. Both converge on resolve_handoff.
+BROWSER_HANDOFF_REPLY_KEY_PREFIX = "browser:handoff:reply:"
+# The last line of a handoff a bot user is sent: only their word ends it.
+BROWSER_HANDOFF_REPLY_PROMPT = "Reply here when you're done, or tell me to stop."
+# A host session lives on a lease the run renews while its job is alive, paused
+# or not; one it stops renewing (its worker died) is disposed when the lease runs out.
+BROWSER_SESSION_LEASE_SECONDS = 90.0
+# Three renewals per lease, so one slow or lost renewal never costs a live run its browser.
+BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
+
+# A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
+# the code IS the secret and maps to the session + owner in Redis, so the link
+# carries no 32-char session id and no long ?t= token. One per handoff, revoked on settle.
+BROWSER_LIVE_CODE_KEY_PREFIX = "browser:livecode:"
+BROWSER_LIVE_CODE_HANDOFF_PREFIX = "browser:livecode:handoff:"
+# Pub/sub channel a revoked code is announced on, so a socket it opened closes at once.
+BROWSER_LIVE_CODE_REVOKED_PREFIX = "browser:livecode:revoked:"
+
+# Replay: a short code maps to a finished session's screenshot set, so the recap
+# link (browser.heygaia.io/replays/{code}) plays every step back as a slideshow.
+# Longer-lived than the live code — a recap should still open days later.
+BROWSER_REPLAY_CODE_KEY_PREFIX = "browser:replay:"
+BROWSER_REPLAY_CODE_TTL_SECONDS = 7 * 24 * 3600
+# Bytes of entropy for the code (token_urlsafe → ~1.3 chars/byte, so ~12 chars).
+BROWSER_LIVE_CODE_ENTROPY_BYTES = 9
+
+# Step frames kept in Redis when no object store is configured, served back
+# through a code of their own so the frames are not enumerable by session id.
+# One code per run: code -> run, and run -> code so every step reuses it.
+BROWSER_SHOT_CODE_KEY_PREFIX = "browser:shotcode:"
+BROWSER_SHOT_SESSION_KEY_PREFIX = "browser:shotsess:"
+BROWSER_SHOT_FRAME_KEY_PREFIX = "browser:shot:"
+
+# Session-import handoff: a short-lived, single-use code minted for a signed-in
+# web user that the local gaia connect CLI presents to upload the extracted
+# browser profile. Short TTL: redeemed within seconds; single-use: authorises writing the user's whole login state.
+BROWSER_IMPORT_TOKEN_KEY_PREFIX = "browser:import:"  # nosec B105 -- Redis key prefix, not a credential
+BROWSER_IMPORT_TOKEN_TTL_SECONDS = 600
+BROWSER_IMPORT_TOKEN_ENTROPY_BYTES = 32
+
+# Saved-site session data (browser_profiles) auto-expires this long after last use.
+# A Mongo TTL index on ``updated_at`` reclaims it; every use refreshes the clock.
+BROWSER_PROFILE_TTL_DAYS = 90
+BROWSER_PROFILE_TTL_SECONDS = BROWSER_PROFILE_TTL_DAYS * 24 * 3600
+
+# Recorded in the thread when the handoff card's buttons decide a handoff: no turn runs for a tap.
+BROWSER_HANDOFF_ACK_CONTINUE = "Got it, continuing the browser task."
+BROWSER_HANDOFF_ACK_CANCEL = "Okay, I've stopped the browser task."
+
+# Why a button's decision on a handoff was refused: the web card's, or the bot live-view page's.
+BROWSER_HANDOFF_NOT_OWNED_DETAIL = "Not authorized to resolve this handoff"
+BROWSER_HANDOFF_GONE_DETAIL = "Handoff not found or expired"
+BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL = "This live view is no longer waiting"
+
+# An expired handoff is a failed run, not the completed one a takeover made it look like.
+BROWSER_RUN_HANDOFF_TIMED_OUT = "Stopped: nobody finished the step in the live browser in time."
+# The run asked the user to take over more often than one task may.
+BROWSER_RUN_HANDOFF_LIMIT_SUMMARY = (
+    "Stopped: the task needed you to take over more than {limit} times, the most one task may."
+)
+
+# Fixed copy, no exception text: many exceptions stringify to "", which left
+# "...stopped unexpectedly:" dangling in front of the user.
+BROWSER_JOB_CRASHED_SUMMARY = (
+    "the browser task stopped unexpectedly, and nothing else changed; you can ask me to try again"
+)
+# A run cut off because its worker shut down, not because anyone stopped it.
+BROWSER_JOB_WORKER_STOPPED_SUMMARY = (
+    "the browser task was cut off because its worker shut down; you can ask me to try again"
+)
+# A run whose worker died before it ended, as the reaper ends it.
+BROWSER_JOB_WORKER_LOST_SUMMARY = "the browser task stopped unexpectedly because its worker went away; you can ask me to try again"
+# A queued run whose conversation slot another run took while it waited.
+BROWSER_JOB_SLOT_TAKEN_SUMMARY = (
+    "another browser task started in this conversation while this one waited, so it never ran"
+)
+
+# Upper bound on how many times one task may hand off to the human, so a
+# misbehaving agent can't loop the user forever.
+MAX_HANDOFFS_PER_TASK = 5
+
+# What the user said mid-run, leading what the assistant reads about the run's
+# result: a trailing sentence lost to the original request still in its context.
+BROWSER_RESULT_REPLACED_REQUEST = (
+    "THE USER REPLACED THE REQUEST MID-RUN with: {notes}. Answer THAT, not the original "
+    "request. The original request was not carried out and must not be reported as "
+    "attempted-and-failed."
+)
+BROWSER_RESULT_USER_SAID = (
+    "While it ran, the user said: {notes}. Judge yourself what that changes about the "
+    "request and the reply."
+)
+
+#: The efforts the browser agent's model can be run at (BROWSER_AGENT_REASONING_EFFORT).
+BrowserAgentEffort = Literal["none", "minimal", "low", "medium", "high"]
+BROWSER_AGENT_OPENROUTER_KEY_MISSING = "OPENROUTER_API_KEY is not set; the browser agent needs it."
+# When a browser model call gets an identical second request (first answer wins). Agent
+# calls measured p50 3.2 s, p90 4.5 s, with stalls past the 180 s timeout (2026-09-25).
+BROWSER_AGENT_HEDGE_SECONDS = 12.0
+# Browser-Use shortens any URL whose query passes 25 characters in what the model
+# reads ("?my-text=Aryan&my-pass...1a2b3c4"), so a run asked for the page it landed
+# on reported it could not see it (battery form, 2026-09-25). Room for any real query.
+BROWSER_AGENT_URL_QUERY_MAX_CHARS = 2000
+# A top-level load silent this long is stopped, as a person presses Stop. herokuapp's 778
+# answers (2026-10-02) took up to 30.98 s (its router 503s at 30.6 s); 15 s cut off a login
+# answering at 28.7 s, so 35 s stops only a server gone silent (stalled_loads).
+BROWSER_LOAD_STALL_SECONDS = 35.0
+BROWSER_LOAD_STOP_TIMEOUT_SECONDS = 5.0
+#: What the agent reads about a load the browser stopped: the plain fact, no retry rule.
+BROWSER_LOAD_STALLED_NOTE = (
+    "{url} did not respond within {seconds:.0f} s, so its loading was stopped and the tab "
+    "stayed on the page it was on."
+)
+#: The same, when the page the tab stayed on had stalled loading too and the stop cut it short.
+BROWSER_LOAD_STALLED_CUT_SHORT_NOTE = (
+    "{url} did not respond within {seconds:.0f} s, so its loading was stopped. The page the "
+    "tab stayed on, {page}, had not finished loading either and was stopped with it, so its "
+    "scripts may not have run: open it again before using it."
+)
+#: What the agent reads about a page Browser-Use read before its load had finished.
+BROWSER_LOAD_UNFINISHED_NOTE = (
+    "{url} had not finished loading (its load event had not fired) when the browser stopped "
+    "waiting for it, so the step went on with the page as it was then."
+)
+# The longest one model call may take; Browser-Use's 75 s default cut off decisions on slow pages.
+BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
+
+# The one statement of what goes to the user, in the agent's system message beside its role.
+BROWSER_HUMAN_CHECKS = (
+    "\nSteps that are the user's, never yours:\n"
+    "- A payment, a login whose credentials this task does not give as <secret>name</secret> "
+    "placeholders, an OTP/2FA code, or an irreversible or legally-binding confirmation the "
+    f"task did not ask for: call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` so the user "
+    "does that step in the live browser, then continue toward the goal. A login whose "
+    "credentials the task gives is done by the run itself, never handed over. Before you hand "
+    "off a login, fill every non-secret field yourself (username, email, the account "
+    "identifier), so the user is left only the secret step.\n"
+    "- A CAPTCHA, reCAPTCHA, hCaptcha, an 'I'm not a robot' or image-grid challenge, or any "
+    f"other bot check: call `{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` on the first one "
+    "and do what its result says. Never try to solve one yourself or click challenge tiles.\n"
+    # Measured on a real investor-application form: given only a name and email,
+    # the agent invented a phone number and country and reported the form as filled.
+    "- A field you cannot leave empty that the task gives no value for: NEVER invent one (no "
+    "made-up phone numbers, addresses, dates, amounts, countries or company details, and no "
+    f"plausible-looking placeholder). Call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` "
+    "and say which field is missing, unless the task itself says the run is a test or that "
+    "dummy values are fine."
+)
+# Read with the task, not the system message: there the agent reported only "Received!" for a
+# page whose heading is "Form submitted" in about a third of runs.
+BROWSER_TASK_QUOTE_RULE = (
+    "\n\nWhen you report what a page shows, says or displays, quote all of its visible text "
+    "that answers that, the page's heading included: a result page's title and its message."
+)
+#: What the agent reads when a bot check blocks a site the user never named: skip it, no pause.
+BROWSER_CAPTCHA_SKIP_SOURCE = (
+    "{host} shows a bot check, and it is not a site the task names, so it is not put to the "
+    "user. Skip this source, carry on with the others, and say in your answer that {host} "
+    "could not be opened."
+)
+
+# The agent's role around Jev, appended to Browser-Use's system prompt.
+# "Report only what the current page shows" made an agent back on a re-ordered
+# Hacker News drop its three opened stories as stale and quit (research3, 2026-10-02).
+BROWSER_AGENT_ROLE = (
+    "You supervise Jev, the fast page operator exposed as the `jev` action: its description "
+    "says what it does and what it leaves to you. When the task started on a page, your step "
+    "0 already ran Jev there on the part of the task that page is for; its report is in your "
+    "history. On a blank tab, your first step opens the page to start on. You are the only "
+    "one who finishes the task and the only one who writes the answer.\n"
+    "Each step, choose one:\n"
+    "1. The task is complete: call `done` with the answer. Report only what pages showed: "
+    "the current page, your reads and Jev's reports; copy titles, messages, numbers and URLs "
+    "exactly. A list that changes while you work keeps the items you already chose from it. "
+    "Say plainly what was not done or could not be found. success=true means the user's "
+    "request was carried out and the answer it asks for delivered; a gap in supporting detail, "
+    "stated plainly, does not change that (one of three articles shows no text to summarise, a "
+    "page does not name the authors). success=false means the request itself could not be "
+    "done, however honestly you explain why: the button or page it names does not exist (no "
+    '"Buy now" button, so no order number), the site is unreachable (its address does not '
+    "resolve), or the action was refused. This replaces any rule for success above.\n"
+    "2. Interactions remain on the page you are on (filling a form, searching and choosing): "
+    "call `jev` with a goal for that page and the done_when that page will show.\n"
+    "3. Anything else: do it yourself. Navigate to a URL you already know or go back, click "
+    "once, switch tabs, read or summarise a page with `extract` (to "
+    "read a linked page, navigate to its exact URL from Jev's report or a `find_elements` href, "
+    "then extract; never guess a URL), "
+    "search a long page with `search_page`, count with `find_elements` (a CSS selector "
+    "returns every match), never count by eye.\n"
+    "Work through every part of the task before you finish: a part is reported as not done "
+    "only after you tried it and it could not be done.\n"
+    "Messages the user sends mid-task arrive as follow-up requests: "
+    "weigh what each says against the task; it changes the task only where it says so."
+)
+
+#: Step 0's single-page objective, written without a model call: the part of the task its page is for.
+JEV_FIRST_BURST_GOAL = "Do the part of this task that the page it starts on is for:\n{task}"
+JEV_FIRST_BURST_DONE_WHEN = (
+    "This page shows that part done: what the task asks to type, choose or submit here is "
+    "done, or what it asks to find is shown here."
+)
+
+#: Told to an agent on the fast engine, which otherwise cannot know which browser it is in.
+BROWSER_AGENT_FAST_ENGINE_NOTE = (
+    "\nYou are in the fast browser, not the full browser (Chrome). When the task or the user "
+    "asks for the full browser, call `continue_in_full_browser` with category `asked` before "
+    "that part; the task goes on there from the same page, with its sign-ins."
+)
+
+#: What the agent reads after a handoff step when the user left no note.
+BROWSER_TAKEOVER_DONE_NOTE = (
+    "The user says they finished that step in the live browser. If the page still asks "
+    "for it, hand it to them again."
+)
+#: How a run's result reads when the runner, not the agent, ended it.
+BROWSER_RUN_WALL_CLOCK_SUMMARY = "Browser task timed out after {seconds}s."
+BROWSER_RUN_WORK_BUDGET_SUMMARY = "Browser task timed out after {seconds}s of work."
+BROWSER_RUN_STOPPED_SUMMARY = "Browser task stopped."
+BROWSER_RUN_CANCELLED_SUMMARY = "Browser task was cancelled."
+BROWSER_RUN_SESSION_LOST_SUMMARY = (
+    "The browser closed while it waited for you to finish a step in it, so the task stopped there."
+)
+BROWSER_RUN_DONE_SUMMARY = "Completed the browser task."
+BROWSER_RUN_NOT_DONE_SUMMARY = "Could not complete the browser task."
+#: Added to the summary of a run that ended before the agent answered: what it had gathered.
+BROWSER_RUN_FOUND_NOTE = "\n\nWhat it had found before it stopped:\n{found}"
+#: The most of each read, and of its last note, a stopped run's summary carries.
+BROWSER_RUN_FOUND_MAX_CHARS = 1500
+#: Logged when the agent could not attach to a session the host created: nearly always the CDP proxy.
+BROWSER_CDP_ATTACH_HINT = (
+    "Check that the browser host is reachable from the API at BROWSER_HOST_URL."
+)
+#: What the user reads when the agent never attached to the browser.
+BROWSER_CDP_ATTACH_FAILED = "Could not connect to the browser."
+#: What the user reads when the run failed on an unexpected error; the error itself is logged.
+BROWSER_RUN_CRASHED_SUMMARY = "The browser task stopped on an unexpected error."
+#: Why a run cannot start when no Chromium host is configured for it.
+BROWSER_NO_CHROME_HOST = "No Chrome browser host is configured (BROWSER_FALLBACK_HOST_URL)."
+
+# Desktop viewport (the ~800x600 CDP default collapses sites to mobile layout). The live
+# view caps its stream at this same size (screencast.py imports it): wider only buys a
+# downscaled stream, a takeover coordinate mismatch and bigger vision payloads.
+BROWSER_VIEWPORT_WIDTH = 1280
+BROWSER_VIEWPORT_HEIGHT = 800
+
+
+# --- Jev decision policy ---
+class JevOperation(StrEnum):
+    """One Jev choice per step; CLICK, TYPE_TEXT and SELECT also carry an observed target."""
+
+    CLICK = "CLICK"
+    TYPE_TEXT = "TYPE_TEXT"
+    SELECT = "SELECT"
+    PRESS_ENTER = "PRESS_ENTER"
+    SCROLL_DOWN = "SCROLL_DOWN"
+    SCROLL_UP = "SCROLL_UP"
+    WAIT = "WAIT"
+    DONE = "DONE"
+    BLOCKED = "BLOCKED"
+
+
+class JevStop(StrEnum):
+    """Why a Jev burst handed control back to the agent."""
+
+    DONE = "done"
+    BLOCKED = "blocked"
+    NEEDS_INPUT = "needs_input"
+    SECRET_WITHHELD = "secret_withheld"  # nosec B105 -- a stop reason, not a credential
+    #: Out of budget or making no progress (unchanged, cycling, a page that never settles): the detail says which.
+    UNFINISHED = "unfinished"
+    COVERED = "covered"
+    UNRESPONSIVE = "unresponsive"
+    LOADING = "loading"
+    NO_PAGE = "no_page"
+    USER_MESSAGE = "user_message"
+    STOPPED = "stopped"
+    GATEWAY = "gateway"
+    LOAD_STALLED = "load_stalled"
+    NAVIGATION_FAILED = "navigation_failed"
+    FIELD_UNFOCUSED = "field_unfocused"
+    TAB_UNAVAILABLE = "tab_unavailable"
+    PAGE_SCRIPT_ERROR = "page_script_error"
+    #: Jev's own script called a feature this browser engine does not have.
+    ENGINE_SCRIPT_ERROR = "engine_script_error"
+
+
+#: Controls offered to Jev per request, in DOM order within the viewport. Vercel's
+#: gateway 503s from ~130 elements; OpenRouter answered 150 in ~350 ms.
+JEV_MAX_ELEMENTS = 120
+JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
+JEV_GATEWAY_MAX_ATTEMPTS = 3
+#: How much of the final page's visible text a burst report hands the agent.
+JEV_REPORT_PAGE_TEXT_CHARS = 2000
+JEV_RECENT_ACTIONS = 10
+#: One burst's bounds, from jev-ultrafast: actions, unchanged non-wait actions in a
+#: row, and consecutive stale or covered targets before the agent takes over.
+JEV_BURST_MAX_ACTIONS = 25
+#: Decisions (paid model calls) per burst, as jev-ultrafast bounds them: none may loop unbounded.
+JEV_BURST_MAX_DECISIONS = 2 * JEV_BURST_MAX_ACTIONS
+JEV_UNCHANGED_LIMIT = 3
+JEV_STALE_LIMIT = 3
+JEV_COVERED_LIMIT = 2
+#: Snapshot reads while a navigation replaces the document; Chrome holds each until the new one commits.
+JEV_OBSERVE_ATTEMPTS = 50
+#: Longest any one of Jev's CDP calls may take; a page or session that does not answer
+#: ends the burst instead of holding it until the task's budget runs out.
+JEV_CDP_TIMEOUT_SECONDS = 20.0
+#: The longest an explicit WAIT waits for the page to change at all.
+JEV_WAIT_SECONDS = 1.0
+#: The longest the read after an input waits for its requests to finish and the DOM to go quiet:
+#: a page that animates or polls never does.
+JEV_SETTLE_MAX_SECONDS = 2.0
+#: The longest a read waits for a document still parsing (a script in its head not yet
+#: arrived) to fire DOMContentLoaded: the time a site gets to answer before a load is stopped.
+JEV_PARSE_WAIT_SECONDS = BROWSER_LOAD_STALL_SECONDS
+#: The JPEG quality of every step card's photo, whichever capture it came from.
+BROWSER_STEP_PHOTO_QUALITY = 70
+#: The tiny model writes a value only when no literal from the goal fits; it reads this much page text.
+JEV_TEXT_TIMEOUT_SECONDS = 30.0
+JEV_TEXT_HEDGE_SECONDS = 6.0
+JEV_TEXT_OPENROUTER_KEY_MISSING = (
+    "OPENROUTER_API_KEY is not set; Jev decisions and the text model both need it."
+)
+JEV_PAGE_TEXT_MAX_CHARS = 6000
+JEV_TEXT_VALUE_MAX_CHARS = 2000
+# Stands in for a value typed into a password field wherever the run's text reaches a person.
+JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
+#: What a step says a password field holds when it is not the secret typed: never its value.
+JEV_SECRET_DIFFERS = "a value other than the secret"  # nosec B105 -- report wording, not a credential
+#: Why a written value is not typed when it names a secret.
+JEV_SECRET_WRITTEN = "The written value names a secret; nothing was typed."  # nosec B105 -- report wording, not a credential
+#: Why a value Jev chose or wrote for a field is not typed when it is a secret's name, not its value.
+JEV_SECRET_NAME_TYPED = (  # nosec B105 -- report wording, not a credential
+    "The value chosen for this field was {name}, the name of a secret this task was given, not its "
+    "value; nothing was typed. A secret is typed only from its <secret>name</secret> placeholder."
+)
+#: Why a jev goal that quotes a secret's name is refused: Jev would type the name itself.
+JEV_GOAL_QUOTES_A_NAME = (
+    "The goal quotes {names}, the name of a secret this task was given, not its value. "
+    "Write it as <secret>name</secret> where it is typed; nothing was done."
+)
+# Probability mass across a choice question must sum to ~1; the gateway rounds.
+JEV_PROBABILITY_SUM_TOLERANCE = 0.02
+
+
+# A step that shows nothing for this long gets one line saying so. The Berlin
+# article measured 40 to 71 s of clean render with no error left to caption.
+BROWSER_STALL_NOTE_AFTER_SECONDS = 25.0
+BROWSER_STALL_NOTE = "No update from the browser for {seconds} s."
+
+# What the agent's continue_in_full_browser call answers: the run ends here and resumes there.
+BROWSER_ENGINE_SWITCH_ACK = (
+    "Moving this task to the full browser. It continues there from this page."
+)
+#: What the agent reads first on the fallback engine, its earlier steps still in its history.
+BROWSER_ENGINE_RESUMED_NOTE = (
+    "\n\nThis run has moved to the full browser (Chrome) and you are in it now: an "
+    "instruction to continue in the full browser is done. It opened {page}. Your earlier "
+    "steps, in the fast browser, are in your history; continue the task from there."
+)
+#: What a handoff action answers: the wait runs once the step ends, outside its step budget.
+BROWSER_ANSWER_AFTER_STEP = "Asked. The answer arrives before your next step."
+# Said once when a run moves to the fallback engine, so the steps that follow
+# on another browser do not read as the run starting over.
+BROWSER_ENGINE_FALLBACK_NOTE = (
+    "That page didn't work in the fast browser, continuing in a full one."
+)
+# The same, when the fast browser's state could not come along.
+BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE = (
+    "That page didn't work in the fast browser, continuing in a full one. "
+    "Sign-ins from this run could not come along, so a site may ask you to sign in again."
+)
+
+# Engine watchdog: the primary engine's liveness is read this often, and this
+# many unanswered reads in a row end the run there. Without it a SIGSTOPped
+# engine took ~285 s to notice (a 15 s click timeout, then two 120 s state reads).
+BROWSER_ENGINE_WATCH_INTERVAL_SECONDS = 10.0
+BROWSER_ENGINE_WATCH_STRIKES = 2
+# How long a run cut short by the watchdog may take to unwind before the switch
+# goes ahead without it; Browser-Use's cleanup talks to the frozen engine too.
+BROWSER_ENGINE_WATCH_CANCEL_GRACE_SECONDS = 5.0
+
+# The host answers a liveness read inside its own budget, whatever the engine is
+# doing, and the client allows it a little more before calling it unanswered.
+BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS = 3.0
+BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS = 5.0
+# The outcome of a run the user stopped while its engine was frozen; never shown,
+# since a stopped run's card reads the stop.
+BROWSER_ENGINE_UNRESPONSIVE_SUMMARY = "The browser stopped responding."
+
+# How a decision taken on the handoff card is written into the agent's thread,
+# so the reply it later voices knows the user changed course.
+BROWSER_HANDOFF_CARD_DECISION = "[From the browser handoff card] {decision}"
+
+# ---------------------------------------------------------------------------
+# Background browser job
+# ---------------------------------------------------------------------------
+
+# One browser task per conversation; the value is the job id so a refused second
+# task can name the run the user is already watching. A heartbeat lease, not a
+# fixed TTL: a run may sit a whole handoff window (BROWSER_USE_HANDOFF_TIMEOUT_SECONDS) paused, a dead worker must not.
+BROWSER_JOB_LOCK_PREFIX = "browser:job:lock:"
+BROWSER_JOB_LOCK_TTL_SECONDS = 120
+BROWSER_JOB_HEARTBEAT_SECONDS = 30
+
+# The job's state while it has not ended (queued, running): who started it, and
+# where its ending is told. Its TTL is
+# app.services.browser.job_lifetime.browser_job_ttl_seconds.
+BROWSER_JOB_STATE_PREFIX = "browser:job:"
+# A job's time outside the run's own clock: opening the session (and the fallback
+# engine's) and the terminal writes.
+BROWSER_JOB_OVERHEAD_SECONDS = 300
+# How long a finished job's state, feed and flags stay readable after the latest
+# the job could have ended.
+BROWSER_JOB_RETENTION_SECONDS = 3600
+
+# Replayable card feed, one Redis stream per job. The relay XREADs it from 0-0,
+# so a relay started late (or restarted) still shows every card from step 1.
+BROWSER_JOB_EVENTS_PREFIX = "browser:job:events:"
+BROWSER_JOB_EVENTS_MAXLEN = 2000
+
+# A conversation's latest browser job, finished or not: how a stop finds it once
+# the slot lease is gone (a queued job's lease is never heartbeated).
+BROWSER_JOB_LATEST_PREFIX = "browser:job:latest:"
+
+# How a job ended, its result with it: the one terminal record, written once by
+# the stop, the run or the reaper, whichever comes first.
+BROWSER_JOB_ENDING_PREFIX = "browser:job:ending:"
+# Every job not yet ended, which the reaper walks for one whose worker died.
+BROWSER_JOB_LIVE_KEY = "browser:jobs:live"
+# A worker's own lease on the job it runs, renewed by its heartbeat: the evidence a job lives.
+BROWSER_JOB_ALIVE_PREFIX = "browser:job:alive:"
+# When the reaper first found a job with no worker lease, by job id: one sweep is no evidence.
+BROWSER_JOB_SUSPECT_KEY = "browser:jobs:suspect"
+# How long a job must stay without a worker lease before it is ended as lost: far past
+# the instant between ARQ handing a job over and its worker's first write of the lease.
+BROWSER_JOB_DEATH_CONFIRM_SECONDS = 30
+# Each finished background job's result waiting in the executor inbox, by job id, until read.
+BROWSER_JOB_WAKE_KEY = "browser:jobs:to_wake"
+# How long a landed result is left to the run already reading the inbox before a sweep wakes
+# one: a live run retires what it read within one model call.
+BROWSER_JOB_WAKE_GRACE_SECONDS = 30
+# How often the reaper sweeps: a dead job is ended, and a stranded result told, this soon.
+BROWSER_JOB_REAP_EVERY_SECONDS = 15
+# The handoff a paused run is waiting on, so a stop can settle it.
+BROWSER_JOB_WAIT_PREFIX = "browser:job:wait:"
+# What the user said while a job runs, oldest first: the run reads it between steps.
+BROWSER_JOB_INBOX_PREFIX = "browser:job:inbox:"
+# A detached stream's id: cosmetic, for log greppability only.
+BROWSER_JOB_STREAM_ID_PREFIX = "browser_"
+
+
+class JobEnding(StrEnum):
+    """How a browser job ended, as recorded once: the first of a stop and the run's own end wins."""
+
+    #: A stop was recorded first: the stop told the user, and the run's result is dropped.
+    STOPPED = "stopped"
+    #: The run ended first, on its own result card: that result is the one the user hears.
+    FINISHED = "finished"
+
+
+class BrowserStopOutcome(StrEnum):
+    """What a stop came to, as the job's ending of record says."""
+
+    STOPPED = "stopped"
+    #: The run had already ended on its own result, which the user is told.
+    ALREADY_ENDED = "already_ended"
+
+
+# What a stop of a chat's browser task came to, as the model that asked for it reads it.
+BROWSER_STOP_REPORTS: dict[BrowserStopOutcome, str] = {
+    BrowserStopOutcome.STOPPED: "Stopped the browser task.",
+    BrowserStopOutcome.ALREADY_ENDED: (
+        "The browser task had already finished before the stop reached it; its result stands."
+    ),
+}
+
+# The executor inbox entries that tell a job's ending (job_teller); never shown to the user.
+BROWSER_JOB_RESULT_ENTRY = "The browser task you started (job {job_id}) has ended.\n\n{outcome}"
+BROWSER_JOB_STOPPED_NOTICE = (
+    "The browser task (job {job_id}) was STOPPED before it finished, and whoever stopped it "
+    "was already told. It has no result: never report one, and do not start it again unless "
+    "the user asks."
+)
+
+# How long a read of a job's feed parks on it for the next frame: the beat the
+# relay checks whether the job ended with no worker left to close its feed.
+BROWSER_JOB_FEED_WAIT_MS = 1000
+
+# The ARQ function name, shared by the enqueue site and the worker registration.
+BROWSER_JOB_TASK = "run_browser_job"
+# Browser jobs have their own ARQ queue and worker (app.workers.browser_worker).
+BROWSER_JOB_QUEUE = "arq:queue:browser"
+
+
+# ---------------------------------------------------------------------------
+# Observability: the reason codes a run's and a host request's wide event carry.
+# ---------------------------------------------------------------------------
+
+
+class BrowserRunFailure(StrEnum):
+    """Why a browser run did not succeed; the worker event's reason field."""
+
+    #: The agent finished and said the task was not achieved.
+    GOAL_NOT_ACHIEVED = "goal_not_achieved"
+    #: The agent never finished: its last step ended in an error.
+    STEP_FAILED = "step_failed"
+    #: The agent never finished: it used every step Browser-Use allows.
+    STEP_LIMIT = "step_limit"
+    HANDOFF_TIMEOUT = "handoff_timeout"
+    HANDOFF_LIMIT = "handoff_limit"
+    #: The browser a handoff sent the user to was lost while they were in it.
+    SESSION_LOST = "session_lost"
+    CANCELLED = "cancelled"
+    TASK_TIMEOUT = "task_timeout"
+    COST_BUDGET = "cost_budget"
+    HOST_UNAVAILABLE = "host_unavailable"
+    HOST_AT_CAPACITY = "host_at_capacity"
+    RUN_CRASHED = "run_crashed"
+    #: Its worker died before the run ended; the reaper ended it.
+    WORKER_LOST = "worker_lost"
+
+
+class HostRequestFailure(StrEnum):
+    """Why the browser host refused a request; its request event's reason field."""
+
+    INVALID_HOST_KEY = "invalid_host_key"
+    INVALID_SESSION_TOKEN = "invalid_session_token"  # nosec B105 -- a refusal reason, not a credential
+    SESSION_NOT_FOUND = "session_not_found"
+    AT_CAPACITY = "at_capacity"
+    ENGINE_UNRESPONSIVE = "engine_unresponsive"
+    ENGINE_REFUSED = "engine_refused"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
+
+
+class HostAdmissionRefusal(StrEnum):
+    """Which admission gate turned a session create away."""
+
+    SESSION_CEILING = "session_ceiling"
+    MEMORY = "memory"
+
+
+class EngineExit(StrEnum):
+    """How an engine stopped serving: the reason every session on it died."""
+
+    PROCESS_EXITED = "process_exited"
+    CONNECTION_CLOSED = "connection_closed"
+    STOPPED_ANSWERING = "stopped_answering"
+
+
+class HostSessionEnd(StrEnum):
+    """How a session left the browser host; the operation its wide event carries."""
+
+    DISPOSED = "dispose"
+    LEASE_EXPIRED = "lease_expired"
+    CONNECTION_LOST = "connection_lost"
+    ENGINE_LOST = "engine_lost"
+
+
+# The header every browser-host REST call carries the shared host key in.
+BROWSER_HOST_KEY_HEADER = "X-Host-Key"
+# The header a host client sends its own deadline in, so the host finishes or gives
+# up inside it instead of working on for a caller that has stopped listening.
+BROWSER_HOST_DEADLINE_HEADER = "X-Host-Deadline"
+
+
+# Browser-Use's own env switches (browser_use/config.py), forced off in every GAIA
+# process: the telemetry sends usage to its PostHog, the version check costs a
+# PyPI request (up to 3 s) on every run. Cloud sync follows telemetry's value.
+BROWSER_USE_PHONE_HOME_OFF: dict[str, str] = {
+    "ANONYMIZED_TELEMETRY": "false",
+    "BROWSER_USE_VERSION_CHECK": "false",
+}
+
+# Browser-Use's own per-event budgets (its TIMEOUT_<Event> overrides), as defaults
+# an operator's environment still overrides. They are process-wide: Browser-Use
+# creates these events itself, so no budget can be set per session.
+BROWSER_USE_EVENT_TIMEOUTS: dict[str, str] = {
+    # A first capture of a very long page took 24 to 35 s on Obscura (2026-09-19),
+    # past Browser-Use's 15 s.
+    "TIMEOUT_ScreenshotEvent": "60",
+    # Every step's state read carries that screenshot: its budget plus Browser-Use's
+    # own 30 s for the rest of the read.
+    "TIMEOUT_BrowserStateRequestEvent": "90",
+}

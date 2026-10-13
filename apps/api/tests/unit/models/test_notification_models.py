@@ -1,9 +1,8 @@
 """Notification model invariants.
 
-The channel set is defined once, in ``NotificationChannel``. These tests are what
-stops the preference model, the stored defaults and the enum from drifting apart —
-which is exactly how ``imessage`` and ``email`` ended up honoured by delivery while
-being invisible to the API.
+The channel set is defined once, in NotificationChannel. These tests stop the
+preference model, the stored defaults and the enum from drifting apart, which is
+how imessage and email ended up honoured by delivery while invisible to the API.
 """
 
 from app.constants.notifications import (
@@ -40,13 +39,8 @@ class TestChannelSetIsSingleSourced:
         update = ChannelPreferencesUpdate(imessage=False)
         assert update.model_dump(exclude_none=True) == {"imessage": False}
 
-    def test_briefing_priority_covers_every_chat_platform(self):
-        """A chat platform missing here can never receive a briefing.
-
-        The briefing picks ONE platform by walking this order, so a channel the
-        user has linked and enabled but that is absent from the list is silently
-        skipped — an iMessage-only user got no brief at all.
-        """
+    def test_default_chat_priority_covers_every_chat_platform(self):
+        """A platform missing from the default order is skipped: iMessage-only users got nothing."""
         assert set(DEFAULT_CHAT_CHANNEL_PRIORITY) == {
             channel.value for channel in EXTERNAL_NOTIFICATION_CHANNELS
         }

@@ -1,14 +1,18 @@
 """Unit tests for app.memory.chroma_store — per-conversation chunk deletion.
 
-The Chroma collection is mocked at the ``_get_collection`` seam; the id-prefix
+The Chroma collection is mocked at the _get_collection seam; the id-prefix
 selection logic under test is real.
 """
 
+import asyncio
+import threading
 from unittest.mock import AsyncMock, patch
 
+from chromadb.errors import ChromaError
 import pytest
 
 from app.constants.memory import CHROMA_CONVERSATION_CHUNKS_COLLECTION
+from app.db.chroma.chromadb import ChromaClient
 from app.memory import chroma_store
 
 USER = "user-1"
@@ -48,3 +52,102 @@ class TestDeleteConversationChunks:
             await chroma_store.delete_conversation_chunks(USER, "conv-1")
 
         collection.delete.assert_not_awaited()
+
+
+class _RacyChromaServer:
+    """A shared Chroma server where a concurrent creator won the race.
+
+    list_collections returns a stale (empty) snapshot while the collection
+    is in fact already registered, so the old check-then-create path calls
+    create_collection and the server rejects it as a duplicate — exactly
+    the Collection [...] already exists teardown failure seen under xdist.
+    get_or_create_collection reads the real state and returns it.
+    """
+
+    def __init__(self, existing: dict[str, AsyncMock]) -> None:
+        self._collections = existing
+
+    async def list_collections(self) -> list[AsyncMock]:
+        return []
+
+    async def create_collection(self, name: str, **_: object) -> AsyncMock:
+        if name in self._collections:
+            raise ChromaError(f"Collection [{name}] already exists")
+        self._collections[name] = AsyncMock()
+        return self._collections[name]
+
+    async def get_collection(self, name: str, **_: object) -> AsyncMock:
+        return self._collections[name]
+
+    async def get_or_create_collection(self, name: str, **_: object) -> AsyncMock:
+        if name not in self._collections:
+            self._collections[name] = AsyncMock()
+        return self._collections[name]
+
+
+@pytest.mark.unit
+@pytest.mark.regression
+class TestGetCollectionConcurrentCreate:
+    async def test_get_collection_survives_a_concurrent_creator(self) -> None:
+        name = CHROMA_CONVERSATION_CHUNKS_COLLECTION
+        existing = AsyncMock()
+        server = _RacyChromaServer({name: existing})
+        # Drop the per-loop cache so _get_collection actually queries the client.
+        chroma_store._loop_states.clear()
+
+        with patch.object(ChromaClient, "get_client", AsyncMock(return_value=server)):
+            collection = await chroma_store._get_collection(name)
+
+        assert collection is existing
+
+
+class _ConflictingChromaServer:
+    """A server whose get-or-create rejects a differing persisted embedding function, exercising the plain-get fallback."""
+
+    def __init__(self, by_name: dict[str, AsyncMock]) -> None:
+        self._by_name = by_name
+
+    async def get_or_create_collection(self, name: str, **_: object) -> AsyncMock:
+        raise ValueError(
+            f"An embedding function already exists in the collection configuration: {name}"
+        )
+
+    async def get_collection(self, name: str, **_: object) -> AsyncMock:
+        return self._by_name[name]
+
+
+@pytest.mark.unit
+class TestGetCollectionEmbeddingConflictFallback:
+    async def test_falls_back_to_plain_get_for_the_same_collection(self) -> None:
+        name = CHROMA_CONVERSATION_CHUNKS_COLLECTION
+        existing = AsyncMock()
+        server = _ConflictingChromaServer({name: existing})
+        chroma_store._loop_states.clear()
+
+        with patch.object(ChromaClient, "get_client", AsyncMock(return_value=server)):
+            collection = await chroma_store._get_collection(name)
+
+        assert collection is existing
+
+
+@pytest.mark.unit
+class TestLoopStateEviction:
+    async def test_a_closed_loops_state_is_dropped_on_next_access(self) -> None:
+        seen: list[int] = []
+
+        def _use_and_close() -> None:
+            async def _main() -> None:
+                seen.append(id(asyncio.get_running_loop()))
+                chroma_store._loop_state()
+
+            asyncio.run(_main())
+
+        thread = threading.Thread(target=_use_and_close)
+        thread.start()
+        thread.join()
+        (loop_id,) = seen
+        assert loop_id in chroma_store._loop_states
+        collections, lock = chroma_store._loop_state()
+        assert chroma_store._loop_state()[0] is collections
+        assert chroma_store._loop_state()[1] is lock
+        assert loop_id not in chroma_store._loop_states

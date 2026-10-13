@@ -2,7 +2,7 @@
 
 Each function validates typed input, applies through the owning repository or
 service, and returns an agent-facing confirmation string. Invalid input raises
-``AppError``; nothing here writes to JuiceFS (the projection refresh is the
+AppError; nothing here writes to JuiceFS (the projection refresh is the
 tool wrapper's job).
 """
 
@@ -78,7 +78,7 @@ async def set_preferences(
         if not style:
             raise AppError(
                 message="Response style cannot be empty",
-                fix="Use one of brief, detailed, casual, professional — or pass a custom label",
+                fix="Use one of brief, detailed, casual, professional, or pass a custom label",
                 status_code=400,
             )
     if timezone is not None:

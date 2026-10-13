@@ -1,3 +1,6 @@
+import type { NotificationActionView } from "../api/generated";
+
+export type { ChannelPreferences } from "../api/generated";
 export enum NotificationStatus {
   PENDING = "pending",
   DELIVERED = "delivered",
@@ -39,15 +42,7 @@ export interface NotificationActionConfig {
   };
 }
 
-export interface NotificationAction {
-  id: string;
-  type: NotificationActionType;
-  label: string;
-  style?: NotificationActionStyle;
-  config: NotificationActionConfig;
-  executed?: boolean;
-  disabled?: boolean;
-}
+export type NotificationAction = NotificationActionView;
 
 export interface InAppNotificationContent {
   title: string;
@@ -90,8 +85,6 @@ export const NOTIFICATION_CHANNELS = [
 ] as const;
 
 export type ChannelPlatform = (typeof NOTIFICATION_CHANNELS)[number];
-
-export type ChannelPreferences = Record<ChannelPlatform, boolean>;
 
 export interface QuietHours {
   from: string;

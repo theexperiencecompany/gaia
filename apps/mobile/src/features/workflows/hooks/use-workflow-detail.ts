@@ -32,10 +32,9 @@ export function useWorkflowDetail(
     error: null,
   });
 
-  // Track current pagination offset in a ref so the callback identity stays
-  // stable as new executions arrive (item 1 in the workflows-rebuild plan —
-  // including state.executions.length in deps caused the callback to be
-  // recreated on every fetch and re-trigger the effect).
+  // Pagination offset lives in a ref so the callback identity stays stable as
+  // executions arrive — including state.executions.length in deps caused the
+  // callback to be recreated on every fetch and re-trigger the effect (workflows-rebuild plan item 1).
   const executionsOffsetRef = useRef(0);
 
   const fetchWorkflow = useCallback(async () => {

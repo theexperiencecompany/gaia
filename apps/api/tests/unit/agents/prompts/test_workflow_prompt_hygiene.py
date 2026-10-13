@@ -1,7 +1,7 @@
-"""A workflow's `prompt` is instructions, not a copy of its own config.
+"""A workflow's prompt is instructions, not a copy of its own config.
 
 The scheduler has already fired the run and the trigger data is already handed
-over by the time the executor reads `prompt`, so "Every morning at 9am:" and
+over by the time the executor reads prompt, so "Every morning at 9am:" and
 "When a new email arrives in Gmail:" are inert text the run cannot act on. Two
 separate LLMs write that field, and they had drifted: the editor's generator
 banned schedule and trigger language outright while the chat assistant said
@@ -50,7 +50,7 @@ TRIGGER_TELLS = (
 
 
 def _finalized_example_prompts(system_prompt: str) -> list[str]:
-    """The `prompt` value of every finalized workflow the prompt demonstrates."""
+    """Return the prompt value of every finalized workflow the prompt demonstrates."""
     prompts: list[str] = []
     for block in re.findall(r"```json\s*(.*?)```", system_prompt, re.DOTALL):
         try:
@@ -65,16 +65,14 @@ def _finalized_example_prompts(system_prompt: str) -> list[str]:
 @pytest.mark.unit
 class TestWorkflowInstructionsContract:
     def test_every_prompt_author_carries_the_same_contract(self) -> None:
-        """One copy, spliced into both. Two hand-maintained copies is how the
-        assistant ended up with no rule at all while the generator had one."""
+        """Two hand-maintained copies is how the assistant lost the rule the generator had."""
         for name, prompt in PROMPT_AUTHORS.items():
             assert WORKFLOW_INSTRUCTIONS_CONTRACT in prompt, (
                 f"{name} does not carry WORKFLOW_INSTRUCTIONS_CONTRACT"
             )
 
     def test_the_assistant_demonstrates_at_least_one_finalized_workflow(self) -> None:
-        """Guards the two tests below: if the examples stop parsing, those pass
-        vacuously and stop protecting anything."""
+        """Guards the two tests below, which pass vacuously if examples stop parsing."""
         assert len(_finalized_example_prompts(WORKFLOW_AGENT_SYSTEM_PROMPT)) >= 3
 
 
@@ -98,9 +96,7 @@ class TestWorkedExamplesMatchTheContract:
 @pytest.mark.unit
 class TestTodoWorkflowPrompt:
     def test_it_carries_the_task_and_not_how_the_workflow_was_made(self) -> None:
-        """This template IS the stored prompt for a todo-generated workflow, so
-        every word about where the workflow came from and when the user runs it
-        is config the executor reads as its goal."""
+        """The rendered template is the stored prompt, so config narration becomes the executor's goal."""
         rendered = TODO_WORKFLOW_PROMPT_TEMPLATE.format(
             title="Book the venue for the offsite",
             details_section="**Details:** capacity 40, budget 2k",

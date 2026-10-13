@@ -1,50 +1,19 @@
-"""
-Redis Pub/Sub Stream Manager for Background Execution.
+"""Redis-backed stream manager for background LangGraph execution, decoupled from HTTP.
 
-This module provides infrastructure for running LangGraph streaming in background
-tasks, decoupled from HTTP request lifecycle. Key features:
-
-1. Background Execution: Stream continues even if client disconnects
-2. Redis Pub/Sub: Chunks published to channel, HTTP endpoint subscribes
-3. Progress Tracking: State saved to Redis for recovery
-4. Graceful Cancellation: Cancel signal via Redis + pub/sub notification
-5. Reliable Saving: Conversation always saved to MongoDB on completion
-
-Architecture:
-    HTTP Request                          Background Task
-         │                                      │
-         ├──▶ Start background task ──────────▶│ LangGraph Execution
-         │                                      │
-         └──◀ Subscribe to Redis channel ◀─────┤ Publish chunks to Redis
-                                               │
-          Client disconnects?                  │ Stream continues!
-               ↓                               │
-          No problem!                          ▼
-                                          Save to MongoDB
-
-Usage:
-    # In endpoint - start stream
-    await stream_manager.start_stream(stream_id, conversation_id, user_id)
-
-    # In background task - publish chunks
-    await stream_manager.publish_chunk(stream_id, chunk)
-    await stream_manager.update_progress(stream_id, message_chunk)
-
-    # In endpoint - subscribe and forward to client
-    async for chunk in stream_manager.subscribe_stream(stream_id):
-        yield chunk
-
-    # Cancel from frontend
-    await stream_manager.cancel_stream(stream_id)
+Background tasks publish chunks to a Redis stream; HTTP endpoints subscribe
+and replay them, so a client disconnect never stops the run. Progress is
+saved to Redis for recovery, cancellation is a Redis signal, and the
+conversation is always persisted to MongoDB on completion.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import json
-from typing import Any, cast
+import time
+from typing import Any, TypedDict, cast
 
 from app.constants.cache import (
     STREAM_ACTIVE_PREFIX,
@@ -64,6 +33,8 @@ from app.constants.streaming import (
     STREAM_ERROR_SIGNAL,
 )
 from app.db.redis import redis_cache
+from app.services.latency_metrics import observe_transport_redis_publish
+from app.utils.message_breaks import append_message_bubble
 from shared.py.wide_events import log
 
 
@@ -77,12 +48,46 @@ class StreamProgress:
 
     conversation_id: str
     user_id: str
+    #: Settled bubbles only — text whose message reached a boundary that kept it.
     complete_message: str = ""
+    #: Text since the last boundary, held out of complete_message: a message
+    #: that goes on to announce a tool call is a preamble the user must not
+    #: keep; the driver's own accumulator holds it the same way.
+    pending_message: str = ""
     tool_data: dict[str, Any] = field(default_factory=dict)
     started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     is_cancelled: bool = False
     is_complete: bool = False
     error: str | None = None
+
+
+class ProgressToolData(TypedDict, total=False):
+    """ExtractedToolData.model_dump() as update_progress accumulates it across a turn."""
+
+    tool_data: list[object]
+    other_data: object
+    tool_output: object
+
+
+class StreamProgressRecord(TypedDict, total=False):
+    """StreamProgress as start_stream stores it in Redis; every read tolerates a missing key."""
+
+    conversation_id: str
+    user_id: str
+    complete_message: str
+    pending_message: str
+    # Not ProgressToolData: services/chat/state.py adopts it as its dict tool_data accumulator.
+    tool_data: Mapping[str, object]
+    started_at: str
+    is_cancelled: bool
+    is_complete: bool
+    error: str | None
+
+
+class _StreamEntryFields(TypedDict, total=False):
+    """The fields _publish writes on each event-log entry."""
+
+    data: str
 
 
 class StreamManager:
@@ -104,16 +109,7 @@ class StreamManager:
         conversation_id: str,
         user_id: str,
     ) -> None:
-        """
-        Initialize stream tracking in Redis.
-
-        Call this before starting the background streaming task.
-
-        Args:
-            stream_id: Unique identifier for this stream session
-            conversation_id: Associated conversation ID
-            user_id: User who initiated the stream
-        """
+        """Initialize stream tracking in Redis before starting the background streaming task."""
         progress = StreamProgress(
             conversation_id=conversation_id,
             user_id=user_id,
@@ -156,7 +152,7 @@ class StreamManager:
         """
         # Update progress to complete
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
 
         if progress_data:
             progress_data["is_complete"] = True
@@ -177,7 +173,7 @@ class StreamManager:
         log is intentionally KEPT until its TTL — a client that reloads right at
         completion can still re-attach and replay the finished turn.
         """
-        progress_data = await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
         if progress_data:
             await cls._clear_active_index(progress_data)
         await redis_cache.delete(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
@@ -186,7 +182,7 @@ class StreamManager:
         log.debug(f"{LogTag.STARTUP} Stream cleaned up", stream_id=stream_id)
 
     @classmethod
-    async def _clear_active_index(cls, progress_data: dict[str, Any]) -> None:
+    async def _clear_active_index(cls, progress_data: StreamProgressRecord) -> None:
         """Drop the conversation -> stream reverse index for a finished stream."""
         user_id = progress_data.get("user_id")
         conversation_id = progress_data.get("conversation_id")
@@ -194,19 +190,13 @@ class StreamManager:
             await redis_cache.delete(f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}")
 
     @classmethod
-    async def _refresh_active_index(cls, progress_data: dict[str, Any]) -> None:
+    async def _refresh_active_index(cls, progress_data: StreamProgressRecord) -> None:
         """Extend the reverse index's TTL for a turn that is still streaming.
 
-        Without this the index is written once at start_stream and expires after
-        STREAM_TTL even while the turn runs — and turns routinely outlive it
-        (EXECUTOR_WAIT_TIMEOUT is 30 minutes). get_resumable_stream_id then
-        reports "no turn is running" for a running turn, which the web client
-        treats as authoritative and marks the user's own message failed.
-
-        EXPIRE, not SET: a finished turn had its index deleted deliberately
-        (_clear_active_index), and re-creating it here would hand a reloading
-        client a stream that has already sent [DONE]. EXPIRE on a missing key is
-        a no-op, so that clear stays final.
+        Without this it expires after STREAM_TTL even though turns often
+        outlive it (EXECUTOR_WAIT_TIMEOUT is 30 min). Uses EXPIRE, not SET:
+        SET would resurrect an index a finished turn already deleted; EXPIRE
+        on a missing key is a no-op.
         """
         user_id = progress_data.get("user_id")
         conversation_id = progress_data.get("conversation_id")
@@ -232,7 +222,7 @@ class StreamManager:
         stream_id = await cls.get_active_stream_id(user_id, conversation_id)
         if not stream_id:
             return None
-        progress = await cls.get_progress(stream_id)
+        progress: StreamProgressRecord | None = await cls.get_progress(stream_id)
         if not progress or progress.get("is_complete") or progress.get("is_cancelled"):
             return None
         return stream_id
@@ -257,22 +247,9 @@ class StreamManager:
     async def _touch_liveness(cls, stream_id: str) -> None:
         """Keep the resume and cancel keys alive for as long as the turn emits frames.
 
-        A frame is the turn's proof of life, so every frame has to extend all
-        three of its keys. Hanging that off ``update_progress`` instead was the
-        bug: that is a comms-loop call, and once comms hands off to the executor
-        the turn parks in ``await_executor_done`` (30 minutes) while every later
-        frame arrives through ``publish_chunk``. Past STREAM_TTL the event log
-        was still being refreshed while progress and the resume index had
-        quietly lapsed — so a reloading client was told no turn was running (and
-        marked the user's own message failed), and Stop returned "Stream not
-        found" without ever setting the cancel signal.
-
-        EXPIRE, never SET: a finished turn deletes these deliberately, and
-        re-creating them here would resurrect a stream that already sent [DONE].
-        EXPIRE on a missing key is a no-op, so that stays final.
-
-        The TTL read is the throttle — it keeps the common path to one cheap
-        command per frame and only pays for the refresh once per half-life.
+        Frames extend STREAM_ACTIVE/SIGNAL/PROGRESS keys because update_progress
+        alone missed executor-parked turns (30 min). Uses EXPIRE, not SET, so a
+        finished turn's deleted keys stay gone; the TTL read throttles refreshes.
         """
         if not redis_cache.redis:
             return
@@ -281,16 +258,16 @@ class StreamManager:
         if ttl < 0 or ttl > STREAM_LIVENESS_REFRESH_AFTER:
             return
         await redis_cache.redis.expire(progress_key, STREAM_TTL)
-        progress_data = await redis_cache.get(progress_key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
         if progress_data:
             await cls._refresh_active_index(progress_data)
 
     @classmethod
     async def _control_signal_frame(cls, stream_id: str, data: str) -> tuple[bool, str | None]:
-        """Map a stream entry to ``(is_terminal, frame_to_yield)``.
+        """Map a stream entry to (is_terminal, frame_to_yield).
 
         DONE ends the stream with no frame; CANCELLED and ERROR end it with a
-        final SSE frame; a normal chunk returns ``(False, None)`` so the caller
+        final SSE frame; a normal chunk returns (False, None) so the caller
         yields it and keeps reading.
         """
         if data == STREAM_DONE_SIGNAL:
@@ -303,7 +280,7 @@ class StreamManager:
 
         if data == STREAM_ERROR_SIGNAL:
             log.error(f"{LogTag.STARTUP} Stream encountered an error", stream_id=stream_id)
-            progress = await cls.get_progress(stream_id)
+            progress: StreamProgressRecord | None = await cls.get_progress(stream_id)
             error_msg = (
                 progress.get("error", "An unexpected error occurred")
                 if progress
@@ -320,23 +297,12 @@ class StreamManager:
         keepalive_interval: float = SSE_KEEPALIVE_INTERVAL_SECONDS,
         last_event_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
-        """
-        Read the stream's event log and yield SSE frames, then follow live.
+        """Read the stream's event log and yield SSE frames, then follow live.
 
-        Replays everything after ``last_event_id`` (or from the beginning) —
-        attach timing can never lose frames. Each frame carries an SSE ``id:``
-        line (the Redis Stream entry id) so clients reconnect with
-        ``Last-Event-ID``. Handles DONE/CANCELLED/ERROR control entries and
-        yields keepalive frames during idle periods.
-
-        Args:
-            stream_id: Stream identifier
-            keepalive_interval: Seconds between keepalive frames when idle
-            last_event_id: Resume cursor (exclusive); None replays from start
-
-        Yields:
-            ``id:``-tagged SSE frames from the background streaming task,
-            interspersed with keepalive data frames during idle periods.
+        Replays everything after last_event_id so attach timing never loses
+        frames. Each frame carries an SSE id: line (the Redis entry id) for
+        Last-Event-ID reconnects, and DONE/CANCELLED/ERROR control entries
+        end the stream.
         """
         if not redis_cache.redis:
             log.error(f"{LogTag.STARTUP} Redis not available for stream subscription")
@@ -356,17 +322,17 @@ class StreamManager:
                 )
 
                 if not results:
-                    # No entry within the interval — send keepalive as a data
-                    # event. SSE comment format (": keepalive") triggers
-                    # onmessage with empty data in @microsoft/fetch-event-source
-                    # due to a spec non-compliance, causing JSON.parse("") errors.
+                    # No entry within the interval — send keepalive as a data event.
+                    # SSE comment format (": keepalive") triggers onmessage with empty
+                    # data in @microsoft/fetch-event-source, causing JSON.parse("") errors.
                     yield SSE_KEEPALIVE_FRAME
                     continue
 
                 for _key, entries in results:
                     for entry_id, fields in entries:
                         cursor = entry_id
-                        data = fields.get("data", "")
+                        entry: _StreamEntryFields = cast(_StreamEntryFields, fields)
+                        data = entry.get("data", "")
 
                         is_terminal, frame = await cls._control_signal_frame(stream_id, data)
                         if is_terminal:
@@ -404,13 +370,12 @@ class StreamManager:
     async def _publish(cls, stream_id: str, message: str) -> None:
         """Append a message to the stream's replayable event log.
 
-        Redis Streams (not pub/sub): entries persist until TTL/MAXLEN, and each
-        gets a monotonic id that doubles as the SSE ``id:`` field — so
-        subscribers can attach at any time (or reconnect with ``Last-Event-ID``)
-        and replay everything they missed. This is what makes late-attach,
-        reload-resume, and the init frame race structurally impossible to lose.
+        Redis Streams, not pub/sub: entries persist until TTL/MAXLEN, and each
+        entry's monotonic id doubles as the SSE id: field, so late-attach and
+        reload-resume can replay everything a subscriber missed.
         """
         if redis_cache.redis:
+            publish_start = time.perf_counter()
             key = f"{STREAM_EVENTS_PREFIX}{stream_id}"
             await redis_cache.redis.xadd(
                 key,
@@ -419,6 +384,7 @@ class StreamManager:
                 approximate=True,
             )
             await redis_cache.redis.expire(key, STREAM_TTL)
+            observe_transport_redis_publish(time.perf_counter() - publish_start)
 
     # -------------------------------------------------------------------------
     # Cancellation
@@ -443,7 +409,7 @@ class StreamManager:
 
         # Update progress
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
         if progress_data:
             progress_data["is_cancelled"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
@@ -474,38 +440,28 @@ class StreamManager:
         cls,
         stream_id: str,
         message_chunk: str = "",
-        tool_data: dict[str, Any] | None = None,
+        tool_data: Mapping[str, object] | None = None,
     ) -> None:
-        """
-        Update streaming progress in Redis.
-
-        Call this as chunks are processed to track progress.
-
-        Args:
-            stream_id: Stream identifier
-            message_chunk: Text to append to complete_message
-            tool_data: Tool data to merge with existing
-        """
+        """Update streaming progress in Redis as chunks are processed."""
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
 
         if not progress_data:
             return
 
         if message_chunk:
-            progress_data["complete_message"] = (
-                progress_data.get("complete_message", "") + message_chunk
+            progress_data["pending_message"] = (
+                progress_data.get("pending_message", "") + message_chunk
             )
 
         if tool_data:
-            existing = progress_data.get("tool_data", {})
+            incoming: ProgressToolData = cast(ProgressToolData, tool_data)
+            existing: ProgressToolData = cast(ProgressToolData, progress_data.get("tool_data", {}))
             # Merge tool_data arrays
-            if "tool_data" in tool_data and "tool_data" in existing:
-                existing["tool_data"] = existing.get("tool_data", []) + tool_data.get(
-                    "tool_data", []
-                )
+            if "tool_data" in incoming and "tool_data" in existing:
+                existing["tool_data"] = existing["tool_data"] + incoming["tool_data"]
             else:
-                existing.update(tool_data)
+                existing.update(incoming)
             progress_data["tool_data"] = existing
 
         await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
@@ -514,15 +470,33 @@ class StreamManager:
         await cls._refresh_active_index(progress_data)
 
     @classmethod
-    async def get_progress(cls, stream_id: str) -> dict[str, Any] | None:
-        """
-        Get current stream progress.
+    async def settle_message_progress(cls, stream_id: str, *, discarded: bool) -> None:
+        """Close the message that just ended: keep its text as a bubble, or drop it.
 
-        Returns:
-            Progress data dict or None if not found
+        Mirrors _settle_message_boundary in the graph driver. Without it a turn
+        recovered from Redis glues the planning preamble onto the real reply,
+        with two kept bubbles running into one sentence.
         """
+        key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
+        if not progress_data:
+            return
+
+        pending = progress_data.pop("pending_message", "")
+        progress_data["pending_message"] = ""
+        if pending and not discarded:
+            progress_data["complete_message"] = append_message_bubble(
+                progress_data.get("complete_message") or "", pending
+            )
+        await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
+
+    @classmethod
+    async def get_progress(cls, stream_id: str) -> StreamProgressRecord | None:
+        """Get current stream progress, or None if not found."""
+        # Only start_stream writes this key, from asdict(StreamProgress).
         return cast(
-            "dict[str, Any] | None", await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+            "StreamProgressRecord | None",
+            await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}"),
         )
 
     @classmethod
@@ -535,7 +509,7 @@ class StreamManager:
             error: Error message
         """
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
 
         if progress_data:
             progress_data["error"] = error
@@ -549,19 +523,12 @@ async def with_heartbeat(
     frames: AsyncGenerator[str, None],
     interval: float = SSE_KEEPALIVE_INTERVAL_SECONDS,
 ) -> AsyncGenerator[str, None]:
-    """Forward ``frames``, injecting a keepalive whenever nothing has been
-    yielded for ``interval`` seconds.
+    """Forward frames, injecting a keepalive whenever nothing is yielded for interval seconds.
 
-    ``subscribe_stream`` only emits its own keepalive when the Redis event log
-    is idle, which is not the same thing as the socket being idle: a consumer
-    that FILTERS frames (the bot translator drops web-only frames like
-    ``tool_data``) leaves the connection silent for as long as the turn stays
-    busy. A reverse proxy reads that silence as a dead upstream and hangs up
-    mid-turn — nginx's stock ``proxy_read_timeout`` is 60s.
-
-    Wrapping at the point bytes leave makes that impossible regardless of what
-    any stage upstream decides to swallow, so no proxy in the path needs to be
-    configured to tolerate a long-running stream.
+    A consumer that filters frames (e.g. the bot translator) can leave the
+    socket silent while the turn stays busy even though the Redis log isn't
+    idle, and a reverse proxy reads that as dead — nginx's stock
+    proxy_read_timeout is 60s.
     """
     iterator = frames.__aiter__()
     pending: asyncio.Task[str] | None = None
@@ -582,12 +549,9 @@ async def with_heartbeat(
             yield frame
     finally:
         if pending is not None:
-            # Await the cancellation before closing: the task is suspended
-            # INSIDE frames.__anext__(), so the generator is still running and
-            # aclose() would raise "asynchronous generator is already running"
-            # — leaving the event-log subscription to be closed by GC instead
-            # of here. This is the ordinary disconnect: a client that drops
-            # while the turn is quiet always has a pull in flight.
+            # Await the cancellation before closing: the task is suspended inside
+            # frames.__anext__(), so aclose() would raise "asynchronous generator
+            # is already running" — the ordinary case for a client that disconnects while quiet.
             pending.cancel()
             with suppress(asyncio.CancelledError, StopAsyncIteration):
                 await pending

@@ -5,7 +5,7 @@
  */
 
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 import type { GoogleSheetsConfig } from "./GoogleSheetsSettings";
 import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
 
@@ -16,7 +16,7 @@ import { GoogleSheetsSettings } from "./GoogleSheetsSettings";
 export const googleSheetsTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["google_sheets_new_row", "google_sheets_new_sheet"],
 
-  createDefaultConfig: (slug: string): TriggerConfig => ({
+  createDefaultConfig: (slug: string): TriggerConfigDraft => ({
     type: "integration",
     enabled: true,
     trigger_name: slug,

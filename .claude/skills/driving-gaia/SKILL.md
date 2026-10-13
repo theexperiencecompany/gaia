@@ -243,7 +243,7 @@ Flags (see `apps/bots/harness/src/cli.ts`):
 Details:
 - `--emulate <platform>` pulls that platform's real `PLATFORM_LIMITS` / `STREAMING_DEFAULTS` / markdown converter from `libs/shared/ts/src/bots/` — the only residual is a conformance-locked `supportsEdit` map (`apps/bots/harness/src/emulation.ts`).
 - Requires the same `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`, `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`) and a running API (real LLM, or the `--sim` stub via §3). Set `RABBITMQ_URL` to record proactive `outbound-delivery` events through the real outbound consumer (a loud warning prints when it is unset).
-- Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
+- Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`, `reaction`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
 - A golden conformance suite (`apps/bots/__tests__/harness/conformance.test.ts`, wired into `mise test:bots`) drives the harness and the real adapter with only the SDK faked and fails CI if their output diverges. WhatsApp webhook replay lives in `apps/bots/__tests__/whatsapp/webhook-replay.e2e.test.ts`. See `apps/bots/CLAUDE.md`.
 
 ---

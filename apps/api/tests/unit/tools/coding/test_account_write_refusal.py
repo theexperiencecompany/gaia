@@ -1,4 +1,4 @@
-"""The write/edit refusal for ``account/**`` paths.
+"""The write/edit refusal for account/** paths.
 
 The account files are read-only projections: an attempted edit must be answered
 with the mutation tool that performs the change, and must never reach the

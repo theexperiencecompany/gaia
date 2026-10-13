@@ -1,0 +1,228 @@
+// @vitest-environment jsdom
+import { render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+import type { Plan } from "@/features/pricing/api/pricingApi";
+
+vi.mock("@/lib/analytics", () => ({
+  track: vi.fn(),
+}));
+
+vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
+  useCurrentUser: () => ({ userId: undefined }),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+vi.mock("@/features/pricing/hooks/useDodoPayments", () => ({
+  useDodoPayments: () => ({
+    createSubscriptionAndRedirect: vi.fn(),
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+const FREE_PLAN: Plan = {
+  id: "plan_free",
+  dodo_product_id: "dodo_free",
+  name: "Free",
+  plan_type: "free",
+  amount: 0,
+  description: null,
+  max_users: null,
+  currency: "USD",
+  duration: "monthly",
+  features: ["Basic chat"],
+  is_active: true,
+  created_at: "",
+  updated_at: "",
+};
+
+const PRO_PLAN: Plan = {
+  id: "plan_pro",
+  dodo_product_id: "dodo_pro_monthly",
+  name: "Pro",
+  plan_type: "pro",
+  amount: 2000,
+  description: null,
+  max_users: null,
+  currency: "USD",
+  duration: "monthly",
+  features: ["Unlimited chat", "Workflows"],
+  is_active: true,
+  created_at: "",
+  updated_at: "",
+};
+
+const PRO_PLAN_MONTHLY_30: Plan = { ...PRO_PLAN, amount: 3000 };
+
+const ENTERPRISE_PLAN: Plan = {
+  id: "plan_enterprise",
+  dodo_product_id: "",
+  name: "Enterprise",
+  plan_type: "enterprise",
+  amount: 0,
+  description: null,
+  max_users: null,
+  currency: "USD",
+  duration: "monthly",
+  features: ["Everything in Pro", "SSO, SCIM & audit logs"],
+  is_active: true,
+  created_at: "",
+  updated_at: "",
+};
+
+let mockPlans: Plan[] = [];
+
+vi.mock("@/features/pricing/hooks/usePricing", () => ({
+  usePricing: () => ({
+    plans: mockPlans,
+    isLoading: false,
+    error: null,
+    subscriptionStatus: undefined,
+  }),
+  useIsSubscriptionStatusUnknown: () => false,
+}));
+
+// Imported after the mocks above so PricingCards picks up the mocked hooks.
+import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTabs";
+import { PricingCards } from "@/features/pricing/components/PricingCards";
+import { isProPlan } from "@/features/pricing/utils/planPredicates";
+
+// TextMorph (torph) reads window.matchMedia for reduced-motion detection;
+// jsdom doesn't implement it.
+beforeAll(() => {
+  window.matchMedia =
+    window.matchMedia ||
+    ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+  // TextMorph also calls Element.getAnimations for its exit transition;
+  // jsdom doesn't implement the Web Animations API.
+  if (!Element.prototype.getAnimations) {
+    Element.prototype.getAnimations = () => [];
+  }
+});
+
+describe("PricingCards paid-only rendering", () => {
+  it("renders only the paid plan when the backend returns no $0 row", () => {
+    mockPlans = [PRO_PLAN];
+    render(<PricingCards durationIsMonth hideEnterprise />);
+
+    expect(screen.getByText("GAIA")).not.toBeNull();
+    expect(screen.queryByText("Free")).toBeNull();
+  });
+
+  it("filters out a $0 plan row even when the backend still returns one", () => {
+    mockPlans = [FREE_PLAN, PRO_PLAN];
+    render(<PricingCards durationIsMonth hideEnterprise />);
+
+    expect(screen.getByText("GAIA")).not.toBeNull();
+    expect(screen.queryByText("Free")).toBeNull();
+  });
+
+  it("renders Enterprise as a card beside the GAIA plan, with its contact CTA", () => {
+    mockPlans = [PRO_PLAN, ENTERPRISE_PLAN];
+    render(<PricingCards durationIsMonth />);
+
+    expect(screen.getByText("GAIA")).not.toBeNull();
+    expect(screen.getByText("Enterprise")).not.toBeNull();
+    expect(screen.getByText("Talk to the team")).not.toBeNull();
+    expect(screen.getByText("SSO, SCIM & audit logs")).not.toBeNull();
+  });
+
+  it("hides Enterprise where only the buyable plan belongs", () => {
+    mockPlans = [PRO_PLAN, ENTERPRISE_PLAN];
+    render(<PricingCards durationIsMonth hideEnterprise />);
+
+    expect(screen.getByText("GAIA")).not.toBeNull();
+    expect(screen.queryByText("Enterprise")).toBeNull();
+    expect(screen.queryByText("Talk to the team")).toBeNull();
+  });
+});
+
+describe("PricingCards yearly savings", () => {
+  it("compares the yearly row against twelve of the live monthly row", () => {
+    // $30/month vs $270/year is 25% off, three months free; a fixed 1/6
+    // annual discount would have kept saying two.
+    mockPlans = [
+      PRO_PLAN_MONTHLY_30,
+      {
+        ...PRO_PLAN_MONTHLY_30,
+        id: "plan_pro_yearly",
+        duration: "yearly",
+        amount: 27000,
+      },
+    ];
+    render(<PricingCards hideEnterprise />);
+
+    expect(screen.getByText("3 months free")).not.toBeNull();
+  });
+});
+
+const EUR_PRO_MONTHLY: Plan = { ...PRO_PLAN, amount: 3000, currency: "EUR" };
+const EUR_PRO_YEARLY: Plan = {
+  ...EUR_PRO_MONTHLY,
+  id: "plan_pro_yearly",
+  dodo_product_id: "dodo_pro_yearly",
+  amount: 30000,
+  duration: "yearly",
+};
+
+// A row prices itself in its own currency, and a yearly saving is claimed only
+// against a monthly row in the same currency: two currencies need a rate.
+describe("a non-USD catalogue", () => {
+  it("prices the yearly card in the row's own currency", () => {
+    mockPlans = [EUR_PRO_MONTHLY, EUR_PRO_YEARLY];
+    const { container } = render(<PricingCards hideEnterprise />);
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("€300");
+    expect(text).not.toContain("$");
+  });
+});
+
+describe("a monthly and a yearly row in different currencies", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("the yearly card claims no months free", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockPlans = [{ ...EUR_PRO_MONTHLY, currency: "USD" }, EUR_PRO_YEARLY];
+    const { container } = render(<PricingCards hideEnterprise />);
+
+    expect(container.textContent).not.toMatch(/months? free/);
+  });
+
+  it("claims no yearly saving, and says why", () => {
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mockPlans = [{ ...EUR_PRO_MONTHLY, currency: "USD" }, EUR_PRO_YEARLY];
+    render(<BillingPeriodTabs isYearly={false} onChange={vi.fn()} />);
+
+    expect(screen.queryByText(/months? free|Save/)).toBeNull();
+    expect(error).toHaveBeenCalled();
+  });
+});
+
+describe("isProPlan", () => {
+  it("is the row's tier tag, not its display name", () => {
+    expect(isProPlan(PRO_PLAN)).toBe(true);
+    expect(isProPlan({ ...PRO_PLAN, name: "Growth" })).toBe(true);
+    expect(isProPlan({ ...ENTERPRISE_PLAN, name: "Pro", amount: 9900 })).toBe(
+      false,
+    );
+    expect(isProPlan({ ...FREE_PLAN, name: "Pro" })).toBe(false);
+  });
+});

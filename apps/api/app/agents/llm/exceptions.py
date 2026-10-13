@@ -5,7 +5,14 @@ module-level globals next to the invocation logic.
 """
 
 from google.genai.errors import APIError as GeminiAPIError, ServerError as GeminiServerError
+from langchain_core.exceptions import OutputParserException
 from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
+from openai import (
+    APIConnectionError as OpenAIConnectionError,
+    APIError as OpenAIError,
+    InternalServerError as OpenAIServerError,
+    RateLimitError as OpenAIRateLimitError,
+)
 from openrouter.errors import (
     BadGatewayResponseError,
     EdgeNetworkTimeoutResponseError,
@@ -19,16 +26,26 @@ from openrouter.errors import (
 )
 
 
+class MalformedStructuredOutputError(OutputParserException):
+    """A structured reply that is not the whole, schema-valid answer.
+
+    Raised instead of repairing it: a lenient parse of a broken reply returns a
+    shortened value that looks like a real answer. Retryable, since another
+    sample of the same request is usually well formed.
+    """
+
+
 class LLMNotConfiguredError(RuntimeError):
-    """No provider key is configured for the requested model (e.g. the default
-    Gemini model without ``GOOGLE_API_KEY``). Typed so degrade-gracefully callers
-    can catch exactly this instead of every ``RuntimeError``."""
+    """No provider key is configured for the requested model.
+
+    Typed so degrade-gracefully callers can catch exactly this instead of
+    every RuntimeError.
+    """
 
 
-# OpenRouter SDK (the ``openrouter`` package used by ``langchain-openrouter``)
-# transient response/network failures — worth retrying. The non-transient ones
-# (402 out-of-credits, 401/403 auth, 404, 400/422) are deliberately excluded so
-# they fall straight through to the fallback instead of burning retries.
+# OpenRouter SDK transient response/network failures — worth retrying. The
+# non-transient ones (402, 401/403, 404, 400/422) fall straight through to
+# the fallback instead of burning retries.
 _OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
     TooManyRequestsResponseError,
     InternalServerResponseError,
@@ -40,38 +57,32 @@ _OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
     NoResponseError,
 )
 
-# Transient provider/infra errors — safe to retry, usually succeed on a second
-# attempt. The agent model node wraps the bound model in ``with_retry`` on these.
-# Provider 429s are the provider's own quota, distinct from the application rate
-# limiter (``LangChainRateLimitError``) which must NOT be retried.
-#
-# Gemini: ``langchain-google-genai`` (google-genai SDK) lets ``ServerError`` (5xx)
-# propagate raw but wraps every ``ClientError`` (4xx, INCLUDING transient 429s)
-# into ``ChatGoogleGenerativeAIError``, hiding the status class. Retrying that
-# wrapper would burn retries on permanent 400/401/404 errors, so Gemini 429s are
-# not retried — they fall through to the fallback set instead.
+# Transient provider/infra errors — safe to retry; the app rate limiter's
+# LangChainRateLimitError must NOT be. Gemini wraps every 4xx (including 429s) into
+# ChatGoogleGenerativeAIError, hiding the status class, so Gemini 429s fall through to fallback.
 LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     # Gemini (google-genai SDK)
     GeminiServerError,
     # OpenRouter SDK
     *_OPENROUTER_TRANSIENT_ERRORS,
+    # OpenAI SDK (the comms lane and the custom dev lane); its connection error is no ConnectionError
+    OpenAIRateLimitError,
+    OpenAIServerError,
+    OpenAIConnectionError,
     # stdlib
     ConnectionError,
     TimeoutError,
+    # A broken structured reply: re-asking samples a new one.
+    MalformedStructuredOutputError,
 )
 
-# Provider/infra failures that trigger a fallback to the default model once retries
-# are exhausted — or immediately for the non-transient ones (402 out-of-credits, 401
-# auth). A curated provider-error set, NOT a bare ``Exception``: a programming bug
-# must fail loud, not silently downgrade the model. ``OpenRouterError`` is the base of
-# every OpenRouter response error (new error types are covered automatically);
-# ``NoResponseError`` is the SDK's connection failure and is not an ``OpenRouterError``.
-# ``ChatGoogleGenerativeAIError`` is langchain-google-genai's wrapper around Gemini
-# 4xx responses; ``GeminiAPIError`` is the google-genai SDK base covering raw 5xx
-# (``ServerError``) and any unwrapped 4xx.
+# Fallback triggers once retries are exhausted, or immediately for non-transient errors
+# (402 out-of-credits, 401 auth). Curated, NOT a bare Exception: a programming bug must fail
+# loud, not silently downgrade the model. NoResponseError is not an OpenRouterError.
 LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     OpenRouterError,  # every OpenRouter response error, incl. 402 insufficient credits
     NoResponseError,
+    OpenAIError,  # every OpenAI SDK failure, incl. auth, quota and connection
     ChatGoogleGenerativeAIError,
     GeminiAPIError,
     ConnectionError,

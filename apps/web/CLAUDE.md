@@ -83,6 +83,21 @@ const res = await fetch("/api/todos");
 const todos = await apiService.get<Todo[]>("/api/todos");
 ```
 
+### API types are generated, never hand-written
+
+Every request/response shape the backend owns comes from `@gaia/shared/api/generated` (`@shared/api/generated` under the web path alias):
+
+```ts
+import type { TodoListResponse, TodoResponse } from "@shared/api/generated";
+
+const todos: TodoListResponse = await api.get("/api/v1/todos");
+```
+
+- Every Pydantic model is exported under its own name (`TodoResponse` is the class `TodoResponse`; a model used both as a request and a response comes as `WorkflowStepInput` / `WorkflowStepOutput`); `paths`/`operations` carry the per-route request and response types; `ErrorEnvelope` is the one error envelope (`{ message, code?, ... }` — narrow it with `getErrorMessage` / `getErrorCode` from `@/lib/api/errors`).
+- Never declare an `interface`/`type` that mirrors a Pydantic model. `checks.mjs api-schema-types` (the CI `api-schema` lane) fails the file and names the generated type to import instead. A feature's type hub may re-export a generated type (`export type { TodoResponse } from "@shared/api/generated"`) or name it for its consumers (`export type Workflow = WorkflowWithIntegrations`); a client-side view model that genuinely differs gets a name that is not a schema name (`TriggerConfigDraft`, `AttachedFileData`).
+- Changed a route or model? Run `mise api:types` (the prek hook does it for you on commit) and commit `apps/api/openapi.json` + `libs/shared/ts/src/api/generated/schema.d.ts`. CI regenerates and fails on drift.
+- Generator traps: `dict[str, Any]` → `Record<string, unknown>` and `Any` → `unknown`; `datetime` → `string`; `X | None` → `X | null` on a required key, not an optional key; a `StrEnum` → a string-literal union (keep a `const` map when you need runtime values). A Pydantic field with a default becomes an optional key (`memories?:`) unless the model extends `ResponseModel` (`apps/api/app/schemas/common.py`) — fix that on the API side rather than guarding `undefined` in every consumer.
+
 ## Error Boundaries
 
 - Every major feature area that renders independently should be wrapped in an `ErrorBoundary`.
@@ -92,7 +107,7 @@ const todos = await apiService.get<Todo[]>("/api/todos");
 
 Naming, identity and the no-PII rule are in the root `CLAUDE.md`. Web specifics:
 
-- `trackEvent(ANALYTICS_EVENTS.X, { ... })` from `src/lib/analytics.ts` — never `posthog.capture` directly, and never a bare string event name. Add new names to `ANALYTICS_EVENTS` in that file.
+- `track("domain:action", { ... })` from `src/lib/analytics.ts`, never `posthog.capture` (Biome blocks `posthog-js` imports elsewhere). Only web-owned catalog events with their exact props compile; add a new one as a `WebEvent` in `libs/shared/py/analytics/catalog/` and run `mise analytics:types`.
 - Users are identified by the **backend user id** (`useFetchUser`), not the WorkOS id or email, so web events join the API's.
 - Ingestion is proxied through `/ingest/*` so ad blockers cannot drop it; those rewrites follow `NEXT_PUBLIC_POSTHOG_HOST` (`next.config.mjs`), and `skipTrailingSlashRedirect: true` is required for it.
 - Prefer capturing server-side when the backend already sees the action — a client capture is the one an ad blocker eats. Capture on success, not on click.
@@ -104,9 +119,9 @@ Zustand (v5). Stores live in `src/stores/` and are named `use<Name>Store`.
 Two patterns in use:
 
 1. **Simple store** — `create<State>()(...)` with plain setters.
-2. **Persisted store** — wraps with `persist` + `devtools` middleware (e.g. `userStore`, keyed to `localStorage`).
+2. **Persisted store** — wraps with `persist` + `devtools` middleware (e.g. `composerStore`, keyed to `localStorage`).
 
-Export named selectors from the store file (e.g. `useUserProfile`) using `useShallow` for object selectors to avoid unnecessary re-renders.
+Export named selectors from the store file (e.g. `useLayoutSidebar`) using `useShallow` for object selectors to avoid unnecessary re-renders.
 
 Patterns that are not tool-enforced but required:
 
@@ -162,6 +177,7 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 **Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where HeroUI `<Button>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
 
 - Clickable card/list-row/chip containers converted from `div[role="button"]` to raw `<button type="button">` during the React Doctor a11y sweep (calendar event bars/cards/rows, chat tool-card rows like Todo/Twitter sections, composer items like LockedToolItem/SlashCommandDropdown/SelectedReplyIndicator, HoloCard flip container) — HeroUI `<Button>` cannot reproduce these full-card layouts; the native element supplies click + Enter/Space semantics.
+- Clickable rows/cards converted from `div onClick` for Sonar S1082 (click without keyboard support): landing demo rows (DemoSidebar integrations, DemoIntegrationsView, DemoTodosView, DummySlashCommandDropdown tools), the CLI install page's click-to-copy code block, and the WorkflowDraftCard body — same full-row layout constraint as above. Where the row also holds a HeroUI control, only the non-interactive part is the `<button>` and the control stays its sibling (never a button inside a button).
 
 **Do not override HeroUI default styling.** Use variant/color props (`variant="flat"`, `color="primary"`, etc.) first. Custom `classNames` / `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
 

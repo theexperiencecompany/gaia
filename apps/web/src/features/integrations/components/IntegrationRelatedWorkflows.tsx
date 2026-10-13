@@ -5,7 +5,6 @@ import { CircleArrowUpRightIcon } from "@icons";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 import { integrationsApi } from "../api/integrationsApi";
 
 // Distinct keys for the sidebar loading placeholders (also serve as React keys).
@@ -58,9 +57,8 @@ export function IntegrationRelatedWorkflows({
   });
 
   // While loading, the sidebar shows a skeleton matching the workflow cards so
-  // the panel doesn't flash in. The "section" variant stays null until resolved
-  // (it's a full marketplace block, not a panel). Once resolved with zero
-  // workflows we still collapse to null — no empty section.
+  // it doesn't flash in; the "section" variant (a full marketplace block, not a
+  // panel) stays null until resolved, and collapses to null again if empty.
   if (isLoading) {
     if (variant !== "sidebar") return null;
     return (
@@ -80,7 +78,7 @@ export function IntegrationRelatedWorkflows({
     );
   }
 
-  const workflows = (data?.workflows ?? []) as CommunityWorkflow[];
+  const workflows = data?.workflows ?? [];
   if (workflows.length === 0) return null;
 
   if (variant === "section") {

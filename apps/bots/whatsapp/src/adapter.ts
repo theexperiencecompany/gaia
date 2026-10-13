@@ -15,7 +15,6 @@
  * @module
  */
 
-import { BOT_EVENTS } from "@gaia/shared/analytics";
 import {
   BaseBotAdapter,
   BODY_READ_TIMEOUT,
@@ -23,15 +22,19 @@ import {
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  consumeInboundLinkCode,
   createBotLogger,
   extractSubcommandArgs,
   friendlyMediaError,
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
+  type LinkState,
   MEDIA_READ_TIMEOUT_MS,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   readBodyBounded,
@@ -166,21 +169,17 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * - POST /webhook → verifies Kapso HMAC signature, dispatches message
    */
   protected async registerEvents(): Promise<void> {
-    // One wide event per inbound webhook. Everything this handler does — body
-    // caps, signature verification, batch fan-out — happens before the 200 and
-    // outside any dispatch, so without a boundary here its audit line lands on
-    // no event at all. Per-message processing is enqueued after the response
-    // and opens its own boundary inside dispatchCommand/handleStreamingChat.
+    // One wide event per inbound webhook: body caps, signature verification, and
+    // batch fan-out all happen before the 200 and outside any dispatch, so without
+    // this boundary their audit lines would land on no event at all.
     this.botServer.app.post("/webhook", async (c) =>
       withWideEvent(
         "webhook",
         { platform: "whatsapp", component: "adapter" },
         async () => {
-          // Reject oversized bodies. Kapso payloads are small; anything above the cap
-          // signals an attempt to exhaust memory. The Content-Length header is only a
-          // cheap fast-path — a request can omit it, send 0, or use chunked transfer
-          // encoding to slip past a header-only check — so the real defense is the
-          // bounded stream read below, which aborts once actual bytes exceed the cap.
+          // Reject oversized bodies (Kapso payloads are small; above-cap signals abuse).
+          // Content-Length is only a fast-path — it can be omitted, zeroed, or bypassed
+          // via chunked encoding — so the bounded stream read below is the real defense.
           const contentLength = Number(c.req.header("content-length"));
           if (
             Number.isFinite(contentLength) &&
@@ -377,19 +376,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Shows the WhatsApp "typing…" indicator and keeps it alive for the whole
-   * generation.
-   *
-   * The WhatsApp Cloud API typing indicator (emitted by marking the inbound
-   * message read) auto-dismisses after ~25s or when the reply is sent. A single
-   * emit therefore leaves the user staring at a dead chat whenever generation
-   * runs long — markdown-heavy answers routinely exceed 25s. So we re-emit every
-   * {@link TYPING_REFRESH_MS} (well under the 25s ceiling) until {@link stop} is
-   * called from the request's `finally`. Re-emitting while the indicator is still
-   * active extends the window instead of flickering it.
-   *
-   * `refresh` forces an immediate re-emit (used to re-show it right after an
-   * interstitial message such as the welcome); `stop` cancels the keep-alive.
+   * Show the WhatsApp "typing…" indicator and keep it alive for the whole
+   * generation. The Cloud API indicator auto-dismisses after ~25s or on reply, so
+   * it's re-emitted every {@link TYPING_REFRESH_MS} (under that ceiling) until
+   * `stop` is called in the request's `finally`; `refresh` forces an immediate
+   * re-emit (e.g. right after an interstitial message like the welcome).
    */
   private startWhatsAppTyping(
     waId: string,
@@ -448,25 +439,24 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     // Base gate (shared with Discord): only greets unlinked users, at most once per process.
     if (!(await this.shouldSendWelcome(waId))) return;
 
-    let isLinked = this.linkedUsers.has(waId);
-    if (!isLinked) {
-      isLinked = await this.isWaUserLinked(waId, authCheckTimeoutMs);
-    }
-    if (!isLinked) {
+    if (this.linkedUsers.has(waId)) return;
+    // A failed check greets rather than staying silent: an unlinked user who
+    // never sees the welcome has no way to discover /auth.
+    if ((await this.waUserLinkState(waId, authCheckTimeoutMs)) !== "linked") {
       await this.sendWelcome(waId);
       refreshTyping();
     }
   }
 
   /**
-   * Resolves whether a WhatsApp user is linked to a GAIA account, caching a
-   * positive result. Failures (including the optional timeout) resolve to
-   * `false` so the welcome path degrades gracefully.
+   * Resolves whether a WhatsApp user is linked, caching a positive result. A
+   * failure (including the optional timeout) is `unknown`, not `unlinked` —
+   * callers pick their own safe default from that.
    */
-  private async isWaUserLinked(
+  private async waUserLinkState(
     waId: string,
     timeoutMs?: number,
-  ): Promise<boolean> {
+  ): Promise<LinkState> {
     try {
       const statusPromise = this.gaia.checkAuthStatus("whatsapp", waId);
       const status =
@@ -482,13 +472,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
               ),
             ]);
       if (status.authenticated) this.linkedUsers.add(waId);
-      return status.authenticated;
+      return status.authenticated ? "linked" : "unlinked";
     } catch (err) {
       this.adapterLogger.warn("welcome_auth_check_failed", {
         user_hash: hashLogIdentifier(waId),
         ...sanitizeErrorForLog(err),
       });
-      return false;
+      return "unknown";
     }
   }
 
@@ -530,14 +520,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Dispatches an incoming WhatsApp message to the appropriate handler.
-   *
-   * Shows a typing indicator immediately (mark-as-read + typing via Kapso API),
-   * then routes:
-   * - Messages starting with "/" are parsed as commands
-   * - `/gaia <text>` invokes streaming chat
-   * - Other `/command` messages invoke the unified command dispatcher
-   * - Plain text messages are treated as implicit `/gaia` chat
+   * Dispatch an incoming WhatsApp message to the appropriate handler. Shows a
+   * typing indicator immediately (mark-as-read + typing via Kapso), then routes
+   * `/gaia <text>` to streaming chat, other `/command` text to the unified
+   * dispatcher, and plain text as implicit `/gaia` chat.
    */
   private async handleIncomingMessage(
     waId: string,
@@ -555,12 +541,27 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     const typing = this.startWhatsAppTyping(waId, messageId);
 
     try {
-      await this.ensureWelcomed(waId, typing.refresh, 2_000);
-
       const target = this.createWaTarget(waId, messageId);
 
-      if (text.startsWith("/")) {
-        const withoutSlash = text.slice(1);
+      // Before the welcome: an unlinked sender arriving with a one-tap code is
+      // linking, not being greeted with "run /auth".
+      const inbound: string | null = await consumeInboundLinkCode({
+        gaia: this.gaia,
+        platform: this.platform,
+        platformUserId: waId,
+        text,
+        target,
+        linkState: () => this.waUserLinkState(waId),
+      });
+      // null: the message was only a code, or a redemption already delivered
+      // GAIA's whole first contact and there is no turn left to run.
+      if (inbound === null) return;
+      const chatText = inbound;
+
+      await this.ensureWelcomed(waId, typing.refresh, 2_000);
+
+      if (chatText.startsWith("/")) {
+        const withoutSlash = chatText.slice(1);
         const spaceIndex = withoutSlash.indexOf(" ");
         const commandName = (
           spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
@@ -573,7 +574,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
             await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
             return;
           }
-          await this.handleStreamingMessage(waId, rest);
+          await this.handleStreamingMessage(waId, rest, messageId);
           return;
         }
 
@@ -588,27 +589,23 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(waId, text);
+      await this.handleStreamingMessage(waId, chatText, messageId);
     } finally {
       typing.stop();
     }
   }
 
   /**
-   * Sends the user's message to the GAIA streaming endpoint.
-   *
-   * WhatsApp streaming is disabled (STREAMING_DEFAULTS.whatsapp.streaming = false),
-   * so the full response is accumulated and sent as a single message. The caller's
-   * typing keep-alive (see {@link startWhatsAppTyping}) keeps "typing…" visible for
-   * the whole generation and is cancelled in the caller's `finally`.
-   *
-   * @param attachments - Files already uploaded to GAIA's storage (via
-   *   {@link GaiaClient.uploadFile}) that should accompany this message so
-   *   the agent can ground its reply in their contents.
+   * Send the user's message to the GAIA streaming endpoint. WhatsApp streaming is
+   * disabled (`STREAMING_DEFAULTS.whatsapp.streaming = false`), so the full
+   * response accumulates and sends as one message. The caller's typing keep-alive
+   * (see {@link startWhatsAppTyping}) stays visible for the whole generation and
+   * is cancelled in the caller's `finally`.
    */
   private async handleStreamingMessage(
     waId: string,
     text: string,
+    messageId: string,
     attachments: BotFileData[] = [],
   ): Promise<void> {
     if (!text.trim() && attachments.length === 0) {
@@ -631,6 +628,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           platformUserId: waId,
           channelId: waId,
           isDm: true,
+          platformMessageId: messageId,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -674,6 +672,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.whatsapp,
         await this.analyticsFor(waId),
+        (emoji: string) => this.reactToMessage(waId, messageId, emoji, false),
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {
@@ -699,22 +698,18 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Sends a welcome message to a first-time WhatsApp user.
-   *
-   * Adapted from Discord's DM welcome embed — rendered as WhatsApp markdown
-   * since WhatsApp has no native embed/button support.
-   *
-   * Gated by platform_links check via `gaia.checkAuthStatus` (2s timeout) — linked
-   * users skip the welcome entirely and are cached in {@link linkedUsers} for the
-   * process lifetime. Unlinked users receive it once per process restart at
-   * most, gated by the shared {@link BaseBotAdapter.shouldSendWelcome}.
+   * Send a welcome message to a first-time WhatsApp user. Adapted from Discord's
+   * DM welcome embed, rendered as WhatsApp markdown (no embed/button support).
+   * Gated by a platform_links check via `gaia.checkAuthStatus` (2s timeout); linked
+   * users skip it and are cached in {@link linkedUsers}; unlinked users get it once
+   * per process restart via {@link BaseBotAdapter.shouldSendWelcome}.
    */
   private async sendWelcome(waId: string): Promise<void> {
     const text =
       `*Hey, I'm GAIA* 👋\n\n` +
-      `Your personal AI — I think ahead, remember what matters, and help you actually get things done.\n\n` +
+      `Your personal AI. I think ahead, remember what matters, and help you actually get things done.\n\n` +
       `Here's what I can do right here on WhatsApp:\n\n` +
-      `*Chat*\nJust type anything — ask questions, brainstorm, think out loud.\n\n` +
+      `*Chat*\nJust type anything: ask questions, brainstorm, think out loud.\n\n` +
       `*Todos*\nCapture tasks with /todo add.\n\n` +
       `*Workflows*\nRun automations with /workflow and delegate whole projects.\n\n` +
       `*Link your account*\nRun /auth to connect GAIA so I remember you and your context.\n\n` +
@@ -736,14 +731,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Handles an inbound media message (image, audio, voice note, or document).
-   *
-   * Platform-specific responsibilities only: typing indicator, welcome gate,
-   * downloading the bytes via Kapso, and mapping the Kapso descriptor onto the
-   * shared {@link IncomingMedia} shape. The actual decision (transcribe vs
-   * upload vs reject, size caps, prompts) lives in {@link processBotMedia} so
-   * Telegram and WhatsApp behave identically. The reply path then folds back
-   * into {@link handleStreamingMessage}, identical to plain text.
+   * Handle inbound media (image, audio, voice note, or document): typing
+   * indicator, welcome gate, download via Kapso, and map onto the shared
+   * {@link IncomingMedia} shape. The transcribe/upload/reject decision lives in
+   * {@link processBotMedia} (shared with Telegram); the reply then folds into
+   * {@link handleStreamingMessage} like plain text.
    */
   private async handleMediaMessage(
     waId: string,
@@ -787,6 +779,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         await this.handleStreamingMessage(
           waId,
           outcome.text,
+          messageId,
           outcome.attachments,
         );
       }
@@ -932,15 +925,37 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     try {
       await this.sendWhatsAppText(destinationId, text);
     } catch (err) {
-      // Free-form send failed — most often the 24-hour window is closed. Fall
-      // back to the approved template (sendable any time); if it also fails it
-      // rethrows so the consumer dead-letters it. The original error is logged
-      // so a non-window failure stays visible.
-      this.adapterLogger.info("outbound_template_fallback", {
+      // Free-form send failed — usually the 24-hour window is closed. Fall back to
+      // the approved template (sendable any time); a template failure rethrows so
+      // the consumer dead-letters it. A warning, because a 401/5xx lands here too.
+      wideLog.warning("outbound_template_fallback", {
         user_hash: hashLogIdentifier(destinationId),
         ...sanitizeErrorForLog(err),
       });
       await this.sendNotificationTemplate(destinationId, text);
+    }
+  }
+
+  protected override async reactToMessage(
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    _isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    // WhatsApp (Kapso) has no group/channel outbound model — destinationId is
+    // always a wa_id, same addressing as deliverOutbound.
+    try {
+      await this.whatsAppClient.messages.sendReaction({
+        phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
+        to: `+${destinationId}`,
+        reaction: { messageId: platformMessageId, emoji },
+      });
+      return REACTION_OUTCOME.ATTACHED;
+    } catch (err) {
+      this.adapterLogger.warn("outbound_reaction_attach_failed", {
+        ...sanitizeErrorForLog(err),
+      });
+      return REACTION_OUTCOME.ATTACH_FAILED;
     }
   }
 
@@ -977,37 +992,29 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Delivers an agent-generated file artifact to a WhatsApp user. Fetches the
-   * bytes from GAIA (bot-authenticated), uploads them to WhatsApp via the Kapso
-   * media API, then sends an image or document message referencing the media id.
+   * Uploads an agent-generated file artifact to WhatsApp via the Kapso media
+   * API, then sends an image or document message referencing the media id.
    */
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
+    { data, mime, filename, caption }: OutboundFile,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const { data, contentType } = artifact;
-    const mime =
-      attachment.content_type ?? contentType ?? "application/octet-stream";
     const phoneNumberId = this.whatsAppConfig.kapsoPhoneNumberId;
 
     const uploaded = (await this.whatsAppClient.media.upload({
       phoneNumberId,
       type: mime,
       file: new Blob([new Uint8Array(data)], { type: mime }),
-      fileName: attachment.filename,
+      fileName: filename,
     })) as { id?: string };
     if (!uploaded.id) throw new Error("Kapso media upload returned no id");
 
     const to = `+${destinationId}`;
-    const caption = attachment.caption ?? undefined;
     // WhatsApp image messages cap around 5 MB; deliver larger images as a
     // document so they still arrive instead of being rejected.
-    if (mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES) {
+    const asImage =
+      mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES;
+    if (asImage) {
       await this.whatsAppClient.messages.sendImage({
         phoneNumberId,
         to,
@@ -1017,21 +1024,17 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       await this.whatsAppClient.messages.sendDocument({
         phoneNumberId,
         to,
-        document: { id: uploaded.id, filename: attachment.filename, caption },
+        document: { id: uploaded.id, filename, caption },
       });
     }
-    // The one platform that can actually deliver an artifact — captured after
-    // the send resolves, so a Kapso failure throws before it and is never
-    // recorded as a success. The base class captures the failure paths.
+    // Captured after the send resolves, so a Kapso failure throws before it
+    // and is never recorded as a success. The base class captures the failure paths.
     this.analytics.capture(
       await this.resolveDistinctId(destinationId),
-      BOT_EVENTS.FILE_DELIVERED,
+      "bot:file_delivered",
       {
         success: true,
-        delivery_kind:
-          mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES
-            ? "image"
-            : "document",
+        delivery_kind: asImage ? "image" : "document",
         bytes: data.length,
       },
     );

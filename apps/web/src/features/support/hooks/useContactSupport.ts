@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "@/lib/toast";
 
-import { type SupportRequest, supportApi } from "../api/supportApi";
+import { type SupportRequestCreate, supportApi } from "../api/supportApi";
 import {
   ALLOWED_FILE_TYPES,
   FORM_VALIDATION,
@@ -127,14 +127,16 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
     setIsSubmitting(true);
 
     try {
-      const requestData: SupportRequest = {
-        type: formData.type as "support" | "feature",
+      const requestData: SupportRequestCreate = {
+        type: formData.type as SupportRequestCreate["type"],
         title: formData.title.trim(),
         description: formData.description.trim(),
-        attachments: formData.attachments,
       };
 
-      const response = await supportApi.submitRequest(requestData);
+      const response = await supportApi.submitRequest(
+        requestData,
+        formData.attachments,
+      );
 
       if (response.success) {
         const successMessage = response.ticket_id

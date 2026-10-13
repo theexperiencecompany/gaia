@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.integrations.weather import WeatherLocation, WeatherReport
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -58,7 +60,7 @@ def _writer_mock() -> MagicMock:
 class TestGetWeather:
     """Tests for the get_weather tool."""
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_happy_path(
         self,
@@ -89,7 +91,7 @@ class TestGetWeather:
         second_call = writer.call_args_list[1]
         assert "weather_data" in second_call[0][0]
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_returns_instructions_for_insights(
         self,
@@ -110,7 +112,7 @@ class TestGetWeather:
         assert "insights" in result.lower()
         assert "suggestions" in result.lower()
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_streams_progress_message(
         self,
@@ -132,7 +134,7 @@ class TestGetWeather:
         progress_call = writer.call_args_list[0][0][0]
         assert "Tokyo,JP" in progress_call["progress"]
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_streams_weather_data_to_frontend(
         self,
@@ -156,7 +158,33 @@ class TestGetWeather:
         assert data_call["weather_data"] == weather_data
         assert data_call["location"] == "Paris,FR"
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
+    async def test_a_weather_report_streams_only_the_fields_it_carries(
+        self,
+        mock_user_weather: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        """Unset optional fields (name, sys) are omitted from the card, not sent as nulls."""
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_user_weather.return_value = WeatherReport(
+            forecast=[],
+            location=WeatherLocation(city="Pune", country="IN", region=None),
+            main={"temp": 21.5},
+        )
+
+        from app.agents.tools.weather_tool import get_weather
+
+        await get_weather.coroutine(config=_make_config(), location="Pune,IN")
+
+        assert writer.call_args_list[1][0][0]["weather_data"] == {
+            "main": {"temp": 21.5},
+            "forecast": [],
+            "location": {"city": "Pune", "country": "IN", "region": None},
+        }
+
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_api_error_propagates(
         self,
@@ -175,7 +203,7 @@ class TestGetWeather:
                 location="Nowhere",
             )
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_returns_string_type(
         self,
@@ -195,7 +223,7 @@ class TestGetWeather:
 
         assert isinstance(result, str)
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_weather_data_included_in_return(
         self,
@@ -217,7 +245,7 @@ class TestGetWeather:
         # The return contains a string representation of weather data
         assert "Berlin,DE" in result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_weather", new_callable=AsyncMock)
     async def test_empty_weather_data(
         self,

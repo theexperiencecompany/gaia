@@ -1,6 +1,6 @@
 import asyncio
 from html import escape
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
@@ -23,29 +23,41 @@ from app.constants.notifications import (
 )
 from app.db.repositories.users import user_repository
 from app.models.device_token_models import (
-    DeviceTokenRequest,
-    DeviceTokenResponse,
+    PushTokenRequest,
+    PushTokenResponse,
 )
 from app.models.notification.notification_models import (
     ChannelPreferences,
     ChannelPreferencesUpdate,
+    NotificationListFilters,
     NotificationRecord,
     NotificationStatus,
     NotificationView,
 )
 from app.models.notification.request_models import (
+    ActionExecutionResponse,
     BulkActionRequest,
     BulkActionSummary,
+    MarkAllReadSummary,
     NotificationResponse,
     PaginatedNotificationsResponse,
 )
 from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.unsubscribe import verify_unsubscribe_token
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.notifications import (
+    NotificationActionExecuted,
+    NotificationBulkAction,
+    NotificationRead,
+    NotificationUnsubscribed,
+)
+from shared.py.analytics.catalog.settings import SettingsNotificationsToggled
 from shared.py.wide_events import NotificationContext, log
 
 router = APIRouter()
@@ -57,7 +69,17 @@ _UNSUBSCRIBE_INVALID_HTML = (
 )
 
 
-@router.get("/notifications/unsubscribe", response_class=HTMLResponse)
+@router.get(
+    "/notifications/unsubscribe",
+    response_class=HTMLResponse,
+    responses={
+        **HTML_ROUTE_ERROR_RESPONSES,
+        400: {
+            "description": "Invalid unsubscribe token",
+            "content": {"text/html": {"schema": {"type": "string"}}},
+        },
+    },
+)
 async def unsubscribe_confirmation(token: Annotated[str, Query()]) -> HTMLResponse:
     """Unsubscribe confirmation page — no login required. Renders a confirm
     button that POSTs to the same URL, so a GET (mail-client link scanner,
@@ -79,7 +101,11 @@ async def unsubscribe_confirmation(token: Annotated[str, Query()]) -> HTMLRespon
     return HTMLResponse(content=form)
 
 
-@router.post("/notifications/unsubscribe")
+@router.post(
+    "/notifications/unsubscribe",
+    response_class=HTMLResponse,
+    responses={**HTML_ROUTE_ERROR_RESPONSES, 400: {"description": "Invalid unsubscribe token"}},
+)
 async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> Response:
     """RFC 8058 one-click unsubscribe target (List-Unsubscribe-Post). Mail
     clients POST here; the response must be a blank 200."""
@@ -88,8 +114,11 @@ async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> Response:
         return Response(status_code=400)
 
     log.set(user={"id": user_id}, operation="unsubscribe_email_one_click")
+    # Built before the write, so a token signed for a non-user id fails before it unsubscribes anyone.
+    user = UserId(user_id)
     await _disable_email_channel(user_id)
     log.set(outcome="success")
+    capture(user, NotificationUnsubscribed())
     return Response(status_code=200)
 
 
@@ -105,8 +134,8 @@ async def get_notifications(
     channel_type: str | None = Query(None, description="Filter by channel type (e.g., email, sms)"),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> PaginatedNotificationsResponse:
-    """Get user's notifications with pagination"""
-    user_id = current_user.get("user_id")
+    """Get user's notifications with pagination."""
+    user_id = current_user.user_id
 
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
@@ -120,10 +149,11 @@ async def get_notifications(
     )
 
     try:
+        filters = NotificationListFilters(
+            status=status, channel_type=channel_type, limit=limit, offset=offset
+        )
         notifications, notification_count = await asyncio.gather(
-            notification_service.get_user_notifications(
-                user_id, status, limit, offset, channel_type
-            ),
+            notification_service.get_user_notifications(user_id, filters=filters),
             notification_service.get_user_notifications_count(user_id, status, channel_type),
         )
 
@@ -143,7 +173,7 @@ async def get_notifications(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to get notifications") from e
 
 
 @router.get("/notifications/preferences/channels", response_model=ChannelPreferences)
@@ -151,7 +181,7 @@ async def get_channel_preferences(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ChannelPreferences:
     """Get user's notification channel preferences."""
-    user_id = current_user.get("user_id")
+    user_id = current_user.user_id
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
@@ -168,7 +198,7 @@ async def get_channel_preferences(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to get channel preferences") from e
 
 
 @router.put("/notifications/preferences/channels", response_model=ChannelPreferences)
@@ -177,7 +207,7 @@ async def update_channel_preferences(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ChannelPreferences:
     """Update user's notification channel preferences."""
-    user_id = current_user.get("user_id")
+    user_id = current_user.user_id
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
@@ -194,13 +224,13 @@ async def update_channel_preferences(
 
         prefs = await fetch_channel_preferences(user_id)
         changed = preferences.model_dump(exclude_unset=True)
-        capture_context_event(
-            AnalyticsEvents.NOTIFICATION_PREFERENCE_UPDATED,
-            {
-                "changed_channel_count": len(changed),
-                "channels_enabled": sorted(c for c, on in changed.items() if on is True),
-                "channels_disabled": sorted(c for c, on in changed.items() if on is False),
-            },
+        capture(
+            UserId(user_id),
+            SettingsNotificationsToggled(
+                changed_channel_count=len(changed),
+                channels_enabled=sorted(c for c, on in changed.items() if on is True),
+                channels_disabled=sorted(c for c, on in changed.items() if on is False),
+            ),
         )
         log.set(operation="update_channel_preferences", outcome="success")
         return ChannelPreferences.model_validate(prefs)
@@ -211,7 +241,7 @@ async def update_channel_preferences(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to update channel preferences") from e
 
 
 @router.post("/notifications/{notification_id}/actions/{action_id}/execute")
@@ -220,13 +250,13 @@ async def execute_action(
     notification_id: str = Path(..., description="Notification ID"),
     action_id: str = Path(..., description="Action ID"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> NotificationResponse[dict[str, Any]]:
+) -> ActionExecutionResponse:
     """Execute a notification action.
 
     ``data`` stays a free-form dict: it is whatever the matched ``ActionHandler``
     produced (``ActionResult.data``), which is open by design.
     """
-    user_id = current_user.get("user_id")
+    user_id = current_user.user_id
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
@@ -246,7 +276,8 @@ async def execute_action(
 
         log.set(outcome="success")
         log.set_ns("notification", success=True)
-        return NotificationResponse(
+        capture(UserId(user_id), NotificationActionExecuted())
+        return ActionExecutionResponse(
             success=True,
             message=result.message or "Action executed successfully",
             data=result.data,
@@ -262,7 +293,7 @@ async def execute_action(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to execute action") from e
 
 
 @router.post("/notifications/{notification_id}/read")
@@ -276,7 +307,7 @@ async def mark_as_read(
     ``GET /notifications/{id}`` returns — the two endpoints have always returned
     different shapes under the same key.
     """
-    user_id = current_user.get("user_id")
+    user_id = current_user.user_id
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
@@ -293,6 +324,7 @@ async def mark_as_read(
 
         log.set(outcome="success")
         log.set_ns("notification", success=True)
+        capture(UserId(user_id), NotificationRead(count=1))
         return NotificationResponse(
             success=True,
             message="Notification marked as read",
@@ -309,7 +341,7 @@ async def mark_as_read(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to mark notification as read") from e
 
 
 @router.post("/notifications/bulk-actions")
@@ -317,8 +349,8 @@ async def bulk_actions(
     request: BulkActionRequest = Body(...),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> NotificationResponse[BulkActionSummary]:
-    """Perform bulk actions on multiple notifications"""
-    user_id = current_user.get("user_id")
+    """Perform bulk actions on multiple notifications."""
+    user_id = current_user.user_id
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
@@ -345,7 +377,10 @@ async def bulk_actions(
             result_count=successful,
             success=successful == total,
         )
-
+        capture(
+            UserId(user_id),
+            NotificationBulkAction(action=request.action, successful=successful, total=total),
+        )
         return NotificationResponse(
             success=True,
             message=f"Bulk action completed: {successful}/{total} successful",
@@ -360,18 +395,62 @@ async def bulk_actions(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to perform bulk actions") from e
 
 
-@router.post("/notifications/register-device", response_model=DeviceTokenResponse)
-async def register_device_token(
-    request: DeviceTokenRequest = Body(...),
+@router.post("/notifications/mark-all-read")
+async def mark_all_read(
+    channel_type: str | None = Query(None, description="Only mark notifications on this channel"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> DeviceTokenResponse:
+) -> NotificationResponse[MarkAllReadSummary]:
+    """Mark every delivered notification for the user as read, server-side.
+
+    Operates on every matching notification, not just the ones the caller has
+    currently loaded — this is what lets "mark all as read" cover notifications
+    beyond the first page a paginated client has fetched.
     """
-    Register a device token for push notifications
-    """
-    user_id = current_user.get("user_id")
+    user_id = current_user.user_id
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
+
+    log.set(
+        user={"id": user_id},
+        operation="mark_all_read",
+        notification=NotificationContext(operation="mark_all_read", channel=channel_type)
+        if channel_type
+        else NotificationContext(operation="mark_all_read"),
+    )
+
+    try:
+        updated_count = await notification_service.mark_all_read(user_id, channel_type=channel_type)
+
+        log.set(outcome="success")
+        log.set_ns("notification", result_count=updated_count, success=True)
+        return NotificationResponse(
+            success=True,
+            message=f"Marked {updated_count} notifications as read",
+            data=MarkAllReadSummary(updated_count=updated_count),
+        )
+
+    except Exception as e:
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to mark all notifications as read",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to mark all notifications as read"
+        ) from e
+
+
+@router.post("/notifications/register-device", response_model=PushTokenResponse)
+async def register_device_token(
+    request: PushTokenRequest = Body(...),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> PushTokenResponse:
+    """Register a device token for push notifications."""
+    user_id = current_user.user_id
 
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
@@ -410,7 +489,7 @@ async def register_device_token(
 
         if success:
             log.set(operation="register_device", outcome="success")
-            return DeviceTokenResponse(success=True, message="Device registered successfully")
+            return PushTokenResponse(success=True, message="Device registered successfully")
         raise HTTPException(status_code=500, detail="Failed to register device token")
 
     except HTTPException:
@@ -422,18 +501,16 @@ async def register_device_token(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to register device token") from e
 
 
-@router.post("/notifications/unregister-device", response_model=DeviceTokenResponse)
+@router.post("/notifications/unregister-device", response_model=PushTokenResponse)
 async def unregister_device_token(
     token: str = Body(..., embed=True),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> DeviceTokenResponse:
-    """
-    Unregister a device token
-    """
-    user_id = current_user.get("user_id")
+) -> PushTokenResponse:
+    """Unregister a device token."""
+    user_id = current_user.user_id
 
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
@@ -448,8 +525,8 @@ async def unregister_device_token(
 
         if success:
             log.set(operation="unregister_device", outcome="success")
-            return DeviceTokenResponse(success=True, message="Device unregistered successfully")
-        return DeviceTokenResponse(success=False, message="Device token not found")
+            return PushTokenResponse(success=True, message="Device unregistered successfully")
+        return PushTokenResponse(success=False, message="Device token not found")
 
     except HTTPException:
         raise
@@ -460,7 +537,7 @@ async def unregister_device_token(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to unregister device token") from e
 
 
 @router.get("/notifications/{notification_id}")
@@ -469,7 +546,7 @@ async def get_notification(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> NotificationResponse[NotificationView]:
     """Get a specific notification."""
-    user_id = current_user.get("user_id")
+    user_id = current_user.user_id
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
@@ -502,4 +579,4 @@ async def get_notification(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to get notification") from e

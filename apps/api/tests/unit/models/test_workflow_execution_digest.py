@@ -1,5 +1,6 @@
 """The recorded result digest: bounded without lying about what came back."""
 
+from datetime import UTC, datetime
 import json
 
 import pytest
@@ -11,7 +12,9 @@ from app.models.workflow_execution_models import (
     _largest_sequence,
     _trim_strings,
     build_result_digest,
+    carries_no_data,
     largest_list_len,
+    parse_result,
 )
 
 pytestmark = pytest.mark.unit
@@ -19,10 +22,7 @@ pytestmark = pytest.mark.unit
 
 class TestADigestNeverShedsAListToNothing:
     def test_one_oversized_element_is_cut_harder_rather_than_dropped(self) -> None:
-        """Five wide messages under a 1.2 KB bound used to come out as
-        ``{"data":{"messages":[]}}``: the first element did not fit even after
-        the first string trim, so every element was shed and a full result was
-        recorded as an empty one, which the empty-result checks then believed."""
+        """Five wide messages under a 1.2 KB bound used to shed to {"data":{"messages":[]}}, recording a full result as empty."""
         wide = {"id": "m1", **{f"field_{n}": "x" * 9_000 for n in range(8)}}
         huge = {"data": {"messages": [wide] * 5}}
 
@@ -38,9 +38,7 @@ class TestADigestNeverShedsAListToNothing:
 
 
 class TestTheBoundIsInclusive:
-    """Every ``<=`` here decides what a result exactly at its limit becomes. Off by
-    one and a result that fits is re-serialised, re-trimmed, or marked as cut —
-    which is a digest that says the tool returned something it did not."""
+    """Every <= here decides what a result exactly at its limit becomes; off by one and a fitting result is re-serialised, re-trimmed, or marked as cut."""
 
     def test_a_non_string_result_is_rendered_from_the_value_itself(self) -> None:
         assert build_result_digest({"count": 2}) == "{'count': 2}"
@@ -72,9 +70,7 @@ class TestTheStringLimitLaddersDownToZero:
     def test_the_last_rung_cuts_strings_away_entirely_before_slicing_as_text(
         self,
     ) -> None:
-        """A dict of short values can never be shed (no list) and never fits, so the
-        ladder runs to its end. Stopping a rung early records the one-character
-        prefixes instead of the fully cut ones."""
+        """A dict of short values can never be shed (no list) and never fits, so the ladder runs to its end."""
         assert _bounded_json({"a": "PQ", "b": "RS"}, 10) == '{"a":"\\u20'
 
     def test_the_limit_halves_rather_than_stepping_by_any_other_ratio(self) -> None:
@@ -97,3 +93,61 @@ class TestTheSheddableListIsChosenOnce:
 
         assert items == [1, 2]
         assert rebuild([9]) == {"a": [9], "b": [3, 4]}
+
+
+@pytest.mark.unit
+class TestCarriesNoData:
+    """largest_list_len must not be used for this: it finds the largest list anywhere, so a record's own empty attribute reads as an empty result."""
+
+    @pytest.mark.parametrize(
+        ("raw", "empty", "why"),
+        [
+            ('{"data": {"messages": []}}', True, "a fetch that found nothing"),
+            (
+                '{"data": {"fetched_count": 0, "messages": []}, "successful": true}',
+                True,
+                "the same, with the tool's own zero tally beside it",
+            ),
+            pytest.param(
+                '{"data": {"fetched_at": 1790000000, "fetched_count": 0, "messages": []}}',
+                True,
+                "the same, stamped with when its query ran",
+                marks=pytest.mark.regression,
+            ),
+            (
+                '{"successful": true, "error": null, "data": {"messages": []}}',
+                True,
+                "envelope only",
+            ),
+            ('{"todos": []}', True, "an empty list at the top level"),
+            ("{}", True, "nothing at all"),
+            (
+                '{"todo": {"labels": [], "title": "Buy milk", "id": "x"}}',
+                False,
+                "create_todo answering with the record it made: labels is empty, the todo is not",
+            ),
+            (
+                '{"successful": true, "data": {"todo": {"labels": [], "title": "x"}}}',
+                False,
+                "the same, enveloped",
+            ),
+            ('{"data": {"fetched_count": 2, "messages": [{"id": "a"}]}}', False, "a real fetch"),
+            ('"sent"', False, "a bare confirmation string"),
+        ],
+    )
+    def test_it_reads_every_real_result_shape(self, raw: str, empty: bool, why: str) -> None:
+        assert carries_no_data(json.loads(raw)) is empty, why
+
+
+class TestParseResult:
+    def test_a_document_with_leading_whitespace_is_still_a_document(self) -> None:
+        assert parse_result('  \n {"count": 2}') == {"count": 2}
+
+    def test_prose_stays_text(self) -> None:
+        assert parse_result("3 items found") == "3 items found"
+
+
+class TestCarriesNoDataOnOtherObjects:
+    def test_anything_that_is_not_a_json_shape_is_data(self) -> None:
+        assert carries_no_data(object()) is False
+        assert carries_no_data(datetime(2026, 9, 5, tzinfo=UTC)) is False

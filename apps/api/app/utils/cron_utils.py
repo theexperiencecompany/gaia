@@ -1,13 +1,13 @@
 """
 Cron utilities for reminder and workflow scheduling.
 
-Timezone handling is delegated entirely to :class:`app.utils.timezone.Timezone`
+Timezone handling is delegated entirely to app.utils.timezone.Timezone
 — this module never parses a timezone string itself.
 """
 
 from datetime import UTC, datetime
 
-from croniter import croniter
+from croniter import CroniterError, croniter
 
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
@@ -17,20 +17,12 @@ class CronError(Exception):
     """Exception raised for cron-related errors."""
 
 
-def validate_cron_expression(cron_expr: str) -> bool:
-    """Validate a cron expression.
-
-    Args:
-        cron_expr: Cron expression to validate
-
-    Returns:
-        True if valid, False otherwise
-    """
+def _require_parseable(cron_expr: str) -> None:
+    """Raise CronError unless croniter can read cron_expr; the product rule lives in app.utils.schedule."""
     try:
         croniter(cron_expr)
-        return True
-    except (ValueError, TypeError):
-        return False
+    except CroniterError as e:
+        raise CronError(f"Invalid cron expression: {cron_expr}") from e
 
 
 def get_next_run_time(
@@ -40,26 +32,12 @@ def get_next_run_time(
 ) -> datetime:
     """Get the next scheduled run time for a cron expression, returned in UTC.
 
-    The cron fields are interpreted as wall-clock time in ``tz`` (the schedule's
-    own timezone), so ``"0 9 * * *"`` with ``tz=Timezone.parse("Asia/Kolkata")``
-    fires at 09:00 IST. When ``tz`` is omitted the cron is interpreted in
-    ``base_time``'s OWN zone — a tz-aware base carries the user's zone (e.g. a
-    reminder's local "now") and must not be silently reinterpreted in UTC; only a
-    naive/absent base falls back to UTC. ``base_time`` defaults to "now".
-
-    Args:
-        cron_expr: Cron expression (e.g. "0 8 * * *" for daily at 8 AM)
-        base_time: Base time to calculate from (defaults to now in UTC)
-        tz: Schedule timezone the cron is interpreted in (defaults to base's zone)
-
-    Returns:
-        Next scheduled datetime in UTC
-
-    Raises:
-        CronError: If the cron expression is invalid
+    The cron fields are wall-clock time in tz, the schedule's own timezone, so "0 9 * * *"
+    with tz=Timezone.parse("Asia/Kolkata") fires at 09:00 IST. With tz omitted the cron is
+    read in base_time's OWN zone rather than silently reinterpreted in UTC; only a naive or
+    absent base falls back to UTC. base_time defaults to now. Raises CronError on a bad expr.
     """
-    if not validate_cron_expression(cron_expr):
-        raise CronError(f"Invalid cron expression: {cron_expr}")
+    _require_parseable(cron_expr)
 
     if base_time is None:
         base_time = datetime.now(UTC)
@@ -71,12 +49,9 @@ def get_next_run_time(
     zone = tz or Timezone.parse(base_time.tzinfo)
     log.set(cron_expr=cron_expr, user_timezone=zone.value)
 
-    # Advance the cron over NAIVE local wall-clock, then localize the result to
-    # the zone. A tz-aware base makes croniter carry the base's current UTC
-    # offset forward, so a fire that lands in a different DST period (e.g. a
-    # summer "now" computing a winter fire) comes out an hour off. Stepping the
-    # bare wall-clock and re-localizing lets the zone apply the correct offset
-    # for the fire date (a fixed-offset zone stays DST-naive, by design).
+    # A tz-aware base makes croniter carry its current UTC offset forward, so a
+    # fire in a different DST period comes out an hour off; stepping the naive
+    # wall-clock and re-localizing applies the correct offset per fire date.
     base_local = base_time.astimezone(zone.tzinfo).replace(tzinfo=None)
 
     try:
@@ -90,22 +65,11 @@ def get_next_run_time(
 def calculate_next_occurrences(
     cron_expr: str, count: int, base_time: datetime | None = None
 ) -> list[datetime]:
+    """Calculate the next count occurrences of a cron expression, returned in UTC.
+
+    Raises CronError if cron_expr is invalid.
     """
-    Calculate the next N occurrences of a cron expression.
-
-    Args:
-        cron_expr: Cron expression
-        count: Number of occurrences to calculate
-        base_time: Base time to calculate from (defaults to current UTC time)
-
-    Returns:
-        List of next scheduled datetimes in UTC
-
-    Raises:
-        CronError: If cron expression is invalid
-    """
-    if not validate_cron_expression(cron_expr):
-        raise CronError(f"Invalid cron expression: {cron_expr}")
+    _require_parseable(cron_expr)
 
     if count <= 0:
         return []

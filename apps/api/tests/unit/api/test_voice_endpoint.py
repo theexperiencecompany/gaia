@@ -6,21 +6,54 @@ status codes, response shapes, and payload forwarding are verified.
 """
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 from jose import jwt
 import pytest
 
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
+from app.models.payment_models import PlanType
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
-from app.services.analytics_service import AnalyticsEvents
 from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
 
 VOICE_BASE = "/api/v1"
 USER_ID = "507f1f77bcf86cd799439011"
 FAKE_API_KEY = "test_api_key"
 FAKE_API_SECRET = "test_api_secret"  # nosec B105 — fake test credential
+
+# The `client` fixture's user is FREE by default, so /token 402s before the
+# handler runs; classes exercising token behavior opt into PRO through the
+# same seam the gate reads.
+_GET_SUBSCRIPTION_STATUS = (
+    "app.services.payments.payment_service.payment_service.get_user_subscription_status"
+)
+
+
+def _subscription_mock(plan_type: PlanType = PlanType.PRO) -> MagicMock:
+    sub = MagicMock()
+    sub.plan_type = plan_type
+    return sub
+
+
+@pytest.fixture(autouse=True)
+def _no_real_redis_plan_cache():
+    """Every test here shares FAKE_USER's id; without this a plan tier cached by one test leaks into the next via the local-Redis singleton."""
+    with (
+        patch(
+            "app.services.payments.payment_service.redis_cache.get",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.services.payments.payment_service.redis_cache.set",
+            new=AsyncMock(),
+        ),
+    ):
+        yield
 
 
 def _voice_option(voice_id: str = "v1", name: str = "Aria") -> VoiceOption:
@@ -50,7 +83,16 @@ def _decode_token(token: str) -> dict:
 
 
 class TestGetVoiceToken:
-    """GET /api/v1/token — LiveKit room token minting"""
+    """GET /api/v1/token — LiveKit room token minting."""
+
+    @pytest.fixture(autouse=True)
+    def _pro_subscription(self):
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            yield
 
     def _enable_livekit(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings, "LIVEKIT_API_KEY", FAKE_API_KEY)
@@ -99,6 +141,27 @@ class TestGetVoiceToken:
         mock_get_voice.assert_awaited_once_with(USER_ID)
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
+    async def test_token_for_user_without_email_has_blank_participant_name(
+        self,
+        mock_get_voice: AsyncMock,
+        client: AsyncClient,
+        test_app: FastAPI,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        self._enable_livekit(monkeypatch)
+        mock_get_voice.return_value = None
+        emailless = test_app.dependency_overrides[get_current_user]().model_copy(
+            update={"email": None}
+        )
+        monkeypatch.setitem(test_app.dependency_overrides, get_current_user, lambda: emailless)
+
+        resp = await client.get(VOICE_BASE + "/token")
+
+        assert resp.status_code == 200
+        assert resp.json()["participantName"] == ""
+        assert json.loads(_decode_token(resp.json()["participantToken"])["metadata"])["name"] == ""
+
+    @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
     async def test_token_fails_when_livekit_keys_are_missing(
         self, mock_get_voice: AsyncMock, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ):
@@ -107,11 +170,51 @@ class TestGetVoiceToken:
         mock_get_voice.return_value = None
         resp = await client.get(VOICE_BASE + "/token")
         assert resp.status_code == 500
-        assert "Failed to generate voice token" in resp.json()["detail"]
+        assert "Failed to generate voice token" in resp.json()["message"]
 
     async def test_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.get(VOICE_BASE + "/token")
         assert resp.status_code == 401
+
+
+class TestVoicePaidOnlyGate:
+    """402 contract on /token — a voice session is spend, so it is Pro-only."""
+
+    @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
+    async def test_free_user_gets_402_and_never_mints_a_token(
+        self,
+        mock_get_voice: AsyncMock,
+        gated_client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setattr(settings, "LIVEKIT_API_KEY", FAKE_API_KEY)
+        monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", FAKE_API_SECRET)
+        monkeypatch.setattr(settings, "LIVEKIT_URL", "wss://test.livekit.cloud")
+
+        resp = await gated_client.get(VOICE_BASE + "/token")
+
+        assert resp.status_code == 402
+        assert resp.json()["code"] == "subscription_required"
+        mock_get_voice.assert_not_called()
+
+    @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
+    async def test_pro_user_still_gets_a_token(
+        self, mock_get_voice: AsyncMock, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "LIVEKIT_API_KEY", FAKE_API_KEY)
+        monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", FAKE_API_SECRET)
+        monkeypatch.setattr(settings, "LIVEKIT_URL", "wss://test.livekit.cloud")
+        mock_get_voice.return_value = None
+
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            resp = await client.get(VOICE_BASE + "/token")
+
+        assert resp.status_code == 200
+        assert resp.json()["participantToken"]
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +223,7 @@ class TestGetVoiceToken:
 
 
 class TestListVoices:
-    """GET /api/v1/voice/voices"""
+    """GET /api/v1/voice/voices."""
 
     @patch("app.api.v1.endpoints.voice.list_voices", new_callable=AsyncMock)
     async def test_list_voices_success(self, mock_list: AsyncMock, client: AsyncClient):
@@ -128,7 +231,9 @@ class TestListVoices:
             voices=[_voice_option("v1", "Aria"), _voice_option("v2", "Orion")],
             selected_voice_id="v1",
         )
-        resp = await client.get(f"{VOICE_BASE}/voice/voices")
+        with patch("app.api.v1.endpoints.voice.log") as mock_log:
+            resp = await client.get(f"{VOICE_BASE}/voice/voices")
+        mock_log.set.assert_any_call(user={"id": USER_ID}, operation="list_voices")
         assert resp.status_code == 200
         body = resp.json()
         assert body["selected_voice_id"] == "v1"
@@ -153,14 +258,15 @@ class TestListVoices:
 
 
 class TestSelectVoice:
-    """PUT /api/v1/voice/voices/selected"""
+    """PUT /api/v1/voice/voices/selected."""
 
     @patch("app.api.v1.endpoints.voice.set_user_voice", new_callable=AsyncMock)
     async def test_select_voice_success(self, mock_set: AsyncMock, client: AsyncClient):
         mock_set.return_value = "voice-1"
         with (
-            patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.voice.capture") as mock_capture,
             patch("app.api.v1.endpoints.voice.schedule_account_sync") as mock_schedule_sync,
+            patch("app.api.v1.endpoints.voice.log") as mock_log,
         ):
             resp = await client.put(
                 f"{VOICE_BASE}/voice/voices/selected", json={"voice_id": "voice-1"}
@@ -168,10 +274,13 @@ class TestSelectVoice:
         assert resp.status_code == 200
         assert resp.json() == {"selected_voice_id": "voice-1"}
         mock_set.assert_awaited_once_with(USER_ID, "voice-1")
+        mock_log.set.assert_any_call(
+            user={"id": USER_ID}, operation="select_voice", voice_id="voice-1"
+        )
         mock_schedule_sync.assert_called_once_with(USER_ID)
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {"setting": "voice", "voice_id": "voice-1"},
+            UserId(USER_ID),
+            SettingsPreferencesChanged(setting="voice", voice_id="voice-1"),
         )
 
     @patch("app.api.v1.endpoints.voice.set_user_voice", new_callable=AsyncMock)
@@ -208,27 +317,41 @@ class TestSelectVoice:
 
 
 class TestStarVoice:
-    """PUT /api/v1/voice/voices/{voice_id}/star"""
+    """PUT /api/v1/voice/voices/{voice_id}/star."""
+
+    @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
+    async def test_a_voice_id_that_is_not_an_id_is_refused_before_the_star(
+        self, mock_star: AsyncMock, client: AsyncClient
+    ):
+        resp = await client.put(f"{VOICE_BASE}/voice/voices/my voice/star", json={"starred": True})
+        assert resp.status_code == 422
+        mock_star.assert_not_awaited()
 
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
     async def test_star_voice_success(self, mock_star: AsyncMock, client: AsyncClient):
         mock_star.return_value = ["voice-1", "voice-2"]
-        with patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture:
+        with (
+            patch("app.api.v1.endpoints.voice.capture") as mock_capture,
+            patch("app.api.v1.endpoints.voice.log") as mock_log,
+        ):
             resp = await client.put(
                 f"{VOICE_BASE}/voice/voices/voice-1/star", json={"starred": True}
             )
+        mock_log.set.assert_any_call(
+            user={"id": USER_ID}, operation="star_voice", voice_id="voice-1", starred=True
+        )
         assert resp.status_code == 200
         assert resp.json() == {"starred_voice_ids": ["voice-1", "voice-2"]}
         mock_star.assert_awaited_once_with(USER_ID, "voice-1", True)
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {"setting": "voice_star", "voice_id": "voice-1", "is_starred": True},
+            UserId(USER_ID),
+            SettingsPreferencesChanged(setting="voice_star", voice_id="voice-1", is_starred=True),
         )
 
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
     async def test_unstar_voice_success(self, mock_star: AsyncMock, client: AsyncClient):
         mock_star.return_value = []
-        with patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture:
+        with patch("app.api.v1.endpoints.voice.capture") as mock_capture:
             resp = await client.put(
                 f"{VOICE_BASE}/voice/voices/voice-1/star", json={"starred": False}
             )
@@ -236,8 +359,8 @@ class TestStarVoice:
         assert resp.json() == {"starred_voice_ids": []}
         mock_star.assert_awaited_once_with(USER_ID, "voice-1", False)
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {"setting": "voice_star", "voice_id": "voice-1", "is_starred": False},
+            UserId(USER_ID),
+            SettingsPreferencesChanged(setting="voice_star", voice_id="voice-1", is_starred=False),
         )
 
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)

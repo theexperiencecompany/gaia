@@ -25,7 +25,7 @@ import Spinner from "@/components/ui/spinner";
 import GmailBody from "@/features/mail/components/GmailBody";
 import { useEmailSummary } from "@/features/mail/hooks/useEmailAnalysis";
 import { parseEmail } from "@/features/mail/utils/mailUtils";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import type {
@@ -306,7 +306,7 @@ export default function ViewEmail({
 
   useEffect(() => {
     if (mailId) {
-      trackEvent(ANALYTICS_EVENTS.EMAIL_OPENED, { mail_id: mailId });
+      track("email:opened", { mail_id: mailId });
     }
   }, [mailId]);
 
@@ -322,17 +322,6 @@ export default function ViewEmail({
   const sortedThreadMessages = [...threadMessages].sort((a, b) => {
     return new Date(a.time).getTime() - new Date(b.time).getTime();
   });
-
-  // const getRecipients = (email: EmailData | null) => {
-  //   if (!email) return { to: "", cc: "", bcc: "" };
-
-  //   const headers = email.headers || {};
-  //   return {
-  //     to: headers["Reply-To"] || headers["From"] || email.from || "",
-  //     cc: "",
-  //     bcc: "",
-  //   };
-  // };
 
   const editor = useEditor({
     extensions: [
@@ -385,13 +374,7 @@ export default function ViewEmail({
         return;
       }
 
-      // TODO: Backend reply endpoint doesn't exist yet
-      // await mailApi.replyToEmail({
-      //   threadId: replyTo.threadId,
-      //   to: [recipient],
-      //   subject: `Re: ${replyTo.subject || ""}`,
-      //   body: content,
-      // });
+      // TODO: backend reply endpoint doesn't exist yet.
 
       toast.error("Reply functionality is not yet implemented");
       setShowReplyEditor(false);

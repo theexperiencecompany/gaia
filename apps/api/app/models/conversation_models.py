@@ -24,12 +24,18 @@ the base's auto-stamp.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.repositories.base import UserScopedDocument
-from app.models.chat_models import ConversationSource, MessageModel, SystemPurpose
+from app.models.artifact_models import ArtifactRegistryEntry
+from app.models.chat_models import (
+    ConversationSource,
+    MessageModel,
+    SystemPurpose,
+    ToolDataEntry,
+)
+from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
 
 
@@ -45,6 +51,15 @@ def _coerce_source(value: object) -> object:
     if isinstance(value, (ConversationSource, str)):
         return ConversationSource.coerce(value)
     return value
+
+
+class FoldedCards(BaseModel):
+    """Cards a detached run closed before the message they fold into was saved; its save takes them."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    since: datetime
+    cards: list[ToolDataEntry] = Field(default_factory=list)
 
 
 class ConversationDocument(UserScopedDocument):
@@ -64,13 +79,16 @@ class ConversationDocument(UserScopedDocument):
     is_unread: bool | None = False
     source: ConversationSource | None = None
     is_onboarding_demo: bool = False
-    is_onboarding_conversation: bool | None = None
     starred: bool | None = None
+    # Set while a background run has a live approval parked here; the sidebar
+    # hides background conversations unless this is set (see _active_filter).
+    has_live_approval: bool = False
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
-    # deduped by path. Kept as raw dicts — the element shape is owned by
-    # services/chat/artifacts_registry.py and mirrored verbatim to the client.
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    # deduped by path; services/chat/artifacts_registry.py owns every write.
+    artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
+    # Write-side state only (see FOLDED_CARDS_FIELD): never serialized to a reader.
+    folded_cards: dict[str, FoldedCards] = Field(default_factory=dict, exclude=True)
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
@@ -89,7 +107,7 @@ class ConversationUpdate(BaseModel):
     is_unread: bool | None = None
 
 
-class ConversationSummary(BaseModel):
+class ConversationSummary(ResponseModel):
     """The projected conversation-list row — every field the web list consumes,
     without the heavy ``messages`` array."""
 
@@ -100,10 +118,10 @@ class ConversationSummary(BaseModel):
     description: str | None = None
     starred: bool | None = None
     is_system_generated: bool | None = None
-    is_onboarding_conversation: bool | None = None
     system_purpose: SystemPurpose | None = None
     is_unread: bool | None = None
     source: ConversationSource | None = None
+    has_live_approval: bool | None = None
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
@@ -163,42 +181,12 @@ class _ConversationIdRow(BaseModel):
 
 
 class _MessageProjectionRow(BaseModel):
-    """Positional ``messages.$`` projection — a one-element messages slice."""
+    """A projection of part of ``messages``: the positional ``messages.$`` (one
+    element) or a ``$slice`` window (e.g. the follow-up action dedup read)."""
 
     model_config = ConfigDict(extra="ignore")
 
     messages: list[MessageModel] = Field(default_factory=list)
-
-
-class _FollowUpActionsRow(BaseModel):
-    """A ``messages: {$slice: -N}`` projection — the trailing window read for
-    already-suggested follow-up action dedup."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    messages: list[MessageModel] = Field(default_factory=list)
-
-
-class _OnboardingProbeRow(BaseModel):
-    """Projection for the onboarding-demo prompt gate: the flag plus message list."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    is_onboarding_conversation: bool | None = None
-    messages: list[MessageModel] = Field(default_factory=list)
-
-    @field_validator("messages", mode="before")
-    @classmethod
-    def _normalize(cls, value: object) -> object:
-        return _normalize_messages(value)
-
-
-class OnboardingProbe(BaseModel):
-    """The onboarding-demo gate result: whether this is the demo conversation and
-    how many messages it holds."""
-
-    is_onboarding_conversation: bool | None = None
-    message_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +220,7 @@ class SystemConversationCreated(BaseModel):
     detail: str
 
 
-class ConversationListResponse(BaseModel):
+class ConversationListResponse(ResponseModel):
     """One page of the conversation list: every starred conversation followed by
     the requested page of the non-starred ones."""
 
@@ -243,7 +231,7 @@ class ConversationListResponse(BaseModel):
     total_pages: int
 
 
-class ConversationSyncRow(BaseModel):
+class ConversationSyncRow(ResponseModel):
     """One batch-sync row — the conversation's client-visible fields plus its full
     message history and artifact registry.
 
@@ -255,19 +243,20 @@ class ConversationSyncRow(BaseModel):
     description: str
     starred: bool | None = None
     is_system_generated: bool | None = None
-    is_onboarding_conversation: bool | None = None
     system_purpose: SystemPurpose | None = None
     is_unread: bool | None = None
     createdAt: str | None = None
     updatedAt: datetime | None = None
     messages: list[MessageModel] = Field(default_factory=list)
-    # Mirrored verbatim from the document — the element shape is owned by
-    # services/chat/artifacts_registry.py (see ConversationDocument.artifacts).
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    # Mirrored verbatim from the document (see ConversationDocument.artifacts).
+    artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     active_stream_id: str | None = None
+    # Whether a background run holds a live approval here — drives the
+    # sidebar dot. Missing on older rows reads as unset (no dot).
+    has_live_approval: bool | None = None
 
 
-class BatchSyncResponse(BaseModel):
+class BatchSyncResponse(ResponseModel):
     """The conversations a client's sync request found stale."""
 
     conversations: list[ConversationSyncRow] = Field(default_factory=list)
@@ -317,7 +306,7 @@ class PinMessageResponse(BaseModel):
     pinned: bool
 
 
-class PinnedMessagesResponse(BaseModel):
+class PinnedMessagesResponse(ResponseModel):
     """Every pinned message across the user's conversations."""
 
     results: list[ConversationMessageHit] = Field(default_factory=list)

@@ -1,18 +1,15 @@
 """Verify what actually landed in Opik, by asking Opik.
 
-This exists because of how the ingestion defects survived: every one of them was
-"confirmed" by reading the code that does the writing. The writer looked correct
-and was correct in isolation — a gate really did produce a score, a trace really
-did carry a run id. Nobody queried the result and asked whether the totals made
-sense, so a project accumulated 25,144 traces for a 45-case suite, and another
-reported 461,794,459 tokens (~700k per trace, for single agent runs) and nobody
-noticed for days.
+This exists because ingestion defects survived "confirmation" by reading the
+writer's code, which looked correct in isolation — a gate produced a score, a
+trace carried a run id. Nobody queried the result: a project accumulated
+25,144 traces for a 45-case suite, and another reported 461,794,459 tokens
+(~700k per trace, for single agent runs), unnoticed for days.
 
-So this is deliberately not a unit test of our writer. It is an independent
-reader that pulls the numbers back out of the live backend and refuses to call
-an ingest successful when they are impossible, or when they disagree with the
-journals on disk — which are the source of truth. :mod:`.invariants` does the
-same job for journals; this is the same idea one layer out.
+This is deliberately not a unit test of our writer. It's an independent
+reader that pulls numbers back from the live backend and refuses to call an
+ingest successful when they're impossible or disagree with the journals on
+disk (the source of truth). invariants does the same job for journals.
 
 Run it after every seed. A check nobody runs is a check that does not exist.
 """
@@ -60,10 +57,9 @@ GRADED_STATUSES = frozenset({"passed", "failed", "skipped"})
 #: it are wrong, not that we spent it — every lane here is cheap or free.
 MAX_PLAUSIBLE_PROJECT_COST_USD = 15.0
 
-#: The only provenance whose tokens may be turned into a dollar figure. Anything
-#: else is a guess wearing a number's clothes: ``estimated`` is len(text)//4 and
-#: cannot see a system prompt, and ``unknown`` is a pre-fix journal whose counts
-#: were differenced off a meter shared by concurrent cases.
+#: The only provenance whose tokens may become a dollar figure. estimated is
+#: len(text)//4 and can't see a system prompt; unknown is a pre-fix journal
+#: whose counts were differenced off a meter shared by concurrent cases.
 TRUSTED_TOKEN_SOURCE = "metered"
 
 _PAGE = 1000
@@ -131,11 +127,9 @@ REQUIRED_METADATA = ("run_id", "suite", "app_version", "case_id")
 #: red, and a check that cannot pass gets switched off.
 BEST_EFFORT_METADATA = frozenset({"app_version"})
 
-#: Trace names Opik itself writes. ``evaluate()`` opens one ``evaluation_task``
-#: trace per dataset item, so these are the experiment machinery working, not
-#: our pollution. Excluding them keeps the non-case rule pointed at the real
-#: defect — a check that reports a known-good thing as a fault gets ignored, and
-#: then it is not a check.
+#: Trace names Opik itself writes: evaluate() opens one evaluation_task
+#: trace per dataset item — experiment machinery, not our pollution.
+#: Excluding them keeps the non-case rule pointed at the real defect.
 OPIK_OWNED_TRACE_NAMES = frozenset({"evaluation_task"})
 
 
@@ -152,10 +146,10 @@ def _api(base_url: str, path: str, **query: object) -> dict[str, object]:
 
 
 def api_base(url_override: str) -> str:
-    """The private REST root, derived from OPIK_URL_OVERRIDE.
+    """Return the private REST root, derived from OPIK_URL_OVERRIDE.
 
     The scheme is checked here rather than suppressed at the call site: this URL
-    comes from the environment, and ``urlopen`` would happily accept ``file:``
+    comes from the environment, and urlopen would happily accept file:
     and turn a misconfigured variable into a local file read.
     """
     parsed = urlparse(url_override)
@@ -252,16 +246,9 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
         if source != TRUSTED_TOKEN_SOURCE:
             facts.untrusted_cost_usd += cost
         worked = float(str(metadata.get("duration_s") or 0) or 0) >= MIN_WORKING_SECONDS
-        # Only meaningful for a metered trace that reached a verdict. An
-        # unmetered one reports zero because we withheld it, and an errored one
-        # because the case died before it could spend anything — that is the
-        # outage showing through, not a broken meter, and it fires on exactly
-        # the runs an outage already ruined.
-        #
-        # Judged on STATUS, not on whether an error string is present: 424
-        # records are `failed` and still carry one ("gate score below
-        # threshold"), because a graded wrong answer records why it was wrong.
-        # Keying on the string would have silently exempted every one of them.
+        # Meaningful only for a metered trace that reached a verdict — an
+        # unmetered or errored one legitimately reports zero. Judged on
+        # STATUS, not error-string presence (424 failed records carry one too).
         if (
             source == TRUSTED_TOKEN_SOURCE
             and worked
@@ -283,13 +270,11 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
 def journal_expectations(
     runs_dir: Path, suite_projects: dict[str, str], only_projects: set[str] | None = None
 ) -> dict[str, int]:
-    """How many distinct case traces each project should hold, per the journals.
+    """Return how many distinct case traces each project should hold, per the journals.
 
-    Distinct ``(case, run)`` pairs, not records: a journal legitimately carries
-    the same case twice when a run was resumed, and both collapse onto one trace.
-
-    A run marked ``excluded`` is left out, because the ingest never writes it —
-    counting it here would report a mismatch on every correctly-skipped run.
+    Distinct (case, run) pairs, not records: a resumed run's repeated case
+    collapses onto one trace. A run marked excluded is left out, since the
+    ingest never writes it — counting it would flag every correctly-skipped run.
     """
     expected: Counter[str] = Counter()
     for run_dir in sorted(runs_dir.iterdir()):

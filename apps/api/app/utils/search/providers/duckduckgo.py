@@ -2,7 +2,9 @@
 
 from bs4 import BeautifulSoup
 import httpx
+from pydantic import BaseModel, ConfigDict
 
+from app.utils.log_identifiers import user_text_shape
 from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import SearchProvider
 from shared.py.wide_events import log
@@ -19,6 +21,14 @@ _HEADERS = {
 }
 
 
+class _ResultAnchor(BaseModel):
+    """The attributes of a DDG Lite result anchor — only ``href`` is read."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    href: str = ""
+
+
 class DuckDuckGoProvider(SearchProvider):
     """DuckDuckGo Lite scrape — keyless, always-available fallback."""
 
@@ -26,7 +36,7 @@ class DuckDuckGoProvider(SearchProvider):
     monthly_free_limit = None
 
     def is_configured(self) -> bool:
-        """Always available — no credentials required."""
+        """Return True unconditionally — no credentials required."""
         return True
 
     async def search(self, query: str, count: int) -> SearchResponse:
@@ -40,7 +50,7 @@ class DuckDuckGoProvider(SearchProvider):
         # DDG Lite serves an anti-bot page (often HTTP 202) that still parses as
         # HTML; treat it as "no results" rather than scraping a challenge page.
         if response.status_code == 202 or "bots use duckduckgo" in response.text[:2000].lower():
-            log.warning("DuckDuckGo served a bot-challenge page", query=query)
+            log.warning("DuckDuckGo served a bot-challenge page", query=user_text_shape(query))
             return SearchResponse(provider=self.name)
 
         soup = BeautifulSoup(response.text, "lxml")
@@ -49,7 +59,7 @@ class DuckDuckGoProvider(SearchProvider):
             link = row.select_one("a.result-link") or row.select_one("a[href]")
             if not link:
                 continue
-            href = str(link.get("href", ""))
+            href = _ResultAnchor.model_validate(link.attrs).href
             if not href.startswith("http"):
                 continue
             snippet_cell = row.find_next_sibling("tr")

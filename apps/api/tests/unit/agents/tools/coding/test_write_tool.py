@@ -1,13 +1,13 @@
-"""Unit tests for the persistent `write` coding tool (write_tool.py).
+"""Unit tests for the persistent write coding tool (write_tool.py).
 
 Pins the tool's own contract: which paths are rejected, the exact byte
 counts/paths it reports, and the exact payloads it passes to the sandbox,
 stream-event, and artifact-publish seams. Only the E2B/sandbox and event
-seams are mocked (``acquire_sandbox``, ``atomic_write``, ``add_fs_bytes``,
-``safe_emit``, ``publish_artifact_write``, the rate-limiter's Redis seams);
-``canonical_path`` and ``fs_timer`` run real, so the rejection branches
+seams are mocked (acquire_sandbox, atomic_write, add_fs_bytes,
+safe_emit, publish_artifact_write, the rate-limiter's Redis seams);
+canonical_path and fs_timer run real, so the rejection branches
 (path escape, read-only uploads, missing user) exercise production logic.
-``atomic_write``, ``canonical_path`` and ``publish_artifact_write`` have
+atomic_write, canonical_path and publish_artifact_write have
 their own layer-2 tests (test_atomic_write.py, test_canonical_path.py,
 test_artifact_publish.py); this file only checks how write routes through
 them.
@@ -22,10 +22,16 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.agents.tools.coding.write_tool import MAX_CONTENT_BYTES, write
+from app.agents.tools.coding.write_tool import (
+    MAX_CONTENT_BYTES,
+    _maybe_write_task_file,
+    _write_task_file,
+    write,
+)
 from app.agents.workspace.paths import MountRole
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
+from app.services import gaia_task_files
 from app.services.sandbox import SandboxAcquisitionError
 from app.services.storage import FsOps
 
@@ -44,7 +50,7 @@ SCRATCH_PATH = "/workspace/sessions/conv-1/scratch/notes.md"
 
 @pytest.fixture(autouse=True)
 def _rate_limit_passes() -> None:
-    """The @with_rate_limiting seam (not under test) — fixed to pass.
+    """Fix the @with_rate_limiting seam (not under test) to pass.
 
     write is invoked with a chat-shaped config, so the wrapper's user-context
     branch runs; its Redis lookups are the seam, not write's logic.
@@ -225,3 +231,98 @@ async def test_artifact_publish_failure_propagates() -> None:
     ):
         with pytest.raises(RuntimeError, match="channel down"):
             await write.ainvoke({"path": "scratch/x.py", "content": "x"}, config=CONFIG)
+
+
+# --- tracked-todo routing ---------------------------------------------------- #
+
+TASK_REL = "gaia-tasks/fix-the-thing-10e407/canvas.md"
+TASK_ABS = f"/workspace/{TASK_REL}"
+
+
+async def test_write_task_file_emits_and_reports_exact_payloads() -> None:
+    task_ref = object()
+    with (
+        patch(f"{MODULE}.gaia_task_files.write_file", AsyncMock(return_value=None)) as mock_write,
+        patch(f"{MODULE}.safe_emit") as mock_emit,
+        patch(f"{MODULE}.log") as mock_log,
+    ):
+        out = await _write_task_file(task_ref, USER_ID, "hello", TASK_ABS, 5, SESSION_ID)
+
+    assert out == f"Wrote 5 bytes to {TASK_ABS}"
+    mock_write.assert_awaited_once_with(task_ref, USER_ID, "hello")
+    mock_log.set.assert_called_once_with(write_via="todo_document")
+    mock_emit.assert_called_once_with(
+        {"file_data": {"operation": "write", "path": TASK_ABS, "size_bytes": 5}},
+        session_id=SESSION_ID,
+    )
+
+
+async def test_maybe_write_task_file_resolves_and_forwards_exact_args() -> None:
+    task_ref = object()
+    with (
+        patch(
+            f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=task_ref)
+        ) as mock_resolve,
+        patch(f"{MODULE}._write_task_file", AsyncMock(return_value="ok")) as mock_task_write,
+    ):
+        out = await _maybe_write_task_file(TASK_REL, USER_ID, "body", TASK_ABS, 7, SESSION_ID)
+
+    assert out == "ok"
+    mock_resolve.assert_awaited_once_with(TASK_REL, USER_ID)
+    mock_task_write.assert_awaited_once_with(task_ref, USER_ID, "body", TASK_ABS, 7, SESSION_ID)
+
+
+async def test_maybe_write_task_file_refuses_unknown_task_path_exactly() -> None:
+    rel = "gaia-tasks/random.txt"
+    with patch(f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=None)):
+        out = await _maybe_write_task_file(rel, USER_ID, "x", f"/workspace/{rel}", 1, None)
+
+    assert out == (
+        f"Error: {rel} is not an editable notes file. Only canvas.md, activity.md, "
+        "observations.md under /workspace/gaia-tasks/<todo>/ can be edited."
+    )
+
+
+async def test_maybe_write_task_file_reports_lost_revision_exactly() -> None:
+    with (
+        patch(f"{MODULE}.gaia_task_files.resolve", AsyncMock(return_value=object())),
+        patch(
+            f"{MODULE}._write_task_file", AsyncMock(side_effect=gaia_task_files.NoteConflictError)
+        ),
+    ):
+        out = await _maybe_write_task_file(TASK_REL, USER_ID, "x", TASK_ABS, 1, None)
+
+    assert out == "Error: notes changed concurrently; read the file again and retry the write."
+
+
+async def test_maybe_write_task_file_logs_unexpected_failure_exactly() -> None:
+    with (
+        patch(
+            f"{MODULE}.gaia_task_files.resolve",
+            AsyncMock(side_effect=RuntimeError("mongo down")),
+        ),
+        patch(f"{MODULE}.log") as mock_log,
+    ):
+        out = await _maybe_write_task_file(TASK_REL, USER_ID, "x", TASK_ABS, 1, None)
+
+    assert out == "Error writing todo notes: mongo down"
+    mock_log.error.assert_called_once_with(
+        "write task file failed", error_type="RuntimeError", exc_info=True
+    )
+
+
+async def test_write_forwards_exact_args_to_task_file_router() -> None:
+    content = "hi"
+    with (
+        patch(f"{MODULE}._maybe_write_task_file", AsyncMock(return_value=None)) as mock_router,
+        patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(AsyncMock())),
+        patch(f"{MODULE}.atomic_write", AsyncMock(return_value=1.0)),
+        patch(f"{MODULE}.add_fs_bytes"),
+        patch(f"{MODULE}.safe_emit"),
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock()),
+    ):
+        await write.ainvoke({"path": "scratch/notes.md", "content": content}, config=CONFIG)
+
+    mock_router.assert_awaited_once_with(
+        "sessions/conv-1/scratch/notes.md", USER_ID, content, SCRATCH_PATH, 2, SESSION_ID
+    )

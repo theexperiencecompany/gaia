@@ -19,24 +19,30 @@
  *     STREAMING_DEFAULTS.discord);
  */
 import type { AnalyticsContext } from "../../analytics";
-import { BOT_EVENTS } from "../../analytics/events/bots";
 import type { ApprovalRequestData } from "../../chat";
+import { formatApprovalAge } from "../../chat/approvals";
 import type { GaiaClient } from "../api";
-import { BOT_STREAM_ERROR } from "../api/chat-stream";
+import { BOT_STREAM_ERROR, type ReactionHandler } from "../api/chat-stream";
 import type { ChatRequest, PlatformName } from "../types";
 import { segmentIntoBubbles } from "./bubbles";
 import { isMessageGoneError, retryAfterMs } from "./delivery-errors";
+import { BOT_FAILURE_REASON, recordBotFailure } from "./failure-reasons";
 import {
   buildPlanRequiredMessage,
   formatBotError,
   PLATFORM_MARKDOWN,
 } from "./formatters";
-
 import {
   createBotLogger,
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "./logger";
+import {
+  REACTION_OUTCOME,
+  REACTION_SURFACE,
+  type ReactionOutcome,
+  reactionDeliveredProperties,
+} from "./reaction-outcome";
 import { chunkResponse, PLATFORM_LIMITS } from "./text";
 import { wideLog, withWideEvent } from "./wide-events";
 
@@ -54,8 +60,10 @@ function formatExpiry(seconds: number): string {
  * pending approvals are surfaced out-of-band (see handleApprovalUpdate); settled
  * ones are narrated by the agent's streamed reply. */
 function formatApprovalPrompt(data: ApprovalRequestData): string {
+  const age =
+    data.age_seconds != null ? ` (${formatApprovalAge(data.age_seconds)})` : "";
   return (
-    `**Approval needed:** ${data.summary}\n` +
+    `**Approval needed:** ${data.summary}${age}\n` +
     `Reply **yes** to approve or **no** to decline. This expires in ${formatExpiry(data.timeout_seconds)}.`
   );
 }
@@ -107,14 +115,16 @@ async function _handleStream(
     onError: (error: Error) => void | Promise<void>,
     deliverOutOfBand: (text: string) => Promise<void>,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
+    onReaction: ReactionHandler,
   ) => Promise<string>,
   request: ChatRequest,
   gaia: GaiaClient,
   editMessage: MessageEditor,
   sendNewMessage: NewMessageSender,
   onAuthError: ((authUrl: string) => Promise<void>) | null,
-  onGenericError: (formattedError: string) => Promise<void>,
+  onGenericError: (formattedError: string, cause: unknown) => Promise<void>,
   options: StreamingOptions,
+  onReaction: ReactionHandler | undefined,
 ): Promise<void> {
   const { editIntervalMs, streaming, platform } = options;
 
@@ -122,7 +132,8 @@ async function _handleStream(
   // platform converter HERE, at the single chokepoint, so adapters receive
   // already-converted text and never call convertTo<Platform>Markdown inline.
   const render = PLATFORM_MARKDOWN[platform];
-  const emitGenericError = (text: string) => onGenericError(render(text));
+  const emitGenericError = (text: string, cause: unknown) =>
+    onGenericError(render(text), cause);
   const wrappedEditMessage: MessageEditor = (text) => editMessage(render(text));
   const wrappedSendNewMessage: NewMessageSender = async (text) => {
     const editor = await sendNewMessage(render(text));
@@ -230,35 +241,32 @@ async function _handleStream(
    * harmless — the next preview or the finished-bubble delivery supersedes it.
    */
   const previewBubble = async (text: string): Promise<void> => {
-    if (!text) return;
-    if (bubbleSealed) {
-      currentEditor = await wrappedSendNewMessage(text);
-      shownText = text;
-      bubbleSealed = false;
-      return;
-    }
-    if (text === shownText) return;
+    if (!text || (!bubbleSealed && text === shownText)) return;
+    // A preview is best effort and is queued without being awaited, so it must never reject:
+    // a failed preview would otherwise surface as an unhandled rejection, or fail the final
+    // delivery that awaits the queue.
     try {
-      await currentEditor(text);
+      if (bubbleSealed) {
+        currentEditor = await wrappedSendNewMessage(text);
+        bubbleSealed = false;
+      } else {
+        await currentEditor(text);
+        bubbleProvisional = false;
+      }
       shownText = text;
-      bubbleProvisional = false;
     } catch (err) {
-      // Transient: the live bubble may have been deleted or the interaction
-      // expired. The next edit or the final delivery recovers — but a
-      // persistent edit problem is exactly how a bot goes quiet without
-      // failing, so it is a visible line, not a debug one.
+      // Transient: the live bubble may have been deleted or the interaction expired — the next
+      // edit or final delivery recovers. But a persistent edit problem is exactly how a bot
+      // goes quiet without failing, so this is a visible line, not a debug one.
       logger.info("stream_edit_skipped", sanitizeErrorForLog(err));
     }
   };
 
   /**
-   * The messages a finished assistant message should be sent as: segmented into
-   * bubbles the way a person texts, then chunked to the platform's limit.
-   *
-   * Segmentation is not optional politeness. The model is asked to split its
-   * own replies with the sentinel and across 42 consecutive production replies
-   * never once did, so "one sentinel-free reply" is the normal case, not the
-   * edge case — and it arrived as a single 4,358-character Telegram message.
+   * The messages a finished assistant message should be sent as: the model's
+   * own sentinel-separated bubbles, then chunked to the platform's limit.
+   * A reply with no sentinel ships as one message: the model owns the splits
+   * (see Bubbles in the comms prompt), and nothing here invents them.
    */
   const bubblesFor = (message: string): string[] =>
     segmentIntoBubbles(message).flatMap((bubble) =>
@@ -266,20 +274,13 @@ async function _handleStream(
     );
 
   /**
-   * What the live bubble should show for the text streamed so far: the bubbles
-   * this message will eventually be split into, joined back together.
+   * What the live bubble should show for text streamed so far: bubbles this message will
+   * eventually split into, rejoined — stripping sentinels (whole, half-received, or near-miss
+   * like ``<NEW_LINE_BREAK>``) so the preview is a prefix of what's finally delivered.
    *
-   * Segmenting here and throwing the split away is what keeps sentinels off the
-   * screen — whole ones, half-received ones, and the near-miss spellings the
-   * model emits (``<NEW_LINE_BREAK>``, ``[NEW_MESSAGE_BREAK]``) — and it makes
-   * the preview a prefix of what is finally delivered rather than a different
-   * rendering of it.
-   *
-   * Capped at the platform's rendered limit: a preview now holds a whole
-   * in-flight message, so it can outgrow the limit long before the boundary
-   * that splits it, and an oversized edit is rejected outright — which would
-   * freeze the bubble on whatever it last showed. Nothing is lost by capping:
-   * the full text is still in ``pending`` and goes out, split, at the boundary.
+   * Capped at the platform's render limit: an in-flight preview can outgrow it before the split
+   * boundary, and an oversized edit is rejected outright, freezing the bubble. Nothing is lost —
+   * the full text stays in ``pending`` and goes out, split, at the boundary.
    */
   const previewFor = (streamed: string): string => {
     const text = segmentIntoBubbles(streamed).join("\n\n");
@@ -288,22 +289,18 @@ async function _handleStream(
   };
 
   /**
-   * Delivers the assistant message that just ended, as the bubbles it should be
-   * split into: the first replaces the live preview, the rest are new messages.
+   * Delivers the assistant message that just ended, as the bubbles it splits into: the first
+   * replaces the live preview, the rest are new messages.
    *
-   * **Nothing is sealed before this point.** Segmentation used to run mid-stream
-   * — on every sentinel, and on every overflow — which sealed bubbles while the
-   * message was still in flight. A retraction can only reopen the ONE bubble
-   * still being edited, so a style-guard rewrite (which retracts its draft and
-   * streams a replacement) left every already-sealed draft bubble on screen and
-   * delivered the reply twice. Waiting for the boundary is what makes the
-   * retraction able to take back the whole message.
+   * **Nothing is sealed before this point.** Segmenting mid-stream (on every sentinel/overflow)
+   * used to seal bubbles while still in flight; since a retraction can only reopen the ONE bubble
+   * being edited, a style-guard rewrite left already-sealed bubbles on screen and delivered the
+   * reply twice. Waiting for the boundary lets a retraction take back the whole message.
    */
   const flushMessage = async (): Promise<void> => {
-    // Take the text out of `pending` FIRST, then deliver it. The stream
-    // callback keeps appending while a delivery is in flight, so assigning to
-    // it after an await would overwrite — and silently drop — whatever arrived
-    // in the meantime.
+    // Take the text out of `pending` FIRST, then deliver it — the stream callback keeps
+    // appending while a delivery is in flight, so assigning after an await would overwrite,
+    // silently dropping whatever arrived in the meantime.
     const message = pending;
     pending = "";
     for (const bubble of bubblesFor(message)) {
@@ -323,10 +320,9 @@ async function _handleStream(
   const discardCurrentMessage = (): void => {
     if (!pending && !shownText) return;
     pending = "";
-    // A SEALED bubble holds something that is not the retracted text — an
-    // approval prompt or a rate-limit notice, posted out of band. Reopening it
-    // would hand the replacement reply that message to overwrite, and the
-    // question the user still has to answer would disappear under it.
+    // A SEALED bubble holds something that isn't the retracted text — an approval prompt or
+    // rate-limit notice, posted out of band. Reopening it would hand the replacement reply
+    // that message to overwrite, disappearing a question the user still has to answer.
     if (bubbleSealed) {
       logger.info("bubble_discarded", { chars: 0, sealed: true });
       return;
@@ -343,9 +339,8 @@ async function _handleStream(
    */
   const handleMessageBoundary = async (discarded: boolean): Promise<void> => {
     await enqueue(async () => {
-      // Non-streaming platforms (Discord, WhatsApp, iMessage) have shown
-      // nothing yet: the whole reply is delivered at stream end from
-      // ``finalText``, which the API already builds out of the KEPT messages
+      // Non-streaming platforms (Discord, WhatsApp, iMessage) have shown nothing yet: the whole
+      // reply is delivered at stream end from ``finalText``, already built from KEPT messages
       // only. Acting on a boundary here would deliver that text a second time.
       if (!streaming) return;
       if (discarded) {
@@ -357,19 +352,13 @@ async function _handleStream(
   };
 
   /**
-   * Posts a message that is not part of the streamed reply — currently the HIL
-   * approval prompt, which the user has to answer while the agent is paused.
+   * Posts a message outside the streamed reply — currently the HIL approval prompt the user
+   * must answer while the agent is paused. Adapters point "the current message" at the prompt
+   * the moment it's sent, so whatever has streamed so far is delivered and sealed first, then
+   * the bubble is sealed again after so the rest of the reply opens a fresh message.
    *
-   * It has to interrupt cleanly. The prompt must land BELOW the text the user
-   * has already read, and the adapters point "the current message" at the
-   * prompt the moment they send it — so whatever has streamed so far is
-   * delivered and sealed first, and the bubble is sealed again afterwards so
-   * the rest of the reply opens a fresh message instead of overwriting the
-   * question.
-   *
-   * This is therefore the one place a message is sealed before its boundary
-   * arrives, and it is deliberate: a retraction that follows finds a sealed
-   * bubble and correctly leaves the prompt alone (see discardCurrentMessage).
+   * Sealing before the boundary is deliberate: a following retraction then finds a sealed
+   * bubble and leaves the prompt alone (see discardCurrentMessage).
    */
   const deliverOutOfBand = async (text: string): Promise<void> => {
     await enqueue(async () => {
@@ -377,6 +366,20 @@ async function _handleStream(
       await wrappedSendNewMessage(text);
       bubbleSealed = true;
     });
+  };
+
+  /**
+   * Hands the turn's emoji ack to the adapter to attach natively, once any edit still in
+   * flight has landed — the adapter may be about to delete the bubble that edit targets.
+   */
+  const reactToTurn = async (emoji: string): Promise<ReactionOutcome> => {
+    if (!onReaction) return REACTION_OUTCOME.NO_TARGET;
+    // Overwritten by the queued call; enqueue rejects if it throws.
+    let outcome: ReactionOutcome = REACTION_OUTCOME.NO_TARGET;
+    await enqueue(async () => {
+      outcome = await onReaction(emoji);
+    });
+    return outcome;
   };
 
   try {
@@ -392,14 +395,16 @@ async function _handleStream(
             clearTimeout(editTimer);
             editTimer = null;
           }
-          enqueue(() => previewBubble(previewFor(pending)));
+          // A preview never rejects (previewBubble catches its own failures), so
+          // it is queued without waiting; the final delivery awaits the queue.
+          void enqueue(() => previewBubble(previewFor(pending)));
         } else if (!editTimer) {
           editTimer = setTimeout(
             () => {
               editTimer = null;
               if (!streamDone) {
                 lastEditTime = Date.now();
-                enqueue(() => previewBubble(previewFor(pending)));
+                void enqueue(() => previewBubble(previewFor(pending)));
               }
             },
             editIntervalMs - (now - lastEditTime),
@@ -416,11 +421,9 @@ async function _handleStream(
         // Wait for any in-flight operations to finish before final delivery
         await opQueue;
 
-        // Non-streaming platforms (Discord, WhatsApp, iMessage) have shown
-        // nothing yet, so the whole reply is delivered here from ``finalText``.
-        // Streaming platforms delivered each message at its boundary;
-        // ``pending`` holds only a last message that never got one — a legacy
-        // stream, or one cut short by an error.
+        // Non-streaming platforms (Discord, WhatsApp, iMessage) show nothing yet, so the whole
+        // reply is delivered here from ``finalText``; streaming platforms already delivered each
+        // message at its boundary, so ``pending`` only holds a leftover last message — a legacy stream, or one cut short by an error.
         if (!streaming) {
           pending = finalText;
           shownText = "";
@@ -429,10 +432,9 @@ async function _handleStream(
 
         await flushMessage();
 
-        // A retracted preamble with nothing to replace it means the turn
-        // produced no reply at all. The preamble stays — a blank message is
-        // worse than the agent's own words — but it must be visible that it
-        // happened.
+        // A retracted preamble with nothing to replace it means the turn produced no reply at
+        // all. The preamble stays — a blank message is worse than the agent's own words — but
+        // it must still be visible that this happened.
         if (bubbleProvisional) {
           logger.info("bubble_preamble_kept", { chars: shownText.length });
         }
@@ -454,33 +456,38 @@ async function _handleStream(
               request.platformUserId,
             );
             await onAuthError(authUrl);
-          } catch {
+          } catch (linkError) {
             await emitGenericError(
               "Failed to generate auth link. Please try /auth again.",
+              linkError,
             );
           }
         } else if (error.message === BOT_STREAM_ERROR.planRequired) {
           await emitGenericError(
             buildPlanRequiredMessage(gaia.getPricingUrl()),
+            error,
           );
         } else {
-          await emitGenericError(formatBotError(error));
+          await emitGenericError(formatBotError(error, platform), error);
         }
       },
       deliverOutOfBand,
       handleMessageBoundary,
+      reactToTurn,
     );
   } catch (error) {
-    // `streamChat` reports a non-retryable failure through `onError` and THEN
-    // rethrows it, so by the time it reaches here the user has already been
-    // told — reporting again delivered every rate limit and every dead backend
-    // as two identical messages. This catch is the net for failures that never
-    // reached `onError` at all, such as a throw out of a delivery callback.
+    // `streamChat` reports a non-retryable failure via `onError` and THEN rethrows, so by the
+    // time it reaches here the user is already told — reporting again doubled every rate limit
+    // and dead backend. This catch only nets failures that never reached `onError` (e.g. a throw from a delivery callback).
     if (failureReported) {
-      logger.info("stream_error_already_reported", sanitizeErrorForLog(error));
+      // Usually the rethrow of what onError already recorded — or delivering that notice failed.
+      wideLog.warning(
+        "stream_error_already_reported",
+        sanitizeErrorForLog(error),
+      );
       return;
     }
-    await emitGenericError(formatBotError(error));
+    await emitGenericError(formatBotError(error, platform), error);
   }
 }
 
@@ -501,6 +508,7 @@ export async function handleStreamingChat(
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
   analytics?: AnalyticsContext,
+  onReaction?: ReactionHandler,
 ): Promise<void> {
   // Latency + high-cardinality observability for the chat pipeline. user_hash
   // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
@@ -531,7 +539,7 @@ export async function handleStreamingChat(
         options,
         analytics,
         userHash,
-        channelHash,
+        onReaction,
       ),
   );
 }
@@ -547,7 +555,7 @@ async function runStreamingChat(
   options: StreamingOptions,
   analytics: AnalyticsContext | undefined,
   userHash: string | undefined,
-  channelHash: string | undefined,
+  onReaction: ReactionHandler | undefined,
 ): Promise<void> {
   const startMs = Date.now();
   let responseLength = 0;
@@ -557,13 +565,16 @@ async function runStreamingChat(
   let discardedMessages = 0;
   let notices = 0;
   let conversationId = "";
+  let reactionDelivered:
+    | ReturnType<typeof reactionDeliveredProperties>
+    | undefined;
 
-  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+  analytics?.client.capture(analytics.distinctId, "bot:message_received", {
     interaction_type: "chat",
     message_length: request.message.length,
   });
 
-  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.CHAT_STARTED, {
+  analytics?.client.capture(analytics.distinctId, "bot:chat_started", {
     message_length: request.message.length,
     streaming_enabled: options.streaming,
   });
@@ -574,16 +585,18 @@ async function runStreamingChat(
     // A fresh auth link was minted for this user (createLinkToken in
     // _handleStream) — leave an audit trail like the backend's auth routes do.
     wideLog.audit("auth_link_issued", { user_hash: userHash });
+    wideLog.fail(BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED);
     await onAuthError(authUrl);
   };
 
-  const wrappedOnGenericError = async (formattedError: string) => {
+  const wrappedOnGenericError = async (
+    formattedError: string,
+    cause: unknown,
+  ) => {
     hadError = true;
-    // Surface the failure with full latency context so every error is visible —
-    // a real-time line plus an errors[] entry on this chat's wide event.
-    wideLog.error("chat_stream_failed", {
-      user_hash: userHash,
-      channel_hash: channelHash,
+    // The failure with its reason and full latency context — a real-time line,
+    // an errors[] entry, and outcome "failed" on this chat's wide event.
+    recordBotFailure("chat_stream_failed", cause, {
       duration_ms: Date.now() - startMs,
       ttfb_ms: firstChunkMs,
       chunk_count: chunkCount,
@@ -592,7 +605,7 @@ async function runStreamingChat(
     });
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
-    analytics?.client.capture(analytics.distinctId, BOT_EVENTS.ERROR, {
+    analytics?.client.capture(analytics.distinctId, "bot:error", {
       context: "chat:streaming",
       duration_ms: Date.now() - startMs,
     });
@@ -605,6 +618,7 @@ async function runStreamingChat(
     onError: (error: Error) => void | Promise<void>,
     deliverOutOfBand: (text: string) => Promise<void>,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
+    reactToTurn: ReactionHandler,
   ) =>
     gaia.chatStream(
       request,
@@ -621,14 +635,13 @@ async function runStreamingChat(
         await onDone(fullText, convId);
       },
       onError,
-      // HIL approval prompts go out as their own message so a non-streaming
-      // platform (Discord/WhatsApp, which shows nothing until the stream ends)
-      // still surfaces the question while the agent is paused waiting.
-      //
-      // Only the PENDING question needs one — a bot has no buttons, so the user
-      // answers in chat. Settled frames (an auto_approved receipt in auto mode,
-      // or a resumed decision) arrive MID-STREAM and are already narrated by the
-      // agent's streamed reply, so posting them would fragment it.
+      // HIL approval prompts go out as their own message so a non-streaming platform
+      // (Discord/WhatsApp, which shows nothing until the stream ends) still surfaces the
+      // question while the agent is paused waiting.
+
+      // Only the PENDING question needs one — a bot has no buttons, so the user answers in
+      // chat. Settled frames (auto-approved, or a resumed decision) arrive mid-stream and are
+      // already narrated by the agent's streamed reply, so posting them would fragment it.
       async (data: ApprovalRequestData) => {
         if (data.status !== "pending") return;
         await deliverOutOfBand(formatApprovalPrompt(data));
@@ -640,13 +653,25 @@ async function runStreamingChat(
         if (discarded) discardedMessages += 1;
         await onMessageBoundary(discarded);
       },
-      // A rate-limit notice is about the turn, not part of it. Out-of-band for
-      // the same reason the approval prompt is: it must survive the assistant
-      // message it arrived during being retracted, and it must reach a
-      // non-streaming platform that renders nothing until the stream ends.
+      // A rate-limit notice is about the turn, not part of it — out-of-band for the same
+      // reason as the approval prompt: it must survive the assistant message it arrived during
+      // being retracted, and still reach a non-streaming platform that renders nothing until the stream ends.
       async (text: string) => {
         notices += 1;
         await deliverOutOfBand(text);
+      },
+      async (emoji: string) => {
+        const outcome = await reactToTurn(emoji);
+        reactionDelivered = reactionDeliveredProperties(
+          outcome,
+          REACTION_SURFACE.LIVE,
+        );
+        analytics?.client.capture(
+          analytics.distinctId,
+          "bot:reaction_delivered",
+          reactionDelivered,
+        );
+        return outcome;
       },
     );
 
@@ -660,6 +685,7 @@ async function runStreamingChat(
       wrappedOnAuthError,
       wrappedOnGenericError,
       options,
+      onReaction,
     );
   } finally {
     wideLog.set({
@@ -669,17 +695,15 @@ async function runStreamingChat(
       notices_delivered: notices,
       response_length: responseLength,
       conversation_id: conversationId || undefined,
+      reaction_delivery: reactionDelivered?.delivery,
+      reaction_reason: reactionDelivered?.reason,
     });
     if (!hadError) {
-      analytics?.client.capture(
-        analytics.distinctId,
-        BOT_EVENTS.CHAT_COMPLETED,
-        {
-          duration_ms: Date.now() - startMs,
-          response_length: responseLength,
-          streaming_enabled: options.streaming,
-        },
-      );
+      analytics?.client.capture(analytics.distinctId, "bot:chat_completed", {
+        duration_ms: Date.now() - startMs,
+        response_length: responseLength,
+        streaming_enabled: options.streaming,
+      });
     }
   }
 }
