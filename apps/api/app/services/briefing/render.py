@@ -13,7 +13,7 @@ path still manages to orphan, but the happy path must never leak.
 from dataclasses import dataclass
 from typing import Literal
 
-from playwright.async_api import async_playwright
+from playwright.async_api import FloatRect, Page, async_playwright
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -23,6 +23,9 @@ _CHROMIUM_LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"]
 # Chromium reports fonts as ready before glyphs are fully painted; a short settle
 # avoids capturing a frame mid-layout without polling for an arbitrary condition.
 _FONT_SETTLE_MS = 150
+
+# Breathing room kept around a clipped element so its edge shadow survives.
+CLIP_PADDING_PX = 12
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,9 @@ class ImageRenderOptions:
             output is inlined into an email that must dodge Gmail's ~102KB clip).
         quality: JPEG quality 0-100 (ignored for PNG).
         timeout_ms: Per-navigation timeout for ``set_content``.
+        clip_selector: Crop the capture to this element's bounding box (plus
+            ``CLIP_PADDING_PX``) instead of the whole page — measured in the
+            rendered page, so it follows the content, never a fixed crop.
     """
 
     width: int = 1180
@@ -45,6 +51,7 @@ class ImageRenderOptions:
     image_format: Literal["png", "jpeg"] = "png"
     quality: int | None = None
     timeout_ms: int = 15000
+    clip_selector: str | None = None
 
 
 async def render_html_to_image(
@@ -78,12 +85,13 @@ async def render_html_to_image(
             if page_errors:
                 raise RuntimeError(f"Page script failed while rendering: {page_errors[0]}")
             await page.wait_for_timeout(_FONT_SETTLE_MS)
+            clip = await _clip_for(page, options.clip_selector) if options.clip_selector else None
             if options.image_format == "jpeg":
                 image = await page.screenshot(
-                    full_page=options.full_page, type="jpeg", quality=options.quality
+                    full_page=options.full_page, type="jpeg", quality=options.quality, clip=clip
                 )
             else:
-                image = await page.screenshot(full_page=options.full_page, type="png")
+                image = await page.screenshot(full_page=options.full_page, type="png", clip=clip)
             log.debug(
                 f"{LogTag.TOOL} Rendered HTML to image",
                 image_format=options.image_format,
@@ -93,3 +101,21 @@ async def render_html_to_image(
             return image
         finally:
             await browser.close()
+
+
+async def _clip_for(page: Page, selector: str) -> FloatRect:
+    """The page-coordinate box of ``selector``'s element, padded and kept on the
+    page. A selector that matches nothing raises: an uncropped image would ship
+    the background margins the caller asked to remove."""
+    box = await page.locator(selector).first.bounding_box()
+    if box is None:
+        raise RuntimeError(f"Clip element not rendered: {selector!r}")
+    scroll = await page.evaluate("() => [window.scrollX, window.scrollY]")
+    x = max(0.0, box["x"] + scroll[0] - CLIP_PADDING_PX)
+    y = max(0.0, box["y"] + scroll[1] - CLIP_PADDING_PX)
+    return {
+        "x": x,
+        "y": y,
+        "width": box["width"] + 2 * CLIP_PADDING_PX,
+        "height": box["height"] + 2 * CLIP_PADDING_PX,
+    }

@@ -23,7 +23,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.services.briefing.editions import render_edition, renderer_for
+from app.services.briefing.editions import paper_selector, render_edition, renderer_for
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
 from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
@@ -138,6 +138,35 @@ def _action_strip(payload: dict, unsubscribe_url: str) -> str:
     )
 
 
+async def render_edition_png(
+    payload: dict,
+    *,
+    crop_to_paper: bool,
+    generated_local: str = "",
+    tz_label: str = "",
+) -> bytes:
+    """The edition as a PNG. ``crop_to_paper`` cuts it to the family's paper
+    (the chat image); the email keeps the full composition."""
+    family = payload.get("template_family")
+    # The classic edition (and every legacy payload without a family) renders
+    # via render_edition.
+    render = renderer_for(family) or render_edition
+    edition_html = render(
+        payload,
+        edition_no=_edition_no(payload.get("date")),
+        generated_local=generated_local,
+        tz_label=tz_label,
+    )
+    return await render_html_to_image(
+        edition_html,
+        ImageRenderOptions(
+            width=_EDITION_WIDTH,
+            device_scale_factor=_EMAIL_IMAGE_SCALE,
+            clip_selector=paper_selector(family) if crop_to_paper else None,
+        ),
+    )
+
+
 async def render_edition_email(
     payload: dict,
     *,
@@ -146,6 +175,7 @@ async def render_edition_email(
     generated_local: str = "",
     tz_label: str = "",
     unsubscribe_url: str,
+    preheader: str = "",
 ) -> str:
     """Render the edition to a hosted image and wrap it with the action strip.
 
@@ -154,25 +184,8 @@ async def render_edition_email(
     render/upload failure so the caller can fall back to the plain HTML template.
     """
     edition_no = _edition_no(payload.get("date"))
-    # Payloads carry their schedule-assigned template family; the classic
-    # edition (and every legacy payload without one) renders via render_edition.
-    family_renderer = renderer_for(payload.get("template_family"))
-    render = family_renderer if family_renderer is not None else render_edition
-    edition_html = render(
-        payload,
-        edition_no=edition_no,
-        generated_local=generated_local,
-        tz_label=tz_label,
-    )
-    image = await render_html_to_image(
-        edition_html,
-        # ImageRenderOptions already defaults to this width and scale, so
-        # dropping either keyword builds an identical object — equivalent
-        # mutants. Stated anyway: the email's dimensions are this module's
-        # decision, not render.py's.
-        ImageRenderOptions(  # pragma: no mutate
-            width=_EDITION_WIDTH, device_scale_factor=_EMAIL_IMAGE_SCALE
-        ),
+    image = await render_edition_png(
+        payload, crop_to_paper=False, generated_local=generated_local, tz_label=tz_label
     )
     public_id = f"briefing/editions/{user_id}/{kind}_{payload.get('date', 'latest')}"
     image_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
@@ -189,8 +202,16 @@ async def render_edition_email(
     )
     app_url = _public_app_url()
 
+    # The inbox preview line (the skim's asks + overnight sentence), hidden in
+    # the body so clients show it under the subject instead of image alt text.
+    preheader_html = (
+        '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">'
+        f"{escape(preheader)}</div>"
+        if preheader
+        else ""
+    )
     return (
-        f'<div style="margin:0;padding:0;background:{_BG};">'
+        f'<div style="margin:0;padding:0;background:{_BG};">{preheader_html}'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{_BG};">'
         '<tr><td align="center" style="padding:0;">'
         f'<a href="{escape(app_url)}" style="text-decoration:none;">'

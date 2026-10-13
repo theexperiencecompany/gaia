@@ -252,6 +252,14 @@ def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
     return out
 
 
+class ShuffleBag(BaseModel):
+    """One pass of a per-user shuffle bag (``app/services/briefing/shuffle_bag.py``):
+    the pass's order and how many of it have been drawn."""
+
+    order: list[str]
+    index: int = Field(ge=0)
+
+
 class AuthenticatedUser(TypedDict, total=False):
     """``request.state.user`` — what every ``Depends(get_current_user)`` yields.
 
@@ -311,6 +319,7 @@ class AuthenticatedUser(TypedDict, total=False):
     briefing_dormancy: dict[str, Any] | None
     briefing_channel_priority: list[str] | None
     day_zero_hello: dict[str, Any] | None
+    briefing_shuffle_bags: dict[str, ShuffleBag] | None
     # Usage-limit upsell email dedupe + activity badge tier (usage system).
     last_limit_email_sent: datetime | None
     highest_activity_tier: str | None
@@ -390,6 +399,9 @@ class UserDocument(MongoDocument):
     briefing_dormancy: dict[str, Any] | None = None
     briefing_channel_priority: list[str] | None = None
     day_zero_hello: dict[str, Any] | None = None
+    # The user's briefing shuffle bags by name (BriefingBag): which edition
+    # family and which Air Mail stamp city come next.
+    briefing_shuffle_bags: dict[str, ShuffleBag] | None = None
     # Usage-limit upsell email dedupe (1/week — see send_limit_reached_email).
     last_limit_email_sent: datetime | None = None
     # Best activity-badge tier ever reached (monotonic; drives first-time

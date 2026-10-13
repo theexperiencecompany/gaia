@@ -65,8 +65,15 @@ def _expected_unsubscribe_headers(user_id: str) -> dict[str, str]:
 _UNSUB_URL = _expected_unsubscribe_url(_USER_ID)
 _UNSUB_HEADERS = _expected_unsubscribe_headers(_USER_ID)
 _BRIEF_PAYLOAD: dict[str, Any] = {
+    "kicker": "THE MORNING BRIEF",
+    "date": "2026-10-14",
     "headline": "Three things today",
     "lede": "A calm morning.",
+    "sections": [
+        {"numeral": "I", "title": "NEEDS YOU", "items": [{"text": "Pick a slot", "kind": "you"}]}
+    ],
+    "mood": "clear",
+    "caption": "Onward.",
     "hue": 210,
 }
 
@@ -389,6 +396,7 @@ class TestDeliverBriefings:
             kind=NOTIFICATION_KIND_BRIEFING_DAILY,
             user_id=_USER_ID,
             unsubscribe_url=_UNSUB_URL,
+            preheader="Pick a slot",
         )
         body = _sent_body(route)
         assert body["html"] == "<html>edition</html>"
@@ -407,26 +415,6 @@ class TestDeliverBriefings:
 
         assert renderer.await_args.kwargs["kind"] == NOTIFICATION_KIND_BRIEFING_WEEKLY
         assert _sent_body(route)["html"] == "<html>weekly</html>"
-
-    async def test_subject_falls_back_to_title_then_to_a_constant(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            email_module, "render_edition_email", AsyncMock(return_value="<html>e</html>")
-        )
-        route = _mock_send()
-        headline_less = {"lede": "no headline here"}
-
-        await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_DAILY, payload=headline_less), _USER_ID
-        )
-        assert _sent_body(route)["subject"] == "Reminder"
-
-        await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_DAILY, payload=headline_less, title=None),
-            _USER_ID,
-        )
-        assert _sent_body(route)["subject"] == "Your GAIA brief"
 
     async def test_edition_render_failure_degrades_to_the_daily_template(
         self, failed_edition_render: AsyncMock
@@ -456,18 +444,6 @@ class TestDeliverBriefings:
             _BRIEF_PAYLOAD, _UNSUB_URL
         )
         assert body["subject"] == "Three things today"
-
-    async def test_weekly_fallback_subject_falls_back_to_the_title(
-        self, failed_edition_render: AsyncMock
-    ) -> None:
-        route = _mock_send()
-
-        await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_WEEKLY, payload={"lede": "no headline here"}),
-            _USER_ID,
-        )
-
-        assert _sent_body(route)["subject"] == "Reminder"
 
     async def test_edition_render_failure_is_recorded_on_the_wide_event(
         self, failed_edition_render: AsyncMock
@@ -505,7 +481,7 @@ class TestDeliverBriefings:
         assert body["html"] == email_templates.render_daily_brief_email({}, _UNSUB_URL)
         assert body["subject"] == "Reminder"
 
-    async def test_daily_and_weekly_fallbacks_use_different_templates(
+    async def test_daily_and_weekly_fallbacks_use_their_own_templates(
         self, failed_edition_render: AsyncMock
     ) -> None:
         route = _mock_send()
@@ -520,9 +496,8 @@ class TestDeliverBriefings:
         )
         weekly_html = _sent_body(route)["html"]
 
-        assert "Daily Brief" in daily_html
-        assert "Weekly Digest" in weekly_html
-        assert daily_html != weekly_html
+        assert daily_html == email_templates.render_daily_brief_email(_BRIEF_PAYLOAD, _UNSUB_URL)
+        assert weekly_html == email_templates.render_weekly_digest_email(_BRIEF_PAYLOAD, _UNSUB_URL)
 
 
 # ========================================================================

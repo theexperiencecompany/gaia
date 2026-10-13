@@ -28,11 +28,13 @@ from app.constants.notifications import (
     NotificationChannel,
 )
 from app.db.repositories.users import user_repository
+from app.models.briefing_models import BriefingPayload
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
 )
 from app.services.briefing.edition_email import is_edition_kind, render_edition_email
+from app.services.briefing.skim import build_skim, full_brief_url
 from app.services.email.models import EmailMessage
 from app.services.email.service import send_email
 from app.utils.email_utils import normalize_email
@@ -87,11 +89,16 @@ class EmailChannelAdapter(ChannelAdapter):
         # If that render fails, degrade to the plain HTML template rather than drop
         # the user's brief entirely — logged loudly, not swallowed.
         if is_edition_kind(kind) and payload:
+            skim = build_skim(BriefingPayload.model_validate(payload), full_brief_url())
             try:
                 html = await render_edition_email(
-                    payload, kind=kind, user_id=user_id, unsubscribe_url=unsubscribe_url
+                    payload,
+                    kind=kind,
+                    user_id=user_id,
+                    unsubscribe_url=unsubscribe_url,
+                    preheader=skim.preheader,
                 )
-                subject = payload.get("headline") or content.get("title") or "Your GAIA brief"
+                subject = skim.headline or content.get("title") or "Your GAIA brief"
             except Exception as exc:
                 log.warning(
                     f"{LogTag.NOTIFICATION} Edition render failed, using plain template",

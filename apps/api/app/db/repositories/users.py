@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 
 from bson import ObjectId
 
+from app.constants.briefing import BriefingBag
 from app.constants.cache import (
     LAST_ACTIVE_DEBOUNCE_SECONDS,
     LAST_ACTIVE_GATE_PREFIX,
@@ -47,6 +48,7 @@ from app.models.user_models import (
     OnboardingPhase,
     OnboardingPreferences,
     PlatformLinkRecord,
+    ShuffleBag,
     UserDocument,
     UserUpdate,
 )
@@ -818,6 +820,20 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$unset": {"briefing_bootstrap": ""}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def get_briefing_bag(self, user_id: str, bag: BriefingBag) -> ShuffleBag | None:
+        """The user's current pass of one briefing shuffle bag, if any."""
+        user = await self.get(user_id)
+        return (user.briefing_shuffle_bags or {}).get(bag) if user else None
+
+    async def set_briefing_bag(self, user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
+        """Persist one shuffle bag's advanced state (see shuffle_bag.draw)."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {f"briefing_shuffle_bags.{bag.value}": state.model_dump()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

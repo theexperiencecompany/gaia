@@ -631,9 +631,9 @@
 
       const fare =
         `<div class="t-boardingpass__fare">` +
-        `<div class="t-boardingpass__fare-c"><div class="t-boardingpass__fare-v">${st.done}</div><div class="t-boardingpass__fare-l">Done</div></div>` +
-        `<div class="t-boardingpass__fare-c"><div class="t-boardingpass__fare-v">${st.mail}</div><div class="t-boardingpass__fare-l">Mail cleared</div></div>` +
-        `<div class="t-boardingpass__fare-c"><div class="t-boardingpass__fare-v">${esc(st.focus).toUpperCase()}</div><div class="t-boardingpass__fare-l">Focus</div></div>` +
+        (st.done ? `<div class="t-boardingpass__fare-c"><div class="t-boardingpass__fare-v">${st.done}</div><div class="t-boardingpass__fare-l">Done</div></div>` : "") +
+        (st.mail ? `<div class="t-boardingpass__fare-c"><div class="t-boardingpass__fare-v">${st.mail}</div><div class="t-boardingpass__fare-l">Mail cleared</div></div>` : "") +
+        (st.focus ? `<div class="t-boardingpass__fare-c"><div class="t-boardingpass__fare-v">${esc(st.focus).toUpperCase()}</div><div class="t-boardingpass__fare-l">Focus</div></div>` : "") +
         `</div>`;
 
       const foot =

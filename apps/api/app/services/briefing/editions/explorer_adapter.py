@@ -3,19 +3,28 @@
 The 20 templates in ``editions/explorer/js/`` were designed against a fixed
 data shape (see ``explorer-contract.md``'s ``editionData()`` and its Node
 verification snippet): three buckets (today/overnight/decisions) plus a
-stats tuple. Our payload (``app/models/briefing_models.py``) is looser — a
-variable number of sections, free-form item text, no per-item time field.
-This module bridges the two by each item's ``kind``, never by which section
-it sat in, so any section layout renders rather than crashing the templates.
+stats tuple. Our payload (``app/models/briefing_models.py``) is looser, so this
+module maps it by meaning, never by position:
+
+- ``today`` is the day ahead: the first thing waiting on the user, then their
+  calendar. A status word (DONE, FAILED) is never a today tag, because several
+  families set the today tag as the headline of the row.
+- ``overnight`` is GAIA's work, finished or running, plus any plain note.
+- ``decisions`` is every ask, including a failed run to retry.
+- ``stats`` come from the payload's tallies; an unknown or zero figure is
+  ``None`` so the template's guard renders nothing for it.
 
 ``ed`` values are passed through **unescaped** — every vendored template
 HTML-escapes its own text via a local ``esc()`` helper, so pre-escaping here
 would double-encode entities.
 """
 
-from datetime import date
+from datetime import date, datetime
 import re
 from typing import TypedDict
+
+from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
+from app.services.briefing.editions.stamps import Stamp, stamp_for
 
 _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 _MONTHS = [
@@ -39,31 +48,12 @@ _MONTHS = [
 _ITEM_TIME_PREFIX_RE = re.compile(r"^(\d{1,2}:\d{2}\s*[AaPp][Mm])\s*[-–—]\s*(.+)$")
 _GENERATED_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$")
 
-# The item's state as the short caps tag the explorer templates expect (e.g.
-# "REVIEW", "SHIP", "DONE" in the contract's sample data). The item text never
-# repeats it: the payload carries the state in ``kind`` and the title in ``text``.
-_KIND_TAGS: dict[str, str] = {
-    "proposal": "APPROVAL",
-    "you": "YOUR MOVE",
-    "needs_you": "YOUR MOVE",
-    "gaia": "IN PROGRESS",
-    "lookback": "DONE",
-    "failed": "FAILED",
-    "note": "",
-}
-
-# Which bucket an item renders in, by kind: GAIA's work (finished or running)
-# is the overnight column, anything waiting on the reader is a decision, and a
-# failure or plain note is a today highlight. Unknown kinds read as notes.
-_KIND_TO_BUCKET: dict[str, str] = {
-    "gaia": "overnight",
-    "lookback": "overnight",
-    "you": "decisions",
-    "needs_you": "decisions",
-    "proposal": "decisions",
-    "failed": "today",
-    "note": "today",
-}
+# GAIA-side state of an overnight row, as the short caps tag the templates set
+# beside it (the contract's sample data used "REVIEW", "SHIP", "DONE").
+_OVERNIGHT_TAGS: dict[str, str] = {"gaia": "IN PROGRESS", "lookback": "DONE"}
+_DECISION_KINDS = frozenset({"you", "needs_you", "proposal"})
+_OVERNIGHT_KINDS = frozenset({"gaia", "lookback"})
+_RETRY_VERB = "Retry"
 
 _IMPERATIVE_VERBS = {
     "approve",
@@ -81,6 +71,11 @@ _IMPERATIVE_VERBS = {
     "renew",
     "respond",
 }
+
+# Families that read ``ed.headline`` in their own title slot (see
+# explorer/README.md, "Brief fields the fixture lacked"); every other family
+# has one text slot, the deck, and it carries the headline.
+_TITLE_SLOT_FAMILIES = frozenset({"memo", "postal", "broadsheet"})
 
 _PLACEHOLDER_TODAY: "ExplorerTodayItem" = {
     "time": None,
@@ -108,22 +103,19 @@ _EMPTY_SLOT_LABEL = "—"
 # Families whose render reads fixed item slots — (today, overnight, decisions)
 # item counts — because the founder fixture always held 3/3/2 items. Handed
 # fewer, the page script throws and the raster comes out blank, so build_ed
-# pads these buckets with empty slots. Read off the vendored js/ (which never
-# changes in place); tests/integration/test_edition_families_render.py renders
-# every family with a sparse brief and fails if this table falls behind.
+# pads exactly these buckets. tests/integration/test_edition_families_render.py
+# renders every family with a sparse brief and fails if this table falls behind.
 _FIXED_SLOTS: dict[str, tuple[int, int, int]] = {
     "boardingpass": (3, 3, 2),
     "metromap": (3, 3, 2),
     "menu": (3, 3, 0),
     "invoice": (3, 3, 0),
     "almanac": (2, 0, 0),
-    "weekly": (3, 0, 0),
 }
 
 
 class ExplorerTodayItem(TypedDict):
-    """One ``content.today`` row — field names are camelCase-free but keyed
-    exactly as the vendored JS templates read them (``t24``, not ``t_24``)."""
+    """One ``content.today`` row — keyed exactly as the vendored JS reads it."""
 
     time: str | None
     t24: str | None
@@ -146,11 +138,13 @@ class ExplorerDecisionItem(TypedDict):
 
 
 class ExplorerStats(TypedDict):
-    done: int
-    you: int
-    gaia: int
-    mail: int
-    focus: str
+    """Each figure is None when unknown or zero; the templates guard on it."""
+
+    done: int | None
+    you: int | None
+    gaia: int | None
+    mail: int | None
+    focus: str | None
 
 
 class ExplorerContent(TypedDict):
@@ -168,10 +162,30 @@ class ExplorerArt(TypedDict):
     medium: str
 
 
+class ExplorerAheadItem(TypedDict):
+    day: str
+    label: str
+
+
+class ExplorerWeekDay(TypedDict):
+    you: int
+    gaia: int
+
+
+class ExplorerWeek(TypedDict):
+    """``ed.week`` — the real week the weekly family draws (it shipped reading a
+    demo fixture; see explorer/README.md)."""
+
+    days: list[ExplorerWeekDay]
+    shipped: list[str]
+    handled: list[str]
+    ahead: list[ExplorerAheadItem]
+    hoursSaved: int
+
+
 class ExplorerEdition(TypedDict):
-    """The exact ``ed`` shape ``explorer-contract.md``'s templates render
-    against — field names match the vendored JS verbatim (``dateLong``,
-    ``editionNo``, ``monthShort``), not Python naming convention."""
+    """The exact ``ed`` shape the templates render against — field names match
+    the vendored JS verbatim (``dateLong``, ``editionNo``, ``monthShort``)."""
 
     n: int
     weekday: str
@@ -183,8 +197,11 @@ class ExplorerEdition(TypedDict):
     editionNo: int
     time: str
     time24: str
+    headline: str
     deck: str
     content: ExplorerContent
+    week: ExplorerWeek | None
+    stamp: Stamp | None
     art: ExplorerArt
     assets: dict[str, str]
 
@@ -204,17 +221,16 @@ def build_ed(
     Args:
         payload: A ``BriefingPayload.model_dump()`` dict.
         edition_no: Sequential edition number (``ed.n`` / ``ed.editionNo``).
-        generated_local: Human generation time, e.g. ``"6:02 AM"`` — may be
-            empty (not yet wired end to end); an unparseable value degrades
-            to itself rather than raising.
+        generated_local: Human generation time, e.g. ``"6:02 AM"``; empty means
+            the payload's own ``generated_at``.
         assets: Asset key -> data URI map (``ed.assets`` / ``ed.art.src``).
-        art_credit: The vendored credits.json entry for ART1, e.g.
-            ``"Wheat Field with Cypresses — Vincent van Gogh"``.
-        family: The explorer family rendering this ``ed``; families that read
-            fixed item slots get their short buckets padded (``_FIXED_SLOTS``).
+        art_credit: The vendored credits.json entry for ART1.
+        family: The explorer family rendering this ``ed`` — picks the headline
+            slot and pads the families that read fixed item slots.
     """
     date_parts = _date_parts(str(payload.get("date", "")))
-    today, overnight, decisions = _bucket_sections(payload.get("sections") or [])
+    sections = payload.get("sections") or []
+    today, overnight, decisions = _build_buckets(sections, payload.get("calendar") or [])
     min_today, min_overnight, min_decisions = _FIXED_SLOTS.get(family, (0, 0, 0))
     today += [{**_PLACEHOLDER_TODAY, "label": _EMPTY_SLOT_LABEL}] * (min_today - len(today))
     overnight += [{**_PLACEHOLDER_OVERNIGHT, "label": _EMPTY_SLOT_LABEL}] * (
@@ -224,6 +240,9 @@ def build_ed(
         min_decisions - len(decisions)
     )
     art_title, art_artist = _split_credit(art_credit)
+    headline = str(payload.get("headline", ""))
+    lede = str(payload.get("lede", ""))
+    generated = generated_local or str(payload.get("generated_at") or "")
 
     return {
         "n": edition_no,
@@ -234,15 +253,18 @@ def build_ed(
         "year": date_parts[4],
         "dateLong": date_parts[5],
         "editionNo": edition_no,
-        "time": generated_local,
-        "time24": _time24(generated_local),
-        "deck": str(payload.get("lede", "")),
+        "time": generated,
+        "time24": _time24(generated),
+        "headline": headline,
+        "deck": lede if family in _TITLE_SLOT_FAMILIES else headline,
         "content": {
             "today": today,
             "overnight": overnight,
             "decisions": decisions,
-            "stats": _build_stats(payload.get("stats") or []),
+            "stats": _build_stats(payload.get("tallies")),
         },
+        "week": _build_week(payload.get("week")) if family == WEEKLY_FAMILY else None,
+        "stamp": _build_stamp(payload.get("stamp_city")) if family == POSTAL_FAMILY else None,
         "art": {
             "src": assets.get("ART1", ""),
             "title": art_title,
@@ -320,87 +342,107 @@ def _decision_verb(text: str) -> tuple[str, str]:
     return "Review", text
 
 
-def _item_kind(item: dict) -> str:
-    """An item's ``kind`` as a key for the two lookup tables below."""
-    # No default on purpose: an absent kind stringifies to "None", which misses
-    # both _KIND_TAGS and _KIND_TO_BUCKET and so lands on their "" / "today"
-    # fallbacks - exactly where an explicit "note" default landed.
-    return str(item.get("kind"))
+def _items(sections: list[dict]) -> list[dict]:
+    return [item for section in sections for item in section.get("items") or []]
 
 
-def _map_today_item(item: dict) -> ExplorerTodayItem:
-    text = str(item.get("text", ""))
-    kind = _item_kind(item)
-    time_str, t24, label = _split_time_prefix(text)
+def _clock12(t24: str) -> str:
+    """24h "13:05" -> "1:05 PM"."""
+    return datetime.strptime(t24, "%H:%M").strftime("%-I:%M %p")
+
+
+def _event_row(event: dict) -> ExplorerTodayItem:
+    start = event.get("start")
     return {
-        "time": time_str,
-        "t24": t24,
-        "label": label,
-        "note": None,
-        "tag": _KIND_TAGS.get(kind, ""),
+        "time": _clock12(start) if start else None,
+        "t24": start or None,
+        "label": str(event.get("title", "")),
+        "note": event.get("location") or None,
+        "tag": "",
     }
 
 
-def _map_overnight_item(item: dict) -> ExplorerOvernightItem:
-    text = str(item.get("text", ""))
-    kind = _item_kind(item)
-    _, t24, label = _split_time_prefix(text)
-    return {"t24": t24, "label": label, "note": None, "tag": _KIND_TAGS.get(kind, "")}
+def _lead_row(item: dict) -> ExplorerTodayItem:
+    """The first ask, as the day's lead: its verb is the row's tag (headline)."""
+    verb, label = _decision_verb(str(item.get("text", "")))
+    return {"time": None, "t24": None, "label": label, "note": None, "tag": verb.upper()}
 
 
-def _map_decision_item(item: dict) -> ExplorerDecisionItem:
+def _overnight_row(item: dict) -> ExplorerOvernightItem:
+    _, t24, label = _split_time_prefix(str(item.get("text", "")))
+    return {
+        "t24": t24,
+        "label": label,
+        "note": None,
+        "tag": _OVERNIGHT_TAGS.get(str(item.get("kind")), ""),
+    }
+
+
+def _decision_row(item: dict) -> ExplorerDecisionItem:
     text = str(item.get("text", ""))
+    if item.get("kind") == "failed":
+        return {"verb": _RETRY_VERB, "label": text, "note": None}
     verb, label = _decision_verb(text)
     return {"verb": verb, "label": label, "note": None}
 
 
-def _bucket_sections(
-    sections: list[dict],
+def _build_buckets(
+    sections: list[dict], calendar: list[dict]
 ) -> tuple[list[ExplorerTodayItem], list[ExplorerOvernightItem], list[ExplorerDecisionItem]]:
-    """Every item goes to the bucket its ``kind`` names, in payload order. A
-    bucket left genuinely empty gets one honest placeholder item rather than an
-    array a template might index into unconditionally — so "Nothing pending
-    your review" shows only when nothing is waiting on the reader."""
-    raw: dict[str, list[dict]] = {"today": [], "overnight": [], "decisions": []}
-    for section in sections:
-        for item in section.get("items") or []:
-            raw[_KIND_TO_BUCKET.get(_item_kind(item), "today")].append(item)
+    """Map items by meaning (see the module docstring). A bucket left empty
+    gets one honest placeholder rather than an array a template might index
+    into unconditionally."""
+    items = _items(sections)
+    asks = [i for i in items if i.get("kind") in _DECISION_KINDS]
+    decision_items = [
+        i for i in items if i.get("kind") in _DECISION_KINDS or i.get("kind") == "failed"
+    ]
+    overnight_items = [
+        i for i in items if i.get("kind") not in _DECISION_KINDS and i.get("kind") != "failed"
+    ]
 
-    today = [_map_today_item(i) for i in raw["today"]] or [_PLACEHOLDER_TODAY]
-    overnight = [_map_overnight_item(i) for i in raw["overnight"]] or [_PLACEHOLDER_OVERNIGHT]
-    decisions = [_map_decision_item(i) for i in raw["decisions"]] or [_PLACEHOLDER_DECISION]
-    return today, overnight, decisions
-
-
-def _match_stat(stats: list[dict], *keywords: str) -> object:
-    for stat in stats:
-        # No default on purpose: a label-less stat stringifies to "none", which
-        # matches nothing so long as no keyword _build_stats passes is a
-        # substring of "none" (today: done/you/gaia/mail/focus). Keep that true
-        # when adding one, or give this a "" default back.
-        label = str(stat.get("label")).lower()
-        if any(keyword in label for keyword in keywords):
-            return stat.get("value")
-    return None
+    today = ([_lead_row(asks[0])] if asks else []) + [_event_row(e) for e in calendar]
+    return (
+        today or [_PLACEHOLDER_TODAY],
+        [_overnight_row(i) for i in overnight_items] or [_PLACEHOLDER_OVERNIGHT],
+        [_decision_row(i) for i in decision_items] or [_PLACEHOLDER_DECISION],
+    )
 
 
-def _stat_int(stats: list[dict], *keywords: str) -> int:
-    raw = _match_stat(stats, *keywords)
-    if raw is None:
-        return 0
-    try:
-        return int(str(raw).strip())
-    except ValueError:
-        return 0
+def _positive(value: int) -> int | None:
+    return value if value > 0 else None
 
 
-def _build_stats(stats: list[dict]) -> ExplorerStats:
-    focus_raw = _match_stat(stats, "focus")
+def _build_stats(tallies: dict | None) -> ExplorerStats:
+    """Figures from the payload's tallies. Mail handled and focus time have no
+    source yet, so they are always None and their slots render nothing."""
+    you = int((tallies or {}).get("done_by_you") or 0)
+    gaia = int((tallies or {}).get("done_by_gaia") or 0)
     return {
-        "done": _stat_int(stats, "done"),
-        "you": _stat_int(stats, "you"),
-        "gaia": _stat_int(stats, "gaia"),
-        # "mail" already covers "email"/"e-mail" labels - it is a substring of both.
-        "mail": _stat_int(stats, "mail"),
-        "focus": str(focus_raw) if focus_raw is not None else "0h",
+        "done": _positive(you + gaia),
+        "you": _positive(you),
+        "gaia": _positive(gaia),
+        "mail": None,
+        "focus": None,
     }
+
+
+def _build_week(week: dict | None) -> ExplorerWeek | None:
+    if not week:
+        return None
+    return {
+        "days": [{"you": int(d["you"]), "gaia": int(d["gaia"])} for d in week["days"]],
+        "shipped": list(week.get("shipped") or []),
+        "handled": list(week.get("handled") or []),
+        "ahead": [
+            {"day": date.fromisoformat(e["date"]).strftime("%a"), "label": str(e["title"])}
+            for e in week.get("ahead") or []
+        ],
+        "hoursSaved": int(week.get("hours_saved") or 0),
+    }
+
+
+def _build_stamp(slug: str | None) -> Stamp | None:
+    """The drawn city's stamp skin; legacy payloads without one keep the
+    template's own city axis."""
+    return stamp_for(slug) if slug else None

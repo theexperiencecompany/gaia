@@ -1,0 +1,427 @@
+[
+ {
+  "slug": "jakarta",
+  "name": "Jakarta",
+  "country": "Indonesia"
+ },
+ {
+  "slug": "dhaka",
+  "name": "Dhaka",
+  "country": "Bangladesh"
+ },
+ {
+  "slug": "tokyo",
+  "name": "Tokyo",
+  "country": "Japan"
+ },
+ {
+  "slug": "delhi",
+  "name": "Delhi",
+  "country": "India"
+ },
+ {
+  "slug": "shanghai",
+  "name": "Shanghai",
+  "country": "China"
+ },
+ {
+  "slug": "guangzhou",
+  "name": "Guangzhou",
+  "country": "China"
+ },
+ {
+  "slug": "cairo",
+  "name": "Cairo",
+  "country": "Egypt"
+ },
+ {
+  "slug": "manila",
+  "name": "Manila",
+  "country": "Philippines"
+ },
+ {
+  "slug": "kolkata",
+  "name": "Kolkata",
+  "country": "India"
+ },
+ {
+  "slug": "seoul",
+  "name": "Seoul",
+  "country": "South Korea"
+ },
+ {
+  "slug": "karachi",
+  "name": "Karachi",
+  "country": "Pakistan"
+ },
+ {
+  "slug": "mumbai",
+  "name": "Mumbai",
+  "country": "India"
+ },
+ {
+  "slug": "sao_paulo",
+  "name": "São Paulo",
+  "country": "Brazil"
+ },
+ {
+  "slug": "bangkok",
+  "name": "Bangkok",
+  "country": "Thailand"
+ },
+ {
+  "slug": "mexico_city",
+  "name": "Mexico City",
+  "country": "Mexico"
+ },
+ {
+  "slug": "beijing",
+  "name": "Beijing",
+  "country": "China"
+ },
+ {
+  "slug": "lahore",
+  "name": "Lahore",
+  "country": "Pakistan"
+ },
+ {
+  "slug": "istanbul",
+  "name": "Istanbul",
+  "country": "Turkey"
+ },
+ {
+  "slug": "moscow",
+  "name": "Moscow",
+  "country": "Russia"
+ },
+ {
+  "slug": "ho_chi_minh_city",
+  "name": "Ho Chi Minh City",
+  "country": "Vietnam"
+ },
+ {
+  "slug": "buenos_aires",
+  "name": "Buenos Aires",
+  "country": "Argentina"
+ },
+ {
+  "slug": "new_york_city",
+  "name": "New York City",
+  "country": "United States"
+ },
+ {
+  "slug": "shenzhen",
+  "name": "Shenzhen",
+  "country": "China"
+ },
+ {
+  "slug": "bengaluru",
+  "name": "Bengaluru",
+  "country": "India"
+ },
+ {
+  "slug": "osaka",
+  "name": "Osaka",
+  "country": "Japan"
+ },
+ {
+  "slug": "lagos",
+  "name": "Lagos",
+  "country": "Nigeria"
+ },
+ {
+  "slug": "los_angeles",
+  "name": "Los Angeles",
+  "country": "United States"
+ },
+ {
+  "slug": "chennai",
+  "name": "Chennai",
+  "country": "India"
+ },
+ {
+  "slug": "kinshasa",
+  "name": "Kinshasa",
+  "country": "DR Congo"
+ },
+ {
+  "slug": "bogota",
+  "name": "Bogotá",
+  "country": "Colombia"
+ },
+ {
+  "slug": "lima",
+  "name": "Lima",
+  "country": "Peru"
+ },
+ {
+  "slug": "london",
+  "name": "London",
+  "country": "United Kingdom"
+ },
+ {
+  "slug": "rio_de_janeiro",
+  "name": "Rio de Janeiro",
+  "country": "Brazil"
+ },
+ {
+  "slug": "paris",
+  "name": "Paris",
+  "country": "France"
+ },
+ {
+  "slug": "hyderabad",
+  "name": "Hyderabad",
+  "country": "India"
+ },
+ {
+  "slug": "tehran",
+  "name": "Tehran",
+  "country": "Iran"
+ },
+ {
+  "slug": "taipei",
+  "name": "Taipei",
+  "country": "Taiwan"
+ },
+ {
+  "slug": "luanda",
+  "name": "Luanda",
+  "country": "Angola"
+ },
+ {
+  "slug": "bandung",
+  "name": "Bandung",
+  "country": "Indonesia"
+ },
+ {
+  "slug": "kuala_lumpur",
+  "name": "Kuala Lumpur",
+  "country": "Malaysia"
+ },
+ {
+  "slug": "dar_es_salaam",
+  "name": "Dar es Salaam",
+  "country": "Tanzania"
+ },
+ {
+  "slug": "suzhou",
+  "name": "Suzhou",
+  "country": "China"
+ },
+ {
+  "slug": "ahmedabad",
+  "name": "Ahmedabad",
+  "country": "India"
+ },
+ {
+  "slug": "hangzhou",
+  "name": "Hangzhou",
+  "country": "China"
+ },
+ {
+  "slug": "wuhan",
+  "name": "Wuhan",
+  "country": "China"
+ },
+ {
+  "slug": "tianjin",
+  "name": "Tianjin",
+  "country": "China"
+ },
+ {
+  "slug": "alexandria",
+  "name": "Alexandria",
+  "country": "Egypt"
+ },
+ {
+  "slug": "nagoya",
+  "name": "Nagoya",
+  "country": "Japan"
+ },
+ {
+  "slug": "johannesburg",
+  "name": "Johannesburg",
+  "country": "South Africa"
+ },
+ {
+  "slug": "chongqing",
+  "name": "Chongqing",
+  "country": "China"
+ },
+ {
+  "slug": "riyadh",
+  "name": "Riyadh",
+  "country": "Saudi Arabia"
+ },
+ {
+  "slug": "surat",
+  "name": "Surat",
+  "country": "India"
+ },
+ {
+  "slug": "surabaya",
+  "name": "Surabaya",
+  "country": "Indonesia"
+ },
+ {
+  "slug": "pune",
+  "name": "Pune",
+  "country": "India"
+ },
+ {
+  "slug": "khartoum",
+  "name": "Khartoum",
+  "country": "Sudan"
+ },
+ {
+  "slug": "nanjing",
+  "name": "Nanjing",
+  "country": "China"
+ },
+ {
+  "slug": "santiago",
+  "name": "Santiago",
+  "country": "Chile"
+ },
+ {
+  "slug": "chicago",
+  "name": "Chicago",
+  "country": "United States"
+ },
+ {
+  "slug": "chengdu",
+  "name": "Chengdu",
+  "country": "China"
+ },
+ {
+  "slug": "xian",
+  "name": "Xi'an",
+  "country": "China"
+ },
+ {
+  "slug": "hong_kong",
+  "name": "Hong Kong",
+  "country": "Hong Kong"
+ },
+ {
+  "slug": "dongguan",
+  "name": "Dongguan",
+  "country": "China"
+ },
+ {
+  "slug": "foshan",
+  "name": "Foshan",
+  "country": "China"
+ },
+ {
+  "slug": "shenyang",
+  "name": "Shenyang",
+  "country": "China"
+ },
+ {
+  "slug": "baghdad",
+  "name": "Baghdad",
+  "country": "Iraq"
+ },
+ {
+  "slug": "addis_ababa",
+  "name": "Addis Ababa",
+  "country": "Ethiopia"
+ },
+ {
+  "slug": "madrid",
+  "name": "Madrid",
+  "country": "Spain"
+ },
+ {
+  "slug": "harbin",
+  "name": "Harbin",
+  "country": "China"
+ },
+ {
+  "slug": "houston",
+  "name": "Houston",
+  "country": "United States"
+ },
+ {
+  "slug": "dallas",
+  "name": "Dallas",
+  "country": "United States"
+ },
+ {
+  "slug": "toronto",
+  "name": "Toronto",
+  "country": "Canada"
+ },
+ {
+  "slug": "miami",
+  "name": "Miami",
+  "country": "United States"
+ },
+ {
+  "slug": "belo_horizonte",
+  "name": "Belo Horizonte",
+  "country": "Brazil"
+ },
+ {
+  "slug": "singapore",
+  "name": "Singapore",
+  "country": "Singapore"
+ },
+ {
+  "slug": "philadelphia",
+  "name": "Philadelphia",
+  "country": "United States"
+ },
+ {
+  "slug": "atlanta",
+  "name": "Atlanta",
+  "country": "United States"
+ },
+ {
+  "slug": "fukuoka",
+  "name": "Fukuoka",
+  "country": "Japan"
+ },
+ {
+  "slug": "barcelona",
+  "name": "Barcelona",
+  "country": "Spain"
+ },
+ {
+  "slug": "saint_petersburg",
+  "name": "Saint Petersburg",
+  "country": "Russia"
+ },
+ {
+  "slug": "qingdao",
+  "name": "Qingdao",
+  "country": "China"
+ },
+ {
+  "slug": "dalian",
+  "name": "Dalian",
+  "country": "China"
+ },
+ {
+  "slug": "washington_dc",
+  "name": "Washington, D.C.",
+  "country": "United States"
+ },
+ {
+  "slug": "yangon",
+  "name": "Yangon",
+  "country": "Myanmar"
+ },
+ {
+  "slug": "jinan",
+  "name": "Jinan",
+  "country": "China"
+ },
+ {
+  "slug": "guadalajara",
+  "name": "Guadalajara",
+  "country": "Mexico"
+ }
+]

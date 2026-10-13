@@ -355,10 +355,12 @@
         .join("");
       const stats = c.stats;
       const statBody =
-        rItem("Done yesterday", stats.done) +
-        rNote(`You ${stats.you} / GAIA ${stats.gaia}`) +
-        rItem("Emails handled", stats.mail) +
-        rItem("Focus time", stats.focus);
+        (stats.done ? rItem("Done yesterday", stats.done) : "") +
+        (stats.you || stats.gaia
+          ? rNote([stats.you ? `You ${stats.you}` : "", stats.gaia ? `GAIA ${stats.gaia}` : ""].filter(Boolean).join(" / "))
+          : "") +
+        (stats.mail ? rItem("Emails handled", stats.mail) : "") +
+        (stats.focus ? rItem("Focus time", stats.focus) : "");
 
       const style =
         `--paper:${stock.paper};--edge:${stock.edge};--ink:${density.ink};--ink-soft:${density.inkSoft};` +

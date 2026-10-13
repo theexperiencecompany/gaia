@@ -207,10 +207,18 @@ EXPLORER.register({
     };
 
     const s = c.stats;
-    const tally =
-      `DONE YESTERDAY  . . . . . .  ${s.done}   (YOU ${s.you}, GAIA ${s.gaia})\n` +
-      `EMAILS HANDLED  . . . . . .  ${s.mail}\n` +
-      `FOCUS TIME TODAY  . . . . .  ${esc(s.focus)}`;
+    const tally = [
+      s.done
+        ? `DONE YESTERDAY  . . . . . .  ${s.done}` +
+          (s.you || s.gaia
+            ? `   (${[s.you ? `YOU ${s.you}` : "", s.gaia ? `GAIA ${s.gaia}` : ""].filter(Boolean).join(", ")})`
+            : "")
+        : "",
+      s.mail ? `EMAILS HANDLED  . . . . . .  ${s.mail}` : "",
+      s.focus ? `FOCUS TIME TODAY  . . . . .  ${esc(s.focus)}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     return `<article class="t-memo" style="${style}">
       <div class="t-memo__sheet">
@@ -222,7 +230,7 @@ EXPLORER.register({
           <dt>TO:</dt><dd>You</dd>
           <dt>FROM:</dt><dd>GAIA</dd>
           <dt>DATE:</dt><dd>${esc(ed.dateLong)}</dd>
-          <dt>RE:</dt><dd>Your ${esc(ed.weekday)} -- Edition No. ${ed.editionNo}</dd>
+          <dt>RE:</dt><dd>${esc(ed.headline)}</dd>
         </dl>
         <div class="t-memo__rule" aria-hidden="true">----------------------------------------------------------------------------------------------------</div>
         <p class="t-memo__deck">${esc(ed.deck)}</p>
@@ -469,7 +477,7 @@ EXPLORER.register({
         <div class="t-broadsheet-front">
           <div class="t-broadsheet-well">
             <div class="t-broadsheet-kicker">The Day Ahead · Lead Story</div>
-            <h2 class="t-broadsheet-head t-broadsheet-head--lead">What Matters Today</h2>
+            <h2 class="t-broadsheet-head t-broadsheet-head--lead">${esc(ed.headline)}</h2>
             <p class="t-broadsheet-deck t-broadsheet-deck--lead">${esc(ed.deck)}</p>
             <hr class="t-broadsheet-hr-lead" />
             ${plateFig}
@@ -497,9 +505,9 @@ EXPLORER.register({
             <div class="t-broadsheet-figs">
               <div class="t-broadsheet-figs-h">The Day's Figures</div>
               <table>
-                <tr><td class="t-broadsheet-lab">Done Yesterday <span class="t-broadsheet-sub">(you ${s.you} · gaia ${s.gaia})</span></td><td class="t-broadsheet-num">${s.done}</td></tr>
-                <tr><td class="t-broadsheet-lab">Emails Handled</td><td class="t-broadsheet-num">${s.mail}</td></tr>
-                <tr><td class="t-broadsheet-lab">Focus Time Today</td><td class="t-broadsheet-num">${esc(s.focus)}</td></tr>
+                ${s.done ? `<tr><td class="t-broadsheet-lab">Done Yesterday${s.you || s.gaia ? ` <span class="t-broadsheet-sub">(${[s.you ? `you ${s.you}` : "", s.gaia ? `gaia ${s.gaia}` : ""].filter(Boolean).join(" · ")})</span>` : ""}</td><td class="t-broadsheet-num">${s.done}</td></tr>` : ""}
+                ${s.mail ? `<tr><td class="t-broadsheet-lab">Emails Handled</td><td class="t-broadsheet-num">${s.mail}</td></tr>` : ""}
+                ${s.focus ? `<tr><td class="t-broadsheet-lab">Focus Time Today</td><td class="t-broadsheet-num">${esc(s.focus)}</td></tr>` : ""}
               </table>
             </div>
           </div>
@@ -611,9 +619,9 @@ EXPLORER.register({
     const calcCells = [
       { fig: t0 || "—", lbl: "First Engagement" },
       { fig: t1 || "—", lbl: "Second Engagement" },
-      { fig: esc(s.focus), lbl: "Focus Hours" },
-      { fig: String(s.mail), lbl: "Letters Handled" },
-    ].map((x) => `<div class="calc-cell"><span class="fig">${x.fig}</span><span class="lbl">${x.lbl}</span></div>`).join("");
+      { fig: s.focus ? esc(s.focus) : "", lbl: "Focus Hours" },
+      { fig: s.mail ? String(s.mail) : "", lbl: "Letters Handled" },
+    ].filter((x) => x.fig).map((x) => `<div class="calc-cell"><span class="fig">${x.fig}</span><span class="lbl">${x.lbl}</span></div>`).join("");
 
     // pilcrow item; optional leading clock rendered as an italic numeral
     const pil = `<span class="pil">¶</span>`;
@@ -685,7 +693,7 @@ EXPLORER.register({
         <div class="colophon">
           ${orn}
           <p class="imprint">
-            Reckoning of the day — ${s.done} tasks accomplished, whereof ${s.you} by your own hand and ${s.gaia} by the machine.<br />
+            ${s.done ? `Reckoning of the day — ${s.done} tasks accomplished${s.you || s.gaia ? `, whereof ${[s.you ? `${s.you} by your own hand` : "", s.gaia ? `${s.gaia} by the machine` : ""].filter(Boolean).join(" and ")}` : ""}.<br />` : ""}
             Printed at ${esc(ed.time)} by GAIA — Edition No. ${ed.editionNo}.
           </p>
         </div>

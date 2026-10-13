@@ -6,17 +6,17 @@ it can be rasterized to an image by a headless browser, hosted, and shown in the
 briefing email + in-app. The ``gaia`` edition is a dark, single-accent editorial
 hero in GAIA's design language.
 
-This package is also the registry of template families and the weekday
-schedule that picks one (``EDITION_SCHEDULE``): each day of the user's week has
-one fixed family, and within it the skin varies deterministically by date. The
-classic ``gaia`` edition is the renderer for payloads with no family (legacy
-rows); a payload's persisted ``template_family`` selects the renderer forever,
-so the archive re-renders identically.
+This package is also the registry of template families. A daily brief draws
+its family from the user's shuffle bag (``DAILY_FAMILY_WEIGHTS``); the weekly
+recap is always ``WEEKLY_FAMILY``. Within a family the skin varies
+deterministically by date. A payload's persisted ``template_family`` selects the
+renderer forever, so the archive re-renders identically; legacy payloads with
+none render as the classic ``gaia`` edition.
 """
 
 from collections.abc import Callable
-from datetime import date
 
+from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
 from app.services.briefing.editions.explorer_render import (
     explorer_family_ids,
     render_explorer_edition,
@@ -26,19 +26,6 @@ from app.services.briefing.editions.gaia import render_edition
 # The classic dark-editorial family (render_edition) — the renderer for legacy
 # payloads that carry no family. Not in the registry: it is the default.
 FAMILY_EDITION = "edition"
-
-# One family per day of the user's week (Monday = 0, as ``date.weekday()``).
-# Every other vendored family stays registered — renderable for archived
-# payloads — but is never scheduled.
-EDITION_SCHEDULE: dict[int, str] = {
-    0: "memo",
-    1: "swiss",
-    2: "postal",
-    3: "broadsheet",
-    4: "playbill",
-    5: "receipt",
-    6: "weekly",
-}
 
 
 def _make_explorer_renderer(family: str) -> Callable[..., str]:
@@ -71,9 +58,42 @@ EXPLORER_RENDERER: dict[str, Callable[..., str]] = {
 }
 
 
-def family_for_date(iso_date: str) -> str:
-    """The scheduled family for a user-local ``YYYY-MM-DD`` date."""
-    return EDITION_SCHEDULE[date.fromisoformat(iso_date).weekday()]
+# Registered but never drawn: "metromap" pins stations at fixed SVG coordinates
+# sized for the founder fixture's two-word names, so real item text clips off
+# the canvas and adjacent labels overprint (explorer/README.md, "Known gaps").
+# Fixing it means changing the vendored layout, which only the founder's
+# session may do.
+_NOT_DRAWN = frozenset({"metromap"})
+
+# How many times each daily family appears in one pass of a user's shuffle bag
+# (app/services/briefing/shuffle_bag.py): every drawable daily family once,
+# Air Mail twice.
+DAILY_FAMILY_WEIGHTS: dict[str, int] = {
+    family: 2 if family == POSTAL_FAMILY else 1
+    for family in sorted({FAMILY_EDITION, *EXPLORER_RENDERER} - {WEEKLY_FAMILY} - _NOT_DRAWN)
+}
+
+
+# The "paper" of each family that draws one on a background (desk, wall,
+# envelope scene); the chat image is cropped to it. Every other family is
+# full-bleed and crops to its own root element.
+_PAPER_SELECTORS: dict[str, str] = {
+    "boardingpass": ".t-boardingpass__pass",
+    "librarycard": ".t-librarycard__card",
+    "memo": ".t-memo__sheet",
+    "playbill": ".pb-bill",
+    POSTAL_FAMILY: ".t-postal__scene",
+    "receipt": ".t-receipt__tape",
+}
+_FULL_BLEED_SELECTOR = "#root > article"
+_CLASSIC_SELECTOR = ".brief"
+
+
+def paper_selector(family: str | None) -> str:
+    """The element a cropped edition image is cut to, for ``family``."""
+    if family in _PAPER_SELECTORS:
+        return _PAPER_SELECTORS[family]
+    return _FULL_BLEED_SELECTOR if family in EXPLORER_RENDERER else _CLASSIC_SELECTOR
 
 
 def renderer_for(family: str | None) -> Callable[..., str] | None:
@@ -86,11 +106,13 @@ def renderer_for(family: str | None) -> Callable[..., str] | None:
 
 
 __all__ = [
-    "EDITION_SCHEDULE",
+    "DAILY_FAMILY_WEIGHTS",
     "EXPLORER_RENDERER",
     "FAMILY_EDITION",
-    "family_for_date",
+    "POSTAL_FAMILY",
+    "WEEKLY_FAMILY",
     "render_edition",
     "render_explorer_edition",
+    "paper_selector",
     "renderer_for",
 ]

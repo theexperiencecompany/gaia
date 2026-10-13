@@ -5,6 +5,7 @@ schedules, budgets the prompt is held to, and the deterministic hue rotation. Sh
 workflow-execution branch so nothing hardcodes these values.
 """
 
+from enum import StrEnum
 from typing import Final, Literal
 
 # System-workflow keys. The workflow ARQ path special-cases these to route into
@@ -38,6 +39,13 @@ BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
 # first); a weekly payload over the cap fails generation.
 MAX_BRIEF_ITEMS: Final[int] = 8
 
+# Telegram's (and WhatsApp's) caption limit: the skim splits into follow-up
+# messages past it.
+CHAT_CAPTION_MAX_CHARS: Final[int] = 1024
+
+# Rows per list in the weekly edition (shipped, handled, the week ahead).
+WEEK_LIST_LIMIT: Final[int] = 5
+
 # Consecutive unacknowledged briefings (no open, no activity) that flip a run into
 # winback mode. At/above this the run sends one adaptive winback then backs off.
 WINBACK_THRESHOLD: Final[int] = 3
@@ -66,3 +74,16 @@ HUE_MAX: Final[int] = 360
 def hue_for_day(day_of_year: int) -> int:
     """Deterministic bands-gradient hue (0-359) for a given day-of-year."""
     return (day_of_year * HUE_ROTATION_STEP) % HUE_MAX
+
+
+# The weekly recap's edition family (never drawn for a daily brief) and the Air
+# Mail family, the only one that carries a city stamp.
+WEEKLY_FAMILY: Final[str] = "weekly"
+POSTAL_FAMILY: Final[str] = "postal"
+
+
+class BriefingBag(StrEnum):
+    """The per-user shuffle bags kept on the user doc (``briefing_shuffle_bags``)."""
+
+    EDITION_FAMILY = "edition_family"
+    STAMP_CITY = "stamp_city"

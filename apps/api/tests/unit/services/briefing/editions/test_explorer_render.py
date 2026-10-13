@@ -92,10 +92,8 @@ def _payload(**overrides: Any) -> dict[str, Any]:
         "date": "2026-07-05",
         "headline": "A quiet Sunday",
         "lede": "Two approvals and one flight.",
-        "stats": [{"value": "3", "label": "Done overnight"}],
-        "sections": [
-            {"numeral": "I", "title": "Today", "items": [{"text": "Standup", "kind": "note"}]},
-        ],
+        "tallies": {"done_by_you": 1, "done_by_gaia": 2},
+        "calendar": [{"date": "2026-07-05", "start": "09:00", "title": "Standup"}],
         "caption": "Made by GAIA",
     }
     payload.update(overrides)
@@ -227,7 +225,8 @@ class TestEmbeddedLiterals:
         assert ed["n"] == 12
         assert ed["time"] == "6:02 AM"
         assert ed["time24"] == "06:02"
-        assert ed["deck"] == "Two approvals and one flight."
+        assert ed["headline"] == "A quiet Sunday"
+        assert ed["deck"] == "A quiet Sunday"
         assert ed["dateLong"] == "Sunday, 5 July 2026"
         assert ed["content"]["today"][0]["label"] == "Standup"
         assert ed["content"]["stats"]["done"] == 3
@@ -274,19 +273,19 @@ class TestArtCredit:
 @pytest.mark.unit
 class TestScriptEscaping:
     def test_payload_text_cannot_close_the_inline_script_tag(self) -> None:
-        html = _render(_payload(lede="</script><img src=x>"))
+        html = _render(_payload(headline="</script><img src=x>"))
 
         assert "</script><img src=x>" not in html
         assert '"deck": "<\\/script><img src=x>"' in html
 
     def test_payload_text_cannot_open_an_html_comment(self) -> None:
-        html = _render(_payload(lede="<!--hide"))
+        html = _render(_payload(headline="<!--hide"))
 
         assert "<!--hide" not in html
         assert "<\\!--hide" in html
 
     def test_escaped_payload_still_decodes_to_the_original_text(self) -> None:
-        ed = _embedded_const(_render(_payload(lede="</script><!--boom")), "ed")
+        ed = _embedded_const(_render(_payload(headline="</script><!--boom")), "ed")
 
         assert ed["deck"] == "</script><!--boom"
 

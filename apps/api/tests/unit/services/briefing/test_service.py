@@ -10,7 +10,6 @@ nothing is.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -18,19 +17,29 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.constants.briefing import MAX_BRIEF_ITEMS
+from app.constants.briefing import MAX_BRIEF_ITEMS, BriefingBag
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.models.briefing_models import BriefingModel, BriefingPayload
+from app.models.briefing_models import (
+    BriefingEvent,
+    BriefingModel,
+    BriefingPayload,
+    BriefingTallies,
+    BriefingWeek,
+    BriefingWeekDay,
+)
 from app.models.todo_models import TodoDocument
+from app.models.user_models import ShuffleBag
 from app.services.briefing import context, service
 from app.services.briefing.dormancy import DormancyState
-from app.services.briefing.editions import family_for_date
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.editions.stamps import STAMP_CITY_WEIGHTS
 
 _USER = "user-1"
+_EVENT = BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")
 _CHANNELS = ["inapp", "telegram", "email"]
 
 _VOICE = {
@@ -59,6 +68,7 @@ class World:
     set_channels: AsyncMock
     notify: AsyncMock
     chat_sync: AsyncMock
+    bags: dict[str, ShuffleBag] = field(default_factory=dict)
     work: context.TrackedWork = field(default_factory=context.TrackedWork)
     user: dict[str, Any] = field(default_factory=lambda: {"timezone": "UTC", "email": "a@b.c"})
 
@@ -110,13 +120,30 @@ def world(monkeypatch: pytest.MonkeyPatch) -> World:
     )
     monkeypatch.setattr(service.context, "user_open_todo_summary", AsyncMock(return_value=(0, [])))
     monkeypatch.setattr(
-        service.context, "gather_completed_since", AsyncMock(return_value=context.CompletedWork())
+        service.context,
+        "gather_completed_since",
+        AsyncMock(return_value=context.CompletedWork(user=[_todo("u1", "Gym")])),
     )
     monkeypatch.setattr(service.dormancy, "record_idle_day", AsyncMock(return_value=0))
     monkeypatch.setattr(
         service.dormancy, "reactivation_signal_since", AsyncMock(return_value=False)
     )
     monkeypatch.setattr(service, "track", MagicMock())
+
+    async def get_bag(user_id: str, bag: BriefingBag) -> ShuffleBag | None:
+        return w.bags.get(bag.value)
+
+    async def set_bag(user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
+        w.bags[bag.value] = state
+
+    monkeypatch.setattr(service.user_repository, "get_briefing_bag", get_bag)
+    monkeypatch.setattr(service.user_repository, "set_briefing_bag", set_bag)
+    monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[_EVENT]))
+    monkeypatch.setattr(
+        service.context,
+        "gather_week",
+        AsyncMock(return_value=BriefingWeek(days=[BriefingWeekDay(you=1, gaia=2)] * 7)),
+    )
     return w
 
 
@@ -144,7 +171,11 @@ class TestDailyBrief:
 
         payload = _stored_payload(world)
         assert payload.headline == "Two things need you"
-        assert payload.template_family == family_for_date(datetime.now(UTC).date().isoformat())
+        assert payload.template_family in DAILY_FAMILY_WEIGHTS
+        assert world.bags["edition_family"].order.count(payload.template_family) >= 1
+        assert payload.calendar == [_EVENT]
+        assert payload.tallies == BriefingTallies(done_by_you=1, done_by_gaia=0)
+        assert "11:00: Sequoia" in world.agent.await_args.kwargs["request"].message
         assert [(s.title, [i.text for i in s.items]) for s in payload.sections] == [
             ("NEEDS YOU", ["Approve the Priya reply"]),
             ("GAIA'S WORK", ["Investor update"]),
@@ -152,12 +183,42 @@ class TestDailyBrief:
         request = world.notify.await_args.args[0]
         assert [c.channel_type for c in request.channels] == _CHANNELS
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_DAILY
-        assert request.metadata["platform_parts"] == _VOICE["bubbles"]
+        assert request.metadata["platform_parts"] == [
+            "Two things need you\n\n"
+            "• Approve the Priya reply\n\n"
+            "Overnight I finished Investor update.\n\n"
+            "Full brief: https://heygaia.io/briefings"
+        ]
         assert request.content.rich_content == payload.model_dump()
         world.set_channels.assert_awaited_once()
         assert world.set_channels.await_args.args[3] == _CHANNELS
         world.chat_sync.assert_awaited_once()
-        assert world.chat_sync.await_args.args[2:] == (_VOICE["bubbles"], _CHANNELS)
+        assert world.chat_sync.await_args.args[2:] == (
+            request.metadata["platform_parts"],
+            _CHANNELS,
+        )
+
+    async def test_an_air_mail_brief_records_its_stamp_city(self, world: World) -> None:
+        pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
+        pool.remove("postal")
+        world.bags["edition_family"] = ShuffleBag(order=["postal", *pool], index=0)
+
+        await service.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        assert payload.template_family == "postal"
+        assert payload.stamp_city in STAMP_CITY_WEIGHTS
+        assert world.bags["stamp_city"].order[0] == payload.stamp_city
+
+    async def test_a_non_postal_brief_draws_no_stamp(self, world: World) -> None:
+        pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
+        pool.remove("memo")
+        world.bags["edition_family"] = ShuffleBag(order=["memo", *pool], index=0)
+
+        await service.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).stamp_city is None
+        assert "stamp_city" not in world.bags
 
     async def test_brief_holds_at_most_the_cap_with_needs_you_first(self, world: World) -> None:
         world.work = context.TrackedWork(
@@ -260,10 +321,16 @@ class TestWeeklyRecap:
 
         payload = _stored_payload(world)
         assert world.upsert.await_args.args[2] == "weekly"
+        assert payload.template_family == "weekly"
+        assert payload.week is not None
+        assert payload.tallies == BriefingTallies(done_by_you=7, done_by_gaia=14)
         assert payload.headline == "A good week"
         request = world.notify.await_args.args[0]
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_WEEKLY
-        assert request.metadata["platform_parts"] == ["good week!"]
+        assert request.metadata["platform_parts"] == [
+            "A good week\n\nThis week I finished Item 0, Item 1 and 1 more.\n\n"
+            "Full brief: https://heygaia.io/briefings"
+        ]
 
     async def test_recap_over_the_item_cap_fails_and_sends_nothing(self, world: World) -> None:
         world.agent.return_value = SimpleNamespace(message=_fenced(_weekly(MAX_BRIEF_ITEMS + 1)))

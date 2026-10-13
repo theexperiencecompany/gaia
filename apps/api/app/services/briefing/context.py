@@ -9,16 +9,32 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from app.constants.briefing import BRIEFING_KIND_DAILY, WINBACK_THRESHOLD
+from app.constants.briefing import (
+    BRIEFING_KIND_DAILY,
+    MINUTES_SAVED_PER_GAIA_TODO,
+    WEEK_LIST_LIMIT,
+    WINBACK_THRESHOLD,
+)
+from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.constants.todos import BLOCKING_LABELS, FAILED_LABEL, GAIA_TRACKED_LABEL
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
-from app.models.briefing_models import BriefingKind, BriefingMood, BriefingPayload
+from app.models.briefing_models import (
+    BriefingEvent,
+    BriefingKind,
+    BriefingMood,
+    BriefingPayload,
+    BriefingWeek,
+    BriefingWeekDay,
+)
+from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.todo_models import TodoDocument
 from app.services.briefing import dormancy
+from app.services.calendar_service import get_calendar_events
+from app.services.integrations.user_integrations import get_connected_integration_ids
 from shared.py.wide_events import log
 
 # Open tracked todos the brief reports on (in progress / blocked / failed).
@@ -243,3 +259,73 @@ async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
 
     last_mood: BriefingMood | str = briefings[0].payload.mood
     return WinbackState(unacknowledged=unacknowledged, last_was_winback=last_mood == "winback")
+
+
+def _to_event(event: GoogleCalendarEventResource, tz: ZoneInfo) -> BriefingEvent | None:
+    start = event.start
+    if start is None:
+        return None
+    title = (event.summary or "").strip() or "Untitled event"
+    if start.dateTime:
+        local = datetime.fromisoformat(start.dateTime).astimezone(tz)
+        return BriefingEvent(
+            date=local.date().isoformat(),
+            start=local.strftime("%H:%M"),
+            title=title,
+            location=event.location,
+        )
+    if start.date:
+        return BriefingEvent(date=start.date, title=title, location=event.location)
+    return None
+
+
+async def gather_calendar(
+    user_id: str, clock: UserClock, *, days: int, days_ahead: int = 0
+) -> list[BriefingEvent]:
+    """The user's calendar events over ``days`` local days starting ``days_ahead``
+    days from today, in start order (all-day events first). Empty when no
+    calendar is connected; a connected calendar that fails to answer raises."""
+    if GOOGLE_CALENDAR_INTEGRATION_ID not in await get_connected_integration_ids(user_id):
+        return []
+    start = day_start_utc(clock, days_ago=-days_ahead)
+    response = await get_calendar_events(
+        user_id,
+        time_min=start.isoformat(),
+        time_max=(start + timedelta(days=days)).isoformat(),
+        fetch_all=True,
+    )
+    events = [e for e in (_to_event(raw, clock.tz) for raw in response.events) if e]
+    return sorted(events, key=lambda e: (e.date, e.start or ""))
+
+
+async def gather_week(user_id: str, clock: UserClock) -> BriefingWeek:
+    """Monday-to-Sunday completions of the week containing today, by owner and
+    day, plus the calendar for the seven days ahead."""
+    monday = clock.now_local.date() - timedelta(days=clock.now_local.weekday())
+    since = datetime.combine(monday, time.min, tzinfo=clock.tz).astimezone(UTC)
+    days = [BriefingWeekDay(you=0, gaia=0) for _ in range(7)]
+    shipped: list[str] = []
+    handled: list[str] = []
+    for doc in reversed(await todo_repository.list_completed_since(user_id, since=since)):
+        if doc.completed_at is None:
+            continue
+        completed_at = doc.completed_at
+        if completed_at.tzinfo is None:
+            completed_at = completed_at.replace(tzinfo=UTC)
+        index = (completed_at.astimezone(clock.tz).date() - monday).days
+        if not 0 <= index < len(days):
+            continue
+        if is_gaia_tracked(doc):
+            days[index].gaia += 1
+            handled.append(doc.title)
+        else:
+            days[index].you += 1
+            shipped.append(doc.title)
+    ahead = await gather_calendar(user_id, clock, days=7, days_ahead=1)
+    return BriefingWeek(
+        days=days,
+        shipped=shipped[:WEEK_LIST_LIMIT],
+        handled=handled[:WEEK_LIST_LIMIT],
+        ahead=ahead[:WEEK_LIST_LIMIT],
+        hours_saved=round(sum(d.gaia for d in days) * MINUTES_SAVED_PER_GAIA_TODO / 60),
+    )

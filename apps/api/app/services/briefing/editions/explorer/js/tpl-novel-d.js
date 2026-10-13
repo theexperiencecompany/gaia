@@ -447,9 +447,17 @@
       const s = c.stats;
       const stats =
         `<p class="t-exhibition__stats">` +
-        `Yesterday <b>${s.done}</b> shipped &middot; you <b>${s.you}</b> / GAIA <b>${s.gaia}</b> &middot; ` +
-        `<b>${s.mail}</b> emails handled &middot; <b>${s.focus}</b> of focus &middot; ` +
-        `brief generated ${esc(ed.time)}` +
+        [
+          s.done ? `Yesterday <b>${s.done}</b> shipped` : "",
+          s.you || s.gaia
+            ? [s.you ? `you <b>${s.you}</b>` : "", s.gaia ? `GAIA <b>${s.gaia}</b>` : ""].filter(Boolean).join(" / ")
+            : "",
+          s.mail ? `<b>${s.mail}</b> emails handled` : "",
+          s.focus ? `<b>${s.focus}</b> of focus` : "",
+          ed.time ? `brief generated ${esc(ed.time)}` : "",
+        ]
+          .filter(Boolean)
+          .join(" &middot; ") +
         `</p>`;
 
       const programme =

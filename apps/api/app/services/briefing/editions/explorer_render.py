@@ -25,8 +25,10 @@ import json
 from pathlib import Path
 import re
 
+from app.constants.briefing import POSTAL_FAMILY
 from app.services.briefing.editions._shared import CANVAS_PX
 from app.services.briefing.editions.explorer_adapter import build_ed
+from app.services.briefing.editions.stamps import STAMP_ASSET_KEY, stamp_asset_uri
 
 _EXPLORER_DIR = Path(__file__).parent / "explorer"
 _JS_DIR = _EXPLORER_DIR / "js"
@@ -170,7 +172,10 @@ def render_explorer_edition(
     if family not in explorer_family_ids():
         raise ValueError(f"unknown explorer family: {family!r}")
 
-    assets = _asset_data_uris()
+    assets = dict(_asset_data_uris())
+    stamp_city = payload.get("stamp_city")
+    if family == POSTAL_FAMILY and stamp_city:
+        assets[STAMP_ASSET_KEY] = stamp_asset_uri(stamp_city)
     ed = build_ed(
         payload,
         edition_no=edition_no,
@@ -227,6 +232,8 @@ for (const axisName of Object.keys(tpl.axes)) {{
   const rng = mulberry32(strSeed(SKIN_SEED + "|" + axisName));
   skin[axisName] = opts[Math.floor(rng() * opts.length)];
 }}
+// Air Mail's city is the brief's drawn stamp city, not a random skin pick.
+if (ed.stamp) skin.city = ed.stamp;
 const article = tpl.render(ed, skin);
 document.head.insertAdjacentHTML("beforeend", "<style>" + tpl.css + "</style>");
 document.getElementById("root").innerHTML = article;

@@ -8,9 +8,11 @@ a brief that reached a channel.
 """
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
+import random
 import re
 from typing import cast
 from uuid import uuid4
@@ -25,9 +27,12 @@ from app.constants.briefing import (
     BOOTSTRAP_GRACE_DAYS,
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
+    CHAT_CAPTION_MAX_CHARS,
     MAX_BRIEF_ITEMS,
-    MINUTES_SAVED_PER_GAIA_TODO,
+    POSTAL_FAMILY,
+    WEEKLY_FAMILY,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
+    BriefingBag,
     hue_for_day,
 )
 from app.constants.notifications import (
@@ -38,10 +43,12 @@ from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
 from app.models.briefing_models import (
     BRIEFING_ITEM_STATES,
+    BriefingEvent,
     BriefingItemKind,
     BriefingKind,
     BriefingModel,
     BriefingPayload,
+    BriefingTallies,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -60,7 +67,10 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.briefing import chat_sync, context, delivery_channels, dormancy
 from app.services.briefing.context import UserClock
-from app.services.briefing.editions import family_for_date
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.editions.stamps import STAMP_CITY_WEIGHTS
+from app.services.briefing.shuffle_bag import draw
+from app.services.briefing.skim import build_skim, full_brief_url, split_for_caption
 from app.services.notification_service import notification_service
 from app.services.user_service import get_user_by_id
 from app.utils.analytics import track
@@ -259,14 +269,9 @@ def _gather_artifacts(work: context.TrackedWork) -> dict[str, _ArtifactFact]:
 
 
 def _platform_parts(payload: BriefingPayload) -> list[str]:
-    """Chat-platform bubbles for this payload.
-
-    The voice pass decides how many bubbles and where they break; this only
-    filters blanks. The weekly digest emits no bubbles, so it falls back to its
-    single message.
-    """
-    return [b for b in payload.bubbles if b.strip()] or (
-        [payload.message] if payload.message else []
+    """What the chat platform receives: the skim, split under the caption limit."""
+    return split_for_caption(
+        build_skim(payload, full_brief_url()).text, limit=CHAT_CAPTION_MAX_CHARS
     )
 
 
@@ -485,6 +490,32 @@ async def _wake_or_skip(user_id: str, user: dict) -> dormancy.DormancyState | No
     return None
 
 
+def _calendar_note(events: list[BriefingEvent]) -> str:
+    if not events:
+        return "The user's calendar has nothing today (or no calendar is connected)."
+    lines = [f"- {e.start or 'all day'}: {e.title}" for e in events]
+    return "Today's calendar (user-local 24h times):\n" + "\n".join(lines)
+
+
+async def _draw_from_bag(user_id: str, bag: BriefingBag, weights: Mapping[str, int]) -> str:
+    """Today's draw from one of the user's shuffle bags, persisted at once so
+    tomorrow continues the pass."""
+    state = await user_repository.get_briefing_bag(user_id, bag)
+    member, next_state = draw(state, weights, random.SystemRandom())
+    await user_repository.set_briefing_bag(user_id, bag, next_state)
+    log.info("briefing.bag_drawn", user_id=user_id, bag=bag.value, member=member)
+    return member
+
+
+async def _assign_edition(user_id: str, payload: BriefingPayload, family: str) -> None:
+    """Record the edition family on the payload, and for Air Mail its stamp."""
+    payload.template_family = family
+    if family == POSTAL_FAMILY:
+        payload.stamp_city = await _draw_from_bag(
+            user_id, BriefingBag.STAMP_CITY, STAMP_CITY_WEIGHTS
+        )
+
+
 def _user_todos_note(open_count: int, open_titles: list[str]) -> str:
     if not open_count:
         return "The user's own todo list is empty."
@@ -509,6 +540,7 @@ def _daily_payload(
             "mood": "winback" if is_winback else voice["mood"],
             "caption": voice["caption"],
             "hue": hue_for_day(clock.day_of_year),
+            "generated_at": clock.now_local.strftime("%-I:%M %p"),
             "bubbles": voice["bubbles"],
             # Single-string rendering for the in-app body / email fallback.
             "message": "\n\n".join(voice["bubbles"]),
@@ -567,8 +599,12 @@ async def run_daily_briefing(user_id: str) -> None:
     work = await context.gather_tracked_work(user_id, since)
     artifacts = _gather_artifacts(work)
     open_count, open_titles = await context.user_open_todo_summary(user_id)
+    calendar = await context.gather_calendar(user_id, clock, days=1)
+    completed = await context.gather_completed_since(user_id, since)
     sections, stats, facts_block = _build_facts(
-        work, artifacts, _user_todos_note(open_count, open_titles)
+        work,
+        artifacts,
+        _user_todos_note(open_count, open_titles) + "\n" + _calendar_note(calendar),
     )
 
     # Idle ladder: nothing to report (no tracked work, no goal knowledge) escalates
@@ -593,8 +629,15 @@ async def run_daily_briefing(user_id: str) -> None:
         await _run_silent(user, clock, prompt, conversation_key=BRIEFING_KIND_DAILY)
     )
     payload = _daily_payload(clock, voice, sections, stats, winback.is_winback)
-
-    payload.template_family = family_for_date(clock.date_str)
+    payload.calendar = calendar
+    payload.tallies = BriefingTallies(
+        done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
+    )
+    await _assign_edition(
+        user_id,
+        payload,
+        await _draw_from_bag(user_id, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS),
+    )
     briefing = await _publish_daily(user_id, user, clock, payload)
 
     # The goodbye went out — pause the loop until a reactivation signal.
@@ -629,12 +672,12 @@ async def run_weekly_digest(user_id: str) -> None:
 
     since = context.day_start_utc(clock, days_ago=7)
     completed = await context.gather_completed_since(user_id, since)
-    hours_saved = round(len(completed.gaia) * MINUTES_SAVED_PER_GAIA_TODO / 60)
+    week = await context.gather_week(user_id, clock)
 
     prompt = build_weekly_digest_prompt(
         date_local=clock.date_str,
         week_summary_block=_format_week(completed),
-        hours_saved=hours_saved,
+        hours_saved=week.hours_saved,
     )
 
     # Bounded: a stalled agent run must fail the cron loudly, not hang the
@@ -642,7 +685,12 @@ async def run_weekly_digest(user_id: str) -> None:
     async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
         payload = await _generate_payload(user, clock, prompt, BRIEFING_KIND_WEEKLY)
     payload.hue = hue_for_day(clock.day_of_year)
-    payload.template_family = family_for_date(clock.date_str)
+    payload.generated_at = clock.now_local.strftime("%-I:%M %p")
+    payload.week = week
+    payload.tallies = BriefingTallies(
+        done_by_you=sum(d.you for d in week.days), done_by_gaia=sum(d.gaia for d in week.days)
+    )
+    await _assign_edition(user_id, payload, WEEKLY_FAMILY)
 
     briefing = await briefing_repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload

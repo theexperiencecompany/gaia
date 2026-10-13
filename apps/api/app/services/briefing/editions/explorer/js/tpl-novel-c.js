@@ -294,8 +294,11 @@
         `${esc(ed.dateLong)}` +
         `</div>` +
         `<div class="t-gradient__cl is-right">` +
-        `Done ${s.done} &middot; Mail ${s.mail} &middot; Focus ${caps(s.focus)}<br>` +
-        `${s.you} by you &middot; ${s.gaia} by GAIA` +
+        [s.done ? `Done ${s.done}` : "", s.mail ? `Mail ${s.mail}` : "", s.focus ? `Focus ${caps(s.focus)}` : ""]
+          .filter(Boolean)
+          .join(" &middot; ") +
+        "<br>" +
+        [s.you ? `${s.you} by you` : "", s.gaia ? `${s.gaia} by GAIA` : ""].filter(Boolean).join(" &middot; ") +
         `</div>` +
         `</footer>`;
 
@@ -651,9 +654,18 @@
       const totals =
         `<div class="t-invoice__totals">` +
         invTotal("Subtotal", "1 day", false) +
-        invTotal("Items settled", `${s.done}: ${s.you} you, ${s.gaia} GAIA`, false) +
-        invTotal("Correspondence", `${s.mail} filed`, false) +
-        invTotal("Focus held", caps(s.focus), false) +
+        (s.done
+          ? invTotal(
+              "Items settled",
+              `${s.done}` +
+                (s.you || s.gaia
+                  ? `: ${[s.you ? `${s.you} you` : "", s.gaia ? `${s.gaia} GAIA` : ""].filter(Boolean).join(", ")}`
+                  : ""),
+              false,
+            )
+          : "") +
+        (s.mail ? invTotal("Correspondence", `${s.mail} filed`, false) : "") +
+        (s.focus ? invTotal("Focus held", caps(s.focus), false) : "") +
         invTotal("Balance due", `1 ${caps(ed.weekday)}`, true) +
         `</div>`;
 

@@ -13,7 +13,8 @@ opaque, pre-approved rendering engine.
 
 ## No-edit rule
 
-**Do not modify anything under `js/` or `assets/`.** These are APPROVED
+**Do not modify anything under `js/` or `assets/` beyond the permitted
+deviations below.** These are APPROVED
 designs — zero design drift is the point of vendoring them. If a template
 needs a real change, get an updated file from the founder's session and
 replace it wholesale; do not hand-patch the CSS/JS in place.
@@ -24,9 +25,10 @@ ours to change.
 
 ## The permitted deviations
 
-Three narrow classes of edit to `js/*.js` are allowed — all three fix a
-latent correctness bug in the vendored files rather than touch the approved
-design. **No layout, CSS, copy, or skin axis was touched by any of them.**
+Four narrow classes of edit to `js/*.js` are allowed — each fixes a latent
+correctness bug in the vendored files rather than touch the approved design.
+**No layout, CSS or skin axis was touched by any of them.** The stamp art in
+`assets/stamps/` is an asset swap for Air Mail's city skin, not a JS edit.
 
 ### 1. Null guards
 
@@ -91,54 +93,61 @@ wrong, real person's name to every other user is not an acceptable
 universally-true address **"YOU"** — honest for every recipient, and not a
 fabricated fact the way a wrong name is.
 
+## 4. Real brief data the fixture never exercised
+
+The founder fixture filled every slot with plausible demo content, so several
+templates printed fixture text or invented figures for a real brief. These
+edits make a template read the real value — or render nothing — and change no
+layout, CSS or skin axis:
+
+- **Missing figures render nothing** (all families). `ed.content.stats` holds
+  `None` for a figure GAIA does not know (mail handled, focus time) or that is
+  zero, and every stat slot is guarded: the slot, its label and its
+  "you N, gaia N" split are omitted instead of printing `0` or `null`.
+- **The headline has a title slot** (`memo` RE: line, `postal` envelope "Re:",
+  `broadsheet` lead headline): `ed.headline`, a field the fixture lacked. Every
+  other family's single text slot, `ed.deck`, carries the headline.
+- **The week is real** (`weekly`): `weekFixture`'s demo week ("term sheet
+  signed with Mehul", "217 emails handled") is replaced by `ed.week`, built by
+  the adapter from the brief's real completions and calendar; bar heights scale
+  to the week's own peak. Unknown counts (decisions made, meetings) are gone.
+- **Untimed items are kept** (`dayline`): untimed overnight entries join the
+  cluster and every untimed today item sits in the before-EOD slot, where the
+  template used to drop them; decisions float into the first morning slots that
+  clear the day's real events instead of fixed 09:30/11:20 positions.
+- **Fixture literals read `ed`** (`flightplan`): the Detail A callout
+  ("Ship approval-flow PR · CI green 05:40") shows the day's untimed item, the
+  overnight section names the real time range, events print their start only
+  (never an invented 30-minute end), and the sheet number drops "of 100".
+
+`tests/integration/test_edition_families_render.py` renders every family in
+Chromium with a real and a quiet brief and fails on a blank image, a dropped
+item, a fixture string, a zero-filled figure, or a missing headline.
+
 ## Which families are sent
 
-`EDITION_SCHEDULE` in `editions/__init__.py` picks one family per day of the
-user's week (Mon `memo`, Tue `swiss`, Wed `postal`, Thu `broadsheet`, Fri
-`playbill`, Sat `receipt`, Sun `weekly`); the skin varies by date within it.
-Every other family stays registered so an archived payload re-renders, but is
-never scheduled.
+A daily brief draws its family from the user's shuffle bag
+(`DAILY_FAMILY_WEIGHTS` in `editions/__init__.py`, Air Mail twice, every other
+drawable family once; `app/services/briefing/shuffle_bag.py`). The weekly recap
+is always `weekly`. Air Mail's city stamp comes from a second bag over the 85
+cities in `assets/stamps/` (`editions/stamps.py`); the render harness hands the
+drawn city to the template as its `city` skin, so the stamp art, the
+"GAIA Post · CITY" line, the denomination and the postmark agree.
 
 ## Fixed item slots — padded by the adapter, not patched here
 
-`boardingpass`, `metromap`, `menu`, `invoice`, `almanac` and `weekly` read fixed item
+`boardingpass`, `metromap`, `menu`, `invoice` and `almanac` read fixed item
 positions (`today[2]`, `decisions[1]`, ...) because the founder fixture always
 held three today, three overnight and two decision items. Handed fewer, their
-page script threw and the brief rendered as a blank strip. The fix lives in
-`explorer_adapter._FIXED_SLOTS`, which pads exactly those buckets with an
-empty slot (`—`), so no file under `js/` changed;
-`tests/integration/test_edition_families_render.py` renders every family with
-a sparse brief and fails on any blank image.
+page script threw and the brief rendered as a blank strip. The adapter pads
+exactly those buckets with an empty slot (`—`, `explorer_adapter._FIXED_SLOTS`).
 
-## Known gaps
+## Known gap — registered, never drawn
 
-These families have a gap deeper than a null guard or a content swap can fix:
-
-- **`weekly`** (tpl-novel-e.js): renders hardcoded demo aggregates, needs a
-  real weekly-aggregate adapter. It is nonetheless the Sunday family in
-  `EDITION_SCHEDULE` by product decision, so until that adapter exists the
-  Sunday edition shows the template's demo figures.
-- **`dayline`** (tpl-poster.js) and **`flightplan`** (tpl-tech.js): position
-  events on a real proportional time axis and have no sensible fallback
-  position for an item with no clock time. Guarding the crash
-  (`.filter((it) => it.t24)` before mapping) keeps them rendering, but most
-  `today`/`overnight` items still vanish from the page entirely rather than
-  appearing untimed — that needs a real per-item time from the briefing
-  pipeline, not a template patch.
-- **`metromap`** (tpl-novel-a.js): a *different* real-content-shape gap from
-  the two above. Its stations are positioned at fixed SVG coordinates sized
-  for the founder fixture's short, 2-3-word station names
-  (`"Linear upgrade"`, `"Investor sync"`). Real briefing item text is a
-  "complete, self-sufficient sentence" per the briefing prompt contract
-  (e.g. `"Design review with Dhruv"`, already close to what overflows) —
-  confirmed by rendering the fixed `metromap` against a payload of
-  realistic-length item text: the YOU-line term boxes clip off the left/right
-  edge of the canvas, and the two decision hollow-station labels overlap
-  into unreadable text. There is no existing truncation convention anywhere
-  in the vendored set to reuse (checked: the only `.slice()` calls are
-  weekday/month abbreviations), and inventing one would mean touching layout,
-  which the no-edit rule forbids. `metromap`'s content-derivation fix (see
-  above) stays in the code — it's strictly more correct than the literal it
-  replaced — but the family needs a content-aware layout (dynamic station
-  spacing, or truncation with an approved ellipsis convention from the
-  founder) before it should be scheduled.
+- **`metromap`** (tpl-novel-a.js): its stations sit at fixed SVG coordinates
+  sized for the founder fixture's two-word station names ("Linear upgrade").
+  Real item text clips off the canvas edge and the decision station labels
+  overprint each other (re-confirmed rendering a real brief, 2026-10-14). There
+  is no truncation convention in the vendored set and inventing one would
+  change the layout, so the family stays out of the bag (`_NOT_DRAWN`) until
+  the founder's session supplies a content-aware layout.

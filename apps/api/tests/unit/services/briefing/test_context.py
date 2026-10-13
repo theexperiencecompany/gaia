@@ -16,6 +16,7 @@ import pytest
 from app.constants.briefing import WINBACK_THRESHOLD
 from app.constants.todos import BLOCKING_LABEL, FAILED_LABEL, GAIA_TRACKED_LABEL
 from app.models.briefing_models import BriefingModel, BriefingPayload
+from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.todo_models import TodoDocument
 from app.services.briefing import context
 
@@ -264,3 +265,115 @@ class TestWinback:
         await context.compute_winback_state(_USER)
 
         assert active_since.await_args.args[1] == datetime(2026, 10, 12, 8, tzinfo=UTC)
+
+
+def _clock(iso: str = "2026-10-14T07:00:00", tz: str = "Asia/Kolkata") -> context.UserClock:
+    zone = ZoneInfo(tz)
+    now = datetime.fromisoformat(iso).replace(tzinfo=zone)
+    return context.UserClock(
+        tz=zone, now_local=now, date_str=now.date().isoformat(), day_of_year=now.timetuple().tm_yday
+    )
+
+
+def _event(
+    summary: str, start: dict[str, str], location: str | None = None
+) -> GoogleCalendarEventResource:
+    data: dict[str, object] = {"summary": summary, "start": start}
+    if location:
+        data["location"] = location
+    return GoogleCalendarEventResource.model_validate(data)
+
+
+class TestCalendar:
+    @pytest.fixture
+    def connected(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+        ids = AsyncMock(return_value={"googlecalendar"})
+        monkeypatch.setattr(context, "get_connected_integration_ids", ids)
+        return ids
+
+    async def test_no_calendar_connected_reads_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        connected.return_value = {"gmail"}
+        fetch = AsyncMock()
+        monkeypatch.setattr(context, "get_calendar_events", fetch)
+
+        assert await context.gather_calendar(_USER, _clock(), days=1) == []
+        fetch.assert_not_awaited()
+
+    async def test_events_land_on_the_users_clock_in_start_order(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        fetch = AsyncMock(
+            return_value=SimpleNamespace(
+                events=[
+                    _event(
+                        "Sequoia partner meeting",
+                        {"dateTime": "2026-10-14T05:30:00Z"},
+                        "Menlo Park",
+                    ),
+                    _event("Offsite", {"date": "2026-10-14"}),
+                    _event("Standup", {"dateTime": "2026-10-14T03:30:00Z"}),
+                ]
+            )
+        )
+        monkeypatch.setattr(context, "get_calendar_events", fetch)
+
+        events = await context.gather_calendar(_USER, _clock(), days=1)
+
+        assert [(e.date, e.start, e.title, e.location) for e in events] == [
+            ("2026-10-14", None, "Offsite", None),
+            ("2026-10-14", "09:00", "Standup", None),
+            ("2026-10-14", "11:00", "Sequoia partner meeting", "Menlo Park"),
+        ]
+        window = fetch.await_args.kwargs
+        assert window["time_min"] == "2026-10-13T18:30:00+00:00"
+        assert window["time_max"] == "2026-10-14T18:30:00+00:00"
+
+    async def test_a_calendar_failure_fails_the_read(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        monkeypatch.setattr(
+            context, "get_calendar_events", AsyncMock(side_effect=RuntimeError("proxy down"))
+        )
+
+        with pytest.raises(RuntimeError, match="proxy down"):
+            await context.gather_calendar(_USER, _clock(), days=1)
+
+
+class TestWeek:
+    async def test_the_week_is_counted_monday_to_sunday_by_owner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tz = ZoneInfo("Asia/Kolkata")
+
+        def done(title: str, local: str, *labels: str) -> TodoDocument:
+            doc = _todo(title, title, *labels)
+            doc.completed_at = datetime.fromisoformat(local).replace(tzinfo=tz).astimezone(UTC)
+            return doc
+
+        # Newest completion first, as list_completed_since returns them.
+        completed = AsyncMock(
+            return_value=[
+                done("Memo", "2026-10-18T09:00", GAIA_TRACKED_LABEL),
+                done("Gym", "2026-10-12T23:30"),
+                done("Deck", "2026-10-12T10:00", GAIA_TRACKED_LABEL),
+            ]
+        )
+        monkeypatch.setattr(context.todo_repository, "list_completed_since", completed)
+        monkeypatch.setattr(context, "gather_calendar", AsyncMock(return_value=[]))
+
+        week = await context.gather_week(_USER, _clock("2026-10-18T17:00:00"))
+
+        assert [(d.you, d.gaia) for d in week.days] == [
+            (1, 1),
+            (0, 0),
+            (0, 0),
+            (0, 0),
+            (0, 0),
+            (0, 0),
+            (0, 1),
+        ]
+        assert week.shipped == ["Gym"]
+        assert week.handled == ["Deck", "Memo"]
+        assert completed.await_args.kwargs["since"] == datetime(2026, 10, 11, 18, 30, tzinfo=UTC)

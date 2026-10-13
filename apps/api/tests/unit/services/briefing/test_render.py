@@ -175,26 +175,28 @@ class TestRenderHtmlToImage:
     async def test_png_capture_sends_no_quality(self, browser: Harness) -> None:
         await render_html_to_image("<html>hi</html>", ImageRenderOptions(quality=55))
 
-        assert browser.page.screenshot_calls == [{"full_page": True, "type": "png"}]
+        assert browser.page.screenshot_calls == [{"full_page": True, "type": "png", "clip": None}]
 
     async def test_jpeg_capture_forwards_the_quality(self, browser: Harness) -> None:
         await render_html_to_image(
             "<html>hi</html>", ImageRenderOptions(image_format="jpeg", quality=62)
         )
 
-        assert browser.page.screenshot_calls == [{"full_page": True, "type": "jpeg", "quality": 62}]
+        assert browser.page.screenshot_calls == [
+            {"full_page": True, "type": "jpeg", "quality": 62, "clip": None}
+        ]
 
     async def test_jpeg_capture_without_quality_passes_none(self, browser: Harness) -> None:
         await render_html_to_image("<html>hi</html>", ImageRenderOptions(image_format="jpeg"))
 
         assert browser.page.screenshot_calls == [
-            {"full_page": True, "type": "jpeg", "quality": None}
+            {"full_page": True, "type": "jpeg", "quality": None, "clip": None}
         ]
 
     async def test_viewport_only_capture_is_honoured(self, browser: Harness) -> None:
         await render_html_to_image("<html>hi</html>", ImageRenderOptions(full_page=False))
 
-        assert browser.page.screenshot_calls == [{"full_page": False, "type": "png"}]
+        assert browser.page.screenshot_calls == [{"full_page": False, "type": "png", "clip": None}]
 
     async def test_empty_html_still_renders(self, browser: Harness) -> None:
         result = await render_html_to_image("")

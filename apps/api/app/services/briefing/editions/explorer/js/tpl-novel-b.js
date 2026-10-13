@@ -498,8 +498,18 @@
         `</div>` +
         `<div class="t-librarycard__tally">` +
         `<span class="k">This card&rsquo;s record</span>` +
-        `Items returned ${s.done} &mdash; ${s.you} by your hand, ${s.gaia} by GAIA` +
-        ` &middot; Correspondence filed ${s.mail} &middot; Focus held ${esc(s.focus)}` +
+        [
+          s.done
+            ? `Items returned ${s.done}` +
+              (s.you || s.gaia
+                ? ` &mdash; ${[s.you ? `${s.you} by your hand` : "", s.gaia ? `${s.gaia} by GAIA` : ""].filter(Boolean).join(", ")}`
+                : "")
+            : "",
+          s.mail ? `Correspondence filed ${s.mail}` : "",
+          s.focus ? `Focus held ${esc(s.focus)}` : "",
+        ]
+          .filter(Boolean)
+          .join(" &middot; ") +
         `</div>` +
         `<p class="t-librarycard__deck">${esc(ed.deck)}</p>` +
         `<p class="t-librarycard__colophon">GAIA Circulation Desk &middot; Card N&ordm; ${ed.editionNo} &middot; ${esc(ed.dateLong)}</p>` +
@@ -812,11 +822,22 @@
           .join("") +
         `</div>`;
 
-      const stats =
-        `couverts ${s.done} &mdash; ${s.you} by your hand, ${s.gaia} by the kitchen` +
-        ` &middot; correspondence ${s.mail} &middot; ${esc(s.focus)
-          .replace(".5h", "&frac12; hours")
-          .replace(/(\d+)h$/, "$1 hours")} held`;
+      const stats = [
+        s.done
+          ? `couverts ${s.done}` +
+            (s.you || s.gaia
+              ? ` &mdash; ${[s.you ? `${s.you} by your hand` : "", s.gaia ? `${s.gaia} by the kitchen` : ""].filter(Boolean).join(", ")}`
+              : "")
+          : "",
+        s.mail ? `correspondence ${s.mail}` : "",
+        s.focus
+          ? `${esc(s.focus)
+              .replace(".5h", "&frac12; hours")
+              .replace(/(\d+)h$/, "$1 hours")} held`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" &middot; ");
 
       const frameBorder = frame.framed
         ? "--frame-border:1px solid var(--ink-soft);--frame-pad:clamp(40px,5vw,72px);--frame-pad-sm:28px 18px;"

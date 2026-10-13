@@ -65,6 +65,41 @@ class BriefingSection(BaseModel):
     items: list[BriefingItem] = Field(default_factory=list)
 
 
+class BriefingEvent(BaseModel):
+    """One calendar event on the user's own clock, read from their calendar."""
+
+    date: str  # user-local YYYY-MM-DD
+    start: str | None = None  # user-local "HH:MM"; None for an all-day event
+    title: str
+    location: str | None = None
+
+
+class BriefingTallies(BaseModel):
+    """Completed-todo counts behind the brief, computed from the todos store —
+    never parsed back out of stat labels, so every renderer agrees with them."""
+
+    done_by_you: int = Field(ge=0)
+    done_by_gaia: int = Field(ge=0)
+
+
+class BriefingWeekDay(BaseModel):
+    """Todos completed on one day of the week, by owner."""
+
+    you: int = Field(ge=0)
+    gaia: int = Field(ge=0)
+
+
+class BriefingWeek(BaseModel):
+    """The real week the weekly edition draws: Monday-to-Sunday completions,
+    what shipped, what GAIA handled, and the calendar ahead."""
+
+    days: list[BriefingWeekDay] = Field(min_length=7, max_length=7)
+    shipped: list[str] = Field(default_factory=list)
+    handled: list[str] = Field(default_factory=list)
+    ahead: list[BriefingEvent] = Field(default_factory=list)
+    hours_saved: int = Field(default=0, ge=0)
+
+
 class BriefingPayload(BaseModel):
     """The structured briefing the run emits and every channel renders."""
 
@@ -80,11 +115,25 @@ class BriefingPayload(BaseModel):
     template_family: str | None = Field(
         default=None,
         description=(
-            "The edition template family the weekday schedule assigned this "
-            "payload (EDITION_SCHEDULE). Persisted so the archive re-renders "
-            "identically forever; None on legacy rows."
+            "The edition template family this brief was drawn in. Persisted so "
+            "the archive re-renders identically forever; None on legacy rows."
         ),
     )
+    stamp_city: str | None = Field(
+        default=None,
+        description=(
+            "Air Mail editions only: the city stamp (a stamps/cities.json slug) "
+            "this brief carried. The Postmarks page reads it."
+        ),
+    )
+    generated_at: str | None = Field(
+        default=None, description='User-local generation time, e.g. "6:02 AM".'
+    )
+    calendar: list[BriefingEvent] = Field(
+        default_factory=list, description="Today's calendar events, in start order."
+    )
+    tallies: BriefingTallies | None = None
+    week: BriefingWeek | None = None
     message: str | None = Field(
         default=None,
         description=(

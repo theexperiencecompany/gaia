@@ -300,19 +300,19 @@ EXPLORER.register({
           ${sec("03", "Needs your call", c.decisions.length, c.decisions.map((it) => row(it.verb, "verb", it.label, it.note, null)).join(""))}
         </div>
         <div class="t-band__stats">
-          <div class="t-band__stat">
+          ${c.stats.done ? `<div class="t-band__stat">
             <div class="t-band__num">${c.stats.done}</div>
             <div class="t-band__slabel">Completed</div>
-            <div class="t-band__ssub">You ${c.stats.you} · GAIA ${c.stats.gaia}</div>
-          </div>
-          <div class="t-band__stat">
+            <div class="t-band__ssub">${[c.stats.you ? `You ${c.stats.you}` : "", c.stats.gaia ? `GAIA ${c.stats.gaia}` : ""].filter(Boolean).join(" · ")}</div>
+          </div>` : ""}
+          ${c.stats.mail ? `<div class="t-band__stat">
             <div class="t-band__num">${c.stats.mail}</div>
             <div class="t-band__slabel">Email handled</div>
-          </div>
-          <div class="t-band__stat">
+          </div>` : ""}
+          ${c.stats.focus ? `<div class="t-band__stat">
             <div class="t-band__num">${esc(c.stats.focus)}</div>
             <div class="t-band__slabel">Focus today</div>
-          </div>
+          </div>` : ""}
         </div>
         <div class="t-band__colophon">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA</div>
       </div>
@@ -549,19 +549,19 @@ EXPLORER.register({
         ${sec(2, "For your decision", c.decisions.length, c.decisions.map((it) => item(it.verb, "verb", it.label, it.note, null)).join(""))}
 
         <div class="t-playfair__stats">
-          <div class="t-playfair__stat">
+          ${c.stats.done ? `<div class="t-playfair__stat">
             <div class="t-playfair__snum">${c.stats.done}</div>
             <div class="t-playfair__slabel">Completed</div>
-            <div class="t-playfair__ssub">you ${c.stats.you}, gaia ${c.stats.gaia}</div>
-          </div>
-          <div class="t-playfair__stat">
+            <div class="t-playfair__ssub">${[c.stats.you ? `you ${c.stats.you}` : "", c.stats.gaia ? `gaia ${c.stats.gaia}` : ""].filter(Boolean).join(", ")}</div>
+          </div>` : ""}
+          ${c.stats.mail ? `<div class="t-playfair__stat">
             <div class="t-playfair__snum">${c.stats.mail}</div>
             <div class="t-playfair__slabel">Email handled</div>
-          </div>
-          <div class="t-playfair__stat">
+          </div>` : ""}
+          ${c.stats.focus ? `<div class="t-playfair__stat">
             <div class="t-playfair__snum">${esc(c.stats.focus)}</div>
             <div class="t-playfair__slabel">Focus today</div>
-          </div>
+          </div>` : ""}
         </div>
         <div class="t-playfair__colophon">Edition № ${ed.editionNo} · Set by GAIA at ${esc(ed.time)}</div>
       </div>
@@ -901,7 +901,7 @@ EXPLORER.register({
             <div class="t-postal__addr">
               <div class="lab">TO</div>
               <div class="to">YOU</div>
-              <div class="re">Re: Your ${esc(ed.weekday)}</div>
+              <div class="re">Re: ${esc(ed.headline)}</div>
               <div class="meta">Edition No. ${ed.editionNo} · ${esc(ed.dateLong)}</div>
               <div class="under"></div>
             </div>
@@ -940,9 +940,9 @@ EXPLORER.register({
               <h3 class="t-postal__blabel">While you slept</h3>
               ${c.overnight.map((it) => li(clockAMPM(it.t24), null, it.label, it.note, it.tag)).join("")}
               <div class="t-postal__stats">
-                <span class="s"><b>${c.stats.done}</b> done <span class="nt">(you ${c.stats.you}, gaia ${c.stats.gaia})</span></span>
-                <span class="s"><b>${c.stats.mail}</b> mail</span>
-                <span class="s"><b>${esc(c.stats.focus)}</b> focus</span>
+                ${c.stats.done ? `<span class="s"><b>${c.stats.done}</b> done <span class="nt">(${[c.stats.you ? `you ${c.stats.you}` : "", c.stats.gaia ? `gaia ${c.stats.gaia}` : ""].filter(Boolean).join(", ")})</span></span>` : ""}
+                ${c.stats.mail ? `<span class="s"><b>${c.stats.mail}</b> mail</span>` : ""}
+                ${c.stats.focus ? `<span class="s"><b>${esc(c.stats.focus)}</b> focus</span>` : ""}
               </div>
             </div>
           </div>
