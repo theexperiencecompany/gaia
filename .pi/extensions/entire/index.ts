@@ -7,8 +7,8 @@
 //
 // ENTIRE_CMD is replaced at install time by Entire's installer.
 
-import { execFile } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { execFile } from "node:child_process";
 
 export default function (pi: ExtensionAPI) {
   // A Pi subagent is a nested `pi` process (subagent extensions spawn one per task
@@ -22,20 +22,13 @@ export default function (pi: ExtensionAPI) {
   const nested = Boolean(process.env.ENTIRE_PI_NESTED);
   process.env.ENTIRE_PI_NESTED = "1";
 
-  const ENTIRE_CMD = "entire";
-  let pendingSkillEvents: Array<{
-    skill_name: string;
-    invocation: string;
-    timestamp: string;
-  }> = [];
+  const ENTIRE_CMD = 'entire';
+  let pendingSkillEvents: Array<{ skill_name: string; invocation: string; timestamp: string }> = [];
 
   // fireHook pipes data to `entire hooks pi <hookName>` and resolves with the
   // hook's stdout (empty string on any failure). Most hooks ignore the return;
   // before_agent_start uses it to apply a model-context injection.
-  function fireHook(
-    hookName: string,
-    data: Record<string, unknown>,
-  ): Promise<string> {
+  function fireHook(hookName: string, data: Record<string, unknown>): Promise<string> {
     return new Promise((resolve) => {
       try {
         const child = execFile(
@@ -61,10 +54,7 @@ export default function (pi: ExtensionAPI) {
       if (!trimmed.startsWith("{")) continue;
       try {
         const parsed = JSON.parse(trimmed) as { inject_context?: unknown };
-        if (
-          typeof parsed.inject_context === "string" &&
-          parsed.inject_context.length > 0
-        ) {
+        if (typeof parsed.inject_context === "string" && parsed.inject_context.length > 0) {
           return parsed.inject_context;
         }
       } catch {
@@ -74,15 +64,10 @@ export default function (pi: ExtensionAPI) {
     return null;
   }
 
-  function parseSkillInvocation(
-    text: string,
-  ): { skill_name: string; invocation: string } | null {
-    const match = text
-      .trimStart()
-      .match(/^\/skill:([a-z0-9][a-z0-9-]{0,63})(?:\s|$)/);
+  function parseSkillInvocation(text: string): { skill_name: string; invocation: string } | null {
+    const match = text.trimStart().match(/^\/skill:([a-z0-9][a-z0-9-]{0,63})(?:\s|$)/);
     if (!match) return null;
-    const invocation =
-      text.trimStart().split(/\s+/, 1)[0] ?? `/skill:${match[1]}`;
+    const invocation = text.trimStart().split(/\s+/, 1)[0] ?? `/skill:${match[1]}`;
     return { skill_name: match[1], invocation };
   }
 
@@ -97,13 +82,10 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event) => {
     if (event.toolName !== "bash") return;
     const input = event.input as { command?: string };
-    if (
-      typeof input.command !== "string" ||
-      input.command.includes("GIT_TERMINAL_PROMPT=")
-    ) {
+    if (typeof input.command !== "string" || input.command.includes("GIT_TERMINAL_PROMPT=")) {
       return;
     }
-    input.command = `export GIT_TERMINAL_PROMPT=0\n${input.command}`;
+    input.command = "export GIT_TERMINAL_PROMPT=0\n" + input.command;
   });
 
   // Everything below forwards session lifecycle to Entire, which only the
@@ -113,10 +95,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("input", async (event) => {
     const skill = parseSkillInvocation(event.text);
     if (skill) {
-      pendingSkillEvents.push({
-        ...skill,
-        timestamp: new Date().toISOString(),
-      });
+      pendingSkillEvents.push({ ...skill, timestamp: new Date().toISOString() });
     }
     return { action: "continue" };
   });
