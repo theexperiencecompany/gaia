@@ -185,10 +185,13 @@ export async function checkPortConflicts(
 }
 
 // ---------------------------------------------------------------------------
-// Setup readiness (/api/v1/setup/status)
+// Setup readiness (/api/v1/setup/status + /api/v1/setup/catalog)
 // ---------------------------------------------------------------------------
 
-import type { SetupStatusResponse } from "@gaia/shared/api/generated";
+import type {
+  ProviderCatalogResponse,
+  SetupStatusResponse,
+} from "@gaia/shared/api/generated";
 
 /** The public `/setup/status` payload, straight from the generated contract. */
 export type SetupStatusPayload = SetupStatusResponse;
@@ -205,14 +208,13 @@ function readinessFix(webPort: number): string {
   return `Open http://localhost:${webPort}/setup in your browser and complete first-run setup.`;
 }
 
-/** Providers that can serve chat — the same four the server's _needs_setup counts. */
-const LLM_PROVIDER_KEYS = ["openrouter", "gemini", "ollama", "custom"] as const;
-
+/** llmProviderKeys is the catalog's chat-capable set — the one the server's _needs_setup counts. */
 export function evaluateSetupReadiness(
   payload: SetupStatusPayload,
+  llmProviderKeys: readonly string[],
   webPort: number,
 ): SetupReadinessItem[] {
-  const llmConfigured = LLM_PROVIDER_KEYS.some(
+  const llmConfigured = llmProviderKeys.some(
     (key) => payload.providers?.[key]?.configured === true,
   );
 
@@ -387,6 +389,21 @@ export async function checkWebReachable(webPort: number): Promise<CheckResult> {
   }
 }
 
+/** A public setup endpoint's JSON body, or why it could not be read. */
+async function readSetupEndpoint<T>(
+  apiPort: number,
+  endpoint: "status" | "catalog",
+): Promise<{ data: T } | { detail: string }> {
+  const path = `/api/v1/setup/${endpoint}`;
+  try {
+    const res = await fetchWithTimeout(`http://localhost:${apiPort}${path}`);
+    if (!res.ok) return { detail: `HTTP ${res.status} from ${path}` };
+    return { data: (await res.json()) as T };
+  } catch {
+    return { detail: `Could not read setup ${endpoint}` };
+  }
+}
+
 /**
  * Setup readiness — one warning-level result per unconfigured item. Skipped
  * when the API did not answer (the API health failure already explains why).
@@ -406,28 +423,22 @@ export async function checkSetupReadiness(options: {
     return [{ ...base, state: "skipped", detail: "API unreachable" }];
   }
 
-  let payload: SetupStatusPayload;
-  try {
-    const res = await fetchWithTimeout(
-      `http://localhost:${options.apiPort}/api/v1/setup/status`,
-    );
-    if (!res.ok) {
-      return [
-        {
-          ...base,
-          state: "skipped",
-          detail: `HTTP ${res.status} from /api/v1/setup/status`,
-        },
-      ];
-    }
-    payload = (await res.json()) as SetupStatusPayload;
-  } catch {
-    return [
-      { ...base, state: "skipped", detail: "Could not read setup status" },
-    ];
+  const [status, catalog] = await Promise.all([
+    readSetupEndpoint<SetupStatusPayload>(options.apiPort, "status"),
+    readSetupEndpoint<ProviderCatalogResponse>(options.apiPort, "catalog"),
+  ]);
+  if ("detail" in status) {
+    return [{ ...base, state: "skipped", detail: status.detail }];
+  }
+  if ("detail" in catalog) {
+    return [{ ...base, state: "skipped", detail: catalog.detail }];
   }
 
-  const items = evaluateSetupReadiness(payload, options.webPort);
+  const items = evaluateSetupReadiness(
+    status.data,
+    catalog.data.llm_provider_keys,
+    options.webPort,
+  );
 
   if (items.every((item) => item.configured)) {
     return [{ ...base, state: "ok", detail: "All setup items configured" }];

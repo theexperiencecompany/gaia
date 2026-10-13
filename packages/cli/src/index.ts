@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../libs/shared/ts/src/cli/command-manifest.js";
 import { runBackupCommand } from "./commands/backup/handler.js";
 import { bridgeCommand } from "./commands/bridge/command.js";
@@ -16,6 +16,7 @@ import { runStop } from "./commands/stop/handler.js";
 import { runLogs } from "./commands/stream-logs/handler.js";
 import { runUp } from "./commands/up/handler.js";
 import { runUpdate } from "./commands/update/handler.js";
+import { LLM_PROVIDERS, type LlmProvider } from "./lib/answers.js";
 import { CLI_VERSION } from "./lib/version.js";
 
 const program = new Command();
@@ -24,7 +25,8 @@ const program = new Command();
 interface UpCliOptions {
   yes?: boolean;
   llmKey?: string;
-  llmProvider?: string;
+  /** Restricted to LLM_PROVIDERS by the option's choices. */
+  llmProvider?: LlmProvider;
   apiPort?: number;
   webPort?: number;
   pull?: boolean;
@@ -55,9 +57,11 @@ program
   .description(CLI_COMMAND_DESCRIPTIONS.up)
   .option("--yes", "Accept all defaults (no prompts)")
   .option("--llm-key <key>", "LLM API key for first boot")
-  .option(
-    "--llm-provider <provider>",
-    "LLM provider for --llm-key: openrouter, gemini, or custom",
+  .addOption(
+    new Option(
+      "--llm-provider <provider>",
+      "LLM provider for --llm-key",
+    ).choices(LLM_PROVIDERS),
   )
   .option("--api-port <port>", "Host port for the API", Number.parseInt)
   .option("--web-port <port>", "Host port for the web app", Number.parseInt)
@@ -70,16 +74,7 @@ program
   )
   .action(async (options: UpCliOptions) => {
     const { start, ...rest } = options;
-    await runUp({
-      ...rest,
-      llmProvider:
-        rest.llmProvider === "openrouter" ||
-        rest.llmProvider === "gemini" ||
-        rest.llmProvider === "custom"
-          ? rest.llmProvider
-          : undefined,
-      noStart: start === false,
-    });
+    await runUp({ ...rest, noStart: start === false });
   });
 
 program

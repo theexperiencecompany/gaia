@@ -1167,7 +1167,7 @@ def _gemini_lane() -> ModelLane:
 def _next_is_gemini() -> Any:
     return patch.object(
         lane_module,
-        "next_fallback_provider",
+        "chat_route",
         lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
     )
 
@@ -1190,7 +1190,7 @@ class TestFallbackPreparation:
             AgentConfigurable, {LANE_FIELD_ID: _openrouter_lane().to_configurable()}
         )
 
-        with patch.object(lane_module, "next_fallback_provider", lambda _current: None):
+        with patch.object(lane_module, "chat_route", lambda _current: None):
             assert _prepare_fallback(_make_llm(), [dummy_tool_a], configurable) is None
 
     def test_the_fallback_targets_the_next_provider_with_the_same_tools(self) -> None:
@@ -1391,7 +1391,7 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
         )
 
         with (
-            patch.object(lane_module, "next_fallback_provider", lambda _current: None),
+            patch.object(lane_module, "chat_route", lambda _current: None),
             patch(
                 "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
                 new=AsyncMock(return_value=AIMessage(content="ok")),
@@ -2308,7 +2308,7 @@ class TestTheFallbackTheModelNodeHandsTheClient:
     def _next_is_gemini(self) -> Any:
         return patch.object(
             lane_module,
-            "next_fallback_provider",
+            "chat_route",
             lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
         )
 
@@ -2382,7 +2382,7 @@ class TestTheFallbackTheModelNodeHandsTheClient:
         builder = self._builder(llm)
 
         with (
-            patch.object(lane_module, "next_fallback_provider", lambda _current: None),
+            patch.object(lane_module, "chat_route", lambda _current: None),
             patch(
                 "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
                 new=AsyncMock(return_value=AIMessage(content="ok")),

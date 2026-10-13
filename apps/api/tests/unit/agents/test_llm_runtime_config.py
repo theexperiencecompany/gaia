@@ -14,11 +14,8 @@ import pytest
 from app.agents.llm import client as client_module
 from app.agents.llm.client import (
     NO_PROVIDER_CONFIGURED_MESSAGE,
-    PROVIDER_MODELS,
-    PROVIDER_PRIORITY,
     _build_default_llm,
-    _build_memory_llm,
-    _build_vision_llm,
+    _build_gemini_one_shot,
     _get_available_providers,
     _sim_llm,
     init_custom_llm,
@@ -97,6 +94,7 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", None, raising=False)
     monkeypatch.setattr(client_module.settings, "OPENROUTER_BASE_URL", None, raising=False)
     monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None, raising=False)
+    monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", None, raising=False)
     monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_API_KEY", None, raising=False)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_BASE_URL", None, raising=False)
@@ -104,32 +102,17 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch):
     client_module._runtime_configs.clear()
     _sim_llm.cache_clear()
     _build_default_llm.cache_clear()
-    _build_vision_llm.cache_clear()
-    _build_memory_llm.cache_clear()
+    _build_gemini_one_shot.cache_clear()
     yield
     client_module._runtime_configs.clear()
     _sim_llm.cache_clear()
     _build_default_llm.cache_clear()
-    _build_vision_llm.cache_clear()
-    _build_memory_llm.cache_clear()
+    _build_gemini_one_shot.cache_clear()
 
 
 # ---------------------------------------------------------------------------
 # priority tables
 # ---------------------------------------------------------------------------
-
-
-class TestPriorityTables:
-    def test_priority_slots(self) -> None:
-        assert PROVIDER_PRIORITY == {
-            1: LLMProviderName.OPENROUTER,
-            2: LLMProviderName.GEMINI,
-            3: LLMProviderName.OLLAMA,
-            4: LLMProviderName.CUSTOM,
-        }
-
-    def test_ollama_default_model(self) -> None:
-        assert PROVIDER_MODELS[LLMProviderName.OLLAMA] == "llama3.2"
 
 
 # ---------------------------------------------------------------------------
@@ -411,13 +394,14 @@ class TestResetAuxLlmCaches:
 
         resolve_model(ModelUse.VISION)
         resolve_model(ModelUse.MEMORY)
-        assert len(constructions) == 2  # cached after first call each
+        # Both run the same Gemini model, so they share one cached client.
+        assert len(constructions) == 1
 
         reset_aux_llm_caches()
         client_module._runtime_configs["gemini"] = _store_config(api_key="g-key")
         resolve_model(ModelUse.VISION)
         resolve_model(ModelUse.MEMORY)
-        assert len(constructions) == 4  # both rebuilt
+        assert len(constructions) == 2  # rebuilt
 
     def test_snapshot_is_dropped_so_stale_store_keys_never_serve(self) -> None:
         client_module._runtime_configs["openrouter"] = _store_config(api_key="sk-stale")
@@ -428,20 +412,20 @@ class TestResetAuxLlmCaches:
 
 
 # ---------------------------------------------------------------------------
-# aux-lane factories keep their env-var-naming errors
+# one-shot factories name the role nothing can serve
 # ---------------------------------------------------------------------------
 
 
-class TestAuxLaneErrorsPreserved:
-    def test_default_llm_names_env_var(self) -> None:
-        with pytest.raises(LLMNotConfiguredError, match="OPENROUTER_API_KEY"):
+class TestOneShotNotConfiguredErrors:
+    def test_helper_names_its_role(self) -> None:
+        with pytest.raises(LLMNotConfiguredError, match="helper"):
             resolve_model()
 
-    def test_vision_llm_names_env_var(self) -> None:
-        with pytest.raises(LLMNotConfiguredError, match="GOOGLE_API_KEY"):
+    def test_vision_names_its_role(self) -> None:
+        with pytest.raises(LLMNotConfiguredError, match="vision"):
             resolve_model(ModelUse.VISION)
 
     def test_memory_lane_reports_availability(self) -> None:
         assert memory_lane_available() is False
-        with pytest.raises(LLMNotConfiguredError, match="GOOGLE_API_KEY"):
+        with pytest.raises(LLMNotConfiguredError, match="memory"):
             resolve_model(ModelUse.MEMORY)

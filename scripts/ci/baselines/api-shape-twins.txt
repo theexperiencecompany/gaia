@@ -224,5 +224,3 @@ libs/shared/ts/src/types/workflow.ts:ContentCreator=AuthorDetails
 libs/shared/ts/src/types/workflow.ts:CreateWorkflowPayload=SelectedWorkflowDataInput
 libs/shared/ts/src/workflows/triggers.ts:TriggerFieldSchema=TriggerConfigFieldSchema
 libs/shared/ts/src/workflows/triggers.ts:TriggerSchema=WorkflowTriggerResponse
-apps/web/src/features/settings/components/ProvidersSettings.tsx:ProviderRow=ProviderPreset
-apps/web/src/features/setup-wizard/constants.ts:CustomPreset=ProviderPreset

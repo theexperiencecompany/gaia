@@ -14,6 +14,10 @@ from app.services.image_service import (
     image_to_text_endpoint,
 )
 from app.utils.chat_utils import PromptResponse
+from app.utils.image_utils import (
+    IMAGE_GENERATION_NOT_CONFIGURED_MESSAGE,
+    ImageGenerationNotConfiguredError,
+)
 
 # ---------------------------------------------------------------------------
 # generate_public_id
@@ -307,20 +311,21 @@ class TestApiGenerateImagePins:
             "Image uploaded successfully. URL", image_url="https://cdn.example.com/img.png"
         )
 
-    async def test_dict_error_result_names_the_missing_image_in_the_cause(self):
+    async def test_an_unconfigured_generator_is_a_503_naming_the_fix(self):
         with (
             patch(
                 "app.services.image_service.generate_image",
                 new_callable=AsyncMock,
-                return_value={"no_image_key": "data"},
+                side_effect=ImageGenerationNotConfiguredError(
+                    IMAGE_GENERATION_NOT_CONFIGURED_MESSAGE
+                ),
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await api_generate_image("test", improve_prompt=False)
 
-        assert exc_info.value.status_code == 500
-        assert isinstance(exc_info.value.__cause__, ValueError)
-        assert "Failed to generate image" in str(exc_info.value.__cause__)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail == IMAGE_GENERATION_NOT_CONFIGURED_MESSAGE
 
     async def test_improved_prompt_carries_the_refined_text(self):
         with (

@@ -60,6 +60,20 @@ function okResponse(payload?: unknown) {
   };
 }
 
+/** The catalog's chat-capable providers, as GET /setup/catalog serves them. */
+const LLM_KEYS = ["openrouter", "gemini", "openai", "ollama", "custom"];
+
+/** Serve a /setup/status payload plus the catalog its LLM readiness is read against. */
+function stubSetupEndpoints(status: unknown): void {
+  stubFetch(async (url) =>
+    okResponse(
+      url.endsWith("/api/v1/setup/catalog")
+        ? { providers: {}, custom_presets: {}, llm_provider_keys: LLM_KEYS }
+        : status,
+    ),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
@@ -132,6 +146,7 @@ describe("evaluateSetupReadiness", () => {
         billing_enabled: false,
         providers: { openrouter: { configured: false, source: "unset" } },
       },
+      LLM_KEYS,
       3000,
     );
 
@@ -161,6 +176,7 @@ describe("evaluateSetupReadiness", () => {
           tavily: { configured: false, source: "unset" },
         },
       },
+      LLM_KEYS,
       3000,
     );
     expect(items.every((i) => i.configured)).toBe(true);
@@ -179,6 +195,7 @@ describe("evaluateSetupReadiness", () => {
           openrouter: { configured: false, source: "unset" },
         },
       },
+      LLM_KEYS,
       3000,
     );
     expect(
@@ -198,6 +215,7 @@ describe("evaluateSetupReadiness", () => {
         billing_enabled: false,
         providers: { tavily: { configured: true, source: "stored" } },
       },
+      LLM_KEYS,
       3000,
     );
     expect(
@@ -218,6 +236,7 @@ describe("evaluateSetupReadiness", () => {
         billing_enabled: false,
         providers: { openrouter: { configured: true, source: "stored" } },
       },
+      LLM_KEYS,
       3000,
     );
 
@@ -235,6 +254,7 @@ describe("evaluateSetupReadiness", () => {
         billing_enabled: false,
         providers: {},
       },
+      LLM_KEYS,
       3000,
     );
 
@@ -417,16 +437,14 @@ describe("checkWebReachable", () => {
 
 describe("checkSetupReadiness", () => {
   it("emits one warning-level fail per unconfigured item", async () => {
-    stubFetch(async () =>
-      okResponse({
-        auth_mode: "workos",
-        needs_setup: true,
-        plans_seeded: false,
-        has_admin_account: true,
-        billing_enabled: false,
-        providers: {},
-      }),
-    );
+    stubSetupEndpoints({
+      auth_mode: "workos",
+      needs_setup: true,
+      plans_seeded: false,
+      has_admin_account: true,
+      billing_enabled: false,
+      providers: {},
+    });
 
     const results = await checkSetupReadiness({
       apiHealthy: true,
@@ -446,16 +464,14 @@ describe("checkSetupReadiness", () => {
   });
 
   it("passes once every setup item is configured", async () => {
-    stubFetch(async () =>
-      okResponse({
-        auth_mode: "workos",
-        needs_setup: false,
-        plans_seeded: true,
-        has_admin_account: true,
-        billing_enabled: true,
-        providers: { openrouter: { configured: true, source: "stored" } },
-      }),
-    );
+    stubSetupEndpoints({
+      auth_mode: "workos",
+      needs_setup: false,
+      plans_seeded: true,
+      has_admin_account: true,
+      billing_enabled: true,
+      providers: { openrouter: { configured: true, source: "stored" } },
+    });
 
     const results = await checkSetupReadiness({
       apiHealthy: true,
@@ -471,16 +487,14 @@ describe("checkSetupReadiness", () => {
     // The reported bug: every self-host install showed a permanent
     // "[warn] Billing enabled is not configured" because the backend reports
     // billing_enabled only under ENV=production.
-    stubFetch(async () =>
-      okResponse({
-        auth_mode: "local",
-        needs_setup: false,
-        plans_seeded: true,
-        has_admin_account: true,
-        billing_enabled: false,
-        providers: { openrouter: { configured: true, source: "stored" } },
-      }),
-    );
+    stubSetupEndpoints({
+      auth_mode: "local",
+      needs_setup: false,
+      plans_seeded: true,
+      has_admin_account: true,
+      billing_enabled: false,
+      providers: { openrouter: { configured: true, source: "stored" } },
+    });
 
     const results = await checkSetupReadiness({
       apiHealthy: true,
@@ -491,6 +505,46 @@ describe("checkSetupReadiness", () => {
     expect(results).toHaveLength(1);
     expect(results[0]?.state).toBe("ok");
     expect(results[0]?.label).toBe("Setup readiness");
+  });
+
+  it("counts an OpenAI-only instance as LLM-ready per the served catalog", async () => {
+    stubSetupEndpoints({
+      auth_mode: "local",
+      needs_setup: false,
+      plans_seeded: true,
+      has_admin_account: true,
+      billing_enabled: false,
+      providers: { openai: { configured: true, source: "stored" } },
+    });
+
+    const results = await checkSetupReadiness({
+      apiHealthy: true,
+      apiPort: 8000,
+      webPort: 3000,
+    });
+
+    expect(results.map((r) => r.state)).toEqual(["ok"]);
+  });
+
+  it("skips naming the catalog endpoint when it cannot be read", async () => {
+    stubFetch(async (url) =>
+      url.endsWith("/catalog")
+        ? { ok: false, status: 404, json: async () => ({}) }
+        : okResponse({ providers: {} }),
+    );
+
+    const results = await checkSetupReadiness({
+      apiHealthy: true,
+      apiPort: 8000,
+      webPort: 3000,
+    });
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        state: "skipped",
+        detail: "HTTP 404 from /api/v1/setup/catalog",
+      }),
+    ]);
   });
 
   it("skips when the API health check already failed", async () => {

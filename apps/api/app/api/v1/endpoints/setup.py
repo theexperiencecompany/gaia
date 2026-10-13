@@ -12,13 +12,13 @@ Every route except ``GET /status`` requires the instance administrator (see
 
 Caller-supplied and stored base_urls are SSRF-guarded at both save and probe
 time: a URL is accepted only when every address its hostname resolves to is
-public, with one exception — the ``ollama`` provider is expected to run
-locally (``http://host.docker.internal:11434``, ``http://localhost:11434``,
-etc.) so its base_url is allowed to be private/link-local and skips the
-public-IP DNS check. ``OLLAMA_BASE_URL`` server-side env still works as a
-fallback for deployments that prefer it.
+public, except that ``ollama`` (always) and any custom endpoint outside
+production may be private (localhost, ``host.docker.internal``, a LAN host) —
+metadata and link-local addresses stay refused. ``OLLAMA_BASE_URL``
+server-side env still works as a fallback for deployments that prefer it.
 """
 
+import ipaddress
 from typing import Annotated, Literal, TypedDict, cast
 from urllib.parse import urlparse
 
@@ -32,6 +32,7 @@ from app.config.settings import settings
 from app.constants.llm import OPENROUTER_MODELS_URL
 from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
+    LLM_PROVIDER_PRIORITY,
     PRESETS,
     CredentialSource,
     ProviderPreset,
@@ -55,7 +56,7 @@ router = APIRouter(tags=["Setup"])
 
 # Providers that constitute a working LLM lane for needs_setup. The search,
 # tool, and integration keys configured here too cannot serve chat.
-_LLM_PROVIDER_KEYS = ("openrouter", "gemini", "ollama", "custom")
+_LLM_PROVIDER_KEYS: tuple[str, ...] = tuple(p.value for p in LLM_PROVIDER_PRIORITY)
 
 # Providers whose outbound traffic targets a caller-configurable base_url — the
 # only stored base_urls the SSRF guard applies to (openrouter/gemini dial
@@ -65,6 +66,10 @@ _BASE_URL_PROVIDERS = frozenset({"custom", "ollama"})
 _PRESET_NAMES = Literal["opencode", "nous"]
 
 _GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+_CANONICAL_MODELS_URLS: dict[str, str] = {
+    "openrouter": OPENROUTER_MODELS_URL,
+    "openai": "https://api.openai.com/v1/models",
+}
 _PROBE_TIMEOUT_SECONDS = 10.0
 
 _PRIVATE_URL_HINT = (
@@ -318,7 +323,7 @@ async def put_provider(
     if provider in _BASE_URL_PROVIDERS:
         # Only these providers' endpoints drive outbound traffic; openrouter and
         # gemini dial canonical URLs and ignore whatever is stored.
-        await _assert_url_safe(base_url, allow_private=provider == "ollama")
+        await _assert_url_safe(base_url, allow_private=_allows_private_endpoint(provider))
     await upsert_provider_config(
         provider,
         api_key=api_key,
@@ -384,6 +389,24 @@ async def test_provider(
     return ProviderTestResponse(ok=ok, detail=detail, models=models)
 
 
+def _allows_private_endpoint(provider: str) -> bool:
+    """Whether a provider's base_url may be a private address.
+
+    Ollama always may; outside production any admin-configured endpoint may too,
+    so a LAN vLLM or LM Studio server works. Production keeps every custom
+    endpoint public.
+    """
+    return provider == "ollama" or settings.ENV != "production"
+
+
+def _is_link_local(hostname: str) -> bool:
+    """Whether hostname is a literal link-local IP (169.254/16, fe80::/10), the cloud-metadata range."""
+    try:
+        return ipaddress.ip_address(hostname).is_link_local
+    except ValueError:
+        return False
+
+
 async def _assert_url_safe(base_url: str | None, *, allow_private: bool = False) -> None:
     """Refuse ``base_url`` values this router must not send requests to (SSRF).
 
@@ -400,13 +423,10 @@ async def _assert_url_safe(base_url: str | None, *, allow_private: bool = False)
     private, and public-looking names answering with private addresses
     (``127.0.0.1.nip.io``), are all rejected. Unresolvable hosts fail closed.
 
-    ``allow_private``: when True (the ``ollama`` provider) the URL may point at
-    a private/link-local address such as ``host.docker.internal`` or
-    ``localhost`` — only the scheme/host/credential/metadata checks are
-    enforced, and the public-IP DNS validation is skipped. Every other
-    provider (``custom``) still requires a public endpoint — expose it behind a
-    public URL or set ``OLLAMA_BASE_URL`` server-side for trusted env config
-    that never passes through this guard.
+    ``allow_private`` (see ``_allows_private_endpoint``): the URL may point at
+    a private address such as ``host.docker.internal``, ``localhost`` or a LAN
+    host — only the scheme/host/credential/metadata/link-local checks are
+    enforced, and the public-IP DNS validation is skipped.
     """
     if not base_url:
         return
@@ -415,16 +435,16 @@ async def _assert_url_safe(base_url: str | None, *, allow_private: bool = False)
         raise HTTPException(status_code=422, detail="base_url must be an http(s) URL")
     if parsed.username or parsed.password or (parsed.port and parsed.port in (0, 1)):
         raise HTTPException(status_code=422, detail="base_url must not embed credentials")
-    if parsed.hostname in ("169.254.169.254", "metadata.google.internal"):
+    if parsed.hostname in ("169.254.169.254", "metadata.google.internal") or _is_link_local(
+        parsed.hostname
+    ):
         raise HTTPException(
             status_code=422,
             detail=f"{_PRIVATE_URL_HINT} (refusing metadata address {parsed.hostname})",
         )
 
     if allow_private:
-        # Local Ollama runs on the host or loopback: skip the public-IP DNS check.
-        # Scheme, host, and credential checks above still apply, so malformed
-        # or metadata URLs are still rejected.
+        # Scheme, host, credential and metadata checks above still apply.
         return
 
     try:
@@ -446,7 +466,7 @@ async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list
     provider is exempt from the public-IP check (see ``_assert_url_safe``).
     """
     if provider in _BASE_URL_PROVIDERS:
-        await _assert_url_safe(config["base_url"], allow_private=provider == "ollama")
+        await _assert_url_safe(config["base_url"], allow_private=_allows_private_endpoint(provider))
     try:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
             if provider == "gemini":
@@ -463,12 +483,12 @@ async def _probe_openai_wire(
     client: httpx.AsyncClient,
     config: ProviderConfig,
 ) -> tuple[bool, str, list[str]]:
-    # OpenRouter needs no configurable endpoint — its models URL is canonical;
-    # every other OpenAI-wire provider probes its configured base URL.
-    if provider == "openrouter":
+    # OpenRouter and OpenAI need no configurable endpoint — their models URLs are
+    # canonical; every other OpenAI-wire provider probes its configured base URL.
+    if canonical_url := _CANONICAL_MODELS_URLS.get(provider):
         if not config["api_key"]:
-            return False, "No OpenRouter API key configured", []
-        url = OPENROUTER_MODELS_URL
+            return False, f"No {provider} API key configured", []
+        url = canonical_url
     else:
         base_url = config["base_url"]
         if not base_url:

@@ -21,6 +21,7 @@ import respx
 
 from app.api.v1.dependencies.instance_admin import require_instance_admin
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.endpoints import setup as setup_endpoint
 from app.api.v1.endpoints.setup import router as setup_router
 from app.config.settings import settings
 from app.constants.llm import OPENROUTER_MODELS_URL
@@ -197,6 +198,19 @@ class TestStatus:
         resp = await client.get(f"{API}/status")
         assert resp.json()["needs_setup"] is expected
 
+    async def test_openai_alone_satisfies_llm_requirement(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        provider_service.configs["openai"] = {
+            "api_key": SECRET_KEY,
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
+        resp = await client.get(f"{API}/status")
+        assert resp.json()["needs_setup"] is False
+
     async def test_tavily_alone_does_not_satisfy_llm_requirement(self, client: AsyncClient) -> None:
         provider_service.configs["tavily"] = {
             "api_key": "tvly-key",
@@ -284,7 +298,7 @@ class TestProviderCatalog:
 
     async def test_llm_keys_mirror_the_needs_setup_rule(self, anon_client: AsyncClient) -> None:
         body = (await anon_client.get(f"{API}/catalog")).json()
-        assert body["llm_provider_keys"] == ["openrouter", "gemini", "ollama", "custom"]
+        assert body["llm_provider_keys"] == ["openrouter", "gemini", "openai", "ollama", "custom"]
 
     async def test_catalog_is_public_without_auth(self, anon_client: AsyncClient) -> None:
         # The wizard renders cards before an admin session exists; the catalog
@@ -395,6 +409,20 @@ class TestProviderProbe:
             )
         assert route.called
         assert resp.json()["ok"] is True
+
+    async def test_openai_uses_canonical_models_url(self, client: AsyncClient) -> None:
+        with respx.mock:
+            route = respx.get("https://api.openai.com/v1/models").mock(
+                return_value=httpx.Response(200, json={"data": [{"id": "gpt-5.6-luna"}]})
+            )
+            resp = await client.post(f"{API}/providers/openai/test", json={"api_key": SECRET_KEY})
+        assert route.called
+        assert route.calls.last.request.headers["Authorization"] == f"Bearer {SECRET_KEY}"
+        assert resp.json() == {
+            "ok": True,
+            "detail": "Connected to openai",
+            "models": ["gpt-5.6-luna"],
+        }
 
     async def test_stored_key_never_sent_to_caller_supplied_base_url(
         self, client: AsyncClient
@@ -542,6 +570,23 @@ class TestProviderProbe:
 class TestSsrfGuard:
     """Resolve every hostname then validate every answer; string checks alone missed shorthands."""
 
+    @pytest.fixture(autouse=True)
+    def _public_only_policy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Apply production's policy: the routes 403 in production, so the guard is driven under it here."""
+        monkeypatch.setattr(
+            setup_endpoint, "_allows_private_endpoint", lambda provider: provider == "ollama"
+        )
+
+    @pytest.mark.parametrize("provider", ["custom", "openrouter"])
+    def test_production_keeps_non_ollama_endpoints_public(
+        self, monkeypatch: pytest.MonkeyPatch, provider: str
+    ) -> None:
+        monkeypatch.undo()
+        monkeypatch.setattr(settings, "ENV", "production")
+
+        assert setup_endpoint._allows_private_endpoint(provider) is False
+        assert setup_endpoint._allows_private_endpoint("ollama") is True
+
     async def test_decimal_ip_shorthand_resolving_private_is_rejected(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -643,6 +688,34 @@ class TestSsrfGuard:
             resp = await client.post(f"{API}/providers/custom/test", json={})
         assert resp.status_code == 422
         assert metadata.called is False
+
+
+class TestPrivateEndpointsOffProduction:
+    """A home-lab vLLM or LM Studio on the LAN is a normal self-host setup; metadata stays refused."""
+
+    @pytest.fixture(autouse=True)
+    def _selfhost(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+
+    async def test_put_allows_a_lan_custom_endpoint(self, client: AsyncClient) -> None:
+        resp = await client.put(
+            f"{API}/providers/custom",
+            json={"api_key": SECRET_KEY, "base_url": "http://192.168.1.10:8000/v1", "model": "m"},
+        )
+        assert resp.status_code == 200
+        assert provider_service.configs["custom"]["base_url"] == "http://192.168.1.10:8000/v1"
+
+    @pytest.mark.parametrize("provider", ["custom", "ollama"])
+    @pytest.mark.parametrize("host", ["169.254.10.10", "[fe80::1]"])
+    async def test_link_local_stays_refused(
+        self, client: AsyncClient, provider: str, host: str
+    ) -> None:
+        resp = await client.put(
+            f"{API}/providers/{provider}",
+            json={"api_key": SECRET_KEY, "base_url": f"http://{host}/v1", "model": "m"},
+        )
+        assert resp.status_code == 422
+        assert provider not in provider_service.configs
 
 
 class TestInstanceAdminGuard:
