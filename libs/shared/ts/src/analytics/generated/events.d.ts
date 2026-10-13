@@ -195,6 +195,9 @@ export type WebEventName =
   | "pin:viewed"
   | "profile:link_copied"
   | "reddit:post_viewed"
+  | "referral:card_dismissed"
+  | "referral:invite_undone"
+  | "referral:share_clicked"
   | "search:global_opened"
   | "search:result_clicked"
   | "settings:desktop_preference_changed"
@@ -1200,6 +1203,18 @@ export interface EventProperties {
     "num_comments": number;
     "has_selftext": boolean;
     "has_external_link": boolean;
+  };
+  "referral:card_dismissed": {
+    "surface": "sidebar" | "post_payment";
+    "copy_variant": "gift" | "earn" | "time_back" | "insider";
+  };
+  "referral:invite_undone": {
+    "surface": "hover_card" | "page" | "suggestion";
+  };
+  "referral:share_clicked": {
+    "surface": "page" | "sidebar" | "post_payment";
+    "channel": "native" | "whatsapp" | "sms" | "x" | "linkedin" | "email" | "copy" | "qr";
+    "copy_variant": "gift" | "earn" | "time_back" | "insider";
   };
   "reminder:completed": {
     "actor": "user" | "agent";

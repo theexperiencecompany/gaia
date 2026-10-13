@@ -5753,6 +5753,105 @@
       }
     },
     {
+      "event": "referral:card_dismissed",
+      "class": "ReferralCardDismissed",
+      "owner": "web",
+      "domain": "referral",
+      "description": "The user closed a referral prompt without sharing.",
+      "previous_names": [],
+      "budget_per_user_day": 10,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": null,
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user closed a referral prompt without sharing.",
+        "properties": {
+          "surface": {
+            "enum": ["sidebar", "post_payment"],
+            "title": "Surface",
+            "type": "string"
+          },
+          "copy_variant": {
+            "enum": ["gift", "earn", "time_back", "insider"],
+            "title": "Copy Variant",
+            "type": "string"
+          }
+        },
+        "required": ["surface", "copy_variant"],
+        "title": "ReferralCardDismissed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:invite_undone",
+      "class": "ReferralInviteUndone",
+      "owner": "web",
+      "domain": "referral",
+      "description": "The user took back an email invite inside the undo window, before it was sent.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": null,
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user took back an email invite inside the undo window, before it was sent.",
+        "properties": {
+          "surface": {
+            "enum": ["hover_card", "page", "suggestion"],
+            "title": "Surface",
+            "type": "string"
+          }
+        },
+        "required": ["surface"],
+        "title": "ReferralInviteUndone",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:share_clicked",
+      "class": "ReferralShareClicked",
+      "owner": "web",
+      "domain": "referral",
+      "description": "The user picked a way to share their invite link: the native sheet, a channel, copy or QR.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": null,
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user picked a way to share their invite link: the native sheet, a channel, copy or QR.",
+        "properties": {
+          "surface": {
+            "enum": ["page", "sidebar", "post_payment"],
+            "title": "Surface",
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "native",
+              "whatsapp",
+              "sms",
+              "x",
+              "linkedin",
+              "email",
+              "copy",
+              "qr"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "copy_variant": {
+            "enum": ["gift", "earn", "time_back", "insider"],
+            "title": "Copy Variant",
+            "type": "string"
+          }
+        },
+        "required": ["surface", "channel", "copy_variant"],
+        "title": "ReferralShareClicked",
+        "type": "object"
+      }
+    },
+    {
       "event": "reminder:completed",
       "class": "ReminderCompleted",
       "owner": "server",
