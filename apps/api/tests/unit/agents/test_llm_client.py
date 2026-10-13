@@ -40,8 +40,6 @@ from app.agents.llm import client as client_module
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
     _MODEL_FIELD,
-    PROVIDER_MODELS,
-    PROVIDER_PRIORITY,
     LLMInvokeOptions,
     ResponseFacts,
     StructuredCallOptions,
@@ -99,8 +97,10 @@ from app.constants.llm import (
     ModelUse,
     ReasoningLevel,
 )
+from app.constants.providers import LLM_MODEL_PROFILES, LLM_PROVIDER_PRIORITY
 from app.core.lazy_loader import ProviderRegistry
 from app.services.llm_metering import LLMCallContext
+from app.services.providers.provider_credentials_service import ProviderConfig
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
 from tests.helpers import create_fake_llm
@@ -118,6 +118,13 @@ USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 _AUX_CONTEXT = LLMCallContext(
     agent_name="memory_extraction", background=True, charge_to_budget=False
 )
+
+
+def _custom_config(model: str | None) -> ProviderConfig:
+    """Return a stored custom-endpoint credential, as the resolver returns it."""
+    return ProviderConfig(
+        api_key="sk-custom", base_url="https://llm.example.com/v1", model=model, preset=None
+    )
 
 
 def _make_fake_provider(name: str = "fake") -> MagicMock:
@@ -217,11 +224,11 @@ class TestGetAvailableProviders:
 
 
 # ---------------------------------------------------------------------------
-# next_fallback_provider
+# chat_route
 # ---------------------------------------------------------------------------
 
 
-class TestNextFallbackProvider:
+class TestChatRoute:
     """What a caller retries onto after a provider failure; the graph selects its lane via configurable["provider"] and never fails over itself."""
 
     def _available(self, *names: LLMProviderName) -> Any:
@@ -232,7 +239,7 @@ class TestNextFallbackProvider:
 
     def test_the_failed_provider_is_never_returned_to(self) -> None:
         with self._available(LLMProviderName.OPENROUTER, LLMProviderName.GEMINI):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) == (
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
                 LLMProviderName.GEMINI,
                 DEFAULT_GEMINI_MODEL_NAME,
             )
@@ -241,37 +248,50 @@ class TestNextFallbackProvider:
         with self._available(
             LLMProviderName.OPENROUTER, LLMProviderName.GEMINI, LLMProviderName.CUSTOM
         ):
-            assert client_module.next_fallback_provider(LLMProviderName.GEMINI) == (
+            assert client_module.chat_route(LLMProviderName.GEMINI) == (
                 LLMProviderName.OPENROUTER,
                 DEFAULT_MODEL_NAME,
             )
 
     def test_a_run_with_no_lane_yet_gets_the_highest_priority_provider(self) -> None:
         with self._available(LLMProviderName.OPENROUTER, LLMProviderName.GEMINI):
-            assert client_module.next_fallback_provider(None) == (
+            assert client_module.chat_route(None) == (
                 LLMProviderName.OPENROUTER,
                 DEFAULT_MODEL_NAME,
             )
 
     def test_nothing_else_configured_yields_no_fallback(self) -> None:
         with self._available(LLMProviderName.OPENROUTER):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) is None
 
     def test_an_unconfigured_provider_is_skipped_not_returned_modelless(self) -> None:
-        """The custom endpoint's PROVIDER_MODELS entry is DEV_LLM_MODEL or ""; pinning "" trades a dead provider for a guaranteed bad request."""
+        """A custom endpoint saved without a model has no chat model; pinning "" trades a dead provider for a guaranteed bad request."""
         with (
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
-            patch.dict(PROVIDER_MODELS, {LLMProviderName.CUSTOM: ""}),
+            patch.dict(client_module._runtime_configs, {"custom": _custom_config(model=None)}),
         ):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) is None
 
-    def test_the_comms_model_is_never_another_lanes_fallback(self) -> None:
-        with self._available(LLMProviderName.OPENROUTER, LLMProviderName.OPENAI):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
+    def test_openai_is_a_chat_provider_ranked_after_gemini(self) -> None:
+        with (
+            self._available(LLMProviderName.OPENROUTER, LLMProviderName.OPENAI),
+            patch.dict(client_module._runtime_configs, {"openai": None}),
+        ):
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
+                LLMProviderName.OPENAI,
+                COMMS_MODEL_NAME,
+            )
+        with self._available(
+            LLMProviderName.OPENROUTER, LLMProviderName.GEMINI, LLMProviderName.OPENAI
+        ):
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
+                LLMProviderName.GEMINI,
+                DEFAULT_GEMINI_MODEL_NAME,
+            )
 
     def test_a_failed_comms_call_falls_back_to_the_default(self) -> None:
         with self._available(LLMProviderName.OPENAI, LLMProviderName.GEMINI):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENAI) == (
+            assert client_module.chat_route(LLMProviderName.OPENAI) == (
                 LLMProviderName.GEMINI,
                 DEFAULT_GEMINI_MODEL_NAME,
             )
@@ -279,9 +299,11 @@ class TestNextFallbackProvider:
     def test_a_configured_custom_endpoint_is_a_real_fallback_target(self) -> None:
         with (
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
-            patch.dict(PROVIDER_MODELS, {LLMProviderName.CUSTOM: "local/dev-model"}),
+            patch.dict(
+                client_module._runtime_configs, {"custom": _custom_config(model="local/dev-model")}
+            ),
         ):
-            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) == (
+            assert client_module.chat_route(LLMProviderName.OPENROUTER) == (
                 LLMProviderName.CUSTOM,
                 "local/dev-model",
             )
@@ -300,7 +322,7 @@ class TestGetOrderedProviders:
         }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
-        # Should follow PROVIDER_PRIORITY: 1=gemini, 2=openrouter
+        # Follows LLM_PROVIDER_PRIORITY: openrouter before gemini
         names = [p.name for p in ordered]
         assert names == ["openrouter", "gemini"]
 
@@ -369,11 +391,11 @@ class TestGetOrderedProviders:
         names = [p.name for p in ordered]
         assert names == ["openrouter", "gemini"]
 
-    def test_the_comms_model_is_never_an_unpreferred_primary(self) -> None:
+    def test_openai_alone_is_the_primary(self) -> None:
         available: dict[str, Any] = {"openai": _make_fake_provider("openai")}
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
-        assert ordered == []
+        assert [p.name for p in ordered] == ["openai"]
 
     def test_the_comms_model_stays_selectable_by_name(self) -> None:
         available: dict[str, Any] = {
@@ -469,7 +491,7 @@ class TestInitLlm:
         # latency breakdown groups on exactly these two, so a renamed key or a
         # dropped value silently empties the chart rather than failing.
         assert mock_log.set.call_args.kwargs["llm"] == {
-            "model": PROVIDER_MODELS["gemini"],
+            "model": DEFAULT_GEMINI_MODEL_NAME,
             "provider": "gemini",
             "is_free": False,
         }
@@ -478,23 +500,23 @@ class TestInitLlm:
     @patch("app.agents.llm.client._create_configurable_llm")
     @patch("app.agents.llm.client._get_ordered_providers")
     @patch("app.agents.llm.client._get_available_providers")
-    def test_a_provider_with_no_model_entry_logs_its_own_name(
+    def test_a_provider_with_no_model_logs_its_own_name(
         self,
         mock_available: MagicMock,
         mock_ordered: MagicMock,
         mock_create: MagicMock,
         mock_log: MagicMock,
     ) -> None:
-        """A missing entry logs the provider name, not an empty model."""
-        primary = _make_llm_provider("cerebras")
-        mock_available.return_value = {"cerebras": primary.instance}
+        """A custom endpoint saved without a model logs the provider name, not an empty model."""
+        primary = _make_llm_provider("custom")
+        mock_available.return_value = {"custom": primary.instance}
         mock_ordered.return_value = [primary]
         mock_create.return_value = MagicMock()
 
-        init_llm()
+        with patch.dict(client_module._runtime_configs, {"custom": _custom_config(model=None)}):
+            init_llm()
 
-        assert "cerebras" not in PROVIDER_MODELS
-        assert mock_log.set.call_args.kwargs["llm"]["model"] == "cerebras"
+        assert mock_log.set.call_args.kwargs["llm"]["model"] == "custom"
 
     def test_invalid_provider_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Invalid preferred_provider 'cerebras'"):
@@ -790,25 +812,26 @@ class TestResolveModelOnOpenRouter:
         assert llm.model == model
 
     @pytest.mark.parametrize(
-        ("use", "message"),
+        ("use", "provider"),
         [
-            (ModelUse.HELPER, "Default LLM not configured. Set OPENROUTER_API_KEY."),
-            (ModelUse.JUDGE, "Default LLM not configured. Set OPENROUTER_API_KEY."),
-            (ModelUse.MEMORY, "Memory model not configured. Set GOOGLE_API_KEY."),
-            (ModelUse.VISION, "Vision model not configured. Set GOOGLE_API_KEY."),
+            (ModelUse.HELPER, "openrouter"),
+            (ModelUse.JUDGE, "openrouter"),
+            (ModelUse.MEMORY, "gemini"),
+            (ModelUse.VISION, "gemini"),
         ],
     )
-    def test_a_missing_key_raises_naming_the_lane_and_the_key_that_fixes_it(
-        self, monkeypatch: pytest.MonkeyPatch, openrouter: None, use: ModelUse, message: str
+    def test_a_missing_key_raises_naming_the_lane_and_the_provider_that_fixes_it(
+        self, monkeypatch: pytest.MonkeyPatch, openrouter: None, use: ModelUse, provider: str
     ) -> None:
-        """Callers only log this: the line itself has to tell the operator which lane is down and which key to set."""
+        """Callers only log this: the line itself has to tell the operator which lane is down and what to configure."""
+        monkeypatch.setattr(settings, "ENV", "production")
         monkeypatch.setattr(settings, "OPENROUTER_API_KEY", None)
         monkeypatch.setattr(settings, "GOOGLE_API_KEY", None)
 
         with pytest.raises(LLMNotConfiguredError) as raised:
             resolve_model(use)
 
-        assert str(raised.value) == message
+        assert f"serve {use.value} calls. Configure {provider} " in str(raised.value)
 
     @pytest.mark.parametrize("use", list(ModelUse))
     def test_sim_mode_serves_every_use_from_the_stub(
@@ -1377,24 +1400,11 @@ class TestRegisterLlmProviders:
 
 
 class TestConstants:
-    def test_provider_models_keys(self) -> None:
-        # OPENAI is a comms-only lane: it has a model but no fallback priority,
-        # because init_llm never selects it (see openai_lane_available).
-        assert set(PROVIDER_MODELS.keys()) == {
-            "gemini",
-            "openrouter",
-            "ollama",
-            "custom",
-            "openai",
-        }
-
-    def test_provider_priority_values(self) -> None:
-        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter", "ollama", "custom"}
+    def test_every_chat_provider_has_a_model_profile(self) -> None:
+        assert set(LLM_MODEL_PROFILES) == set(LLM_PROVIDER_PRIORITY) == set(LLMProviderName)
 
     def test_provider_priority_is_ordered(self) -> None:
-        sorted_keys = sorted(PROVIDER_PRIORITY.keys())
-        providers_in_order = [PROVIDER_PRIORITY[k] for k in sorted_keys]
-        assert providers_in_order == ["openrouter", "gemini", "ollama", "custom"]
+        assert LLM_PROVIDER_PRIORITY == ("openrouter", "gemini", "openai", "ollama", "custom")
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.genai.errors import ServerError
@@ -1431,7 +1441,8 @@ class TestConstants:
         monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", sim_mode)
         monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", api_key)
 
-        assert client_module.openai_lane_available() is available
+        with patch.dict(client_module._runtime_configs, clear=True):
+            assert client_module.provider_configured(LLMProviderName.OPENAI) is available
 
     def test_the_openai_lane_builds_a_tool_capable_luna_client(
         self, monkeypatch: pytest.MonkeyPatch
@@ -2641,7 +2652,7 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
     """Binding OpenRouter's sticky session_id onto a Google client raises ValidationError before the request even leaves the process.
 
     Reachable two ways: the graph lane falls OpenRouter -> Gemini by
-    PROVIDER_PRIORITY, and the memory lane's fallback is Gemini by design.
+    LLM_PROVIDER_PRIORITY, and the memory lane's fallback is Gemini by design.
     Verified live against the real API: the memory fallback failed with
     "session_id: Extra inputs are not permitted".
     """

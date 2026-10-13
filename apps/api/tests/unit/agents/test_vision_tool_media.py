@@ -12,9 +12,14 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import ToolMessage
 import pytest
 
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.vision.tool_media import describe_tool_media
 from app.agents.middleware.media import MediaDescriptionMiddleware
-from app.constants.media import MEDIA_DESCRIBE_FAILED, MEDIA_DESCRIPTIONS_KEY
+from app.constants.media import (
+    MEDIA_DESCRIBE_FAILED,
+    MEDIA_DESCRIPTIONS_KEY,
+    MEDIA_VISION_NOT_CONFIGURED,
+)
 from app.utils.multimodal import has_media_blocks
 
 CONFIG = {"configurable": {"provider": "openrouter", "model": "some-model"}}
@@ -157,6 +162,19 @@ class TestFailurePaths:
             out = await describe_tool_media(_tool_msg(_img("A"), _img("B")), CONFIG)
 
         assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == ["good", MEDIA_DESCRIBE_FAILED]
+
+    async def test_no_vision_provider_says_so_instead_of_a_generic_failure(self):
+        lane = patch(f"{_MOD}.model_can_view_images", AsyncMock(return_value=False))
+        vision = patch(
+            f"{_MOD}.describe_image",
+            AsyncMock(
+                side_effect=LLMNotConfiguredError("No configured AI provider can serve vision")
+            ),
+        )
+        with lane, vision:
+            out = await describe_tool_media(_tool_msg(_img("A"), _img("B")), CONFIG)
+
+        assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == [MEDIA_VISION_NOT_CONFIGURED] * 2
 
 
 @pytest.mark.asyncio

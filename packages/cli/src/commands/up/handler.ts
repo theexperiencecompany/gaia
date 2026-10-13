@@ -3,6 +3,7 @@
  * @module commands/up/handler
  */
 
+import type { LlmProvider } from "../../lib/answers.js";
 import { runCommandUI } from "../../lib/command-runner.js";
 import type { CLIStore } from "../../ui/store.js";
 import { runUpFlow } from "./flow.js";
@@ -40,7 +41,7 @@ export async function runUp(
   options: {
     yes?: boolean;
     llmKey?: string;
-    llmProvider?: "openrouter" | "gemini" | "custom";
+    llmProvider?: LlmProvider;
     apiPort?: number;
     webPort?: number;
     pull?: boolean;

@@ -28,6 +28,13 @@ vi.mock("../../src/lib/env-parser.js", async (importOriginal) => {
             affectedFeatures: "",
           },
           {
+            name: "OPENAI_API_KEY",
+            required: true,
+            category: "Simulated Required Secret",
+            description: "",
+            affectedFeatures: "",
+          },
+          {
             name: "MYSTERY_REQUIRED",
             required: true,
             category: "Simulated Required Secret",
@@ -65,6 +72,12 @@ describe("createUpAnswerResolver fail-loud (non-TTY, simulated required secret)"
     expect(() =>
       makeResolver(false)("env_var", { varName: "OPENROUTER_API_KEY" }),
     ).toThrow(/--llm-key --llm-provider openrouter/);
+  });
+
+  it("names the openai flag pair for a missing OPENAI_API_KEY", () => {
+    expect(() =>
+      makeResolver(false)("env_var", { varName: "OPENAI_API_KEY" }),
+    ).toThrow(/--llm-key --llm-provider openai/);
   });
 
   it("does not throw interactively — returns skip value instead", () => {

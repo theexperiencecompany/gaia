@@ -22,16 +22,6 @@ export type {
 export type SetupStatus = SetupStatusResponse;
 export type ProviderCatalog = ProviderCatalogResponse;
 
-/** Providers that can serve chat (mirrors _LLM_PROVIDER_KEYS in
- * app/api/v1/endpoints/setup.py). The tool/integration keys in
- * SETUP_PROVIDER_KEYS must never count toward LLM readiness. */
-export const LLM_PROVIDER_KEYS = [
-  "openrouter",
-  "gemini",
-  "ollama",
-  "custom",
-] as const satisfies readonly CredentialProvider[];
-
 /** Direct link to obtain an API key for providers that use one. e2b has no
  * keys dashboard page (its docs live at e2b.dev/docs) and google_oauth is an
  * OAuth client, not a key — both are deliberately absent. */

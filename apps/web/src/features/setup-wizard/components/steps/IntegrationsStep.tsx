@@ -22,24 +22,33 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import type { SetupStatus } from "@/features/settings/api/providersApi";
+import type {
+  ProviderCatalog,
+  SetupStatus,
+} from "@/features/settings/api/providersApi";
 import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
 import {
   MOTION_FADE_UP,
   TOOL_PROVIDER_CARDS,
   WIZARD_EXCLUDED_TOOL_KEYS,
 } from "../../constants";
+import { resolveProviderCard } from "../../utils/providerCards";
 import { ProviderSetupCard } from "../ProviderSetupCard";
 
 const MAX_SUGGESTED = 6;
 
 interface IntegrationsStepProps {
   status: SetupStatus;
+  catalog: ProviderCatalog;
   /** Fired after a tool-key save so the wizard refreshes setup status. */
   onSaved: () => void;
 }
 
-export function IntegrationsStep({ status, onSaved }: IntegrationsStepProps) {
+export function IntegrationsStep({
+  status,
+  catalog,
+  onSaved,
+}: IntegrationsStepProps) {
   const { integrations, isLoading, connectIntegration } = useIntegrations();
 
   const { suggested, connectedCount } = useMemo(() => {
@@ -150,7 +159,7 @@ export function IntegrationsStep({ status, onSaved }: IntegrationsStepProps) {
           ).map((config) => (
             <ProviderSetupCard
               key={config.key}
-              config={config}
+              config={resolveProviderCard(config, catalog)}
               isConfigured={isProviderConfigured(status, config.key)}
               onSaved={onSaved}
             />

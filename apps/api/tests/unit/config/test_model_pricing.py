@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.agents.llm.client import PROVIDER_MODELS
 from app.config.model_pricing import (
     DEFAULT_PRICING,
     MODEL_PRICING,
@@ -33,6 +32,7 @@ from app.constants.llm import (
     VISION_MODEL_NAME,
     LLMProviderName,
 )
+from app.constants.providers import LLM_MODEL_PROFILES
 from shared.py.wide_events import log
 
 # `log.reset()` between tests -- the fallback-logging test below asserts on
@@ -60,16 +60,17 @@ RUNTIME_MODEL_IDS = sorted(
 )
 
 
-# Every model served through a provider that reports no per-call cost: each
-# PROVIDER_MODELS lane but OpenRouter (cost reported) and the dev-only custom
-# endpoint, plus the direct-Gemini memory and vision clients.
+# Every catalog model served through a provider that reports no per-call cost:
+# all but OpenRouter (cost reported) and the operator-run custom and Ollama endpoints.
 TABLE_PRICED_MODEL_IDS = sorted(
     {
         model
-        for provider, model in PROVIDER_MODELS.items()
-        if provider not in {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
+        for provider, profile in LLM_MODEL_PROFILES.items()
+        if provider
+        not in {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM, LLMProviderName.OLLAMA}
+        for model in (profile.chat, profile.helper, profile.judge, profile.memory, profile.vision)
+        if model is not None
     }
-    | {MEMORY_MODEL_NAME, VISION_MODEL_NAME}
 )
 
 

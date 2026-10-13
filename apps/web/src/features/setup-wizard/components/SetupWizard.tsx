@@ -19,6 +19,7 @@ import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLoginModalActions } from "@/features/auth/hooks/useLoginModal";
+import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import {
   isAnyLlmConfigured,
   isProviderConfigured,
@@ -51,6 +52,8 @@ function continueReasonFor(stepId: string, objectiveMet: boolean) {
 export function SetupWizard() {
   const router = useRouter();
   const { data: status, isLoading, isError, refetch } = useSetupStatus();
+  const catalogQuery = useProviderCatalog();
+  const catalog = catalogQuery.data;
   const { suppressModal, unsuppressModal } = useLoginModalActions();
   const [stepIndex, setStepIndex] = useState(0);
 
@@ -91,6 +94,7 @@ export function SetupWizard() {
 
   if (
     isLoading ||
+    catalogQuery.isLoading ||
     (needsAccountStep === null && !isError) ||
     (status !== undefined && !status.needs_setup)
   ) {
@@ -102,15 +106,21 @@ export function SetupWizard() {
   }
 
   // Error screen — unreachable while loading or once status has resolved;
-  // a failed status fetch must surface instead of spinning forever.
-  if (isError || status === undefined) {
+  // a failed status or catalog fetch must surface instead of spinning forever.
+  if (isError || status === undefined || catalog === undefined) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-primary-bg px-4 text-center">
         <Alert01Icon size={24} className="text-zinc-500" />
         <p className="text-sm text-zinc-400">
           Couldn't reach your GAIA instance to check its setup status.
         </p>
-        <Button variant="flat" onPress={() => void refetch()}>
+        <Button
+          variant="flat"
+          onPress={() => {
+            void refetch();
+            void catalogQuery.refetch();
+          }}
+        >
           Try again
         </Button>
       </div>
@@ -125,7 +135,7 @@ export function SetupWizard() {
     step.id === "account"
       ? status.has_admin_account
       : step.id === "provider"
-        ? isAnyLlmConfigured(status)
+        ? isAnyLlmConfigured(status, catalog)
         : step.id === "search"
           ? isProviderConfigured(status, "tavily")
           : true;
@@ -188,6 +198,7 @@ export function SetupWizard() {
               {step.id === "provider" && (
                 <ProviderStep
                   status={status}
+                  catalog={catalog}
                   // Return the refetch promise (not void) so Ollama one-click
                   // can advance after it settles.
                   onSaved={() => refetch()}
@@ -195,12 +206,22 @@ export function SetupWizard() {
                 />
               )}
               {step.id === "search" && (
-                <SearchStep status={status} onSaved={refreshStatus} />
+                <SearchStep
+                  status={status}
+                  catalog={catalog}
+                  onSaved={refreshStatus}
+                />
               )}
               {step.id === "integrations" && (
-                <IntegrationsStep status={status} onSaved={refreshStatus} />
+                <IntegrationsStep
+                  status={status}
+                  catalog={catalog}
+                  onSaved={refreshStatus}
+                />
               )}
-              {step.id === "done" && <DoneStep status={status} />}
+              {step.id === "done" && (
+                <DoneStep status={status} catalog={catalog} />
+              )}
             </m.div>
           </AnimatePresence>
 

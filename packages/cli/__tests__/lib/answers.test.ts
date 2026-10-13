@@ -42,8 +42,16 @@ describe("validateLlmFlags", () => {
     ).not.toThrow();
   });
 
-  it("fails loud naming --llm-provider when only the key is given", () => {
-    expect(() => validateLlmFlags({ llmKey: "sk" })).toThrow(/--llm-provider/);
+  it("accepts a complete openai pair", () => {
+    expect(() =>
+      validateLlmFlags({ llmKey: "sk", llmProvider: "openai" }),
+    ).not.toThrow();
+  });
+
+  it("fails loud naming --llm-provider and every accepted provider when only the key is given", () => {
+    expect(() => validateLlmFlags({ llmKey: "sk" })).toThrow(
+      "--llm-key requires --llm-provider <openrouter|gemini|openai|custom>.",
+    );
   });
 
   it("fails loud naming --llm-key when only the provider is given", () => {
@@ -97,6 +105,16 @@ describe("createUpAnswerResolver precedence", () => {
     expect(resolve("env_var", { varName: PROVIDER_ENV_VAR.openrouter })).toBe(
       "flag-key",
     );
+  });
+
+  it("writes the --llm-key to OPENAI_API_KEY for --llm-provider openai", () => {
+    const resolve = makeResolver({
+      llmKey: "sk-openai",
+      llmProvider: "openai",
+    });
+
+    expect(resolve("env_var", { varName: "OPENAI_API_KEY" })).toBe("sk-openai");
+    expect(resolve("env_var", { varName: "OPENROUTER_API_KEY" })).toBe("");
   });
 
   it("falls back to saved config values when no flag applies", () => {

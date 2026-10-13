@@ -30,11 +30,11 @@ import {
   providerFaviconUrl,
   providersApi,
 } from "@/features/settings/api/providersApi";
-import { OLLAMA_ONE_CLICK, type ProviderCardConfig } from "../constants";
 import { useProviderSetup } from "../hooks/useProviderSetup";
+import type { ProviderCard } from "../utils/providerCards";
 
 interface ProviderSetupCardProps {
-  config: ProviderCardConfig;
+  config: ProviderCard;
   /** Whether this provider already has a stored credential. */
   isConfigured: boolean;
   /** Fired after a successful save so parents can refresh setup status. */
@@ -56,7 +56,6 @@ export function ProviderSetupCard({
     setModel,
     preset,
     applyPreset,
-    presets,
     isBusy,
     outcome,
     error,
@@ -68,10 +67,7 @@ export function ProviderSetupCard({
     (!config.showApiKey || apiKey.trim().length > 0) &&
     (!config.showBaseUrl || baseUrl.trim().length > 0);
 
-  const faviconDomain =
-    preset && config.presetFavicon
-      ? (config.presetFavicon[preset.key] ?? config.faviconDomain)
-      : config.faviconDomain;
+  const faviconDomain = preset?.favicon_domain ?? config.faviconDomain;
 
   return (
     <div className="w-full rounded-2xl bg-zinc-800 p-4">
@@ -106,7 +102,7 @@ export function ProviderSetupCard({
 
       {config.hasPresets && (
         <div className="mb-3 flex flex-wrap gap-2">
-          {presets.map((p) => (
+          {config.presets.map((p) => (
             <Button
               key={p.key}
               size="sm"
@@ -182,7 +178,7 @@ export function ProviderSetupCard({
         {config.showModel && (
           <Input
             label="Model"
-            placeholder="Default"
+            placeholder={config.defaultModel || "Default"}
             description="Leave empty to use the endpoint default."
             value={model}
             onValueChange={setModel}
@@ -221,7 +217,7 @@ function OllamaOneClick({
   parentBusy,
   onSaved,
 }: {
-  config: ProviderCardConfig;
+  config: ProviderCard;
   parentBusy: boolean;
   onSaved: () => void;
 }) {
@@ -237,8 +233,8 @@ function OllamaOneClick({
     setOllamaError(null);
     setOllamaModels([]);
     const body = {
-      base_url: config.defaultBaseUrl || OLLAMA_ONE_CLICK.baseUrl,
-      model: config.defaultModel || OLLAMA_ONE_CLICK.model,
+      base_url: config.defaultBaseUrl,
+      model: config.defaultModel,
     };
     try {
       // Probe first, save second: an unreachable endpoint must not flip the
@@ -275,7 +271,7 @@ function OllamaOneClick({
     if (ollamaOutcome && !ollamaOutcome.ok)
       return getProviderErrorHint(ollamaOutcome.detail, "ollama");
     if (ollamaOutcome?.ok && ollamaModels.length > 0) {
-      const wanted = config.defaultModel || OLLAMA_ONE_CLICK.model;
+      const wanted = config.defaultModel;
       const pulled = ollamaModels.some(
         (m) =>
           m === wanted || m.endsWith(`:${wanted}`) || wanted.endsWith(`:${m}`),
@@ -324,10 +320,10 @@ function OllamaOneClick({
       </p>
       <div className="mt-2 flex items-center gap-2 rounded-xl bg-zinc-800 py-1 pr-1 pl-3">
         <code className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-300">
-          ollama pull {OLLAMA_ONE_CLICK.model} && ollama serve
+          ollama pull {config.defaultModel} && ollama serve
         </code>
         <CopyButton
-          textToCopy={`ollama pull ${OLLAMA_ONE_CLICK.model} && ollama serve`}
+          textToCopy={`ollama pull ${config.defaultModel} && ollama serve`}
           variant="light"
           size="sm"
           className="shrink-0 text-zinc-400"

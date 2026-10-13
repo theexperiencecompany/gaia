@@ -12,7 +12,6 @@ from pydantic import SecretStr, ValidationError
 import pytest
 
 from app.agents.llm import client, dev_lane
-from app.agents.llm.client import PROVIDER_MODELS
 from app.config.browser_host_settings import BrowserHostSettings
 from app.config.settings import (
     CommonSettings,
@@ -33,6 +32,7 @@ from app.constants.llm import (
     DevLLMApi,
     LLMProviderName,
 )
+from app.constants.providers import LLM_MODEL_PROFILES
 
 
 @pytest.fixture(autouse=True)
@@ -317,7 +317,7 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
 
     llm = client.init_openrouter_llm().loader_func()
 
-    assert captured["model"] == PROVIDER_MODELS["openrouter"]
+    assert captured["model"] == LLM_MODEL_PROFILES[LLMProviderName.OPENROUTER].chat
     assert captured["temperature"] == DEFAULT_LLM_TEMPERATURE
     assert captured["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
     # ENV is development here, so attribution must be the fixed dev identity —
@@ -348,7 +348,7 @@ def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
 
     llm = client.init_gemini_llm().loader_func()
 
-    assert captured["model"] == PROVIDER_MODELS["gemini"]
+    assert captured["model"] == LLM_MODEL_PROFILES[LLMProviderName.GEMINI].chat
     # the model field must stay wired through configurable_fields — dropping
     # it silently breaks per-request model selection
     assert captured["cf_model"] is client._MODEL_FIELD
@@ -363,9 +363,6 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     monkeypatch.setattr(client.settings, "DEV_LLM_API", DevLLMApi.CHAT_COMPLETIONS)
-    # PROVIDER_MODELS freezes at import from the ambient env; CI has no
-    # DEV_LLM_MODEL, so pin the entry the production code reads.
-    monkeypatch.setitem(client.PROVIDER_MODELS, LLMProviderName.CUSTOM, "deepseek-v4-flash")
     monkeypatch.setattr(
         client,
         "_runtime_configs",
@@ -373,7 +370,7 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
             "custom": {
                 "api_key": "sk-dev",
                 "base_url": "http://localhost:9999/v1",
-                "model": None,
+                "model": "deepseek-v4-flash",
                 "preset": None,
             }
         },
