@@ -7,8 +7,11 @@ from fastapi import HTTPException
 import pytest
 
 from app.services.upload_service import upload_file_to_cloudinary
+from app.utils.errors import AppError
 
 _MOD = "app.services.upload_service"
+
+pytestmark = pytest.mark.usefixtures("cloudinary_configured")
 
 
 @pytest.fixture
@@ -19,6 +22,17 @@ def mock_upload():
 
 
 class TestUploadFileToCloudinary:
+    def test_without_cloudinary_refuses_with_503_instead_of_a_generic_500(self, mock_upload):
+        with (
+            patch("app.config.cloudinary.providers.get", return_value=None),
+            pytest.raises(AppError) as raised,
+        ):
+            upload_file_to_cloudinary("my-public-id", file_data=b"binary payload")
+
+        assert raised.value.status_code == 503
+        assert raised.value.code == "file_storage_not_configured"
+        mock_upload.assert_not_called()
+
     def test_uploads_file_data(self, mock_upload):
         url = upload_file_to_cloudinary("my-public-id", file_data=b"binary payload")
 

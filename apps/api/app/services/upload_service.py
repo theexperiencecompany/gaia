@@ -4,6 +4,7 @@ import cloudinary.exceptions
 import cloudinary.uploader
 from fastapi import HTTPException
 
+from app.config.cloudinary import require_cloudinary
 from shared.py.wide_events import log
 
 
@@ -34,6 +35,8 @@ def upload_file_to_cloudinary(
     if not public_id:
         log.error("public_id is required")
         raise HTTPException(status_code=400, detail="public_id is required")
+
+    require_cloudinary()
 
     # Validate file path exists if provided
     if file_path and not os.path.exists(file_path):  # noqa: PTH110 -- tests patch upload_service.os.path.exists

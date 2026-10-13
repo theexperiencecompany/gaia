@@ -745,6 +745,13 @@ def mock_mongodb():
     return AsyncMock()
 
 
+@pytest.fixture
+def cloudinary_configured() -> Iterator[None]:
+    """Let uploads past require_cloudinary; the uploader itself stays each test's own mock."""
+    with patch("app.config.cloudinary.providers", MagicMock(get=MagicMock(return_value=True))):
+        yield
+
+
 @pytest.fixture(scope="session")
 def user_id(request):
     """Get test user ID from CLI or environment."""

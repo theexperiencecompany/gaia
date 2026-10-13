@@ -14,6 +14,7 @@ from fastapi import HTTPException, UploadFile
 import httpx
 
 from app.agents.workspace.paths import safe_upload_filename
+from app.config.cloudinary import require_cloudinary
 from app.constants.cache import FILES_CACHE_PATTERN
 from app.constants.files import FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS
 from app.db.repositories.files import file_repository
@@ -138,6 +139,7 @@ class FileService:
         vector index, and the sandbox copy + .summary.md sidecar are layered on
         top; the latter two need JuiceFS and degrade gracefully without it.
         """
+        require_cloudinary()
         content, content_type, resource_type = await validate_upload(
             file=file, content_length=content_length
         )

@@ -86,7 +86,8 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | **Secrets** | Infisical vault (required in production) | Local `.env` only; never contacts Infisical; `INSTANCE_SECRET` auto-generated into Mongo (`instance_settings`) on first boot |
 | **Required config** | Full SaaS keys (OpenRouter, Gemini, Tavily, Composio, R2, LiveKit, etc.) required to boot | Only infra + 3 machine secrets (`MONGO_DB`, `REDIS_URL`, `POSTGRES_URL`, `CHROMADB_*`, `RABBITMQ_URL`, `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) — everything else is optional and disables gracefully; providers configured at runtime via the setup wizard |
 | **LLM providers** | Managed keys via Infisical | Bring your own — OpenRouter / Gemini / Ollama / OpenCode / Nous via Settings; keys encrypted with the instance secret |
-| **Workspace storage** | Hosted R2 + JuiceFS (managed) | Bring your own R2/S3 + Postgres meta DB via `R2_*` / `JUICEFS_META_URL_TEMPLATE`; without it chat works but uploads/artifacts log `JuiceFSUnavailable` |
+| **File uploads** | Cloudinary (managed) | Bring your own Cloudinary account via `CLOUDINARY_*`; without it, attaching a file fails with a clear "not set up" message — see [Required configuration](#required-configuration) |
+| **Workspace storage** | Hosted R2 + JuiceFS (managed) | Bring your own R2/S3 + Postgres meta DB via `R2_*` / `JUICEFS_META_URL_TEMPLATE`; without it the agent cannot open uploads or keep artifacts, and the backend logs `JuiceFSUnavailable` |
 | **Sandbox** | E2B (required) with warm pool | Off until you save an E2B key or opt into the local Docker-socket sandbox with `gaia up --code-sandbox` — see [Local coding sandbox](#local-coding-sandbox) |
 | **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Bring your own LiveKit or leave unset to disable voice |
 | **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | Same providers but opt-in via env; unset skips that lane |
@@ -324,14 +325,18 @@ Avoid `privileged: true` as a shortcut. It grants every capability and device to
 
 ### Required configuration
 
-The container settings make a mount *possible*. JuiceFS still needs an object store and a metadata database before it will mount. Set these in `apps/api/.env`:
+File features need two cloud services today. Neither is required to boot, and chat, memory and integrations work without them:
 
-| Variable | Purpose |
-| --- | --- |
-| `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY`, `R2_SECRET_KEY` | Cloudflare R2 (or S3-compatible) object store for file data |
-| `JUICEFS_META_URL_TEMPLATE` | Connection URL for the metadata database (a PostgreSQL DB works well) |
+| What you want | What it needs | Variables in `apps/api/.env` |
+| --- | --- | --- |
+| Attach files in chat | A [Cloudinary](https://cloudinary.com) account (the free tier is enough), which stores the uploaded file | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` |
+| Let the agent open uploads, keep artifacts, install skills | An S3-compatible bucket (Cloudflare R2 works well) for file data, plus a PostgreSQL database for JuiceFS metadata | `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `JUICEFS_META_URL_TEMPLATE` |
 
-Until both are configured, the backend starts normally and chat works, but workspace features (uploads, artifacts, skill installs) degrade and log `JuiceFSUnavailable`. See [Environment Variables](/configuration/environment-variables) for the full list.
+Without Cloudinary, attaching a file fails with *"File uploads are not set up on this instance"*, and nothing is stored. Without the workspace store, uploads still save (when Cloudinary is set), but the agent cannot open them from its sandbox, the artifacts panel stays empty, and the backend logs `JuiceFSUnavailable`. Restart the API after adding either: `gaia start`.
+
+<Note>
+There is no local-disk option yet. Uploaded files are served to the browser and to AI providers by a public Cloudinary URL, and the workspace is shared with cloud sandboxes through JuiceFS, so a disk-only store needs a file-serving endpoint and a different sandbox mount. It is on the roadmap.
+</Note>
 
 ## Local coding sandbox
 
@@ -347,7 +352,7 @@ With neither, the coding tools answer with *"code execution is not enabled on th
 The local sandbox runs each user's code in its own `gaia-sandbox-*` container. To create those containers, `gaia-backend` and `arq_worker` need the host Docker socket, so `--code-sandbox` adds the `docker-compose.sandbox.yml` override, which mounts `/var/run/docker.sock` into both services and adds them to the socket's group (`DOCKER_SOCKET_GID`, which `gaia up` writes to `infra/docker/.env`). The CLI saves the choice, so `gaia start` and `gaia update` keep it. Turn it off again with `gaia up --no-code-sandbox`.
 
 <Warning>
-Access to the Docker socket is equivalent to root on the host. With the local sandbox on, anyone who compromises `gaia-backend` or `arq_worker` (for example through a prompt-injected agent that escapes its sandbox) controls the whole machine. Only turn it on for an instance you alone use, on a machine that runs nothing else you care about. An E2B key gives the same coding tools without this exposure.
+Access to the Docker socket is equivalent to root on the host. With the local sandbox on, anyone who compromises `gaia-backend` or `arq_worker` (for example through a prompt-injected agent that escapes its sandbox) controls the whole machine. Every user's sandbox container also mounts the same `gaia-sandbox-workspace` volume, so users on one instance can read each other's sandbox files. Only turn it on for an instance you alone use, on a machine that runs nothing else you care about. An E2B key gives the same coding tools without either exposure.
 </Warning>
 
 When an E2B key is saved, E2B wins even with the local sandbox on, and the next tool call switches over with no restart. Driving Compose by hand, layer the override yourself:

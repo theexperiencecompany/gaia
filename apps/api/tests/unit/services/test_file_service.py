@@ -26,10 +26,13 @@ from app.services.files.service import (
 )
 from app.services.files.store import index_file, insert_metadata, reindex_file
 from app.services.files.summaries import process_summary
+from app.utils.errors import AppError
 from app.utils.upload_validation import MAX_UPLOAD_BYTES
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatFileUploaded
 from shared.py.wide_events import FileContext
+
+pytestmark = pytest.mark.usefixtures("cloudinary_configured")
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -185,6 +188,27 @@ def _summary(value: object) -> Iterator[AsyncMock]:
 
 
 class TestFileServiceUpload:
+    async def test_without_cloudinary_refuses_with_the_fix_before_any_work(
+        self, mock_file_repo, mock_cloudinary_upload
+    ):
+        file = _upload_file_mock()
+        with (
+            patch("app.config.cloudinary.providers.get", return_value=None),
+            patch("app.services.files.service.generate_file_summary") as summarize,
+            pytest.raises(AppError) as raised,
+        ):
+            await FileService.upload(file=file, user_id=USER_ID, conversation_id="conv-1")
+
+        assert raised.value.status_code == 503
+        assert raised.value.code == "file_storage_not_configured"
+        assert "not set up on this instance" in raised.value.message
+        assert "CLOUDINARY_CLOUD_NAME" in raised.value.fix
+        # Nothing may be read, summarized, stored or recorded for an upload with nowhere to go.
+        file.read.assert_not_awaited()
+        summarize.assert_not_called()
+        mock_cloudinary_upload.assert_not_called()
+        mock_file_repo.create.assert_not_called()
+
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_success(
         self,

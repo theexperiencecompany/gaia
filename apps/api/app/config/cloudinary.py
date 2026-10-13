@@ -9,11 +9,12 @@ strategy) instead of configuring the global client with holes.
 import cloudinary
 
 from app.config.settings import settings
-from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolved_config,
 )
+from app.utils.errors import AppError
 
 
 @lazy_provider(
@@ -45,4 +46,23 @@ def init_cloudinary() -> None:
         cloud_name=cloud_name,
         api_key=api_key,
         api_secret=api_secret,
+    )
+
+
+def require_cloudinary() -> None:
+    """Raise a 503 naming the fix when uploads have no blob store to land in."""
+    if providers.get("cloudinary"):
+        return
+    raise AppError(
+        message=(
+            "File uploads are not set up on this instance. Ask the admin to add "
+            "Cloudinary credentials (see the self-hosting docs)."
+        ),
+        why="Uploaded files are stored in Cloudinary, and no Cloudinary account is configured.",
+        fix=(
+            "Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET "
+            "in apps/api/.env, then restart the API."
+        ),
+        status_code=503,
+        code="file_storage_not_configured",
     )
