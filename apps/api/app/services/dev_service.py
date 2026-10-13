@@ -15,7 +15,11 @@ from fastapi import UploadFile
 
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.log_tags import LogTag
-from app.constants.payments import DEV_PRO_PRODUCT_ID, DEV_SUBSCRIPTION_PREFIX
+from app.constants.payments import (
+    DEV_PRO_PRODUCT_ID,
+    DEV_PRO_TERM_DAYS,
+    DEV_SUBSCRIPTION_PREFIX,
+)
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.subscriptions import subscription_repository
@@ -241,7 +245,7 @@ async def _grant_dev_pro(user_id: str) -> None:
             user_id=user_id,
             product_id=DEV_PRO_PRODUCT_ID,
             status=SubscriptionStatus.ACTIVE.value,
-            next_billing_date=(now + timedelta(days=365)).isoformat(),
+            next_billing_date=(now + timedelta(days=DEV_PRO_TERM_DAYS)).isoformat(),
             previous_billing_date=now.isoformat(),
             created_at=now,
         )

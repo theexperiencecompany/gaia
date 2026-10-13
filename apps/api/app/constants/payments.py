@@ -104,3 +104,4 @@ ISO_4217_EXPONENTS: dict[str, int] = {
 # dodo_subscription_id is this prefix plus the user id, so it is recognisable.
 DEV_SUBSCRIPTION_PREFIX = "dev_"
 DEV_PRO_PRODUCT_ID = "dev_pro_product"
+DEV_PRO_TERM_DAYS = 365

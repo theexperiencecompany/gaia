@@ -1,6 +1,7 @@
 """Integration tests for the dev-only identity + seeding layer."""
 
 from contextlib import asynccontextmanager, contextmanager
+from datetime import timedelta
 import io
 from types import SimpleNamespace
 from typing import ClassVar
@@ -481,7 +482,7 @@ class TestDevServiceLogic:
                 "get_active_for_user",
                 new_callable=AsyncMock,
                 return_value=existing,
-            ),
+            ) as mock_active,
             patch.object(
                 dev_service.subscription_repository, "create", new_callable=AsyncMock
             ) as mock_create,
@@ -496,11 +497,21 @@ class TestDevServiceLogic:
         assert result.pro is True
         assert mock_create.await_count == int(expect_created)
         assert mock_invalidate.await_count == int(expect_created)
+        mock_active.assert_awaited_once_with(str(oid))
         if expect_created:
             created = mock_create.await_args.args[0]
             assert created.user_id == str(oid)
             assert created.status == dev_service.SubscriptionStatus.ACTIVE.value
             assert created.dodo_subscription_id == f"dev_{oid}"
+            assert created.product_id == dev_service.DEV_PRO_PRODUCT_ID
+            assert created.created_at is not None
+            assert created.created_at.utcoffset() == timedelta(0)
+            assert created.previous_billing_date == created.created_at.isoformat()
+            assert (
+                created.next_billing_date
+                == (created.created_at + timedelta(days=dev_service.DEV_PRO_TERM_DAYS)).isoformat()
+            )
+            mock_invalidate.assert_awaited_once_with(str(oid))
 
     async def _seed_telegram(
         self,
