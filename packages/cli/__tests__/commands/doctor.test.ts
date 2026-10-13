@@ -360,21 +360,21 @@ describe("checkComposeContainers", () => {
 });
 
 describe("checkApiHealth", () => {
-  it("passes on HTTP 200 from /health", async () => {
+  it("pings the API base it is given (the proxy origin on self-host)", async () => {
     stubFetch(async () => okResponse());
 
-    const result = await checkApiHealth(8123);
+    const result = await checkApiHealth("http://localhost:3000/api/v1");
 
     expect(result.state).toBe("ok");
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
-      "http://localhost:8123/health",
+      "http://localhost:3000/api/v1/ping",
     );
   });
 
   it("fails on error status codes", async () => {
     stubFetch(async () => ({ ok: false, status: 502, json: async () => ({}) }));
 
-    const result = await checkApiHealth(8000);
+    const result = await checkApiHealth("http://localhost:3000/api/v1");
 
     expect(result.state).toBe("fail");
     expect(result.detail).toContain("502");
@@ -385,7 +385,7 @@ describe("checkApiHealth", () => {
       throw new Error("ECONNREFUSED");
     });
 
-    const result = await checkApiHealth(8000);
+    const result = await checkApiHealth("http://localhost:3000/api/v1");
 
     expect(result.state).toBe("fail");
     expect(result.fix).toContain("gaia start");
@@ -430,13 +430,13 @@ describe("checkSetupReadiness", () => {
 
     const results = await checkSetupReadiness({
       apiHealthy: true,
-      apiPort: 8000,
+      apiUrl: "http://localhost:3000/api/v1",
       webPort: 3000,
     });
 
     expect(results).toHaveLength(3); // plans, provider lane, billing
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
-      "http://localhost:8000/api/v1/setup/status",
+      "http://localhost:3000/api/v1/setup/status",
     );
     for (const result of results) {
       expect(result.severity).toBe("warning");
@@ -459,7 +459,7 @@ describe("checkSetupReadiness", () => {
 
     const results = await checkSetupReadiness({
       apiHealthy: true,
-      apiPort: 8000,
+      apiUrl: "http://localhost:3000/api/v1",
       webPort: 3000,
     });
 
@@ -484,7 +484,7 @@ describe("checkSetupReadiness", () => {
 
     const results = await checkSetupReadiness({
       apiHealthy: true,
-      apiPort: 8000,
+      apiUrl: "http://localhost:3000/api/v1",
       webPort: 3000,
     });
 
@@ -496,7 +496,7 @@ describe("checkSetupReadiness", () => {
   it("skips when the API health check already failed", async () => {
     const results = await checkSetupReadiness({
       apiHealthy: false,
-      apiPort: 8000,
+      apiUrl: "http://localhost:3000/api/v1",
       webPort: 3000,
     });
 

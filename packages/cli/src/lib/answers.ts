@@ -17,6 +17,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readConfig } from "./config.js";
+import { DEFAULT_HTTPS_PORT, DEFAULT_WEB_PORT } from "./endpoints.js";
 import {
   getDefaultValue,
   getInfrastructureVariables,
@@ -32,9 +33,9 @@ export interface UpFlags {
   yes?: boolean;
   llmKey?: string;
   llmProvider?: LlmProvider;
-  apiPort?: number;
   webPort?: number;
-  pull?: boolean;
+  /** Public domain; the proxy serves HTTPS for it on 80/443. */
+  domain?: string;
   build?: boolean;
   noStart?: boolean;
   /** Confirm operating on a developer checkout that is not the recorded install. */
@@ -58,6 +59,9 @@ export const PROVIDER_ENV_VAR: Record<
   openrouter: "OPENROUTER_API_KEY",
   gemini: "GOOGLE_API_KEY",
 };
+
+const HTTP_PORT = 80;
+const HTTPS_PORT = 443;
 
 /** Default install location for fresh self-host clones (mirrors init). */
 export const DEFAULT_INSTALL_DIR = path.join(os.homedir(), "gaia");
@@ -106,13 +110,17 @@ export function validateLlmFlags(flags: UpFlags): void {
 }
 
 /**
- * Port overrides explicitly requested via --api-port/--web-port. These win
- * over conflict-derived alternatives (explicit user intent).
+ * Port overrides explicitly requested via --web-port/--domain. These win over
+ * conflict-derived alternatives (explicit user intent). A domain needs the
+ * standard ports: 80 for the ACME challenge and redirect, 443 for HTTPS.
  */
 export function portOverridesFromFlags(flags: UpFlags): Record<number, number> {
   const overrides: Record<number, number> = {};
-  if (flags.apiPort) overrides[8000] = flags.apiPort;
-  if (flags.webPort) overrides[3000] = flags.webPort;
+  if (flags.domain) {
+    overrides[DEFAULT_WEB_PORT] = HTTP_PORT;
+    overrides[DEFAULT_HTTPS_PORT] = HTTPS_PORT;
+  }
+  if (flags.webPort) overrides[DEFAULT_WEB_PORT] = flags.webPort;
   return overrides;
 }
 

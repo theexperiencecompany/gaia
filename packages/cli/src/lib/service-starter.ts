@@ -24,7 +24,11 @@ function getEnvFileArgs(dockerDir: string): string[] {
 
 export interface StartServicesOptions {
   build?: boolean;
-  pull?: boolean;
+  /**
+   * Image pull policy for `up`: "missing" pulls only absent images (first
+   * start); "always" refreshes every tag (`gaia update`, `gaia start --pull`).
+   */
+  pull?: "always" | "missing";
 }
 
 /** Default ceiling for `gaia start`, in minutes. */
@@ -33,11 +37,10 @@ const DEFAULT_START_TIMEOUT_MIN = 60;
 /**
  * Resolve the `docker compose up` timeout in milliseconds.
  *
- * docker-compose.selfhost.yml has build-only services (gaia-backend, arq_worker, seed-models)
- * that compose builds implicitly on first start even without --build; on a resource-constrained
- * VM (e.g. 4 GB) the Web production build alone can take 30+ minutes. The default ceiling
- * covers that slow path while still catching a genuinely stuck build; override with
- * GAIA_START_TIMEOUT_MIN, or 0 to disable.
+ * A pull-based start takes minutes, but `--build` (docker-compose.build.yml) on a
+ * resource-constrained VM can spend 30+ minutes on the web production build alone. The
+ * default ceiling covers that slow path while still catching a genuinely stuck build;
+ * override with GAIA_START_TIMEOUT_MIN, or 0 to disable.
  */
 function resolveStartTimeoutMs(): number | undefined {
   // Number("") and Number("  ") are 0, which would silently disable the
@@ -56,17 +59,20 @@ function buildSelfhostUpArgs(
   envArgs: string[],
   options?: StartServicesOptions,
 ): string[] {
+  // The base file is image-only; building is the explicit override file.
+  const fileArgs = options?.build
+    ? ["-f", "docker-compose.selfhost.yml", "-f", "docker-compose.build.yml"]
+    : ["-f", "docker-compose.selfhost.yml"];
   const upArgs = [
     "compose",
-    "-f",
-    "docker-compose.selfhost.yml",
+    ...fileArgs,
     ...envArgs,
     "up",
     "-d",
     "--remove-orphans",
   ];
   if (options?.build) upArgs.push("--build");
-  if (options?.pull) upArgs.push("--pull", "always");
+  if (options?.pull) upArgs.push("--pull", options.pull);
   return upArgs;
 }
 

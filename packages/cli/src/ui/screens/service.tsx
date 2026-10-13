@@ -141,7 +141,7 @@ export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
               <Text>
                 API:{" "}
                 <Text color="cyan" bold>
-                  http://localhost:{state.data.apiPort || 8000}
+                  {state.data.apiUrl}
                 </Text>
               </Text>
             </Box>
@@ -158,7 +158,7 @@ export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
                 <Text>
                   API:{" "}
                   <Text color="cyan" bold>
-                    http://localhost:{state.data.apiPort || 8000}
+                    {state.data.apiUrl}
                   </Text>
                 </Text>
               </Box>

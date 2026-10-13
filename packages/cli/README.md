@@ -8,14 +8,21 @@ CLI tool for setting up and managing [GAIA](https://heygaia.io).
 
 - **Node.js 20+** and one package manager (npm, pnpm, or bun)
 - **macOS or Linux** (Windows via WSL2)
-- **Docker** installed and running
+- **Docker** — `gaia up` offers to install it on apt-based Linux when missing
 - **Git** installed
 
 The CLI checks prerequisites at startup and reports what is missing.
 
 ## Installation
 
-Install globally with your preferred package manager:
+The standalone installer sets up Node.js if needed and installs the CLI:
+
+```bash
+curl -fsSL https://heygaia.io/install.sh | sh
+gaia up
+```
+
+Or install globally with your preferred package manager:
 
 ```bash
 npm install -g @heygaia/cli
@@ -26,6 +33,7 @@ bun add -g @heygaia/cli
 ## Commands
 
 ```bash
+gaia up            # One-command self-host: configure, pull and start
 gaia init          # Full setup from scratch
 gaia setup         # Configure existing repo
 gaia start         # Start services in self-host mode
@@ -34,9 +42,28 @@ gaia dev full      # Developer mode + workers (Nx TUI)
 gaia logs          # Stream running logs
 gaia stop          # Stop all services
 gaia status        # Check service health
+gaia doctor        # Diagnose a GAIA install
+gaia update        # Pull the latest GAIA and restart
 gaia --version     # Show CLI version
 gaia --help        # Show all commands
 ```
+
+### `gaia up`
+
+One-command self-hosted setup: checks prerequisites (installing Docker on apt-based Linux with consent), clones GAIA to `~/gaia` if needed, writes the configuration, pulls the published images and starts the stack. GAIA is served on a single port (default 3000) through a bundled Caddy proxy.
+
+| Flag | Description |
+|------|-------------|
+| `--yes` | No prompts; also consents to installing Docker |
+| `--domain <domain>` | Serve at `https://<domain>` with an automatic certificate (ports 80 and 443) |
+| `--web-port <port>` | Host port GAIA is served on (default 3000) |
+| `--llm-key <key>` / `--llm-provider <name>` | LLM key for first boot (`openrouter`, `gemini`, or `custom`) |
+| `--build` | Build images from the checkout instead of pulling |
+| `--no-start` | Configure only |
+
+### `gaia update`
+
+Fetches `origin/master`, shows what changed, then `git pull --ff-only` and restarts on freshly pulled images (rebuilding only when the web `Dockerfile` or `package.json` changed). Volumes and `infra/docker/.env` are preserved. `--yes` skips the confirmation.
 
 ### `gaia init`
 
@@ -94,7 +121,7 @@ Shows health and latency for core services.
 
 ## Port Overrides
 
-When port conflicts are detected, overrides are written to `infra/docker/.env`.
+When port conflicts are detected, overrides are written to `infra/docker/.env`. In self-host mode only the proxy port (`WEB_HOST_PORT`, plus `HTTPS_HOST_PORT` with a domain) is published.
 
 ## Development
 

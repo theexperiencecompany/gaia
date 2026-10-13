@@ -82,14 +82,14 @@ node.corepack = true
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks."setup:env"]
-description = "Check if environment files exist for all apps"
+description = "Create missing environment files for all apps from their examples (never overwrites)"
 run = '''
 echo "Checking environment files..."
-missing=""
 
-# API (Manual check)
+# API (Auto-copy; the template carries no secrets — fill in keys or use Infisical)
 if [ ! -f "apps/api/.env" ]; then
-    missing="$missing\n  cp apps/api/.env.example apps/api/.env"
+    echo "Creating apps/api/.env from example (add your keys, or use Infisical)"
+    cp apps/api/.env.example apps/api/.env
 fi
 
 # Web (Auto-copy)
@@ -104,13 +104,6 @@ if [ ! -f "apps/mobile/.env" ] && [ -f "apps/mobile/.env.example" ]; then
     cp apps/mobile/.env.example apps/mobile/.env
 fi
 
-if [ -n "$missing" ]; then
-    echo "ERROR: Missing API environment file!"
-    echo ""
-    echo "Please copy the example file (contains secrets):"
-    echo -e "$missing"
-    exit 1
-fi
 echo "Environment files ready"
 '''
 
@@ -178,6 +171,7 @@ enabled = true
 description = "Self-host GAIA on this machine: packages, repo, toolchain, then `gaia up --yes`"
 run = """
 set -e
+pnpm install --frozen-lockfile --filter "@heygaia/cli..."
 pnpm --filter @heygaia/cli build
 node packages/cli/dist/index.js up --yes
 echo ""

@@ -38,14 +38,14 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
     return;
   }
 
-  // Port check
-  const portOverrides = await runPortChecks(store);
+  // 3. Setup Mode
+  const setupMode = await selectSetupMode(store);
+
+  // Each mode publishes different host ports, so check after choosing.
+  const portOverrides = await runPortChecks(store, setupMode);
   if (portOverrides === null) {
     return;
   }
-
-  // 3. Setup Mode
-  const setupMode = await selectSetupMode(store);
 
   if (setupMode === "developer") {
     const developerPrereqs = await runDeveloperPrerequisiteChecks(store);

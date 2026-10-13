@@ -63,6 +63,7 @@ show_path_help() {
       BIN_DIR="$(npm config get prefix)/bin"
       printf "  Run: ${BOLD}export PATH=\"%s:\$PATH\"${NC}\n" "$BIN_DIR"
       printf "  Or add it to your shell profile (~/.bashrc, ~/.zshrc, etc.)\n"
+      printf "  Or run it directly: ${BOLD}%s/gaia up${NC}\n" "$BIN_DIR"
       ;;
     pnpm)
       BIN_DIR="$(pnpm bin -g 2>/dev/null || echo '$HOME/.local/share/pnpm')"
@@ -89,6 +90,7 @@ main() {
 
   # Determine package manager: prefer npm, then pnpm, then bun
   PKG_MGR=""
+  NODE_INSTALLED_VIA_NVM=""
 
   if check_command npm; then
     success "npm is already installed ($(npm --version))"
@@ -102,6 +104,7 @@ main() {
   else
     warn "No supported package manager found (npm, pnpm, or bun)"
     install_node
+    NODE_INSTALLED_VIA_NVM="1"
     PKG_MGR="npm"
   fi
 
@@ -113,18 +116,27 @@ main() {
     bun)  bun install -g --ignore-scripts @heygaia/cli ;;
   esac
 
-  if check_command gaia; then
-    success "GAIA CLI installed successfully!"
-    printf "\n${BOLD}Get started:${NC}\n"
-    printf "  ${GREEN}gaia init${NC}    - Set up GAIA from scratch\n"
-    printf "  ${GREEN}gaia setup${NC}   - Configure an existing repo\n"
-    printf "  ${GREEN}gaia status${NC}  - Check service health\n"
-    printf "  ${GREEN}gaia --help${NC}  - Show all commands\n\n"
-  else
+  if ! check_command gaia; then
     warn "Installation completed but 'gaia' command not found in PATH"
     show_path_help "$PKG_MGR"
     printf "\n"
+    return
   fi
+
+  success "GAIA CLI installed successfully!"
+
+  # nvm only changed this installer's PATH; the shell that piped it in still
+  # cannot see node or gaia until nvm is loaded there too.
+  if [ "$NODE_INSTALLED_VIA_NVM" = "1" ]; then
+    warn "Node.js was installed with nvm, so 'gaia' is not on your current shell's PATH yet."
+    printf "  Load it now: ${BOLD}. \"%s/nvm.sh\"${NC}  (or open a new terminal)\n" "$NVM_DIR"
+    printf "  Or run it directly: ${BOLD}%s up${NC}\n" "$(command -v gaia)"
+  fi
+
+  printf "\n${BOLD}Get started:${NC}\n"
+  printf "  ${GREEN}gaia up${NC}      - Set up and start GAIA\n"
+  printf "  ${GREEN}gaia status${NC}  - Check service health\n"
+  printf "  ${GREEN}gaia --help${NC}  - Show all commands\n\n"
 }
 
 main

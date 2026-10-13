@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { CLIStore } from "../ui/store.js";
+import { getDockerSocketGid } from "./docker.js";
 import * as envParser from "./env-parser.js";
 import * as envWriter from "./env-writer.js";
 import { collectMachineSecrets } from "./machine-secrets.js";
@@ -13,6 +14,8 @@ export interface EnvSetupOptions {
   llmProvider?: "openrouter" | "gemini" | "custom";
   /** API key supplied via `gaia up --llm-key`. */
   llmKey?: string;
+  /** Public domain from `gaia up --domain`; GAIA is served at https://<domain>. */
+  domain?: string;
 }
 
 export async function selectSetupMode(
@@ -63,6 +66,11 @@ export async function runEnvSetup(
   const deploymentDefaults = envParser.getDeploymentDefaults(setupMode);
   for (const [key, value] of Object.entries(deploymentDefaults)) {
     envValues[key] = value;
+  }
+  if (options?.domain) {
+    // Links in emails and OAuth callbacks must name the public origin.
+    envValues["HOST"] = `https://${options.domain}`;
+    envValues["FRONTEND_URL"] = `https://${options.domain}`;
   }
 
   applyLlmFlagAnswers(envValues, options);
@@ -115,6 +123,7 @@ export async function runEnvSetup(
       envValues,
       setupMode,
       portOverrides,
+      options?.domain,
     );
   } catch (e) {
     store.setError(e as Error);
@@ -299,6 +308,7 @@ async function writeAllEnvFiles(
   envValues: Record<string, string>,
   setupMode: envParser.SetupMode,
   portOverrides?: Record<number, number>,
+  domain?: string,
 ): Promise<void> {
   // Write API .env
   store.setStatus("Writing API environment file...");
@@ -310,6 +320,29 @@ async function writeAllEnvFiles(
     throw new Error(`Failed to write API .env file: ${(e as Error).message}`);
   }
 
+  if (setupMode === "selfhost") {
+    store.setStatus("Writing Docker Compose environment...");
+    try {
+      envWriter.writeDockerComposeEnv(
+        repoPath,
+        portOverrides ?? {},
+        setupMode,
+        {
+          dockerSocketGid: getDockerSocketGid(),
+          domain,
+        },
+      );
+      store.setStatus("Docker Compose environment configured!");
+    } catch (e) {
+      throw new Error(
+        `Failed to write Docker Compose .env: ${(e as Error).message}`,
+      );
+    }
+    // The self-host web image is prebuilt and same-origin; apps/web env
+    // files only feed the developer dev server.
+    return;
+  }
+
   // Write web .env
   store.setStatus("Writing web environment file...");
   try {
@@ -319,19 +352,15 @@ async function writeAllEnvFiles(
     throw new Error(`Failed to write web .env file: ${(e as Error).message}`);
   }
 
-  // Write Docker Compose .env for port overrides and selfhost build args
-  const hasPortOverrides =
-    portOverrides && Object.keys(portOverrides).length > 0;
-  if (hasPortOverrides || setupMode === "selfhost") {
+  // Write Docker Compose .env for port overrides
+  if (portOverrides && Object.keys(portOverrides).length > 0) {
     store.setStatus("Writing Docker Compose environment...");
     try {
-      if (hasPortOverrides) {
-        // Patch docker-compose.yml to use variable substitution for ports.
-        // Older versions of the compose file have hardcoded ports, so the
-        // .env override only works after patching.
-        envWriter.patchDockerComposePorts(repoPath);
-      }
-      envWriter.writeDockerComposeEnv(repoPath, portOverrides ?? {}, setupMode);
+      // Patch docker-compose.yml to use variable substitution for ports.
+      // Older versions of the compose file have hardcoded ports, so the
+      // .env override only works after patching.
+      envWriter.patchDockerComposePorts(repoPath);
+      envWriter.writeDockerComposeEnv(repoPath, portOverrides, setupMode);
       store.setStatus("Docker Compose environment configured!");
     } catch (e) {
       throw new Error(

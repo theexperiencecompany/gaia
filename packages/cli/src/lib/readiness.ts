@@ -111,18 +111,18 @@ async function probe(target: ReadinessTarget): Promise<boolean> {
  */
 export async function waitForUpReadiness(
   store: CLIStore,
-  ports: { apiPort: number; webPort: number },
+  endpoints: { apiUrl: string; webPort: number },
 ): Promise<WaitForServicesResult> {
   const result = await waitForServices(
     [
       {
         label: "API",
-        url: `http://localhost:${ports.apiPort}/health`,
+        url: `${endpoints.apiUrl}/ping`,
         requireOk: true,
       },
       {
         label: "Web",
-        url: `http://localhost:${ports.webPort}/login`,
+        url: `http://localhost:${endpoints.webPort}/login`,
         requireOk: false,
       },
     ],

@@ -25,9 +25,8 @@ interface UpCliOptions {
   yes?: boolean;
   llmKey?: string;
   llmProvider?: string;
-  apiPort?: number;
   webPort?: number;
-  pull?: boolean;
+  domain?: string;
   build?: boolean;
   /** False when --no-start is passed (commander negatable option). */
   start?: boolean;
@@ -53,16 +52,28 @@ program
 program
   .command("up")
   .description(CLI_COMMAND_DESCRIPTIONS.up)
-  .option("--yes", "Accept all defaults (no prompts)")
+  .option(
+    "--yes",
+    "Accept all defaults (no prompts), including installing Docker when missing",
+  )
   .option("--llm-key <key>", "LLM API key for first boot")
   .option(
     "--llm-provider <provider>",
     "LLM provider for --llm-key: openrouter, gemini, or custom",
   )
-  .option("--api-port <port>", "Host port for the API", Number.parseInt)
-  .option("--web-port <port>", "Host port for the web app", Number.parseInt)
-  .option("--pull", "Pull pre-built images only (fail instead of building)")
-  .option("-b, --build", "Build images locally before starting")
+  .option(
+    "--web-port <port>",
+    "Host port GAIA is served on (default 3000)",
+    Number.parseInt,
+  )
+  .option(
+    "--domain <domain>",
+    "Serve GAIA at https://<domain> with an automatic certificate (uses ports 80 and 443)",
+  )
+  .option(
+    "-b, --build",
+    "Build the images from this checkout instead of pulling them",
+  )
   .option("--no-start", "Configure environment only; do not start services")
   .option(
     "--force-dev-tree",
@@ -107,9 +118,12 @@ program
   .command("start")
   .description(CLI_COMMAND_DESCRIPTIONS.start)
   .option("-b, --build", "Rebuild Docker images before starting")
-  .option("--pull", "Pull latest base images before starting")
+  .option("--pull", "Pull the latest images before starting")
   .action(async (options: { build?: boolean; pull?: boolean }) => {
-    await runStart({ build: options.build, pull: options.pull });
+    await runStart({
+      build: options.build,
+      pull: options.pull ? "always" : undefined,
+    });
   });
 
 program

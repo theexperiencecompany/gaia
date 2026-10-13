@@ -144,7 +144,7 @@ describe("runEnvSetup env policy", () => {
     }
   });
 
-  it("writes NEXT_PUBLIC_APP_URL into the compose .env for selfhost", async () => {
+  it("serves selfhost from one origin: proxy profile on, API on the web port", async () => {
     const repo = makeRepo();
     await runEnvSetup(makeHeadlessStore(), repo, "selfhost", { 3000: 4000 });
 
@@ -152,9 +152,35 @@ describe("runEnvSetup env policy", () => {
       path.join(repo, "infra", "docker", ".env"),
       "utf-8",
     );
-    expect(composeEnv).toMatch(
-      /^NEXT_PUBLIC_APP_URL=http:\/\/localhost:4000$/m,
-    );
     expect(composeEnv).toMatch(/^WEB_HOST_PORT=4000$/m);
+    expect(composeEnv).toMatch(/^COMPOSE_PROFILES=proxy$/m);
+    expect(composeEnv).toMatch(/^DOCKER_SOCKET_GID=\d+$/m);
+    expect(composeEnv).not.toMatch(/NEXT_PUBLIC_APP_URL/);
+
+    const apiEnv = readApiEnv(repo);
+    expect(apiEnv).toMatch(/^HOST=http:\/\/localhost:4000$/m);
+    expect(apiEnv).toMatch(/^FRONTEND_URL=http:\/\/localhost:4000$/m);
+  });
+
+  it("points HOST and FRONTEND_URL at https://<domain> and records it", async () => {
+    const repo = makeRepo();
+    await runEnvSetup(
+      makeHeadlessStore(),
+      repo,
+      "selfhost",
+      { 3000: 80, 3443: 443 },
+      { domain: "gaia.example.com" },
+    );
+
+    const composeEnv = readFileSync(
+      path.join(repo, "infra", "docker", ".env"),
+      "utf-8",
+    );
+    expect(composeEnv).toMatch(/^GAIA_DOMAIN=gaia\.example\.com$/m);
+    expect(composeEnv).toMatch(/^WEB_HOST_PORT=80$/m);
+    expect(composeEnv).toMatch(/^HTTPS_HOST_PORT=443$/m);
+    const apiEnv = readApiEnv(repo);
+    expect(apiEnv).toMatch(/^HOST=https:\/\/gaia\.example\.com$/m);
+    expect(apiEnv).toMatch(/^FRONTEND_URL=https:\/\/gaia\.example\.com$/m);
   });
 });

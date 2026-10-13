@@ -166,7 +166,7 @@ describe("waitForUpReadiness", () => {
     const store = createStore();
 
     const result = await waitForUpReadiness(store, {
-      apiPort: 8000,
+      apiUrl: "http://localhost:3000/api/v1",
       webPort: 3000,
     });
 
@@ -177,6 +177,20 @@ describe("waitForUpReadiness", () => {
     );
   });
 
+  it("probes the API through the single origin, never a bare API port", async () => {
+    const fetchMock = stubFetch(async () => ({ ok: true, status: 200 }));
+
+    await waitForUpReadiness(createStore(), {
+      apiUrl: "http://localhost:3000/api/v1",
+      webPort: 3000,
+    });
+
+    expect(calledUrls(fetchMock)).toContain(
+      "http://localhost:3000/api/v1/ping",
+    );
+    expect(calledUrls(fetchMock).some((u) => u.includes(":8000"))).toBe(false);
+  });
+
   it("finishes honestly naming what is still starting on timeout", async () => {
     stubFetch(async () => {
       throw new Error("ECONNREFUSED");
@@ -184,7 +198,7 @@ describe("waitForUpReadiness", () => {
     const store = createStore();
 
     const promise = waitForUpReadiness(store, {
-      apiPort: 8000,
+      apiUrl: "http://localhost:3000/api/v1",
       webPort: 3000,
     });
     await vi.advanceTimersByTimeAsync(READINESS_TIMEOUT_MS + 60_000);
@@ -206,7 +220,7 @@ describe("waitForUpReadiness", () => {
     const store = createStore();
 
     const promise = waitForUpReadiness(store, {
-      apiPort: 8000,
+      apiUrl: "http://localhost:3000/api/v1",
       webPort: 3000,
     });
     await vi.advanceTimersByTimeAsync(READINESS_INTERVAL_MS * 2);
