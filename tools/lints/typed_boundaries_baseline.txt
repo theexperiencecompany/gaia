@@ -21,7 +21,6 @@ apps/api/app/agents/core/subagents/call_record.py	TB002
 apps/api/app/agents/llm/client.py	TB001	deferred-until=2026-12-31; the 4 remaining Any are LangChain's own contract — two ainvoke/invoke returns and **_kwargs overriding Runnable/BaseCallbackHandler signatures typed Any upstream, plus _requested_model taking any Runnable shape (CLAUDE.md Type Safety item 14). Every TB002 in the file was fixed in #1194 (decided 2026-09-20)
 apps/api/app/agents/llm/model_catalog.py	TB001
 apps/api/app/agents/llm/model_catalog.py	TB002
-apps/api/app/agents/llm/vision/tool_media.py	TB002
 apps/api/app/agents/memory/profile_extractor.py	TB001
 apps/api/app/agents/memory/profile_extractor.py	TB002
 apps/api/app/agents/middleware/accounting.py	TB001	deferred-until=2026-12-31; 12 Any annotations, all LangChain AgentMiddleware hook signatures (AgentState[Any], Runtime[Any], dict[str, Any] state updates) typed Any upstream; touched by the llm-cost single-source fix, which leaves them as they were (decided 2026-10-08)

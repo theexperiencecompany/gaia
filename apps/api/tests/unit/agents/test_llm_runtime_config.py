@@ -7,6 +7,7 @@ snapshot refresh, and aux-cache resets.
 
 from types import SimpleNamespace
 from typing import Any, ClassVar, cast
+from unittest.mock import AsyncMock
 
 from pydantic import SecretStr
 import pytest
@@ -30,6 +31,7 @@ from app.agents.llm.client import (
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.types import LLMProviderName
 from app.constants.llm import DEFAULT_LLM_TEMPERATURE, DEFAULT_MAX_TOKENS, ModelUse
+from app.services.providers import provider_credentials_service as service
 
 
 def _store_config(
@@ -90,6 +92,9 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch):
     fallback reads the explicit var only, so an ambient value on a developer
     machine would leak a lane into every test here.
     """
+    # Runtime-stored credentials only exist on a self-hosted instance.
+    monkeypatch.setattr(client_module.settings, "ENV", "selfhost")
+    monkeypatch.setattr(client_module.settings, "AUTH_MODE", "local")
     monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False, raising=False)
     monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", None, raising=False)
     monkeypatch.setattr(client_module.settings, "OPENROUTER_BASE_URL", None, raising=False)
@@ -163,7 +168,7 @@ class TestOllamaInit:
 
         with pytest.raises(LLMNotConfiguredError):
             init_ollama_llm().loader_func()
-        assert client_module._provider_config(LLMProviderName.OLLAMA) is None
+        assert client_module.resolved_config(LLMProviderName.OLLAMA) is None
 
     def test_sim_mode_returns_stub(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sentinel = object()
@@ -333,25 +338,16 @@ class TestRefreshProviderConfigs:
     async def test_refresh_populates_snapshot_for_every_consumer(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        resolved: dict[str, dict[str, str | None]] = {}
+        monkeypatch.setattr(
+            service.provider_credentials_repository,
+            "find_by_provider",
+            AsyncMock(return_value=None),
+        )
+        monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-openrouter")
+        monkeypatch.setattr(client_module.settings, "TAVILY_API_KEY", "sk-tavily")
+        service._cache.clear()
 
-        async def fake_resolve(provider: str) -> dict[str, str | None] | None:
-            return resolved.get(provider)
-
-        async def seed_and_refresh() -> None:
-            for name in ("openrouter", "tavily"):
-                resolved[name] = _store_config(api_key=f"sk-{name}")
-            await refresh_provider_configs()
-
-        from unittest.mock import patch
-
-        # client.py imports `resolve` directly (the phantom cycle was disproven),
-        # so the patch lands on the client module's binding of it.
-        with patch(
-            "app.agents.llm.client.resolve",
-            side_effect=fake_resolve,
-        ):
-            await seed_and_refresh()
+        await refresh_provider_configs()
 
         assert client_module._runtime_configs["openrouter"]["api_key"] == "sk-openrouter"
         assert client_module._runtime_configs["tavily"]["api_key"] == "sk-tavily"

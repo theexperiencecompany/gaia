@@ -104,8 +104,8 @@ from app.services.llm_metering import (
 )
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
-    _env_fallback,
     resolve,
+    resolved_config,
     resolved_configs,
 )
 from shared.py.wide_events import log
@@ -182,18 +182,9 @@ NO_PROVIDER_CONFIGURED_MESSAGE = (
 )
 
 
-async def resolve_provider_config(provider: str) -> ProviderConfig | None:
-    """Return the provider's active config, mirroring the result into the shared snapshot for sync readers."""
-    return await resolve(provider)
-
-
 async def refresh_provider_configs() -> None:
-    """Resolve every credential-backed provider into the runtime snapshot."""
-    results = await asyncio.gather(
-        *(resolve_provider_config(name) for name in _RUNTIME_CONFIG_PROVIDERS)
-    )
-    for name, config in zip(_RUNTIME_CONFIG_PROVIDERS, results):
-        _runtime_configs[name] = config
+    """Resolve every credential-backed provider; resolve mirrors each into the runtime snapshot."""
+    await asyncio.gather(*(resolve(name) for name in _RUNTIME_CONFIG_PROVIDERS))
 
 
 _refresh_tasks: set[asyncio.Task[None]] = set()
@@ -230,16 +221,6 @@ def _schedule_runtime_config_refresh() -> None:
     task.add_done_callback(_on_refresh_done)
 
 
-def _provider_config(provider: LLMProviderName) -> ProviderConfig | None:
-    """Return the provider's effective config: resolver result, else the service env fallback.
-
-    Store credentials win over env only after a resolution has run, never before.
-    """
-    if provider in _runtime_configs:
-        return _runtime_configs[provider]
-    return _env_fallback(str(provider))
-
-
 def _require_provider_config(provider: LLMProviderName, *fields: str) -> ProviderConfig:
     """Return the provider's config for building a client, or raise.
 
@@ -247,7 +228,7 @@ def _require_provider_config(provider: LLMProviderName, *fields: str) -> Provide
     nothing is configured at all, or a field the client construction needs is
     missing.
     """
-    config = _provider_config(provider)
+    config: ProviderConfig | None = resolved_config(provider)
     if config is None or any(not config.get(field) for field in fields):
         raise LLMNotConfiguredError(NO_PROVIDER_CONFIGURED_MESSAGE)
     return config
@@ -262,14 +243,14 @@ def chat_model(provider: LLMProviderName) -> str | None:
     catalog = LLM_MODEL_PROFILES[provider].chat
     if _is_hosted_comms_only(provider):
         return catalog
-    config = _provider_config(provider)
-    configured = config.get("model") if config else None
+    config: ProviderConfig | None = resolved_config(provider)
+    configured = config["model"] if config else None
     return configured or catalog
 
 
 def _is_hosted_comms_only(provider: LLMProviderName) -> bool:
     """Whether production keeps provider to comms' own lane (see HOSTED_COMMS_ONLY_PROVIDERS)."""
-    return settings.ENV == "production" and provider in HOSTED_COMMS_ONLY_PROVIDERS
+    return settings.deployment.hosted_models and provider in HOSTED_COMMS_ONLY_PROVIDERS
 
 
 def _chat_priority() -> tuple[LLMProviderName, ...]:
@@ -490,7 +471,9 @@ def init_custom_llm() -> LanguageModelLike:
 
 def _custom_endpoint() -> CustomEndpoint:
     """Return the configured custom endpoint; the model is required, since the catalog has no default for it."""
-    config = _require_provider_config(LLMProviderName.CUSTOM, "api_key", "base_url", "model")
+    config: ProviderConfig = _require_provider_config(
+        LLMProviderName.CUSTOM, "api_key", "base_url", "model"
+    )
     return CustomEndpoint(
         base_url=str(config["base_url"]),
         api_key=str(config["api_key"]),
@@ -623,7 +606,7 @@ def provider_configured(provider_name: LLMProviderName) -> bool:
         # _sim_llm), mirroring the old behavior where the stub key satisfied
         # every import-time required_keys list.
         return True
-    config: ProviderConfig | None = _provider_config(provider_name)
+    config: ProviderConfig | None = resolved_config(provider_name)
     if config is None:
         return False
     match provider_name:
@@ -720,7 +703,7 @@ def register_llm_providers() -> None:
     # The custom endpoint never registers under SaaS production, so a stray
     # DEV_LLM_* env var there still can't route real traffic. Dev and self-host
     # register it; availability still follows the resolver.
-    if settings.ENV != "production":
+    if not settings.deployment.hosted_models:
         init_custom_llm()
     # Pull the credential store's current state into the runtime snapshot so
     # the sync paths above serve store-configured providers without awaiting.
@@ -806,7 +789,9 @@ def one_shot_route(use: ModelUse) -> tuple[LLMProviderName, str] | None:
     provider still comes first, then every configured provider in priority order.
     """
     hosted = HOSTED_ONE_SHOT_PROVIDERS[use]
-    candidates = (hosted,) if settings.ENV == "production" else (hosted, *LLM_PROVIDER_PRIORITY)
+    candidates = (
+        (hosted,) if settings.deployment.hosted_models else (hosted, *LLM_PROVIDER_PRIORITY)
+    )
     for provider in candidates:
         if provider_configured(provider) and (model := _one_shot_model(provider, use)):
             return provider, model
@@ -850,7 +835,7 @@ def resolve_model(
                 else (),
             )
         case LLMProviderName.GEMINI:
-            config = _require_provider_config(provider, "api_key")
+            config: ProviderConfig = _require_provider_config(provider, "api_key")
             return _build_gemini_one_shot(model, temperature, api_key=str(config["api_key"]))
         case LLMProviderName.OPENAI:
             config = _require_provider_config(provider, "api_key")
@@ -895,7 +880,7 @@ def _openrouter_one_shot(
     fallback_model_names ride OpenRouter's models array, tried in order on
     transport errors only, with the provider order the client already carries.
     """
-    config = _require_provider_config(LLMProviderName.OPENROUTER, "api_key")
+    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER, "api_key")
     base = _build_default_llm(
         temperature, api_key=str(config["api_key"]), base_url=config.get("base_url")
     )

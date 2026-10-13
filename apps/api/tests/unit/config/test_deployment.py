@@ -17,6 +17,7 @@ def test_production_bills_enforces_and_reads_env_only() -> None:
     assert profile.enforces_usage_limits is True
     assert profile.runtime_credentials is False
     assert profile.local_auth is False
+    assert profile.hosted_models is True
 
 
 def test_production_with_local_auth_is_refused() -> None:
@@ -32,6 +33,7 @@ def test_selfhost_has_no_plans_no_limits_and_a_credential_store() -> None:
     assert profile.enforces_usage_limits is False
     assert profile.runtime_credentials is True
     assert profile.local_auth is True
+    assert profile.hosted_models is False
 
 
 def test_selfhost_with_workos_still_stores_credentials() -> None:
@@ -48,6 +50,7 @@ def test_development_mirrors_production_enforcement_without_billing() -> None:
     assert profile.enforces_plans is True
     assert profile.enforces_usage_limits is True
     assert profile.runtime_credentials is False
+    assert profile.hosted_models is False
 
 
 def test_development_with_local_auth_gets_the_setup_surface() -> None:

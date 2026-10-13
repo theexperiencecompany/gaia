@@ -42,8 +42,8 @@ from app.db.repositories.provider_credentials import provider_credentials_reposi
 from app.models.user_models import AuthenticatedUser
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
-    _env_fallback,
     delete as delete_provider_config,
+    env_config,
     invalidate as invalidate_provider_cache,
     resolve as resolve_provider_config,
     upsert as upsert_provider_config,
@@ -245,7 +245,7 @@ async def _credential_source(provider: str) -> CredentialSource:
         return CredentialSource.STORED
     # Env-fallback semantics live in ONE place (the credential service) so
     # this endpoint can never disagree with what the LLM/search layers resolve.
-    if _env_fallback(provider) is not None:
+    if env_config(provider) is not None:
         return CredentialSource.ENV
     return CredentialSource.UNSET
 

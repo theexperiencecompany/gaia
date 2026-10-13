@@ -308,7 +308,7 @@ class TestGetAvailableProviders:
 
         with (
             patch("app.agents.llm.client.providers", registry),
-            patch("app.agents.llm.client._provider_config", side_effect=fake_config),
+            patch("app.agents.llm.client.resolved_config", side_effect=fake_config),
         ):
             available = _get_available_providers()
 

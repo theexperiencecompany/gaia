@@ -34,6 +34,8 @@ class DeploymentProfile:
     enforces_plans: a user's plan gates access; off means everyone is top tier.
     enforces_usage_limits: rate, cost and cap walls block once exhausted.
     runtime_credentials: provider keys may be stored at runtime; off means env only.
+    hosted_models: GAIA Cloud's fixed per-role model routing and hosted generators;
+        off means every role runs on the instance's own configured providers.
     """
 
     kind: DeploymentKind
@@ -42,6 +44,7 @@ class DeploymentProfile:
     enforces_plans: bool
     enforces_usage_limits: bool
     runtime_credentials: bool
+    hosted_models: bool
 
 
 @cache
@@ -67,4 +70,5 @@ def deployment_profile(
         enforces_plans=enforces_plans,
         enforces_usage_limits=enforces_plans and not unlimited_usage,
         runtime_credentials=kind is DeploymentKind.SELFHOST or local_auth,
+        hosted_models=kind is DeploymentKind.PRODUCTION,
     )

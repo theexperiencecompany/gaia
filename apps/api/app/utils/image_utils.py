@@ -14,7 +14,7 @@ from app.constants.llm import (
     OPENAI_IMAGE_SIZE,
 )
 from app.constants.media import MAX_IMAGE_FILE_BYTES
-from app.services.providers.provider_credentials_service import resolve
+from app.services.providers.provider_credentials_service import ProviderConfig, resolve
 from app.utils.image_codec import ImageCodec, InvalidImageError
 
 http_async_client = httpx.AsyncClient(timeout=IMAGE_GENERATION_TIMEOUT_SECONDS)
@@ -34,13 +34,13 @@ async def generate_image(imageprompt: str) -> bytes:
     Raises ImageGenerationNotConfiguredError without an OpenAI key outside
     production; provider failures propagate.
     """
-    if settings.ENV == "production":
+    if settings.deployment.hosted_models:
         response = await http_async_client.post(
             HOSTED_IMAGE_GENERATION_URL, json={"imageprompt": imageprompt}
         )
         response.raise_for_status()
         return response.content
-    config = await resolve("openai")
+    config: ProviderConfig | None = await resolve("openai")
     if config is None or not config["api_key"]:
         raise ImageGenerationNotConfiguredError(IMAGE_GENERATION_NOT_CONFIGURED_MESSAGE)
     result = await AsyncOpenAI(api_key=config["api_key"]).images.generate(

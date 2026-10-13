@@ -26,7 +26,7 @@ from app.constants.media import (
     MEDIA_VISION_NOT_CONFIGURED,
     TOOL_MEDIA_DESCRIBE_PROMPT,
 )
-from app.utils.multimodal import extract_text_content, media_blocks
+from app.utils.multimodal import InlineMediaBlock, extract_text_content, media_blocks
 from shared.py.wide_events import log
 
 
@@ -58,12 +58,12 @@ async def describe_tool_media(
         described: list[str | None] = await asyncio.gather(
             *(
                 describe_image(
-                    block["base64"],
-                    block["mime_type"],
+                    media.base64,
+                    media.mime_type,
                     prompt=prompt,
                     label="tool_media_vision",
                 )
-                for block in blocks
+                for media in (InlineMediaBlock.model_validate(block) for block in blocks)
             )
         )
     except LLMNotConfiguredError as e:

@@ -84,9 +84,13 @@ class TestProductionRoutingIsPinned:
 
     @pytest.fixture(autouse=True)
     def _hosted(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _configure(
-            "production", monkeypatch, openrouter=_OPENROUTER, gemini=_GEMINI, openai=_OPENAI
-        )
+        # Production reads keys from the environment only, never the snapshot.
+        monkeypatch.setattr(client_module.settings, "ENV", "production")
+        monkeypatch.setattr(client_module.settings, "AUTH_MODE", "workos")
+        monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-or")
+        monkeypatch.setattr(client_module.settings, "OPENROUTER_BASE_URL", None)
+        monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", "g-key")
+        monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", "sk-openai")
 
     async def test_comms_runs_openai_gpt_5_6_luna(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.COMMS)
@@ -140,18 +144,20 @@ class TestProductionRoutingIsPinned:
             "deepseek/deepseek-v4-flash-0731",
         ]
 
-    async def test_without_gemini_openai_is_never_the_executors_fallback(self) -> None:
-        client_module._runtime_configs["gemini"] = None
+    async def test_without_gemini_openai_is_never_the_executors_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None)
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
         assert lane.fallback() is None
 
     async def test_without_openrouter_or_gemini_the_default_lane_stays_openrouter(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """OpenAI is comms-only in production; a missing OpenRouter key fails loud at load time."""
-        client_module._runtime_configs["openrouter"] = None
-        client_module._runtime_configs["gemini"] = None
+        monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", None)
+        monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None)
 
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
@@ -179,7 +185,7 @@ class TestProductionRoutingIsPinned:
     def test_a_missing_hosted_key_is_never_routed_around(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        client_module._runtime_configs["gemini"] = None
+        monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None)
 
         assert one_shot_route(ModelUse.MEMORY) is None
         with pytest.raises(LLMNotConfiguredError, match="memory"):

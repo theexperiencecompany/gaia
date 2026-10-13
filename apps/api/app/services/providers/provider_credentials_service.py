@@ -69,7 +69,7 @@ def resolved_config(provider: str) -> ProviderConfig | None:
     """
     if settings.deployment.runtime_credentials and provider in resolved_configs:
         return resolved_configs[provider]
-    return _env_fallback(provider)
+    return env_config(provider)
 
 
 async def resolve(provider: str) -> ProviderConfig | None:
@@ -79,9 +79,9 @@ async def resolve(provider: str) -> ProviderConfig | None:
     never touched.
     """
     if not settings.deployment.runtime_credentials:
-        env_config = _env_fallback(provider)
-        resolved_configs[provider] = env_config
-        return env_config
+        from_env = env_config(provider)
+        resolved_configs[provider] = from_env
+        return from_env
 
     hit, cached = _cache_get(provider)
     if hit:
@@ -97,7 +97,7 @@ async def resolve(provider: str) -> ProviderConfig | None:
         # Undecryptable (instance secret rotated): logged loudly above; fall
         # through so env still works instead of bricking the provider.
 
-    fallback = _env_fallback(provider)
+    fallback = env_config(provider)
     if fallback is not None or provider in CREDENTIAL_PROVIDERS:
         # Cache known providers' outcomes (including unconfigured), so repeated
         # resolves don't hammer Mongo; unknown names return immediately.
@@ -306,7 +306,7 @@ _BESPOKE_ENV_RESOLVERS = {
 }
 
 
-def _env_fallback(provider: str) -> ProviderConfig | None:
+def env_config(provider: str) -> ProviderConfig | None:
     """Return what the environment alone provides for a provider, or None."""
     if resolve := _BESPOKE_ENV_RESOLVERS.get(provider):
         return resolve()
