@@ -11,7 +11,7 @@ import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from tests._harness.context_sources import knowledge, memory
@@ -980,7 +980,12 @@ class TestNewUserGuidanceBlock:
                 )
 
         assert event["warnings"] == [
-            {"msg": "Unknown onboarding need in preferences", "need": "telepathy"}
+            {
+                "msg": "Unknown onboarding need in preferences",
+                "need": "telepathy",
+                "error_type": "ValueError",
+                "error": ANY,
+            }
         ]
 
     async def test_a_user_with_no_profession_still_gets_their_playbooks(self) -> None:

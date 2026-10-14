@@ -11,7 +11,7 @@ lane without grepping the workflow first.
 
 | Concept | Script | Subcommands |
 | --- | --- | --- |
-| Where and how hard a job runs | `runner.sh` | `select`, `watchdog`, `cancel-superseded`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `health` |
+| Where and how hard a job runs | `runner.sh` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `health` |
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | The real browsers a lane drives | `browser.sh` | `locate`, `chrome-host`, `eval` |
@@ -26,7 +26,7 @@ lane without grepping the workflow first.
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `mirror-previous-gate`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `connect-cross-check`, `connect-binaries`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
-| Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `unwedge` |
+| Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
 
 `runner.sh health` is the read half of the governor below: a lane stuck in
 `queued` is either a thrashing BOX or a full GitHub POOL, and the two have

@@ -46,6 +46,8 @@ Key behaviors:
 - .warning() → real-time Loguru line + appended to wide_event["warnings"]
 - .error()   → real-time Loguru line + appended to wide_event["errors"]
 - .audit()   → AUDIT-level Loguru line + appended to wide_event["audit"]
+- inside an except block, warning/error/critical/exception stamp the handled
+  exception as error_type/error unless the call names either
 - .set()     → merges structured kwargs into the request's wide event
 - .bind()    → Loguru-compat: calls .set() and returns self
 
@@ -57,6 +59,7 @@ import asyncio
 from collections.abc import AsyncIterator, Coroutine
 import contextlib
 import contextvars
+import sys
 import time
 from typing import Any, NotRequired, TypedDict
 import uuid
@@ -643,6 +646,14 @@ class WideEventFields(TypedDict, total=False):
     audit: list[dict[str, Any]]
 
 
+def _with_handled_exception(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Stamp the exception being handled as error_type/error, unless the caller named either."""
+    handled = sys.exc_info()[1]
+    if handled is None or "error" in kwargs or "error_type" in kwargs:
+        return kwargs
+    return {**kwargs, "error_type": type(handled).__name__, "error": str(handled)}
+
+
 class WideEventLogger:
     """
     Drop-in replacement for a Loguru logger that accumulates a wide event.
@@ -743,6 +754,7 @@ class WideEventLogger:
     def warning(self, message: str, /, **kwargs: Any) -> None:
         """Log a warning, append it to the event's warnings and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
+        kwargs = _with_handled_exception(kwargs)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).warning(message)
         self._append("warnings", message, **kwargs)
         self._bump("WARNING")
@@ -750,6 +762,7 @@ class WideEventLogger:
     def error(self, message: str, /, **kwargs: Any) -> None:
         """Log an error, append it to the event's errors and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
+        kwargs = _with_handled_exception(kwargs)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
@@ -757,6 +770,7 @@ class WideEventLogger:
     def critical(self, message: str, /, **kwargs: Any) -> None:
         """Log a critical error, append it to the event's errors and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
+        kwargs = _with_handled_exception(kwargs)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).critical(message)
         self._append("errors", message, **kwargs)
         self._bump("CRITICAL")
@@ -791,6 +805,7 @@ class WideEventLogger:
 
     def exception(self, message: str, /, **kwargs: Any) -> None:
         """Log exception with traceback — same as .error() but includes stack trace."""
+        kwargs = _with_handled_exception(kwargs)
         _loguru.opt(depth=1, exception=True).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")

@@ -139,7 +139,7 @@ function resolveEnv(): string {
 }
 
 /** Short commit sha stamped on every line — parity with Python's env_context(). */
-function resolveCommit(): string {
+export function resolveCommit(): string {
   return (
     process.env.GIT_COMMIT_SHA ||
     process.env.COMMIT_SHA ||
