@@ -76,6 +76,7 @@ const DependencyInstallStep: React.FC<{
 
 const UpFinishedStep: React.FC<{
   webUrl: string;
+  reachableUrls: string[];
   apiUrl: string;
   noStart: boolean;
   stillStarting: boolean;
@@ -83,6 +84,7 @@ const UpFinishedStep: React.FC<{
   codeSandbox: boolean;
 }> = ({
   webUrl,
+  reachableUrls,
   apiUrl,
   noStart,
   stillStarting,
@@ -125,12 +127,13 @@ const UpFinishedStep: React.FC<{
       )}
 
       <Box marginTop={1} flexDirection="column">
-        <Text>
-          Web:{" "}
-          <Text color="cyan" bold>
-            {webUrl}
+        <Text>Open GAIA at:</Text>
+        {reachableUrls.map((url) => (
+          <Text key={url} color="cyan" bold>
+            {"  "}
+            {url}
           </Text>
-        </Text>
+        ))}
         <Text>
           API:{" "}
           <Text color="cyan" bold>
@@ -257,6 +260,7 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
       {state.step === "Finished" && state.data.finished && (
         <UpFinishedStep
           webUrl={state.data.upWebUrl}
+          reachableUrls={state.data.upReachableUrls}
           apiUrl={state.data.upApiUrl}
           noStart={state.data.upNoStart === true}
           stillStarting={

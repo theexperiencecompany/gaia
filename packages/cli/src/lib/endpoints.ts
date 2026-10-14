@@ -3,6 +3,7 @@
  * @module lib/endpoints
  */
 
+import { type NetworkInterfaceInfo, networkInterfaces } from "node:os";
 import type { SetupMode } from "./env-parser.js";
 
 /** Default host port of the web app — the self-host single origin. */
@@ -36,4 +37,28 @@ export function localApiUrl(
   portOverrides: Record<number, number>,
 ): string {
   return `${localOrigin(mode, portOverrides)}/api/v1`;
+}
+
+/** Docker's own bridges (docker0, br-<network id>) answer only on this host. */
+const DOCKER_BRIDGE_RE = /^(docker\d+|br-[0-9a-f]+)$/;
+
+/**
+ * Every address a browser can open the self-host web app at: https://<domain>
+ * when one is set, localhost, then each non-loopback IPv4 address of the host.
+ */
+export function reachableWebUrls(
+  webPort: number,
+  domain: string | undefined,
+  interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = networkInterfaces(),
+): string[] {
+  const hostAddresses = Object.entries(interfaces)
+    .filter(([name]) => !DOCKER_BRIDGE_RE.test(name))
+    .flatMap(([, infos]) => infos ?? [])
+    .filter((info) => info.family === "IPv4" && !info.internal)
+    .map((info) => `http://${info.address}:${webPort}`);
+  return [
+    ...(domain ? [`https://${domain}`] : []),
+    `http://localhost:${webPort}`,
+    ...hostAddresses,
+  ];
 }

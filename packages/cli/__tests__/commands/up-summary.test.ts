@@ -15,6 +15,7 @@ function summaryFor(data: Record<string, unknown>): string {
   for (const [key, value] of Object.entries({
     finished: true,
     upWebUrl: "http://localhost:3000",
+    upReachableUrls: ["http://localhost:3000"],
     upApiUrl: "http://localhost:3000/api/v1",
     ...data,
   })) {
@@ -35,6 +36,15 @@ describe("gaia up summary", () => {
     expect(out).not.toContain("ready");
     expect(out).toContain("GAIA is configured");
     expect(out).toContain("gaia start");
+  });
+
+  it("lists every address the instance answers at", () => {
+    const out = summaryFor({
+      upNoStart: false,
+      upReachableUrls: ["http://localhost:3000", "http://192.168.64.7:3000"],
+    });
+
+    expect(out).toContain("http://192.168.64.7:3000");
   });
 
   it("says ready once the started stack answers", () => {

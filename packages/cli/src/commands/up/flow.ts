@@ -19,7 +19,11 @@ import {
   validateLlmFlags,
 } from "../../lib/answers.js";
 import { readConfig, updateConfig } from "../../lib/config.js";
-import { DEFAULT_WEB_PORT, localApiUrl } from "../../lib/endpoints.js";
+import {
+  DEFAULT_WEB_PORT,
+  localApiUrl,
+  reachableWebUrls,
+} from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import { delay, runPortChecks } from "../../lib/flow-utils.js";
 import * as git from "../../lib/git.js";
@@ -226,6 +230,7 @@ export async function runUpFlow(
   const webUrl = options.domain
     ? `https://${options.domain}`
     : `http://localhost:${webPort}`;
+  const reachableUrls = reachableWebUrls(webPort, options.domain);
 
   // 6. Start — pull-first fast path, local build fallback.
   if (options.noStart) {
@@ -233,7 +238,7 @@ export async function runUpFlow(
     store.setStatus(
       "Environment configured. Start services later with 'gaia start'.",
     );
-    finishUp(store, targetPath, webUrl, {
+    finishUp(store, targetPath, webUrl, reachableUrls, {
       noStart: true,
       customProvider: options.llmProvider === "custom",
     });
@@ -254,7 +259,7 @@ export async function runUpFlow(
     webPort,
   });
 
-  finishUp(store, targetPath, webUrl, {
+  finishUp(store, targetPath, webUrl, reachableUrls, {
     noStart: false,
     customProvider: options.llmProvider === "custom",
     stillStarting: !readiness.ready,
@@ -362,6 +367,7 @@ function finishUp(
   store: CLIStore,
   repoPath: string,
   webUrl: string,
+  reachableUrls: string[],
   flags?: {
     noStart?: boolean;
     customProvider?: boolean;
@@ -380,6 +386,7 @@ function finishUp(
   store.updateData("setupMode", "selfhost");
   store.updateData("upCodeSandbox", readConfig()?.codeSandbox === true);
   store.updateData("upWebUrl", webUrl);
+  store.updateData("upReachableUrls", reachableUrls);
   store.updateData("upApiUrl", `${webUrl}/api/v1`);
   store.updateData("upNoStart", flags?.noStart === true);
   // Services started but never answered within the readiness budget — the

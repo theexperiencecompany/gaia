@@ -23,7 +23,10 @@ export function printUpSummary(store: CLIStore): void {
       console.info("  Containers are up but not answering yet.");
       console.info("  Run 'gaia status' to check progress.");
     }
-    console.info(`  Web: ${webUrl}`);
+    console.info("  Open GAIA at:");
+    for (const url of data.upReachableUrls as string[]) {
+      console.info(`    ${url}`);
+    }
     console.info(`  API: ${apiUrl}`);
   }
   console.info(`Finish setup in your browser: ${webUrl}/setup`);
