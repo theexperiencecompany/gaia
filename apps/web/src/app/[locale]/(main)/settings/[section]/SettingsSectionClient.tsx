@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { RedirectType, redirect } from "next/navigation";
+import { useState } from "react";
 import { ConfirmActionDialog } from "@/components/shared/ConfirmActionDialog";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import type { ModalAction } from "@/features/settings/components/SettingsMenu";
@@ -23,7 +23,6 @@ interface SettingsSectionClientProps {
 export default function SettingsSectionClient({
   section,
 }: SettingsSectionClientProps) {
-  const router = useRouter();
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
 
   // Self-host instances have no billing — deep links to billing-only
@@ -35,13 +34,13 @@ export default function SettingsSectionClient({
   const allowed = isSettingsSectionAllowed(section, role);
   const forbidden = userId !== "" && !allowed;
 
-  useEffect(() => {
-    if (billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(section)) {
-      router.replace("/settings/providers");
-    } else if (forbidden) {
-      router.replace(`/settings/${DEFAULT_SECTION}`);
-    }
-  }, [billingHidden, forbidden, section, router]);
+  // Resolved during render, not an effect, so the blocked section never paints.
+  if (billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(section)) {
+    redirect("/settings/providers", RedirectType.replace);
+  }
+  if (forbidden) {
+    redirect(`/settings/${DEFAULT_SECTION}`, RedirectType.replace);
+  }
 
   return (
     <>
