@@ -27,7 +27,6 @@ from app.models.user_models import (
     PublicHoloCardResponse,
     UpdateHoloCardColorsResponse,
     UpdateTimezoneResponse,
-    UserUpdate,
     UserUpdateResponse,
 )
 from app.services.account_fs import schedule_account_sync
@@ -38,6 +37,7 @@ from app.services.delivery.chat_channel import (
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
+from app.services.user_timezone import set_user_timezone
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import UserLoggedOut
@@ -212,7 +212,7 @@ async def update_user_timezone(
                 detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
             )
 
-        updated = await user_repository.update(user_id, UserUpdate(timezone=user_timezone.strip()))
+        updated = await set_user_timezone(user_id, user_timezone.strip())
 
         if updated is None:
             raise HTTPException(status_code=404, detail="User not found")
