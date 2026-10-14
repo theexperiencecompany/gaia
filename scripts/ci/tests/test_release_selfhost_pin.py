@@ -24,7 +24,7 @@ RELEASE_REPOS = ("gaia", "gaia-web", "gaia-bot-telegram", "gaia-bot-discord", "g
 
 # `imagetools inspect <ref>` succeeds when <ref> is in $PRESENT, or when it is
 # listed in $LATE as "<ref> <n>" and has been inspected more than n times.
-# `imagetools create -t <dst> <src>` records "<dst> <src>" in $CREATED.
+# `imagetools create -t <dst> <src>...` records "<dst> <src>..." in $CREATED.
 DOCKER_STUB = """#!/usr/bin/env bash
 set -euo pipefail
 [[ "$1 $2" == "buildx imagetools" ]] || { echo "docker stub: unexpected $*" >&2; exit 1; }
@@ -39,7 +39,7 @@ case "$3" in
     (( seen > late )) && exit 0
     exit 1
     ;;
-  create) echo "$5 $6" >> "$CREATED" ;;
+  create) echo "${*:5}" >> "$CREATED" ;;
   *) echo "docker stub: unexpected $*" >&2; exit 1 ;;
 esac
 """
@@ -373,3 +373,50 @@ def test_any_other_commit_leaves_the_image_build_to_affected(workspace: Path) ->
     )
 
     assert _cli_release_images(workspace) == "required=false"
+
+
+SELFHOST_BOT_REPOS = RELEASE_REPOS[2:]
+
+
+def _arm64_digests(*, without: str = "") -> str:
+    return " ".join(
+        f"{repo}@sha256:{repo[-4:]:0>64}" for repo in SELFHOST_BOT_REPOS if repo != without
+    )
+
+
+def test_each_bot_sha_tag_is_the_release_amd64_image_plus_its_arm64_build(
+    workspace: Path,
+) -> None:
+    sha = _head(workspace)
+    result = _run(
+        workspace,
+        "selfhost-bots-manifest",
+        env_extra={
+            "BOTS_TAG": "2610.14.abc1234",
+            "COMMIT_SHA": sha,
+            "ARM64_DIGESTS": _arm64_digests(),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _created(workspace) == [
+        f"{NAMESPACE}/{repo}:{sha} {NAMESPACE}/{repo}:2610.14.abc1234 "
+        f"{NAMESPACE}/{repo}@sha256:{repo[-4:]:0>64}"
+        for repo in SELFHOST_BOT_REPOS
+    ]
+
+
+def test_a_bot_without_an_arm64_build_fails_loud_and_tags_nothing(workspace: Path) -> None:
+    result = _run(
+        workspace,
+        "selfhost-bots-manifest",
+        env_extra={
+            "BOTS_TAG": "2610.14.abc1234",
+            "COMMIT_SHA": _head(workspace),
+            "ARM64_DIGESTS": _arm64_digests(without="gaia-bot-discord"),
+        },
+    )
+
+    assert result.returncode != 0
+    assert "gaia-bot-discord" in result.stderr
+    assert _created(workspace) == []

@@ -18,6 +18,12 @@
 #                        self-host bot :<sha> images and main.yml's quality
 #                        gate on it, then tag them v<CLI version>, the set that
 #                        CLI release's `gaia update` pins.
+#   selfhost-bots-arm64  Build the self-host bot images for linux/arm64 and
+#                        push them by digest, untagged. Writes digests to
+#                        $GITHUB_OUTPUT.
+#   selfhost-bots-manifest Fold those arm64 digests and the release's amd64
+#                        bot images into multi-arch :<sha> indexes, the tag
+#                        pin-selfhost-release waits for.
 #   connect-cross-check  Cross-compile tools/gaia-connect for every published
 #                        target and discard the result — the pre-merge proof
 #                        that a release build cannot fail on a target the
@@ -36,6 +42,11 @@
 #                         image wasn't built this run. Needs a GHCR login.
 #   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION, SHA (required).
 #   cli-release-images    GITHUB_OUTPUT; full history (HEAD^ must exist).
+#   selfhost-bots-arm64   GIT_COMMIT_SHA (required); GITHUB_OUTPUT. Needs a
+#                         GHCR login and an arm64 buildx builder.
+#   selfhost-bots-manifest BOTS_TAG, COMMIT_SHA, ARM64_DIGESTS (required; the
+#                         digests output of selfhost-bots-arm64). Needs a
+#                         GHCR login.
 #   pin-selfhost-release  VERSION, SHA (required; HEAD must be SHA);
 #                         GH_TOKEN (actions:read), GITHUB_REPOSITORY;
 #                         PIN_WAIT_SECONDS (default 1800), PIN_POLL_SECONDS
@@ -501,8 +512,61 @@ cmd_pin_selfhost_release() {
   echo "### Self-host release pinned: \`GAIA_VERSION=$tag\` (images of \`$SHA\`)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 }
 
+# Self-hosters run the bots on arm64 too, while production's bot images stay
+# amd64-only. Only a CLI release commit builds the arm64 half: nx release keeps
+# publishing the amd64 tag the Swarm deploy pins, untouched.
+cmd_selfhost_bots_arm64() {
+
+  : "${GIT_COMMIT_SHA:?GIT_COMMIT_SHA is required}"
+  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+  local repo metadata digest digests=()
+  metadata=$(mktemp)
+  for repo in "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    ci_group "build $GHCR_NAMESPACE/$repo (linux/arm64)"
+    docker buildx build \
+      --platform linux/arm64 \
+      --file apps/bots/Dockerfile \
+      --build-arg "BOT_NAME=${repo#gaia-bot-}" \
+      --build-arg "GIT_COMMIT_SHA=$GIT_COMMIT_SHA" \
+      --cache-from "type=registry,ref=$GHCR_NAMESPACE/$repo:buildcache-arm64" \
+      --cache-to "type=registry,ref=$GHCR_NAMESPACE/$repo:buildcache-arm64,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd" \
+      --output "type=image,name=$GHCR_NAMESPACE/$repo,push-by-digest=true,name-canonical=true,push=true" \
+      --metadata-file "$metadata" \
+      .
+    ci_endgroup
+    digest=$(jq -r '."containerimage.digest"' "$metadata")
+    [[ "$digest" == sha256:* ]] || ci_die "no digest recorded for the $repo arm64 build"
+    digests+=("$repo@$digest")
+  done
+  echo "digests=${digests[*]}" >> "$GITHUB_OUTPUT"
+  ci_ok "selfhost-bots-arm64: ${digests[*]}"
+}
+
+# Tags each self-host bot :<sha> as an index of the release's amd64 image
+# (:<bots tag>, left as it is) and its arm64 digest. Every digest is checked
+# before anything is tagged, so a missing one never leaves a partial set.
+cmd_selfhost_bots_manifest() {
+
+  : "${BOTS_TAG:?BOTS_TAG is required}"
+  : "${COMMIT_SHA:?COMMIT_SHA is required}"
+  : "${ARM64_DIGESTS:?ARM64_DIGESTS is required (selfhost-bots-arm64 did not succeed)}"
+  local repo digest digests=()
+  for repo in "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    digest=$(tr ' ' '\n' <<< "$ARM64_DIGESTS" | sed -n "s|^$repo@||p")
+    [[ -n "$digest" ]] || ci_die "no arm64 image for $repo in ARM64_DIGESTS; its :$COMMIT_SHA would be amd64-only"
+    digests+=("$digest")
+  done
+  local i
+  for i in "${!SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    repo="${SELFHOST_BOT_IMAGE_REPOS[$i]}"
+    docker buildx imagetools create -t "$GHCR_NAMESPACE/$repo:$COMMIT_SHA" \
+      "$GHCR_NAMESPACE/$repo:$BOTS_TAG" "$GHCR_NAMESPACE/$repo@${digests[$i]}"
+  done
+  ci_ok "selfhost-bots-manifest: ${SELFHOST_BOT_IMAGE_REPOS[*]} tagged :$COMMIT_SHA (amd64 + arm64)"
+}
+
 usage() {
-  sed -n '2,25p' "$0" >&2
+  sed -n '2,/^# Env contract/p' "$0" >&2
 }
 
 main() {
@@ -514,6 +578,8 @@ main() {
     dispatch-cli-publish) cmd_dispatch_cli_publish "$@" ;;
     cli-release-images)   cmd_cli_release_images "$@" ;;
     pin-selfhost-release) cmd_pin_selfhost_release "$@" ;;
+    selfhost-bots-arm64)  cmd_selfhost_bots_arm64 "$@" ;;
+    selfhost-bots-manifest) cmd_selfhost_bots_manifest "$@" ;;
     connect-cross-check) cmd_connect_cross_check "$@" ;;
     connect-binaries)     cmd_connect_binaries "$@" ;;
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;
