@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,24 +9,21 @@ const HEALTH_TIMEOUT_MS = 5000;
 /**
  * Reverse-proxy health probe (`GET /api/health`, no auth, 5s timeout).
  *
- * Returns 503 only for `api_down`; `setup_required` is 200 so LB checks
- * stay healthy during the first-run wizard. Delegates infra health to the
- * API's `GET /health` — the web container has no DB clients.
+ * 503 for `api_down` or `api_unconfigured` (no absolute API base URL);
+ * `setup_required` is 200 so LB checks stay healthy during the first-run
+ * wizard. Infra health is the API's `GET /health` — the web has no DB clients.
  */
 export async function GET() {
-  const apiBase =
-    process.env.API_BASE_URL_INTERNAL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "http://localhost:8000/api/v1";
+  const apiBase = getServerApiBaseUrl();
+  if (!apiBase) {
+    console.error(
+      "[health] API base URL is unset or not an absolute URL; cannot probe the API",
+    );
+    return NextResponse.json({ status: "api_unconfigured" }, { status: 503 });
+  }
 
-  const buildUrl = (path: string) => {
-    const url = new URL(apiBase);
-    url.pathname = `${url.pathname.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
-    return url.toString();
-  };
-
-  const healthUrl = buildUrl("health");
-  const setupStatusUrl = buildUrl("setup/status");
+  const healthUrl = `${apiBase}/health`;
+  const setupStatusUrl = `${apiBase}/setup/status`;
 
   // 1) Is the API itself reachable?
   try {
