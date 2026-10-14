@@ -13,7 +13,7 @@ import {
 } from "@/features/chat/components/interface/founder-letter/content";
 import { useDiscountCodes } from "@/features/pricing/hooks/useDiscountCodes";
 import { track } from "@/lib/analytics";
-import { copyText } from "@/lib/clipboard";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
@@ -100,7 +100,7 @@ export function useFounderLetter(hidden: boolean) {
 
   const copyCode = useCallback(async () => {
     if (discountCode === null) return;
-    await copyText(discountCode);
+    if (!(await copyWithFeedback(discountCode))) return;
     setCopied(true);
     track("founder_letter:code_copied", {
       discount_code: discountCode ?? undefined,

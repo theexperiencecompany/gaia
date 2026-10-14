@@ -2,7 +2,7 @@
 
 import { Tick01Icon } from "@icons";
 import { useState } from "react";
-import { copyText } from "@/lib/clipboard";
+import { copyWithFeedback } from "@/lib/clipboard";
 
 interface ColorCardProps {
   name: string;
@@ -33,7 +33,7 @@ function ColorCard({ name, hex }: ColorCardProps) {
   const [copied, setCopied] = useState(false);
 
   const copyToClipboard = async (text: string) => {
-    await copyText(text);
+    if (!(await copyWithFeedback(text))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
