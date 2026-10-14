@@ -125,7 +125,7 @@ export async function runEnvSetup(
  * flags and answers replace them. Switching mode takes the new mode's defaults
  * (the old mode's infra addresses would not resolve). SETUP_MODE is the CLI's.
  */
-export function mergeEnvLayers(layers: {
+function mergeEnvLayers(layers: {
   defaults: Record<string, string>;
   existing: Record<string, string>;
   existingMode: envParser.SetupMode | null;
