@@ -5,15 +5,14 @@ import { Tab, Tabs } from "@heroui/tabs";
 import { CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
 import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
-import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { NotificationConnectBanner } from "@/features/notification/components/NotificationConnectBanner";
+import { NotificationModalHost } from "@/features/notification/components/NotificationModalHost";
 import { NotificationsList } from "@/features/notification/components/NotificationsList";
 import { UnreadCountChip } from "@/features/notification/components/UnreadCountChip";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useHeader } from "@/hooks/layout/useHeader";
 import {
   type ModalConfig,
-  type ModalProps,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
 
@@ -21,8 +20,6 @@ const INAPP_CHANNEL = "inapp";
 
 export default function NotificationsPage() {
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
-  // `props` is untyped on the wire; the component name is what makes it an EmailPreview payload.
-  const modalProps = modalConfig?.props as ModalProps | undefined;
   const [selectedTab, setSelectedTab] = useState<string>("unread");
   const { setHeader } = useHeader();
 
@@ -131,19 +128,11 @@ export default function NotificationsPage() {
         </div>
       </div>
 
-      {modalConfig?.component === "EmailPreviewModal" && modalProps && (
-        <EmailPreviewModal
-          isOpen={true}
-          onClose={handleModalClose}
-          subject={modalProps.subject || ""}
-          body={modalProps.body || ""}
-          recipients={modalProps.recipients || []}
-          mode={modalProps.mode === "view" ? "view" : "edit"}
-          onEmailSent={handleEmailSent}
-          notificationId={modalProps.notificationId}
-          actionId={modalProps.actionId}
-        />
-      )}
+      <NotificationModalHost
+        config={modalConfig}
+        onClose={handleModalClose}
+        onEmailSent={handleEmailSent}
+      />
     </div>
   );
 }
