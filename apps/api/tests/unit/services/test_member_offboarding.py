@@ -9,10 +9,8 @@ import pytest
 
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import TodoUpdate
-from app.services.member_offboarding import (
-    MemberOffboardingIncomplete,
-    stop_acting_for_removed_member,
-)
+from app.services.member_offboarding import stop_acting_for_removed_member
+from app.utils.errors import AppError
 
 _MOD = "app.services.member_offboarding"
 USER = "member-1"
@@ -101,10 +99,11 @@ class TestStopActingForRemovedMember:
     ) -> None:
         seams.deactivate_workflow.side_effect = [RuntimeError("composio down"), None]
 
-        with pytest.raises(MemberOffboardingIncomplete) as raised:
+        with pytest.raises(AppError) as raised:
             await stop_acting_for_removed_member(USER)
 
-        assert raised.value.failed == ["workflow:wf-user"]
+        assert raised.value.status_code == 503
+        assert raised.value.meta["failed"] == ["workflow:wf-user"]
         assert seams.deactivate_workflow.await_count == 2
         seams.pause_reminder.assert_awaited_once()
         seams.update_todo.assert_awaited_once()
