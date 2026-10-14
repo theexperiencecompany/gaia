@@ -193,7 +193,7 @@ class TestABriefingThatOwnsItsForm:
 
     async def test_comms_can_still_keep_a_desk_briefing_quiet(self) -> None:
         with _seams(todo=self._desk(), narrated="<SILENCE>nothing new</SILENCE>") as seams:
-            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+            await deliver_todo_run_result(RUN, MAIL_WOKEN, self.BRIEFING, "final")
 
         seams.send.assert_not_awaited()
         seams.in_app.assert_not_awaited()

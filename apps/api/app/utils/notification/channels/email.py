@@ -6,8 +6,10 @@ with a structured log. A failed send raises and the orchestrator records the cha
 as failed.
 
 Template selection keys off notification.metadata["kind"]: briefing_daily and
-briefing_weekly render the briefing edition from content.rich_content, falling back
-to the HTML briefing template if the edition render fails. Anything else renders the
+briefing_weekly embed the edition image the briefing service already rendered and
+hosted (metadata["edition_image_url"]), linked to the brief's own page
+(metadata["briefing_id"]). A briefing notification missing either, or its
+content.rich_content payload, fails at transform. Anything else renders the
 plain-notification template.
 """
 
@@ -19,10 +21,7 @@ from pydantic import BaseModel
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_WEEKLY,
-    NotificationChannel,
-)
+from app.constants.notifications import NotificationChannel
 from app.db.repositories.users import user_repository
 from app.models.briefing_models import BriefingPayload
 from app.models.notification.notification_models import (
@@ -35,11 +34,7 @@ from app.services.email.models import EmailMessage
 from app.services.email.service import send_email
 from app.utils.email_utils import normalize_email
 from app.utils.notification.channels.base import ChannelAdapter
-from app.utils.notification.email_templates import (
-    render_daily_brief_email,
-    render_plain_notification_email,
-    render_weekly_digest_email,
-)
+from app.utils.notification.email_templates import render_plain_notification_email
 from app.utils.notification.unsubscribe import (
     build_unsubscribe_headers,
     build_unsubscribe_url,
@@ -51,17 +46,26 @@ _EDITION_DEFAULT_SUBJECT = "Your GAIA brief"
 
 
 class _EmailMetadata(BaseModel):
-    """The one notification-metadata field this channel reads: the template kind."""
+    """The notification-metadata field every email reads: the template kind."""
 
     kind: str | None = None
 
 
+class _BriefingEmailMetadata(_EmailMetadata):
+    """A briefing's metadata: the brief it links to and its already-hosted edition image."""
+
+    briefing_id: str
+    edition_image_url: str
+
+
 @dataclass(frozen=True)
 class BriefingEmail:
-    """A daily or weekly briefing kind with the payload it renders."""
+    """A daily or weekly briefing kind with its payload, brief id and hosted edition image."""
 
     kind: str
     payload: BriefingPayload
+    briefing_id: str
+    edition_image_url: str
 
 
 @dataclass(frozen=True)
@@ -92,15 +96,20 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
         return True
 
     async def transform(self, notification: NotificationRequest) -> EmailContent:
+        content = notification.content
         kind = _EmailMetadata.model_validate(notification.metadata).kind
-        rich_content = notification.content.rich_content
+        if kind is None or not is_edition_kind(kind):
+            return EmailContent(title=content.title, body=content.body)
+
+        metadata = _BriefingEmailMetadata.model_validate(notification.metadata)
         return EmailContent(
-            title=notification.content.title,
-            body=notification.content.body,
-            briefing=(
-                BriefingEmail(kind=kind, payload=BriefingPayload.model_validate(rich_content))
-                if kind is not None and is_edition_kind(kind) and rich_content
-                else None
+            title=content.title,
+            body=content.body,
+            briefing=BriefingEmail(
+                kind=kind,
+                payload=BriefingPayload.model_validate(content.rich_content),
+                briefing_id=metadata.briefing_id,
+                edition_image_url=metadata.edition_image_url,
             ),
         )
 
@@ -119,9 +128,7 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
             subject = content.title or _DEFAULT_SUBJECT
             html = render_plain_notification_email(subject, content.body, unsubscribe_url)
         else:
-            subject, html = await self._render_briefing(
-                content.briefing, content.title, user_id, unsubscribe_url
-            )
+            subject, html = _render_briefing(content.briefing, content.title, unsubscribe_url)
 
         await send_email(
             EmailMessage(
@@ -134,37 +141,16 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
         )
         return self._success()
 
-    async def _render_briefing(
-        self, briefing: BriefingEmail, title: str, user_id: str, unsubscribe_url: str
-    ) -> tuple[str, str]:
-        """Render a briefing as a print-quality edition image inlined in the email.
 
-        If that render fails, degrade to the HTML briefing template rather than drop
-        the user's brief entirely — logged loudly, not swallowed. Returns (subject, html).
-        """
-        payload = briefing.payload
-        skim = build_skim(payload, full_brief_url())
-        try:
-            html = await render_edition_email(
-                payload,
-                kind=briefing.kind,
-                user_id=user_id,
-                unsubscribe_url=unsubscribe_url,
-                preheader=skim.preheader,
-            )
-        except Exception as exc:
-            log.warning(
-                f"{LogTag.NOTIFICATION} Edition render failed, using plain template",
-                user_id=user_id,
-                kind=briefing.kind,
-                error=str(exc),
-            )
-            render_template = (
-                render_weekly_digest_email
-                if briefing.kind == NOTIFICATION_KIND_BRIEFING_WEEKLY
-                else render_daily_brief_email
-            )
-            return payload.headline or title or _DEFAULT_SUBJECT, render_template(
-                payload, unsubscribe_url
-            )
-        return skim.headline or title or _EDITION_DEFAULT_SUBJECT, html
+def _render_briefing(briefing: BriefingEmail, title: str, unsubscribe_url: str) -> tuple[str, str]:
+    """Return (subject, html) for a briefing: its stored edition image and skim preheader."""
+    brief_url = full_brief_url(briefing.briefing_id)
+    skim = build_skim(briefing.payload, brief_url)
+    html = render_edition_email(
+        briefing.payload,
+        image_url=briefing.edition_image_url,
+        briefing_id=briefing.briefing_id,
+        unsubscribe_url=unsubscribe_url,
+        preheader=skim.preheader,
+    )
+    return skim.headline or title or _EDITION_DEFAULT_SUBJECT, html

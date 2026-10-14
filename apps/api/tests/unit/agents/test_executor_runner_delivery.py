@@ -42,7 +42,6 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
-from app.models.brief_models import PendingBriefSource
 from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
@@ -2796,9 +2795,8 @@ class TestAWorkflowResult:
         delivered.to_platforms.assert_not_awaited()
         delivered.completed.assert_not_awaited()
         item = delivered.held.await_args.args[0]
-        assert (item.user_id, item.source, item.source_id, item.source_title) == (
+        assert (item.user_id, item.workflow_id, item.workflow_title) == (
             USER_ID,
-            PendingBriefSource.WORKFLOW,
             "wf-1",
             "Morning digest",
         )

@@ -625,21 +625,29 @@
         `</div></div>` +
         `</section>` +
         // the numbers
-        `<section class="t-weekly__section">` +
-        `<h2 class="t-weekly__h">The numbers</h2>` +
-        `<div class="t-weekly__nums">${stats}</div>` +
-        `</section>` +
+        (stats
+          ? `<section class="t-weekly__section">` +
+            `<h2 class="t-weekly__h">The numbers</h2>` +
+            `<div class="t-weekly__nums">${stats}</div>` +
+            `</section>`
+          : "") +
         // shipped + handled quietly
-        `<section class="t-weekly__section"><div class="t-weekly__grid2">` +
-        `<div><h2 class="t-weekly__h">Shipped this week</h2>${shipped}</div>` +
-        `<div><h2 class="t-weekly__h">Handled quietly` +
-        `<span class="t-weekly__hnote">Done by GAIA, no nudge needed</span></h2>${quiet}</div>` +
-        `</div></section>` +
+        (shipped || quiet
+          ? `<section class="t-weekly__section"><div class="t-weekly__grid2">` +
+            (shipped ? `<div><h2 class="t-weekly__h">Shipped this week</h2>${shipped}</div>` : "") +
+            (quiet
+              ? `<div><h2 class="t-weekly__h">Handled quietly` +
+                `<span class="t-weekly__hnote">Done by GAIA, no nudge needed</span></h2>${quiet}</div>`
+              : "") +
+            `</div></section>`
+          : "") +
         // decisions + week ahead
-        `<section class="t-weekly__section"><div class="t-weekly__grid2">` +
-        `<div><h2 class="t-weekly__h">Still yours to call</h2>${decisions}</div>` +
-        `<div><h2 class="t-weekly__h">The week ahead</h2>${ahead}</div>` +
-        `</div></section>` +
+        (decisions || w.ahead.length
+          ? `<section class="t-weekly__section"><div class="t-weekly__grid2">` +
+            (decisions ? `<div><h2 class="t-weekly__h">Still yours to call</h2>${decisions}</div>` : "") +
+            (w.ahead.length ? `<div><h2 class="t-weekly__h">The week ahead</h2>${ahead}</div>` : "") +
+            `</div></section>`
+          : "") +
         // colophon
         `<p class="t-weekly__colophon">Weekly review &middot; compiled ${esc(ed.weekday)}${ed.time24 ? ` ${esc(ed.time24)}` : ""} by GAIA` +
         `<br>Week N&ordm; ${w.weekNo} &middot; ${w.range} &middot; from daily edition N&ordm; ${ed.editionNo}</p>` +

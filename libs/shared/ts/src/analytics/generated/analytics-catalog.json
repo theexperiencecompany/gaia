@@ -1264,14 +1264,14 @@
       "class": "BriefingOpened",
       "owner": "server",
       "domain": "briefing",
-      "description": "A user opened their latest brief in the app for the first time.",
+      "description": "A user opened one of their briefs on its own page for the first time.",
       "previous_names": [],
       "budget_per_user_day": 4,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user opened their latest brief in the app for the first time.",
+        "description": "A user opened one of their briefs on its own page for the first time.",
         "properties": {
           "kind": {
             "enum": ["daily", "weekly"],

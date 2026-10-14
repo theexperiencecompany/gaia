@@ -30,7 +30,7 @@ class BriefingSent(ServerEvent):
 
 
 class BriefingOpened(ServerEvent):
-    """A user opened their latest brief in the app for the first time."""
+    """A user opened one of their briefs on its own page for the first time."""
 
     event: ClassVar[str] = "briefing:opened"
     budget_per_user_day: ClassVar[int] = 4

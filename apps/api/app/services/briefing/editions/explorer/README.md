@@ -25,7 +25,7 @@ ours to change.
 
 ## The permitted deviations
 
-Four narrow classes of edit to `js/*.js` are allowed — each fixes a latent
+Five narrow classes of edit to `js/*.js` are allowed — each fixes a latent
 correctness bug in the vendored files rather than touch the approved design.
 **No layout, CSS or skin axis was touched by any of them.** The one layout
 change is the founder-approved `metromap` deviation below. The stamp art in
@@ -124,6 +124,46 @@ layout, CSS or skin axis:
 `tests/integration/test_edition_families_render.py` renders every family in
 Chromium with a real and a quiet brief and fails on a blank image, a dropped
 item, a fixture string, a zero-filled figure, or a missing headline.
+
+## 5. Empty sections (founder-requested, 2026-10-14)
+
+An empty bucket used to arrive as a fake row ("EOD  Nothing on the calendar
+today", "REVIEW  Nothing pending your review"). The adapter now hands an empty
+bucket as an empty array, and the founder's rule is: an empty section is left
+out, or shows one quiet bare "—" only where the layout truly needs the slot.
+Never a label (EOD, REVIEW), a count ("0 items"), or a heading with nothing
+under it. The edits guard what is already there and change no CSS or skin axis:
+
+- **List sections are omitted, heading included**, when their bucket is empty
+  — the guard is the bucket's `.length` (or the joined rows being empty), so a
+  count printed in that heading never shows for an empty bucket. Touched:
+  `memo`, `broadsheet`, `almanac` (tpl-print.js); `band`, `playfair`, `postal`
+  (tpl-brand.js); `flightplan`'s overnight section and `instrument`
+  (tpl-tech.js); `receipt` (tpl-object.js — a group and its rule go together,
+  and the tender drops "ITEMS: 0"); `swiss`, `dayline`, `playbill`
+  (tpl-poster.js — `playbill`'s rules follow the sections they frame);
+  `librarycard` and `menu`'s decisions (tpl-novel-b.js — a card with no rows
+  drops its table); `gradient` (tpl-novel-c.js); `exhibition` (tpl-novel-d.js);
+  `weekly` (tpl-novel-e.js).
+- **A stats block with no figure loses its heading** (`memo` "By the numbers",
+  `broadsheet` "The Day's Figures", `instrument` "Yesterday · readout",
+  `playbill`'s figures line), the same rule applied to the deviation-4 stats.
+- **Fixed-slot rows print only the dash.** The adapter marks a padding row
+  `empty: true` (label "—", no time/tag/verb); `boardingpass` and `metromap`
+  (tpl-novel-a.js) no longer print "EOD" over an empty ship slot, and
+  `boardingpass`'s stub prints no verb or "·" time separator; `invoice`
+  (tpl-novel-c.js) prints no qty/unit/amount on an empty line; `almanac`
+  keeps its two calculation cells (already "—") but drops empty rows from its
+  list.
+- **`broadsheet` no longer throws on an empty day**: its lead paragraph read
+  `c.today[0].label` unconditionally ("Cannot read properties of undefined
+  (reading 'label')"); the drop-cap paragraph is now omitted when `today` is
+  empty.
+
+`test_an_empty_bucket_renders_no_placeholder_row` and
+`test_an_empty_bucket_leaves_no_section_heading` in
+`tests/integration/test_edition_families_render.py` fail on a placeholder row
+or on a heading left above an empty bucket.
 
 ## Which families are sent
 

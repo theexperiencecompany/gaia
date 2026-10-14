@@ -22,7 +22,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.models.brief_models import PendingBriefItemDocument, PendingBriefSource
+from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingModel,
@@ -44,17 +44,19 @@ _USER = "64f1c0ffee0000000000abcd"
 _EVENT = BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")
 _CHAT = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1")
 _IMAGE_URL = "https://cdn.example/brief_chat.png"
+_EDITION_URL = "https://cdn.example/brief.png"
+_BRIEF_ID = "brief_abc123"
 _ORCHESTRATED = ["inapp", "email"]
 
 _VOICE = {
-    "headline": "Two things need you",
+    "headline": "Your morning, sorted",
     "lede": "Everything else is moving.",
     "caption": "Onward.",
     "mood": "packed",
-    "bubbles": ["morning! two things need you", "the rest is handled"],
+    "bubbles": ["morning!", "the rest is handled"],
 }
 
-_DESK_REPORT = "2 need you · 1 event today\nNeeds you\n- Priya · pitch deck · by Fri"
+_DIGEST_REPORT = "3 new papers on retrieval\nThe longest is 40 pages; two cite your draft."
 
 
 def _fenced(data: dict[str, Any]) -> str:
@@ -69,9 +71,8 @@ def _held(item_id: str, title: str, text: str) -> PendingBriefItemDocument:
     return PendingBriefItemDocument(
         id=item_id,
         user_id=_USER,
-        source=PendingBriefSource.INBOX_DESK,
-        source_id=f"src-{item_id}",
-        source_title=title,
+        workflow_id=f"wf-{item_id}",
+        workflow_title=title,
         conversation_id=f"conv-{item_id}",
         text=text,
     )
@@ -103,8 +104,13 @@ def world(monkeypatch: pytest.MonkeyPatch) -> World:
     w = World(
         agent=AsyncMock(return_value=SimpleNamespace(message=_fenced(_VOICE))),
         upsert=AsyncMock(
-            side_effect=lambda user_id, date, kind, payload: BriefingModel(
-                user_id=user_id, date=date, kind=kind, payload=payload
+            side_effect=lambda user_id, date, kind, payload, *, edition_image_url: BriefingModel(
+                id=_BRIEF_ID,
+                user_id=user_id,
+                date=date,
+                kind=kind,
+                payload=payload,
+                edition_image_url=edition_image_url,
             )
         ),
         set_channels=AsyncMock(),
@@ -114,7 +120,11 @@ def world(monkeypatch: pytest.MonkeyPatch) -> World:
             )
         ),
         post=AsyncMock(return_value=OutboundResult.PUBLISHED),
-        host_image=AsyncMock(return_value=_IMAGE_URL),
+        host_image=AsyncMock(
+            side_effect=lambda payload, *, user_id, kind, crop_to_paper: (
+                _IMAGE_URL if crop_to_paper else _EDITION_URL
+            )
+        ),
         consume=AsyncMock(),
         capture=MagicMock(),
     )
@@ -208,7 +218,7 @@ class TestDailyBrief:
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
-        assert payload.headline == "Two things need you"
+        assert payload.headline == "Your morning, sorted"
         assert payload.template_family in DAILY_FAMILY_WEIGHTS
         assert world.bags["edition_family"].order.count(payload.template_family) >= 1
         assert payload.calendar == [_EVENT]
@@ -219,12 +229,15 @@ class TestDailyBrief:
             ("GAIA'S WORK", ["Investor update"]),
         ]
         skim = (
-            "Two things need you\n\n"
+            "Your morning, sorted\n\n"
             "• Approve the Priya reply\n\n"
             "Overnight I finished Investor update.\n\n"
-            "Full brief: https://heygaia.io/briefings"
+            f"Full brief: https://heygaia.io/brief/{_BRIEF_ID}"
         )
+        assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION_URL
         request = world.notify.await_args.args[0]
+        assert request.metadata["edition_image_url"] == _EDITION_URL
+        assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_DAILY
         assert request.content.body == skim
@@ -235,14 +248,15 @@ class TestDailyBrief:
         world.set_channels.assert_awaited_once()
         assert world.set_channels.await_args.args[3] == [*_ORCHESTRATED, "telegram"]
 
-    async def test_without_a_chat_platform_no_image_is_rendered_or_posted(
+    async def test_without_a_chat_platform_no_chat_image_is_rendered_or_posted(
         self, world: World
     ) -> None:
         world.chat = None
 
         await service.run_daily_briefing(_USER)
 
-        world.host_image.assert_not_awaited()
+        # Only the full edition is rendered: it is the in-app page's and the email's image.
+        assert [c.kwargs["crop_to_paper"] for c in world.host_image.await_args_list] == [False]
         world.post.assert_not_awaited()
         assert world.set_channels.await_args.args[3] == _ORCHESTRATED
 
@@ -408,7 +422,7 @@ class TestWeeklyRecap:
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_WEEKLY
         assert request.content.body == (
             "A good week\n\nThis week I finished Item 0, Item 1 and 1 more.\n\n"
-            "Full brief: https://heygaia.io/briefings"
+            f"Full brief: https://heygaia.io/brief/{_BRIEF_ID}"
         )
         world.consume.assert_not_awaited()
 
@@ -424,7 +438,7 @@ class TestWeeklyRecap:
 class TestHeldItemsJoinTheBrief:
     """Results held for the brief become one section of it.
 
-    The held results come from brief-delivery workflows and the inbox desk's sweep; each
+    The held results come from brief-delivery workflows; each
     appears once and is cleared once the brief went out.
     """
 
@@ -435,16 +449,19 @@ class TestHeldItemsJoinTheBrief:
             blocked=[_todo("b1", "Approve the Priya reply")],
             completed=[_todo("c1", "Investor update")],
         )
-        world.held = [_held("h1", "Inbox desk", _DESK_REPORT)]
+        world.held = [_held("h1", "Paper digest", _DIGEST_REPORT)]
 
         await service.run_daily_briefing(_USER)
 
         assert [(s.title, [i.text for i in s.items]) for s in _stored_payload(world).sections] == [
             ("NEEDS YOU", ["Approve the Priya reply"]),
-            ("WHILE YOU WERE AWAY", ["Inbox desk: 2 need you · 1 event today"]),
+            ("WHILE YOU WERE AWAY", ["Paper digest: 3 new papers on retrieval"]),
             ("GAIA'S WORK", ["Investor update"]),
         ]
-        assert "- Priya · pitch deck · by Fri" in _prompt(world)
+        # The headline and lede are voiced from the items, so a report's body never
+        # reaches the prompt to be claimed from.
+        assert "Paper digest: 3 new papers on retrieval" in _prompt(world)
+        assert "two cite your draft" not in _prompt(world)
         world.consume.assert_awaited_once_with(_USER, ["h1"])
 
     async def test_an_item_already_in_the_brief_is_shown_once_and_still_cleared(
@@ -453,14 +470,14 @@ class TestHeldItemsJoinTheBrief:
         world.work = context.TrackedWork(completed=[_todo("c1", "Digest: 3 new papers")])
         world.held = [
             _held("h1", "Digest", "3 new papers\nmore detail"),
-            _held("h2", "Inbox desk", _DESK_REPORT),
-            _held("h3", "Inbox  desk", _DESK_REPORT),
+            _held("h2", "Paper digest", _DIGEST_REPORT),
+            _held("h3", "Paper  digest", _DIGEST_REPORT),
         ]
 
         await service.run_daily_briefing(_USER)
 
         texts = [i.text for s in _stored_payload(world).sections for i in s.items]
-        assert texts == ["Inbox desk: 2 need you · 1 event today", "Digest: 3 new papers"]
+        assert texts == ["Paper digest: 3 new papers on retrieval", "Digest: 3 new papers"]
         world.consume.assert_awaited_once()
         assert world.consume.await_args.args[0] == _USER
         assert sorted(world.consume.await_args.args[1]) == ["h1", "h2", "h3"]
@@ -471,7 +488,7 @@ class TestHeldItemsJoinTheBrief:
         world.work = context.TrackedWork(
             blocked=[_todo(f"b{i}", f"Blocked {i}") for i in range(MAX_BRIEF_ITEMS - 1)]
         )
-        world.held = [_held("h1", "Digest", "first"), _held("h2", "Inbox desk", "second")]
+        world.held = [_held("h1", "Digest", "first"), _held("h2", "Paper digest", "second")]
 
         await service.run_daily_briefing(_USER)
 
@@ -480,10 +497,55 @@ class TestHeldItemsJoinTheBrief:
         world.consume.assert_awaited_once_with(_USER, ["h1"])
 
     async def test_a_failed_delivery_clears_nothing(self, world: World) -> None:
-        world.held = [_held("h1", "Inbox desk", _DESK_REPORT)]
+        world.held = [_held("h1", "Paper digest", _DIGEST_REPORT)]
         world.notify.side_effect = RuntimeError("orchestrator down")
 
         with pytest.raises(RuntimeError):
             await service.run_daily_briefing(_USER)
 
         world.consume.assert_not_awaited()
+
+
+def _voiced(headline: str, lede: str) -> SimpleNamespace:
+    return SimpleNamespace(message=_fenced({**_VOICE, "headline": headline, "lede": lede}))
+
+
+_LIVE_CONTRADICTION = _voiced(
+    "Arjun's contract redlines need you today",
+    "The Inbox desk also flagged 2 items needing you, and 1 event today.",
+)
+
+
+class TestTheProseMatchesTheItems:
+    """The headline and lede are checked against the final items before anything renders.
+
+    Regression: a live brief's headline named a need over an empty needs-you section and
+    its lede counted an event over an empty calendar.
+    """
+
+    async def test_a_contradicting_voice_is_regenerated_once_with_the_problems(
+        self, world: World
+    ) -> None:
+        world.work = context.TrackedWork(completed=[_todo("c1", "Investor update")])
+        world.agent.side_effect = [
+            _LIVE_CONTRADICTION,
+            _voiced("The investor update is done", "Nothing on the calendar today."),
+        ]
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 2
+        retry = world.agent.await_args_list[1].kwargs["request"].message
+        assert "no item needs them" in retry
+        assert _stored_payload(world).headline == "The investor update is done"
+
+    async def test_a_voice_that_contradicts_twice_fails_and_sends_nothing(
+        self, world: World
+    ) -> None:
+        world.work = context.TrackedWork(completed=[_todo("c1", "Investor update")])
+        world.agent.side_effect = [_LIVE_CONTRADICTION, _LIVE_CONTRADICTION]
+
+        with pytest.raises(service.BriefingGenerationError, match="contradict"):
+            await service.run_daily_briefing(_USER)
+
+        _assert_nothing_sent(world)

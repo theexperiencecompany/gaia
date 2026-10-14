@@ -2,15 +2,15 @@ import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import type { z } from "zod";
 
-import { BriefingCard } from "@/features/briefing/components/BriefingCard";
+import { BriefingEdition } from "@/features/briefing";
 
 import { briefingSchema } from "../promptSpecs";
 
-// BriefingCard is the one editorial rendering; OpenUI props share the
-// BriefingPayload shape, so they pass straight through.
+// BriefingEdition is the one brief view; OpenUI props share the payload's shape,
+// so they pass straight through (no rendered edition image on this path).
 
 function BriefingView(props: z.infer<typeof briefingSchema>) {
-  return <BriefingCard payload={props} defaultCollapsed={false} />;
+  return <BriefingEdition payload={props} />;
 }
 
 export const briefingDef = defineComponent({

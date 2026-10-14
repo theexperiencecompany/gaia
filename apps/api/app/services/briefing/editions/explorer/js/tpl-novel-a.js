@@ -322,7 +322,7 @@
       const stations =
         // YOU termini
         mmTermBox(X_REV, YOU_Y, "above", you[0].t24 || "", you[0].label, you[0].note, full, "you") +
-        mmTermBox(X_SHIP, YOU_Y, "above", "EOD", you[2].label, you[2].note, full, "you") +
+        mmTermBox(X_SHIP, YOU_Y, "above", you[2].empty ? "" : "EOD", you[2].label, you[2].note, full, "you") +
         // YOU mid: investor sync
         mmStop(X_SYNC, YOU_Y, you[1].t24 || "", you[1].label, you[1].note, full) +
         // GAIA termini
@@ -652,6 +652,10 @@
       const ov = c.overnight;
       const dec = c.decisions;
       const st = c.stats;
+      // an empty slot prints its bare dash, never a verb or a time
+      const call = (d) => (d.empty ? d.label : d.verb + " — " + d.label);
+      const service = (it) =>
+        it.empty ? esc(it.label) : `${esc(it.t24 || "")} &middot; ${esc(it.label)}`;
 
       const band =
         `<div class="t-boardingpass__band">` +
@@ -669,7 +673,7 @@
         `<div class="t-boardingpass__stop-t">${esc(t[1].t24 || "")}</div>` +
         `<div class="t-boardingpass__stop-l">Connection<br>${esc(t[1].label)}</div></div>` +
         `<div class="t-boardingpass__stop"><div class="t-boardingpass__node"></div>` +
-        `<div class="t-boardingpass__stop-t">EOD</div>` +
+        `<div class="t-boardingpass__stop-t">${t[2].empty ? "" : "EOD"}</div>` +
         `<div class="t-boardingpass__stop-l">Arrival<br>${esc(t[2].label)}</div></div>` +
         `</div></div>`;
 
@@ -715,14 +719,14 @@
         `<div class="t-boardingpass__stub-cols">` +
         `<div class="t-boardingpass__stub-col">` +
         `<div class="t-boardingpass__await">Awaiting confirmation</div>` +
-        bpConn("Connection 1", dec[0].verb + " — " + dec[0].label, dec[0].note) +
-        bpConn("Connection 2", dec[1].verb + " — " + dec[1].label, dec[1].note) +
+        bpConn("Connection 1", call(dec[0]), dec[0].note) +
+        bpConn("Connection 2", call(dec[1]), dec[1].note) +
         `</div>` +
         `<div class="t-boardingpass__stub-col">` +
         `<div class="t-boardingpass__transit"><b>Services completed in transit</b>` +
-        `<p>${esc(ov[0].t24 || "")} &middot; ${esc(ov[0].label)}</p>` +
-        `<p>${esc(ov[1].t24 || "")} &middot; ${esc(ov[1].label)}</p>` +
-        `<p>${esc(ov[2].t24 || "")} &middot; ${esc(ov[2].label)}</p>` +
+        `<p>${service(ov[0])}</p>` +
+        `<p>${service(ov[1])}</p>` +
+        `<p>${service(ov[2])}</p>` +
         `</div>` +
         `<div class="t-boardingpass__f-l" style="margin-top:12px">Passenger / Seat / Date</div>` +
         `<div class="t-boardingpass__conn-t">YOU</div>` +

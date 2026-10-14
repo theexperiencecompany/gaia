@@ -14,7 +14,14 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.constants.briefing import WINBACK_THRESHOLD
-from app.constants.todos import BLOCKING_LABEL, FAILED_LABEL, GAIA_TRACKED_LABEL
+from app.constants.todos import (
+    BLOCKING_LABEL,
+    FAILED_LABEL,
+    GAIA_TRACKED_LABEL,
+    NEEDS_REPLY_LABEL,
+    WAITING_FOR_APPROVAL_LABEL,
+    WAITING_FOR_REPLY_LABEL,
+)
 from app.models.briefing_models import BriefingModel, BriefingPayload
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.todo_models import TodoDocument
@@ -149,6 +156,30 @@ class TestTrackedWork:
         assert [d.id for d in work.blocked] == ["b1"]
         assert [d.id for d in work.running] == ["r1"]
         assert not work.is_empty
+
+    async def test_a_thread_the_user_owes_needs_them_and_one_awaiting_others_does_not(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The inbox desk's thread todos are its findings: needs-reply waits on the user."""
+        monkeypatch.setattr(
+            context.todo_repository, "list_completed_since", AsyncMock(return_value=[])
+        )
+        monkeypatch.setattr(
+            context.todo_repository,
+            "list_active_tracked",
+            AsyncMock(
+                return_value=[
+                    _todo("n1", "Priya · pitch deck", GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL),
+                    _todo("a1", "Add Arjun call", GAIA_TRACKED_LABEL, WAITING_FOR_APPROVAL_LABEL),
+                    _todo("w1", "Dhruv · offer", GAIA_TRACKED_LABEL, WAITING_FOR_REPLY_LABEL),
+                ]
+            ),
+        )
+
+        work = await context.gather_tracked_work(_USER, datetime.now(UTC))
+
+        assert [d.id for d in work.blocked] == ["n1", "a1"]
+        assert [d.id for d in work.running] == ["w1"]
 
     async def test_open_todo_summary_counts_all_and_names_five(
         self, monkeypatch: pytest.MonkeyPatch

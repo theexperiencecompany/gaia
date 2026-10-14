@@ -1,7 +1,7 @@
 """Repository for the pending_brief_items collection.
 
-One document per finished brief-delivery workflow run or inbox-desk sweep,
-waiting for the user's next brief. Written once; the brief reads the items
+One document per finished brief-delivery workflow run, waiting for the user's
+next brief. Written once; the brief reads the items
 oldest first and clears the ones it carried once it has gone out.
 """
 

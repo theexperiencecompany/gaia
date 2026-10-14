@@ -66,9 +66,14 @@ def _overnight(done: list[str], running: list[str], period: str) -> str | None:
     return None
 
 
-def full_brief_url() -> str:
-    """Where the skim's link sends the reader: the brief in the app."""
-    return f"{settings.FRONTEND_URL}/briefings"
+def full_brief_url(briefing_id: str) -> str:
+    """Where the skim's link sends the reader: the brief's own page in the app."""
+    return f"{settings.FRONTEND_URL}{brief_path(briefing_id)}"
+
+
+def brief_path(briefing_id: str) -> str:
+    """Return the app path of one brief's standalone page."""
+    return f"/brief/{briefing_id}"
 
 
 def build_skim(payload: BriefingPayload, link: str) -> Skim:

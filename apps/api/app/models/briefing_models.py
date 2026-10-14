@@ -179,6 +179,8 @@ class BriefingModel(UserScopedDocument):
     kind: BriefingKind = BRIEFING_KIND_DAILY
     payload: BriefingPayload
     delivered_channels: list[str] = Field(default_factory=list)
+    #: The hosted full edition render: the in-app page, the email and the short link show it.
+    edition_image_url: str | None = None
     opened_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None

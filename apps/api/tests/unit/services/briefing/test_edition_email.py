@@ -3,7 +3,8 @@
 The rasterizer and the CDN upload are faked at the boundary this module imports
 them from; the edition renderer is faked so the assertions pin *this* module's
 contract (options, public id, link resolution, escaping, action strip) rather
-than the edition template's markup.
+than the edition template's markup. The email wraps an already-hosted image, so
+its tests also prove it never rasterizes or uploads a second copy.
 """
 
 from types import SimpleNamespace
@@ -17,10 +18,16 @@ from app.constants.notifications import (
 )
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing import edition_email
-from app.services.briefing.edition_email import is_edition_kind, render_edition_email
+from app.services.briefing.edition_email import (
+    host_edition_image,
+    is_edition_kind,
+    render_edition_email,
+)
 
 USER_ID = "user-abc"
 IMAGE_URL = "https://cdn.example.com/edition.png"
+BRIEFING_ID = "brief-1"
+BRIEF_URL = "https://app.example.com/brief/brief-1"
 UNSUBSCRIBE_URL = "https://heygaia.io/unsubscribe?t=abc"
 FRONTEND_URL = "https://app.example.com"
 
@@ -32,7 +39,7 @@ _STRIP_OPEN = (
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
     'style="max-width:640px;margin:0 auto;background:#000000;">'
     '<tr><td align="center" style="padding:24px 24px 8px 24px;">'
-    f'<a href="{FRONTEND_URL}" style="display:inline-block;background:#00bbff;'
+    f'<a href="{BRIEF_URL}" style="display:inline-block;background:#00bbff;'
     f"color:#000000;text-decoration:none;font:600 15px/1.2 {_SANS};"
     'padding:13px 30px;border-radius:10px;">'
     "Open today&#39;s brief in GAIA</a></td></tr>"
@@ -67,7 +74,7 @@ EXPECTED_EMAIL_WITHOUT_ACTIONS = (
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
     'style="background:#000000;">'
     '<tr><td align="center" style="padding:0;">'
-    f'<a href="{FRONTEND_URL}" style="text-decoration:none;">'
+    f'<a href="{BRIEF_URL}" style="text-decoration:none;">'
     f'<img src="{IMAGE_URL}" alt="Your Friday — Three things need you." width="640" '
     'style="display:block;width:100%;max-width:640px;height:auto;border:0;" /></a>'
     "</td></tr></table>" + EXPECTED_STRIP_WITHOUT_ACTIONS + "</div>"
@@ -139,14 +146,18 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     return h
 
 
-async def render(payload: BriefingPayload, **overrides: Any) -> str:
+def render(payload: BriefingPayload, **overrides: Any) -> str:
     kwargs: dict[str, Any] = {
-        "kind": NOTIFICATION_KIND_BRIEFING_DAILY,
-        "user_id": USER_ID,
+        "image_url": IMAGE_URL,
+        "briefing_id": BRIEFING_ID,
         "unsubscribe_url": UNSUBSCRIBE_URL,
     }
     kwargs.update(overrides)
-    return await render_edition_email(payload, **kwargs)
+    return render_edition_email(payload, **kwargs)
+
+
+async def host(payload: BriefingPayload, kind: str = NOTIFICATION_KIND_BRIEFING_DAILY) -> str:
+    return await host_edition_image(payload, user_id=USER_ID, kind=kind, crop_to_paper=False)
 
 
 @pytest.mark.unit
@@ -154,7 +165,7 @@ class TestEditionRendering:
     async def test_classic_renderer_receives_the_edition_number_and_no_generation_time(
         self, harness: Harness
     ) -> None:
-        await render(make_payload(date="2026-01-10"))
+        await host(make_payload(date="2026-01-10"))
 
         assert harness.render_calls == [
             {
@@ -176,7 +187,7 @@ class TestEditionRendering:
 
         harness.family_renderers["dispatch"] = family
 
-        await render(make_payload(template_family="dispatch"))
+        await host(make_payload(template_family="dispatch"))
 
         assert harness.render_calls == []
         assert len(seen) == 1
@@ -186,17 +197,17 @@ class TestEditionRendering:
     async def test_edition_epoch_makes_the_first_of_january_2026_edition_one(
         self, harness: Harness
     ) -> None:
-        await render(make_payload(date="2026-01-01"))
+        await host(make_payload(date="2026-01-01"))
 
         assert harness.render_calls[0]["edition_no"] == 1
 
     async def test_unparseable_date_falls_back_to_edition_one(self, harness: Harness) -> None:
-        await render(make_payload(date="not-a-date"))
+        await host(make_payload(date="not-a-date"))
 
         assert harness.render_calls[0]["edition_no"] == 1
 
     async def test_empty_date_falls_back_to_edition_one(self, harness: Harness) -> None:
-        await render(make_payload(date=""))
+        await host(make_payload(date=""))
 
         assert harness.render_calls[0]["edition_no"] == 1
 
@@ -206,7 +217,7 @@ class TestImageAndUpload:
     async def test_image_is_rasterized_at_full_edition_width_and_retina_scale(
         self, harness: Harness
     ) -> None:
-        await render(make_payload())
+        await host(make_payload())
 
         options = harness.image_calls[0]["options"]
         assert options.width == 1180
@@ -216,7 +227,7 @@ class TestImageAndUpload:
     async def test_upload_public_id_namespaces_the_user_kind_and_date(
         self, harness: Harness
     ) -> None:
-        await render(make_payload(date="2026-02-03"), kind=NOTIFICATION_KIND_BRIEFING_WEEKLY)
+        await host(make_payload(date="2026-02-03"), kind=NOTIFICATION_KIND_BRIEFING_WEEKLY)
 
         assert harness.upload_calls == [
             {
@@ -225,23 +236,16 @@ class TestImageAndUpload:
             }
         ]
 
-    async def test_email_body_markup_is_exactly_this(self, harness: Harness) -> None:
-        assert await render(make_payload()) == EXPECTED_EMAIL_WITHOUT_ACTIONS
+    async def test_hosting_returns_the_cdn_url(self, harness: Harness) -> None:
+        assert await host(make_payload()) == IMAGE_URL
 
-    async def test_image_url_is_html_escaped(self, harness: Harness) -> None:
-        harness.image_url = "https://cdn.example.com/a.png?x=1&y=2"
-
-        html = await render(make_payload())
-
-        assert 'src="https://cdn.example.com/a.png?x=1&amp;y=2"' in html
-
-    async def test_render_failure_propagates_so_the_caller_can_fall_back(
+    async def test_render_failure_propagates_and_nothing_is_uploaded(
         self, harness: Harness
     ) -> None:
         harness.render_error = RuntimeError("chromium died")
 
         with pytest.raises(RuntimeError, match="chromium died"):
-            await render(make_payload())
+            await host(make_payload())
 
         assert harness.upload_calls == []
 
@@ -249,32 +253,66 @@ class TestImageAndUpload:
         harness.upload_error = RuntimeError("cloudinary 500")
 
         with pytest.raises(RuntimeError, match="cloudinary 500"):
-            await render(make_payload())
+            await host(make_payload())
+
+
+@pytest.mark.unit
+class TestEmailBody:
+    def test_email_body_markup_is_exactly_this(self, harness: Harness) -> None:
+        assert render(make_payload()) == EXPECTED_EMAIL_WITHOUT_ACTIONS
+
+    def test_the_email_wraps_the_stored_image_without_rendering_a_second_copy(
+        self, harness: Harness
+    ) -> None:
+        html = render(make_payload(), image_url="https://cdn.example.com/stored.png")
+
+        assert 'src="https://cdn.example.com/stored.png"' in html
+        assert harness.render_calls == []
+        assert harness.image_calls == []
+        assert harness.upload_calls == []
+
+    def test_the_image_links_to_the_briefs_own_page(self, harness: Harness) -> None:
+        html = render(make_payload(), briefing_id="b-9")
+
+        assert (
+            '<a href="https://app.example.com/brief/b-9" style="text-decoration:none;"><img' in html
+        )
+
+    def test_image_url_is_html_escaped(self, harness: Harness) -> None:
+        html = render(make_payload(), image_url="https://cdn.example.com/a.png?x=1&y=2")
+
+        assert 'src="https://cdn.example.com/a.png?x=1&amp;y=2"' in html
+
+    def test_preheader_is_hidden_ahead_of_the_image_and_escaped(self, harness: Harness) -> None:
+        html = render(make_payload(), preheader="Pick <a> slot")
+
+        assert (
+            '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">'
+            "Pick &lt;a&gt; slot</div><table"
+        ) in html
 
 
 @pytest.mark.unit
 class TestAltText:
-    async def test_alt_joins_headline_and_lede(self, harness: Harness) -> None:
-        html = await render(make_payload(headline="Big day", lede="Two calls."))
+    def test_alt_joins_headline_and_lede(self, harness: Harness) -> None:
+        html = render(make_payload(headline="Big day", lede="Two calls."))
 
         assert 'alt="Big day — Two calls."' in html
 
-    async def test_alt_drops_the_dangling_separator_when_there_is_no_lede(
-        self, harness: Harness
-    ) -> None:
-        html = await render(make_payload(headline="Big day", lede=""))
+    def test_alt_drops_the_dangling_separator_when_there_is_no_lede(self, harness: Harness) -> None:
+        html = render(make_payload(headline="Big day", lede=""))
 
         assert 'alt="Big day"' in html
 
-    async def test_alt_trims_only_the_separator_never_the_headlines_own_letters(
+    def test_alt_trims_only_the_separator_never_the_headlines_own_letters(
         self, harness: Harness
     ) -> None:
-        html = await render(make_payload(headline="Reply to MAX", lede=""))
+        html = render(make_payload(headline="Reply to MAX", lede=""))
 
         assert 'alt="Reply to MAX"' in html
 
-    async def test_alt_is_escaped(self, harness: Harness) -> None:
-        html = await render(make_payload(headline="R&D <b>", lede=""))
+    def test_alt_is_escaped(self, harness: Harness) -> None:
+        html = render(make_payload(headline="R&D <b>", lede=""))
 
         assert 'alt="R&amp;D &lt;b&gt;"' in html
 
@@ -282,7 +320,7 @@ class TestAltText:
 @pytest.mark.unit
 class TestActionStrip:
     def test_strip_markup_without_actions_is_exactly_this(self, harness: Harness) -> None:
-        assert edition_email._action_strip(make_payload(), UNSUBSCRIBE_URL) == (
+        assert edition_email._action_strip(make_payload(), BRIEF_URL, UNSUBSCRIBE_URL) == (
             EXPECTED_STRIP_WITHOUT_ACTIONS
         )
 
@@ -294,18 +332,18 @@ class TestActionStrip:
             ]
         )
 
-        assert edition_email._action_strip(payload, UNSUBSCRIBE_URL) == (
+        assert edition_email._action_strip(payload, BRIEF_URL, UNSUBSCRIBE_URL) == (
             EXPECTED_STRIP_WITH_ACTIONS
         )
 
-    async def test_no_action_items_means_no_waiting_block(self, harness: Harness) -> None:
-        html = await render(make_payload(sections=[make_section(make_item("note", "FYI only"))]))
+    def test_no_action_items_means_no_waiting_block(self, harness: Harness) -> None:
+        html = render(make_payload(sections=[make_section(make_item("note", "FYI only"))]))
 
         assert "Waiting on your call" not in html
         assert "FYI only" not in html
 
-    async def test_items_waiting_on_the_user_get_review_links(self, harness: Harness) -> None:
-        html = await render(
+    def test_items_waiting_on_the_user_get_review_links(self, harness: Harness) -> None:
+        html = render(
             make_payload(
                 sections=[
                     make_section(
@@ -325,8 +363,8 @@ class TestActionStrip:
         assert f'href="{FRONTEND_URL}/todos/2"' in html
         assert html.count("Review</a>") == 2
 
-    async def test_items_are_collected_across_every_section(self, harness: Harness) -> None:
-        html = await render(
+    def test_items_are_collected_across_every_section(self, harness: Harness) -> None:
+        html = render(
             make_payload(
                 sections=[
                     make_section(make_item("you", "First", "a")),
@@ -339,15 +377,13 @@ class TestActionStrip:
         assert "Second" in html
         assert html.count("Review</a>") == 2
 
-    async def test_item_without_a_link_falls_back_to_the_app_home(self, harness: Harness) -> None:
-        html = await render(
-            make_payload(sections=[make_section(make_item("you", "Approve it", None))])
-        )
+    def test_item_without_a_link_falls_back_to_the_app_home(self, harness: Harness) -> None:
+        html = render(make_payload(sections=[make_section(make_item("you", "Approve it", None))]))
 
         assert f'href="{FRONTEND_URL}" style="color:#00bbff' in html
 
-    async def test_item_text_is_escaped_and_trimmed(self, harness: Harness) -> None:
-        html = await render(
+    def test_item_text_is_escaped_and_trimmed(self, harness: Harness) -> None:
+        html = render(
             make_payload(
                 sections=[make_section(make_item("you", "  Pay <Acme> & co  ", "todos/9"))]
             )
@@ -355,19 +391,19 @@ class TestActionStrip:
 
         assert "Pay &lt;Acme&gt; &amp; co &nbsp;" in html
 
-    async def test_item_with_empty_text_renders_an_empty_label(self, harness: Harness) -> None:
-        html = await render(make_payload(sections=[make_section(make_item("you", "", "todos/9"))]))
+    def test_item_with_empty_text_renders_an_empty_label(self, harness: Harness) -> None:
+        html = render(make_payload(sections=[make_section(make_item("you", "", "todos/9"))]))
 
         assert "Waiting on your call" in html
         assert html.count("Review</a>") == 1
 
-    async def test_sections_without_items_are_tolerated(self, harness: Harness) -> None:
-        html = await render(make_payload(sections=[make_section()]))
+    def test_sections_without_items_are_tolerated(self, harness: Harness) -> None:
+        html = render(make_payload(sections=[make_section()]))
 
         assert "Waiting on your call" not in html
 
-    async def test_unsubscribe_url_is_escaped(self, harness: Harness) -> None:
-        html = await render(make_payload(), unsubscribe_url="https://heygaia.io/u?t=a&s=b")
+    def test_unsubscribe_url_is_escaped(self, harness: Harness) -> None:
+        html = render(make_payload(), unsubscribe_url="https://heygaia.io/u?t=a&s=b")
 
         assert 'href="https://heygaia.io/u?t=a&amp;s=b"' in html
 
@@ -444,37 +480,33 @@ class TestPublicAppUrl:
         assert edition_email._public_app_url() == expected
 
     @pytest.mark.parametrize("frontend_url", ["http://localhost:3000", "http://127.0.0.1:3000", ""])
-    async def test_dev_origins_fall_back_to_the_public_app(
+    def test_dev_origins_fall_back_to_the_public_app(
         self, harness: Harness, monkeypatch: pytest.MonkeyPatch, frontend_url: str
     ) -> None:
         monkeypatch.setattr(edition_email, "settings", SimpleNamespace(FRONTEND_URL=frontend_url))
 
-        html = await render(
-            make_payload(sections=[make_section(make_item("you", "Do it", "todos/1"))])
-        )
+        html = render(make_payload(sections=[make_section(make_item("you", "Do it", "todos/1"))]))
 
-        assert 'href="https://heygaia.io"' in html
+        assert 'href="https://heygaia.io/brief/brief-1"' in html
         assert 'href="https://heygaia.io/todos/1"' in html
 
-    async def test_unset_frontend_url_falls_back_to_the_public_app(
+    def test_unset_frontend_url_falls_back_to_the_public_app(
         self, harness: Harness, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(edition_email, "settings", SimpleNamespace(FRONTEND_URL=None))
 
-        html = await render(make_payload())
+        html = render(make_payload())
 
-        assert 'href="https://heygaia.io"' in html
+        assert 'href="https://heygaia.io/brief/brief-1"' in html
 
-    async def test_trailing_slash_is_stripped_so_links_never_double_up(
+    def test_trailing_slash_is_stripped_so_links_never_double_up(
         self, harness: Harness, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
             edition_email, "settings", SimpleNamespace(FRONTEND_URL="https://app.example.com/")
         )
 
-        html = await render(
-            make_payload(sections=[make_section(make_item("you", "Do it", "/todos/1"))])
-        )
+        html = render(make_payload(sections=[make_section(make_item("you", "Do it", "/todos/1"))]))
 
         assert 'href="https://app.example.com/todos/1"' in html
         assert "app.example.com//todos" not in html

@@ -215,3 +215,70 @@ async def test_a_full_bleed_family_keeps_its_width_when_cropped() -> None:
     cropped = await render_edition_png(payload, crop_to_paper=True)
 
     assert _png_width(cropped) == 1180 * ImageRenderOptions().device_scale_factor
+
+
+# A brief with nothing on the calendar and nothing waiting on the reader: the
+# empty buckets once rendered as fake rows ("EOD  Nothing on the calendar today",
+# "REVIEW  Nothing pending your review").
+_ONLY_OVERNIGHT = {
+    **_DAILY,
+    "sections": [
+        {
+            "numeral": "I",
+            "title": "GAIA'S WORK",
+            "items": [{"text": "Investor update draft for October", "kind": "lookback"}],
+        }
+    ],
+    "calendar": [],
+}
+_PLACEHOLDER_ROW = re.compile(
+    r"\bEOD\b|\breview\b|nothing on the calendar|nothing pending|nothing to report",
+    re.IGNORECASE,
+)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("payload", [_QUIET, _ONLY_OVERNIGHT], ids=["quiet", "only-overnight"])
+@pytest.mark.parametrize("family", sorted(set(EXPLORER_RENDERER) - {"weekly"}))
+async def test_an_empty_bucket_renders_no_placeholder_row(
+    family: str, payload: dict[str, Any]
+) -> None:
+    text = " ".join((await _visible_text(_render_html(family, payload))).split())
+
+    found = _PLACEHOLDER_ROW.search(text)
+    context = text[max(0, found.start() - 60) : found.end() + 40] if found else ""
+    assert found is None, f"{family} printed a placeholder row in {context!r}"
+
+
+# Section headings each family prints only above a non-empty bucket (explorer/README.md,
+# "Empty sections"). A quiet brief has every bucket empty, so none may survive. Families
+# whose every section is a fixed slot (boardingpass, metromap, invoice) omit nothing.
+_EMPTY_BUCKET_HEADINGS = {
+    "almanac": ("What Matters To-day", "Work Performed in the Night", "Needs Your Call"),
+    "band": ("While you slept", "Needs your call"),
+    "broadsheet": ("Filed Overnight", "While You Slept", "Awaiting the Editor", "Day's Figures"),
+    "dayline": ("While you slept", "What matters today", "Needs your call"),
+    "exhibition": ("Programme for the day", "while you slept", "Awaiting your decision"),
+    "flightplan": ("while you slept",),
+    "gradient": ("Handled overnight", "Needs your call"),
+    "instrument": ("While you slept", "Needs your call", "readout"),
+    "librarycard": ("Checked out", "Returned overnight", "Awaiting your signature"),
+    "memo": ("What matters today", "While you slept", "Needs your call", "By the numbers"),
+    "menu": ("awaiting the table",),
+    "playbill": ("Grand Programme", "Performed While You Slept", "Awaits Your Decision"),
+    "playfair": ("The day ahead", "While you slept", "For your decision"),
+    "postal": ("While you slept", "Needs your call"),
+    "receipt": ("Overnight", "Awaiting payment", "Items:"),
+    "swiss": ("What matters today", "While you slept", "Needs your call"),
+}
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(("family", "headings"), sorted(_EMPTY_BUCKET_HEADINGS.items()))
+async def test_an_empty_bucket_leaves_no_section_heading(
+    family: str, headings: tuple[str, ...]
+) -> None:
+    text = " ".join((await _visible_text(_render_html(family, _QUIET))).split()).lower()
+
+    left = [h for h in headings if h.lower() in text]
+    assert not left, f"{family} printed {left} above an empty bucket"

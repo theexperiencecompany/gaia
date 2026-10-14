@@ -1,9 +1,10 @@
-"""Assemble a briefing email whose body IS the rendered edition.
+"""Render and host the briefing edition image, and wrap it as an email.
 
 The edition targets a real browser, so it is rasterized to an image (render.py),
-hosted on the CDN, and referenced by URL (Gmail blocks base64 data: images). Beneath
-it sits a small email-safe action strip of deep links into the app; the email can
-never approve or send on its own.
+hosted on the CDN once when the brief is generated, and referenced by URL (Gmail
+blocks base64 data: images). The email embeds that stored image, linked to the
+brief's own page, above a small email-safe action strip of deep links into the app;
+the email can never approve or send on its own.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from app.constants.notifications import (
 from app.models.briefing_models import BriefingItem, BriefingPayload
 from app.services.briefing.editions import paper_selector, render_edition, renderer_for
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
+from app.services.briefing.skim import brief_path
 from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
 
@@ -77,7 +79,7 @@ def _resolve_link(link: str | None) -> str | None:
     return f"{base}/{link.lstrip('/')}"
 
 
-def _action_strip(payload: BriefingPayload, unsubscribe_url: str) -> str:
+def _action_strip(payload: BriefingPayload, brief_url: str, unsubscribe_url: str) -> str:
     """Build the email-safe (table + inline-styled) strip under the image.
 
     It holds the primary CTA, per-proposal review links and unsubscribe. Deep-links
@@ -90,7 +92,7 @@ def _action_strip(payload: BriefingPayload, unsubscribe_url: str) -> str:
     rows = [
         (
             f'<tr><td align="center" style="padding:24px 24px 8px 24px;">'
-            f'<a href="{escape(app_url)}" '
+            f'<a href="{escape(brief_url)}" '
             f'style="display:inline-block;background:{_ACCENT};color:{_ACCENT_FG};'
             f"text-decoration:none;font:600 15px/1.2 {sans};"
             'padding:13px 30px;border-radius:10px;">'
@@ -174,23 +176,17 @@ async def host_edition_image(
     return image_url
 
 
-async def render_edition_email(
+def render_edition_email(
     payload: BriefingPayload,
     *,
-    kind: str,
-    user_id: str,
+    image_url: str,
+    briefing_id: str,
     unsubscribe_url: str,
     preheader: str = "",
 ) -> str:
-    """Render the edition to a hosted image and wrap it with the action strip.
-
-    Raises on any render/upload failure so the caller can fall back to the plain HTML
-    template.
-    """
-    image_url = await host_edition_image(payload, user_id=user_id, kind=kind, crop_to_paper=False)
-
+    """Wrap the already-hosted edition image, linked to the brief's page, with the action strip."""
+    brief_url = _public_app_url() + brief_path(briefing_id)
     alt = escape(f"{payload.headline} — {payload.lede}".strip(" —"))
-    app_url = _public_app_url()
 
     # The inbox preview line (the skim's asks + overnight sentence), hidden in
     # the body so clients show it under the subject instead of image alt text.
@@ -204,10 +200,10 @@ async def render_edition_email(
         f'<div style="margin:0;padding:0;background:{_BG};">{preheader_html}'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{_BG};">'
         '<tr><td align="center" style="padding:0;">'
-        f'<a href="{escape(app_url)}" style="text-decoration:none;">'
+        f'<a href="{escape(brief_url)}" style="text-decoration:none;">'
         f'<img src="{escape(image_url)}" alt="{alt}" width="640" '
         'style="display:block;width:100%;max-width:640px;height:auto;border:0;" /></a>'
-        "</td></tr></table>" + _action_strip(payload, unsubscribe_url) + "</div>"
+        "</td></tr></table>" + _action_strip(payload, brief_url, unsubscribe_url) + "</div>"
     )
 
 

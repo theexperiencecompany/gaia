@@ -400,7 +400,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/briefings/latest": {
+    "/api/v1/briefings/{briefing_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -408,10 +408,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Latest Briefing
-         * @description Latest daily briefing; marks it opened (once) and emits ``briefing:opened``.
+         * Get Briefing
+         * @description Return one of the user's briefs; the first open marks it and emits briefing:opened.
          */
-        get: operations["briefings_get_latest_briefing"];
+        get: operations["briefings_get_briefing"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6644,6 +6644,8 @@ export interface components {
             date: string;
             /** Delivered Channels */
             delivered_channels: string[];
+            /** Edition Image Url */
+            edition_image_url: string | null;
             /** Id */
             id: string;
             /**
@@ -17500,11 +17502,13 @@ export interface operations {
             };
         };
     };
-    briefings_get_latest_briefing: {
+    briefings_get_briefing: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                briefing_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -17533,7 +17537,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BriefingModel"] | null;
+                    "application/json": components["schemas"]["BriefingModel"];
                 };
             };
             /** @description Unprocessable Entity */

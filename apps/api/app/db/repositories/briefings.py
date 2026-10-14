@@ -26,15 +26,6 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
 
     # ------------------------------------------------------------------ reads
 
-    async def get_latest(
-        self, user_id: str, *, kind: BriefingKind = BRIEFING_KIND_DAILY
-    ) -> BriefingModel | None:
-        """Return the user's most recent briefing of this kind for the dashboard."""
-        docs = await self._find(
-            {"user_id": user_id, "kind": kind}, sort=[("created_at", -1)], limit=1
-        )
-        return docs[0] if docs else None
-
     async def get_before_date(
         self, user_id: str, *, kind: BriefingKind, before_date: str
     ) -> BriefingModel | None:
@@ -69,7 +60,13 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     # ----------------------------------------------------------------- writes
 
     async def upsert_briefing(
-        self, user_id: str, date: str, kind: BriefingKind, payload: BriefingPayload
+        self,
+        user_id: str,
+        date: str,
+        kind: BriefingKind,
+        payload: BriefingPayload,
+        *,
+        edition_image_url: str,
     ) -> BriefingModel:
         """Store the payload (one per user/date/kind).
 
@@ -79,7 +76,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         doc = await self._apply_raw_update(
             {"user_id": user_id, "date": date, "kind": kind},
             {
-                "$set": {"payload": payload.model_dump()},
+                "$set": {"payload": payload.model_dump(), "edition_image_url": edition_image_url},
                 "$setOnInsert": {
                     "_id": f"brief_{uuid.uuid4().hex[:12]}",
                     "created_at": datetime.now(UTC),

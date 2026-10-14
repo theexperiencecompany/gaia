@@ -9,4 +9,11 @@ export const briefingApi = {
     });
     return data.briefings;
   },
+
+  // Fetch one brief; the first open marks it opened on the server.
+  fetchBriefing: (briefingId: string) =>
+    api.get("/api/v1/briefings/{briefing_id}", {
+      path: { briefing_id: briefingId },
+      silent: true,
+    }),
 };

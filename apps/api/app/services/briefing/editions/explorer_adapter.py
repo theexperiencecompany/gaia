@@ -11,7 +11,7 @@ text, so pre-escaping here would double-encode entities.
 
 from datetime import date, datetime
 import re
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
 from app.models.briefing_models import (
@@ -79,28 +79,31 @@ _IMPERATIVE_VERBS = {
 # has one text slot, the deck, and it carries the headline.
 _TITLE_SLOT_FAMILIES = frozenset({"memo", "postal", "broadsheet"})
 
-_PLACEHOLDER_TODAY: "ExplorerTodayItem" = {
+# An unused fixed slot: the em dash is the vendored set's own mark for a missing
+# value (see explorer/README.md, "Null guards"). The slot carries no time, tag or
+# verb, so a template never labels an empty row ("EOD", "REVIEW").
+_EMPTY_SLOT_LABEL = "—"
+_EMPTY_TODAY: "ExplorerTodayItem" = {
     "time": None,
     "t24": None,
-    "label": "Nothing on the calendar today",
+    "label": _EMPTY_SLOT_LABEL,
     "note": None,
     "tag": "",
+    "empty": True,
 }
-_PLACEHOLDER_OVERNIGHT: "ExplorerOvernightItem" = {
+_EMPTY_OVERNIGHT: "ExplorerOvernightItem" = {
     "t24": None,
-    "label": "Nothing to report from overnight",
+    "label": _EMPTY_SLOT_LABEL,
     "note": None,
     "tag": "",
+    "empty": True,
 }
-_PLACEHOLDER_DECISION: "ExplorerDecisionItem" = {
-    "verb": "Review",
-    "label": "Nothing pending your review",
+_EMPTY_DECISION: "ExplorerDecisionItem" = {
+    "verb": "",
+    "label": _EMPTY_SLOT_LABEL,
     "note": None,
+    "empty": True,
 }
-
-# An unused fixed slot: the em dash is the vendored set's own mark for a missing
-# value (see explorer/README.md, "Null guards").
-_EMPTY_SLOT_LABEL = "—"
 
 # Families that read fixed (today, overnight, decisions) item slots; handed fewer, the
 # page script throws and the raster is blank, so build_ed pads these buckets.
@@ -122,6 +125,8 @@ class ExplorerTodayItem(TypedDict):
     label: str
     note: str | None
     tag: str
+    #: A fixed-slot family's unused slot, drawn as a bare dash with no label.
+    empty: NotRequired[bool]
 
 
 class ExplorerOvernightItem(TypedDict):
@@ -129,12 +134,14 @@ class ExplorerOvernightItem(TypedDict):
     label: str
     note: str | None
     tag: str
+    empty: NotRequired[bool]
 
 
 class ExplorerDecisionItem(TypedDict):
     verb: str
     label: str
     note: str | None
+    empty: NotRequired[bool]
 
 
 class ExplorerStats(TypedDict):
@@ -223,13 +230,9 @@ def build_ed(
     date_parts = _date_parts(payload.date)
     today, overnight, decisions = _build_buckets(payload.sections, payload.calendar)
     min_today, min_overnight, min_decisions = _FIXED_SLOTS.get(family, (0, 0, 0))
-    today += [{**_PLACEHOLDER_TODAY, "label": _EMPTY_SLOT_LABEL}] * (min_today - len(today))
-    overnight += [{**_PLACEHOLDER_OVERNIGHT, "label": _EMPTY_SLOT_LABEL}] * (
-        min_overnight - len(overnight)
-    )
-    decisions += [{**_PLACEHOLDER_DECISION, "label": _EMPTY_SLOT_LABEL}] * (
-        min_decisions - len(decisions)
-    )
+    today += [_EMPTY_TODAY] * (min_today - len(today))
+    overnight += [_EMPTY_OVERNIGHT] * (min_overnight - len(overnight))
+    decisions += [_EMPTY_DECISION] * (min_decisions - len(decisions))
     art_title, art_artist = _split_credit(art_credit)
     headline = payload.headline
     lede = payload.lede
@@ -379,20 +382,15 @@ def _decision_row(item: BriefingItem) -> ExplorerDecisionItem:
 def _build_buckets(
     sections: list[BriefingSection], calendar: list[BriefingEvent]
 ) -> tuple[list[ExplorerTodayItem], list[ExplorerOvernightItem], list[ExplorerDecisionItem]]:
-    """Map items by meaning (see the module docstring).
-
-    A bucket left empty gets one honest placeholder rather than an array a template might
-    index into unconditionally.
-    """
+    """Map items by meaning (see the module docstring); an empty bucket stays empty."""
     items = [item for section in sections for item in section.items]
     decision_items = [i for i in items if i.kind in _DECISION_KINDS]
     overnight_items = [i for i in items if i.kind not in _DECISION_KINDS]
 
-    today = [_event_row(e) for e in calendar]
     return (
-        today or [_PLACEHOLDER_TODAY],
-        [_overnight_row(i) for i in overnight_items] or [_PLACEHOLDER_OVERNIGHT],
-        [_decision_row(i) for i in decision_items] or [_PLACEHOLDER_DECISION],
+        [_event_row(e) for e in calendar],
+        [_overnight_row(i) for i in overnight_items],
+        [_decision_row(i) for i in decision_items],
     )
 
 

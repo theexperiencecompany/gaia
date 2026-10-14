@@ -32,7 +32,6 @@ from app.constants.agents import (
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
-from app.models.brief_models import PendingBriefSource
 from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
@@ -965,19 +964,11 @@ class TestReplayCompletionNotification:
         item = harness.brief_create.await_args.args[0]
         assert (
             item.user_id,
-            item.source,
-            item.source_id,
-            item.source_title,
+            item.workflow_id,
+            item.workflow_title,
             item.conversation_id,
             item.text,
-        ) == (
-            workflow.user_id,
-            PendingBriefSource.WORKFLOW,
-            workflow.id,
-            workflow.title,
-            "conv_1",
-            "Agenda sent.",
-        )
+        ) == (workflow.user_id, workflow.id, workflow.title, "conv_1", "Agenda sent.")
 
     async def test_an_untrusted_replay_leaves_the_notification_to_the_agent(
         self,

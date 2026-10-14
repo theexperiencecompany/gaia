@@ -45,7 +45,6 @@ from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
-from app.models.brief_models import PendingBriefSource
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -516,61 +515,28 @@ def _desk_request(trigger_type: TriggerType) -> TodoRunRequest:
 
 
 class TestTheInboxDeskBriefsThroughTheMorningBrief:
-    """The brief is the one morning message.
+    """The brief reads the desk's findings itself, so its scheduled report is never sent.
 
-    The desk's scheduled report waits for it as a pending brief item; the desk's
-    mail-woken alerts still go out at once.
+    The findings are its thread sub-todos and the calendar; mail-woken alerts still go out.
     """
 
-    async def test_the_scheduled_report_is_held_for_the_brief_not_sent(self) -> None:
-        held = AsyncMock()
-        with (
-            _seams(todo=_desk(), narrated=EXECUTOR_REPORT) as seams,
-            patch.object(trd.pending_brief_items_repository, "create", held),
-        ):
+    async def test_the_scheduled_report_is_folded_into_the_brief_not_sent(self) -> None:
+        with _seams(todo=_desk(), narrated=EXECUTOR_REPORT) as seams:
             await run_todo_on_executor(_desk_request(TriggerType.SCHEDULED_TODO))
 
         seams.send.assert_not_awaited()
-        (item,) = held.await_args.args
-        assert (item.user_id, item.source, item.source_id, item.source_title) == (
-            USER.user_id,
-            PendingBriefSource.INBOX_DESK,
-            TODO_ID,
-            "Inbox desk",
-        )
-        assert (item.conversation_id, item.text) == ("run-conv-1", EXECUTOR_REPORT)
+        seams.narrate.assert_not_awaited()
         assert seams.capture.call_args.args[1].outcome == "held_for_brief"
-        assert _activity(seams).startswith("held for the morning brief (summary=")
-
-    async def test_a_sweep_comms_keeps_quiet_is_not_held_either(self) -> None:
-        held = AsyncMock()
-        with (
-            _seams(todo=_desk(), narrated="<SILENCE>nothing new</SILENCE>") as seams,
-            patch.object(trd.pending_brief_items_repository, "create", held),
-        ):
-            await run_todo_on_executor(_desk_request(TriggerType.SCHEDULED_TODO))
-
-        held.assert_not_awaited()
-        assert seams.capture.call_args.args[1].outcome == "silenced"
+        assert _activity(seams).startswith("folded into the morning brief (summary=")
 
     async def test_a_mail_woken_alert_still_goes_out_at_once(self) -> None:
-        held = AsyncMock()
-        with (
-            _seams(todo=_desk(), narrated=EXECUTOR_REPORT) as seams,
-            patch.object(trd.pending_brief_items_repository, "create", held),
-        ):
+        with _seams(todo=_desk(), narrated=EXECUTOR_REPORT) as seams:
             await run_todo_on_executor(_desk_request(TriggerType.INTEGRATION))
 
         seams.send.assert_awaited_once()
-        held.assert_not_awaited()
 
     async def test_another_todos_scheduled_run_is_unaffected(self) -> None:
-        held = AsyncMock()
-        with (
-            _seams(todo=_todo()) as seams,
-            patch.object(trd.pending_brief_items_repository, "create", held),
-        ):
+        with _seams(todo=_todo()) as seams:
             await run_todo_on_executor(_request())
 
         seams.send.assert_awaited_once()
-        held.assert_not_awaited()

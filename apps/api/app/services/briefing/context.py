@@ -15,7 +15,7 @@ from app.constants.briefing import (
     WINBACK_THRESHOLD,
 )
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
-from app.constants.todos import BLOCKING_LABELS, FAILED_LABEL, GAIA_TRACKED_LABEL
+from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, NEEDS_USER_LABELS
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
@@ -37,7 +37,7 @@ from app.services.calendar_service import get_calendar_events
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from shared.py.wide_events import log
 
-# Open tracked todos the brief reports on (in progress / blocked / failed).
+# Open tracked todos the brief reports on (in progress / waiting on the user / failed).
 _TRACKED_WORK_LIMIT = 20
 
 
@@ -77,6 +77,7 @@ class TrackedWork:
 
     completed: list[TodoDocument] = field(default_factory=list)
     running: list[TodoDocument] = field(default_factory=list)
+    #: Waiting on the user (NEEDS_USER_LABELS): the inbox desk's threads they owe a reply, approvals.
     blocked: list[TodoDocument] = field(default_factory=list)
     failed: list[TodoDocument] = field(default_factory=list)
 
@@ -166,7 +167,7 @@ async def gather_tracked_work(user_id: str, since: datetime) -> TrackedWork:
     for doc in await todo_repository.list_active_tracked(user_id, limit=_TRACKED_WORK_LIMIT):
         if FAILED_LABEL in doc.labels:
             work.failed.append(doc)
-        elif BLOCKING_LABELS.intersection(doc.labels):
+        elif NEEDS_USER_LABELS.intersection(doc.labels):
             work.blocked.append(doc)
         else:
             work.running.append(doc)

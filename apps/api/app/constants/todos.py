@@ -40,6 +40,11 @@ BLOCKING_LABEL: Final[str] = "blocked"
 BLOCKING_LABELS: Final[frozenset[str]] = frozenset(
     {WAITING_FOR_REPLY_LABEL, WAITING_FOR_APPROVAL_LABEL, BLOCKING_LABEL}
 )
+# Labels meaning the next move is the user's: a reply they owe, an approval, a blocker.
+# A thread waiting on someone else's reply is not one of them.
+NEEDS_USER_LABELS: Final[frozenset[str]] = frozenset(
+    {NEEDS_REPLY_LABEL, WAITING_FOR_APPROVAL_LABEL, BLOCKING_LABEL}
+)
 
 # How much of activity.md (from the end) a scheduled run sees in its prompt:
 # enough for the recent trail, bounded so a long-lived recurring todo does not

@@ -101,6 +101,7 @@
     );
   }
   function col(head, body) {
+    if (!body) return "";
     return (
       `<section class="t-exhibition__col">` +
       `<h3 class="t-exhibition__col-h">${head}</h3>` +
@@ -462,12 +463,14 @@
 
       const programme =
         `<div class="t-exhibition__programme">` +
-        `<h2 class="t-exhibition__prog-h">Programme for the day</h2>` +
-        `<div class="t-exhibition__cols">` +
-        col("Today", today) +
-        col("Overnight, while you slept", overnight) +
-        col("Awaiting your decision", decisions) +
-        `</div>` +
+        (today || overnight || decisions
+          ? `<h2 class="t-exhibition__prog-h">Programme for the day</h2>` +
+            `<div class="t-exhibition__cols">` +
+            col("Today", today) +
+            col("Overnight, while you slept", overnight) +
+            col("Awaiting your decision", decisions) +
+            `</div>`
+          : "") +
         stats +
         `</div>`;
 

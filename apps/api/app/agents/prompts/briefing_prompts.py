@@ -118,6 +118,14 @@ are already final. You cannot add, remove, or reword facts, only give the day
 its voice. Every specific in your prose must appear in the facts below; if it is
 not there, you do not say it.
 
+The HEADLINE and LEDE are printed above the brief's items, so they are written
+from TODAY'S FACTS alone: name only people and things that appear in an item or
+in today's calendar, use only the numbers in [COUNTS] or the calendar, and never
+say something needs the user, or mention an event, unless an item or the
+calendar shows it. Yesterday, the user's replies and goal memory may shape the
+bubbles and caption, never the headline or lede. The system checks this and
+rejects a headline or lede that does not match.
+
 ``bubbles`` is an array of chat messages that land in the user's
 Telegram/WhatsApp. YOU decide how many and where to break them — text the way a
 person actually does, with a natural rhythm, NOT a rigid one-message-per-goal
@@ -291,6 +299,16 @@ a hard failure. Never ask an open-ended "what can I help with".
 
 {_VOICE_CONTRACT}
 """
+
+
+def voice_correction_note(problems: list[str]) -> str:
+    """Return the retry instruction naming how the last headline and lede broke the facts."""
+    listed = "\n".join(f"- {problem}" for problem in problems)
+    return (
+        "## YOUR LAST HEADLINE AND LEDE WERE REJECTED\n"
+        f"They did not match today's facts:\n{listed}\n"
+        "Write them again from today's facts and [COUNTS] only, then return the whole JSON."
+    )
 
 
 def build_weekly_digest_prompt(

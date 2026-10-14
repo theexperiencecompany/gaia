@@ -286,18 +286,11 @@ class TestContent:
             ("Q4 hiring plan", "IN PROGRESS"),
         ]
 
-    def test_review_placeholder_shows_only_when_nothing_waits_on_the_user(self) -> None:
-        nothing = _build(_payload(sections=[]))["content"]["decisions"]
-        waiting = _build(self._daily())["content"]["decisions"]
+    def test_an_empty_day_leaves_every_bucket_empty_instead_of_a_fake_row(self) -> None:
+        """Regression: empty buckets rendered as "EOD Nothing on the calendar today" rows."""
+        content = _build(_payload(sections=[]))["content"]
 
-        assert nothing == [{"verb": "Review", "label": "Nothing pending your review", "note": None}]
-        assert all(row["label"] != "Nothing pending your review" for row in waiting)
-
-    def test_an_empty_day_gets_honest_placeholders(self) -> None:
-        content = _build(_payload())["content"]
-
-        assert [r["label"] for r in content["today"]] == ["Nothing on the calendar today"]
-        assert [r["label"] for r in content["overnight"]] == ["Nothing to report from overnight"]
+        assert (content["today"], content["overnight"], content["decisions"]) == ([], [], [])
 
     def test_a_note_reads_as_overnight_without_a_tag(self) -> None:
         overnight = _build(
@@ -357,8 +350,8 @@ class TestFixedSlots:
             ("metromap", 3, 3, 2),
             ("menu", 3, 3, 1),
             ("invoice", 3, 3, 1),
-            ("almanac", 2, 1, 1),
-            ("broadsheet", 1, 1, 1),
+            ("almanac", 2, 0, 1),
+            ("broadsheet", 0, 0, 1),
         ],
     )
     def test_family_gets_every_slot_it_reads(
@@ -387,11 +380,10 @@ class TestFixedSlots:
         )["content"]
 
         assert [d["label"] for d in content["decisions"]] == ["a slot", "—"]
-        assert [r["label"] for r in content["today"]] == [
-            "Nothing on the calendar today",
-            "—",
-            "—",
-        ]
+        assert content["decisions"][1] == {"verb": "", "label": "—", "note": None, "empty": True}
+        assert [(r["label"], r["t24"], r.get("empty")) for r in content["today"]] == [
+            ("—", None, True)
+        ] * 3
 
     def test_a_full_bucket_is_never_padded(self) -> None:
         payload = _payload(

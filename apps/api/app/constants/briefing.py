@@ -36,6 +36,9 @@ BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
 # in under a minute. The daily brief keeps the highest-priority items (needs-you
 # first); a weekly payload over the cap fails generation.
 MAX_BRIEF_ITEMS: Final[int] = 8
+# Voice attempts per daily brief: one regeneration when the headline or lede contradicts
+# the items (briefing/voice_check.py), then the run fails rather than ship it.
+MAX_VOICE_ATTEMPTS: Final[int] = 2
 
 # Rows per list in the weekly edition (shipped, handled, the week ahead).
 WEEK_LIST_LIMIT: Final[int] = 5

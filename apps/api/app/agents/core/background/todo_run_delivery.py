@@ -33,9 +33,7 @@ from app.constants.todos import (
     TodoRunFinishFailure,
 )
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
-from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.todos import todo_repository
-from app.models.brief_models import PendingBriefItemDocument, PendingBriefSource
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -61,6 +59,7 @@ _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
     TodoRunDeliveryOutcome.NOTIFY_OFF: "result not sent: delivery is off for this todo",
     TodoRunDeliveryOutcome.NARRATION_FAILED: "result not sent: it could not be written up",
     TodoRunDeliveryOutcome.INVALID_DIRECTIVE: "result not sent: the write-up was a reaction",
+    TodoRunDeliveryOutcome.HELD_FOR_BRIEF: "folded into the morning brief",
 }
 
 
@@ -201,11 +200,12 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
         return None
 
     # Read now, not when the run started: the run itself may have turned it off.
-    resolution = (
-        await _narrate_and_send(finished, user, todo)
-        if todo.notify_on_run
-        else _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
-    )
+    if not todo.notify_on_run:
+        resolution = _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
+    elif _is_desk_sweep(todo, finished):
+        resolution = _not_sent(TodoRunDeliveryOutcome.HELD_FOR_BRIEF)
+    else:
+        resolution = await _narrate_and_send(finished, user, todo)
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
@@ -224,31 +224,16 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
 
 
 def _is_desk_sweep(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
-    """Whether this is the inbox desk's scheduled sweep, whose report belongs in the brief.
+    """Return whether this is the inbox desk's scheduled sweep, which the brief reports.
 
-    The brief is the user's one morning message; the desk's mail-woken alerts
-    are real-time and still go out at once.
+    The brief reads the desk's findings itself (its thread sub-todos and the calendar), so
+    the sweep's report is neither written up nor sent; mail-woken alerts still go out.
     """
     return (
         todo.external_ref is not None
         and todo.external_ref.source is ExternalRefSource.INBOX_DESK
         and finished.trigger_type is TriggerType.SCHEDULED_TODO
     )
-
-
-async def _hold_for_brief(finished: FinishedTodoRun, todo: TodoDocument, text: str) -> _Resolution:
-    """Store the desk's sweep report as a pending brief item instead of sending it."""
-    await pending_brief_items_repository.create(
-        PendingBriefItemDocument(
-            user_id=todo.user_id,
-            source=PendingBriefSource.INBOX_DESK,
-            source_id=todo.id,
-            source_title=todo.title,
-            conversation_id=finished.conversation_id,
-            text=text,
-        )
-    )
-    return _Resolution(TodoRunDeliveryOutcome.HELD_FOR_BRIEF, "held for the morning brief")
 
 
 def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | None:
@@ -287,7 +272,6 @@ async def _narrate_and_send(
     """Have comms write the result up (or decline to), then send it to the chat app.
 
     A report whose form its todo's guidance sets is sent as written: comms decides only whether.
-    The inbox desk's scheduled sweep is held for the morning brief instead of sent.
     """
     text = await narrate_executor_result(
         finished.result_text,
@@ -320,8 +304,6 @@ async def _narrate_and_send(
     # comms' retelling dropped the headings a report-form owner's guidance requires.
     owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
     message = finished.result_text if owns_form else directive.payload
-    if _is_desk_sweep(todo, finished):
-        return await _hold_for_brief(finished, todo, message)
     platform = await deliver_result_to_platforms(
         user=user,
         user_id=todo.user_id,

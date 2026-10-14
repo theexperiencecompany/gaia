@@ -1956,6 +1956,17 @@
             "title": "Delivered Channels",
             "type": "array"
           },
+          "edition_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition Image Url"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2008,6 +2019,7 @@
           "kind",
           "payload",
           "delivered_channels",
+          "edition_image_url",
           "opened_at",
           "created_at",
           "updated_at"
@@ -22503,24 +22515,27 @@
         ]
       }
     },
-    "/api/v1/briefings/latest": {
+    "/api/v1/briefings/{briefing_id}": {
       "get": {
-        "description": "Latest daily briefing; marks it opened (once) and emits ``briefing:opened``.",
-        "operationId": "briefings_get_latest_briefing",
+        "description": "Return one of the user's briefs; the first open marks it and emits briefing:opened.",
+        "operationId": "briefings_get_briefing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "briefing_id",
+            "required": true,
+            "schema": {
+              "title": "Briefing Id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/BriefingModel"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "title": "Response Briefings Get Latest Briefing"
+                  "$ref": "#/components/schemas/BriefingModel"
                 }
               }
             },
@@ -22557,7 +22572,7 @@
             "description": "Server Error"
           }
         },
-        "summary": "Get Latest Briefing",
+        "summary": "Get Briefing",
         "tags": [
           "Briefings",
           "Briefings"

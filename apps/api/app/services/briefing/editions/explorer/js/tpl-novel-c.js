@@ -190,6 +190,7 @@
     );
   }
   function gradGroup(label, lines) {
+    if (!lines) return "";
     return (
       `<div class="t-gradient__grp">` +
       `<p class="t-gradient__glabel">${esc(label)}</p>` +
@@ -623,21 +624,27 @@
       const s = c.stats;
       const invNo = `GA-${pad4(ed.editionNo)}`;
 
+      // an empty slot prints its bare dash: no qty, unit or amount
+      const line = (it, unit, amt, zero) =>
+        it.empty
+          ? invLineItem(it.label, null, "", "", "", false)
+          : invLineItem(it.label, it.note, "1", unit, amt, zero);
+
       // BILLABLE — today's work, itemised at face value
       const t = c.today;
       const billable =
         invSection("Today — billable") +
-        invLineItem(t[0].label, t[0].note, "1", t[0].t24 || "", "1 session", false) +
-        invLineItem(t[1].label, t[1].note, "1", t[1].t24 || "", "1 session", false) +
-        invLineItem(t[2].label, t[2].note, "1", t[2].t24 || "EOD", "1 session", false);
+        line(t[0], t[0].t24 || "", "1 session", false) +
+        line(t[1], t[1].t24 || "", "1 session", false) +
+        line(t[2], t[2].t24 || "EOD", "1 session", false);
 
       // OVERNIGHT — prepaid by GAIA, billed at 0.00
       const o = c.overnight;
       const prepaid =
         invSection("Overnight — prepaid by GAIA") +
-        invLineItem(o[0].label, o[0].note, "1", o[0].t24 || "", "0.00", true) +
-        invLineItem(o[1].label, o[1].note, "1", o[1].t24 || "", "0.00", true) +
-        invLineItem(o[2].label, o[2].note, "1", o[2].t24 || "", "0.00", true);
+        line(o[0], o[0].t24 || "", "0.00", true) +
+        line(o[1], o[1].t24 || "", "0.00", true) +
+        line(o[2], o[2].t24 || "", "0.00", true);
 
       const table =
         `<table class="t-invoice__tbl">` +

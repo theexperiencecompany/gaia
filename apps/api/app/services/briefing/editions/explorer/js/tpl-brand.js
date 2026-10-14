@@ -271,7 +271,7 @@ EXPLORER.register({
         </div>
       </div>`;
 
-    const sec = (num, label, count, rows) => `
+    const sec = (num, label, count, rows) => !count ? "" : `
       <section class="t-band__sec">
         <h2 class="t-band__label"><span class="num">${num}</span><span>${esc(label)}</span><span class="ct">${count}</span></h2>
         ${rows}
@@ -512,7 +512,7 @@ EXPLORER.register({
         </div>
       </div>`;
 
-    const sec = (i, label, count, items) => `
+    const sec = (i, label, count, items) => !count ? "" : `
       <section class="t-playfair__sec">
         <div class="t-playfair__sechead">
           <span class="t-playfair__numeral">${numerals[i]}</span>
@@ -929,16 +929,16 @@ EXPLORER.register({
 
           <div class="t-postal__cols">
             <div class="t-postal__block">
-              <h3 class="t-postal__blabel">Today</h3>
-              ${c.today.map((it) => li(todayWhen(it), null, it.label, it.note, it.tag)).join("")}
-              <div class="t-postal__block">
+              ${c.today.length ? `<h3 class="t-postal__blabel">Today</h3>
+              ${c.today.map((it) => li(todayWhen(it), null, it.label, it.note, it.tag)).join("")}` : ""}
+              ${c.decisions.length ? `<div class="t-postal__block">
                 <h3 class="t-postal__blabel">Needs your call</h3>
                 ${c.decisions.map((it) => li(it.verb, "verb", it.label, it.note, null)).join("")}
-              </div>
+              </div>` : ""}
             </div>
             <div class="t-postal__block">
-              <h3 class="t-postal__blabel">While you slept</h3>
-              ${c.overnight.map((it) => li(clockAMPM(it.t24), null, it.label, it.note, it.tag)).join("")}
+              ${c.overnight.length ? `<h3 class="t-postal__blabel">While you slept</h3>
+              ${c.overnight.map((it) => li(clockAMPM(it.t24), null, it.label, it.note, it.tag)).join("")}` : ""}
               <div class="t-postal__stats">
                 ${c.stats.done ? `<span class="s"><b>${c.stats.done}</b> done <span class="nt">(${[c.stats.you ? `you ${c.stats.you}` : "", c.stats.gaia ? `gaia ${c.stats.gaia}` : ""].filter(Boolean).join(", ")})</span></span>` : ""}
                 ${c.stats.mail ? `<span class="s"><b>${c.stats.mail}</b> mail</span>` : ""}

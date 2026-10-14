@@ -6,7 +6,7 @@ never misses a brief that reached a channel.
 """
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
@@ -22,12 +22,14 @@ from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
     build_briefing_voice_prompt,
     build_weekly_digest_prompt,
+    voice_correction_note,
 )
 from app.constants.briefing import (
     BOOTSTRAP_GRACE_DAYS,
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     MAX_BRIEF_ITEMS,
+    MAX_VOICE_ATTEMPTS,
     POSTAL_FAMILY,
     WEEKLY_FAMILY,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
@@ -78,7 +80,8 @@ from app.services.briefing.edition_email import host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.shuffle_bag import draw
-from app.services.briefing.skim import Skim, build_skim, full_brief_url
+from app.services.briefing.skim import Skim, brief_path, build_skim, full_brief_url
+from app.services.briefing.voice_check import voice_contradictions
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
@@ -301,7 +304,7 @@ async def _deliver(
     chat platform: that message is the photo, posted through post_to_platform_chat.
     """
     kind: BriefingKind = briefing.kind
-    skim = build_skim(payload, full_brief_url())
+    skim = build_skim(payload, full_brief_url(briefing.id))
     channel = await resolve_chat_channel(user.id)
     image_url = (
         await host_edition_image(payload, user_id=user.id, kind=kind, crop_to_paper=True)
@@ -329,7 +332,7 @@ async def _deliver(
                         style=ActionStyle.PRIMARY,
                         config=ActionConfig(
                             redirect=RedirectConfig(
-                                url="/briefings",
+                                url=brief_path(briefing.id),
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )
@@ -341,6 +344,7 @@ async def _deliver(
                 "kind": notification_kind,
                 "briefing_id": briefing.id,
                 "date": briefing.date,
+                "edition_image_url": briefing.edition_image_url,
             },
         )
     )
@@ -365,7 +369,7 @@ def _work_item(doc: TodoDocument, kind: BriefingItemKind) -> BriefingItem:
 def _held_text(doc: PendingBriefItemDocument) -> str:
     """One line for a held result: where it came from and its report's first line."""
     first_line = next((line.strip() for line in doc.text.splitlines() if line.strip()), "")
-    return f"{doc.source_title}: {first_line}"
+    return f"{doc.workflow_title}: {first_line}"
 
 
 def _same_text_key(text: str) -> str:
@@ -376,13 +380,11 @@ def _same_text_key(text: str) -> str:
 class _Sections:
     """The brief's code-built sections and what building them decided.
 
-    reports maps a held item's text to its full report; carried_ids are the held items
-    this brief accounts for, cleared once it has gone out.
+    carried_ids are the held items this brief accounts for, cleared once it has gone out.
     """
 
     sections: list[BriefingSection]
     left_out: int
-    reports: dict[str, str]
     carried_ids: list[str]
 
 
@@ -403,7 +405,6 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     held_items: list[BriefingItem] = []
     held_ids: list[str] = []
     duplicate_ids: list[str] = []
-    reports: dict[str, str] = {}
     for doc in held:
         text = _held_text(doc)
         if _same_text_key(text) in seen:
@@ -412,7 +413,6 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
         seen.add(_same_text_key(text))
         held_items.append(BriefingItem(text=text, kind="note"))
         held_ids.append(doc.id)
-        reports[text] = doc.text
 
     sections: list[BriefingSection] = []
     budget = MAX_BRIEF_ITEMS
@@ -434,7 +434,6 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     return _Sections(
         sections=sections,
         left_out=len(needs_you) + len(held_items) + len(gaia_work) - kept_total,
-        reports=reports,
         carried_ids=held_ids[:kept_held] + duplicate_ids,
     )
 
@@ -495,14 +494,18 @@ def _build_facts(
             if art and art.link:
                 it.link = art.link
 
-    fact_lines: list[str] = []
+    items = [it for sec in sections for it in sec.items]
+    fact_lines: list[str] = [
+        "[COUNTS] "
+        f"waiting on you: {sum(1 for it in items if it.kind in ('you', 'failed'))} · "
+        f"done: {sum(1 for it in items if it.kind == 'lookback')} · "
+        f"in progress: {sum(1 for it in items if it.kind == 'gaia')} · "
+        f"held results: {sum(1 for it in items if it.kind == 'note')}"
+    ]
     for sec in sections:
         fact_lines.append(f"[{sec.title}]")
         for it in sec.items:
             fact_lines.append(_fact_line(it, artifacts.get(it.todo_id or "")))
-            report = built.reports.get(it.text)
-            if report:
-                fact_lines.append(f"  full report:\n{report}")
     if left_out:
         fact_lines.append(
             f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
@@ -623,12 +626,43 @@ def _user_todos_note(open_count: int, open_titles: list[str]) -> str:
     )
 
 
+async def _voice_checked_against_items(
+    user: AuthenticatedUser,
+    clock: UserClock,
+    prompt: str,
+    build: Callable[[_Voice], BriefingPayload],
+) -> BriefingPayload:
+    """Voice the brief, then check the headline and lede against its final items.
+
+    A contradiction is sent back to the model once with the problems named; a second
+    one fails the run before anything is stored or sent.
+    """
+    problems: list[str] = []
+    for _ in range(MAX_VOICE_ATTEMPTS):
+        attempt_prompt = f"{prompt}\n\n{voice_correction_note(problems)}" if problems else prompt
+        payload = build(
+            _parse_voice(
+                await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)
+            )
+        )
+        problems = voice_contradictions(payload.headline, payload.lede, payload)
+        if not problems:
+            return payload
+        log.warning("briefing.voice_contradicted_items", problems=problems)
+    raise BriefingGenerationError(
+        f"The brief's headline and lede contradict its items: {'; '.join(problems)}"
+    )
+
+
 def _daily_payload(
     clock: UserClock,
     voice: _Voice,
     sections: list[BriefingSection],
     stats: list[BriefingStat],
     is_winback: bool,
+    *,
+    calendar: list[BriefingEvent],
+    tallies: BriefingTallies,
 ) -> BriefingPayload:
     return BriefingPayload(
         kicker="THE MORNING BRIEF",
@@ -644,6 +678,8 @@ def _daily_payload(
         bubbles=voice.bubbles,
         # Single-string rendering for the in-app body / email fallback.
         message="\n\n".join(voice.bubbles),
+        calendar=calendar,
+        tallies=tallies,
     )
 
 
@@ -654,8 +690,17 @@ async def _publish(
     payload: BriefingPayload,
     notification_kind: str,
 ) -> BriefingModel:
-    """Store the brief, deliver it, record where it went and report it."""
-    briefing = await briefing_repository.upsert_briefing(user.id, clock.date_str, kind, payload)
+    """Render and store the brief, deliver it, record where it went and report it.
+
+    The full edition is rendered and hosted first, so a render failure stores and sends
+    nothing; the stored brief keeps its URL for the in-app page and the email.
+    """
+    edition_image_url = await host_edition_image(
+        payload, user_id=user.id, kind=kind, crop_to_paper=False
+    )
+    briefing = await briefing_repository.upsert_briefing(
+        user.id, clock.date_str, kind, payload, edition_image_url=edition_image_url
+    )
     channels = await _deliver(user, briefing, payload, notification_kind)
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     capture(
@@ -734,18 +779,21 @@ async def run_daily_briefing(user_id: str) -> None:
         is_first_briefing=is_first,
         wind_down=wind_down,
     )
-    voice = _parse_voice(
-        await _run_silent(
-            build_user_context(user, auth_provider=None),
+    payload = await _voice_checked_against_items(
+        build_user_context(user, auth_provider=None),
+        clock,
+        prompt,
+        lambda voice: _daily_payload(
             clock,
-            prompt,
-            conversation_key=BRIEFING_KIND_DAILY,
-        )
-    )
-    payload = _daily_payload(clock, voice, facts.sections, facts.stats, winback.is_winback)
-    payload.calendar = calendar
-    payload.tallies = BriefingTallies(
-        done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
+            voice,
+            facts.sections,
+            facts.stats,
+            winback.is_winback,
+            calendar=calendar,
+            tallies=BriefingTallies(
+                done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
+            ),
+        ),
     )
     await _assign_edition(
         user_id,

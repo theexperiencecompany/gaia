@@ -186,8 +186,9 @@ EXPLORER.register({
       : "";
 
     // numbered typewriter list; typewriter tradition uses "--" not em dash
-    const list = (items, leadFn) =>
-      `<ol class="t-memo__list">${items.map((it, i) => {
+    const list = (heading, items, leadFn) => !items.length ? "" :
+      `<h3 class="t-memo__h"><span>${heading}</span></h3>
+        <ol class="t-memo__list">${items.map((it, i) => {
         const t = leadFn(it);
         return `<li class="t-memo__item"><span class="n">${i + 1}.</span><span class="t">${t}</span></li>`;
       }).join("")}</ol>`;
@@ -235,17 +236,14 @@ EXPLORER.register({
         <div class="t-memo__rule" aria-hidden="true">----------------------------------------------------------------------------------------------------</div>
         <p class="t-memo__deck">${esc(ed.deck)}</p>
 
-        <h3 class="t-memo__h"><span>WHAT MATTERS TODAY</span></h3>
-        ${list(c.today, todayLine)}
+        ${list("WHAT MATTERS TODAY", c.today, todayLine)}
 
-        <h3 class="t-memo__h"><span>WHILE YOU SLEPT</span></h3>
-        ${list(c.overnight, nightLine)}
+        ${list("WHILE YOU SLEPT", c.overnight, nightLine)}
 
-        <h3 class="t-memo__h"><span>NEEDS YOUR CALL</span></h3>
-        ${list(c.decisions, callLine)}
+        ${list("NEEDS YOUR CALL", c.decisions, callLine)}
 
-        <h3 class="t-memo__h"><span>BY THE NUMBERS</span></h3>
-        <pre class="t-memo__tally">${tally}</pre>
+        ${tally ? `<h3 class="t-memo__h"><span>BY THE NUMBERS</span></h3>
+        <pre class="t-memo__tally">${tally}</pre>` : ""}
 
         <p class="t-memo__end">###</p>
         <p class="t-memo__colophon">EDITION NO. ${ed.editionNo} -- GENERATED ${esc(ed.time)} BY GAIA</p>
@@ -431,7 +429,7 @@ EXPLORER.register({
       `--ink-soft:${skin.tone.inkSoft};--rule:${skin.tone.rule};--hair:${skin.tone.hair};`;
 
     const t0 = c.today[0];
-    const dropPara =
+    const dropPara = !t0 ? "" :
       `<p class="t-broadsheet-p t-broadsheet-p--drop">${esc(t0.label)}` +
       `${t0.time ? `, at ${esc(t0.time)}` : ""}.` +
       `${t0.note ? ` ${esc(cap(t0.note))}.` : ""}</p>`;
@@ -488,28 +486,28 @@ EXPLORER.register({
           </div>
 
           <div class="t-broadsheet-rail">
-            <div class="t-broadsheet-railstory">
+            ${c.overnight.length ? `<div class="t-broadsheet-railstory">
               <div class="t-broadsheet-kicker">Filed Overnight</div>
               <h3 class="t-broadsheet-head t-broadsheet-head--sec">While You Slept</h3>
               <hr class="t-broadsheet-hr-sec" />
               <div class="t-broadsheet-railtext">${railItems(c.overnight, (it) => cap(it.tag))}</div>
-            </div>
+            </div>` : ""}
 
-            <div class="t-broadsheet-railstory">
+            ${c.decisions.length ? `<div class="t-broadsheet-railstory">
               <div class="t-broadsheet-kicker">Awaiting the Editor</div>
               <h3 class="t-broadsheet-head t-broadsheet-head--sec">Needs Your Call</h3>
               <hr class="t-broadsheet-hr-sec" />
               <div class="t-broadsheet-railtext">${railItems(c.decisions, (it) => it.verb)}</div>
-            </div>
+            </div>` : ""}
 
-            <div class="t-broadsheet-figs">
+            ${s.done || s.mail || s.focus ? `<div class="t-broadsheet-figs">
               <div class="t-broadsheet-figs-h">The Day's Figures</div>
               <table>
                 ${s.done ? `<tr><td class="t-broadsheet-lab">Done Yesterday${s.you || s.gaia ? ` <span class="t-broadsheet-sub">(${[s.you ? `you ${s.you}` : "", s.gaia ? `gaia ${s.gaia}` : ""].filter(Boolean).join(" · ")})</span>` : ""}</td><td class="t-broadsheet-num">${s.done}</td></tr>` : ""}
                 ${s.mail ? `<tr><td class="t-broadsheet-lab">Emails Handled</td><td class="t-broadsheet-num">${s.mail}</td></tr>` : ""}
                 ${s.focus ? `<tr><td class="t-broadsheet-lab">Focus Time Today</td><td class="t-broadsheet-num">${esc(s.focus)}</td></tr>` : ""}
               </table>
-            </div>
+            </div>` : ""}
           </div>
         </div>
 
@@ -628,7 +626,7 @@ EXPLORER.register({
     const item = (lead, body) =>
       `<li>${pil}${lead ? `<span class="num">${esc(lead)}</span> — ` : ""}${body}</li>`;
 
-    const todayItems = c.today.map((it) => {
+    const todayItems = c.today.filter((it) => !it.empty).map((it) => {
       const note = it.note ? ` ${esc(cap(it.note))}.` : "";
       return item(clock(it.time), `${esc(it.label)}.${note}`);
     }).join("");
@@ -670,23 +668,23 @@ EXPLORER.register({
           <div class="calc-grid">${calcCells}</div>
         </div>
 
-        <div class="section">
+        ${todayItems ? `<div class="section">
           <h2 class="sec-head">What Matters To-day</h2>
           <hr class="rule-thin" />
           <ul class="items">${todayItems}</ul>
-        </div>
+        </div>` : ""}
 
-        <div class="section">
+        ${nightItems ? `<div class="section">
           <h2 class="sec-head">Work Performed in the Night</h2>
           <hr class="rule-thin" />
           <ul class="items">${nightItems}</ul>
-        </div>
+        </div>` : ""}
 
-        <div class="section">
+        ${callItems ? `<div class="section">
           <h2 class="sec-head">Needs Your Call</h2>
           <hr class="rule-thin" />
           <ul class="items">${callItems}</ul>
-        </div>
+        </div>` : ""}
 
         ${plate}
 

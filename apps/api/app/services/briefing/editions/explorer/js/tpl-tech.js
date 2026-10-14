@@ -400,7 +400,7 @@ EXPLORER.register({
     const nightSpan = nightTimes.length
       ? `section ${nightTimes[0]}${nightTimes.length > 1 ? `&ndash;${nightTimes[nightTimes.length - 1]}` : ""}, `
       : "";
-    const overnight = `
+    const overnight = !rows.length ? "" : `
       <div class="seclabel" style="left:${SEC_X}%; top:${SEC_Y - 22}px">Overnight <span>&middot; ${nightSpan}while you slept</span></div>
       <div class="sec ${secClass}" style="left:${SEC_X}%; top:${SEC_Y}px; width:${SEC_W}%; height:${SEC_H}px"></div>
       ${bubbles}${callouts}`;
@@ -699,23 +699,23 @@ EXPLORER.register({
           </div>
         </div>
 
-        <section class="cluster" style="margin-top:16px">
+        ${c.today.length ? `<section class="cluster" style="margin-top:16px">
           <div class="cl-h"><span>Today</span><span>${c.today.length} items</span></div>
           ${todayRows}
-        </section>
+        </section>` : ""}
 
-        <div class="cols">
-          <section class="cluster">
+        ${c.overnight.length || c.decisions.length ? `<div class="cols">
+          ${c.overnight.length ? `<section class="cluster">
             <div class="cl-h"><span>While you slept</span><span>${c.overnight.length}</span></div>
             ${overRows}
-          </section>
-          <section class="cluster">
+          </section>` : ""}
+          ${c.decisions.length ? `<section class="cluster">
             <div class="cl-h"><span>Needs your call</span><span>${c.decisions.length}</span></div>
             ${decRows}
-          </section>
-        </div>
+          </section>` : ""}
+        </div>` : ""}
 
-        <section class="cluster" style="margin-top:16px">
+        ${s.done || s.you || s.gaia || s.mail || s.focus ? `<section class="cluster" style="margin-top:16px">
           <div class="cl-h"><span>Yesterday</span><span>readout</span></div>
           <div class="readout">
             ${gauge(s.done, "done")}
@@ -724,7 +724,7 @@ EXPLORER.register({
             ${gauge(s.mail, "mail")}
             ${gauge(s.focus, "focus today")}
           </div>
-        </section>
+        </section>` : ""}
 
         <div class="foot">
           <span>GAIA Daily Brief &middot; Edition No. ${ed.editionNo}</span>
