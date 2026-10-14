@@ -11,8 +11,12 @@
 #                        not own (gaia-web, gaia-grafana), registry-side.
 #   dispatch-cli-publish Dispatch the CLI publish workflow and block until the
 #                        version is actually on npm.
-#   pin-selfhost-release Tag the live gaia + gaia-web images v<CLI version>,
-#                        the pair that CLI release's `gaia update` pins.
+#   cli-release-images   Does HEAD release the CLI? Its gaia + gaia-web images
+#                        must then be published even when nx sees api/web
+#                        unaffected. Writes required=true|false.
+#   pin-selfhost-release Wait for the release commit's gaia + gaia-web :<sha>
+#                        images and tag them v<CLI version>, the pair that CLI
+#                        release's `gaia update` pins.
 #   connect-cross-check  Cross-compile tools/gaia-connect for every published
 #                        target and discard the result — the pre-merge proof
 #                        that a release build cannot fail on a target the
@@ -29,8 +33,11 @@
 #   promote-latest        WEB_IMAGE_TAG / GRAFANA_IMAGE_TAG — the immutable tag
 #                         pushed by this run's build phase; empty means that
 #                         image wasn't built this run. Needs a GHCR login.
-#   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION (required).
-#   pin-selfhost-release  VERSION (required). Needs a GHCR login.
+#   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION, SHA (required).
+#   cli-release-images    GITHUB_OUTPUT; full history (HEAD^ must exist).
+#   pin-selfhost-release  VERSION, SHA (required; HEAD must be SHA);
+#                         PIN_WAIT_SECONDS (default 1800), PIN_POLL_SECONDS
+#                         (default 30). Needs a GHCR login.
 #   connect-cross-check   none.
 #   connect-binaries      GH_TOKEN (contents:write), RELEASE_TAG (required);
 #                         OUT_DIR (optional, default tools/gaia-connect/dist).
@@ -191,11 +198,14 @@ cmd_dispatch_cli_publish() {
   : "${GH_TOKEN:?GH_TOKEN is required}"
   : "${TAG:?TAG is required}"
   : "${VERSION:?VERSION is required}"
+  : "${SHA:?SHA is required (the release commit)}"
 
   local WORKFLOW="publish-cli.yml"
   local PACKAGE="@heygaia/cli"
   local POLL_SECONDS=20
-  local TIMEOUT_SECONDS=900
+  # npm publish is the last job: gaia-connect binaries (~15 min), then the
+  # image pin's wait for the release commit's build (<= 30 min), then npm.
+  local TIMEOUT_SECONDS=3600
 
   published() {
     # Exits non-zero when the exact version is absent from the registry.
@@ -216,7 +226,7 @@ cmd_dispatch_cli_publish() {
   fi
 
   echo "Dispatching $WORKFLOW for $TAG ($VERSION)"
-  gh workflow run "$WORKFLOW" --ref master -f "tag=$TAG" -f "version=$VERSION"
+  gh workflow run "$WORKFLOW" --ref master -f "tag=$TAG" -f "version=$VERSION" -f "sha=$SHA"
 
   local runs_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-theexperiencecompany/gaia}/actions/workflows/${WORKFLOW}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -383,32 +393,79 @@ cmd_connect_binaries() {
   ci_ok "gaia-connect: OK (${#ASSETS[@]} binaries + $SUMS attached to $RELEASE_TAG in ${SECONDS}s)"
 }
 
+# Whether HEAD is a CLI release commit: release-please bumps packages/cli's
+# version in the commit it tags cli-v<version>. pin-selfhost-release waits for
+# that commit's gaia + gaia-web :<sha> images, so build.yml publishes them for a
+# release commit even when nx sees neither app as affected (a CLI-only release).
+cmd_cli_release_images() {
+
+  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+
+  local manifest="packages/cli/package.json" before after
+  before=$(git show "HEAD^:$manifest" | jq -r .version)
+  after=$(git show "HEAD:$manifest" | jq -r .version)
+  local required=false
+  [[ "$before" != "$after" ]] && required=true
+  echo "required=$required" >> "$GITHUB_OUTPUT"
+  ci_ok "cli-release-images: required=$required"
+}
+
 # Gives a CLI release its own immutable image pair. `gaia update` pins
 # GAIA_VERSION=v<CLI version> for gaia (API + worker) and gaia-web together, so
-# both must carry that tag before the CLI reaches npm. :latest is what the
-# quality gate and production deploy last verified, so the release pins that.
-# Idempotent: a rerun keeps an existing tag instead of moving it to a newer
-# :latest, because an install may already run it.
+# both must carry that tag before the CLI reaches npm, and both must be the
+# release commit's own build (build.yml tags every master build :<sha>). That
+# build runs alongside this publish, so the pair is awaited, bounded, and a
+# timeout fails loud instead of falling back to whatever :latest is. Nothing is
+# tagged until both exist, so a timeout never leaves half a pair. Idempotent:
+# an existing v<version> tag is kept, because an install may already run it.
 cmd_pin_selfhost_release() {
 
   : "${VERSION:?VERSION is required}"
+  : "${SHA:?SHA is required (the release commit)}"
+  local wait_seconds="${PIN_WAIT_SECONDS:-1800}"
+  local poll_seconds="${PIN_POLL_SECONDS:-30}"
+
+  [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || ci_die "SHA '$SHA' must be a full 40-character commit sha"
+  local head
+  head=$(git rev-parse HEAD)
+  [[ "$head" == "$SHA" ]] || ci_die "checked-out commit $head is not the release commit $SHA"
 
   local tag="v${VERSION}"
-  local repo
+  local repo pending=()
   for repo in gaia "$WEB_IMAGE_REPO"; do
-    local image="$GHCR_NAMESPACE/$repo"
-    if docker buildx imagetools inspect "$image:$tag" >/dev/null 2>&1; then
-      ci_ok "$image:$tag already exists; keeping it."
-      continue
+    if docker buildx imagetools inspect "$GHCR_NAMESPACE/$repo:$tag" >/dev/null 2>&1; then
+      ci_ok "$GHCR_NAMESPACE/$repo:$tag already exists; keeping it."
+    else
+      pending+=("$repo")
     fi
-    echo "Tagging $image:latest as :$tag"
-    docker buildx imagetools create -t "$image:$tag" "$image:latest"
   done
-  echo "### Self-host release pinned: \`GAIA_VERSION=$tag\`" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+  local deadline=$((SECONDS + wait_seconds))
+  local missing
+  while :; do
+    missing=()
+    for repo in ${pending[@]+"${pending[@]}"}; do
+      if ! docker buildx imagetools inspect "$GHCR_NAMESPACE/$repo:$SHA" >/dev/null 2>&1; then
+        missing+=("$GHCR_NAMESPACE/$repo:$SHA")
+      fi
+    done
+    ((${#missing[@]} == 0)) && break
+    if ((SECONDS >= deadline)); then
+      ci_die "Timed out after ${wait_seconds}s waiting for ${missing[*]}. build.yml publishes them for the release commit: re-run the master run for $SHA, then re-dispatch this publish."
+    fi
+    echo "Waiting for ${missing[*]}"
+    sleep "$poll_seconds"
+  done
+
+  for repo in ${pending[@]+"${pending[@]}"}; do
+    echo "Tagging $GHCR_NAMESPACE/$repo:$SHA as :$tag"
+    docker buildx imagetools create -t "$GHCR_NAMESPACE/$repo:$tag" "$GHCR_NAMESPACE/$repo:$SHA"
+  done
+  echo "### Self-host release pinned: \`GAIA_VERSION=$tag\` (images of \`$SHA\`)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 }
 
 usage() {
-  sed -n '2,21p' "$0" >&2
+  sed -n '2,25p' "$0" >&2
 }
 
 main() {
@@ -418,6 +475,7 @@ main() {
     resolve-image-tags)   cmd_resolve_image_tags "$@" ;;
     promote-latest)       cmd_promote_latest "$@" ;;
     dispatch-cli-publish) cmd_dispatch_cli_publish "$@" ;;
+    cli-release-images)   cmd_cli_release_images "$@" ;;
     pin-selfhost-release) cmd_pin_selfhost_release "$@" ;;
     connect-cross-check) cmd_connect_cross_check "$@" ;;
     connect-binaries)     cmd_connect_binaries "$@" ;;
