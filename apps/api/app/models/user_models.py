@@ -672,6 +672,10 @@ class AuthenticatedUser(BaseModel):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
+    briefing_bootstrap: BriefingBootstrap | None = None
+    briefing_dormancy: BriefingDormancy | None = None
+    day_zero_hello: DayZeroHello | None = None
+    briefing_shuffle_bags: dict[str, ShuffleBag] | None = None
 
     def with_timezone(self, timezone: str) -> "AuthenticatedUser":
         """A copy carrying the resolved home timezone (the model is frozen)."""

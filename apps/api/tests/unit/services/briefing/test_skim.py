@@ -64,8 +64,11 @@ class TestBuildSkim:
         ("done", "running", "sentence"),
         [
             (["A"], [], "Overnight I finished A."),
+            (["A", "B"], [], "Overnight I finished A and B."),
             (["A", "B", "C"], [], "Overnight I finished A, B and 1 more."),
             ([], ["R"], "Overnight R is in progress."),
+            ([], ["R", "S"], "Overnight R and S are in progress."),
+            (["A"], ["R", "S"], "Overnight I finished A; R and S are still in progress."),
         ],
     )
     def test_one_overnight_sentence(

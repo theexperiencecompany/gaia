@@ -7,10 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 
+from app.api.v1.endpoints.briefings import get_briefing, list_briefings
 from app.models.briefing_models import BriefingModel, BriefingPayload
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened
 from tests.conftest import FAKE_USER
+from tests.helpers import captured_wide_event
 
 BASE = "/api/v1/briefings"
 MODULE = "app.api.v1.endpoints.briefings"
@@ -41,7 +43,7 @@ async def test_opening_a_brief_returns_it_marks_it_opened_and_reports_it_once(
     unopened, opened = _brief(opened=False), _brief(opened=True)
     with (
         patch(f"{MODULE}.briefing_repository.get", AsyncMock(return_value=unopened)) as get,
-        patch(f"{MODULE}.briefing_repository.mark_opened", AsyncMock(return_value=opened)),
+        patch(f"{MODULE}.briefing_repository.mark_opened", AsyncMock(return_value=opened)) as mark,
         patch(f"{MODULE}.capture") as capture,
     ):
         response = await client.get(f"{BASE}/brief_abc123")
@@ -53,6 +55,7 @@ async def test_opening_a_brief_returns_it_marks_it_opened_and_reports_it_once(
         "https://cdn.example/brief.png",
     )
     get.assert_awaited_once_with("brief_abc123", user_id=FAKE_USER.user_id)
+    mark.assert_awaited_once_with(FAKE_USER.user_id, "brief_abc123")
     capture.assert_called_once_with(UserId(FAKE_USER.user_id), BriefingOpened(kind="daily"))
 
 
@@ -73,4 +76,27 @@ async def test_someone_elses_or_a_missing_brief_is_a_404(client: AsyncClient) ->
     with patch(f"{MODULE}.briefing_repository.get", AsyncMock(return_value=None)):
         response = await client.get(f"{BASE}/brief_nope")
 
-    assert response.status_code == 404
+    assert (response.status_code, response.json()["message"]) == (404, "Briefing not found")
+
+
+async def test_opening_a_brief_tags_the_wide_event_with_the_user_and_brief() -> None:
+    with patch(f"{MODULE}.briefing_repository.get", AsyncMock(return_value=_brief(opened=True))):
+        async with captured_wide_event() as event:
+            await get_briefing("brief_abc123", user=FAKE_USER)
+
+    assert event["user"] == {"id": FAKE_USER.user_id}
+    assert event["briefing"] == {"operation": "get", "id": "brief_abc123"}
+
+
+async def test_the_archive_lists_the_users_briefs_and_tags_the_wide_event() -> None:
+    brief = _brief(opened=True)
+    with patch(
+        f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=[brief])
+    ) as list_recent:
+        async with captured_wide_event() as event:
+            response = await list_briefings(user=FAKE_USER, limit=7)
+
+    assert response.briefings == [brief]
+    list_recent.assert_awaited_once_with(FAKE_USER.user_id, limit=7)
+    assert event["user"] == {"id": FAKE_USER.user_id}
+    assert event["briefing"] == {"operation": "list", "limit": 7}

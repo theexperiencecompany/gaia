@@ -156,8 +156,11 @@ def render(payload: BriefingPayload, **overrides: Any) -> str:
     return render_edition_email(payload, **kwargs)
 
 
-async def host(payload: BriefingPayload, kind: str = NOTIFICATION_KIND_BRIEFING_DAILY) -> str:
-    return await host_edition_image(payload, user_id=USER_ID, kind=kind, crop_to_paper=False)
+RENDER_KEY = "9f2c4b7e1a6d4c8e9b3f5a7d2c1e8b4f"
+
+
+async def host(payload: BriefingPayload, *, crop_to_paper: bool = False) -> str:
+    return await host_edition_image(payload, render_key=RENDER_KEY, crop_to_paper=crop_to_paper)
 
 
 @pytest.mark.unit
@@ -224,16 +227,27 @@ class TestImageAndUpload:
         assert options.device_scale_factor == 2
         assert options.image_format == "png"
 
-    async def test_upload_public_id_namespaces_the_user_kind_and_date(
-        self, harness: Harness
-    ) -> None:
-        await host(make_payload(date="2026-02-03"), kind=NOTIFICATION_KIND_BRIEFING_WEEKLY)
+    async def test_the_chat_image_is_cropped_to_the_familys_paper(self, harness: Harness) -> None:
+        await host(make_payload(template_family="memo"), crop_to_paper=True)
+
+        assert harness.image_calls[0]["options"].clip_selector == ".t-memo__sheet"
+
+    async def test_the_email_image_keeps_the_full_composition(self, harness: Harness) -> None:
+        await host(make_payload(template_family="memo"))
+
+        assert harness.image_calls[0]["options"].clip_selector is None
+
+    async def test_the_hosted_path_is_the_opaque_render_key_alone(self, harness: Harness) -> None:
+        """The URL goes out in emails and on public brief links: no user id, kind or date."""
+        await host(make_payload(date="2026-02-03"))
+        await host(make_payload(date="2026-02-03"), crop_to_paper=True)
 
         assert harness.upload_calls == [
+            {"public_id": f"briefing/editions/{RENDER_KEY}", "file_data": b"edition-png-bytes"},
             {
-                "public_id": f"briefing/editions/{USER_ID}/briefing_weekly_2026-02-03",
+                "public_id": f"briefing/editions/{RENDER_KEY}_chat",
                 "file_data": b"edition-png-bytes",
-            }
+            },
         ]
 
     async def test_hosting_returns_the_cdn_url(self, harness: Harness) -> None:

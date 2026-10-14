@@ -22,6 +22,7 @@ from app.services.briefing.editions.explorer_render import (
     explorer_family_ids,
     render_explorer_edition,
 )
+from app.services.briefing.editions.stamps import stamp_asset_url
 
 # Every loader is @lru_cache(maxsize=1) and the cache outlives the test that fills it,
 # so each test must start cold.
@@ -250,6 +251,40 @@ class TestEmbeddedLiterals:
         assert shim_match is not None
         assert json.loads(shim_match.group(1)) == _embedded_const(html, "ed")["assets"]
 
+    def test_title_slot_families_put_the_lede_in_the_deck(self) -> None:
+        ed = _embedded_const(_render(family="memo"), "ed")
+
+        assert ed["headline"] == "A quiet Sunday"
+        assert ed["deck"] == "Two approvals and one flight."
+
+
+@pytest.mark.unit
+class TestPostalStamp:
+    def test_postal_loads_the_drawn_citys_hosted_art_as_the_stamp_asset(self) -> None:
+        html = _render(_payload(stamp_city="paris"), family="postal")
+        ed = _embedded_const(html, "ed")
+
+        assert ed["assets"]["STAMP_CITY"] == stamp_asset_url("paris")
+        assert ed["assets"]["STAMP_CITY"].startswith("https://")
+        assert ed["stamp"]["id"] == "paris"
+        assert ed["stamp"]["src"] == "STAMP_CITY"
+
+    def test_postal_without_a_drawn_city_keeps_the_template_city_axis(self) -> None:
+        ed = _embedded_const(_render(family="postal"), "ed")
+
+        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS
+        assert ed["stamp"] is None
+
+    def test_other_families_ignore_the_stamp_city(self) -> None:
+        ed = _embedded_const(_render(_payload(stamp_city="paris"), family="swiss"), "ed")
+
+        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS
+        assert ed["stamp"] is None
+
+    def test_a_postal_city_without_hosted_art_fails_loud(self) -> None:
+        with pytest.raises(KeyError, match="atlantis"):
+            _render(_payload(stamp_city="atlantis"), family="postal")
+
 
 @pytest.mark.unit
 class TestArtCredit:
@@ -261,8 +296,9 @@ class TestArtCredit:
     ) -> None:
         # An empty string, never None: build_ed splits the credit on an em dash,
         # so a None here would crash the render instead of dropping the caption.
-        (tmp_path / "credits.json").write_text(json.dumps({"STAMP_ROME": "A statue — Someone"}))
-        monkeypatch.setattr(explorer_render, "_ASSETS_DIR", tmp_path)
+        credits_file = tmp_path / "credits.json"
+        credits_file.write_text(json.dumps({"STAMP_ROME": "A statue — Someone"}))
+        monkeypatch.setattr(explorer_render, "_CREDITS_JSON", credits_file)
 
         assert _art_credit() == ""
 

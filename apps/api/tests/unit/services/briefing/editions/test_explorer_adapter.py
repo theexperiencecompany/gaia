@@ -11,6 +11,7 @@ import pytest
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.explorer_adapter import build_ed
 from app.services.briefing.editions.explorer_render import explorer_family_ids
+from app.services.briefing.editions.stamps import stamp_for
 
 ASSETS = {"ART1": "data:image/jpeg;base64,AAAA", "BAND": "data:image/webp;base64,BBBB"}
 CREDIT = "Wheat Field with Cypresses — Vincent van Gogh"
@@ -35,7 +36,9 @@ def _payload(**overrides: Any) -> BriefingPayload:
     return BriefingPayload.model_validate(payload)
 
 
-def _build(payload: BriefingPayload, *, generated_local: str = "6:02 AM") -> dict[str, Any]:
+def _build(
+    payload: BriefingPayload, *, generated_local: str = "6:02 AM", family: str = "swiss"
+) -> dict[str, Any]:
     return dict(
         build_ed(
             payload,
@@ -43,6 +46,7 @@ def _build(payload: BriefingPayload, *, generated_local: str = "6:02 AM") -> dic
             generated_local=generated_local,
             assets=ASSETS,
             art_credit=CREDIT,
+            family=family,
         )
     )
 
@@ -161,6 +165,7 @@ class TestArt:
             generated_local="6:02 AM",
             assets=ASSETS,
             art_credit="  Untitled  ",
+            family="swiss",
         )
 
         assert ed["art"]["title"] == "Untitled"
@@ -173,6 +178,7 @@ class TestArt:
             generated_local="6:02 AM",
             assets=ASSETS,
             art_credit="A — B — C",
+            family="swiss",
         )
 
         assert ed["art"]["title"] == "A"
@@ -185,6 +191,7 @@ class TestArt:
             generated_local="6:02 AM",
             assets={"BAND": "data:image/webp;base64,BBBB"},
             art_credit=CREDIT,
+            family="swiss",
         )
 
         assert ed["art"]["src"] == ""
@@ -261,12 +268,8 @@ class TestContent:
             family=family,
         )["content"]
 
-        labels = [
-            row["label"]
-            for bucket in ("today", "overnight", "decisions")
-            for row in content[bucket]
-            if row["label"] != "—"
-        ]
+        rows = [*content["today"], *content["overnight"], *content["decisions"]]
+        labels = [row["label"] for row in rows if row["label"] != "—"]
         assert len(labels) == len(set(labels)), labels
 
     def test_a_failed_run_is_a_decision_to_retry_never_a_today_item(self) -> None:
@@ -399,3 +402,135 @@ class TestFixedSlots:
         )["content"]
 
         assert [r["label"] for r in content["today"]] == ["n0", "n1", "n2", "n3"]
+
+
+def _asks(*texts: str) -> BriefingPayload:
+    return _payload(
+        sections=[{"numeral": "I", "title": "X", "items": [_item(t, "you") for t in texts]}]
+    )
+
+
+@pytest.mark.unit
+class TestOvernightClock:
+    def test_a_leading_clock_prefix_becomes_the_rows_24_hour_time(self) -> None:
+        overnight = _build(
+            _payload(
+                sections=[
+                    {
+                        "numeral": "I",
+                        "title": "X",
+                        "items": [_item("1:30 PM — Shipped the deck", "lookback")],
+                    }
+                ]
+            )
+        )["content"]["overnight"]
+
+        assert overnight == [
+            {"t24": "13:30", "label": "Shipped the deck", "note": None, "tag": "DONE"}
+        ]
+
+
+@pytest.mark.unit
+class TestDecisionVerbs:
+    def _decisions(self, *texts: str) -> list[dict[str, Any]]:
+        return list(_build(_asks(*texts))["content"]["decisions"])
+
+    def test_a_non_imperative_ask_is_offered_for_review_verbatim(self) -> None:
+        assert self._decisions("Lunch with Ana") == [
+            {"verb": "Review", "label": "Lunch with Ana", "note": None}
+        ]
+
+    def test_a_blank_ask_is_offered_for_review_unchanged(self) -> None:
+        assert self._decisions("   ") == [{"verb": "Review", "label": "   ", "note": None}]
+
+    def test_punctuation_after_the_verb_is_not_part_of_it(self) -> None:
+        assert self._decisions("approve: the budget") == [
+            {"verb": "Approve", "label": "the budget", "note": None}
+        ]
+
+    def test_a_dash_after_the_verb_is_dropped_from_the_label(self) -> None:
+        assert self._decisions("Approve — the budget") == [
+            {"verb": "Approve", "label": "the budget", "note": None}
+        ]
+
+    def test_the_label_keeps_its_own_leading_letters_and_trailing_dash(self) -> None:
+        assert self._decisions("Approve Xavier's expense —") == [
+            {"verb": "Approve", "label": "Xavier's expense —", "note": None}
+        ]
+
+    def test_a_bare_verb_leaves_an_empty_label(self) -> None:
+        assert self._decisions("Confirm") == [{"verb": "Confirm", "label": "", "note": None}]
+
+    def test_a_word_that_merely_contains_a_verb_is_not_one(self) -> None:
+        assert self._decisions("SENDX the file") == [
+            {"verb": "Review", "label": "SENDX the file", "note": None}
+        ]
+
+
+@pytest.mark.unit
+class TestStats:
+    def test_figures_come_from_the_tallies(self) -> None:
+        ed = _build(_payload(tallies={"done_by_you": 2, "done_by_gaia": 1}))
+
+        assert ed["content"]["stats"] == {
+            "done": 3,
+            "you": 2,
+            "gaia": 1,
+            "mail": None,
+            "focus": None,
+        }
+
+    def test_a_zero_figure_is_unknown_so_the_template_draws_nothing(self) -> None:
+        stats = _build(_payload(tallies={"done_by_you": 1, "done_by_gaia": 0}))["content"]["stats"]
+
+        assert (stats["done"], stats["you"], stats["gaia"]) == (1, 1, None)
+
+    def test_no_tallies_leaves_every_figure_unknown(self) -> None:
+        assert _build(_payload())["content"]["stats"] == {
+            "done": None,
+            "you": None,
+            "gaia": None,
+            "mail": None,
+            "focus": None,
+        }
+
+
+_WEEK = {
+    "days": [{"you": i, "gaia": 7 - i} for i in range(7)],
+    "shipped": ["Launch post"],
+    "handled": ["Inbox zero"],
+    "ahead": [{"date": "2026-07-06", "title": "Board meeting"}],
+}
+
+
+@pytest.mark.unit
+class TestWeek:
+    def test_the_weekly_family_draws_the_real_week(self) -> None:
+        ed = _build(_payload(week=_WEEK), family="weekly")
+
+        assert ed["week"] == {
+            "days": [{"you": i, "gaia": 7 - i} for i in range(7)],
+            "shipped": ["Launch post"],
+            "handled": ["Inbox zero"],
+            "ahead": [{"day": "Mon", "label": "Board meeting"}],
+        }
+
+    def test_the_weekly_family_without_a_week_draws_none(self) -> None:
+        assert _build(_payload(), family="weekly")["week"] is None
+
+    def test_other_families_carry_no_week(self) -> None:
+        assert _build(_payload(week=_WEEK), family="swiss")["week"] is None
+
+
+@pytest.mark.unit
+class TestStamp:
+    def test_air_mail_carries_the_drawn_citys_stamp(self) -> None:
+        ed = _build(_payload(stamp_city="paris"), family="postal")
+
+        assert ed["stamp"] == stamp_for("paris")
+
+    def test_a_legacy_air_mail_brief_without_a_city_keeps_the_template_axis(self) -> None:
+        assert _build(_payload(), family="postal")["stamp"] is None
+
+    def test_other_families_carry_no_stamp(self) -> None:
+        assert _build(_payload(stamp_city="paris"), family="swiss")["stamp"] is None

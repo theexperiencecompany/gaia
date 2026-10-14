@@ -29,6 +29,7 @@ from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     EXECUTOR_RECURSION_LIMIT,
     LANE_FIELD_ID,
+    OPENAI_PROMPT_CACHE_KEY_MAX_CHARS,
     RECURSION_WRAPUP_MIN_STEPS,
     RECURSION_WRAPUP_REMAINING_FRACTION,
     SUBAGENT_RECURSION_LIMIT,
@@ -1095,6 +1096,17 @@ class TestBindSessionId:
         assert len(key) <= 64
         assert key == second.kwargs["prompt_cache_key"]
         assert key != other_agent.kwargs["prompt_cache_key"]
+
+    def test_a_key_exactly_at_openais_limit_is_sent_unchanged(self) -> None:
+        llm = ChatOpenAI(model="gpt-x", api_key=SecretStr("sk-test")).bind_tools([])
+        suffix = "-comms_agent"
+        session = "s" * (OPENAI_PROMPT_CACHE_KEY_MAX_CHARS - len(suffix))
+        configurable = {"provider": LLMProviderName.OPENAI, "session_id": session}
+
+        bound = _bind_session_id(llm, configurable, "comms_agent")
+
+        assert isinstance(bound, RunnableBinding)
+        assert bound.kwargs["prompt_cache_key"] == f"{session}{suffix}"
 
     def test_a_custom_lane_aimed_at_openai_gets_the_prompt_cache_key(self) -> None:
         """DEV_LLM_* may point the custom lane at OpenAI's own API; the client, not the provider name, decides."""

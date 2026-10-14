@@ -63,8 +63,33 @@ class TestDraw:
         assert state.index == 1
         assert family == state.order[0] != "memo"
 
+    def test_a_bag_mid_pass_hands_out_its_next_member_without_reshuffling(self) -> None:
+        order = ["postal", "memo", "postal", "swiss", "receipt"]
+
+        family, state = draw(ShuffleBag(order=order, index=2), _WEIGHTS, random.Random(1))
+
+        assert family == "postal"
+        assert state == ShuffleBag(order=order, index=3)
+
+    def test_the_reshuffle_never_opens_with_yesterdays_member(self) -> None:
+        """A stale bag one draw in still knows what went out yesterday."""
+        for seed in range(30):
+            stale = ShuffleBag(order=["a", "gone"], index=1)
+
+            family, _ = draw(stale, {"a": 1, "b": 1}, random.Random(seed))
+
+            assert family == "b"
+
+    def test_a_stale_bag_never_drawn_from_puts_no_limit_on_the_first_pick(self) -> None:
+        firsts = {
+            draw(ShuffleBag(order=["gone", "a"], index=0), {"a": 1, "b": 1}, random.Random(s))[0]
+            for s in range(30)
+        }
+
+        assert firsts == {"a", "b"}
+
     def test_an_impossible_pool_fails_loud(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="keeps every repeat apart"):
             draw(None, {"postal": 2}, random.Random(1))
 
 

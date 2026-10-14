@@ -33,12 +33,10 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
 
         before_date is YYYY-MM-DD, compared lexically with $lt.
         """
-        docs = await self._find(
+        return await self._find_one(
             {"user_id": user_id, "kind": kind, "date": {"$lt": before_date}},
             sort=[("date", -1)],
-            limit=1,
         )
-        return docs[0] if docs else None
 
     async def list_recent(
         self, user_id: str, *, limit: int, kind: BriefingKind | None = None
@@ -88,13 +86,14 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             upsert=True,
         )
         if doc is None:
-            raise AppError(message="briefing upsert did not return a document")
+            # Unreachable: find_one_and_update(upsert=True, AFTER) always yields a document.
+            raise AppError(message="briefing upsert returned no document")  # pragma: no mutate
         return doc
 
     async def set_delivered_channels(
         self, user_id: str, date: str, kind: BriefingKind, channels: list[str]
     ) -> None:
-        await self._apply_raw_update_unfetched(
+        await self._apply_raw_update(
             {"user_id": user_id, "date": date, "kind": kind},
             {"$set": {"delivered_channels": channels}},
             scope=user_id,

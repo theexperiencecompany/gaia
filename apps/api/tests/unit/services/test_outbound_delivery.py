@@ -387,19 +387,42 @@ class TestPublishOutboundFile:
 
 
 class TestPublishOutboundPhoto:
-    """publish_outbound_photo enqueues a URL the bot fetches itself, and never raises."""
+    """publish_outbound_photo enqueues a URL the bot fetches itself, and reports what happened."""
 
-    async def test_unsupported_platform_returns_false(self) -> None:
+    async def test_an_unsupported_platform_is_skipped(self) -> None:
         with patch.object(
             od.PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
         ) as linked:
             ok = await od.publish_outbound_photo(
                 ConversationSource.WEB, "u1", "https://cdn.test/1.png", "1.png"
             )
-        assert ok is False
+        assert ok is od.OutboundResult.SKIPPED
         linked.assert_not_awaited()
 
-    async def test_unlinked_account_returns_false(self) -> None:
+    async def test_a_destination_override_sends_the_photo_there_without_the_dm_lookup(
+        self,
+    ) -> None:
+        publisher = AsyncMock()
+        resolve = AsyncMock()
+        with (
+            patch.object(od.PlatformLinkService, "get_linked_platforms", resolve),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            ok = await od.publish_outbound_photo(
+                ConversationSource.TELEGRAM,
+                "u1",
+                "https://cdn.test/1.png",
+                "1.png",
+                destination_override="556677",
+            )
+        assert ok is od.OutboundResult.PUBLISHED
+        resolve.assert_not_awaited()
+        _queue, body = publisher.publish_outbound.await_args.args
+        assert json.loads(body)["destination_id"] == "556677"
+
+    async def test_an_unlinked_account_is_skipped(self) -> None:
         with patch.object(
             od.PlatformLinkService,
             "get_linked_platforms",
@@ -409,9 +432,11 @@ class TestPublishOutboundPhoto:
             ok = await od.publish_outbound_photo(
                 ConversationSource.TELEGRAM, "u1", "https://cdn.test/1.png", "1.png"
             )
-        assert ok is False
+        assert ok is od.OutboundResult.SKIPPED
 
-    async def test_a_publish_error_returns_false_rather_than_failing_the_browser_run(self) -> None:
+    async def test_a_publish_error_is_reported_failed_rather_than_failing_the_browser_run(
+        self,
+    ) -> None:
         """A step screenshot is progress, so losing one must not take the task down."""
         publisher = AsyncMock()
         publisher.publish_outbound = AsyncMock(side_effect=RuntimeError("boom"))
@@ -429,7 +454,7 @@ class TestPublishOutboundPhoto:
             ok = await od.publish_outbound_photo(
                 ConversationSource.TELEGRAM, "u1", "https://cdn.test/1.png", "1.png"
             )
-        assert ok is False
+        assert ok is od.OutboundResult.FAILED
 
     async def test_an_unlinked_account_is_logged_against_this_publisher_and_this_user(self) -> None:
         """The warning names which publisher skipped and for whom, or it explains nothing."""
@@ -446,7 +471,7 @@ class TestPublishOutboundPhoto:
                 ConversationSource.TELEGRAM, "u-42", "https://cdn.test/1.png", "1.png"
             )
 
-        assert ok is False
+        assert ok is od.OutboundResult.SKIPPED
         linked.assert_awaited_once_with("u-42")
         logger.warning.assert_called_once_with(
             "outbound publish skipped: account not linked",
@@ -474,7 +499,7 @@ class TestPublishOutboundPhoto:
                 ConversationSource.TELEGRAM, "u1", "https://cdn.test/1.png", "1.png"
             )
 
-        assert ok is False
+        assert ok is od.OutboundResult.FAILED
         fields = logger.error.call_args.kwargs
         assert logger.error.call_args.args == ("publish_outbound_photo: publish failed",)
         assert fields["platform"] == "telegram"
@@ -503,7 +528,7 @@ class TestPublishOutboundPhoto:
                 "browser-step-2.jpg",
                 caption="Step 2 reading the page",
             )
-        assert ok is True
+        assert ok is od.OutboundResult.PUBLISHED
         queue, body = publisher.publish_outbound.await_args.args
         assert queue == "outbound.telegram"
         envelope = json.loads(body)
@@ -943,7 +968,7 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
                     ConversationSource.TELEGRAM, "u1", "http://cdn.test/1.png", "step-1.png"
                 )
 
-        assert ok is False
+        assert ok is od.OutboundResult.FAILED
         publisher.publish_outbound.assert_not_awaited()
         warning = _only(event["warnings"], "publish_outbound_photo: attachment URL rejected")
         assert warning["platform"] == "telegram"

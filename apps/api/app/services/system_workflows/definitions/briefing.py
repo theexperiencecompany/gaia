@@ -43,7 +43,6 @@ def _daily_briefing() -> CreateWorkflowRequest:
             type=TriggerType.SCHEDULE,
             # The default quiet hours' slot; provisioning stamps the user's own.
             cron_expression=daily_briefing_cron(default_quiet_hours()),
-            enabled=True,
         ),
         steps=[
             WorkflowStep(
@@ -75,7 +74,6 @@ def _weekly_digest() -> CreateWorkflowRequest:
         trigger_config=TriggerConfig(
             type=TriggerType.SCHEDULE,
             cron_expression=WEEKLY_DIGEST_CRON,
-            enabled=True,
         ),
         steps=[
             WorkflowStep(

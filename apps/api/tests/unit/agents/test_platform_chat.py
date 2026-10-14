@@ -161,6 +161,14 @@ async def test_an_image_goes_out_as_one_photo_with_the_text_as_its_caption() -> 
     )
 
 
+async def test_several_bubbles_share_one_caption_as_paragraphs() -> None:
+    _, send_photo = await _post_with_image(
+        f"Two replies need you.{NEW_MESSAGE_BREAKER}Priya first.", OutboundResult.PUBLISHED
+    )
+
+    assert send_photo.await_args.kwargs["caption"] == "Two replies need you.\n\nPriya first."
+
+
 async def test_a_caption_past_the_platform_limit_continues_as_follow_up_text() -> None:
     long_text = "\n\n".join(["a" * 700, "b" * 700])
 

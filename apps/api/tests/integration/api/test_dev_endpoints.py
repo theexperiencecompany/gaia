@@ -2,21 +2,24 @@
 
 from contextlib import asynccontextmanager, contextmanager
 import io
+import json
 from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 import zipfile
 
 from bson import ObjectId
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 import pytest
 
+from app.api.v1.endpoints.dev import _BRIEFING_RUNS, run_briefing_now
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
+from tests.helpers import captured_wide_event
 
 DEV_EMAIL = "dev@gaia.local"
 
@@ -800,3 +803,66 @@ class TestDevAttachments:
                 )
 
         assert response.status_code == 415, response.text
+
+
+class TestDevBriefingRun:
+    async def test_runs_the_kinds_pipeline_for_the_users_id(self):
+        run_daily, run_weekly = AsyncMock(), AsyncMock()
+        user = SimpleNamespace(id="u-brief")
+        with (
+            patch.dict(_BRIEFING_RUNS, {"daily": run_daily, "weekly": run_weekly}),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ) as get_by_email,
+        ):
+            async with captured_wide_event() as event:
+                response = await run_briefing_now("daily", DEV_EMAIL)
+
+        get_by_email.assert_awaited_once_with(DEV_EMAIL)
+        run_daily.assert_awaited_once_with("u-brief")
+        run_weekly.assert_not_awaited()
+        assert json.loads(response.body) == {
+            "user_id": "u-brief",
+            "kind": "daily",
+            "status": "completed",
+        }
+        assert event["dev"] == {
+            "operation": "run_briefing",
+            "kind": "daily",
+            "email": DEV_EMAIL,
+            "user_id": "u-brief",
+        }
+
+    async def test_an_unknown_kind_is_a_400_through_the_mounted_route(self, monkeypatch):
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
+        client = await _client(_build_app())
+        async with client:
+            response = await client.post(f"/api/v1/dev/briefing/monthly/{DEV_EMAIL}")
+
+        assert (response.status_code, response.json()["message"]) == (
+            400,
+            "kind must be 'daily' or 'weekly'",
+        )
+
+    async def test_an_unknown_email_is_a_404_naming_how_to_mint_it(self):
+        run_daily = AsyncMock()
+        with (
+            patch.dict(_BRIEFING_RUNS, {"daily": run_daily}),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            pytest.raises(HTTPException) as caught,
+        ):
+            await run_briefing_now("daily", "ghost@gaia.local")
+
+        assert caught.value.status_code == 404
+        assert caught.value.detail == (
+            "No GAIA user exists for 'ghost@gaia.local' — mint it via POST /api/v1/dev/users"
+        )
+        run_daily.assert_not_awaited()

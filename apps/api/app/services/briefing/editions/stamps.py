@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import TypedDict
 
 _STAMPS_DIR = Path(__file__).parent / "explorer" / "assets" / "stamps"
+_CITIES_JSON = _STAMPS_DIR / "cities.json"
+_COUNTRIES_JSON = _STAMPS_DIR / "countries.json"
 # The asset key the postal template reads the stamp art from.
 STAMP_ASSET_KEY = "STAMP_CITY"
 # Engraved-frame colours of the vendored postal stamps, cycled across cities.
@@ -53,13 +55,13 @@ class _Postage(TypedDict):
 
 @lru_cache(maxsize=1)
 def _cities() -> dict[str, _City]:
-    rows: list[_City] = json.loads((_STAMPS_DIR / "cities.json").read_text())
+    rows: list[_City] = json.loads(_CITIES_JSON.read_text())
     return {row["slug"]: row for row in rows}
 
 
 @lru_cache(maxsize=1)
 def _postage() -> dict[str, _Postage]:
-    data: dict[str, _Postage] = json.loads((_STAMPS_DIR / "countries.json").read_text())
+    data: dict[str, _Postage] = json.loads(_COUNTRIES_JSON.read_text())
     return data
 
 

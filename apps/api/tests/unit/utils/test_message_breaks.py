@@ -182,3 +182,16 @@ class TestSplitForCaption:
 
         assert all(len(p) <= 100 for p in parts)
         assert " ".join(parts).split() == text.split()
+
+    def test_words_are_packed_greedily_into_each_follow_up(self) -> None:
+        assert split_for_caption("aa bb cc dd ee", limit=8) == ["aa bb cc", "dd ee"]
+
+    def test_a_piece_exactly_at_the_limit_stays_whole(self) -> None:
+        assert split_for_caption("ab\n\ncd", limit=6) == ["ab\n\ncd"]
+        assert split_for_caption("aa bb", limit=5) == ["aa bb"]
+
+    def test_a_paragraph_that_fits_keeps_its_own_spacing(self) -> None:
+        assert split_for_caption("a  b", limit=4) == ["a  b"]
+
+    def test_only_blank_lines_separate_paragraphs(self) -> None:
+        assert split_for_caption("a b\nc", limit=1024) == ["a b\nc"]

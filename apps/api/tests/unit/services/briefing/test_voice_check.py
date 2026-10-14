@@ -95,3 +95,65 @@ class TestProseThatMatchesTheItems:
         )
 
         assert any("3" in p for p in problems)
+
+
+def _items(*kinds: str, text: str = "a task") -> list[dict[str, Any]]:
+    return [{"numeral": "I", "title": "WORK", "items": [{"text": text, "kind": k} for k in kinds]}]
+
+
+_NO_TALLIES = {"done_by_you": 0, "done_by_gaia": 0}
+
+
+class TestCounts:
+    def test_each_item_kind_can_be_counted_on_its_own(self) -> None:
+        payload = _payload(
+            sections=_items(*["lookback"] * 2, *["gaia"] * 3, *["note"] * 4), tallies=_NO_TALLIES
+        )
+
+        assert voice_contradictions("2 done", "3 running and 4 notes.", payload) == []
+        assert voice_contradictions("5 done", "", payload) == [
+            "the prose counts 5, which no item count matches"
+        ]
+
+    def test_needs_you_counts_every_item_waiting_on_the_user_and_nothing_else(self) -> None:
+        payload = _payload(sections=_items("you", "failed", "lookback"), tallies=_NO_TALLIES)
+
+        assert voice_contradictions("2 need you", "", payload) == []
+
+    def test_the_done_total_is_both_tallies_added(self) -> None:
+        payload = _payload(tallies={"done_by_you": 2, "done_by_gaia": 3})
+
+        assert voice_contradictions("5 things finished", "", payload) == []
+
+    def test_a_number_the_items_quote_may_be_repeated(self) -> None:
+        payload = _payload(sections=_items("lookback", text="Drafted 7 slides"))
+
+        assert voice_contradictions("7 slides drafted", "", payload) == []
+
+
+class TestNames:
+    def test_a_name_only_on_an_events_location_passes(self) -> None:
+        calendar = [{"date": "2026-10-14", "start": "11:00", "title": "Lunch", "location": "Thea"}]
+
+        problems = voice_contradictions(
+            "Lunch today", "Meet at Thea's place.", _payload(calendar=calendar)
+        )
+
+        assert problems == []
+
+    def test_a_name_must_be_a_whole_word_of_the_items_not_part_of_one(self) -> None:
+        payload = _payload(sections=_items("lookback", text="Quarterly planning doc"))
+
+        assert voice_contradictions("The plan is set", "Ann's notes are in.", payload) == [
+            "the prose names 'Ann', who is in no item or event"
+        ]
+
+
+class TestProblemWording:
+    def test_each_contradiction_reads_as_one_plain_sentence(self) -> None:
+        problems = voice_contradictions("A reply needs you", "A meeting at noon.", _payload())
+
+        assert problems == [
+            "the prose says something needs the user, but no item needs them",
+            "the prose mentions an event, but today's calendar is empty",
+        ]

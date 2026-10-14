@@ -42,6 +42,7 @@ _EMPTY_CALENDAR = re.compile(
 )
 # A name: a capitalised word inside a sentence, or a possessive one opening it.
 _NAME = re.compile(r"(?<=[a-z,;] )([A-Z][a-z]+)|^([A-Z][a-z]+)'s\b|(?<=[.;:] )([A-Z][a-z]+)'s\b")
+_WORD = re.compile(r"[a-z]+")
 _NOT_NAMES = frozenset(
     {
         "GAIA",
@@ -80,7 +81,7 @@ def _allowed_counts(payload: BriefingPayload) -> set[int]:
 
 def _corpus(payload: BriefingPayload) -> str:
     items = [item.text for section in payload.sections for item in section.items]
-    events = [f"{e.title} {e.location or ''}" for e in payload.calendar]
+    events = [part for e in payload.calendar for part in (e.title, e.location) if part]
     return " ".join(items + events)
 
 
@@ -102,9 +103,9 @@ def voice_contradictions(headline: str, lede: str, payload: BriefingPayload) -> 
         if count not in allowed:
             problems.append(f"the prose counts {count}, which no item count matches")
 
-    corpus = _corpus(payload).lower()
+    corpus_words = set(_WORD.findall(_corpus(payload).lower()))
     for match in _NAME.finditer(prose):
         name = next(group for group in match.groups() if group)
-        if name not in _NOT_NAMES and name.lower() not in corpus:
+        if name not in _NOT_NAMES and name.lower() not in corpus_words:
             problems.append(f"the prose names {name!r}, who is in no item or event")
     return problems

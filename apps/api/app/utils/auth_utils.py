@@ -91,6 +91,10 @@ def build_user_context(
         welcome_email_sent_at=user_doc.welcome_email_sent_at,
         marketing_contact_added_at=user_doc.marketing_contact_added_at,
         feature_flags=user_doc.feature_flags,
+        briefing_bootstrap=user_doc.briefing_bootstrap,
+        briefing_dormancy=user_doc.briefing_dormancy,
+        day_zero_hello=user_doc.day_zero_hello,
+        briefing_shuffle_bags=user_doc.briefing_shuffle_bags,
     )
 
 

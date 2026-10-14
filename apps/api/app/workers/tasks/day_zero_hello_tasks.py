@@ -9,19 +9,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import json
-import re
 from uuid import uuid4
 
-from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.core.background.platform_chat import post_to_platform_chat
 from app.agents.prompts.briefing_prompts import build_day_zero_hello_prompt
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
-from app.models.message_models import MessageDict, MessageRequestWithHistory
-from app.models.user_models import AuthenticatedUser, UserDocument
+from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing import context
+from app.services.briefing.service import json_blocks, run_silent_turn
 from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_service import linked_platforms_of
@@ -36,7 +34,6 @@ from shared.py.wide_events import UserContext, log, wide_task
 DAY_ZERO_MAX_ACCOUNT_AGE_DAYS = 14
 
 # Extracts a ```json fenced block (or a bare array) from the agent's final text.
-_JSON_FENCE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 
 
 class DayZeroHelloError(Exception):
@@ -45,11 +42,7 @@ class DayZeroHelloError(Exception):
 
 def _parse_bubbles(raw: str) -> list[str]:
     """Extract the JSON array of chat bubbles from the agent output (fail loud)."""
-    candidates = _JSON_FENCE.findall(raw) or [raw]
-    for block in candidates:
-        block = block.strip()
-        if not block:
-            continue
+    for block in json_blocks(raw):
         try:
             data = json.loads(block)
         except json.JSONDecodeError:
@@ -61,32 +54,6 @@ def _parse_bubbles(raw: str) -> list[str]:
     raise DayZeroHelloError(
         f"No valid bubble array in agent output (first 300 chars): {raw[:300]!r}"
     )
-
-
-async def _run_silent(user: AuthenticatedUser, prompt: str) -> str:
-    """One silent agent turn on a fresh thread; returns the final text.
-
-    Mirrors the briefing service's silent-run plumbing.
-    """
-    request = MessageRequestWithHistory(
-        message=prompt,
-        messages=[MessageDict(role="user", content=prompt)],
-        fileIds=[],
-        fileData=[],
-        selectedTool=None,
-        selectedWorkflow=None,
-    )
-    conversation_id = f"dayzero-{user.user_id}-{uuid4().hex[:6]}"
-    run = await call_agent_silent(
-        request=request,
-        conversation_id=conversation_id,
-        user=user,
-        options=AgentRunOptions(
-            trigger_context={"execution_mode": "background"},
-            source="day_zero_hello",
-        ),
-    )
-    return run.message
 
 
 def _first_name(user: UserDocument) -> str:
@@ -139,7 +106,13 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             first_name=_first_name(user), goal_block=goal_block, has_goal=has_goal
         )
         auth_user = build_user_context(user, auth_provider=None)
-        bubbles = _parse_bubbles(await _run_silent(auth_user, prompt))
+        reply = await run_silent_turn(
+            auth_user,
+            prompt,
+            conversation_id=f"dayzero-{user_id}-{uuid4().hex[:6]}",
+            source="day_zero_hello",
+        )
+        bubbles = _parse_bubbles(reply)
 
         result = await post_to_platform_chat(
             user=auth_user,

@@ -45,7 +45,7 @@ export function BriefingArchive({
               <Link
                 key={briefing.id}
                 href={`/brief/${briefing.id}`}
-                className="block rounded-2xl bg-zinc-900 p-3 transition-all hover:bg-white/5"
+                className="block rounded-2xl bg-zinc-900 p-3 transition-colors hover:bg-white/5"
               >
                 <p className="text-sm font-medium text-zinc-200">
                   {briefing.payload.headline}

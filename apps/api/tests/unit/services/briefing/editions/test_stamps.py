@@ -1,5 +1,6 @@
 """The Air Mail city stamps: catalogue, hosting, derived stamp furniture."""
 
+from collections.abc import Iterator
 import json
 from pathlib import Path
 
@@ -14,6 +15,16 @@ from app.services.briefing.editions.stamps import (
 
 _CATALOGUE = Path(stamps.__file__).parent / "explorer" / "assets" / "stamps" / "cities.json"
 _PARIS_URL = "https://res.cloudinary.com/x/image/upload/briefing/stamps/paris.webp"
+
+
+@pytest.fixture(autouse=True)
+def _cold_catalogue() -> Iterator[None]:
+    """Start every test with the lru-cached catalogue loaders unread."""
+    stamps._cities.cache_clear()
+    stamps._postage.cache_clear()
+    yield
+    stamps._cities.cache_clear()
+    stamps._postage.cache_clear()
 
 
 @pytest.fixture
@@ -42,6 +53,29 @@ class TestCatalogue:
 
         for row in rows:
             assert stamp_for(row["slug"])["denom"]
+
+    def test_a_real_city_yields_the_full_postal_skin(self) -> None:
+        assert stamp_for("paris") == {
+            "id": "paris",
+            "label": "Paris, France",
+            "src": "STAMP_CITY",
+            "city": "PARIS",
+            "air": "Par Avion",
+            "airSub": "By Air Mail",
+            "denom": "€1,96",
+            "frame": "#7a2f2f",
+            "extra": {"kind": "customs", "code": "CN 22", "sub": "Customs · Douane"},
+        }
+
+    def test_frame_colours_cycle_by_the_citys_alphabetical_position(self) -> None:
+        assert stamp_for("addis_ababa")["frame"] == "#9c3b34"
+        assert stamp_for("ahmedabad")["frame"] == "#2f5233"
+
+    def test_every_catalogued_city_is_hosted_and_drawable(self) -> None:
+        rows = json.loads(_CATALOGUE.read_text())
+
+        assert hosted_stamp_weights() == {row["slug"]: 1 for row in rows}
+        assert stamp_asset_url("tokyo") == rows[[r["slug"] for r in rows].index("tokyo")]["url"]
 
 
 @pytest.mark.unit
