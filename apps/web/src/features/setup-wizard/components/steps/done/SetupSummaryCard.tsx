@@ -4,7 +4,7 @@ import { Tick02Icon } from "@icons";
 import * as m from "motion/react-m";
 import nextDynamic from "next/dynamic";
 import type { ReactNode } from "react";
-import type { ProviderCardConfig } from "../../../constants";
+import type { CatalogProvider } from "@/features/settings/utils/providerCatalog";
 import { CARD_TRANSITION, CARD_VARIANTS } from "./doneMotion";
 
 const ConnectedAppsCount = nextDynamic(() => import("../ConnectedAppsCount"), {
@@ -12,14 +12,14 @@ const ConnectedAppsCount = nextDynamic(() => import("../ConnectedAppsCount"), {
 });
 
 interface SetupSummaryCardProps {
-  connectedLlmCards: ProviderCardConfig[];
+  connectedLlmCards: CatalogProvider[];
   /** The search provider's label when configured, else null. */
   searchLabel: string | null;
-  connectedTools: ProviderCardConfig[];
+  connectedTools: CatalogProvider[];
   hasAdminAccount: boolean;
 }
 
-function joinLabels(cards: ProviderCardConfig[]): string {
+function joinLabels(cards: CatalogProvider[]): string {
   return cards.map((card) => card.label).join(", ");
 }
 

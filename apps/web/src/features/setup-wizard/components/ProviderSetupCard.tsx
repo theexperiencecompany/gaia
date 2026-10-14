@@ -62,7 +62,7 @@ export function ProviderSetupCard({
 
   const canSave =
     (!config.showApiKey || apiKey.trim().length > 0) &&
-    (!config.showBaseUrl || baseUrl.trim().length > 0);
+    (!config.needs_base_url || baseUrl.trim().length > 0);
 
   return (
     <div className="w-full rounded-2xl bg-zinc-800 p-4">
@@ -94,7 +94,7 @@ export function ProviderSetupCard({
       <div className="space-y-2">
         {config.showApiKey && (
           <ProviderApiKeyInput
-            provider={config.key}
+            keyUrl={config.key_url}
             placeholder="Paste your API key"
             value={apiKey}
             onValueChange={setApiKey}
@@ -105,11 +105,11 @@ export function ProviderSetupCard({
             isDisabled={isBusy}
           />
         )}
-        {config.showBaseUrl && (
+        {config.needs_base_url && (
           <Input
             label="Base URL"
             placeholder={
-              config.defaultBaseUrl || "https://your-gateway.example.com/v1"
+              config.base_url || "https://your-gateway.example.com/v1"
             }
             value={baseUrl}
             onValueChange={setBaseUrl}
@@ -121,7 +121,7 @@ export function ProviderSetupCard({
         {config.showModel && (
           <Input
             label="Model"
-            placeholder={config.defaultModel || "Default"}
+            placeholder={config.default_model || "Default"}
             description="Leave empty to use the endpoint default."
             value={model}
             onValueChange={setModel}
@@ -176,8 +176,8 @@ function OllamaOneClick({
     setOllamaError(null);
     setOllamaModels([]);
     const body = {
-      base_url: config.defaultBaseUrl,
-      model: config.defaultModel,
+      base_url: config.base_url,
+      model: config.default_model,
     };
     try {
       // Probe first, save second: an unreachable endpoint must not flip the
@@ -210,11 +210,11 @@ function OllamaOneClick({
   };
 
   const hint = (() => {
-    if (ollamaError) return getProviderErrorHint(ollamaError, "ollama");
+    if (ollamaError) return getProviderErrorHint(ollamaError, config.key_url);
     if (ollamaOutcome && !ollamaOutcome.ok)
-      return getProviderErrorHint(ollamaOutcome.detail, "ollama");
+      return getProviderErrorHint(ollamaOutcome.detail, config.key_url);
     if (ollamaOutcome?.ok && ollamaModels.length > 0) {
-      const wanted = config.defaultModel;
+      const wanted = config.default_model;
       const pulled = ollamaModels.some(
         (m) =>
           m === wanted || m.endsWith(`:${wanted}`) || wanted.endsWith(`:${m}`),
@@ -263,10 +263,10 @@ function OllamaOneClick({
       </p>
       <div className="mt-2 flex items-center gap-2 rounded-xl bg-zinc-800 py-1 pr-1 pl-3">
         <code className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-300">
-          ollama pull {config.defaultModel} && ollama serve
+          ollama pull {config.default_model} && ollama serve
         </code>
         <CopyButton
-          textToCopy={`ollama pull ${config.defaultModel} && ollama serve`}
+          textToCopy={`ollama pull ${config.default_model} && ollama serve`}
           variant="light"
           size="sm"
           className="shrink-0 text-zinc-400"
@@ -352,7 +352,7 @@ function ProviderCardIcon({
   }
   return (
     <Image
-      src={providerFaviconUrl(preset?.favicon_domain ?? config.faviconDomain)}
+      src={providerFaviconUrl(preset?.favicon_domain ?? config.favicon_domain)}
       alt={`${config.label} icon`}
       width={24}
       height={24}

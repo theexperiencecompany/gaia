@@ -26,7 +26,7 @@ export function ConnectedProviderCard({
 }: ConnectedProviderCardProps) {
   return (
     <div className="flex w-full items-center gap-3 rounded-2xl bg-zinc-800 p-4">
-      <ProviderFavicon domain={card.faviconDomain} size={32} />
+      <ProviderFavicon domain={card.favicon_domain} size={32} />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-zinc-100">
           {card.label} is connected

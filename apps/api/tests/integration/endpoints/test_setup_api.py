@@ -329,6 +329,8 @@ class TestProviderCatalog:
         for spec in body["providers"].values():
             assert set(spec) == {
                 "label",
+                "description",
+                "key_url",
                 "base_url",
                 "default_model",
                 "favicon_domain",

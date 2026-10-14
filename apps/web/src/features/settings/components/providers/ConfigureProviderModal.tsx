@@ -55,12 +55,12 @@ export function ConfigureProviderModal({
       <Modal isOpen onClose={onClose} size="md">
         <ModalContent>
           <ModalHeader className="flex-row items-center gap-3">
-            <ProviderFavicon domain={row.faviconDomain} />
+            <ProviderFavicon domain={row.favicon_domain} />
             Configure {row.label}
           </ModalHeader>
           <ModalBody className="gap-4">
             <ProviderApiKeyInput
-              provider={row.key}
+              keyUrl={row.key_url}
               autoFocus
               placeholder={
                 storedKeyHint
@@ -95,11 +95,11 @@ export function ConfigureProviderModal({
                 </div>
               </div>
             )}
-            {(row.needsBaseUrl || showPresetChips) && (
+            {(row.needs_base_url || showPresetChips) && (
               <Input
                 label="Base URL"
                 placeholder={
-                  row.defaultBaseUrl || "https://your-gateway.example.com/v1"
+                  row.base_url || "https://your-gateway.example.com/v1"
                 }
                 value={form.baseUrl}
                 onValueChange={form.setBaseUrl}
@@ -108,7 +108,7 @@ export function ConfigureProviderModal({
             {row.showModelField && (
               <Input
                 label="Model"
-                placeholder={row.defaultModel || "Default"}
+                placeholder={row.default_model || "Default"}
                 description="Leave empty to use the endpoint default."
                 value={form.model}
                 onValueChange={form.setModel}
@@ -117,7 +117,7 @@ export function ConfigureProviderModal({
             {form.testResult && (
               <ProviderTestResultNotice
                 result={form.testResult}
-                provider={row.key}
+                keyUrl={row.key_url}
               />
             )}
             {awaitingPassingTest && (

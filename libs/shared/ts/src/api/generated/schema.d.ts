@@ -12617,8 +12617,12 @@ export interface components {
             base_url: string;
             /** Default Model */
             default_model: string;
+            /** Description */
+            description: string;
             /** Favicon Domain */
             favicon_domain: string;
+            /** Key Url */
+            key_url: string;
             /** Label */
             label: string;
             /** Needs Base Url */

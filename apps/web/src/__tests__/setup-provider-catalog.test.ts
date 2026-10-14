@@ -38,6 +38,8 @@ import {
 
 const entry = (overrides: Partial<ProviderCatalog["providers"][string]>) => ({
   label: "",
+  description: "",
+  key_url: "",
   base_url: "",
   default_model: "",
   favicon_domain: "",
@@ -48,7 +50,12 @@ const entry = (overrides: Partial<ProviderCatalog["providers"][string]>) => ({
 const CATALOG: ProviderCatalog = {
   llm_provider_keys: ["openrouter", "gemini", "openai", "ollama", "custom"],
   providers: {
-    openrouter: entry({ default_model: "router-chat-from-catalog" }),
+    openrouter: entry({
+      label: "Router from catalog",
+      description: "Copy from catalog.",
+      key_url: "https://keys.catalog/openrouter",
+      default_model: "router-chat-from-catalog",
+    }),
     gemini: entry({ default_model: "gemini-from-catalog" }),
     openai: entry({ default_model: "openai-from-catalog" }),
     ollama: entry({
@@ -108,10 +115,18 @@ describe("LLM provider cards", () => {
     expect(llmCard("openai").connectionTestable).toBe(true);
   });
 
+  it("take their display copy and key link from the catalog", () => {
+    expect(llmCard("openrouter")).toMatchObject({
+      label: "Router from catalog",
+      description: "Copy from catalog.",
+      key_url: "https://keys.catalog/openrouter",
+    });
+  });
+
   it("take endpoint defaults and preset gateways from the catalog", () => {
     expect(llmCard("ollama")).toMatchObject({
-      defaultBaseUrl: "http://ollama.catalog:11434",
-      defaultModel: "ollama-from-catalog",
+      base_url: "http://ollama.catalog:11434",
+      default_model: "ollama-from-catalog",
     });
     expect(llmCard("custom").presets).toEqual([
       expect.objectContaining({
@@ -181,20 +196,16 @@ describe("useProviderSetup", () => {
     const tavily = resolveProviderCard(
       {
         key: "tavily",
-        label: "Tavily",
-        description: "",
-        faviconDomain: "tavily.com",
         showApiKey: true,
-        showBaseUrl: false,
         showModel: false,
-        connectionTestable: false,
         hasPresets: false,
       },
       CATALOG,
     );
     expect(tavily).toMatchObject({
-      defaultBaseUrl: "",
-      defaultModel: "",
+      base_url: "",
+      default_model: "",
+      connectionTestable: false,
       presets: [],
     });
   });

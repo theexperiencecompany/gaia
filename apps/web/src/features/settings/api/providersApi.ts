@@ -22,20 +22,6 @@ export type {
 export type SetupStatus = SetupStatusResponse;
 export type ProviderCatalog = ProviderCatalogResponse;
 
-/** Direct link to obtain an API key for providers that use one. e2b has no
- * keys dashboard page (its docs live at e2b.dev/docs) and google_oauth is an
- * OAuth client, not a key — both are deliberately absent. */
-export const PROVIDER_KEY_URLS: Partial<Record<CredentialProvider, string>> = {
-  openrouter: "https://openrouter.ai/keys",
-  gemini: "https://aistudio.google.com/apikey",
-  openai: "https://platform.openai.com/api-keys",
-  tavily: "https://app.tavily.com",
-  composio: "https://app.composio.dev",
-  firecrawl: "https://www.firecrawl.dev/app/api-keys",
-  resend: "https://resend.com/api-keys",
-  cloudinary: "https://console.cloudinary.com/settings/api-keys",
-};
-
 class ProvidersApiService {
   fetchSetupStatus(): Promise<SetupStatus> {
     return setupTransport.get<SetupStatus>("status");
@@ -86,7 +72,7 @@ export const providerFaviconUrl = (domain: string) =>
  */
 export function getProviderErrorHint(
   detail: string,
-  providerKey?: CredentialProvider,
+  keyUrl: string,
 ): string | null {
   const lower = detail.toLowerCase();
   // Private / unreachable already carries _PRIVATE_URL_HINT — keep that as-is.
@@ -96,11 +82,8 @@ export function getProviderErrorHint(
     lower.includes("invalid") ||
     lower.includes("unauthorized")
   ) {
-    const url = providerKey
-      ? (PROVIDER_KEY_URLS as Record<string, string>)[providerKey]
-      : undefined;
-    if (url) {
-      return `Check your API key at ${url} — it may be expired or missing permissions.`;
+    if (keyUrl) {
+      return `Check your API key at ${keyUrl} — it may be expired or missing permissions.`;
     }
     return "Check your API key — it may be expired or missing permissions.";
   }

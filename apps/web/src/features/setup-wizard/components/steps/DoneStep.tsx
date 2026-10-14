@@ -19,12 +19,11 @@ import {
   isProviderConfigured,
   runsCodeInLocalSandbox,
 } from "@/features/settings/hooks/useSetupStatus";
+import { SEARCH_PROVIDER_CARD, TOOL_PROVIDER_CARDS } from "../../constants";
 import {
-  LLM_PROVIDER_CARDS,
-  SEARCH_PROVIDER_CARD,
-  TOOL_PROVIDER_CARDS,
-  WIZARD_EXCLUDED_TOOL_KEYS,
-} from "../../constants";
+  resolveLlmProviderCards,
+  resolveProviderCard,
+} from "../../utils/providerCards";
 import { DoneActions } from "./done/DoneActions";
 import { ReadyCard } from "./done/ReadyCard";
 import { SetupSummaryCard } from "./done/SetupSummaryCard";
@@ -38,7 +37,7 @@ interface DoneStepProps {
 }
 
 export function DoneStep({ status, catalog }: DoneStepProps) {
-  const connectedLlmCards = LLM_PROVIDER_CARDS.filter((card) =>
+  const connectedLlmCards = resolveLlmProviderCards(catalog).filter((card) =>
     isProviderConfigured(status, card.key),
   );
   const hasLlm = isAnyLlmConfigured(status, catalog);
@@ -48,11 +47,9 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
     SEARCH_PROVIDER_CARD.key,
   );
 
-  const connectedTools = TOOL_PROVIDER_CARDS.filter(
-    (card) =>
-      !(WIZARD_EXCLUDED_TOOL_KEYS as readonly string[]).includes(card.key) &&
-      isProviderConfigured(status, card.key),
-  );
+  const connectedTools = TOOL_PROVIDER_CARDS.filter((card) =>
+    isProviderConfigured(status, card.key),
+  ).map((card) => resolveProviderCard(card, catalog));
   const toolConfigured = (key: CredentialProvider) =>
     connectedTools.some((card) => card.key === key);
 
@@ -110,7 +107,11 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
       {hasLlm && <StarterPromptsCard prompts={starterPrompts} />}
       <SetupSummaryCard
         connectedLlmCards={connectedLlmCards}
-        searchLabel={searchConfigured ? SEARCH_PROVIDER_CARD.label : null}
+        searchLabel={
+          searchConfigured
+            ? resolveProviderCard(SEARCH_PROVIDER_CARD, catalog).label
+            : null
+        }
         connectedTools={connectedTools}
         hasAdminAccount={status.has_admin_account}
       />

@@ -13656,8 +13656,16 @@
             "title": "Default Model",
             "type": "string"
           },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
           "favicon_domain": {
             "title": "Favicon Domain",
+            "type": "string"
+          },
+          "key_url": {
+            "title": "Key Url",
             "type": "string"
           },
           "label": {
@@ -13671,6 +13679,8 @@
         },
         "required": [
           "label",
+          "description",
+          "key_url",
           "base_url",
           "default_model",
           "favicon_domain",

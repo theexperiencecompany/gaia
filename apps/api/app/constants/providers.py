@@ -131,6 +131,8 @@ class CredentialSource(StrEnum):
 
 class ProviderPreset(TypedDict):
     label: str
+    description: str  # empty ⇒ offered only as a chip inside the custom card
+    key_url: str  # empty ⇒ no page issues a key for it
     base_url: str  # empty ⇒ provider has no configurable endpoint
     default_model: str  # empty ⇒ fetched from the endpoint at configure time
     favicon_domain: str
@@ -140,6 +142,8 @@ class ProviderPreset(TypedDict):
 PRESETS: dict[str, ProviderPreset] = {
     "openrouter": {
         "label": "OpenRouter",
+        "description": "One key for every major model. Easiest way to start.",
+        "key_url": "https://openrouter.ai/keys",
         "base_url": "",
         "default_model": _catalog_chat_model(LLMProviderName.OPENROUTER),
         "favicon_domain": "openrouter.ai",
@@ -147,6 +151,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "gemini": {
         "label": "Google Gemini",
+        "description": "Google's models, with a generous free tier.",
+        "key_url": "https://aistudio.google.com/apikey",
         "base_url": "",
         "default_model": _catalog_chat_model(LLMProviderName.GEMINI),
         "favicon_domain": "ai.google.dev",
@@ -154,6 +160,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "ollama": {
         "label": "Ollama",
+        "description": "Run models locally — no API key needed.",
+        "key_url": "",
         "base_url": "http://host.docker.internal:11434",
         "default_model": _catalog_chat_model(LLMProviderName.OLLAMA),
         "favicon_domain": "ollama.com",
@@ -163,7 +171,9 @@ PRESETS: dict[str, ProviderPreset] = {
     # configuration is paste-a-key-only; the base-URL field stays editable for
     # manual gateways.
     "custom": {
-        "label": "Custom / OpenAI-compatible",
+        "label": "Custom",
+        "description": "Use any service with an OpenAI-style API — like OpenCode or Nous — or enter your own server address.",
+        "key_url": "",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "opencode.ai",
@@ -171,6 +181,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "opencode": {
         "label": "OpenCode",
+        "description": "",
+        "key_url": "",
         "base_url": "https://opencode.ai/zen/go/v1",
         "default_model": "deepseek-v4-flash",
         "favicon_domain": "opencode.ai",
@@ -178,6 +190,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "nous": {
         "label": "Nous Research",
+        "description": "",
+        "key_url": "",
         "base_url": "https://inference-api.nousresearch.com/v1",
         "default_model": "",
         "favicon_domain": "nousresearch.com",
@@ -187,6 +201,8 @@ PRESETS: dict[str, ProviderPreset] = {
     # probe (the setup test endpoint hard-rejects it).
     "tavily": {
         "label": "Tavily",
+        "description": "Web search results grounded in live sources.",
+        "key_url": "https://app.tavily.com",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "tavily.com",
@@ -195,6 +211,8 @@ PRESETS: dict[str, ProviderPreset] = {
     # Tool / integration keys — no LLM endpoint, single-credential cards.
     "composio": {
         "label": "Composio",
+        "description": "Integration platform for Gmail, Calendar, Slack, and 200+ tools.",
+        "key_url": "https://app.composio.dev",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "composio.dev",
@@ -202,6 +220,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "e2b": {
         "label": "E2B Sandbox",
+        "description": "Code execution sandbox for the agent's bash/code tools.",
+        "key_url": "",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "e2b.dev",
@@ -209,6 +229,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "openai": {
         "label": "OpenAI",
+        "description": "GPT models directly from OpenAI. Also powers voice-note transcription.",
+        "key_url": "https://platform.openai.com/api-keys",
         "base_url": "",
         "default_model": _catalog_chat_model(LLMProviderName.OPENAI),
         "favicon_domain": "openai.com",
@@ -216,6 +238,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "resend": {
         "label": "Resend Email",
+        "description": "Outbound email for notifications and reminders.",
+        "key_url": "https://resend.com/api-keys",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "resend.com",
@@ -223,6 +247,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "cloudinary": {
         "label": "Cloudinary",
+        "description": "Image upload and storage. Also needs CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_SECRET in .env — the key alone is not enough.",
+        "key_url": "https://console.cloudinary.com/settings/api-keys",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "cloudinary.com",
@@ -230,6 +256,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "google_oauth": {
         "label": "Google OAuth",
+        "description": "Google account integration (Gmail, Calendar). Also needs GOOGLE_CLIENT_ID in .env — the secret alone cannot connect anything.",
+        "key_url": "",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "accounts.google.com",
@@ -237,6 +265,8 @@ PRESETS: dict[str, ProviderPreset] = {
     },
     "firecrawl": {
         "label": "Firecrawl",
+        "description": "Advanced web scraping and crawling.",
+        "key_url": "https://www.firecrawl.dev/app/api-keys",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "firecrawl.dev",

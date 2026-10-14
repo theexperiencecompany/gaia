@@ -1,19 +1,18 @@
 import {
-  type CredentialProvider,
   getProviderErrorHint,
   type ProviderTestResult,
 } from "@/features/settings/api/providersApi";
 
 interface ProviderTestResultNoticeProps {
   result: ProviderTestResult;
-  provider: CredentialProvider;
+  keyUrl: string;
 }
 
 export function ProviderTestResultNotice({
   result,
-  provider,
+  keyUrl,
 }: ProviderTestResultNoticeProps) {
-  const hint = result.ok ? null : getProviderErrorHint(result.detail, provider);
+  const hint = result.ok ? null : getProviderErrorHint(result.detail, keyUrl);
 
   return (
     <div

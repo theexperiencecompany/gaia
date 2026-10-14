@@ -26,7 +26,7 @@ export interface ProviderTestOutcome {
  */
 export function useProviderSetup(config: ProviderCard, onSaved: () => void) {
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState(config.defaultBaseUrl);
+  const [baseUrl, setBaseUrl] = useState(config.base_url);
   const [model, setModel] = useState("");
   const [preset, setPreset] = useState<CustomPreset | null>(null);
   const [phase, setPhase] = useState<ProviderSetupPhase | null>(null);
@@ -68,11 +68,11 @@ export function useProviderSetup(config: ProviderCard, onSaved: () => void) {
   const applyPreset = useCallback(
     (selected: CustomPreset | null) => {
       setPreset(selected);
-      setBaseUrl(selected ? selected.base_url : config.defaultBaseUrl);
+      setBaseUrl(selected ? selected.base_url : config.base_url);
       setModel(selected ? selected.default_model : "");
       resetResult();
     },
-    [config.defaultBaseUrl, resetResult],
+    [config.base_url, resetResult],
   );
 
   const body = useMemo((): ProviderConfigBody => {
@@ -126,10 +126,10 @@ export function useProviderSetup(config: ProviderCard, onSaved: () => void) {
     }
   }, [config.key, config.connectionTestable, body, onSaved, resetResult]);
 
-  const errorHint = error ? getProviderErrorHint(error, config.key) : null;
+  const errorHint = error ? getProviderErrorHint(error, config.key_url) : null;
   const outcomeHint =
     outcome && !outcome.ok
-      ? getProviderErrorHint(outcome.detail, config.key)
+      ? getProviderErrorHint(outcome.detail, config.key_url)
       : null;
   const hint = errorHint ?? outcomeHint;
 

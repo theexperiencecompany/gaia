@@ -8,28 +8,32 @@ import type {
   SetupStatus,
 } from "@/features/settings/api/providersApi";
 
-const CATALOG_ORDER = [
-  "openrouter",
-  "gemini",
-  "ollama",
-  "custom",
-  "tavily",
-  "composio",
-  "e2b",
-  "openai",
-  "resend",
-  "cloudinary",
-  "google_oauth",
-  "firecrawl",
+/** Catalog display order, each provider with the label the catalog serves for it. */
+const CATALOG_LABELS: [string, string][] = [
+  ["openrouter", "OpenRouter"],
+  ["gemini", "Google Gemini"],
+  ["ollama", "Ollama"],
+  ["custom", "Custom"],
+  ["tavily", "Tavily"],
+  ["composio", "Composio"],
+  ["e2b", "E2B Sandbox"],
+  ["openai", "OpenAI"],
+  ["resend", "Resend Email"],
+  ["cloudinary", "Cloudinary"],
+  ["google_oauth", "Google OAuth"],
+  ["firecrawl", "Firecrawl"],
 ];
+const CATALOG_ORDER = CATALOG_LABELS.map(([key]) => key);
 
 const catalog: ProviderCatalog = {
   llm_provider_keys: ["openrouter", "gemini", "openai", "ollama", "custom"],
   providers: Object.fromEntries(
-    CATALOG_ORDER.map((key) => [
+    CATALOG_LABELS.map(([key, label]) => [
       key,
       {
-        label: key,
+        label,
+        description: "",
+        key_url: "",
         base_url: "",
         default_model: "",
         favicon_domain: `${key}.example`,
@@ -92,7 +96,7 @@ const section = (title: string) =>
   within(screen.getByRole("region", { name: title }));
 
 const ROW_LABEL =
-  /^(OpenRouter|Google Gemini|OpenAI|Ollama|Custom Gateway|Tavily|Composio|E2B Sandbox|Resend Email|Cloudinary|Google OAuth|Firecrawl)$/;
+  /^(OpenRouter|Google Gemini|OpenAI|Ollama|Custom|Tavily|Composio|E2B Sandbox|Resend Email|Cloudinary|Google OAuth|Firecrawl)$/;
 
 const rowLabels = (title: string) =>
   section(title)

@@ -17,15 +17,25 @@ vi.mock("@/features/settings/api/providersApi", async (importOriginal) => ({
 
 import { ProviderStep } from "@/features/setup-wizard/components/steps/ProviderStep";
 
-const LLM_KEYS = ["openrouter", "gemini", "openai", "ollama", "custom"];
+/** Chat providers in catalog order, each with the label the catalog serves for it. */
+const LLM_LABELS: [string, string][] = [
+  ["openrouter", "OpenRouter"],
+  ["gemini", "Google Gemini"],
+  ["openai", "OpenAI"],
+  ["ollama", "Ollama"],
+  ["custom", "Custom"],
+];
+const LLM_KEYS = LLM_LABELS.map(([key]) => key);
 
 const CATALOG: ProviderCatalog = {
   llm_provider_keys: LLM_KEYS,
   providers: Object.fromEntries(
-    LLM_KEYS.map((key) => [
+    LLM_LABELS.map(([key, label]) => [
       key,
       {
-        label: key,
+        label,
+        description: "",
+        key_url: "",
         base_url: "",
         default_model: "",
         favicon_domain: `${key}.example`,

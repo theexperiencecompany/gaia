@@ -4,12 +4,12 @@ import { CheckmarkCircle02Icon, Tick02Icon } from "@icons";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { providerFaviconUrl } from "@/features/settings/api/providersApi";
-import type { ProviderCardConfig } from "../../../constants";
+import type { CatalogProvider } from "@/features/settings/utils/providerCatalog";
 import { CARD_TRANSITION, CARD_VARIANTS, ITEM_VARIANTS } from "./doneMotion";
 
 interface ReadyCardProps {
   /** Connected LLM providers, the first one featured in the status chip. */
-  connectedLlmCards: ProviderCardConfig[];
+  connectedLlmCards: CatalogProvider[];
 }
 
 export function ReadyCard({ connectedLlmCards }: ReadyCardProps) {
@@ -56,7 +56,7 @@ export function ReadyCard({ connectedLlmCards }: ReadyCardProps) {
           className="mt-4 inline-flex items-center gap-2 rounded-full bg-zinc-900 px-3 py-1.5"
         >
           <Image
-            src={providerFaviconUrl(primaryLlm.faviconDomain)}
+            src={providerFaviconUrl(primaryLlm.favicon_domain)}
             alt={`${primaryLlm.label} favicon`}
             width={16}
             height={16}

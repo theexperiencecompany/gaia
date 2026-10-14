@@ -5,24 +5,20 @@ import { Link } from "@heroui/link";
 import { SquareArrowUpRight02Icon } from "@icons";
 import { useState } from "react";
 import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButton";
-import {
-  type CredentialProvider,
-  PROVIDER_KEY_URLS,
-} from "@/features/settings/api/providersApi";
 
 interface ProviderApiKeyInputProps
   extends Omit<InputProps, "type" | "label" | "endContent"> {
-  provider: CredentialProvider;
+  /** Where the provider issues keys; empty when it has no such page. */
+  keyUrl: string;
 }
 
 /** A provider's API key field: masked with a reveal toggle, plus a link to
  * where the key is issued when the provider has one. */
 export function ProviderApiKeyInput({
-  provider,
+  keyUrl,
   ...inputProps
 }: ProviderApiKeyInputProps) {
   const [isVisible, setIsVisible] = useState(false);
-  const keyUrl = PROVIDER_KEY_URLS[provider];
 
   return (
     <>

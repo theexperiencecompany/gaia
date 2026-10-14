@@ -39,7 +39,7 @@ export function useConfigureProvider({
   const { confirm, confirmationProps } = useConfirmation();
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(
-    () => stored?.base_url || row.defaultBaseUrl,
+    () => stored?.base_url || row.base_url,
   );
   const [model, setModel] = useState(() =>
     row.showModelField ? stored?.model || "" : "",
@@ -84,7 +84,7 @@ export function useConfigureProvider({
       onSaved();
     } catch (err: unknown) {
       const detail = extractProviderError(err);
-      const hint = detail ? getProviderErrorHint(detail, row.key) : null;
+      const hint = detail ? getProviderErrorHint(detail, row.key_url) : null;
       const message = hint
         ? `${detail} — ${hint}`
         : (detail ?? `Failed to save ${row.label}`);

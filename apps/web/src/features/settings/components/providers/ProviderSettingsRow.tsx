@@ -70,7 +70,7 @@ export function ProviderSettingsRow({
           ? `${row.description} Your saved key overrides a different one set in the environment.`
           : row.description
       }
-      icon={<ProviderFavicon domain={row.faviconDomain} />}
+      icon={<ProviderFavicon domain={row.favicon_domain} />}
     >
       <div className="flex items-center gap-3">
         <StatusBadge state={state} />
