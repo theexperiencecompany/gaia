@@ -71,7 +71,7 @@ INVITE_DAILY_SEND_CEILING = 200
 # Largest batch one POST /invites may carry.
 INVITE_BATCH_MAX = 50
 INVITE_FROM_ADDRESS = "invites@heygaia.io"
-INVITE_SENDER_TEMPLATE = "{name} via GAIA <" + INVITE_FROM_ADDRESS + ">"
+INVITE_SENDER_NAME_TEMPLATE = "{name} via GAIA"
 INVITE_EMAIL_TEMPLATE = "referral_invite.html"
 INVITE_SUBJECT_TEMPLATE = "{name} sent you a gift!"
 INVITE_CTA_LABEL = "Open your gift"
