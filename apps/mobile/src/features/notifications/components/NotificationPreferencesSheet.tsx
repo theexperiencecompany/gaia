@@ -1,7 +1,5 @@
+import { formatHour12 } from "@gaia/shared/utils";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import {
   type QueryClient,
   useMutation,
@@ -9,6 +7,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import { Button } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -19,7 +18,6 @@ import {
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   Switch,
   View,
@@ -33,6 +31,11 @@ import {
   NOTIFICATION_CHANNEL_META,
   type NotificationChannelMeta,
 } from "../constants/channels";
+import {
+  type QuietHoursEdge,
+  type QuietHoursEditor,
+  useQuietHoursEditor,
+} from "../hooks/use-quiet-hours-editor";
 import type {
   ChannelPlatform,
   ChannelPreferences,
@@ -40,7 +43,6 @@ import type {
   NotificationPreferences,
   PlatformLink,
   PlatformLinksResponse,
-  QuietHours,
 } from "../types/inapp-notification-types";
 import { NOTIFICATION_CHANNELS } from "../types/inapp-notification-types";
 
@@ -333,76 +335,54 @@ function SectionShell({ title, children }: SectionShellProps) {
   );
 }
 
-const QUIET_HOURS_QUERY_KEY = ["notification-quiet-hours"] as const;
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+const HOURS_PER_ROW = 6;
 
-type QuietHoursEdge = "start_hour" | "end_hour";
+const QUIET_HOURS_EDGES: { edge: QuietHoursEdge; label: string }[] = [
+  { edge: "start_hour", label: "From" },
+  { edge: "end_hour", label: "To" },
+];
 
-function hourToDate(hour: number): Date {
-  const d = new Date();
-  d.setHours(hour, 0, 0, 0);
-  return d;
-}
-
-function formatHourLabel(hour: number): string {
-  return hourToDate(hour).toLocaleString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+interface QuietHoursSectionProps {
+  editor: QuietHoursEditor;
 }
 
 /**
  * The daily window, on the user's clock, in which GAIA holds proactive pushes.
  * Always on; the user moves its edges in whole hours.
  */
-function QuietHoursSection() {
+function QuietHoursSection({ editor }: QuietHoursSectionProps) {
   const { spacing, fontSize } = useResponsive();
-  const queryClient = useQueryClient();
-  const [picker, setPicker] = useState<QuietHoursEdge | null>(null);
-  const quietQuery = useQuery<QuietHours, Error>({
-    queryKey: QUIET_HOURS_QUERY_KEY,
-    queryFn: () => inAppNotificationsApi.getQuietHours(),
-  });
-  const mutation = useMutation<QuietHours, Error, QuietHours>({
-    mutationFn: (next) => inAppNotificationsApi.updateQuietHours(next),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(QUIET_HOURS_QUERY_KEY, saved);
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to update quiet hours.");
-    },
-  });
-  const quiet = quietQuery.data;
+  const { quietHours, editingEdge } = editor;
 
-  const handleTimeChange = (
-    edge: QuietHoursEdge,
-    _evt: DateTimePickerEvent,
-    date?: Date,
-  ) => {
-    if (Platform.OS === "android") {
-      setPicker(null);
-    }
-    if (!date || !quiet) return;
-    const next: QuietHours = { ...quiet, [edge]: date.getHours() };
-    if (next.start_hour === next.end_hour) {
-      Alert.alert("Quiet hours", "Start and end must be different hours.");
-      return;
-    }
-    mutation.mutate(next);
-  };
+  if (editor.loadFailed) {
+    return (
+      <SectionShell title="Quiet Hours">
+        <View
+          style={{
+            alignItems: "center",
+            gap: spacing.sm,
+            paddingVertical: spacing.sm,
+          }}
+        >
+          <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
+            Couldn't load your quiet hours.
+          </Text>
+          <Button size="sm" variant="secondary" onPress={editor.retry}>
+            <Button.Label>Try again</Button.Label>
+          </Button>
+        </View>
+      </SectionShell>
+    );
+  }
 
-  if (!quiet) {
+  if (!quietHours) {
     return (
       <SectionShell title="Quiet Hours">
         <ActivityIndicator color="#00bbff" />
       </SectionShell>
     );
   }
-
-  const edges: { edge: QuietHoursEdge; label: string }[] = [
-    { edge: "start_hour", label: "From" },
-    { edge: "end_hour", label: "To" },
-  ];
 
   return (
     <SectionShell title="Quiet Hours">
@@ -419,14 +399,15 @@ function QuietHoursSection() {
           GAIA holds proactive messages during this window, on your clock
         </Text>
       </View>
-      {edges.map(({ edge, label }) => (
+      {QUIET_HOURS_EDGES.map(({ edge, label }) => (
         <View key={edge}>
           <View
             style={{ height: 1, backgroundColor: "rgba(255,255,255,0.06)" }}
           />
           <Pressable
-            onPress={() => setPicker(edge)}
-            disabled={mutation.isPending}
+            onPress={() => editor.edit(edge)}
+            disabled={editor.isSaving}
+            accessibilityState={{ selected: editingEdge === edge }}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -444,34 +425,61 @@ function QuietHoursSection() {
                 fontWeight: "600",
               }}
             >
-              {formatHourLabel(quiet[edge])}
+              {formatHour12(quietHours[edge])}
             </Text>
           </Pressable>
         </View>
       ))}
-      {picker !== null && (
-        <DateTimePicker
-          value={hourToDate(quiet[picker])}
-          mode="time"
-          minuteInterval={30}
-          is24Hour={false}
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={(evt, d) => handleTimeChange(picker, evt, d)}
-          themeVariant="dark"
-        />
-      )}
-      {Platform.OS === "ios" && picker !== null && (
-        <Pressable
-          onPress={() => setPicker(null)}
-          style={{ alignSelf: "flex-end", paddingVertical: spacing.xs }}
-        >
-          <Text style={{ color: "#00bbff", fontSize: fontSize.sm }}>Done</Text>
-        </Pressable>
+      {editingEdge !== null && (
+        <View style={{ paddingTop: spacing.xs }}>
+          <View
+            accessibilityRole="radiogroup"
+            style={{ flexDirection: "row", flexWrap: "wrap" }}
+          >
+            {HOURS.map((hour) => {
+              const isSelected = quietHours[editingEdge] === hour;
+              return (
+                <Pressable
+                  key={hour}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => editor.pickHour(hour)}
+                  style={{
+                    width: `${100 / HOURS_PER_ROW}%`,
+                    alignItems: "center",
+                    paddingVertical: spacing.xs,
+                    borderRadius: 8,
+                    backgroundColor: isSelected
+                      ? "rgba(0,187,255,0.15)"
+                      : "transparent",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs,
+                      fontWeight: isSelected ? "600" : "400",
+                      color: isSelected ? "#00bbff" : "#c5cad2",
+                    }}
+                  >
+                    {formatHour12(hour)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Pressable
+            onPress={editor.done}
+            style={{ alignSelf: "flex-end", paddingVertical: spacing.xs }}
+          >
+            <Text style={{ color: "#00bbff", fontSize: fontSize.sm }}>
+              Done
+            </Text>
+          </Pressable>
+        </View>
       )}
     </SectionShell>
   );
 }
-
 interface ChannelsSectionProps {
   links: Record<string, PlatformLink>;
   channels: ChannelPreferences;
@@ -610,9 +618,18 @@ export const NotificationPreferencesSheet =
         null,
       );
 
+      const quietHoursEditor = useQuietHoursEditor(isOpen);
+
+      // Every way the sheet closes runs through here, so an unsaved quiet-hours
+      // draft is committed on dismiss rather than dropped.
+      const handleOpenChange = (open: boolean) => {
+        if (!open) quietHoursEditor.dismiss();
+        setIsOpen(open);
+      };
+
       useImperativeHandle(ref, () => ({
         open: () => setIsOpen(true),
-        close: () => setIsOpen(false),
+        close: () => handleOpenChange(false),
       }));
 
       const prefsQuery = usePreferencesQuery(isOpen);
@@ -693,10 +710,10 @@ export const NotificationPreferencesSheet =
         [channelMutation],
       );
 
-      const handleConnect = useCallback(() => {
-        setIsOpen(false);
+      const handleConnect = () => {
+        handleOpenChange(false);
         router.push("/integrations");
-      }, [router]);
+      };
 
       const categoryEntries = useMemo(
         () => (prefs ? Object.entries(prefs.categories) : []),
@@ -708,7 +725,7 @@ export const NotificationPreferencesSheet =
         : null;
 
       return (
-        <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+        <BottomSheet isOpen={isOpen} onOpenChange={handleOpenChange}>
           <BottomSheet.Portal>
             <BottomSheet.Overlay />
             <BottomSheet.Content
@@ -759,7 +776,7 @@ export const NotificationPreferencesSheet =
                   </View>
                 ) : prefs ? (
                   <>
-                    <QuietHoursSection />
+                    <QuietHoursSection editor={quietHoursEditor} />
 
                     <ChannelsSection
                       links={platformLinks}
@@ -825,7 +842,7 @@ export const NotificationPreferencesSheet =
                     alignItems: "center",
                     paddingVertical: spacing.sm,
                   }}
-                  onPress={() => setIsOpen(false)}
+                  onPress={() => handleOpenChange(false)}
                 >
                   <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
                     Close
