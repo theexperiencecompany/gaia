@@ -17,11 +17,13 @@ user sees their own message, no answer, and no explanation — exactly the
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+import json
 
 import fakeredis.aioredis
 from langgraph.errors import GraphRecursionError
 import pytest
 
+from app.constants.cache import STREAM_PROGRESS_PREFIX
 from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
 from app.services.chat.stream import _handle_stream_error
@@ -91,3 +93,16 @@ class TestStreamErrorDelivery:
         error_frames = [f for f in frames if '"error"' in f]
         assert len(error_frames) == 1, frames
         assert user_error in error_frames[0]
+
+    @pytest.mark.regression
+    async def test_the_error_survives_a_progress_record_that_expired_mid_turn(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        """A turn silent past STREAM_TTL loses its progress key; the real error must still reach the client."""
+        await StreamManager.start_stream(STREAM_ID, "conv-1", "user-1")
+        await fake_redis.delete(f"{STREAM_PROGRESS_PREFIX}{STREAM_ID}")
+
+        user_error = await _handle_stream_error(STREAM_ID, Exception("provider timed out"))
+        frames = [frame async for frame in StreamManager.subscribe_stream(STREAM_ID)]
+
+        assert frames == [f"data: {json.dumps({'error': user_error})}\n\n"]
