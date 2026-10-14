@@ -4,50 +4,25 @@
 // starts and lists tools → save → offer to bring the tunnel up.
 
 import { basename } from "node:path";
+import {
+  type AddOptions,
+  buildConfigFromFlags,
+  slugify,
+  tokenizeCommand,
+} from "@gaia/shared/bridge-core/config-builders";
+import {
+  deregisterConfiguredServer,
+  registerConfiguredServers,
+} from "@gaia/shared/bridge-core/register";
 import { loadConfig, upsertServer } from "./config.js";
 import type { ServerConfig } from "./config.types.js";
 import { FILESYSTEM_SERVER_KEY } from "./constants.js";
 import { isPaired, runLogin } from "./login.js";
 import { ask, askSecret, choose, confirm } from "./prompt.js";
-import { testServer } from "./servers.js";
+import { assertLoopbackUrl, testServer } from "./servers.js";
 import { runUp } from "./up.js";
 
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-}
-
-/** Split a command line into command + args, honoring single/double quotes. */
-function tokenizeCommand(line: string): {
-  command: string;
-  args: string[];
-} {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: '"' | "'" | null = null;
-  for (const ch of line.trim()) {
-    if (quote) {
-      if (ch === quote) quote = null;
-      else current += ch;
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (/\s/.test(ch)) {
-      if (current) {
-        tokens.push(current);
-        current = "";
-      }
-    } else {
-      current += ch;
-    }
-  }
-  if (current) tokens.push(current);
-  const [command, ...args] = tokens;
-  if (!command) throw new Error("Empty command");
-  return { command, args };
-}
+export type { AddOptions };
 
 /** Best-guess display name from the command line, e.g. "npx -y my-server@1.2" → "my-server". */
 function suggestNameFromCommand(command: string, args: string[]): string {
@@ -167,11 +142,59 @@ async function buildStdioConfig(): Promise<ServerConfig> {
   return { type: "stdio", key, name, command, args, env };
 }
 
+async function collectHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  if (
+    !(await confirm(
+      "Does the server need request headers (e.g. Authorization)?",
+      false,
+    ))
+  ) {
+    return headers;
+  }
+  console.info("Enter each header's name; leave blank when done.");
+  for (;;) {
+    const name = (await ask("  Header name")).trim();
+    if (!name) break;
+    if (name in headers) {
+      console.info("  Already added.");
+      continue;
+    }
+    headers[name] = await promptForVar(name);
+  }
+  return headers;
+}
+
 async function buildUrlConfig(): Promise<ServerConfig> {
   const url = await ask("Server URL (e.g. http://localhost:3000/mcp)");
   if (!url) throw new Error("a URL is required");
+  // Fail before naming: a url server must point at this machine.
+  assertLoopbackUrl(url);
+  const headers = await collectHeaders();
+  if (Object.keys(headers).length > 0 && new URL(url).protocol === "http:") {
+    // Loopback isolates the traffic from the network but not from other
+    // local processes — sending secrets over it must be an explicit choice.
+    console.info(
+      "\nHeads up: these headers travel unencrypted over local HTTP. " +
+        "Anyone else on this machine (or the receiving server's logs) can read them.",
+    );
+    if (
+      !(await confirm(
+        "Send these headers over unencrypted HTTP anyway?",
+        false,
+      ))
+    ) {
+      throw new Error("aborted — use an https: URL or drop the headers");
+    }
+  }
   const { name, key } = await askName(suggestNameFromUrl(url));
-  return { type: "url", key, name, url };
+  return {
+    type: "url",
+    key,
+    name,
+    url,
+    ...(Object.keys(headers).length ? { headers } : {}),
+  };
 }
 
 async function verifyServer(config: ServerConfig): Promise<boolean> {
@@ -209,17 +232,44 @@ async function verifyServer(config: ServerConfig): Promise<boolean> {
   }
 }
 
-export async function runAdd(): Promise<void> {
+async function addNonInteractive(opts: AddOptions): Promise<void> {
+  const config = buildConfigFromFlags(opts);
+  let tools: string[];
+  try {
+    tools = await testServer(config);
+  } catch (e) {
+    throw new Error(
+      `Could not start '${config.key}': ${e instanceof Error ? e.message : e}`,
+    );
+  }
+  upsertServer(config);
+  await registerConfiguredServers();
+  console.info(
+    `Saved '${config.key}' (${tools.length} tools) and registered with GAIA. A running 'gaia bridge up' daemon serves it automatically; otherwise start one.`,
+  );
+}
+
+export async function runAdd(opts: AddOptions = {}): Promise<void> {
   if (!isPaired()) {
+    if (opts.type) {
+      throw new Error(
+        "This device isn't paired yet. Run `gaia bridge login` on it first.",
+      );
+    }
     console.info(
-      "This device isn't paired with GAIA yet — let's do that first.",
+      "This device isn't paired with GAIA yet, let's do that first.",
     );
     await runLogin();
   }
 
-  const kind = await choose("How does your MCP server run?", [
-    "A command starts it (stdio) — npx / uvx / docker / python …",
-    "It's already running at a local URL — e.g. http://localhost:3000/mcp",
+  if (opts.type) {
+    await addNonInteractive(opts);
+    return;
+  }
+
+  const kind = await choose("What do you want to connect?", [
+    "A command starts an MCP server (stdio) — npx / uvx / docker / python …",
+    "An MCP server already running at a local URL — e.g. http://localhost:3000/mcp",
   ]);
   const config = kind === 0 ? await buildStdioConfig() : await buildUrlConfig();
 
@@ -228,9 +278,68 @@ export async function runAdd(): Promise<void> {
   upsertServer(config);
   console.info(`\nSaved '${config.key}'.`);
 
-  if (await confirm("Connect to GAIA now (gaia bridge up)?")) {
+  // Register with the cloud now so the integration is created and its tools get
+  // warm-connected — even if the user doesn't start a tunnel from here.
+  try {
+    await registerConfiguredServers();
+    console.info("Registered with GAIA.");
+  } catch (e) {
+    console.error(
+      `Could not register with GAIA (will retry on \`gaia bridge up\`): ${e instanceof Error ? e.message : e}`,
+    );
+  }
+
+  if (await confirm("Keep this device connected in the background now?")) {
     await runUp();
   } else {
     console.info("Run `gaia bridge up` whenever you're ready.");
   }
+}
+
+function serverLabel(server: ServerConfig): string {
+  const where =
+    server.type === "url"
+      ? server.url
+      : server.type === "stdio"
+        ? server.command
+        : server.allow.join(", ");
+  return `${server.name} — ${server.type} (${where})`;
+}
+
+// `gaia bridge remove` — pick a configured server to remove. A bare key still
+// works non-interactively (`gaia bridge remove <key>`); with no key we show a
+// menu of what this device exposes.
+export async function runRemove(key?: string): Promise<void> {
+  if (key) {
+    const removed = await deregisterConfiguredServer(key);
+    console.info(
+      removed
+        ? `Removed '${key}' from this device and GAIA.`
+        : `No server '${key}'.`,
+    );
+    return;
+  }
+
+  const servers = loadConfig().servers;
+  if (servers.length === 0) {
+    console.info("No servers configured — nothing to remove.");
+    return;
+  }
+
+  const index = await choose(
+    "Which server do you want to remove?",
+    servers.map(serverLabel),
+  );
+  const chosen = servers[index];
+  if (!chosen) return;
+
+  if (!(await confirm(`Remove '${chosen.key}'?`, false))) {
+    console.info("Left it in place.");
+    return;
+  }
+
+  await deregisterConfiguredServer(chosen.key);
+  console.info(
+    `Removed '${chosen.key}'. The tunnel stops serving it right away, and GAIA drops it too.`,
+  );
 }

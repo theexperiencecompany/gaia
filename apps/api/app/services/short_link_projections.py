@@ -2,12 +2,12 @@
 
 One registry, one rule: a resolver reads its target scoped to the link's OWNER
 (never a viewer) and maps it onto that type's public view model in
-``app/models/short_link_models.py``. The view models are ``extra="forbid"``, so
+app/models/short_link_models.py. The view models are extra="forbid", so
 a field reaches a recipient only when a projector here names it explicitly —
 nothing on the stored document leaks by default.
 
 The same projector is the ownership check at mint time: a target the user does
-not own projects to ``None``, so no one can mint a link to someone else's work.
+not own projects to None, so no one can mint a link to someone else's work.
 """
 
 import asyncio
@@ -22,7 +22,9 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.db.repositories.workflows import workflow_repository
 from app.models.short_link_models import (
     PublicBriefing,
+    PublicBriefingEvent,
     PublicBriefingItem,
+    PublicBriefingPayload,
     PublicBriefingSection,
     PublicSessionArtifact,
     PublicShortLinkView,
@@ -30,8 +32,8 @@ from app.models.short_link_models import (
     PublicWorkflowRun,
     ShortLinkTargetType,
 )
+from app.services.canvas_markdown import deliverable_markdown
 from app.services.storage import ArtifactInfo, resolve_session_path, stat_artifact
-from app.services.todos.canvas_deliverable import project_canvas_deliverable
 
 _DEFAULT_CONTENT_TYPE = "application/octet-stream"
 # Text files up to this size ship in the public view so the page renders them
@@ -41,9 +43,12 @@ PUBLIC_TEXT_MAX_BYTES = 2 * 1024 * 1024
 
 
 def session_artifact_target_id(conversation_id: str, path: str) -> str:
-    """A session artifact has no id of its own: it is the file at ``path`` under
-    one conversation's ``artifacts/``. Conversation ids are path-safe (no ``/``),
-    so the first ``/`` is always the separator ``_locate_session_artifact`` splits on."""
+    """Return the target id of the file at path under one conversation's artifacts/.
+
+    A session artifact has no id of its own. Conversation ids are path-safe (no
+    /), so the first / is always the separator _locate_session_artifact
+    splits on.
+    """
     return f"{conversation_id}/{path}"
 
 
@@ -55,7 +60,7 @@ async def _project_todo(user_id: str, target_id: str) -> PublicTodoDeliverable |
         target_type=ShortLinkTargetType.TODO_DELIVERABLE,
         title=todo.title,
         completed=todo.completed,
-        content=project_canvas_deliverable(todo.canvas_content or ""),
+        content=deliverable_markdown(todo.canvas_content or ""),
     )
 
 
@@ -67,24 +72,32 @@ async def _project_briefing(user_id: str, target_id: str) -> PublicBriefing | No
     return PublicBriefing(
         target_type=ShortLinkTargetType.BRIEFING,
         kind=briefing.kind,
-        kicker=payload.kicker,
-        date=payload.date,
-        headline=payload.headline,
-        lede=payload.lede,
-        stats=payload.stats,
-        sections=[
-            PublicBriefingSection(
-                numeral=section.numeral,
-                title=section.title,
-                items=[
-                    PublicBriefingItem(text=item.text, kind=item.kind) for item in section.items
-                ],
-            )
-            for section in payload.sections
-        ],
-        mood=payload.mood,
-        caption=payload.caption,
-        hue=payload.hue,
+        edition_image_url=briefing.edition_image_url,
+        payload=PublicBriefingPayload(
+            kicker=payload.kicker,
+            date=payload.date,
+            headline=payload.headline,
+            lede=payload.lede,
+            stats=payload.stats,
+            sections=[
+                PublicBriefingSection(
+                    numeral=section.numeral,
+                    title=section.title,
+                    items=[
+                        PublicBriefingItem(text=item.text, kind=item.kind, link=item.link)
+                        for item in section.items
+                    ],
+                )
+                for section in payload.sections
+            ],
+            mood=payload.mood,
+            caption=payload.caption,
+            hue=payload.hue,
+            calendar=[
+                PublicBriefingEvent(date=event.date, start=event.start, title=event.title)
+                for event in payload.calendar
+            ],
+        ),
     )
 
 
@@ -95,9 +108,9 @@ class _SessionArtifactFile:
 
 
 async def _locate_session_artifact(user_id: str, target_id: str) -> _SessionArtifactFile | None:
-    """The owner's artifact file behind ``target_id``, or ``None`` once it is gone.
+    """Return the owner's artifact file behind target_id, or None once it is gone.
 
-    Raises ``JuiceFSUnavailable`` when workspace storage is offline — that is an
+    Raises JuiceFSUnavailable when workspace storage is offline — that is an
     outage, not a missing file, and the caller must say so.
     """
     conversation_id, _, path = target_id.partition("/")
@@ -111,7 +124,7 @@ async def _locate_session_artifact(user_id: str, target_id: str) -> _SessionArti
 
 
 async def session_artifact_file(user_id: str, target_id: str) -> Path | None:
-    """The host path the public file route streams, or ``None`` once it is gone."""
+    """Return the host path the public file route streams, or None once it is gone."""
     located = await _locate_session_artifact(user_id, target_id)
     return located.host_path if located else None
 
@@ -165,6 +178,8 @@ _PROJECTORS: dict[ShortLinkTargetType, Projector] = {
 async def project_target(
     target_type: ShortLinkTargetType, user_id: str, target_id: str
 ) -> PublicShortLinkView | None:
-    """The public view of ``target_id`` as owned by ``user_id``, or ``None``
-    when that owner has no such target."""
+    """Return the public view of target_id as user_id owns it.
+
+    None when that owner has no such target.
+    """
     return await _PROJECTORS[target_type](user_id, target_id)

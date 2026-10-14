@@ -3,9 +3,21 @@ import json
 from pathlib import Path
 import sys
 
+# SettingsGroup(...) keyword -> JSON key, for the keywords whose value is a literal
+_CONSTANT_KEYWORDS = {
+    "name": "name",
+    "description": "description",
+    "affected_features": "affectedFeatures",
+    "required_in_prod": "requiredInProd",
+    "all_required": "allRequired",
+    "docs_url": "docsUrl",
+    "alternative_group": "alternativeGroup",
+}
+
 
 def extract_settings_validator(file_path):
-    with Path(file_path).open() as f:
+    # dev tool that parses the settings module the operator points it at; no trust boundary crossed
+    with Path(file_path).open() as f:  # NOSONAR pythonsecurity:S8707
         tree = ast.parse(f.read())
 
     groups = []
@@ -20,40 +32,15 @@ def extract_settings_validator(file_path):
                     "variables": [],
                 }
 
-                # Parse arguments
                 for keyword in node.keywords:
                     key = keyword.arg
                     value = keyword.value
-
-                    if key == "name":
-                        if isinstance(value, ast.Constant):
-                            group["name"] = value.value
-                    elif key == "description":
-                        if isinstance(value, ast.Constant):
-                            group["description"] = value.value
-                    elif key == "affected_features":
-                        if isinstance(value, ast.Constant):
-                            group["affectedFeatures"] = value.value
-                    elif key == "required_in_prod":
-                        if isinstance(value, ast.Constant):
-                            group["requiredInProd"] = value.value
-                    elif key == "all_required":
-                        if isinstance(value, ast.Constant):
-                            group["allRequired"] = value.value
-                    elif key == "docs_url":
-                        if isinstance(value, ast.Constant):
-                            group["docsUrl"] = value.value
-                    elif key == "alternative_group":
-                        if isinstance(value, ast.Constant):
-                            group["alternativeGroup"] = value.value
-                    elif key == "keys":
-                        # List of strings
-                        if isinstance(value, ast.List):
-                            keys = []
-                            for elt in value.elts:
-                                if isinstance(elt, ast.Constant):
-                                    keys.append(elt.value)
-                            group["_keys"] = keys
+                    if key in _CONSTANT_KEYWORDS and isinstance(value, ast.Constant):
+                        group[_CONSTANT_KEYWORDS[key]] = value.value
+                    elif key == "keys" and isinstance(value, ast.List):
+                        group["_keys"] = [
+                            elt.value for elt in value.elts if isinstance(elt, ast.Constant)
+                        ]
 
                 groups.append(group)
 
@@ -63,8 +50,16 @@ def extract_settings_validator(file_path):
     return groups
 
 
+def _field_default(item: ast.AnnAssign) -> tuple[bool, object]:
+    """Whether a settings field has a default (so needs no user input), and its literal value."""
+    # an Optional[...] annotation alone is not a default: pydantic v2 still requires the field
+    default_val = item.value.value if isinstance(item.value, ast.Constant) else None
+    return item.value is not None, default_val
+
+
 def extract_settings(file_path):
-    with Path(file_path).open() as f:
+    # dev tool that parses the settings module the operator points it at; no trust boundary crossed
+    with Path(file_path).open() as f:  # NOSONAR pythonsecurity:S8707
         tree = ast.parse(f.read())
 
     required_in_dev = set()
@@ -72,63 +67,20 @@ def extract_settings(file_path):
 
     class SettingsVisitor(ast.NodeVisitor):
         def visit_ClassDef(self, node):
-            # DevelopmentSettings or CommonSettings
-            # We treat CommonSettings variables as required unless overridden/optional in DevelopmentSettings
-            # But simpler logic: Look at DevelopmentSettings. If a field has Optional[...] type or None default, it's optional.
-
-            # Note: We need to traverse CommonSettings too because DevelopmentSettings inherits from it.
-            # But the 'field info' logic in env-parser.ts relied on REQUIRED_IN_DEV set manually.
-            # Here we want to know: "Is it required for the app to start in DEV mode?"
-
-            if node.name in ["CommonSettings", "DevelopmentSettings"]:
-                for body_item in node.body:
-                    if isinstance(body_item, ast.AnnAssign):
-                        target = body_item.target
-                        if isinstance(target, ast.Name):
-                            var_name = target.id
-
-                            # Check annotation for Optional
-                            is_optional = False
-                            # Optional[str] is usually Subscript(value=Name(Optional), slice=...)
-                            # Or Union[str, None]
-                            if isinstance(body_item.annotation, ast.Subscript):
-                                if (
-                                    isinstance(body_item.annotation.value, ast.Name)
-                                    and body_item.annotation.value.id == "Optional"
-                                ):
-                                    is_optional = True
-
-                            # Check default value
-                            has_default = body_item.value is not None
-                            default_val = None
-                            if has_default:
-                                if isinstance(body_item.value, ast.Constant):
-                                    default_val = body_item.value.value
-                                    if default_val is None:
-                                        is_optional = True
-                                # If default is not None, effectively optional (has fallback)
-                                # But we want to know if USER INPUT is required.
-                                # If default is "", maybe required?
-
-                            if node.name == "DevelopmentSettings":
-                                if is_optional or has_default:
-                                    # Not strictly required input
-                                    required_in_dev.discard(var_name)
-
-                                    # Store default if string
-                                    if isinstance(default_val, str):
-                                        defaults[var_name] = default_val
-                                else:
-                                    # Required in Dev?
-                                    # If it was in CommonSettings as required, it stays required.
-                                    pass
-
-                            elif node.name == "CommonSettings":
-                                # Assume required unless overridden in Dev
-                                if not (is_optional or has_default):
-                                    required_in_dev.add(var_name)
-                                elif isinstance(default_val, str):
-                                    defaults[var_name] = default_val
+            # CommonSettings fields are required unless DevelopmentSettings makes them optional
+            if node.name not in ("CommonSettings", "DevelopmentSettings"):
+                return
+            for item in node.body:
+                if not (isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)):
+                    continue
+                var_name = item.target.id
+                needs_no_input, default_val = _field_default(item)
+                if isinstance(default_val, str):
+                    defaults[var_name] = default_val
+                if node.name == "CommonSettings" and not needs_no_input:
+                    required_in_dev.add(var_name)
+                elif node.name == "DevelopmentSettings" and needs_no_input:
+                    required_in_dev.discard(var_name)
 
     SettingsVisitor().visit(tree)
     return required_in_dev, defaults

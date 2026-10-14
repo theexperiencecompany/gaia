@@ -1,9 +1,9 @@
 """Unit tests for PlatformLinkService.
 
-The service now delegates persistence to ``user_repository`` (link/unlink/lookup
+The service now delegates persistence to user_repository (link/unlink/lookup
 behaviour against real Mongo is covered by the UserRepository contract tests).
 These tests mock the repository singleton and cover the service's own logic:
-conflict detection, profile assembly, the legacy dict it returns to bot consumers,
+conflict detection, profile assembly, the user document it returns to bot consumers,
 and the get_linked_platforms filtering.
 """
 
@@ -23,7 +23,6 @@ from app.models.platform_models import (
     PendingPlatformRegistrationDocument,
 )
 from app.models.user_models import UserDocument
-from app.services.analytics_service import AnalyticsEvents
 from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
@@ -34,6 +33,7 @@ from app.services.platform_link_service import (
 )
 from app.utils.errors import AppError, create_error
 from app.workers.queue import TRACE_ID_KWARG
+from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import get_trace_id, log, log_context
 
 
@@ -58,7 +58,7 @@ def sample_user_id():
 
 
 class _FakeArqPool:
-    """ARQ pool stand-in that records ``enqueue_job`` exactly as it was called."""
+    """ARQ pool stand-in that records enqueue_job exactly as it was called."""
 
     def __init__(self):
         self.jobs: list[tuple] = []
@@ -133,22 +133,28 @@ class TestPlatform:
         assert set(Platform.values()) == {"discord", "imessage", "slack", "telegram", "whatsapp"}
 
 
-class TestGetUserByPlatformId:
-    async def test_finds_user_returns_legacy_dict(self, mock_repo, sample_user_id):
-        mock_repo.get_by_platform_id.return_value = _user(
-            id=sample_user_id, platform_links={"discord": {"id": "discord123"}}
-        )
+class TestEnsureLinkable:
+    async def test_checks_exactly_this_platform_account_and_this_user(
+        self, mock_repo, sample_user_id
+    ):
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
 
-        result = await PlatformLinkService.get_user_by_platform_id("discord", "discord123")
+        await PlatformLinkService.ensure_linkable(sample_user_id, "discord", "discord456")
 
-        assert result is not None
-        assert result["email"] == "test@example.com"
-        assert result["_id"] == sample_user_id  # string id for bot consumers
-        mock_repo.get_by_platform_id.assert_awaited_once_with("discord", "discord123")
+        mock_repo.get_by_platform_id.assert_awaited_once_with("discord", "discord456")
+        mock_repo.get.assert_awaited_once_with(sample_user_id)
 
-    async def test_returns_none_when_not_found(self, mock_repo):
-        mock_repo.get_by_platform_id.return_value = None
-        assert await PlatformLinkService.get_user_by_platform_id("slack", "nope") is None
+    async def test_the_owner_relinking_the_same_account_is_no_conflict(
+        self, mock_repo, sample_user_id
+    ):
+        owner = _user(id=sample_user_id, platform_links={"discord": {"id": "discord456"}})
+        mock_repo.get_by_platform_id.return_value = owner
+        mock_repo.get.return_value = owner
+        mock_repo.link_platform.return_value = owner
+
+        result = await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
+
+        assert result.is_new_link is False
 
 
 class TestLinkAccount:
@@ -303,9 +309,7 @@ class TestLinkSideEffects:
     async def test_concurrent_new_links_enqueue_one_hello(
         self, mock_repo, sample_user_id, day_zero_pool
     ):
-        """Two links landing together both see no prior link; the hello must
-        still be queued once, or two workers each pass the not-yet-sent guard
-        and the user is greeted twice."""
+        """Two links landing together still queue the hello once."""
         mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
         mock_repo.link_platform.return_value = _user(id=sample_user_id)
 
@@ -446,9 +450,7 @@ class TestUnlinkAccount:
     async def test_a_pending_number_that_differs_is_released_too(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """A re-run of connect registers a second number while the first stays
-        linked. Deleting that pending record without releasing its number
-        stranded the seat where even the sweep could not find it."""
+        """Deleting a pending record without releasing its number used to strand the seat where even the sweep could not find it."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -473,9 +475,7 @@ class TestUnlinkAccount:
     async def test_a_number_photon_would_not_release_stays_tracked_for_the_sweep(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """The sweep only scans pending records. Deleting the record after a
-        failed release left the linked number registered on Photon with nothing
-        in GAIA referencing it, so it could never be retried."""
+        """The sweep only scans pending records — deleting one after a failed release orphans the number on Photon forever."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -508,8 +508,7 @@ class TestUnlinkAccount:
     async def test_a_pending_record_for_the_linked_number_is_released_once(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """The linked number is usually also the pending one; releasing it twice
-        would hand Photon a second delete for a seat it no longer holds."""
+        """The linked number is usually also the pending one; releasing it twice would hand Photon a delete for a seat it no longer holds."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -529,8 +528,7 @@ class TestUnlinkAccount:
     async def test_a_second_unreleasable_number_is_named_rather_than_dropped(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """Only one number fits on the pending record. The other cannot be
-        retried by the sweep, so it has to be shouted about rather than lost."""
+        """Only one number fits on the pending record; the other can't be retried by the sweep, so it must be reported, not lost."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -599,11 +597,7 @@ class TestUnlinkAccount:
     async def test_each_release_is_attributed_to_the_user_unlinking(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """The release helper is handed the user id, not just the number.
-
-        It is what the audit line and the failure warning are keyed on — a
-        release that cannot say whose seat it freed is unauditable.
-        """
+        """The release helper is handed the user id, not just the number — the audit line and failure warning key on it."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -799,11 +793,7 @@ class TestReapAbandonedImessageRegistrations:
     async def test_a_number_that_is_now_linked_is_never_released(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """The link landed after the record was written — releasing now kills a live link.
-
-        Two records, linked one first: the sweep must skip it and keep going, not
-        stop at the first skip and leave every later seat allocated.
-        """
+        """With two pending records, the sweep must skip the one now linked and keep going, not stop at the first skip."""
         mock_pending_repo.find_older_than.return_value = [
             _pending(sample_user_id, "+15551234567"),
             _pending(sample_user_id, "+15550000001"),
@@ -970,8 +960,7 @@ class TestStartPlatformConnect:
         assert result.model_fields_set == {"auth_url", "auth_type", "instructions", "action_link"}
 
     async def test_unconfigured_discord_is_501_even_when_slack_oauth_exists(self):
-        """An unconfigured platform must raise, not fall into the other
-        platform's OAuth branch — the and/or gate keeps each flow its own."""
+        """An unconfigured platform must raise, not fall into the other platform's OAuth branch."""
         with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = "client_slack"
@@ -1026,8 +1015,7 @@ class TestStartPlatformConnect:
         assert result.model_fields_set == {"auth_url", "auth_type", "instructions", "action_link"}
 
     async def test_imessage_without_phone_is_a_422_carrying_photon_context(self):
-        """The why/fix are the only explanation the caller gets for why a phone
-        is mandatory — they must arrive intact, not defaulted away."""
+        """The why/fix fields are the caller's only explanation that a phone is mandatory — they must arrive intact."""
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             pytest.raises(AppError) as exc_info,
@@ -1044,7 +1032,9 @@ class TestStartPlatformConnect:
 
 
 class TestDisconnectPlatformAccount:
-    async def test_success_clears_bot_cache_and_audits(self, sample_user_id):
+    async def test_success_clears_bot_cache_and_audits(
+        self, sample_user_id: str, posthog_events: list[dict[str, object]]
+    ) -> None:
         link_entry = {"platformUserId": "DISC999"}
         unlink_result = DisconnectPlatformResponse(status="disconnected", platform="discord")
         with (
@@ -1059,7 +1049,6 @@ class TestDisconnectPlatformAccount:
                 return_value=unlink_result,
             ) as mock_unlink,
             patch("app.services.platform_link_service.redis_cache") as mock_cache,
-            patch("app.services.platform_link_service.capture_context_event") as mock_capture,
             patch("app.services.platform_link_service.log") as mock_log,
         ):
             mock_cache.client = AsyncMock()
@@ -1075,9 +1064,12 @@ class TestDisconnectPlatformAccount:
             actor=sample_user_id,
             provider="discord",
         )
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "discord"}
-        )
+        # The agent tool reaches this from an ARQ executor run with no request
+        # context, so the owner must be named explicitly.
+        [event] = posthog_events
+        assert event["event"] == IntegrationDisconnected.event
+        assert event["distinct_id"] == sample_user_id
+        assert event["properties"]["integration_id"] == "discord"
 
     async def test_never_linked_platform_is_a_404_not_a_silent_noop(self, sample_user_id):
         with (

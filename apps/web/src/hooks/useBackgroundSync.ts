@@ -39,10 +39,9 @@ export const useBackgroundSync = () => {
       return;
     }
 
-    // Guards the post-await writes below: an in-flight sync that resolves
-    // after this effect cleaned up must not touch component state. Store
-    // flags stay unconditional — they record global sync facts that outlive
-    // this component.
+    // Guards the post-await writes below: a sync that resolves after this
+    // effect cleaned up must not touch component state. Store flags stay
+    // unconditional — they record global sync facts that outlive this component.
     let cancelled = false;
 
     const runSync = async () => {
@@ -54,7 +53,8 @@ export const useBackgroundSync = () => {
         setIsSyncing(true);
         setError(null);
         setSyncError(null);
-        await batchSyncConversations();
+        // Mount, the interval, focus and reconnect all fire with no user action.
+        await batchSyncConversations({ background: true });
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to sync conversations";

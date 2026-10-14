@@ -8,13 +8,15 @@ This module defines Pydantic models for:
 """
 
 from datetime import UTC, datetime
+import secrets
 from typing import Literal, TypedDict, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
+from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX, ConnectMode
 from app.db.repositories.base import MongoDocument, UserScopedDocument
-from app.helpers.integration_helpers import generate_integration_slug
+from app.helpers.slug_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent, OAuthIntegration
 
@@ -26,12 +28,94 @@ AuthType = Literal["none", "oauth", "bearer"]
 # ("added, never authenticated") and from the absence of a record entirely.
 UserIntegrationStatus = Literal["created", "connected", "expired"]
 
+IntegrationAccountStatus = Literal["connected", "expired"]
 
-class IntegrationTool(BaseModel):
+
+def new_account_id() -> str:
+    """Mint GAIA's own id for a connected account, independent of the provider that holds it."""
+    return f"{INTEGRATION_ACCOUNT_ID_PREFIX}{secrets.token_hex(8)}"
+
+
+class IntegrationAccount(BaseModel):
+    """One account the user linked to an integration; id is GAIA's, connected_account_id the provider's."""
+
+    id: str = Field(min_length=1)
+    # The provider's handle for the account (a Composio connected account); only provider calls use it.
+    connected_account_id: str
+    # Who the account is on the provider (email, handle, workspace), from the
+    # integration's metadata_config; empty when the provider exposes none.
+    identity: dict[str, str] = Field(default_factory=dict)
+    label: str
+    nickname: str | None = None
+    status: IntegrationAccountStatus = "connected"
+    connected_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expired_at: datetime | None = None
+    expired_reason: str | None = None
+
+    @property
+    def display_name(self) -> str:
+        return self.nickname or self.label
+
+
+class StoredIntegrationTool(BaseModel):
     """Tool metadata for frontend display (not used by LLM)."""
 
     name: str
     description: str | None = None
+
+
+class IntegrationCapability(BaseModel):
+    """One connected integration's tools, as offered to follow-up action generation."""
+
+    name: str
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
+
+
+class UserIntegrationCapabilities(BaseModel):
+    """Tool names and per-integration capabilities for a user's follow-up suggestions."""
+
+    integration_names: list[str] = Field(default_factory=list)
+    tool_names: list[str] = Field(default_factory=list)
+    capabilities: dict[str, IntegrationCapability] = Field(default_factory=dict)
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "Whether a connected integration was skipped because it could not be "
+            "resolved; such a result is never cached"
+        ),
+    )
+
+
+class McpToolsRollupEntry(BaseModel):
+    """One integration's entry in the global MCP tool roll-up."""
+
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
+    name: str | None = None
+    icon_url: str | None = None
+
+
+class UserToolNamespaces(BaseModel):
+    """The tool namespaces a user can search, as resolved from their connected integrations."""
+
+    namespaces: set[str] = Field(default_factory=set)
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "Whether a connected integration was skipped because it could not be "
+            "resolved; such a result is never cached"
+        ),
+    )
+
+
+class PublicIntegrationSearchHit(BaseModel):
+    """One semantic-search hit over public integrations (``search_public_integrations``)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    integration_id: str
+    relevance_score: float
+    # Read by retrieve_tools to label its integration: entries; the store does not return it yet.
+    name: str | None = None
 
 
 class IntegrationToolsSlice(BaseModel):
@@ -39,7 +123,7 @@ class IntegrationToolsSlice(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    tools: list[IntegrationTool] = Field(default_factory=list)
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
 
 
 class IntegrationToolsRecord(BaseModel):
@@ -50,7 +134,7 @@ class IntegrationToolsRecord(BaseModel):
     integration_id: str
     name: str | None = None
     icon_url: str | None = None
-    tools: list[IntegrationTool] = Field(default_factory=list)
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
 
 
 class ComposioConfigDoc(BaseModel):
@@ -102,15 +186,14 @@ class Integration(MongoDocument):
     mcp_config: MCPConfig | None = None
     composio_config: ComposioConfigDoc | None = None
 
-    # Legacy top-level auth mirror. mcp_config is authoritative; these duplicate
-    # its auth flags at the document root for older documents. IntegrationResolver
-    # reconciles them against mcp_config (and self-heals drift). Defaults match the
-    # historical ``.get("requires_auth", False)`` / ``.get("auth_type", "none")`` reads.
+    # Legacy top-level auth mirror: mcp_config is authoritative, these duplicate
+    # its flags for older documents (IntegrationResolver reconciles and self-heals
+    # drift). Defaults match the historical .get("requires_auth"/"auth_type") reads.
     requires_auth: bool = False
     auth_type: AuthType | None = None
 
     # Frontend display metadata
-    tools: list[IntegrationTool] = Field(
+    tools: list[StoredIntegrationTool] = Field(
         default_factory=list, description="Tool list for frontend display only"
     )
     icon_url: str | None = Field(None, description="Favicon URL fetched from MCP server subdomain")
@@ -187,6 +270,15 @@ class UserIntegration(BaseModel):
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
 
+class ConnectStep(BaseModel):
+    """A connect connect_integration starts; account is the expired one a reconnect signs back in."""
+
+    model_config = ConfigDict(frozen=True)
+
+    mode: ConnectMode
+    account: IntegrationAccount | None = None
+
+
 class UserIntegrationDocument(UserScopedDocument):
     """Storage model for the ``user_integrations`` collection — one document per
     ``(user_id, integration_id)`` (unique index). The Mongo ``_id`` (ObjectId) is
@@ -198,10 +290,20 @@ class UserIntegrationDocument(UserScopedDocument):
     connected_at: datetime | None = None
     expired_at: datetime | None = None
     expired_reason: str | None = None
-    # Composio's connected-account nanoid (``ca_...``). Recorded so a dead or
-    # stale account can be addressed directly — revoked, deleted, or inspected —
-    # without listing every account for the user first.
-    connected_account_id: str | None = None
+    # Composio integrations only: every connected account, oldest first, and the
+    # GAIA id of the one tools act as when the caller names none.
+    accounts: list[IntegrationAccount] = Field(default_factory=list)
+    primary_account_id: str | None = None
+
+    def find_account(self, account_id: str) -> IntegrationAccount | None:
+        """The account GAIA knows by account_id."""
+        return next((a for a in self.accounts if a.id == account_id), None)
+
+    def find_provider_account(self, connected_account_id: str) -> IntegrationAccount | None:
+        """The account the provider knows by connected_account_id (webhooks, callbacks, errors)."""
+        return next(
+            (a for a in self.accounts if a.connected_account_id == connected_account_id), None
+        )
 
 
 class UserIntegrationUpdate(BaseModel):
@@ -213,7 +315,6 @@ class UserIntegrationUpdate(BaseModel):
     connected_at: datetime | None = None
     expired_at: datetime | None = None
     expired_reason: str | None = None
-    connected_account_id: str | None = None
 
 
 class AddUserIntegrationRequest(BaseModel):
@@ -226,13 +327,15 @@ class CreateCustomIntegrationRequest(BaseModel):
     """Request to create a custom MCP integration."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    description: str | None = Field(None, max_length=500)
+    # default= (not positional) so mypy's pydantic plugin treats these as
+    # optional at construction — callers may omit them.
+    description: str | None = Field(default=None, max_length=500)
     category: str = Field(default="custom")
     server_url: str = Field(..., description="MCP server URL")
-    requires_auth: bool = Field(False)
-    auth_type: Literal["none", "oauth", "bearer"] | None = Field(None)
-    is_public: bool = Field(False)
-    bearer_token: str | None = Field(None)
+    requires_auth: bool = Field(default=False)
+    auth_type: Literal["none", "oauth", "bearer"] | None = Field(default=None)
+    is_public: bool = Field(default=False)
+    bearer_token: str | None = Field(default=None)
 
 
 class UpdateCustomIntegrationRequest(BaseModel):
@@ -265,7 +368,7 @@ class IntegrationResponse(BaseModel):
     auth_type: Literal["none", "oauth", "bearer"] | None = None
 
     # Tool metadata for frontend display
-    tools: list[IntegrationTool] = Field(default_factory=list)
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
 
     # Icon URL for custom integrations (favicon from MCP server)
     icon_url: str | None = None

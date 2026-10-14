@@ -98,8 +98,7 @@ class Hit:
 
 
 def _tracked_files(scoped: list[Path]) -> list[Path]:
-    """Every git-tracked source file the scan cares about (skips untracked/ignored),
-    optionally narrowed to the given paths."""
+    """Return every git-tracked source file in scope, optionally narrowed to ``paths``."""
     git = shutil.which("git")
     if git is None:
         raise RuntimeError("git not found on PATH — the scanner needs `git ls-files`")
@@ -127,7 +126,7 @@ def _read_text(path: Path) -> str | None:
 
 
 def _reason_of(comment: str) -> str | None:
-    """The reason prose in a Python directive comment, or None if absent.
+    """Return the reason prose in a Python directive comment, or None if absent.
 
     Finds the directive anywhere in the comment (another tool's directive, e.g.
     ``# NOSONAR …``, may precede it on the same line), strips the directive
@@ -165,9 +164,7 @@ def _has_reason(comment: str) -> bool:
 
 
 def _scan_python_comments(path: Path) -> list[Hit]:
-    """Directives that appear in real ``#`` comments only — never ones that
-    merely appear inside a string or docstring literal.
-    """
+    """Return directives found in real ``#`` comments, never inside string literals."""
     text = _read_text(path)
     if text is None:
         return []
@@ -193,16 +190,10 @@ def _scan_python_comments(path: Path) -> list[Hit]:
 
 
 def _split_comment(line: str, in_template: bool) -> tuple[str, bool]:
-    """The ``//`` comment portion of a TS/JS line (or ``""``), plus the
-    template-literal state carried into the next line.
+    """Return a TS/JS line's ``//`` comment (or ``""``) and the template state carried on.
 
-    Left-to-right walk over a line whose same-line quote spans are already
-    blanked: in code, ``//`` starts a comment (the rest of the line, including
-    any backticks in it, is inert) and an unescaped backtick enters a template;
-    in a template, an unescaped backtick exits it. Escapes are counted, so
-    ``\\\\``` (escaped backslash, real backtick) toggles and ``\\``` does not.
-    Remaining accepted imprecision: a backtick inside ``${...}`` (see module
-    docstring).
+    Quote spans are pre-blanked; an unescaped backtick toggles template state
+    (escapes counted). A backtick inside ``${...}`` is the accepted imprecision.
     """
     i = 0
     n = len(line)
@@ -233,9 +224,7 @@ _QUOTED_SPAN_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
 
 
 def _scan_ts_comments(path: Path) -> list[Hit]:
-    """``// biome-ignore`` in real ``//`` comments only — never inside a string
-    literal, including multi-line template literals (see ``_split_comment``).
-    """
+    """Return ``// biome-ignore`` directives in real comments, never inside (template) strings."""
     text = _read_text(path)
     if text is None:
         return []
@@ -256,7 +245,7 @@ def _scan_ts_comments(path: Path) -> list[Hit]:
 
 
 def _biome_reason(comment: str) -> str | None:
-    """The reason after ``// biome-ignore <rule>:`` — biome's own convention."""
+    """Return the reason after ``// biome-ignore <rule>:`` — biome's own convention."""
     m = re.search(r"biome-ignore(?:-[a-z]+)?\s+\S+:?\s*(.*)$", comment)
     if not m:
         return None

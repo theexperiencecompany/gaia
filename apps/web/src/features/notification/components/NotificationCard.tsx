@@ -4,19 +4,19 @@ import { Button } from "@heroui/button";
 import { CheckmarkCircle02Icon, LinkSquare02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   ActionStyle,
   ActionType,
   type ModalConfig,
   type NotificationAction,
-  type NotificationRecord,
   NotificationStatus,
+  type NotificationView,
 } from "@/types/features/notificationTypes";
 
 interface NotificationCardProps {
-  notification: NotificationRecord;
+  notification: NotificationView;
   /**
    * Surface the card sits on: "raised" (zinc-800 card on the page background
    * or a zinc-900 panel) or "inset" (zinc-900 card inside a zinc-800 surface,
@@ -56,18 +56,10 @@ export const NotificationCard = ({
   const isUnread = notification.status === NotificationStatus.DELIVERED;
 
   const handleActionPress = async (action: NotificationAction) => {
-    trackEvent(ANALYTICS_EVENTS.NOTIFICATION_CLICKED, {
-      notification_id: notification.id,
-      action_id: action.id,
-      action_type: action.type,
-    });
     await executeAction(notification.id, action);
   };
 
   const handleMarkAsRead = async () => {
-    trackEvent(ANALYTICS_EVENTS.NOTIFICATION_DISMISSED, {
-      notification_id: notification.id,
-    });
     await onMarkAsRead?.(notification.id);
   };
 
@@ -101,11 +93,11 @@ export const NotificationCard = ({
             })}
           </span>
         </div>
-        <p
+        <MarkdownRenderer
+          content={body}
           className={`mt-0.5 text-sm ${clampBody ? "line-clamp-2" : ""} ${isUnread ? "text-zinc-400" : "text-zinc-500"}`}
-        >
-          {body}
-        </p>
+          hideCodeToolbar
+        />
       </div>
 
       {(actions.length > 0 || (isUnread && onMarkAsRead)) && (

@@ -50,8 +50,7 @@ class TestSlotOf:
         assert slot_of(AIMessage(content="hello")) is PromptSlot.CONVERSATION
 
     def test_volatile_marker_wins_over_the_stable_one(self) -> None:
-        """A block carrying both must be read as volatile, or per-turn content
-        lands in the cacheable prefix — the defect this whole module exists for."""
+        """A block carrying both must be read as volatile, or per-turn content lands in the cacheable prefix."""
         message = SystemMessage(
             content="x", additional_kwargs={"dynamic_context": True, "memory_recall": True}
         )
@@ -61,8 +60,7 @@ class TestSlotOf:
 @pytest.mark.unit
 class TestMarkerReading:
     def test_marker_in_model_extra_still_resolves(self) -> None:
-        """Checkpoints written before markers moved to additional_kwargs, and any
-        marker passed as a bare constructor kwarg, land here instead."""
+        """Checkpoints written before markers moved to additional_kwargs land here instead."""
 
         class FakeMessage:
             additional_kwargs: ClassVar[dict[str, Any]] = {}
@@ -82,9 +80,7 @@ class TestMarkerReading:
 @pytest.mark.unit
 class TestSlotOrder:
     def test_declaration_order_is_the_cache_contract(self) -> None:
-        """Named explicitly rather than derived: this sequence is the thing the
-        Gemini contiguity rule and the prompt cache both depend on, so a reorder
-        must be a deliberate edit here, not a side effect of adding a member."""
+        """Named explicitly: the Gemini contiguity rule and the prompt cache both depend on this exact sequence."""
         assert list(PromptSlot) == [
             PromptSlot.STATIC,
             PromptSlot.DYNAMIC_STABLE,
@@ -92,6 +88,7 @@ class TestSlotOrder:
             PromptSlot.TODO_CONTEXT,
             PromptSlot.BACKGROUND_EXECUTOR,
             PromptSlot.EXECUTOR_STATUS,
+            PromptSlot.BROWSER_TASK,
             PromptSlot.MEMORY_RECALL,
             PromptSlot.CONVERSATION,
             PromptSlot.TIME,
@@ -109,9 +106,7 @@ class TestRequestSlotOrder:
     def test_the_openai_wire_puts_every_per_turn_slot_behind_the_conversation(
         self, provider: str
     ) -> None:
-        """The point of the whole layout: with the volatile slots behind it, the
-        conversation sits inside the byte-stable prefix and the provider's
-        implicit cache covers the history (97% vs 83% measured)."""
+        """With the volatile slots behind it, the cache covers the conversation history (97% vs 83% measured)."""
         assert request_slot_order(provider) == (
             PromptSlot.STATIC,
             PromptSlot.DYNAMIC_STABLE,
@@ -120,34 +115,43 @@ class TestRequestSlotOrder:
             PromptSlot.TODO_CONTEXT,
             PromptSlot.BACKGROUND_EXECUTOR,
             PromptSlot.EXECUTOR_STATUS,
+            PromptSlot.BROWSER_TASK,
             PromptSlot.MEMORY_RECALL,
             PromptSlot.TIME,
         )
 
+    def test_openai_puts_every_singleton_slot_ahead_of_the_conversation(self) -> None:
+        """OpenAI reuses only a whole earlier request, so nothing may trail the conversation, the clock included."""
+        assert request_slot_order("openai") == (
+            PromptSlot.STATIC,
+            PromptSlot.DYNAMIC_STABLE,
+            PromptSlot.ONBOARDING,
+            PromptSlot.TODO_CONTEXT,
+            PromptSlot.BACKGROUND_EXECUTOR,
+            PromptSlot.EXECUTOR_STATUS,
+            PromptSlot.BROWSER_TASK,
+            PromptSlot.MEMORY_RECALL,
+            PromptSlot.TIME,
+            PromptSlot.CONVERSATION,
+        )
+
     def test_gemini_keeps_the_leading_block_layout(self) -> None:
-        """``langchain-google-genai`` drops every system message after the first
-        non-system one, so a tail slot there is not a colder cache — it is content
-        the model never sees."""
+        """A tail slot on Gemini is not a colder cache — it is content the model never sees."""
         assert request_slot_order("gemini") == tuple(PromptSlot)
 
     def test_an_unknown_or_missing_provider_gets_the_safe_layout(self) -> None:
-        """The leading block is correct everywhere and merely colder; the tail
-        layout is correct only where it has been verified. A configurable with no
-        provider must therefore land on the safe one."""
+        """The leading block is merely colder everywhere; the tail layout is correct only where verified."""
         assert request_slot_order(None) == tuple(PromptSlot)
         assert request_slot_order("some-new-provider") == tuple(PromptSlot)
 
     def test_no_slot_is_lost_or_duplicated_by_the_reorder(self) -> None:
-        """A layout that silently dropped a slot would delete that content from
-        the request — the same failure mode as Gemini's contiguity rule."""
-        for provider in ("openrouter", "gemini", None):
+        """A layout that silently dropped a slot would delete that content from the request."""
+        for provider in ("openrouter", "openai", "gemini", None):
             order = request_slot_order(provider)
             assert sorted(order) == sorted(PromptSlot)
 
     def test_every_tail_volatile_slot_is_actually_moved(self) -> None:
-        """Pins the set itself: adding a per-turn slot to the enum without adding
-        it here leaves per-turn bytes inside the cached prefix, which is invisible
-        except as a slow decay in the hit rate."""
+        """Adding a per-turn slot to the enum without adding it here leaves per-turn bytes inside the cached prefix."""
         order = request_slot_order("openrouter")
         conversation_at = order.index(PromptSlot.CONVERSATION)
         assert {slot for slot in TAIL_VOLATILE_SLOTS} == {

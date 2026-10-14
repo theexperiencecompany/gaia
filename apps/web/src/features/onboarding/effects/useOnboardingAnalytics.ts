@@ -2,61 +2,30 @@
 
 import { useEffect, useRef } from "react";
 
-import {
-  ANALYTICS_EVENTS,
-  trackEvent,
-  trackOnboardingComplete,
-  trackOnboardingStep,
-} from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 
-import { FIELD_NAMES, questions } from "../constants";
-import type { OnboardingState } from "../state/types";
+import type { OnboardingState, Stage } from "../state/types";
 
-export function useOnboardingAnalytics(state: OnboardingState): void {
+/**
+ * Onboarding funnel events. Only `onboarding:started` is client-owned — step
+ * and completion analytics live server-side (POST /onboarding/phase emits
+ * onboarding:step_completed; the worker emits onboarding:completed), so
+ * emitting them here too would double-count.
+ */
+export function useOnboardingAnalytics(
+  state: OnboardingState,
+  _stage: Stage,
+  hydrated: boolean,
+): void {
   const startedRef = useRef(false);
-  const prevQuestionIndexRef = useRef<number | null>(null);
-  const completedRef = useRef(false);
 
   useEffect(() => {
-    if (startedRef.current) return;
+    // Waits for persisted state to restore: any earlier and every resumed
+    // session reports has_saved_state:false, before the hydrate dispatch renders.
+    if (!hydrated || startedRef.current) return;
     startedRef.current = true;
-    trackEvent(ANALYTICS_EVENTS.ONBOARDING_STARTED, {
-      has_saved_state:
-        state.questionIndex > 0 || Object.keys(state.responses).length > 0,
+    track("onboarding:started", {
+      has_saved_state: state.questionIndex > 0,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const prev = prevQuestionIndexRef.current;
-    const curr = state.questionIndex;
-    prevQuestionIndexRef.current = curr;
-
-    if (prev == null) return;
-    if (curr === prev) return;
-    if (curr <= 0) return;
-
-    const answeredIndex = curr - 1;
-    if (answeredIndex < 0 || answeredIndex >= questions.length) return;
-
-    const q = questions[answeredIndex];
-    const value = state.responses[q.fieldName];
-    if (value == null) return;
-
-    // Never send `response_value` — onboarding responses are user-authored
-    // free text (name, profession, goals). Track only the question answered.
-    trackOnboardingStep(answeredIndex + 1, q.fieldName, {
-      question_id: q.id,
-    });
-  }, [state.questionIndex, state.responses]);
-
-  useEffect(() => {
-    if (completedRef.current) return;
-    if (!state.server?.first_message_conversation_id) return;
-    completedRef.current = true;
-    trackOnboardingComplete({
-      profession: state.responses[FIELD_NAMES.PROFESSION],
-      totalSteps: questions.length + 1,
-    });
-  }, [state.server?.first_message_conversation_id, state.responses]);
+  }, [hydrated, state.questionIndex]);
 }

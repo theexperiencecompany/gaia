@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_execution_models import (
     WorkflowExecution,
     WorkflowExecutionDocument,
@@ -23,10 +24,7 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 
-# ---------------------------------------------------------------------------
 # Direct imports from the modules under test.
-# Deleting any of these source files will cause ImportError here.
-# ---------------------------------------------------------------------------
 from app.services.workflow.execution_service import (
     complete_execution,
     create_execution,
@@ -56,6 +54,7 @@ def _make_workflow(
     if trigger_config is None:
         trigger_config = TriggerConfig(type=TriggerType.MANUAL)
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         user_id=USER_ID,
         title="Test Workflow",
         prompt="Execute test workflow",
@@ -109,7 +108,7 @@ def mock_executions_repo():
 def mock_redis_pool(route_enqueue_via_pool):
     """Patch RedisPoolManager.get_pool used by WorkflowQueueService.
 
-    ``route_enqueue_via_pool`` (shared conftest) routes the wide-event enqueue
+    route_enqueue_via_pool (shared conftest) routes the wide-event enqueue
     wrapper through pool.enqueue_job, so the tests' existing pool mocks and
     assertions stay authoritative.
     """

@@ -14,11 +14,16 @@ Run: uv run python -m scripts.provision_daily_briefings [--dry-run]
 import asyncio
 import sys
 
+from app.core.provider_registration import register_lazy_providers
 from app.db.repositories.users import user_repository
 from app.services.briefing.rollout import provision_existing_user
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import analytics_context, worker_context
 
 
 async def rollout(dry_run: bool) -> None:
+    # No app lifespan here: register the providers capture() and provisioning read.
+    register_lazy_providers("main_app")
     user_ids = await user_repository.list_all_ids()
     total = len(user_ids)
     print(f"users to roll out: {total}")
@@ -29,7 +34,9 @@ async def rollout(dry_run: bool) -> None:
     processed = 0
     for user_id in user_ids:
         try:
-            path = await provision_existing_user(user_id)
+            # A script is an entry point: each user's rollout reports through capture().
+            with analytics_context(worker_context(Trigger.SYSTEM)):
+                path = await provision_existing_user(user_id)
         except Exception as e:  # one bad user must not abort the whole rollout
             print(f"  user {user_id}: FAILED ({e})")
             paths["failed"] = paths.get("failed", 0) + 1

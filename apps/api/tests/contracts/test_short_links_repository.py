@@ -1,6 +1,8 @@
-"""Contract tests for ShortLinksRepository (user-scoped, business-key ``slug``
-identity, no cache policy — a bespoke suite, not the inherited
-``UserScopedRepositoryContract``, matching ``test_conversations_repository.py``).
+"""Contract tests for ShortLinksRepository.
+
+User-scoped, business-key slug identity, no cache policy: a bespoke suite,
+not the inherited UserScopedRepositoryContract, matching
+test_conversations_repository.py.
 """
 
 from __future__ import annotations
@@ -44,16 +46,18 @@ def make_doc() -> Callable[..., ShortLink]:
 async def indexed_repo(
     repo: ShortLinksRepository, raw_collection, monkeypatch: pytest.MonkeyPatch
 ) -> ShortLinksRepository:
-    """The repository over a collection carrying the real short_links indexes."""
+    """Return the repository over a collection carrying the real short_links indexes."""
     monkeypatch.setattr("app.db.mongodb.indexes.get_async_collection", lambda _name: raw_collection)
     await create_short_link_indexes()
     return repo
 
 
 class TestShortLinksLiveTargetUniqueness:
-    """One live link per target is enforced by Mongo, not by the mint's
-    read-then-write — two overlapping mints must collide on the index, or the
-    loser's link outlives the winner's revocation."""
+    """One live link per target is enforced by Mongo, not by the mint's read-then-write.
+
+    Two overlapping mints must collide on the index, or the loser's link
+    outlives the winner's revocation.
+    """
 
     async def test_a_second_live_link_for_one_target_is_rejected(self, indexed_repo, make_doc):
         await indexed_repo.create(make_doc(user_id="u", target_id="t1"))

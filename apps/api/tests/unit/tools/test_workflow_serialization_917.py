@@ -1,11 +1,11 @@
 """Regression tests for #917's class — workflow payloads carried native datetimes.
 
-``get/pause/resume_workflow``, ``apply_workflow_edit``, and the workflow tool
-returns serialized ``Workflow`` models in python mode, whose ``BaseScheduledTask``
-base always carries ``created_at``/``updated_at`` native datetimes. The
-stream-writer payload is JSON-encoded with stdlib ``json.dumps`` downstream
-(``redis_writer.py``), so every emission crashed with "Object of type datetime
-is not JSON serializable", and ``get_workflow``'s return value degraded to
+get/pause/resume_workflow, apply_workflow_edit, and the workflow tool
+returns serialized Workflow models in python mode, whose BaseScheduledTask
+base always carries created_at/updated_at native datetimes. The
+stream-writer payload is JSON-encoded with stdlib json.dumps downstream
+(redis_writer.py), so every emission crashed with "Object of type datetime
+is not JSON serializable", and get_workflow's return value degraded to
 Python reprs inside the ToolMessage. These tests pin the boundary contract:
 whatever crosses into a stream frame or a tool return is JSON-safe.
 """
@@ -22,6 +22,7 @@ from app.agents.tools.workflow_tool import (
     pause_workflow,
     resume_workflow,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -40,8 +41,9 @@ def _cfg() -> RunnableConfig:
 
 
 def _workflow() -> Workflow:
-    """A real document — its python-mode dump carries native datetimes."""
+    """Build a real document — its python-mode dump carries native datetimes."""
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         user_id=FAKE_USER_ID,
         title="Morning digest",
         steps=[],
@@ -85,7 +87,7 @@ class TestWorkflowToolSerialization917:
         expected = doc.model_dump(mode="json")
         writer = _writer_mock()
         with (
-            patch(f"{MODULE}.get_stream_writer", return_value=writer),
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_service.get_workflow = AsyncMock(return_value=doc)
@@ -105,7 +107,7 @@ class TestWorkflowToolSerialization917:
         expected = doc.model_dump(mode="json")
         writer = _writer_mock()
         with (
-            patch(f"{MODULE}.get_stream_writer", return_value=writer),
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_service.deactivate_workflow = AsyncMock(return_value=doc)
@@ -126,7 +128,7 @@ class TestWorkflowToolSerialization917:
         expected = doc.model_dump(mode="json")
         writer = _writer_mock()
         with (
-            patch(f"{MODULE}.get_stream_writer", return_value=writer),
+            patch(f"{MODULE}.current_stream_writer", return_value=writer),
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_service.activate_workflow = AsyncMock(return_value=doc)

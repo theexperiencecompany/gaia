@@ -5,10 +5,10 @@ import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import { Delete02Icon, PencilEdit02Icon } from "@icons";
+import type { MemoryEntry } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryEntry } from "@/features/memory/api/types";
 import { cn } from "@/lib/utils";
 
 interface MemoryRowProps {

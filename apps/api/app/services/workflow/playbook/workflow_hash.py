@@ -14,8 +14,11 @@ from app.models.workflow_models import WorkflowStep
 
 
 def workflow_hash(prompt: str, steps: Sequence[WorkflowStep]) -> str:
-    """Stable digest of a workflow's prompt plus steps. Key order is canonical so
-    the same workflow hashes identically across processes and restarts."""
+    """Stable digest of a workflow's prompt plus steps.
+
+    Key order is canonical so the same workflow hashes identically across
+    processes and restarts.
+    """
     # Every WorkflowStep field is str, so json and python dumps are byte
     # identical and the mode value is provably unobservable here.
     dumped = [step.model_dump(mode="json") for step in steps]  # pragma: no mutate

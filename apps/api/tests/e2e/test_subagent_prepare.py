@@ -1,16 +1,4 @@
-"""Preparing one subagent for execution.
-
-``prepare_subagent_execution`` is the single path both the executor's ``handoff``
-tool and the dev direct-invocation endpoint go through to turn "run gmail on
-this task" into a runnable context. Its failure branches are covered through
-``_resolve_subagent``; the function itself had no test at all, so nothing pinned
-what it builds on the way out — the checkpoint thread a subagent resumes on, the
-task text the model is handed, or the identity a provider tool authenticates as.
-
-External I/O is doubled at the module boundary (``handoff_tools`` imports every
-collaborator by name, so patching there is what takes effect); everything the
-assertions cover is real.
-"""
+"""Prove what prepare_subagent_execution builds — the checkpoint thread, task text and service identity — since only its failure branches had prior coverage."""
 
 from __future__ import annotations
 
@@ -23,6 +11,7 @@ import pytest
 from app.agents.context.assemble import AssembledContext
 from app.agents.core.subagents import handoff_tools
 from app.agents.core.subagents.handoff_tools import prepare_subagent_execution
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 
 pytestmark = pytest.mark.e2e
 
@@ -40,12 +29,26 @@ def _configurable(**overrides: Any) -> dict[str, Any]:
     return base
 
 
+def _gmail_record(identity: dict[str, str]) -> UserIntegrationDocument:
+    return UserIntegrationDocument(
+        user_id="u1",
+        integration_id="gmail",
+        status="connected",
+        accounts=[
+            IntegrationAccount(
+                id="ca_1", connected_account_id="ca_1", label="me", identity=identity
+            )
+        ],
+        primary_account_id="ca_1",
+    )
+
+
 @pytest.fixture
 def gmail_subagent(monkeypatch: pytest.MonkeyPatch):
     """Resolve to a stand-in gmail subagent without Mongo, OAuth or Composio.
 
-    ``_resolve_subagent`` is a separately-tested concern (every one of its
-    failure branches is covered in ``test_handoff_tools``); doubling it here
+    _resolve_subagent is a separately-tested concern (every one of its
+    failure branches is covered in test_handoff_tools); doubling it here
     keeps these tests on what preparation *builds*.
     """
     graph = MagicMock(name="gmail_graph")
@@ -65,12 +68,12 @@ def gmail_subagent(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         handoff_tools,
         "get_subagent_by_id",
-        lambda _id: MagicMock(provider="gmail", name="Gmail"),
+        lambda _id: MagicMock(provider="gmail", name="Gmail", managed_by="composio"),
     )
     monkeypatch.setattr(
         handoff_tools,
-        "get_provider_metadata",
-        AsyncMock(return_value={"username": "dhruv@gmail.com"}),
+        "get_account_record",
+        AsyncMock(return_value=_gmail_record({"username": "dhruv@gmail.com"})),
     )
     # The context message pulls memories, skills and stored instructions; each is
     # its own subsystem and none of them is what this file is about.
@@ -89,9 +92,9 @@ def gmail_subagent(monkeypatch: pytest.MonkeyPatch):
 
 
 def _task_message(ctx: Any) -> HumanMessage:
-    """The task turn, picked by its ``visible_to`` marker.
+    """Pick the task turn by its visible_to marker.
 
-    ``build_initial_messages`` also puts the current time in a HumanMessage (to
+    build_initial_messages also puts the current time in a HumanMessage (to
     keep the system prefix byte-stable for the prompt cache), so position is not
     a safe way to find the task.
     """
@@ -104,9 +107,7 @@ def _task_message(ctx: Any) -> HumanMessage:
 
 class TestCheckpointThread:
     async def test_a_subagent_runs_on_its_own_thread_not_the_conversation_s(self, gmail_subagent):
-        """The thread is where the subagent's history lives. Sharing the
-        conversation's would hand it the executor's transcript, and every
-        provider would see every other provider's work."""
+        """Sharing the conversation's thread would hand the subagent the executor's transcript and expose every provider's work to every other provider."""
         ctx, _, error = await prepare_subagent_execution("gmail", "read my mail", _configurable())
 
         assert error is None
@@ -132,8 +133,7 @@ class TestCheckpointThread:
         )
 
     async def test_the_same_integration_resumes_the_same_thread(self, gmail_subagent):
-        """Two handoffs in one conversation must continue, not restart — that is
-        what lets the second one know what the first already read."""
+        """Two handoffs in one conversation must continue, not restart — the second must know what the first already read."""
         first, _, _ = await prepare_subagent_execution("gmail", "read mail", _configurable())
         second, _, _ = await prepare_subagent_execution("gmail", "reply to it", _configurable())
 
@@ -156,10 +156,7 @@ class TestServiceIdentity:
     async def test_the_users_gaia_name_is_replaced_with_their_service_username(
         self, gmail_subagent
     ):
-        """The executor writes tasks using the user's GAIA display name. A
-        provider tool cannot search for "Dhruv" — it needs the account identity
-        on that service, or the search returns nothing and the subagent reports
-        no results for mail that exists."""
+        """A provider tool cannot search for the user's GAIA display name — without the account identity, the search silently returns nothing."""
         ctx, _, _ = await prepare_subagent_execution(
             "gmail", "find gmail messages from user: Dhruv", _configurable()
         )
@@ -175,8 +172,7 @@ class TestServiceIdentity:
         assert ctx.initial_state["integration_usernames"] == {"gmail": "dhruv@gmail.com"}
 
     async def test_a_task_that_never_names_the_provider_is_left_alone(self, gmail_subagent):
-        """Substitution is scoped to tasks that mention the provider, so an
-        unrelated mention of the user's name survives verbatim."""
+        """Substitution is scoped to tasks that mention the provider, so an unrelated mention of the user's name survives verbatim."""
         task = "ask user: Dhruv what he wants for lunch"
         ctx, _, _ = await prepare_subagent_execution("gmail", task, _configurable())
 
@@ -186,9 +182,8 @@ class TestServiceIdentity:
     async def test_an_unknown_service_username_falls_back_to_a_usable_phrase(
         self, gmail_subagent, monkeypatch
     ):
-        """With no provider metadata the name still must not reach the tool as a
-        search term; "authenticated user" is the instruction the model can act on."""
-        monkeypatch.setattr(handoff_tools, "get_provider_metadata", AsyncMock(return_value=None))
+        """With no provider metadata the name still must not reach the tool as a search term; "authenticated user" is the fallback the model can act on."""
+        monkeypatch.setattr(handoff_tools, "get_account_record", AsyncMock(return_value=None))
 
         ctx, _, _ = await prepare_subagent_execution(
             "gmail", "find gmail messages from user: Dhruv", _configurable()
@@ -200,8 +195,7 @@ class TestServiceIdentity:
         assert "Dhruv" not in content
 
     async def test_the_sanitized_task_is_also_what_the_run_records_as_intent(self, gmail_subagent):
-        """``intent`` drives retrieval and logging; leaving it unsanitized would
-        put the GAIA name back into the subagent's semantic search."""
+        """Intent drives retrieval and logging; leaving it unsanitized would put the GAIA name back into the subagent's semantic search."""
         ctx, _, _ = await prepare_subagent_execution(
             "gmail", "find gmail messages from user: Dhruv", _configurable()
         )
@@ -212,8 +206,7 @@ class TestServiceIdentity:
 
 class TestPreparedContext:
     async def test_the_stream_id_reaches_the_context(self, gmail_subagent):
-        """Without it the subagent's frames are published nowhere and the user
-        watches a silent turn."""
+        """Without it the subagent's frames are published nowhere and the user watches a silent turn."""
         ctx, _, _ = await prepare_subagent_execution(
             "gmail", "read my mail", _configurable(), stream_id="s-1"
         )
@@ -224,9 +217,7 @@ class TestPreparedContext:
     async def test_the_integration_id_not_the_agent_name_identifies_the_provider(
         self, gmail_subagent
     ):
-        """Stored instructions and provider metadata are keyed by integration id
-        ("gmail"); keying them by agent_name ("gmail_agent") silently drops every
-        custom instruction the user wrote."""
+        """Stored instructions and provider metadata are keyed by integration id ("gmail"), not agent_name ("gmail_agent") — the wrong key silently drops the user's custom instructions."""
         ctx, _, _ = await prepare_subagent_execution("gmail", "read my mail", _configurable())
 
         assert ctx is not None
@@ -247,8 +238,7 @@ class TestPreparedContext:
 
 class TestResolutionFailure:
     async def test_an_unresolvable_subagent_returns_an_error_instead_of_raising(self, monkeypatch):
-        """``handoff`` must always hand the executor a string it can act on — a
-        raise here aborts the whole turn instead of letting the model retry."""
+        """A raise here aborts the whole turn instead of letting the model retry, so handoff must always hand the executor a string it can act on."""
         monkeypatch.setattr(
             handoff_tools,
             "_resolve_subagent",

@@ -15,3 +15,4 @@ explore_workflows_backup_*.json
 # Normally removed by its EXIT trap, but a killed run leaves one behind and a
 # `git add -A` then sweeps thousands of copied files into the index.
 .mutation-*/
+playbook_drive.results.json

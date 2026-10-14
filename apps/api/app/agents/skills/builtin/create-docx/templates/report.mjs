@@ -589,4 +589,5 @@ const doc = new Document({
 
 const out = process.argv[2] || "out.docx";
 const buf = await Packer.toBuffer(doc);
-writeFileSync(out, buf);
+// Runs inside the user's own sandbox, where the agent already has a shell; choosing the path grants nothing more
+writeFileSync(out, buf); // NOSONAR jssecurity:S8707

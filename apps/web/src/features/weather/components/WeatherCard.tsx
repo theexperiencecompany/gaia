@@ -18,7 +18,7 @@ import {
   VisionIcon,
 } from "@icons";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { CloudFogIcon } from "@/components/shared/icons";
 import {
   DropdownMenu,
@@ -27,7 +27,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { WeatherData } from "@/types/features/convoTypes";
 
 import { WeatherDetailItem } from "./WeatherDetailItem";
@@ -284,17 +283,6 @@ const getWeatherTheme = (weatherData: WeatherData): WeatherTheme | null => {
 
 export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
   const [useFahrenheit, setUseFahrenheit] = useState(false);
-
-  // One analytics ping per mounted card, describing the payload the card was
-  // created with. The snapshot ref keeps it fire-once — depending on
-  // `weatherData` directly would re-report whenever the parent hands down a
-  // re-parsed object.
-  const initialWeatherDataRef = useRef(weatherData);
-  useEffect(() => {
-    trackEvent(ANALYTICS_EVENTS.WEATHER_QUERIED, {
-      has_forecast: (initialWeatherDataRef.current.forecast?.length ?? 0) > 0,
-    });
-  }, []);
 
   // Determine the weather theme based on weather conditions
   const weatherTheme = useMemo(

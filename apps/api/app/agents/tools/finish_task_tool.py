@@ -23,12 +23,9 @@ async def finish_task(result: str) -> str:
     return result
 
 
-# Hard guarantee at import time that the decorated tool's name still
-# matches the routing constant. If someone renames the function without
-# updating FINISH_TASK_NAME, this fires immediately instead of silently
-# breaking the finish_task → END short-circuit.
-# nosec B101 — intentional import-time invariant; the message is for developers,
-# not security-sensitive runtime data.
+# Import-time guarantee that a rename doesn't silently break the
+# finish_task → END short-circuit.
+# nosec B101 — intentional invariant, not security-sensitive.
 assert finish_task.name == FINISH_TASK_NAME, (  # nosec B101
     f"finish_task tool name mismatch: tool exposes {finish_task.name!r} but "
     f"FINISH_TASK_NAME is {FINISH_TASK_NAME!r}"

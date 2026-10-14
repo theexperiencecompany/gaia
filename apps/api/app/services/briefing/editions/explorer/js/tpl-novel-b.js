@@ -452,7 +452,7 @@
             (it.note
               ? `<span class="t-librarycard__note">${esc(it.note)}</span>`
               : "");
-          const due = { cls: "", body: lcStamp("s-return", it.tag, ri) };
+          const due = { cls: "", body: it.tag ? lcStamp("s-return", it.tag, ri) : "" };
           const row = lcRow(dateStamp(), item, due, ri);
           ri++;
           return row;
@@ -474,17 +474,14 @@
         })
         .join("");
 
-      const table =
+      const table = !ri ? "" :
         `<table class="t-librarycard__tbl">` +
         `<colgroup><col class="c-date"><col class="c-item"><col class="c-due"></colgroup>` +
         `<thead><tr><th>Date</th><th>Item</th><th class="h-due">Due</th></tr></thead>` +
         `<tbody>` +
-        lcCap("Checked out &mdash; today") +
-        todayRows +
-        lcCap("Returned overnight by GAIA") +
-        overnightRows +
-        lcCap("Awaiting your signature") +
-        decisionRows +
+        (todayRows && lcCap("Checked out &mdash; today") + todayRows) +
+        (overnightRows && lcCap("Returned overnight by GAIA") + overnightRows) +
+        (decisionRows && lcCap("Awaiting your signature") + decisionRows) +
         `</tbody></table>`;
 
       const foot =
@@ -498,8 +495,18 @@
         `</div>` +
         `<div class="t-librarycard__tally">` +
         `<span class="k">This card&rsquo;s record</span>` +
-        `Items returned ${s.done} &mdash; ${s.you} by your hand, ${s.gaia} by GAIA` +
-        ` &middot; Correspondence filed ${s.mail} &middot; Focus held ${esc(s.focus)}` +
+        [
+          s.done
+            ? `Items returned ${s.done}` +
+              (s.you || s.gaia
+                ? ` &mdash; ${[s.you ? `${s.you} by your hand` : "", s.gaia ? `${s.gaia} by GAIA` : ""].filter(Boolean).join(", ")}`
+                : "")
+            : "",
+          s.mail ? `Correspondence filed ${s.mail}` : "",
+          s.focus ? `Focus held ${esc(s.focus)}` : "",
+        ]
+          .filter(Boolean)
+          .join(" &middot; ") +
         `</div>` +
         `<p class="t-librarycard__deck">${esc(ed.deck)}</p>` +
         `<p class="t-librarycard__colophon">GAIA Circulation Desk &middot; Card N&ordm; ${ed.editionNo} &middot; ${esc(ed.dateLong)}</p>` +
@@ -812,11 +819,22 @@
           .join("") +
         `</div>`;
 
-      const stats =
-        `couverts ${s.done} &mdash; ${s.you} by your hand, ${s.gaia} by the kitchen` +
-        ` &middot; correspondence ${s.mail} &middot; ${esc(s.focus)
-          .replace(".5h", "&frac12; hours")
-          .replace(/(\d+)h$/, "$1 hours")} held`;
+      const stats = [
+        s.done
+          ? `couverts ${s.done}` +
+            (s.you || s.gaia
+              ? ` &mdash; ${[s.you ? `${s.you} by your hand` : "", s.gaia ? `${s.gaia} by the kitchen` : ""].filter(Boolean).join(", ")}`
+              : "")
+          : "",
+        s.mail ? `correspondence ${s.mail}` : "",
+        s.focus
+          ? `${esc(s.focus)
+              .replace(".5h", "&frac12; hours")
+              .replace(/(\d+)h$/, "$1 hours")} held`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" &middot; ");
 
       const frameBorder = frame.framed
         ? "--frame-border:1px solid var(--ink-soft);--frame-pad:clamp(40px,5vw,72px);--frame-pad-sm:28px 18px;"
@@ -839,8 +857,7 @@
         courses +
         `<div class="t-menu__rule is-wide"></div>` +
         mise +
-        `<div class="t-menu__rule"></div>` +
-        decisions +
+        (c.decisions.length ? `<div class="t-menu__rule"></div>` + decisions : "") +
         `<p class="t-menu__digestif">digestif &mdash; the evening is yours.</p>` +
         `<p class="t-menu__stats">${stats}</p>` +
         `<p class="t-menu__colophon">GAIA &middot; service n&ordm; ${ed.editionNo} &middot; seated ${esc(ed.time24)}</p>` +

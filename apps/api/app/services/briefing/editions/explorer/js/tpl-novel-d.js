@@ -101,6 +101,7 @@
     );
   }
   function col(head, body) {
+    if (!body) return "";
     return (
       `<section class="t-exhibition__col">` +
       `<h3 class="t-exhibition__col-h">${head}</h3>` +
@@ -447,19 +448,29 @@
       const s = c.stats;
       const stats =
         `<p class="t-exhibition__stats">` +
-        `Yesterday <b>${s.done}</b> shipped &middot; you <b>${s.you}</b> / GAIA <b>${s.gaia}</b> &middot; ` +
-        `<b>${s.mail}</b> emails handled &middot; <b>${s.focus}</b> of focus &middot; ` +
-        `brief generated ${esc(ed.time)}` +
+        [
+          s.done ? `Yesterday <b>${s.done}</b> shipped` : "",
+          s.you || s.gaia
+            ? [s.you ? `you <b>${s.you}</b>` : "", s.gaia ? `GAIA <b>${s.gaia}</b>` : ""].filter(Boolean).join(" / ")
+            : "",
+          s.mail ? `<b>${s.mail}</b> emails handled` : "",
+          s.focus ? `<b>${s.focus}</b> of focus` : "",
+          ed.time ? `brief generated ${esc(ed.time)}` : "",
+        ]
+          .filter(Boolean)
+          .join(" &middot; ") +
         `</p>`;
 
       const programme =
         `<div class="t-exhibition__programme">` +
-        `<h2 class="t-exhibition__prog-h">Programme for the day</h2>` +
-        `<div class="t-exhibition__cols">` +
-        col("Today", today) +
-        col("Overnight, while you slept", overnight) +
-        col("Awaiting your decision", decisions) +
-        `</div>` +
+        (today || overnight || decisions
+          ? `<h2 class="t-exhibition__prog-h">Programme for the day</h2>` +
+            `<div class="t-exhibition__cols">` +
+            col("Today", today) +
+            col("Overnight, while you slept", overnight) +
+            col("Awaiting your decision", decisions) +
+            `</div>`
+          : "") +
         stats +
         `</div>`;
 

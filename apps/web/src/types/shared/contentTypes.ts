@@ -1,3 +1,4 @@
+import type { WorkflowCreator } from "@shared/api/generated";
 /**
  * Shared types between workflows and use-cases
  */
@@ -5,8 +6,4 @@
 /**
  * Creator/Author information for community content
  */
-export interface ContentCreator {
-  id: string;
-  name: string;
-  avatar?: string;
-}
+export type ContentCreator = WorkflowCreator;

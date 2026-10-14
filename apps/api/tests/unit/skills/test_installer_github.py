@@ -30,11 +30,7 @@ Do the thing when asked.
 
 @pytest.fixture(autouse=True)
 def _fork_safe_proxy_env(monkeypatch):
-    """httpx.AsyncClient() consults urllib.getproxies(), which on macOS falls
-    through to the System Configuration framework — a call that segfaults
-    inside mutmut's forked worker processes. A truthy proxy environment makes
-    urllib short-circuit before that call; respx intercepts the transport, so
-    the value never affects what the tests observe."""
+    """Short-circuit urllib.getproxies() with a truthy proxy env; it segfaults inside mutmut's forked workers on macOS, though respx intercepts the transport regardless."""
     monkeypatch.setenv("no_proxy", "*")
 
 
@@ -49,8 +45,9 @@ def _contents_entry(name: str, entry_type: str, path: str, download_url: str | N
 
 @pytest.fixture
 def storage_seams():
-    """Mock only the VFS write boundary and the Mongo registry call — the
-    real HTTP fetch/parse/validation/recursion logic under test is untouched."""
+    """Mock only the VFS write boundary and the Mongo registry call.
+
+    The real HTTP fetch/parse/validation/recursion logic under test stays untouched."""
     with (
         patch(
             "app.agents.skills.installer.ensure_user_skills_dir",
@@ -73,7 +70,9 @@ class TestInstallFromGithubSuccess:
     async def test_installs_skill_and_writes_body_only_skill_md(self, storage_seams):
         write_mock, install_mock, _ = storage_seams
         with respx.mock:
-            respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
+            contents_route = respx.get(
+                f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill"
+            ).mock(
                 return_value=httpx.Response(
                     200,
                     json=[_contents_entry("SKILL.md", "file", "skills/my-skill/SKILL.md")],
@@ -85,6 +84,7 @@ class TestInstallFromGithubSuccess:
 
             result = await install_from_github(user_id="u1", repo_url="org/repo/skills/my-skill")
 
+        assert contents_route.calls.last.request.url.params["ref"] == "main"
         assert result is not None
         install_mock.assert_awaited_once()
         request = install_mock.await_args.args[0]
@@ -97,8 +97,7 @@ class TestInstallFromGithubSuccess:
         assert "Do the thing when asked." in write_call.args[3]
 
     async def test_nested_subdirectory_files_are_downloaded_and_listed(self, storage_seams):
-        """A skill with a resources/ subfolder must recurse into it and record
-        every downloaded file, not just the top-level SKILL.md."""
+        """Recurse into a resources/ subfolder and record every downloaded file, not just SKILL.md."""
         write_mock, install_mock, _ = storage_seams
         with respx.mock:
             respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
@@ -160,9 +159,7 @@ class TestInstallFromGithubValidation:
                 await install_from_github(user_id="u1", repo_url="org/repo/skills/empty")
 
     async def test_disallowed_target_raises_value_error(self, storage_seams):
-        """allowed_targets blocks installing a skill scoped to an integration
-        the user hasn't connected — this is the REST endpoint's own guard,
-        enforced here at the source so agent-tool callers get it too."""
+        """allowed_targets blocks installing a skill scoped to an integration the user hasn't connected, at the source so agent-tool callers get it too."""
         with respx.mock:
             respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
                 return_value=httpx.Response(
@@ -208,6 +205,36 @@ class TestInstallFromGithubValidation:
         with pytest.raises(ValueError, match="Provide a path"):
             await install_from_github(user_id="u1", repo_url="org/repo")
 
+    async def test_skill_md_without_download_url_raises_value_error(self, storage_seams):
+        entry = {**_contents_entry("SKILL.md", "file", "skills/x/SKILL.md"), "download_url": None}
+        with respx.mock:
+            respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/x").mock(
+                return_value=httpx.Response(200, json=[entry])
+            )
+            with pytest.raises(ValueError, match="no download URL for skills/x/SKILL.md"):
+                await install_from_github(user_id="u1", repo_url="org/repo/skills/x")
+
+    async def test_single_file_contents_response_is_treated_as_one_entry(self, storage_seams):
+        """The Contents API answers a file path with one object, not a list."""
+        with respx.mock:
+            respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/x").mock(
+                return_value=httpx.Response(
+                    200, json=_contents_entry("SKILL.md", "file", "skills/x/SKILL.md")
+                )
+            )
+            respx.get("https://raw.githubusercontent.com/org/repo/main/skills/x/SKILL.md").mock(
+                return_value=httpx.Response(200, text=_SKILL_MD_CONTENT)
+            )
+            await install_from_github(user_id="u1", repo_url="org/repo/skills/x")
+
+        assert storage_seams[1].await_args.args[0].name == "my-skill"
+
+    async def test_dot_segment_path_is_rejected_before_any_request(self, storage_seams):
+        """Httpx collapses dot segments: unchecked, this path sent the server's GitHub token to /user/keys."""
+        with respx.mock:
+            with pytest.raises(ValueError, match="Invalid GitHub path segment"):
+                await install_from_github(user_id="u1", repo_url="org/repo/../../../../user/keys")
+
 
 _RICH_SKILL_MD = """\
 ---
@@ -227,8 +254,7 @@ Do the thing when asked.
 
 
 class TestInstallFromGithubRequestShape:
-    """Every field of the SkillInstallRequest must come from the repo's
-    frontmatter and the fetch — not from defaults."""
+    """Every field of the SkillInstallRequest must come from the repo's frontmatter and the fetch, not from defaults."""
 
     async def test_builds_full_install_request(self, storage_seams):
         _, install_mock, _ = storage_seams
@@ -310,8 +336,7 @@ class TestInstallFromInline:
             )
 
     async def test_passes_frontmatter_extras_through(self, storage_seams, monkeypatch):
-        """generate_skill_md cannot emit license/compatibility/allowed-tools;
-        pin their request mapping with frontmatter that carries them."""
+        """generate_skill_md cannot emit license/compatibility/allowed-tools; pin their request mapping via frontmatter carrying them."""
         rich_skill_md = (
             "---\n"
             "name: my-skill\n"

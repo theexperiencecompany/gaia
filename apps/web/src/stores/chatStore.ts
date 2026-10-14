@@ -1,10 +1,11 @@
 import { useEffect } from "react";
 import { create } from "zustand";
-
-import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
-import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
+import type {
+  ReplyToMessageData,
+  SelectedCalendarEventData,
+} from "@/stores/composerStore.types";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
@@ -34,10 +35,9 @@ export interface OptimisticMessage {
 interface ChatState {
   conversations: IConversation[];
   messagesByConversation: Record<string, IMessage[]>;
-  // Per-conversation artifact registry, keyed by path. The runtime lookup layer
-  // for resolving a message's path references to full ArtifactData. Hydrated
-  // from IConversation.artifacts on load/sync and updated live by SSE; persisted
-  // back to IndexedDB at end-of-stream.
+  // Per-conversation artifact registry keyed by path, resolving a message's path references to
+  // full ArtifactData. Hydrated from IConversation.artifacts on load/sync, updated live by SSE,
+  // and persisted back to IndexedDB at end-of-stream.
   artifactsByConversation: Record<string, Record<string, ArtifactData>>;
   activeConversationId: string | null;
   hydrationCompleted: boolean; // True when IndexedDB hydration is done
@@ -217,10 +217,9 @@ export const useChatStore = create<ChatState>((set) => ({
       };
     }),
 
-  // Server registry entries persist only per-file fields (path, size, mtime,
-  // content type) — the conversation id is the document key, not an element
-  // field. Stamp it back on as session_id so every map entry is a complete
-  // ArtifactData (fetch URLs are built from session_id).
+  // Server registry entries persist only per-file fields (path, size, mtime, content type) —
+  // the conversation id is the document key, not an element field. Stamp it back on as
+  // session_id so every map entry is complete ArtifactData (fetch URLs are built from it).
   setConversationArtifacts: (conversationId, artifacts) =>
     set((state) => {
       const registry: Record<string, ArtifactData> = {};

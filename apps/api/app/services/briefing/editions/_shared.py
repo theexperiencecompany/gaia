@@ -1,5 +1,8 @@
-"""Plumbing shared by every edition renderer — font embedding and date
-formatting are identical regardless of which family's markup wraps them."""
+"""Plumbing shared by every edition renderer.
+
+Font embedding and date formatting are identical regardless of which family's markup
+wraps them.
+"""
 
 import base64
 from datetime import date
@@ -14,7 +17,7 @@ FONTS_DIR = Path(__file__).parent / "fonts"
 
 
 def font_face(family: str, filename: str, weight: int) -> str:
-    """Build one ``@font-face`` rule with the woff2 embedded as a data URI."""
+    """Build one @font-face rule with the woff2 embedded as a data URI."""
     # codecs.lookup normalises the codec name, so "ascii" and "ASCII" select the
     # same decoder — that mutation is unobservable, hence the pragma.
     encoded = base64.b64encode((FONTS_DIR / filename).read_bytes()).decode(  # pragma: no mutate
@@ -28,10 +31,10 @@ def font_face(family: str, filename: str, weight: int) -> str:
 
 
 def format_date(iso: str) -> str:
-    """Format an ISO ``YYYY-MM-DD`` date as ``July 5, 2026``.
+    """Format an ISO YYYY-MM-DD date as "July 5, 2026".
 
-    An unparseable value is escaped and returned verbatim so the dateline is
-    never silently dropped.
+    An unparseable value is escaped and returned verbatim so the dateline is never
+    silently dropped.
     """
     try:
         parsed = date.fromisoformat(iso)

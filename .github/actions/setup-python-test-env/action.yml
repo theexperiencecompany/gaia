@@ -74,14 +74,18 @@ runs:
       # the same audited code as every other install path.
       # Self-hosted: .venv persists in the workspace; skip the sync when the
       # marker the previous sync left still matches (scripts/ci/runner.sh dep-marker
-      # keys it on uv.lock AND the pyproject files, ~10-20s saved).
+      # keys it on uv.lock AND the pyproject files, ~10-20s saved) and the env
+      # still holds exactly that lock: a job syncing outside this composite (another
+      # branch's python-mypy) can change the .venv under an unchanged marker.
       run: |
         set -euo pipefail
         MARK="$(bash scripts/ci/runner.sh dep-marker python)"
-        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ]; then
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ] &&
+           uv sync --frozen --package gaia --group backend --group dev --check > /dev/null 2>&1; then
           echo ".venv already synced ($MARK) — skipping uv sync"
           exit 0
         fi
+        bash scripts/ci/runner.sh heal-venv .venv
         uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
         rm -f .venv/.gaia-synced-* 2>/dev/null || true
         touch "$MARK"
@@ -114,9 +118,16 @@ runs:
           MODEL_CACHE_DIR=/tmp/fastembed_cache
         fi
         mkdir -p "$MODEL_CACHE_DIR"
+        # USE_REAL_SERVICES only where services really run. It is what switches
+        # the root conftest's hermetic fences OFF, so exporting it on a lane
+        # started with services=false told the suite to reach Mongo and Redis
+        # that the lane never launched: a unit test on that path hung on the
+        # firewalled port until the 22-minute job cap killed the slice.
+        if [ "${{ inputs.services }}" = "true" ]; then
+          echo "USE_REAL_SERVICES=1" >> "$GITHUB_ENV"
+        fi
         {
           echo "ENV=test"
-          echo "USE_REAL_SERVICES=1"
           echo "MODEL_CACHE_DIR=$MODEL_CACHE_DIR"
           echo "MEMORY_MODEL_CACHE_DIR=$MODEL_CACHE_DIR"
           # Deliberately NOT setting PYTHONDONTWRITEBYTECODE: on the persistent

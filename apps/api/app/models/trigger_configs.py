@@ -10,7 +10,8 @@ To add a new trigger:
 3. Add the class to the TriggerConfigData union
 """
 
-from typing import Annotated, Any, Literal, Union
+from collections.abc import Mapping
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Discriminator, Field, model_validator
 
@@ -65,6 +66,12 @@ class GmailNewMessageConfig(BaseTriggerConfigData):
 
     trigger_name: Literal["gmail_new_message"] = "gmail_new_message"
     # Gmail triggers currently have no additional config
+
+
+class GmailEmailSentConfig(BaseTriggerConfigData):
+    """Config for the gmail sent-mail trigger; account-level, so nothing to scope."""
+
+    trigger_name: Literal["gmail_email_sent"] = "gmail_email_sent"
 
 
 class GmailPollInboxConfig(BaseTriggerConfigData):
@@ -318,6 +325,13 @@ class TodoistNewTaskCreatedConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
+class _AsanaProjectKeys(BaseModel):
+    """The project keys a stored asana_task_trigger config may carry, the retired one included."""
+
+    project_gid: str | None = None
+    project_id: str | None = None
+
+
 class AsanaTaskTriggerConfig(BaseTriggerConfigData):
     """Config for asana_task_trigger (Composio ASANA_TASK_CREATED)."""
 
@@ -333,14 +347,18 @@ class AsanaTaskTriggerConfig(BaseTriggerConfigData):
 
     @model_validator(mode="before")
     @classmethod
-    def _migrate_legacy_project_id(cls, data: Any) -> Any:  # noqa: ANN401 -- forwards raw stored document into pydantic validation
-        # Stored workflows from the retired unscoped trigger carry `project_id`;
-        # migrate it so registration keeps the project scope instead of failing.
-        if isinstance(data, dict) and not data.get("project_gid"):
-            legacy = data.get("project_id")
-            if legacy:
-                data["project_gid"] = legacy
-        return data
+    def _adopt_legacy_project_id(cls, data: object) -> object:
+        """Scope a stored config from the retired unscoped trigger by its project_id.
+
+        An empty project_gid is no scope, so the legacy id fills it rather than
+        registration failing on it.
+        """
+        if not isinstance(data, Mapping):
+            return data
+        keys = _AsanaProjectKeys.model_validate(data)
+        if keys.project_gid or not keys.project_id:
+            return data
+        return {**data, "project_gid": keys.project_id}
 
 
 # =============================================================================
@@ -352,6 +370,7 @@ TriggerConfigData = Annotated[
         CalendarEventCreatedConfig,
         CalendarEventStartingSoonConfig,
         GmailNewMessageConfig,
+        GmailEmailSentConfig,
         GmailPollInboxConfig,
         GitHubCommitEventConfig,
         GitHubPrEventConfig,
@@ -375,32 +394,4 @@ TriggerConfigData = Annotated[
         AsanaTaskTriggerConfig,
     ],
     Discriminator("trigger_name"),
-]
-
-# Type alias for trigger names
-TriggerName = Literal[
-    "calendar_event_created",
-    "calendar_event_starting_soon",
-    "gmail_new_message",
-    "gmail_poll_inbox",
-    "github_commit_event",
-    "github_pr_event",
-    "github_star_added",
-    "github_issue_added",
-    "google_docs_new_document",
-    "google_docs_document_deleted",
-    "google_docs_document_updated",
-    "google_sheets_new_row",
-    "google_sheets_new_sheet",
-    "linear_issue_created",
-    "linear_issue_updated",
-    "linear_comment_added",
-    "notion_new_page_in_db",
-    "notion_page_updated",
-    "notion_all_page_events",
-    "notion_page_content_updated",
-    "slack_new_message",
-    "slack_channel_created",
-    "todoist_new_task_created",
-    "asana_task_trigger",
 ]

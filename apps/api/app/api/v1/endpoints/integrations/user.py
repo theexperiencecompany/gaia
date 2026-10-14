@@ -8,6 +8,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_instructions_models import InstructionsEditor
+from app.schemas.errors import error_responses
 from app.schemas.integrations.requests import (
     AddUserIntegrationRequest,
     UpdateIntegrationInstructionsRequest,
@@ -17,17 +18,23 @@ from app.schemas.integrations.responses import (
     IntegrationInstructionsResponse,
     IntegrationSuccessResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integration_instructions_service import (
     get_instructions_record,
     upsert_instructions,
 )
+from app.services.integrations.integration_connection_service import remove_from_workspace
 from app.services.integrations.user_integrations import (
     add_user_integration as add_user_integration_service,
     check_user_has_integration,
-    remove_user_integration,
 )
 from app.services.storage.juicefs import ensure_safe_path_id
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    IntegrationConnected,
+    IntegrationDisconnected,
+    IntegrationInstructionsUpdated,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -47,19 +54,6 @@ async def add_integration_to_workspace(
         )
         user_integration = await add_user_integration_service(user_id, request.integration_id)
         log.set(outcome="success")
-        # No-auth integrations land directly in `connected` (the service stamps
-        # the status); OAuth/bearer-managed ones complete at their callback and
-        # capture INTEGRATION_CONNECTED there.
-        if user_integration.status == "connected":
-            capture_context_event(
-                AnalyticsEvents.INTEGRATION_CONNECTED,
-                {"integration_id": user_integration.integration_id, "source": "workspace"},
-            )
-        return AddUserIntegrationResponse(
-            message="Integration added to workspace",
-            integration_id=user_integration.integration_id,
-            connection_status=user_integration.status,
-        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -71,6 +65,20 @@ async def add_integration_to_workspace(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to add integration") from e
+    # No-auth integrations land directly in `connected` (the service stamps the
+    # status); OAuth/bearer-managed ones capture IntegrationConnected at their callback.
+    if user_integration.status == "connected":
+        capture(
+            UserId(user_id),
+            IntegrationConnected(
+                integration_id=user_integration.integration_id, source="workspace"
+            ),
+        )
+    return AddUserIntegrationResponse(
+        message="Integration added to workspace",
+        integration_id=user_integration.integration_id,
+        connection_status=user_integration.status,
+    )
 
 
 @router.delete("/{integration_id}", response_model=IntegrationSuccessResponse)
@@ -86,10 +94,9 @@ async def remove_integration_from_workspace(
             user={"id": user_id},
             integration={"id": integration_id},
         )
-        # Removing a connected integration severs the connection, so attribute
-        # it the same as an explicit disconnect; a never-connected record is
-        # just removed. Analytics-only read: a failed status lookup must never
-        # block the removal itself.
+        # Removing a connected integration is attributed the same as an
+        # explicit disconnect. Analytics-only read: a failed status lookup
+        # must never block the removal itself.
         try:
             was_connected = await user_integration_repository.is_connected(user_id, integration_id)
         except Exception as e:
@@ -103,14 +110,11 @@ async def remove_integration_from_workspace(
             # None and False are equally falsy here, so a None-mutation of
             # this fallback is behaviorally unreachable. pragma: no mutate
             was_connected = False  # pragma: no mutate
-        removed = await remove_user_integration(user_id, integration_id)
+        removed = await remove_from_workspace(user_id, integration_id)
         if not removed:
             raise HTTPException(status_code=404, detail="Integration not found in workspace")
         if was_connected:
-            capture_context_event(
-                AnalyticsEvents.INTEGRATION_DISCONNECTED,
-                {"integration_id": integration_id},
-            )
+            capture(UserId(user_id), IntegrationDisconnected(integration_id=integration_id))
         log.set(outcome="success")
         return IntegrationSuccessResponse(
             message="Integration removed from workspace",
@@ -131,7 +135,7 @@ async def remove_integration_from_workspace(
 
 @router.get(
     "/{integration_id}/instructions",
-    responses={500: {"description": "Failed to fetch integration instructions"}},
+    responses=error_responses({500: "Failed to fetch integration instructions"}),
 )
 async def get_integration_instructions(
     integration_id: str,
@@ -178,11 +182,13 @@ async def get_integration_instructions(
 
 @router.put(
     "/{integration_id}/instructions",
-    responses={
-        400: {"description": "Invalid integration_id"},
-        404: {"description": "Integration not found in workspace"},
-        500: {"description": "Failed to update integration instructions"},
-    },
+    responses=error_responses(
+        {
+            400: "Invalid integration_id",
+            404: "Integration not found in workspace",
+            500: "Failed to update integration instructions",
+        }
+    ),
 )
 async def update_integration_instructions(
     integration_id: str,
@@ -206,12 +212,6 @@ async def update_integration_instructions(
             updated_by=InstructionsEditor.USER,
         )
         log.set(outcome="success")
-        return IntegrationInstructionsResponse(
-            integration_id=record.integration_id,
-            content=record.content,
-            updated_by=record.updated_by,
-            updated_at=record.updated_at,
-        )
     except HTTPException:
         raise
     except ValueError as e:
@@ -227,3 +227,10 @@ async def update_integration_instructions(
         raise HTTPException(
             status_code=500, detail="Failed to update integration instructions"
         ) from e
+    capture(UserId(user_id), IntegrationInstructionsUpdated(integration_id=integration_id))
+    return IntegrationInstructionsResponse(
+        integration_id=record.integration_id,
+        content=record.content,
+        updated_by=record.updated_by,
+        updated_at=record.updated_at,
+    )

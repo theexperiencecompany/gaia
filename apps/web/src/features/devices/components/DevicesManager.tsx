@@ -2,11 +2,29 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Link } from "@heroui/link";
 import { Spinner } from "@heroui/spinner";
-import { ComputerIcon, Delete02Icon, Folder01Icon, Link04Icon } from "@icons";
-import { BRIDGE_ADD_COMMAND, BRIDGE_CLI_NAME } from "../constants";
+import {
+  BookOpen01Icon,
+  ComputerIcon,
+  Delete02Icon,
+  Folder01Icon,
+  Link04Icon,
+} from "@icons";
+import {
+  BRIDGE_ADD_COMMAND,
+  BRIDGE_CLI_NAME,
+  BRIDGE_UP_COMMAND,
+  DEVICE_BRIDGE_DOCS_URL,
+} from "../constants";
+import { useBridge } from "../hooks/useBridge";
+import {
+  isThisDeviceSupported,
+  useDesktopPlatform,
+} from "../hooks/useDesktopPlatform";
 import { useDevices } from "../hooks/useDevices";
 import type { Device } from "../types";
+import { ThisMacCard } from "./ThisMacCard";
 
 function DeviceRow({
   device,
@@ -68,13 +86,43 @@ function DeviceRow({
           ))}
         </div>
       )}
+
+      {!device.online && (
+        <div className="mt-3 flex flex-col gap-2 rounded-2xl bg-zinc-900 p-3 text-sm">
+          <p className="text-pretty text-zinc-400">
+            This device is offline. Run{" "}
+            <span className="font-mono text-zinc-200">{BRIDGE_UP_COMMAND}</span>{" "}
+            on this machine to bring it back online.
+          </p>
+          <Link
+            href={DEVICE_BRIDGE_DOCS_URL}
+            isExternal
+            showAnchorIcon
+            size="sm"
+            className="text-xs"
+          >
+            <BookOpen01Icon width={14} height={14} className="mr-1" />
+            Setup guide
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
 
-export function DevicesManager() {
+/** The paired CLI/other-machine devices. Excludes "This Mac" (the desktop app's
+ * own device, shown as the card above) so it isn't listed twice with a Revoke
+ * button that would kill the card's tunnel. */
+function PairedDevices({
+  showThisMac,
+  excludeDeviceId,
+}: {
+  showThisMac: boolean;
+  excludeDeviceId: string | null;
+}) {
   const { devices, isLoading, error, refetch, revokeDevice, revokingId } =
     useDevices();
+  const otherDevices = devices.filter((d) => d.id !== excludeDeviceId);
 
   if (isLoading) {
     return (
@@ -95,7 +143,10 @@ export function DevicesManager() {
     );
   }
 
-  if (devices.length === 0) {
+  if (otherDevices.length === 0) {
+    // The "This Mac" card is a working device on its own, so an empty CLI list
+    // beneath it needs no "install the CLI" nudge — only the pure-web view does.
+    if (showThisMac) return null;
     return (
       <div className="rounded-2xl bg-zinc-800 p-6 text-center text-sm text-zinc-400">
         No devices paired yet. Install the{" "}
@@ -107,8 +158,8 @@ export function DevicesManager() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {devices.map((device) => (
+    <>
+      {otherDevices.map((device) => (
         <DeviceRow
           key={device.id}
           device={device}
@@ -116,6 +167,26 @@ export function DevicesManager() {
           isRevoking={revokingId === device.id}
         />
       ))}
+    </>
+  );
+}
+
+export function DevicesManager() {
+  // macOS + Linux desktop for now (Windows needs a drive-aware file root); the
+  // card stays hidden in the browser.
+  const platform = useDesktopPlatform();
+  const showThisMac = isThisDeviceSupported(platform);
+  // One bridge instance owns the status; the card consumes it and the list uses
+  // its deviceId to drop "this computer" from the paired rows.
+  const bridge = useBridge();
+
+  return (
+    <div className="flex flex-col gap-3">
+      {showThisMac && <ThisMacCard bridge={bridge} platform={platform} />}
+      <PairedDevices
+        showThisMac={showThisMac}
+        excludeDeviceId={showThisMac ? bridge.status.deviceId : null}
+      />
     </div>
   );
 }

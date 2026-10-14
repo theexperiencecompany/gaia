@@ -56,8 +56,8 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 def mock_support_repo():
     """Patch the support-requests repository seam.
 
-    ``create`` echoes the document back with ``updated_at`` stamped (as the real
-    base does on insert); ``delete`` reports a successful rollback by default.
+    create echoes the document back with updated_at stamped (as the real
+    base does on insert); delete reports a successful rollback by default.
     """
     repo = AsyncMock()
 
@@ -105,7 +105,7 @@ def mock_send_user_email():
 
 @pytest.fixture
 def mock_email_notifications(mock_send_team_notification, mock_send_user_email):
-    """Convenience fixture that patches both email functions."""
+    """Patch both email functions."""
     return mock_send_team_notification, mock_send_user_email
 
 
@@ -145,7 +145,7 @@ def _make_support_doc(
     ticket_id: str = TICKET_ID,
     req_type: SupportRequestType = SupportRequestType.SUPPORT,
 ) -> SupportRequestDocument:
-    """A support request document as the repository returns it."""
+    """Build a support request document as the repository returns it."""
     now = datetime.now(UTC)
     return SupportRequestDocument(
         id=request_id,
@@ -237,9 +237,7 @@ class TestDeleteUploadedFiles:
         mock_cloudinary.destroy.assert_not_called()
 
     async def test_destroy_runs_off_the_event_loop(self, mock_cloudinary):
-        """Cloudinary's SDK is blocking HTTP. Called inline from a coroutine it
-        stalls the whole worker for the length of the round trip — every other
-        request on that process waits behind a support-ticket cleanup."""
+        """Cloudinary's SDK is blocking HTTP; called inline it would stall the whole worker for the round trip."""
         loop_thread = threading.current_thread()
         call_threads: list[threading.Thread] = []
 
@@ -435,14 +433,7 @@ class TestUploadSingleAttachment:
 
 
 class _LocalTimeDiffersFromUTC(datetime):
-    """datetime stand-in whose local-time ``now(None)`` reads a different DATE
-    than its UTC ``now(UTC)``.
-
-    The ticket id's date segment must be computed against UTC (the id is stored,
-    displayed and sorted across timezones); this clock turns a non-UTC read into
-    a wrong date the assertion can see, instead of relying on the CI machine's
-    timezone happening to differ from UTC at run time.
-    """
+    """A datetime stand-in whose local-time now(None) reads a different DATE than its UTC now(UTC), so a non-UTC read is visibly wrong instead of depending on the CI machine's own timezone."""
 
     UTC_NOW = datetime(2026, 6, 15, 2, 0, tzinfo=UTC)
 
@@ -459,8 +450,7 @@ def _assert_ticket_id_shape(ticket_id: str) -> None:
 
 
 def _assert_utc_ticket_id(ticket_id: str) -> None:
-    """Pin the shape AND that the date segment is the fake clock's UTC date —
-    a local-time read would produce 20260614 here."""
+    """Pin the shape and that the date segment is the fake clock's UTC date — a local-time read would produce 20260614 here."""
     _assert_ticket_id_shape(ticket_id)
     date_segment = ticket_id.removeprefix("GAIA-").split("-")[0]
     assert date_segment == "20260615", f"ticket id must carry the UTC date, got {ticket_id!r}"
@@ -1191,8 +1181,7 @@ class TestCreateSupportRequestWithAttachments:
     async def test_attachment_processing_receives_the_generated_ticket(
         self, mock_support_repo, mock_email_notifications, sample_request_data
     ):
-        """Uploads are keyed by the ticket id generated inside this call — a
-        None ticket would misname every Cloudinary object."""
+        """Uploads are keyed by the ticket id generated inside this call — a None ticket would misname every Cloudinary object."""
         with (
             patch(
                 "app.services.support_service._process_attachments",
@@ -1466,7 +1455,7 @@ class TestGetUserSupportRequests:
         assert result.pagination.per_page == 10
 
     async def test_second_page_skip_is_exactly_per_page(self, mock_support_repo):
-        """skip == (page - 1) * per_page exactly: page 2 → skip 10."""
+        """Skip == (page - 1) * per_page exactly: page 2 → skip 10."""
         mock_support_repo.page_for_user.return_value = []
         mock_support_repo.count_for_user_status.return_value = 0
 
@@ -1478,7 +1467,7 @@ class TestGetUserSupportRequests:
         assert page_call.kwargs["skip"] == 10
 
     async def test_pages_ceil_division_boundaries(self, mock_support_repo):
-        """pages is ceil(total / per_page): exact int at each boundary."""
+        """Pages is ceil(total / per_page): exact int at each boundary."""
         for total, expected_pages in [(1, 1), (9, 1), (10, 1), (11, 2), (20, 2), (21, 3)]:
             mock_support_repo.page_for_user.return_value = []
             mock_support_repo.count_for_user_status.return_value = total
@@ -1504,12 +1493,7 @@ class TestGetUserSupportRequests:
         assert exc_info.value.detail == "Failed to fetch support requests"
 
 
-# ===========================================================================
-# Log-arg-exact pins for the rollback / attachment helpers
-#
-# These assert every log call's message and kwargs exactly, so a mutated
-# literal, kwarg, or branch inside these helpers fails a test.
-# ===========================================================================
+# These pin every rollback/attachment log call's message and kwargs exactly.
 
 
 _COMPENSATION_FAILED_DETAIL = (
@@ -1593,9 +1577,7 @@ class TestProcessAttachmentsPins:
             assert isinstance(att, SupportAttachment)
 
     async def test_each_upload_receives_its_attachment_ticket_and_constraints(self):
-        """Every per-file task must carry the real ticket id and the module's
-        type/size constraints — a None ticket misnames the Cloudinary object,
-        and None constraints would accept anything."""
+        """Every per-file task must carry the real ticket id and the module's type/size constraints, never None for either."""
         now = datetime.now(UTC)
         uploads = [_make_upload_file("a.png"), _make_upload_file("b.png")]
         with patch(
@@ -1616,9 +1598,7 @@ class TestProcessAttachmentsPins:
     async def test_results_after_a_failed_upload_are_still_collected_for_cleanup(
         self, mock_upload_file_to_cloudinary
     ):
-        """gather returns every outcome; files uploaded AFTER the failing one
-        still made it to Cloudinary and must be cleaned up too — bailing out of
-        the results loop orphans them there forever."""
+        """Files uploaded after a failing one still reached Cloudinary and must be cleaned up too, or they're orphaned forever."""
         mock_upload_file_to_cloudinary.side_effect = [
             "https://res.cloudinary.com/demo/support/GAIA-3_a.png",
             RuntimeError("cloudinary down"),
@@ -1654,10 +1634,8 @@ class TestProcessAttachmentsPins:
         calls: list[str] = []
 
         def flaky(*args: Any, **kwargs: Any) -> str:
-            # upload_file_to_cloudinary is called synchronously (via
-            # loop.run_in_executor), so this stand-in must be sync too --
-            # an async side_effect here would return an un-awaited coroutine
-            # instead of ever raising.
+            # Must be sync: upload_file_to_cloudinary runs via loop.run_in_executor,
+            # so an async side_effect here would return an un-awaited coroutine instead of raising.
             calls.append("upload")
             if len(calls) == 2:
                 raise RuntimeError("cloudinary down")
@@ -1699,9 +1677,7 @@ class TestCreateSupportRequestLogPins:
     async def test_email_failure_rolls_back_with_the_generated_ids_and_error(
         self, mock_support_repo, sample_request_data, mock_email_notifications
     ):
-        """The rollback must receive exactly what was created — ticket id,
-        request id, user, and the actual email error — or it compensates a
-        different row (or none)."""
+        """The rollback must receive exactly what was created — ticket id, request id, user, and the actual email error."""
         team_fn, _ = mock_email_notifications
         err = RuntimeError("smtp refused")
         team_fn.side_effect = err

@@ -1,4 +1,4 @@
-"""Reading a day of ``llm_call`` events out of Loki, exactly once.
+"""Reading a day of llm_call events out of Loki, exactly once.
 
 Loki caps a response and offers no cursor, so a busy day is read in pages that
 must re-open AT the last nanosecond seen and skip exactly the lines already
@@ -24,8 +24,7 @@ pytestmark = pytest.mark.asyncio
 
 @dataclass(frozen=True)
 class _Row:
-    """The minimum a caller's parsed row needs for these tests: an identity that
-    survives paging, so a dropped or doubled line is visible in the result."""
+    """A minimal parsed row: only the identity needed to spot a dropped or doubled line."""
 
     generation_id: str
 
@@ -42,9 +41,7 @@ def _parse(line: str) -> _Row | None:
 
 
 class _FakeLokiClient:
-    """A faithful-enough Loki: one ordered event stream, served ``limit`` at a
-    time from an INCLUSIVE ``start``, which is the behaviour the cursor has to
-    be right about."""
+    """A faithful-enough Loki: one ordered event stream, served limit at a time from an INCLUSIVE start."""
 
     def __init__(self, events: list[tuple[int, str]]) -> None:
         self._events = events
@@ -85,15 +82,7 @@ _DAY_START_NANOS = int(datetime.fromisoformat(f"{_DAY}T00:00:00+00:00").timestam
 async def test_paging_does_not_re_read_the_second_it_stopped_inside(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A full page whose last events share one wall-clock second must not be
-    served again by the next page.
-
-    Loki's ``start`` is inclusive and its timestamps are nanoseconds. A cursor
-    that keeps only whole seconds restarts the next page at the TOP of the
-    second the previous page ended in, so every event in that second is folded
-    twice and ``cost_actual`` comes out inflated for exactly the busiest
-    user-days (a production day clears the 5,000-event page size).
-    """
+    """A page ending inside one wall-clock second must not be re-served by the next, nanosecond-inclusive page."""
     monkeypatch.setattr(_loki, "LOKI_PAGE", 3)
     base = _DAY_START_NANOS
     # The page boundary falls INSIDE one second: every event here carries the
@@ -112,20 +101,14 @@ async def test_paging_does_not_re_read_the_second_it_stopped_inside(
     # Each event exactly once — a re-read would fold g1..g3 twice and double
     # their dollars into cost_actual.
     assert [c.generation_id for c in calls] == ["g1", "g2", "g3", "g4"]
-    # The second request resumes one nanosecond past the last event returned,
-    # not at the start of its second.
-    # The second request re-opens AT the last nanosecond returned (inclusive) and skips
-    # the line it already took there, not at the start of its second.
+    # Resumes exactly at the last nanosecond seen (inclusive), not the top of its second.
     assert client.starts == [base, base + 500_000_000]
 
 
 async def test_paging_drains_every_line_that_shares_the_boundary_nanosecond(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Several lines can carry the same nanosecond. When a page ends inside such
-    a group, the next page must re-open AT that nanosecond and skip only the
-    lines already taken — advancing by one nanosecond would drop the rest of the
-    group, and their dollars with it."""
+    """A page ending inside a shared-nanosecond group must re-open at that nanosecond and skip only lines already taken."""
     monkeypatch.setattr(_loki, "LOKI_PAGE", 3)
     base = _DAY_START_NANOS + 3_600_000_000_000
     client = _FakeLokiClient(
@@ -147,8 +130,7 @@ async def test_paging_drains_every_line_that_shares_the_boundary_nanosecond(
 async def test_more_lines_than_a_page_at_one_nanosecond_refuses_the_day(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Loki cannot page inside one timestamp. A group larger than the page can
-    never be drained, so the day is refused rather than written short."""
+    """A group larger than the page can never be drained, so the day is refused rather than written short."""
     monkeypatch.setattr(_loki, "LOKI_PAGE", 3)
     base = _DAY_START_NANOS + 60_000_000_000
     client = _FakeLokiClient([(base, _event_line(f"g{i}")) for i in range(4)])
@@ -158,8 +140,7 @@ async def test_more_lines_than_a_page_at_one_nanosecond_refuses_the_day(
 
 
 async def test_exhausting_the_page_budget_refuses_the_day(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Forty full pages is a prefix of the day, not the day. Writing it would
-    understate cost_actual, coverage and the provider mix, so the day is refused."""
+    """Forty full pages is a prefix of the day, not the day, so it is refused rather than written short."""
     monkeypatch.setattr(_loki, "LOKI_PAGE", 2)
     monkeypatch.setattr(_loki, "LOKI_MAX_PAGES", 3)
     base = _DAY_START_NANOS + 60_000_000_000
@@ -173,9 +154,7 @@ async def test_exhausting_the_page_budget_refuses_the_day(monkeypatch: pytest.Mo
 async def test_identical_lines_at_the_boundary_are_each_kept_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Two identical lines can share a nanosecond — the same model call logged
-    twice is indistinguishable by text. The next page must skip only as many as
-    were already taken, not every line that looks like them."""
+    """Identical lines sharing a nanosecond are each kept once; the next page skips only as many as were already taken."""
     monkeypatch.setattr(_loki, "LOKI_PAGE", 2)
     base = _DAY_START_NANOS + 60_000_000_000
     twin = _event_line("twin")
@@ -187,8 +166,7 @@ async def test_identical_lines_at_the_boundary_are_each_kept_once(
 
 
 async def test_paging_stops_once_a_page_comes_back_short(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A page under the limit is the last one — asking again costs a round trip
-    and, on the old whole-second cursor, re-read events it had already folded."""
+    """A page under the limit is the last one — asking again would cost a round trip and re-read folded events."""
     monkeypatch.setattr(_loki, "LOKI_PAGE", 3)
     client = _FakeLokiClient([(_DAY_START_NANOS, _event_line("g1"))])
 

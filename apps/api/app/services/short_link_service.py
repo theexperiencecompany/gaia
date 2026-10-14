@@ -4,7 +4,7 @@ The slug IS the capability: high-entropy and globally unique, it grants
 read-only access to one artifact's public view with no session — links open
 from Telegram, WhatsApp and email, where the viewer is never signed in. Anyone
 holding a link can open it until the owner revokes it. What it serves is always
-the target type's safe projection (``app/services/short_link_projections.py``),
+the target type's safe projection (app/services/short_link_projections.py),
 never the stored document.
 """
 
@@ -20,19 +20,19 @@ from app.db.repositories.short_links import (
     short_link_repository,
 )
 from app.models.short_link_models import PublicShortLinkView, ShortLink, ShortLinkTargetType
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.short_link_projections import project_target, session_artifact_file
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.short_links import (
+    ShortLinkCreated,
+    ShortLinkOpened,
+    ShortLinkRevoked,
+)
 from shared.py.wide_events import log
 
-# Slug namespace: a–z + A–Z + digits, 11 chars → 62¹¹ ≈ 5.2×10¹⁹, about 65 bits.
-# The slug IS the capability — anyone holding one reads that artifact with no
-# session — so it has to survive guessing, not just casual sharing, and links do
-# not expire. At 8 chars over a 36-char alphabet (41 bits) a distributed guesser
-# clears the resolver's per-IP rate limit by spreading across hosts and starts
-# landing hits once the live set reaches the millions. 11 chars is ~16 million
-# times harder and still short enough to read in a chat message — the length
-# YouTube uses for the same reason. Lengthening is safe at any time: resolution
-# is an exact-match lookup, so slugs already minted keep working.
+# The slug is the capability and links do not expire, so it must survive guessing:
+# 11 base62 chars ≈ 65 bits (8 base36 chars, 41 bits, falls to a distributed guesser).
+# Lengthening later is safe: resolution is an exact match, minted slugs keep working.
 SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 SLUG_LENGTH = 11
 
@@ -57,13 +57,11 @@ def _build_url(slug: str) -> str:
 async def get_or_create_short_link(
     user_id: str, target_type: ShortLinkTargetType, target_id: str
 ) -> str:
-    """Return the heygaia.link URL for a target ``user_id`` owns, minting it once.
+    """Return the heygaia.link URL for a target user_id owns, minting it once.
 
-    Idempotent per ``(target_type, target_id)``: every caller that surfaces the
-    same artifact gets the same slug, so re-running a briefing or re-opening a
-    share menu never spawns a second link. A revoked link stays dead — the next
-    mint draws a fresh slug. Callers pass targets they already hold under
-    ``user_id``; the public mint endpoint proves ownership before calling.
+    Idempotent per (target_type, target_id); a revoked link stays dead and the
+    next mint draws a fresh slug. Callers pass targets they already hold; the
+    public mint endpoint proves ownership first.
     """
     existing = await short_link_repository.get_live_for_target(target_type, target_id)
     if existing:
@@ -95,9 +93,7 @@ async def get_or_create_short_link(
                 # a fresh slug is now the correct outcome.
                 continue
             return _build_url(winner.slug)
-        capture_event(
-            user_id, AnalyticsEvents.SHORT_LINK_CREATED, {"target_type": target_type.value}
-        )
+        capture(UserId(user_id), ShortLinkCreated(target_type=target_type.value))
         return _build_url(link.slug)
 
     log.error(
@@ -112,7 +108,7 @@ async def get_or_create_short_link(
 
 
 async def _resolve_live_link(slug: str) -> ShortLink | None:
-    """The link behind ``slug``; ``None`` when unknown or revoked."""
+    """Return the link behind slug; None when unknown or revoked."""
     link = await short_link_repository.get_by_slug(slug)
     if link is None or link.revoked:
         return None
@@ -120,28 +116,27 @@ async def _resolve_live_link(slug: str) -> ShortLink | None:
 
 
 async def get_public_view(slug: str) -> PublicShortLinkView | None:
-    """The public view behind a capability slug, or ``None``.
+    """Return the public view behind a capability slug, or None.
 
     The target is read under the OWNER stored on the link doc, never a viewer,
     and only through its type's projection. A target the owner has since
-    deleted resolves to ``None`` exactly like an unknown slug.
+    deleted resolves to None exactly like an unknown slug.
     """
     link = await _resolve_live_link(slug)
     if link is None:
         return None
     view = await project_target(link.target_type, link.user_id, link.target_id)
     if view is not None:
-        capture_event(
-            link.user_id,
-            AnalyticsEvents.SHORT_LINK_OPENED,
-            {"target_type": link.target_type.value},
-        )
+        capture(UserId(link.user_id), ShortLinkOpened(target_type=link.target_type.value))
     return view
 
 
 async def get_public_file(slug: str) -> Path | None:
-    """The raw file behind a session-artifact slug, or ``None`` for any other
-    target type, an unknown or revoked slug, or a file that no longer exists."""
+    """Return the raw file behind a session-artifact slug.
+
+    None for any other target type, an unknown or revoked slug, or a file
+    that no longer exists.
+    """
     link = await _resolve_live_link(slug)
     if link is None or link.target_type is not ShortLinkTargetType.SESSION_ARTIFACT:
         return None
@@ -152,5 +147,5 @@ async def revoke_short_link(user_id: str, slug: str) -> bool:
     """Owner revocation: the URL goes dead immediately. False if not the owner's."""
     revoked = await short_link_repository.revoke(user_id, slug)
     if revoked:
-        capture_event(user_id, AnalyticsEvents.SHORT_LINK_REVOKED)
+        capture(UserId(user_id), ShortLinkRevoked())
     return revoked

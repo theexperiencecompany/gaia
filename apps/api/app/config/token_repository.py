@@ -1,5 +1,5 @@
 """
-Integration Token Repository
+Integration Token Repository.
 
 This module provides centralized management for integration OAuth tokens (Google, Slack, Notion, etc.)
 using PostgreSQL via SQLAlchemy. It handles token storage, retrieval, refreshing, and updates for
@@ -90,17 +90,7 @@ class TokenRepository:
     async def store_token(
         self, user_id: str, provider: str, token_data: dict[str, Any]
     ) -> OAuth2Token:
-        """
-        Store a new integration OAuth token in the database.
-
-        Args:
-            user_id: The ID of the user
-            provider: The OAuth provider (google, slack, notion, etc.)
-            token_data: The token data returned from OAuth provider
-
-        Returns:
-            OAuth2Token object with the stored token data
-        """
+        """Store a new integration OAuth token in the database."""
         async with get_db_session() as session:
             # Check if a token already exists for this user and provider
             stmt = select(OAuthToken).where(
@@ -171,20 +161,7 @@ class TokenRepository:
     async def get_token(
         self, user_id: str, provider: str, renew_if_expired: bool = False
     ) -> OAuth2Token:
-        """
-        Retrieve an integration token for a user and provider.
-
-        Args:
-            user_id: The ID of the user
-            provider: The integration provider (google, slack, notion, etc.)
-            renew_if_expired: Whether to attempt token refresh if expired
-
-        Returns:
-            OAuth2Token with the token data
-
-        Raises:
-            HTTPException: If no token is found or refresh fails when needed
-        """
+        """Retrieve an integration token for a user and provider."""
         async with get_db_session() as session:
             # Query the token for this specific provider
             stmt = select(OAuthToken).where(
@@ -227,15 +204,7 @@ class TokenRepository:
             return oauth_token
 
     async def _refresh_google_token(self, refresh_token: str) -> OAuth2Token | None:
-        """
-        Refresh a Google OAuth token using the refresh token.
-
-        Args:
-            refresh_token: The refresh token to use
-
-        Returns:
-            A new OAuth2Token or None if refreshing failed
-        """
+        """Refresh a Google OAuth token using the refresh token."""
 
         if not self.oauth.google:
             log.error(f"{LogTag.STARTUP} Google OAuth client not properly initialized")
@@ -282,16 +251,7 @@ class TokenRepository:
     async def _refresh_provider_token(
         self, provider: str, refresh_token: str
     ) -> OAuth2Token | None:
-        """
-        Dispatch token refresh to the appropriate provider-specific method.
-
-        Args:
-            provider: The OAuth provider (google, slack, notion, etc.)
-            refresh_token: The refresh token to use
-
-        Returns:
-            A new OAuth2Token or None if refreshing failed
-        """
+        """Dispatch token refresh to the appropriate provider-specific method."""
         if provider == "google":
             return await self._refresh_google_token(refresh_token)
         # Add more providers as needed
@@ -299,16 +259,7 @@ class TokenRepository:
         return None
 
     async def refresh_token(self, user_id: str, provider: str) -> OAuth2Token | None:
-        """
-        Refresh an expired integration token.
-
-        Args:
-            user_id: The ID of the user
-            provider: The integration provider (google, slack, notion, etc.)
-
-        Returns:
-            The refreshed OAuth2Token or None if it couldn't be refreshed
-        """
+        """Refresh an expired integration token."""
         # Get the token record for this provider
         async with get_db_session() as session:
             stmt = select(OAuthToken).where(
@@ -389,16 +340,7 @@ class TokenRepository:
                 return None
 
     async def revoke_token(self, user_id: str, provider: str) -> bool:
-        """
-        Revoke an integration token.
-
-        Args:
-            user_id: The ID of the user
-            provider: The integration provider (google, slack, notion, etc.)
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Revoke an integration token."""
 
         async with get_db_session() as session:
             # Find the token for the specific provider
@@ -417,7 +359,6 @@ class TokenRepository:
                 return False
 
             try:
-                # Delete the token record
                 await session.delete(token_record)
                 await session.commit()
                 log.info(

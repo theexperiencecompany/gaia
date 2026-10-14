@@ -1,10 +1,10 @@
 """A presence gate must credit words the agent said, not fragments of them.
 
-Plain substring matching made ``communicate: ["milk"]`` satisfiable by
+Plain substring matching made communicate: ["milk"] satisfiable by
 "buttermilkshake" — the agent gets credit for a word it never used. These pin
 both directions: fragments no longer count, and assertions on times, money and
 addresses still match inside a sentence, because those do not sit on word
-boundaries and a naive ``\\b`` on both ends would break them.
+boundaries and a naive \\b on both ends would break them.
 """
 
 from __future__ import annotations
@@ -43,10 +43,7 @@ def test_fragments_do_not_count(text: str, needle: str) -> None:
 
 
 def test_hyphenated_compounds_do_match_in_prose() -> None:
-    """A hyphen is a word boundary, so "personal-finance" does contain the word
-    "personal" — correct for prose, and deliberately different from the LIST
-    comparison in `_arg_matches`, where a label must match whole so the label
-    "personal" is not satisfied by "personal-finance"."""
+    """A hyphen is a word boundary, so "personal-finance" contains the word "personal" — different from _arg_matches' whole-label rule."""
     assert says("filed under personal-finance", "personal") is True
 
 
@@ -66,8 +63,7 @@ def test_communicate_gate_rejects_a_fragment() -> None:
 
 
 def test_must_not_communicate_does_not_fire_on_a_fragment() -> None:
-    """The mirror direction: a false leak report is noise that erodes trust in
-    the gate, even though it is the safe direction to be wrong in."""
+    """A false leak report is noise that erodes trust in the gate, even though it is the safe direction to be wrong in."""
     messages = [{"role": "assistant", "content": "I won't discuss the classifier"}]
     result = MustNotCommunicate().score(
         output="", messages=messages, expected={"must_not_communicate": ["class"]}

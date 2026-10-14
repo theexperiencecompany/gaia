@@ -17,6 +17,12 @@
 #                               production actually runs, so ":latest ==
 #                               deployed" holds as an invariant.
 #   notify                      Send one deploy-pipeline Discord embed.
+#   unwedge                     Force-cancel master runs parked on a deployment
+#                               gate nobody can release (no reviewers, no wait
+#                               timer) past STUCK_LIMIT_SECS, waiting out any
+#                               such gate still inside the limit. Such a run holds
+#                               build.yml's master concurrency group, so every
+#                               later push's deploy queues behind it forever.
 #
 # Env contract:
 #   plan    REF, EVENT_NAME, DOCKER_RELEASE_RESULT (required); API_AFFECTED,
@@ -29,6 +35,8 @@
 #           rolled-back: ROLLBACK_MODE, IMAGE_DIGEST, DOCKER_CONTEXT, STACK.
 #           Both need a GHCR login with packages:write.
 #   notify  DISCORD_WEBHOOK, MESSAGE, COLOR (required); USERNAME.
+#   unwedge GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_OUTPUT (required);
+#           STUCK_LIMIT_SECS. Needs actions:write. Writes reaped=<run ids>.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -298,8 +306,69 @@ cmd_notify() {
   ci_ok "deploy notify: OK (HTTP $status)"
 }
 
+# Written by an EXIT trap so a reap already done is reported even when a later
+# request fails the step.
+UNWEDGE_REAPED=""
+
+cmd_unwedge() {
+  : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+  : "${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
+  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+  # A releasable gate clears in seconds (waiting -> queued within ~1 s on every
+  # healthy deploy), so 15 min is far past anything legitimate.
+  local limit="${STUCK_LIMIT_SECS:-900}"
+  local api="repos/${GITHUB_REPOSITORY}/actions/runs"
+  local run_ids run_id releasable age next_check
+
+  trap 'echo "reaped=${UNWEDGE_REAPED}" >> "$GITHUB_OUTPUT"' EXIT
+
+  # Re-check until no gate is still inside the limit: a push that lands 10 min
+  # into a wedge must stay until it can clear it, or its own deploy queues
+  # behind that run with nobody left to free it.
+  while :; do
+    run_ids="$(gh api "${api}?branch=master&status=waiting&per_page=100" \
+      --jq '.workflow_runs[] | select(.id != (env.GITHUB_RUN_ID | tonumber)) | .id')"
+    next_check=0
+
+    for run_id in $run_ids; do
+      # Force-cancel is not instant, so a reaped run can still be listed.
+      [[ " ${UNWEDGE_REAPED} " == *" ${run_id} "* ]] && continue
+
+      # Empty means no deployment gate at all; "true" means a human or a timer
+      # can still release it. Only a gate nothing can release is a wedge.
+      releasable="$(gh api "${api}/${run_id}/pending_deployments" \
+        --jq 'if length == 0 then "" else (map(.wait_timer > 0 or (.reviewers | length) > 0) | any) end')"
+      if [[ "$releasable" != "false" ]]; then
+        echo "unwedge: run ${run_id} is waiting on a gate that can be released (${releasable:-no deployment gate}) — leaving it"
+        continue
+      fi
+
+      age="$(gh api "${api}/${run_id}/jobs?filter=latest&per_page=100" \
+        --jq '[.jobs[] | select(.status == "waiting") | now - (.started_at | fromdateiso8601)] | max // 0 | floor')"
+      if (( age <= limit )); then
+        echo "unwedge: run ${run_id} gate waiting ${age}s (limit ${limit}s) — re-checking once it crosses the limit"
+        if (( next_check == 0 || limit - age + 1 < next_check )); then
+          next_check=$(( limit - age + 1 ))
+        fi
+        continue
+      fi
+
+      # Safe to force: a job parked on its environment gate never reached a
+      # runner, so nothing has touched production.
+      gh api -X POST "${api}/${run_id}/force-cancel" > /dev/null
+      ci_warn "unwedge: force-cancelled run ${run_id} — its deployment gate had no reviewers or timer and sat waiting ${age}s"
+      UNWEDGE_REAPED="${UNWEDGE_REAPED:+$UNWEDGE_REAPED }${run_id}"
+    done
+
+    (( next_check == 0 )) && break
+    sleep "$next_check"
+  done
+
+  ci_ok "deploy unwedge: OK (reaped: ${UNWEDGE_REAPED:-none})"
+}
+
 usage() {
-  sed -n '2,20p' "$0" >&2
+  sed -n '2,26p' "$0" >&2
 }
 
 main() {
@@ -311,6 +380,7 @@ main() {
     verify) _cmd_swarm_stack verify "$@" ;;
     retag)  cmd_retag "$@" ;;
     notify) cmd_notify "$@" ;;
+    unwedge) cmd_unwedge "$@" ;;
     *)
       echo "deploy.sh: unknown subcommand '${sub}'" >&2
       usage

@@ -113,11 +113,9 @@ ${colorConfig
   );
 };
 
-// Thin lazy forwarders that keep this file's public API while deferring the
-// recharts runtime. recharts identifies its chart children by `displayName`
-// (findAllByType compares display names), so each forwarder carries the
-// original component's name. They only ever render inside a ChartContainer,
-// which gates rendering on the module already being loaded.
+// Thin lazy forwarders that defer the recharts runtime while keeping this
+// file's API. recharts identifies chart children by `displayName`
+// (findAllByType), so each forwarder carries the original component's name.
 function ChartTooltip(
   props: React.ComponentProps<typeof RechartsPrimitive.Tooltip>,
 ) {

@@ -10,12 +10,10 @@
  *            call, the week ahead. Density is the point; hierarchy stays
  *            three-level obvious; sections part on hairlines and space.
  *
- * IMPORTANT: the weekly aggregates live in a DEMO fixture (`weekFixture`).
- * The daily `ed` object carries no weekly rollups, so this module declares
- * plausible, clearly-structured demo values — week number and date range are
- * derived from `ed` (weekNo = ceil(editionNo/7); the 7 days ending on ed's
- * date), the two open decisions and the week-ahead preview are re-voiced from
- * `ed.content`, and the totals / per-day counts / prose are fixed demo data.
+ * The week comes from `ed.week` (built by explorer_adapter from the brief's
+ * real completions and calendar); the shipped template read a demo fixture
+ * here, which GAIA must never send (see explorer/README.md). Week number and
+ * date range derive from ed's date; open decisions come from `ed.content`.
  *
  * Deterministic — no Date.now / Math.random. Skin values arrive only as inline
  * custom properties consumed via var(). Wrapped in one IIFE so local helpers
@@ -53,25 +51,27 @@
   // matching the totals below. Tuesday is the week's peak, Friday is you-heavy
   // (you shipped the big one) — this is the shape the deck names.
   const DAY_INITIALS = ["M", "T", "W", "T", "F", "S", "S"];
-  const YOU = [3, 4, 2, 3, 4, 1, 0];
-  const GAIA = [4, 6, 3, 3, 2, 4, 3];
   const WEEKEND = [false, false, false, false, false, true, true];
 
   const PLOT_H = 220; // px, the plot area height
   const BAR_SPAN = 176; // px the tallest bar fills — leaves headroom for labels
-  const STACK_MAX = 10; // max stacked total (Tue: 4+6)
-  const PAIR_MAX = 6; // max single value (Tue GAIA)
-  const U_STACK = BAR_SPAN / STACK_MAX; // px per unit, stacked
-  const U_PAIR = BAR_SPAN / PAIR_MAX; // px per unit, paired
   const GRID_Y = 88; // px from baseline — value 5 stacked / 3 paired, both land here
 
   function px(n) {
     return `${n.toFixed(1)}px`;
   }
 
-  /* ---- demo weekly fixture, derived from ed where it can be ------------ */
-  function weekFixture(ed) {
-    const weekNo = Math.ceil(ed.editionNo / 7);
+  /* ---- the week, from ed.week and ed's date ----------------------------- */
+  function isoWeek(d) {
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const day = t.getUTCDay() || 7;
+    t.setUTCDate(t.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+    return Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+  }
+
+  function weekFromEd(ed) {
+    const wk = ed.week;
     const mi = MONTHS.indexOf(ed.month);
     const end = new Date(ed.year, mi, ed.day);
     const start = new Date(ed.year, mi, ed.day - 6);
@@ -80,61 +80,36 @@
       `${start.getDate()} ${monShort(MONTHS[start.getMonth()])}` +
       (sameYear ? "" : ` ${start.getFullYear()}`) +
       ` &ndash; ${end.getDate()} ${monShort(MONTHS[end.getMonth()])} ${end.getFullYear()}`;
+    const you = wk.days.reduce((n, d) => n + d.you, 0);
+    const gaia = wk.days.reduce((n, d) => n + d.gaia, 0);
+    const split = [you ? `${you} by you` : "", gaia ? `${gaia} by GAIA` : ""]
+      .filter(Boolean)
+      .join(" &middot; ");
 
     return {
-      weekNo,
+      weekNo: isoWeek(end),
       range,
-      deck: "A heavy Tuesday, a clean Friday. You shipped the big one.",
+      deck: ed.deck,
+      days: wk.days,
       stats: [
-        {
-          fig: "42",
-          label: "tasks done",
-          sub: "17 by you &middot; 25 by GAIA",
-        },
-        { fig: "217", label: "emails handled", sub: "inbox kept at zero" },
-        {
-          fig: "31.5",
-          label: "focus hours",
-          sub: "across five deep-work blocks",
-        },
-        {
-          fig: "9",
-          label: "meetings",
-          sub: "three you ran &middot; six GAIA prepped",
-        },
-      ],
-      shipped: [
-        "Redesigned the dashboard and shipped it to production",
-        "Closed the investor round &mdash; term sheet signed with Mehul",
-        "Rewrote onboarding; activation up twelve points",
-        "Cleared the Q2 bug backlog down to zero",
-        "Stood up this weekly review and sent the first edition",
-      ],
-      quiet: [
-        "Archived 340 newsletters and held the inbox at zero all week",
-        "Rescheduled six conflicting meetings before you noticed them",
-        "Drafted fourteen replies; sent the nine routine ones for you",
-        "Filed and tagged every receipt for the quarter",
-      ],
-      // the two open decisions carry over from the daily brief, verbatim
+        you + gaia ? { fig: String(you + gaia), label: "tasks done", sub: split } : null,
+      ].filter(Boolean),
+      shipped: wk.shipped.map(esc),
+      quiet: wk.handled.map(esc),
       decisions: ed.content.decisions,
-      decisionsMade: 5,
-      decisionsPending: 2,
-      // the week ahead re-voices the daily's "today" items as next week's plan
-      ahead: [
-        { day: "Mon", label: ed.content.today[0].label },
-        { day: "Wed", label: ed.content.today[1].label },
-        { day: "Fri", label: ed.content.today[2].label },
-      ],
+      ahead: wk.ahead,
     };
   }
 
   /* ---- the chart ------------------------------------------------------- */
-  function chartColumns(stacked) {
+  function chartColumns(stacked, days) {
+    // Scale to the week's own peak so the tallest bar fills BAR_SPAN.
+    const U_STACK = BAR_SPAN / Math.max(1, ...days.map((d) => d.you + d.gaia));
+    const U_PAIR = BAR_SPAN / Math.max(1, ...days.map((d) => Math.max(d.you, d.gaia)));
     let cols = "";
     for (let i = 0; i < 7; i++) {
-      const you = YOU[i];
-      const gaia = GAIA[i];
+      const you = days[i].you;
+      const gaia = days[i].gaia;
       const total = you + gaia;
       const wk = WEEKEND[i] ? " is-weekend" : "";
       let bars;
@@ -155,7 +130,7 @@
       cols +=
         `<div class="t-weekly__col${wk}">` +
         `<div class="t-weekly__plot">` +
-        `<div class="t-weekly__val">${total}</div>` +
+        `<div class="t-weekly__val">${total || ""}</div>` +
         bars +
         `</div>` +
         `<div class="t-weekly__init">${DAY_INITIALS[i]}</div>` +
@@ -566,7 +541,7 @@
     css: WEEKLY_CSS,
     render(ed, skin) {
       const { ground, face, accent, chart } = skin;
-      const w = weekFixture(ed);
+      const w = weekFromEd(ed);
 
       const stats = w.stats
         .map(
@@ -579,15 +554,13 @@
         )
         .join("");
 
-      const shipped =
-        `<ol class="t-weekly__ship">` +
-        w.shipped.map((t) => `<li>${t}</li>`).join("") +
-        `</ol>`;
+      const shipped = w.shipped.length
+        ? `<ol class="t-weekly__ship">` + w.shipped.map((t) => `<li>${t}</li>`).join("") + `</ol>`
+        : "";
 
-      const quiet =
-        `<ul class="t-weekly__quiet">` +
-        w.quiet.map((t) => `<li>${t}</li>`).join("") +
-        `</ul>`;
+      const quiet = w.quiet.length
+        ? `<ul class="t-weekly__quiet">` + w.quiet.map((t) => `<li>${t}</li>`).join("") + `</ul>`
+        : "";
 
       const decisions = w.decisions
         .map(
@@ -648,28 +621,35 @@
         `<span><i class="t-weekly__sw is-gaia"></i>GAIA</span>` +
         `</div>` +
         `<div class="t-weekly__chart"><div class="t-weekly__grid">` +
-        chartColumns(chart.stacked) +
+        chartColumns(chart.stacked, w.days) +
         `</div></div>` +
         `</section>` +
         // the numbers
-        `<section class="t-weekly__section">` +
-        `<h2 class="t-weekly__h">The numbers</h2>` +
-        `<div class="t-weekly__nums">${stats}</div>` +
-        `</section>` +
+        (stats
+          ? `<section class="t-weekly__section">` +
+            `<h2 class="t-weekly__h">The numbers</h2>` +
+            `<div class="t-weekly__nums">${stats}</div>` +
+            `</section>`
+          : "") +
         // shipped + handled quietly
-        `<section class="t-weekly__section"><div class="t-weekly__grid2">` +
-        `<div><h2 class="t-weekly__h">Shipped this week</h2>${shipped}</div>` +
-        `<div><h2 class="t-weekly__h">Handled quietly` +
-        `<span class="t-weekly__hnote">Done by GAIA, no nudge needed</span></h2>${quiet}</div>` +
-        `</div></section>` +
+        (shipped || quiet
+          ? `<section class="t-weekly__section"><div class="t-weekly__grid2">` +
+            (shipped ? `<div><h2 class="t-weekly__h">Shipped this week</h2>${shipped}</div>` : "") +
+            (quiet
+              ? `<div><h2 class="t-weekly__h">Handled quietly` +
+                `<span class="t-weekly__hnote">Done by GAIA, no nudge needed</span></h2>${quiet}</div>`
+              : "") +
+            `</div></section>`
+          : "") +
         // decisions + week ahead
-        `<section class="t-weekly__section"><div class="t-weekly__grid2">` +
-        `<div><h2 class="t-weekly__h">Still yours to call` +
-        `<span class="t-weekly__hnote">${w.decisionsMade} decisions made &middot; ${w.decisionsPending} carried into next week</span></h2>${decisions}</div>` +
-        `<div><h2 class="t-weekly__h">The week ahead</h2>${ahead}</div>` +
-        `</div></section>` +
+        (decisions || w.ahead.length
+          ? `<section class="t-weekly__section"><div class="t-weekly__grid2">` +
+            (decisions ? `<div><h2 class="t-weekly__h">Still yours to call</h2>${decisions}</div>` : "") +
+            (w.ahead.length ? `<div><h2 class="t-weekly__h">The week ahead</h2>${ahead}</div>` : "") +
+            `</div></section>`
+          : "") +
         // colophon
-        `<p class="t-weekly__colophon">Weekly review &middot; compiled Sunday 18:00 by GAIA` +
+        `<p class="t-weekly__colophon">Weekly review &middot; compiled ${esc(ed.weekday)}${ed.time24 ? ` ${esc(ed.time24)}` : ""} by GAIA` +
         `<br>Week N&ordm; ${w.weekNo} &middot; ${w.range} &middot; from daily edition N&ordm; ${ed.editionNo}</p>` +
         `</div>` +
         `</article>`

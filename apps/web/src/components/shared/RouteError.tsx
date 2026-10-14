@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import { Home01Icon } from "@icons";
 import { useEffect, useState } from "react";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import {
   isChunkLoadError,
   recoverFromChunkError,
@@ -45,7 +45,7 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
     // non-sensitive digest is sent to analytics — error.message/stack can carry
     // backend responses, URLs, query params, or user content.
     console.error("Route error boundary caught:", error);
-    trackEvent(ANALYTICS_EVENTS.ROUTE_ERROR_SHOWN, {
+    track("error:route_error_shown", {
       error_type: "app_router_error_boundary",
       error_digest: error.digest,
     });

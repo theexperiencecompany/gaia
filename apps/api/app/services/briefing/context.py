@@ -9,19 +9,35 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from app.constants.briefing import BRIEFING_KIND_DAILY, WINBACK_THRESHOLD
-from app.constants.todos import BLOCKING_LABELS, FAILED_LABEL, GAIA_TRACKED_LABEL
+from app.constants.briefing import (
+    BRIEFING_KIND_DAILY,
+    WEEK_LIST_LIMIT,
+    WINBACK_THRESHOLD,
+)
+from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
+from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, NEEDS_USER_LABELS
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
-from app.models.briefing_models import BriefingKind, BriefingMood, BriefingPayload
-from app.models.todo_models import TodoDocument
+from app.models.briefing_models import (
+    BriefingEvent,
+    BriefingKind,
+    BriefingMood,
+    BriefingPayload,
+    BriefingWeek,
+    BriefingWeekDay,
+)
+from app.models.calendar_models import GoogleCalendarEventResource
+from app.models.todo_models import ExternalRefSource, TodoDocument
+from app.models.user_models import UserDocument
 from app.services.briefing import dormancy
+from app.services.calendar_service import get_calendar_events
+from app.services.integrations.user_integrations import get_connected_integration_ids
 from shared.py.wide_events import log
 
-# Open tracked todos the brief reports on (in progress / blocked / failed).
+# Open tracked todos the brief reports on (in progress / waiting on the user / failed).
 _TRACKED_WORK_LIMIT = 20
 
 
@@ -61,6 +77,7 @@ class TrackedWork:
 
     completed: list[TodoDocument] = field(default_factory=list)
     running: list[TodoDocument] = field(default_factory=list)
+    #: Waiting on the user (NEEDS_USER_LABELS): the inbox desk's threads they owe a reply, approvals.
     blocked: list[TodoDocument] = field(default_factory=list)
     failed: list[TodoDocument] = field(default_factory=list)
 
@@ -92,10 +109,9 @@ def day_start_utc(clock: UserClock, days_ago: int = 0) -> datetime:
 async def get_yesterday_payload(
     user_id: str, before_date: str, kind: BriefingKind = BRIEFING_KIND_DAILY
 ) -> BriefingPayload | None:
-    """Latest daily briefing payload strictly before ``before_date`` (today).
+    """Latest daily briefing payload strictly before before_date (today).
 
-    Excludes today so a same-day re-run compares against the real prior brief,
-    not itself.
+    Excludes today so a same-day re-run compares against the real prior brief.
     """
     briefing = await briefing_repository.get_before_date(
         user_id, kind=kind, before_date=before_date
@@ -113,9 +129,9 @@ def has_meaningful_focus(focus: str | None) -> bool:
     return bool(cleaned) and cleaned.lower() not in _JUNK_FOCUS_VALUES
 
 
-async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
-    """Return (formatted goal block, has_goal). ``has_goal`` gates cold-start."""
-    focus = ((user.get("onboarding") or {}).get("focus") or "").strip()
+async def format_goal_block(user_id: str, user: UserDocument) -> tuple[str, bool]:
+    """Return (formatted goal block, has_goal); has_goal gates cold-start."""
+    focus = (user.onboarding.focus if user.onboarding else "").strip()
     if not has_meaningful_focus(focus):
         focus = ""
     lines: list[str] = []
@@ -127,9 +143,9 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
             user_id, "what is the user currently working on and their goals", limit=5
         )
         for entry in result.memories:
-            note = entry_to_note(entry).strip()
-            if note and note not in lines:
-                lines.append(f"- {note}")
+            line = f"- {entry_to_note(entry).strip()}"
+            if line != "- " and line not in lines:
+                lines.append(line)
     except Exception as exc:
         # Memory recall is best-effort context, not a hard dependency of the run.
         log.warning("briefing.goal_block_recall_failed", user_id=user_id, error=str(exc))
@@ -139,19 +155,25 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
             "No stated goal on record yet — treat goal discovery as part of today's job.",
             False,
         )
-    return ("\n".join(lines), bool(focus) or len(lines) > 0)
+    return ("\n".join(lines), True)
 
 
 async def gather_tracked_work(user_id: str, since: datetime) -> TrackedWork:
-    """GAIA's tracked todos: completed since ``since``, plus every open one by state."""
+    """GAIA's tracked todos: completed since the cutoff, plus every open one by state.
+
+    The inbox desk itself is left out: it is always open, and the brief reports it
+    through its findings (its thread and proposal sub-todos) instead.
+    """
     work = TrackedWork()
     for doc in await todo_repository.list_completed_since(user_id, since=since):
         if is_gaia_tracked(doc):
             work.completed.append(doc)
     for doc in await todo_repository.list_active_tracked(user_id, limit=_TRACKED_WORK_LIMIT):
+        if doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK:
+            continue
         if FAILED_LABEL in doc.labels:
             work.failed.append(doc)
-        elif BLOCKING_LABELS.intersection(doc.labels):
+        elif NEEDS_USER_LABELS.intersection(doc.labels):
             work.blocked.append(doc)
         else:
             work.running.append(doc)
@@ -214,14 +236,9 @@ async def format_lookback_block(
 async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
     """Count consecutive most-recent daily briefings the user never acknowledged.
 
-    Acknowledgement is honest and channel-agnostic: the briefing was opened, OR the
-    user was active since it went out (a reactivation signal — session active, or
-    any message). A todo completing is deliberately NOT an ack: GAIA completes its
-    own tracked todos autonomously, so counting completions would let GAIA
-    acknowledge its own briefings and winback would never fire.
-
-    The loop breaks at the first acknowledged briefing, so the reactivation-signal
-    lookup runs only for the unacknowledged tail (at most one extra call past it).
+    Acknowledged means opened, or the user was active since it went out. A todo
+    completing is NOT an ack: GAIA completes its own todos, so winback would never fire.
+    The loop breaks at the first acknowledged briefing.
     """
     briefings = await briefing_repository.list_recent(
         user_id, limit=recent, kind=BRIEFING_KIND_DAILY
@@ -243,3 +260,76 @@ async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
 
     last_mood: BriefingMood | str = briefings[0].payload.mood
     return WinbackState(unacknowledged=unacknowledged, last_was_winback=last_mood == "winback")
+
+
+def _to_event(event: GoogleCalendarEventResource, tz: ZoneInfo) -> BriefingEvent | None:
+    start = event.start
+    if start is None:
+        return None
+    title = (event.summary or "").strip() or "Untitled event"
+    if start.dateTime:
+        local = datetime.fromisoformat(start.dateTime).astimezone(tz)
+        return BriefingEvent(
+            date=local.date().isoformat(),
+            start=local.strftime("%H:%M"),
+            title=title,
+            location=event.location,
+        )
+    if start.date:
+        return BriefingEvent(date=start.date, title=title, location=event.location)
+    return None
+
+
+async def gather_calendar(
+    user_id: str, clock: UserClock, *, days: int, days_ahead: int = 0
+) -> list[BriefingEvent]:
+    """Return the user's calendar events over days local days from days_ahead.
+
+    Ordered by start (all-day first). Empty when no calendar is connected; a connected
+    calendar that fails to answer raises.
+    """
+    if GOOGLE_CALENDAR_INTEGRATION_ID not in await get_connected_integration_ids(user_id):
+        return []
+    start = day_start_utc(clock, days_ago=-days_ahead)
+    response = await get_calendar_events(
+        user_id,
+        time_min=start.isoformat(),
+        time_max=(start + timedelta(days=days)).isoformat(),
+        fetch_all=True,
+    )
+    events = [e for e in (_to_event(raw, clock.tz) for raw in response.events) if e]
+    return sorted(events, key=lambda e: (e.date, e.start or ""))
+
+
+async def gather_week(user_id: str, clock: UserClock) -> BriefingWeek:
+    """Collect this week's Monday-to-Sunday completions, by owner and day.
+
+    Also includes the calendar for the seven days ahead.
+    """
+    monday = clock.now_local.date() - timedelta(days=clock.now_local.weekday())
+    since = datetime.combine(monday, time.min, tzinfo=clock.tz).astimezone(UTC)
+    days = [BriefingWeekDay(you=0, gaia=0) for _ in range(7)]
+    shipped: list[str] = []
+    handled: list[str] = []
+    for doc in reversed(await todo_repository.list_completed_since(user_id, since=since)):
+        if doc.completed_at is None:
+            continue
+        completed_at = doc.completed_at
+        if completed_at.tzinfo is None:
+            completed_at = completed_at.replace(tzinfo=UTC)
+        index = (completed_at.astimezone(clock.tz).date() - monday).days
+        if not 0 <= index < len(days):
+            continue
+        if is_gaia_tracked(doc):
+            days[index].gaia += 1
+            handled.append(doc.title)
+        else:
+            days[index].you += 1
+            shipped.append(doc.title)
+    ahead = await gather_calendar(user_id, clock, days=7, days_ahead=1)
+    return BriefingWeek(
+        days=days,
+        shipped=shipped[:WEEK_LIST_LIMIT],
+        handled=handled[:WEEK_LIST_LIMIT],
+        ahead=ahead[:WEEK_LIST_LIMIT],
+    )

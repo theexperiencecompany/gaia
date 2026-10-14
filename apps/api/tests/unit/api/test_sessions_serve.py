@@ -1,4 +1,4 @@
-"""Content-type handling in the session artifact/upload server (``sandboxed_file_response``).
+"""Content-type handling in the session artifact/upload server (sandboxed_file_response).
 
 Regression fence for the stored-XSS fix: script-capable artifact types must be
 served with a sandbox CSP *and* forced to download, while known-safe media may

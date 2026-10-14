@@ -1800,7 +1800,7 @@
       },
       {
         "title": "Código Abierto y Auto-Alojable",
-        "description": "GAIA es completamente de código abierto y gratuito para auto-alojar — sin suscripción requerida para empezar — con un plan Pro a $20/mes fijo si quieres la versión gestionada, dándote control total sobre tus datos y sin dependencia del proveedor."
+        "description": "GAIA es completamente de código abierto y gratuito para auto-alojar — sin suscripción requerida para empezar — con un plan Pro a ${{PRO_MONTHLY_PRICE}}/mes fijo si quieres la versión gestionada, dándote control total sobre tus datos y sin dependencia del proveedor."
       }
     ],
     "faqs": [
@@ -1866,7 +1866,7 @@
       },
       {
         "title": "Código Abierto y Auto-Alojable",
-        "description": "GAIA es completamente de código abierto y auto-alojable para organizaciones con requisitos de residencia de datos, con un plan Pro a $20/mes fijo para la versión gestionada — sin precios por asiento que hacen que las herramientas de soporte ejecutivo sean prohibitivamente caras."
+        "description": "GAIA es completamente de código abierto y auto-alojable para organizaciones con requisitos de residencia de datos, con un plan Pro a ${{PRO_MONTHLY_PRICE}}/mes fijo para la versión gestionada — sin precios por asiento que hacen que las herramientas de soporte ejecutivo sean prohibitivamente caras."
       }
     ],
     "faqs": [
@@ -1880,7 +1880,7 @@
       },
       {
         "question": "¿Es GAIA apropiado para gestionar las comunicaciones sensibles de un ejecutivo C-suite?",
-        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que significa que tu organización puede implementarlo completamente dentro de tu propia infraestructura sin acceso de terceros a los datos. Para organizaciones que necesitan control total sobre las comunicaciones ejecutivas, el auto-alojamiento proporciona soberanía total de los datos. El plan Pro gestionado a $20/mes también está disponible para equipos que se sientan cómodos con una implementación alojada."
+        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que significa que tu organización puede implementarlo completamente dentro de tu propia infraestructura sin acceso de terceros a los datos. Para organizaciones que necesitan control total sobre las comunicaciones ejecutivas, el auto-alojamiento proporciona soberanía total de los datos. El plan Pro gestionado a ${{PRO_MONTHLY_PRICE}}/mes también está disponible para equipos que se sientan cómodos con una implementación alojada."
       }
     ]
   },
@@ -1932,7 +1932,7 @@
       },
       {
         "title": "Código Abierto y Gratuito para Empezar",
-        "description": "GAIA es completamente de código abierto con un nivel gratuito para implementaciones auto-alojadas, y un plan Pro a $20/mes fijo — sin precios por cliente o por asiento que erosionan los márgenes a medida que crece la lista de clientes."
+        "description": "GAIA es completamente de código abierto con un nivel gratuito para implementaciones auto-alojadas, y un plan Pro a ${{PRO_MONTHLY_PRICE}}/mes fijo — sin precios por cliente o por asiento que erosionan los márgenes a medida que crece la lista de clientes."
       }
     ],
     "faqs": [
@@ -1946,7 +1946,7 @@
       },
       {
         "question": "¿Cómo maneja GAIA la confidencialidad del cliente?",
-        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que significa que puedes implementarlo en tu propia infraestructura sin acceso de terceros a los datos del cliente. Para VAs que manejan comunicaciones confidenciales de clientes, el auto-alojamiento proporciona control total de los datos. El plan Pro gestionado a $20/mes también está disponible para VAs que se sientan cómodos con una implementación alojada."
+        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que significa que puedes implementarlo en tu propia infraestructura sin acceso de terceros a los datos del cliente. Para VAs que manejan comunicaciones confidenciales de clientes, el auto-alojamiento proporciona control total de los datos. El plan Pro gestionado a ${{PRO_MONTHLY_PRICE}}/mes también está disponible para VAs que se sientan cómodos con una implementación alojada."
       }
     ]
   }

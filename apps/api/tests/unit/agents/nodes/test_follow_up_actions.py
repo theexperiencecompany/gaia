@@ -1,9 +1,7 @@
-import contextlib
-from dataclasses import dataclass
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from prometheus_client import REGISTRY
 import pytest
 
 from app.agents.core.nodes.follow_up_actions_node import (
@@ -11,12 +9,15 @@ from app.agents.core.nodes.follow_up_actions_node import (
     _PREVIOUS_ACTIONS_MESSAGE_WINDOW,
     SUGGEST_FOLLOW_UP_ACTIONS,
     FollowUpActions,
+    _delegated_to_executor,
     _pretty_print_messages,
     follow_up_actions_node,
     generate_follow_up_actions,
 )
-
-_NODE = "app.agents.core.nodes.follow_up_actions_node"
+from app.constants.general import CALL_EXECUTOR_NAME
+from app.constants.log_tags import LogTag
+from app.models import integration_models
+from tests.helpers import captured_wide_event
 
 
 def _make_state(messages=None):
@@ -31,72 +32,18 @@ def _make_store():
     return MagicMock()
 
 
-def _expected_dynamic_context(tool_names, previous_actions, context_text):
-    """The exact per-turn context block the node hands the LLM."""
-    return (
-        f"Available tools: {tool_names}\n"
-        f"Previously suggested actions (already shown to the user): {previous_actions}\n"
-        f"Context: {context_text}"
-    )
+@pytest.fixture(autouse=True)
+def previous_actions_lookup():
+    """Stub the already-shown-suggestions read so no test reaches Mongo.
 
-
-@dataclass
-class _NodeSeams:
-    """Patches every seam the node reaches through, with per-test defaults.
-
-    Arrange only: each test still asserts on ``writes``, ``llm_inputs`` and the
-    individual mocks, so nothing here softens what a test pins down.
-
-    A dataclass rather than an explicit ``__init__``: this is a bag of
-    per-test settings, and the generated constructor keeps the seam list
-    extensible without tripping the argument-count ratchet.
+    Tests that care about dedup set its return value or side effect.
     """
-
-    actions: list[str] | None = None
-    capability_tools: list[str] | None = None
-    registry_tools: list[str] | None = None
-    previous_actions: list[str] | None = None
-    previous_error: Exception | None = None
-    invoke_error: Exception | None = None
-    writer: MagicMock | None = None
-
-    def __post_init__(self) -> None:
-        self.writes: list[dict[str, Any]] = []
-        if self.writer is None:
-            self.writer = MagicMock(side_effect=self.writes.append)
-        self.llm_inputs: list[list[BaseMessage]] = []
-        self.capabilities = AsyncMock(return_value={"tool_names": self.capability_tools or []})
-        self.registry = MagicMock()
-        self.registry.get_tool_names.return_value = self.registry_tools or []
-        self.fetch_previous = AsyncMock(
-            return_value=self.previous_actions or [], side_effect=self.previous_error
-        )
-        self._actions = list(self.actions or [])
-        self._invoke_error = self.invoke_error
-        self._stack = contextlib.ExitStack()
-
-    async def _ainvoke_structured(self, _schema, msgs, *, label=None, config=None):
-        self.llm_inputs.append(msgs)
-        if self._invoke_error is not None:
-            raise self._invoke_error
-        return FollowUpActions(actions=self._actions)
-
-    def __enter__(self) -> "_NodeSeams":
-        for target, replacement in (
-            (f"{_NODE}.get_user_integration_capabilities", self.capabilities),
-            (f"{_NODE}.get_tool_registry", AsyncMock(return_value=self.registry)),
-            (
-                f"{_NODE}.conversation_repository.get_recent_follow_up_actions",
-                self.fetch_previous,
-            ),
-            (f"{_NODE}.ainvoke_structured", self._ainvoke_structured),
-        ):
-            self._stack.enter_context(patch(target, new=replacement))
-        self._stack.enter_context(patch(f"{_NODE}.get_stream_writer", return_value=self.writer))
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        self._stack.close()
+    with patch(
+        "app.agents.core.nodes.follow_up_actions_node.conversation_repository"
+        ".get_recent_follow_up_actions",
+        new=AsyncMock(return_value=[]),
+    ) as lookup:
+        yield lookup
 
 
 class TestPrettyPrintMessages:
@@ -133,10 +80,7 @@ class TestPrettyPrintMessages:
         assert _pretty_print_messages(messages) == expected
 
     def test_context_over_the_cap_keeps_exactly_the_newest_chars(self):
-        # A maxed-out executor result used to flow verbatim into the follow-up
-        # request. The cap trims the HEAD, never the tail: follow-ups react to
-        # the newest exchange, so dropping the end would suggest actions for a
-        # turn that already scrolled past.
+        # The cap trims the HEAD, never the tail: follow-ups react to the newest exchange.
         messages = [HumanMessage(content="A" * 4_000), AIMessage(content="B" * 4_000)]
         full = "".join(m.pretty_repr() for m in messages)
         assert len(full) > _FOLLOW_UP_CONTEXT_MAX_CHARS
@@ -151,10 +95,16 @@ class TestFollowUpActionsNode:
     @pytest.mark.asyncio
     async def test_stream_closed_on_first_write_returns_state_immediately(self):
         state = _make_state([HumanMessage(content="hi"), AIMessage(content="hello")])
+        config = _make_config()
+        store = _make_store()
+
         mock_writer = MagicMock(side_effect=RuntimeError("stream closed"))
 
-        with _NodeSeams(writer=mock_writer):
-            result = await follow_up_actions_node(state, _make_config(), _make_store())
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            result = await follow_up_actions_node(state, config, store)
 
         assert result is state
         mock_writer.assert_called_once_with({"main_response_complete": True})
@@ -162,53 +112,155 @@ class TestFollowUpActionsNode:
     @pytest.mark.asyncio
     async def test_insufficient_messages_writes_empty_actions(self):
         state = _make_state([HumanMessage(content="hi")])
+        config = _make_config()
+        store = _make_store()
 
-        with _NodeSeams() as seams:
-            result = await follow_up_actions_node(state, _make_config(), _make_store())
+        written_values = []
+        mock_writer = MagicMock(side_effect=written_values.append)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            result = await follow_up_actions_node(state, config, store)
 
         assert result is state
-        assert {"main_response_complete": True} in seams.writes
-        assert {"follow_up_actions": []} in seams.writes
+        assert {"main_response_complete": True} in written_values
+        assert {"follow_up_actions": []} in written_values
 
     @pytest.mark.asyncio
     async def test_empty_messages_writes_empty_actions(self):
         state = _make_state([])
+        config = _make_config()
+        store = _make_store()
 
-        with _NodeSeams() as seams:
-            result = await follow_up_actions_node(state, _make_config(), _make_store())
+        written_values = []
+        mock_writer = MagicMock(side_effect=written_values.append)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            result = await follow_up_actions_node(state, config, store)
 
         assert result is state
-        assert {"follow_up_actions": []} in seams.writes
+        assert {"follow_up_actions": []} in written_values
+
+    @pytest.mark.asyncio
+    async def test_node_emits_latency_span(self):
+        state = _make_state([HumanMessage(content="hi")])
+        config = {
+            "configurable": {
+                "user_id": "user-123",
+                "thread_id": "thread-abc",
+                "agent_name": "node-test-agent",
+            },
+        }
+        before = (
+            REGISTRY.get_sample_value(
+                "graph_node_seconds_count",
+                {"node": "follow_up_actions", "agent": "node-test-agent"},
+            )
+            or 0.0
+        )
+        mock_writer = MagicMock(side_effect=lambda *a, **k: None)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            await follow_up_actions_node(state, config, _make_store())
+
+        assert (
+            REGISTRY.get_sample_value(
+                "graph_node_seconds_count",
+                {"node": "follow_up_actions", "agent": "node-test-agent"},
+            )
+            == before + 1
+        )
+
+    @pytest.mark.asyncio
+    async def test_node_records_the_exact_elapsed_seconds(self):
+        # Two pinned clock reads land exactly 0.25; a sign error (end + start) would
+        # record 20.25, so this pins the direction of the subtraction, not just that
+        # an observation happened.
+        state = _make_state([HumanMessage(content="hi")])
+        config = {
+            "configurable": {
+                "user_id": "user-123",
+                "thread_id": "thread-abc",
+                "agent_name": "span-test-agent",
+            },
+        }
+        labels = {"node": "follow_up_actions", "agent": "span-test-agent"}
+        before = REGISTRY.get_sample_value("graph_node_seconds_sum", labels) or 0.0
+        mock_writer = MagicMock(side_effect=lambda *a, **k: None)
+
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=mock_writer,
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.time.perf_counter",
+                side_effect=[10.0, 10.25],
+            ),
+        ):
+            await follow_up_actions_node(state, config, _make_store())
+
+        assert REGISTRY.get_sample_value("graph_node_seconds_sum", labels) == before + 0.25
 
     @pytest.mark.asyncio
     async def test_happy_path_with_user_id_streams_actions(self):
-        state = _make_state(
-            [
-                HumanMessage(content="Can you help me schedule a meeting?"),
-                AIMessage(content="Sure, I've scheduled the meeting for tomorrow at 10am."),
-            ]
-        )
-        suggested_actions = ["Schedule another meeting", "Send invites", "Set reminder"]
+        messages = [
+            HumanMessage(content="Can you help me schedule a meeting?"),
+            AIMessage(content="Sure, I've scheduled the meeting for tomorrow at 10am."),
+        ]
+        state = _make_state(messages)
+        config = _make_config(user_id="user-123")
+        store = _make_store()
 
-        with _NodeSeams(
-            actions=suggested_actions,
-            capability_tools=["xyztest_invoice_tool", "xyztest_sms_tool"],
-        ) as seams:
-            result = await follow_up_actions_node(
-                state, _make_config(user_id="user-123"), _make_store()
-            )
+        suggested_actions = ["Schedule another meeting", "Send invites", "Set reminder"]
+        follow_up = FollowUpActions(actions=suggested_actions)
+
+        written_values = []
+        mock_writer = MagicMock(side_effect=written_values.append)
+
+        captured_llm_inputs = []
+
+        async def capture_invoke(_schema, msgs, *, label=None, config=None):
+            captured_llm_inputs.append(msgs)
+            return follow_up
+
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=mock_writer,
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(
+                        tool_names=["xyztest_invoice_tool", "xyztest_sms_tool"]
+                    )
+                ),
+            ) as capabilities,
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
+                new=capture_invoke,
+            ),
+        ):
+            result = await follow_up_actions_node(state, config, store)
 
         assert result is state
-        assert {"main_response_complete": True} in seams.writes
-        assert {"follow_up_actions": suggested_actions} in seams.writes
+        capabilities.assert_awaited_once_with("user-123")
+        assert {"main_response_complete": True} in written_values
+        assert {"follow_up_actions": suggested_actions} in written_values
 
-        # The node assembles [static_system, dynamic_context]. Tool names live in
-        # the dynamic-context message so the static system prefix stays
-        # byte-identical across users (prompt-cache friendly). There is no third
-        # human message: the context used to be sent twice, and the duplicate was
-        # ~350 tokens of uncached per-turn weight for no added information.
-        assert len(seams.llm_inputs) == 1
-        msgs = seams.llm_inputs[0]
+        # [static_system, dynamic_context]: tool names live in dynamic_context so the
+        # static prefix stays byte-identical across users (prompt-cache friendly).
+        assert len(captured_llm_inputs) == 1
+        msgs = captured_llm_inputs[0]
         assert len(msgs) == 2
         dynamic_context = msgs[1].content
         assert "xyztest_invoice_tool" in dynamic_context
@@ -224,43 +276,75 @@ class TestFollowUpActionsNode:
         state = _make_state(messages)
         config = _make_config(user_id=None)
         config["configurable"].pop("user_id")
-        suggested_actions = ["Search the web", "Set a reminder"]
+        store = _make_store()
 
-        with _NodeSeams(
-            actions=suggested_actions,
-            capability_tools=["never_used"],
-            registry_tools=["web_search", "reminder"],
-        ) as seams:
-            result = await follow_up_actions_node(state, config, _make_store())
+        suggested_actions = ["Search the web", "Set a reminder"]
+        follow_up = FollowUpActions(actions=suggested_actions)
+
+        written_values = []
+        mock_writer = MagicMock(side_effect=written_values.append)
+
+        mock_registry = MagicMock()
+        mock_registry.get_tool_names.return_value = ["web_search", "reminder"]
+
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=mock_writer,
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_tool_registry",
+                new=AsyncMock(return_value=mock_registry),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
+                new=AsyncMock(return_value=follow_up),
+            ),
+        ):
+            result = await follow_up_actions_node(state, config, store)
 
         assert result is state
-        seams.registry.get_tool_names.assert_called_once()
-        # With no user there are no per-user capabilities and no thread to dedup
-        # against: the whole tool registry stands in, and nothing is looked up.
-        seams.capabilities.assert_not_awaited()
-        seams.fetch_previous.assert_not_awaited()
-        assert {"follow_up_actions": suggested_actions} in seams.writes
-        assert seams.llm_inputs[0][1].content == _expected_dynamic_context(
-            ["web_search", "reminder"], [], _pretty_print_messages(messages)
-        )
+        mock_registry.get_tool_names.assert_called_once()
+        assert {"follow_up_actions": suggested_actions} in written_values
 
     @pytest.mark.asyncio
     async def test_uses_last_4_messages_when_history_exceeds_4(self):
         messages = [HumanMessage(content=f"message {i}") for i in range(6)]
+        state = _make_state(messages)
+        config = _make_config(user_id="user-123")
+        store = _make_store()
 
-        with _NodeSeams(actions=["action1"]) as seams:
-            await follow_up_actions_node(
-                _make_state(messages), _make_config(user_id="user-123"), _make_store()
-            )
+        captured_invocations = []
+        follow_up = FollowUpActions(actions=["action1"])
 
-        assert len(seams.llm_inputs) == 1
-        # Two messages, not three — the context is carried once, in the
-        # dynamic-context system message, never repeated as a human turn.
-        llm_msgs = seams.llm_inputs[0]
+        async def capture_invoke(_schema, msgs, *, label=None, config=None):
+            captured_invocations.append(msgs)
+            return follow_up
+
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
+                new=capture_invoke,
+            ),
+        ):
+            await follow_up_actions_node(state, config, store)
+
+        assert len(captured_invocations) == 1
+        llm_msgs = captured_invocations[0]
+        # Two messages, not three — the context is carried once, never repeated as a human turn.
         assert len(llm_msgs) == 2
 
-        # The context is the pretty-printed slice of recent_messages. With 6
-        # input messages and a window of 4, only messages 2-5 must appear.
+        # With 6 input messages and a window of 4, only messages 2-5 must appear.
         context_msg = llm_msgs[1]
         for i in range(2, 6):
             assert f"message {i}" in context_msg.content
@@ -272,20 +356,45 @@ class TestFollowUpActionsNode:
     @pytest.mark.asyncio
     async def test_llm_failure_writes_empty_actions_and_returns_state(self):
         """The structured call raises — the except block degrades to empty actions."""
-        state = _make_state([HumanMessage(content="hi"), AIMessage(content="hello")])
+        messages = [
+            HumanMessage(content="hi"),
+            AIMessage(content="hello"),
+        ]
+        state = _make_state(messages)
+        config = _make_config(user_id="user-123")
+        store = _make_store()
 
-        with _NodeSeams(invoke_error=RuntimeError("LLM timeout")) as seams:
-            result = await follow_up_actions_node(
-                state, _make_config(user_id="user-123"), _make_store()
-            )
+        written_values = []
+        mock_writer = MagicMock(side_effect=written_values.append)
+
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=mock_writer,
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
+                new=AsyncMock(side_effect=RuntimeError("LLM timeout")),
+            ),
+        ):
+            result = await follow_up_actions_node(state, config, store)
 
         assert result is state
-        assert {"follow_up_actions": []} in seams.writes
+        assert {"follow_up_actions": []} in written_values
 
     @pytest.mark.asyncio
     async def test_second_write_failure_does_not_raise(self):
         """Writer succeeds for completion marker but fails for follow_up_actions."""
         state = _make_state([HumanMessage(content="hi")])
+        config = _make_config()
+        store = _make_store()
+
         call_count = [0]
 
         def failing_second_write(value):
@@ -293,8 +402,13 @@ class TestFollowUpActionsNode:
             if call_count[0] > 1:
                 raise RuntimeError("stream closed after first write")
 
-        with _NodeSeams(writer=MagicMock(side_effect=failing_second_write)):
-            result = await follow_up_actions_node(state, _make_config(), _make_store())
+        mock_writer = MagicMock(side_effect=failing_second_write)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            result = await follow_up_actions_node(state, config, store)
 
         assert result is state
         assert call_count[0] == 2
@@ -302,154 +416,279 @@ class TestFollowUpActionsNode:
     @pytest.mark.asyncio
     async def test_actions_streamed_not_stored_in_state(self):
         """Follow-up actions must be sent via writer, never modifying state."""
-        state = _make_state(
-            [
-                HumanMessage(content="What meetings do I have?"),
-                AIMessage(content="You have a meeting at 3pm."),
-            ]
-        )
+        messages = [
+            HumanMessage(content="What meetings do I have?"),
+            AIMessage(content="You have a meeting at 3pm."),
+        ]
+        state = _make_state(messages)
         original_messages = list(state["messages"])
+        config = _make_config(user_id="user-456")
+        store = _make_store()
 
-        with _NodeSeams(actions=["Add another meeting", "Cancel meeting"]):
-            result = await follow_up_actions_node(
-                state, _make_config(user_id="user-456"), _make_store()
-            )
+        follow_up = FollowUpActions(actions=["Add another meeting", "Cancel meeting"])
+
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
+                new=AsyncMock(return_value=follow_up),
+            ),
+        ):
+            result = await follow_up_actions_node(state, config, store)
 
         assert result is state
         # State messages should be unchanged — actions go only through the writer
         assert result["messages"] == original_messages
 
-    @pytest.mark.asyncio
-    async def test_thread_id_from_config_drives_the_previous_actions_lookup(self):
-        """The dedup lookup is keyed on the run's user and its thread_id."""
-        state = _make_state([HumanMessage(content="hi"), AIMessage(content="hello")])
 
-        with _NodeSeams(actions=["Reply to Sam"]) as seams:
-            await follow_up_actions_node(state, _make_config(user_id="user-123"), _make_store())
+NODE = "app.agents.core.nodes.follow_up_actions_node"
 
-        seams.fetch_previous.assert_awaited_once_with(
-            "user-123", "thread-abc", window=_PREVIOUS_ACTIONS_MESSAGE_WINDOW
+
+class TestGenerateFollowUpActionsNeverRaises:
+    @pytest.mark.regression
+    async def test_a_failing_capabilities_fetch_yields_no_actions_and_an_error(self) -> None:
+        llm = AsyncMock()
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(side_effect=RuntimeError("capabilities down")),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            async with captured_wide_event() as event:
+                actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        assert actions == []
+        llm.assert_not_awaited()
+        (error,) = [e for e in event["errors"] if e.get("error") == "capabilities down"]
+        assert error["user_id"] == "user-123"
+        assert error["error_type"] == "RuntimeError"
+
+    @pytest.mark.regression
+    async def test_a_failing_registry_fallback_yields_no_actions(self) -> None:
+        with patch(
+            f"{NODE}.get_tool_registry", new=AsyncMock(side_effect=RuntimeError("no registry"))
+        ):
+            assert await generate_follow_up_actions("ctx", None, _make_config()) == []
+
+    async def test_an_llm_failure_is_logged_as_an_error(self) -> None:
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
+        ):
+            async with captured_wide_event() as event:
+                actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        assert actions == []
+        assert [e["error_type"] for e in event["errors"]] == ["ValueError"]
+
+    async def test_the_failure_is_logged_with_its_message_and_the_users_id(self) -> None:
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
+        ):
+            async with captured_wide_event() as event:
+                await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        (error,) = event["errors"]
+        assert error["msg"] == f"{LogTag.AGENT} Follow-up action generation failed"
+        assert error["user_id"] == "user-123"
+        assert error["error"] == "bad json"
+
+    async def test_capabilities_are_read_for_the_asking_user(self) -> None:
+        capabilities = AsyncMock(
+            return_value=integration_models.UserIntegrationCapabilities(tool_names=["a_tool"])
         )
-        # Exactly two frames, in this order: the completion marker first (so the
-        # UI can close the bubble immediately), the chips second.
-        assert seams.writes == [
-            {"main_response_complete": True},
-            {"follow_up_actions": ["Reply to Sam"]},
+        llm = AsyncMock(return_value=FollowUpActions(actions=["Do it"]))
+        with (
+            patch(f"{NODE}.get_user_integration_capabilities", new=capabilities),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        assert actions == ["Do it"]
+        capabilities.assert_awaited_once_with("user-123")
+
+
+def _call(name: str) -> dict[str, object]:
+    return {"name": name, "args": {}, "id": f"call-{name}", "type": "tool_call"}
+
+
+class TestDelegatedToExecutor:
+    def test_a_call_to_the_executor_this_turn_is_delegation(self) -> None:
+        messages = [
+            HumanMessage(content="hi"),
+            AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
         ]
+        assert _delegated_to_executor(messages) is True
 
-    @pytest.mark.asyncio
-    async def test_config_without_configurable_skips_the_lookup_and_still_streams(self):
-        """A run carrying no ``configurable`` has no thread to dedup against."""
-        state = _make_state([HumanMessage(content="hi"), AIMessage(content="hello")])
-
-        with _NodeSeams(
-            actions=["Search the web"],
-            registry_tools=["web_search"],
-            previous_actions=["never shown"],
-        ) as seams:
-            result = await follow_up_actions_node(state, {}, _make_store())
-
-        assert result is state
-        seams.fetch_previous.assert_not_awaited()
-        assert seams.writes == [
-            {"main_response_complete": True},
-            {"follow_up_actions": ["Search the web"]},
+    def test_a_call_to_another_tool_is_not_delegation(self) -> None:
+        messages = [
+            HumanMessage(content="hi"),
+            AIMessage(content="", tool_calls=[_call("web_search")]),
         ]
+        assert _delegated_to_executor(messages) is False
+
+    def test_a_non_ai_message_before_the_call_does_not_hide_it(self) -> None:
+        messages = [
+            HumanMessage(content="hi"),
+            ToolMessage(content="ok", tool_call_id="x"),
+            AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
+        ]
+        assert _delegated_to_executor(messages) is True
+
+    def test_a_delegation_before_the_last_human_turn_does_not_count(self) -> None:
+        messages = [
+            HumanMessage(content="first"),
+            AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
+            HumanMessage(content="second"),
+            AIMessage(content="plain reply"),
+        ]
+        assert _delegated_to_executor(messages) is False
+
+
+def _ai_calling(name: str) -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": name, "args": {}, "id": f"call-{name}"}])
+
+
+class TestExecutorDelegationSkip:
+    """A turn handed to the executor gets its follow-ups from the executor, not from comms."""
+
+    @staticmethod
+    async def _run(messages: list) -> tuple[list, AsyncMock]:
+        written: list = []
+        generate = AsyncMock(return_value=["Next step"])
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=MagicMock(side_effect=written.append),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.generate_follow_up_actions",
+                new=generate,
+            ),
+        ):
+            await follow_up_actions_node(_make_state(messages), _make_config(), _make_store())
+        return written, generate
 
     @pytest.mark.asyncio
-    async def test_exactly_four_messages_are_all_sent_as_context(self):
-        """At the window boundary nothing is trimmed — four in, four out."""
-        messages = [HumanMessage(content=f"message {i}") for i in range(4)]
+    async def test_an_executor_call_after_tool_traffic_skips_follow_ups(self) -> None:
+        written, generate = await self._run(
+            [
+                HumanMessage(content="Book my flight"),
+                _ai_calling("search_flights"),
+                ToolMessage(content="3 flights", tool_call_id="call-search_flights"),
+                _ai_calling("call_executor"),
+            ]
+        )
 
-        with _NodeSeams(actions=["action1"]) as seams:
-            await follow_up_actions_node(_make_state(messages), _make_config(), _make_store())
-
-        context = seams.llm_inputs[0][1].content
-        for i in range(4):
-            assert f"message {i}" in context
+        assert written == [{"main_response_complete": True}]
+        generate.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_fifth_message_pushes_the_oldest_out_of_the_context(self):
-        """One past the boundary — the window keeps the newest four."""
-        messages = [HumanMessage(content=f"message {i}") for i in range(5)]
+    async def test_a_turn_calling_other_tools_still_gets_follow_ups(self) -> None:
+        written, generate = await self._run(
+            [HumanMessage(content="Weather?"), _ai_calling("get_weather")]
+        )
 
-        with _NodeSeams(actions=["action1"]) as seams:
-            await follow_up_actions_node(_make_state(messages), _make_config(), _make_store())
-
-        context = seams.llm_inputs[0][1].content
-        assert "message 0" not in context
-        for i in range(1, 5):
-            assert f"message {i}" in context
+        assert written == [{"main_response_complete": True}, {"follow_up_actions": ["Next step"]}]
+        generate.assert_awaited_once()
 
 
 class TestPreviousActionsContext:
-    """Suggestions already shown this conversation ride in the dynamic context."""
+    """Suggestions already shown in this conversation ride in the dynamic context."""
 
-    @pytest.mark.asyncio
-    async def test_previous_actions_are_fetched_for_the_thread_and_rendered_verbatim(self):
-        with _NodeSeams(
-            actions=["Draft the reply"],
-            capability_tools=["mail_tool"],
-            previous_actions=["Book the room", "Invite Sam"],
-        ) as seams:
-            actions = await generate_follow_up_actions(
-                "CONTEXT", "user-123", {"configurable": {}}, "thread-abc"
-            )
+    async def test_the_threads_previous_actions_are_rendered_into_the_context(
+        self, previous_actions_lookup: AsyncMock
+    ) -> None:
+        previous_actions_lookup.return_value = ["Book the room", "Invite Sam"]
+        llm = AsyncMock(return_value=FollowUpActions(actions=["Draft the reply"]))
+        state = _make_state([HumanMessage(content="hi"), AIMessage(content="hello")])
+        with (
+            patch(f"{NODE}.current_stream_writer", return_value=MagicMock()),
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(
+                        tool_names=["mail_tool"]
+                    )
+                ),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            await follow_up_actions_node(state, _make_config(user_id="user-123"), _make_store())
 
-        assert actions == ["Draft the reply"]
-        # The window is a trailing-message count the repository slices on — a
-        # wrong or missing value silently changes what counts as "already shown".
+        # Keyed on the run's user and its thread_id, over a trailing window the
+        # repository slices on.
         assert _PREVIOUS_ACTIONS_MESSAGE_WINDOW == 10
-        seams.fetch_previous.assert_awaited_once_with("user-123", "thread-abc", window=10)
-
-        msgs = seams.llm_inputs[0]
-        assert len(msgs) == 2
-        assert msgs[0].content == SUGGEST_FOLLOW_UP_ACTIONS
-        assert msgs[1].content == _expected_dynamic_context(
-            ["mail_tool"], ["Book the room", "Invite Sam"], "CONTEXT"
+        previous_actions_lookup.assert_awaited_once_with("user-123", "thread-abc", window=10)
+        dynamic_context = llm.await_args.args[1][1].content
+        assert dynamic_context.startswith(
+            "Available tools: ['mail_tool']\n"
+            "Previously suggested actions (already shown to the user): "
+            "['Book the room', 'Invite Sam']\n"
+            "Context: "
         )
-        assert msgs[1].additional_kwargs == {"dynamic_context": True, "memory_message": True}
 
     @pytest.mark.parametrize(
-        ("user_id", "conversation_id", "expected_tools"),
-        [
-            ("user-123", None, ["cap_tool"]),
-            (None, "thread-abc", ["registry_tool"]),
-        ],
+        ("user_id", "conversation_id"), [("user-123", None), (None, "thread-abc")]
     )
-    @pytest.mark.asyncio
-    async def test_lookup_needs_both_a_user_and_a_conversation(
-        self, user_id, conversation_id, expected_tools
-    ):
-        """Either half missing means no thread to dedup against — skip, don't guess."""
-        with _NodeSeams(
-            actions=["Draft the reply"],
-            capability_tools=["cap_tool"],
-            registry_tools=["registry_tool"],
-            previous_actions=["never shown"],
-        ) as seams:
-            await generate_follow_up_actions(
+    async def test_the_lookup_needs_both_a_user_and_a_conversation(
+        self, previous_actions_lookup: AsyncMock, user_id: str | None, conversation_id: str | None
+    ) -> None:
+        llm = AsyncMock(return_value=FollowUpActions(actions=["Draft the reply"]))
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
+            ),
+            patch(f"{NODE}.get_tool_registry", new=AsyncMock(return_value=MagicMock())),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            actions = await generate_follow_up_actions(
                 "CONTEXT", user_id, {"configurable": {}}, conversation_id
             )
 
-        seams.fetch_previous.assert_not_awaited()
-        assert seams.llm_inputs[0][1].content == _expected_dynamic_context(
-            expected_tools, [], "CONTEXT"
-        )
-
-    @pytest.mark.asyncio
-    async def test_lookup_failure_degrades_to_an_empty_list_and_still_suggests(self):
-        """Dedup context is an enhancement — losing it must not cost the chips."""
-        with _NodeSeams(
-            actions=["Draft the reply"],
-            capability_tools=["mail_tool"],
-            previous_error=RuntimeError("mongo down"),
-        ) as seams:
-            actions = await generate_follow_up_actions(
-                "CONTEXT", "user-123", {"configurable": {}}, "thread-abc"
-            )
-
         assert actions == ["Draft the reply"]
-        assert seams.llm_inputs[0][1].content == _expected_dynamic_context(
-            ["mail_tool"], [], "CONTEXT"
+        previous_actions_lookup.assert_not_awaited()
+        assert (
+            "Previously suggested actions (already shown to the user): []"
+            in llm.await_args.args[1][1].content
         )
+
+    async def test_a_failing_lookup_yields_no_actions_and_an_error(
+        self, previous_actions_lookup: AsyncMock
+    ) -> None:
+        previous_actions_lookup.side_effect = RuntimeError("mongo down")
+        llm = AsyncMock()
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            async with captured_wide_event() as event:
+                actions = await generate_follow_up_actions(
+                    "CONTEXT", "user-123", _make_config(), "thread-abc"
+                )
+
+        assert actions == []
+        llm.assert_not_awaited()
+        (error,) = [e for e in event["errors"] if e.get("error") == "mongo down"]
+        assert error["user_id"] == "user-123"

@@ -1,15 +1,15 @@
 """Regression tests: workflow tools must emit JSON-serializable payloads.
 
-The workflow tools hand ``workflow.model_dump()`` (python mode — native
+The workflow tools hand workflow.model_dump() (python mode — native
 datetimes) to the LLM as a tool result and to the stream writer as an SSE
-frame. Both consumers plain ``json.dumps`` the payload, so any datetime
-raises ``TypeError: Object of type datetime is not JSON serializable`` — in
+frame. Both consumers plain json.dumps the payload, so any datetime
+raises TypeError: Object of type datetime is not JSON serializable — in
 the background/bot path from *inside* the tool's try-block, which surfaces as
 a tool error the agent then retries forever.
 
 Same defect class already documented for search_reminders_tool in
 scripts/evals/data/capability/reminders_extra.yaml; the codebase convention
-(todo_tool.py, workflow_tasks.py) is ``model_dump(mode="json")``.
+(todo_tool.py, workflow_tasks.py) is model_dump(mode="json").
 """
 
 from datetime import UTC, datetime, timedelta
@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.runnables.config import RunnableConfig
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowWithIntegrations
 
 MODULE = "app.agents.tools.workflow_tool"
@@ -39,8 +40,9 @@ def _make_config() -> RunnableConfig:
 
 
 def _make_real_workflow() -> WorkflowWithIntegrations:
-    """A real model instance carrying every datetime the tools serialize."""
+    """Build a real model instance carrying every datetime the tools serialize."""
     return WorkflowWithIntegrations(
+        delivery=WorkflowDelivery.NOW,
         user_id=FAKE_USER_ID,
         title="Daily digest",
         description="Send the digest",
@@ -61,7 +63,7 @@ def _make_real_workflow() -> WorkflowWithIntegrations:
 
 
 def _assert_json_safe(payload: object) -> None:
-    """The exact operation every consumer of these payloads performs."""
+    """Perform the exact operation every consumer of these payloads performs."""
     json.dumps(payload)
 
 
@@ -73,7 +75,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         workflow = _make_real_workflow()
         expected_payload = workflow.model_dump(mode="json")
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = MagicMock()
@@ -99,7 +101,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         workflow = _make_real_workflow()
         expected_payload = workflow.model_dump(mode="json")
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = MagicMock()
@@ -122,7 +124,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         workflow = _make_real_workflow()
         expected_payload = workflow.model_dump(mode="json")
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = MagicMock()
@@ -173,8 +175,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         }
 
     async def test_create_directly_uses_prompt_not_description_as_instructions(self) -> None:
-        """create_workflow_directly builds the execution instructions from the
-        draft's prompt, falling back to its description only when absent."""
+        """create_workflow_directly builds the execution instructions from the draft's prompt, falling back to its description only when absent."""
         from app.services.workflow.subagent_output import FinalizedOutput
         from app.utils.workflow_utils import create_workflow_directly
 
@@ -192,7 +193,10 @@ class TestWorkflowToolPayloadsAreJsonSafe:
             mock_service.create_workflow = AsyncMock(return_value=workflow)
 
             result = await create_workflow_directly(
-                draft=draft, user_id=FAKE_USER_ID, writer=MagicMock()
+                draft=draft,
+                user_id=FAKE_USER_ID,
+                writer=MagicMock(),
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result is not None

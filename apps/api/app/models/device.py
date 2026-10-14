@@ -48,6 +48,9 @@ class Device(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     platform: Mapped[str | None] = mapped_column(String(60), nullable=True)
     daemon_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Which host paired the device: "desktop" (in-app self-pair) or "cli" (the
+    # gaia bridge daemon). NULL for devices paired before the column existed.
+    client: Mapped[str | None] = mapped_column(String(20), nullable=True)
     status: Mapped[DeviceStatus] = mapped_column(
         SQLEnum(DeviceStatus, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
@@ -87,6 +90,11 @@ class DeviceMCPServer(Base):
     # for the built-in server). Unique per device; the frame's ``server`` field.
     server_key: Mapped[str] = mapped_column(String(120), nullable=False)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # The daemon's ServerConfig.type (stdio | url | filesystem). Plain String,
+    # not SQLEnum, to avoid a Postgres enum ALTER when a new kind appears.
+    kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="stdio", server_default="stdio"
+    )
     status: Mapped[DeviceServerStatus] = mapped_column(
         SQLEnum(DeviceServerStatus, values_callable=lambda x: [e.value for e in x]),
         nullable=False,

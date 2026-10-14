@@ -29,11 +29,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // CSRF: only accept same-origin submissions. A cross-site form POST carries
-  // the victim's cookie but a foreign (or absent) Origin, so reject it before
-  // attaching the server write credential. Compare the Origin header's host to
-  // the request Host — both are browser-provided and stay consistent behind a
-  // proxy/CDN (unlike a server-derived origin).
+  // CSRF: reject a cross-site form POST (foreign/absent Origin) before
+  // attaching the write credential. Compare Origin's host to Host — both
+  // are browser-provided and stay consistent behind a proxy/CDN.
   const origin = request.headers.get("origin");
   const host = request.headers.get("host");
   let originHost: string | null = null;
@@ -55,10 +53,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const formData = await request.formData();
 
-  // Build the target via the URL parser (keeps scheme/host/port/query intact),
-  // appending `/blogs` regardless of whether the base has a trailing slash.
-  // Guarded: a malformed API_BASE_URL would otherwise throw and crash the
-  // handler instead of returning a structured error.
+  // Build target via URL parser (keeps scheme/host/port/query intact),
+  // appending `/blogs` regardless of a trailing slash — guarded since a
+  // malformed API_BASE_URL would otherwise throw and crash the handler.
   let backendUrl: URL;
   try {
     backendUrl = new URL(API_BASE_URL);
@@ -79,10 +76,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     body: formData,
   });
 
-  // This handler is a proxy, not an interpreter: whatever the backend answers
-  // is relayed verbatim (same status code, same payload), so the client reacts
-  // to the exact API contract. The ok-check makes that deliberate for HTTP
-  // errors too — their bodies are forwarded as-is below.
+  // This handler is a proxy, not an interpreter: the backend's response is
+  // relayed verbatim (status + payload) so the client sees the exact API
+  // contract — including error bodies, forwarded as-is below.
   if (!backendResponse.ok) {
     const errorPayload = await readBackendPayload(backendResponse);
     return NextResponse.json(errorPayload, {

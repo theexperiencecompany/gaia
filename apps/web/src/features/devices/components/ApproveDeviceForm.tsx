@@ -5,38 +5,36 @@ import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { useEffect, useState } from "react";
 import { toast } from "@/lib/toast";
 import { devicesApi } from "../api/devicesApi";
 import {
   BRIDGE_UP_COMMAND,
-  PAIRING_CODE_GROUP_LENGTH,
+  DEVICE_APPROVED_REDIRECT_MS,
   PAIRING_CODE_LENGTH,
-  PAIRING_CODE_SEPARATOR,
 } from "../constants";
+import { normalizePairingCode, toApiPairingCode } from "../utils";
 import { DeviceSetupGuide } from "./DeviceSetupGuide";
 import { PairingCodeInput } from "./PairingCodeInput";
-
-/** The input holds the code without its separator; the API expects it back in. */
-function toApiCode(digits: string): string {
-  return `${digits.slice(0, PAIRING_CODE_GROUP_LENGTH)}${PAIRING_CODE_SEPARATOR}${digits.slice(PAIRING_CODE_GROUP_LENGTH)}`;
-}
-
-function toInputCode(code: string): string {
-  return code
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .slice(0, PAIRING_CODE_LENGTH);
-}
 
 export function ApproveDeviceForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const prefilledCode = searchParams.get("code") ?? "";
-  const [code, setCode] = useState(() => toInputCode(prefilledCode));
+  const [code, setCode] = useState(() => normalizePairingCode(prefilledCode));
   const [isApproving, setIsApproving] = useState(false);
   const [approved, setApproved] = useState<string | null>(null);
+
+  // Once paired, take the user back to the devices list on their own rather than
+  // leaving them stranded on a terminal success screen.
+  useEffect(() => {
+    if (!approved) return;
+    const timer = setTimeout(
+      () => router.push("/settings/devices"),
+      DEVICE_APPROVED_REDIRECT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [approved, router]);
 
   // The CLI links here with the code already in the URL, so that visitor has
   // finished the setup steps by definition — only show the guide to someone who
@@ -51,13 +49,10 @@ export function ApproveDeviceForm() {
     if (isApproving) return;
     setIsApproving(true);
     try {
-      const result = await devicesApi.approve(toApiCode(digits));
+      const result = await devicesApi.approve(toApiPairingCode(digits));
       setApproved(result.name);
-      trackEvent(ANALYTICS_EVENTS.DEVICE_CONNECTED, {
-        source: cameFromCli ? "cli" : "settings",
-      });
     } catch {
-      // apiService already surfaced the error toast
+      // The API client already surfaced the error toast
     } finally {
       setIsApproving(false);
     }
@@ -75,7 +70,10 @@ export function ApproveDeviceForm() {
             <span className="font-mono">{BRIDGE_UP_COMMAND}</span> to connect.
           </p>
         </div>
-        <Button variant="flat" onPress={() => router.push("/settings/devices")}>
+        <Button
+          color="primary"
+          onPress={() => router.push("/settings/devices")}
+        >
           Manage devices
         </Button>
       </div>

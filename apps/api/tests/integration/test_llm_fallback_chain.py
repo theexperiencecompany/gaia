@@ -30,13 +30,14 @@ from app.agents.llm.client import (
     init_llm,
     register_llm_providers,
 )
+from app.agents.llm.types import LLMProvider
 from app.config.model_pricing import (
     DEFAULT_PRICING,
     ModelPricing,
     get_model_pricing,
 )
 from app.config.settings import settings
-from app.constants.llm import DEFAULT_LLM_PROVIDER
+from app.constants.llm import DEFAULT_LLM_PROVIDER, LLMProviderKey
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
 
 
@@ -54,8 +55,7 @@ class TestProviderPriorityOrdering:
     """Verify provider ordering follows PROVIDER_PRIORITY and respects preferences."""
 
     def test_default_priority_order(self) -> None:
-        """Without a preferred provider, ordering follows PROVIDER_PRIORITY
-        (openrouter > gemini — the default provider leads)."""
+        """Without a preferred provider, ordering follows PROVIDER_PRIORITY (openrouter > gemini)."""
         mock_gemini = _make_mock_llm("gemini")
         mock_openrouter = _make_mock_llm("openrouter")
 
@@ -67,8 +67,8 @@ class TestProviderPriorityOrdering:
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
         assert len(ordered) == 2
-        assert ordered[0]["name"] == "openrouter"
-        assert ordered[1]["name"] == "gemini"
+        assert ordered[0].name == "openrouter"
+        assert ordered[1].name == "gemini"
 
     def test_preferred_provider_goes_first(self) -> None:
         """When a preferred_provider is given and available, it leads the list."""
@@ -81,8 +81,8 @@ class TestProviderPriorityOrdering:
             available, preferred_provider="openai", fallback_enabled=True
         )
 
-        assert ordered[0]["name"] == "openai"
-        assert ordered[1]["name"] == "gemini"
+        assert ordered[0].name == "openai"
+        assert ordered[1].name == "gemini"
 
     def test_preferred_provider_no_fallback(self) -> None:
         """With fallback disabled and a valid preferred provider, only that provider is returned."""
@@ -96,7 +96,7 @@ class TestProviderPriorityOrdering:
         )
 
         assert len(ordered) == 1
-        assert ordered[0]["name"] == "openai"
+        assert ordered[0].name == "openai"
 
     def test_preferred_provider_not_available_fallback_enabled(self) -> None:
         """If preferred provider is not in available set, fallback fills the list from priority."""
@@ -108,7 +108,7 @@ class TestProviderPriorityOrdering:
         )
 
         assert len(ordered) == 1
-        assert ordered[0]["name"] == "gemini"
+        assert ordered[0].name == "gemini"
 
     def test_no_providers_available_returns_empty(self) -> None:
         """Empty available dict yields empty ordered list."""
@@ -125,7 +125,7 @@ class TestProviderPriorityOrdering:
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
 
         assert len(ordered) == 1
-        assert ordered[0]["name"] == "openrouter"
+        assert ordered[0].name == "openrouter"
 
 
 @pytest.mark.integration
@@ -187,12 +187,7 @@ class TestProviderInitialization:
                 init_llm()
 
     def test_init_llm_preferred_unavailable_no_fallback_uses_priority(self) -> None:
-        """Preferred provider unavailable with fallback disabled still returns from priority order.
-
-        The `_get_ordered_providers` logic has `if fallback_enabled or not ordered`,
-        meaning when no preferred provider matched and ordered is empty, it falls
-        through to priority-based ordering regardless of fallback_enabled.
-        """
+        """_get_ordered_providers falls through to priority order when no preferred provider matched, regardless of fallback_enabled."""
         mock_gemini = _make_mock_llm("gemini")
 
         with patch(
@@ -212,7 +207,7 @@ class TestCreateConfigurableLLM:
     def test_no_alternatives_returns_primary_directly(self) -> None:
         """With no alternatives, the primary instance is returned unwrapped."""
         mock_instance = _make_mock_llm("primary")
-        primary = {"name": "gemini", "instance": mock_instance}
+        primary = LLMProvider(name=LLMProviderKey.GEMINI, instance=mock_instance)
 
         result = _create_configurable_llm(primary, alternatives=[])
 
@@ -224,15 +219,15 @@ class TestCreateConfigurableLLM:
         mock_primary = _make_mock_llm("primary")
         mock_alt = _make_mock_llm("alt")
 
-        primary = {"name": "gemini", "instance": mock_primary}
-        alternatives = [{"name": "openai", "instance": mock_alt}]
+        primary = LLMProvider(name=LLMProviderKey.GEMINI, instance=mock_primary)
+        alternatives = [LLMProvider(name=LLMProviderKey.OPENROUTER, instance=mock_alt)]
 
         _create_configurable_llm(primary, alternatives)
 
         mock_primary.configurable_alternatives.assert_called_once()
         call_kwargs = mock_primary.configurable_alternatives.call_args[1]
-        assert "openai" in call_kwargs
-        assert call_kwargs["openai"] is mock_alt
+        assert LLMProviderKey.OPENROUTER in call_kwargs
+        assert call_kwargs[LLMProviderKey.OPENROUTER] is mock_alt
 
 
 @pytest.mark.integration
@@ -264,8 +259,7 @@ class TestProviderConstants:
             )
 
     def test_default_priority_matches_the_default_provider(self) -> None:
-        """Priority 1 is the provider serving DEFAULT_MODEL_NAME — the fallback
-        chain must start at the lane the app actually defaults to."""
+        """Priority 1 is the provider serving DEFAULT_MODEL_NAME."""
         assert PROVIDER_PRIORITY[1] == DEFAULT_LLM_PROVIDER == "openrouter"
 
     def test_provider_models_have_expected_keys(self) -> None:
@@ -281,7 +275,7 @@ class TestGetAvailableProviders:
     def _build_registry(self, present_providers: dict[str, Any]) -> ProviderRegistry:
         """Build a ProviderRegistry with all LLM slots registered.
 
-        Providers listed in `present_providers` get a real loader that returns
+        Providers listed in present_providers get a real loader that returns
         the given instance. Missing providers get a loader that returns None
         (simulating missing API key via WARN strategy).
         """
@@ -335,7 +329,7 @@ class TestGetAvailableProviders:
 class TestProductionProviderRegistration:
     """Drives the REAL register_llm_providers().
 
-    `_build_registry` above always registers all four slots and varies only the
+    _build_registry above always registers all four slots and varies only the
     keys, so production's actual state — custom_llm never registered, because it
     is gated on ENV=development — was unrepresentable, and the KeyError it raised
     went unseen by every tier.

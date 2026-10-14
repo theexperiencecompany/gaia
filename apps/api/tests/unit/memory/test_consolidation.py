@@ -4,17 +4,22 @@ Postgres, the document writer and the two LLM calls are mocked; the size cap,
 the retry, the fact-check and the agenda rendering under test are real.
 """
 
+import asyncio
 from datetime import UTC, datetime
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
+from fakeredis.aioredis import FakeRedis
 import pytest
 
 from app.constants.memory import (
     AGENDA_CATEGORY_PATH,
     AGENDA_INJECTED_ITEM_CAP,
     CONSOLIDATION_FACTS_LIMIT,
+    CONSOLIDATION_PENDING_KEY,
+    CONSOLIDATION_PENDING_TTL,
     DOCUMENT_TARGET_MAX_CHARS,
     MemoryDocType,
     MemoryEntityType,
@@ -42,11 +47,7 @@ def make_row(content: str = "sam is vegetarian", importance: float = 0.5) -> Mem
         importance=importance,
     )
     row.id = uuid.uuid4()
-    row.version = 1
-    row.is_latest = True
-    row.is_forgotten = False
     row.created_at = datetime.now(UTC)
-    row.mentioned_at = row.created_at
     return row
 
 
@@ -133,7 +134,7 @@ class TestDocumentSizeCap:
             f"{first_human}\n\n## Your previous attempt was too long\n"
             f"It was {len(oversized)} characters against a hard cap of "
             f"{DOCUMENT_TARGET_MAX_CHARS}. Rewrite it under the cap by dropping "
-            "the least important bullets — do not truncate mid-sentence, and do "
+            "the least important bullets. Do not truncate mid-sentence, and do "
             "not drop a section heading."
         )
 
@@ -245,13 +246,7 @@ class TestVerificationPass:
     async def test_a_struck_line_is_removed_even_when_the_model_left_it_in(
         self, boundaries: MagicMock
     ) -> None:
-        """The verifier returns two correlated outputs — the cleaned document
-        and the struck list — and the real model desyncs them: probed live, it
-        listed the corrupted partner line as struck while returning the
-        document with the line still in it, which is exactly how "Khyal
-        Shetal" survived every verification pass in production. The strike
-        list is the verdict; the code must enforce it on the document instead
-        of trusting the model's copy."""
+        """The strike list is the verdict — a desync let "Khyal Shetal" survive production verification."""
         corrupted = "- Partner: Khyal Shetal (anniversary Oct 19, 2026)"
         boundaries.rewrite.return_value = f"# About\n- Sam is vegetarian\n{corrupted}"
         boundaries.verify.return_value = VerifiedDocument(
@@ -268,9 +263,7 @@ class TestVerificationPass:
     async def test_a_heading_is_never_removed_even_if_marked_struck(
         self, boundaries: MagicMock
     ) -> None:
-        """Headings are structure, not claims — the prompt tells the model to
-        keep them all, so a heading in the struck list is a model error the
-        enforcement must not amplify."""
+        """Headings are structure, not claims — a struck heading is a model error enforcement must not amplify."""
         boundaries.rewrite.return_value = "# About\n## Identity\n- a supported line"
         boundaries.verify.return_value = VerifiedDocument(
             content="# About\n## Identity\n- a supported line",
@@ -284,9 +277,7 @@ class TestVerificationPass:
     async def test_an_indented_heading_survives_a_struck_verdict(
         self, boundaries: MagicMock
     ) -> None:
-        """The heading guard reads the line PAST its indentation — a nested
-        heading the model both indented and struck is still structure and must
-        stay, indentation intact."""
+        """The heading guard reads past indentation, so an indented struck heading stays, indentation intact."""
         doc = "# About\n  ## Identity\n- a supported line"
         boundaries.rewrite.return_value = doc
         boundaries.verify.return_value = VerifiedDocument(content=doc, struck=["## Identity"])
@@ -369,10 +360,7 @@ class TestVerificationPass:
     async def test_a_placeholder_answer_does_not_replace_the_document(
         self, boundaries: MagicMock
     ) -> None:
-        """This is the run that cost a real profile. The verifier answered with
-        the literal placeholder '## Document\\n...document body...' and struck
-        nothing. It is neither None nor empty, so it was written over a 3,077
-        character user.md, and every prompt after that carried 31 characters."""
+        """Production: placeholder '## Document\\n...' overwrote a 3,077-char user.md, leaving 31 chars."""
         profile = "# About the user\n" + "\n".join(f"- fact number {i}" for i in range(80))
         boundaries.verify.return_value = VerifiedDocument(
             content="## Document\n...document body...", struck=[]
@@ -440,10 +428,7 @@ class TestVerificationPass:
     async def test_the_profile_that_was_actually_destroyed_is_refused(
         self, boundaries: MagicMock
     ) -> None:
-        """Verbatim from production: user 6a7a69f9's user.md, 168 characters,
-        replaced by 30 characters of the model narrating its own work. A flat
-        200-character allowance swallowed this entire document, which is why the
-        tolerance is proportional."""
+        """Production: 6a7a69f9's 168-char user.md became 30 chars — tolerance is proportional, not flat 200."""
         profile = (
             "# About the user\n## Identity\n- Gonzalo Blasco\n- GAIA account on the free "
             "plan (daily usage limit). (as of 2026-08-13)\n\n## Work & projects\n\n"
@@ -511,12 +496,7 @@ class TestVerificationPass:
     async def test_a_struck_line_buys_exactly_its_own_length_and_newline(
         self, boundaries: MagicMock
     ) -> None:
-        """The well-behaved case at the exact budget boundary: the model's copy
-        genuinely removed the struck line and additionally trimmed the full
-        tolerance — lost == explained + tolerance is accepted, and the copy
-        comes back intact (the mechanical strike pass finds nothing left to
-        remove). The desynced case — struck listed but line still present —
-        is pinned separately by the strike-enforcement regression test."""
+        """At the exact boundary, lost == explained + tolerance is accepted; desync has its own regression test."""
         line = "- " + "y" * 60
         document = f"# About\n{line}\n" + "x" * 900
         without = ("# About\n" + "x" * 900).strip()
@@ -548,8 +528,7 @@ class TestVerificationPass:
         assert kept == document
 
     async def test_a_line_the_document_never_had_buys_nothing(self, boundaries: MagicMock) -> None:
-        """Otherwise a model could claim any budget it liked by inventing the
-        lines it says it struck."""
+        """A model could otherwise claim unlimited budget by inventing struck lines it never removed."""
         document = "# About\n" + "x" * 900
         invented = "- " + "z" * 400
         boundaries.verify.return_value = VerifiedDocument(
@@ -647,27 +626,14 @@ class TestConsolidationInputs:
         )
 
     async def test_the_facts_corpus_reaches_the_prompt(self, boundaries: MagicMock) -> None:
-        """Every fact on its own line, rendered by the one canonical renderer.
-
-        Two rows, not one: with a single fact the line separator is never
-        exercised, and a corpus that arrives as one run-on line is a corpus the
-        model reads as a single fact. The second row carries an occurrence date
-        so the ``[occurred]``/``[mentioned]`` annotations — the whole reason
-        this routes through ``entry_to_note`` rather than printing the stored
-        date — are pinned too.
-        """
-        vegetarian = make_row("sam is vegetarian")
-        moved = make_row("sam moved to Berlin")
-        moved.occurred_start = datetime(2026, 3, 14, tzinfo=UTC)
-        boundaries.get_facts.return_value = [vegetarian, moved]
+        row = make_row("sam is vegetarian")
+        boundaries.get_facts.return_value = [row]
 
         await consolidate(USER, [MemoryDocType.USER_MD])
 
         assert boundaries.rewrite.await_args.args[1].endswith(
             "## Every fact this document is written from\n"
-            f"- sam is vegetarian [mentioned {vegetarian.mentioned_at:%Y-%m-%d}]\n"
-            "- sam moved to Berlin [occurred 2026-03-14] "
-            f"[mentioned {moved.mentioned_at:%Y-%m-%d}]"
+            f"- sam is vegetarian (stored {row.created_at:%Y-%m-%d})"
         )
 
     async def test_the_owner_is_named_in_the_prompt_the_model_receives(
@@ -827,12 +793,56 @@ class TestInferDocTypes:
 class TestFormatInputs:
     def test_the_previous_version_is_labelled_as_outranked_by_the_facts(self) -> None:
         assert consolidation._format_inputs("prev", ["## A", "## B"]) == (
-            "## Previous version of the document (a draft — the facts below outrank it)\n"
+            "## Previous version of the document (a draft outranked by the facts below)\n"
             "prev\n\n## A\n\n## B"
         )
 
     def test_a_first_rewrite_says_so_rather_than_leaving_a_blank(self) -> None:
         assert consolidation._format_inputs("   ", []) == (
-            "## Previous version of the document (a draft — the facts below outrank it)\n"
+            "## Previous version of the document (a draft outranked by the facts below)\n"
             "(no previous version)\n\n(no facts)"
         )
+
+
+PENDING_KEY = CONSOLIDATION_PENDING_KEY.format(user_id=USER)
+
+
+@pytest.fixture
+def released_debounce(monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
+    """Hold the debounce window open until the test sets the returned event."""
+    release = asyncio.Event()
+    monkeypatch.setattr(consolidation, "_debounce_wait", release.wait)
+    return release
+
+
+@pytest.mark.unit
+class TestDebouncedScheduling:
+    async def test_ingestions_inside_the_window_cost_one_merged_consolidation(
+        self, fake_redis: FakeRedis, released_debounce: asyncio.Event
+    ) -> None:
+        with patch.object(consolidation, "consolidate", AsyncMock(return_value=[])) as run:
+            await consolidation.schedule_consolidation(USER, {MemoryDocType.USER_MD})
+            await consolidation.schedule_consolidation(USER, {MemoryDocType.PEOPLE_MD})
+            await consolidation.schedule_consolidation(USER, {MemoryDocType.USER_MD})
+            pending = json.loads(await fake_redis.get(PENDING_KEY))
+            ttl = await fake_redis.ttl(PENDING_KEY)
+            released_debounce.set()
+            await consolidation._waiters[USER]
+
+        assert pending == {"doc_types": ["people_md", "user_md"]}
+        assert CONSOLIDATION_PENDING_TTL - 5 <= ttl <= CONSOLIDATION_PENDING_TTL
+        run.assert_awaited_once_with(USER, [MemoryDocType.PEOPLE_MD, MemoryDocType.USER_MD])
+        assert await fake_redis.exists(PENDING_KEY) == 0
+        assert USER not in consolidation._waiters
+
+    async def test_a_pending_set_cleared_before_the_window_ends_consolidates_nothing(
+        self, fake_redis: FakeRedis, released_debounce: asyncio.Event
+    ) -> None:
+        with patch.object(consolidation, "consolidate", AsyncMock(return_value=[])) as run:
+            await consolidation.schedule_consolidation(USER, {MemoryDocType.MEMORY_MD})
+            waiter = consolidation._waiters[USER]
+            await fake_redis.delete(PENDING_KEY)
+            released_debounce.set()
+            await waiter
+
+        run.assert_not_awaited()

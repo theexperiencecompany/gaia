@@ -37,9 +37,11 @@ export function CategoryTabs({
             {category === "all" ? (
               <GridIcon size={16} strokeWidth={2} className="text-gray-400" />
             ) : (
+              // Tinted background like the list rows and the tool-call
+              // thread, at tab size.
               getToolCategoryIcon(
                 category,
-                { showBackground: false, size: 16 },
+                { size: 14, width: 16, height: 16 },
                 categoryDisplayMap[category]?.iconUrl,
               )
             )}

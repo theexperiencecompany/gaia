@@ -1,4 +1,4 @@
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 import type { ShortLinkTargetType } from "@/types/features/shortLinkTypes";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(
@@ -14,11 +14,10 @@ export async function createShortLink(
   targetType: ShortLinkTargetType,
   targetId: string,
 ): Promise<string> {
-  const { url } = await apiService.post<{ url: string }>(
-    "/l",
-    { target_type: targetType, target_id: targetId },
-    { errorMessage: "Couldn't create a link" },
-  );
+  const { url } = await api.post("/api/v1/l", {
+    body: { target_type: targetType, target_id: targetId },
+    errorMessage: "Couldn't create a link",
+  });
   return url;
 }
 

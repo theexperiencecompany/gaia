@@ -1,4 +1,30 @@
-import type { IntegrationStatusValue } from "../types";
+import type {
+  IntegrationConnectionData,
+  IntegrationManagedBy,
+  IntegrationStatusValue,
+} from "../types";
+
+/** Overlay a separately-fetched server status on the catalog's last-known status. */
+export function reconcileIntegrationStatus(
+  snapshotStatus: IntegrationStatusValue,
+  connected: boolean | undefined,
+  managedBy: IntegrationManagedBy | undefined,
+  requiresAuth: boolean | undefined,
+): IntegrationStatusValue {
+  if (connected === undefined) return snapshotStatus;
+  if (connected && snapshotStatus !== "connected") {
+    return "connected";
+  }
+  if (
+    !connected &&
+    snapshotStatus === "connected" &&
+    managedBy === "mcp" &&
+    requiresAuth
+  ) {
+    return "created";
+  }
+  return snapshotStatus;
+}
 
 /**
  * How the integrations UI presents one integration's connection state.
@@ -35,19 +61,25 @@ export function integrationConnectionState(
   }
 }
 
+/** What an `integration_connection_required` chat card asks the user to do. */
+export type ConnectionPromptState = IntegrationConnectionState | "add_account";
+
 /**
  * The state an `integration_connection_required` chat card renders.
  *
  * The payload's `expired` flag wins over the live integrations list: the
  * dead-account path expires the connection in the same turn it streams the
- * card, so the list is still reporting the pre-expiry status. Messages streamed
- * before the flag existed carry none, and fall back to the list.
+ * card, so the list is still reporting the pre-expiry status. An add-account
+ * payload keeps its action on an integration the list reports as connected.
+ * Messages streamed before either flag existed fall back to the list.
  */
 export function connectionPromptState(
-  expired: boolean | undefined,
+  prompt: Pick<IntegrationConnectionData, "expired" | "add_account">,
   status: IntegrationStatusValue | string | undefined,
-): IntegrationConnectionState {
-  return expired ? "expired" : integrationConnectionState(status);
+): ConnectionPromptState {
+  if (prompt.expired) return "expired";
+  if (prompt.add_account) return "add_account";
+  return integrationConnectionState(status);
 }
 
 /** Label for the button that resolves each state. */
@@ -58,6 +90,12 @@ export const CONNECT_ACTION_LABEL: Record<IntegrationConnectionState, string> =
     expired: "Reconnect",
     disconnected: "Connect",
   };
+
+/** Label for a connection prompt card's button. */
+export const PROMPT_ACTION_LABEL: Record<ConnectionPromptState, string> = {
+  ...CONNECT_ACTION_LABEL,
+  add_account: "Add account",
+};
 
 /** Display order: things needing the user's attention first, then the catalog. */
 export const INTEGRATION_STATE_ORDER: Record<

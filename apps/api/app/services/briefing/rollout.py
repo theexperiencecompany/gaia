@@ -1,18 +1,17 @@
-"""Existing-user rollout — no cold starts.
+"""Existing-user rollout: provision the briefing workflows, no cold starts.
 
-For each existing user: provision the briefing workflows. Users we can derive a
-goal for get a real first briefing next morning; sparse users with no derivable
-goal have their briefings held (``briefing_bootstrap`` marker) until a goal
-memory arrives or the grace window elapses. The user-facing announcement is a
-manual email, not an in-app notification, so this only provisions and gates.
+Users with a derivable goal get a real first briefing next morning; sparse users
+have briefings held (briefing_bootstrap marker) until a goal memory arrives or the
+grace window elapses.
 """
 
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
+from app.services.analytics_service import capture
 from app.services.briefing import context
 from app.services.system_workflows.provisioner import provision_briefing_workflows
-from app.services.user_service import get_user_by_id
-from app.utils.analytics import track
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.briefings import BriefingProvisioned
 from shared.py.wide_events import log
 
 # When we can't derive a goal AND the account has at most this many integrations,
@@ -21,18 +20,16 @@ _SPARSE_INTEGRATION_MAX = 1
 
 
 async def provision_existing_user(user_id: str) -> str:
-    """Roll out briefings to one existing user. Returns the path taken.
+    """Roll out briefings to one existing user and return the path taken.
 
-    ``"normal"`` — goal derivable, briefings begin next day.
-    ``"bootstrap"`` — sparse + no goal, briefings held until a goal arrives or the
-    grace window elapses.
+    "normal": goal derivable, briefings begin next day. "bootstrap": sparse with no
+    goal, briefings held until a goal arrives or the grace window elapses.
     """
     log.set(component="briefing_rollout", operation="provision_existing_user", user_id=user_id)
-    user = await get_user_by_id(user_id)
-    if not user:
+    user = await user_repository.get(user_id)
+    if user is None:
         log.warning("briefing_rollout.unknown_user", user_id=user_id)
         return "skipped"
-    user["user_id"] = user_id
 
     await provision_briefing_workflows(user_id)
 
@@ -40,8 +37,8 @@ async def provision_existing_user(user_id: str) -> str:
     integrations = await user_integration_repository.count_for_user(user_id)
     if not has_goal and integrations <= _SPARSE_INTEGRATION_MAX:
         await user_repository.set_briefing_bootstrap_pending(user_id)
-        track(user_id, "briefing_provisioned", {"path": "bootstrap"})
+        capture(UserId(user_id), BriefingProvisioned(held_for_goal=True))
         return "bootstrap"
 
-    track(user_id, "briefing_provisioned", {"path": "normal"})
+    capture(UserId(user_id), BriefingProvisioned(held_for_goal=False))
     return "normal"

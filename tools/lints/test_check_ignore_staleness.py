@@ -67,8 +67,7 @@ def test_entry_masking_a_real_finding_passes(repo: Path) -> None:
 
 
 def test_entry_masking_nothing_fails_naming_the_file(repo: Path) -> None:
-    """Delete the violating line, keep the entry: the exemption now masks
-    nothing and must be reported by the file it sits in."""
+    """Report an exemption whose violating line was deleted — it now masks nothing."""
     (repo / "app.py").write_text("def handler(user_id: str) -> str:\n    return user_id\n")
     result = run(repo)
     assert result.returncode == 1

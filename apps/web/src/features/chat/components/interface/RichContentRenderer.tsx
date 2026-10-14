@@ -53,11 +53,8 @@ export default function RichContentRenderer({
   return (
     <div className={cn("flex flex-col", className)}>
       {segments.map((segment, index) => {
-        // Keyed by the segment's position in the source text, not its array
-        // index: that position is stable across streaming re-parses (text
-        // only ever grows past it) but changes on a real edit/regenerate, so
-        // React remounts instead of reusing the wrong node.
-        const key = `${baseId}-seg-${segment.start}`;
+        // Segments only ever append while streaming, so an index key is stable.
+        const key = `${baseId}-seg-${index}`;
 
         if (segment.type === "openui") {
           return (

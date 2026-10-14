@@ -1,14 +1,13 @@
 """FileService — the single entry point for user-uploaded-file operations.
 
-Each public method orchestrates the concern-specific helpers (`store`, `sandbox`,
-`summaries`) into one readable flow. Durable storage (Cloudinary) and metadata
+Each public method orchestrates the concern-specific helpers (store, sandbox,
+summaries) into one readable flow. Durable storage (Cloudinary) and metadata
 (Mongo) are authoritative; vector indexing and the sandbox mirror are best-effort.
 """
 
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 import uuid
 
 from fastapi import HTTPException, UploadFile
@@ -21,8 +20,8 @@ from app.db.repositories.files import file_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.files_models import FileDocument, FileUpdate, PageWiseSummary
 from app.models.message_models import FileData as MessageFileData
-from app.schemas.file import FileDeletedResponse
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.schemas.file import FileDeletedResponse, UpdateFileRequest
+from app.services.analytics_service import capture
 from app.services.files.sandbox import mirror_upload, write_summary_sidecar
 from app.services.files.store import (
     delete_from_index,
@@ -38,11 +37,9 @@ from app.services.files.summaries import (
 )
 from app.utils.file_utils import generate_file_summary
 from app.utils.upload_validation import validate_upload
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatFileUploaded
 from shared.py.wide_events import FileContext, log
-
-# Client-editable file metadata fields. Anything else in the incoming payload is
-# ignored to prevent mass-assignment of protected fields (user_id, created_at…).
-ALLOWED_FILE_UPDATE_FIELDS = ("filename", "description")
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +135,7 @@ class FileService:
         """Validate, store, summarize, and mirror an upload into the session.
 
         Cloudinary (blob) + Mongo (metadata) always persist. The summary, the
-        vector index, and the sandbox copy + `.summary.md` sidecar are layered on
+        vector index, and the sandbox copy + .summary.md sidecar are layered on
         top; the latter two need JuiceFS and degrade gracefully without it.
         """
         content, content_type, resource_type = await validate_upload(
@@ -210,14 +207,13 @@ class FileService:
             )
             log.info("[files] upload complete file_id", file_id=upload.file_id)
 
-            capture_event(
-                user_id,
-                AnalyticsEvents.FILE_UPLOADED,
-                {
-                    "size_bytes": upload.size_bytes,
-                    "resource_type": upload.resource_type,
-                    "content_type": upload.content_type,
-                },
+            capture(
+                UserId(user_id),
+                ChatFileUploaded(
+                    size_bytes=upload.size_bytes,
+                    resource_type=upload.resource_type,
+                    content_type=upload.content_type,
+                ),
             )
 
             return metadata
@@ -237,7 +233,7 @@ class FileService:
 
     @staticmethod
     async def get_descriptions(file_ids: list[str], user_id: str) -> dict[str, str]:
-        """Return `{file_id: description}` for the user's files, in one batched query.
+        """Return {file_id: description} for the user's files, in one batched query.
 
         Authoritative source for the agent's file context — never trust the
         client request for this. Files without a stored summary are omitted.
@@ -252,7 +248,7 @@ class FileService:
 
     @staticmethod
     async def list_conversation_files(conversation_id: str, user_id: str) -> list[MessageFileData]:
-        """Every file uploaded in a conversation, as ``FileData`` carrying its summary.
+        """Every file uploaded in a conversation, as FileData carrying its summary.
 
         Lets the executor surface the conversation's uploads from only the
         conversation id (it never sees the request payload).
@@ -311,7 +307,7 @@ class FileService:
     async def update(
         file_id: str,
         user_id: str,
-        update_data: dict[str, Any],
+        update_data: UpdateFileRequest,
         file_content: bytes | None = None,
         conversation_id: str | None = None,
     ) -> FileDocument:
@@ -325,25 +321,21 @@ class FileService:
 
         conversation_id = conversation_id or file_data.conversation_id
 
-        # Build the update from allowlisted fields only — never spread the raw
-        # payload, or a client could mass-assign protected fields (user_id, …).
-        set_fields: dict[str, Any] = {
-            field: update_data[field]
-            for field in ALLOWED_FILE_UPDATE_FIELDS
-            if update_data.get(field) is not None
-        }
+        # UpdateFileRequest declares the only client-editable fields, so a client
+        # can never mass-assign protected ones (user_id, …).
+        update = FileUpdate.model_validate(update_data.model_dump(exclude_none=True))
 
         if file_content:
             try:
                 generated_summary = await generate_file_summary(
                     file_content=file_content,
                     content_type=file_data.type,
-                    filename=set_fields.get("filename") or file_data.filename,
+                    filename=update.filename or file_data.filename,
                     user_id=user_id,
                 )
                 description, page_wise_summary = process_summary(generated_summary)
-                set_fields["description"] = description
-                set_fields["page_wise_summary"] = page_wise_summary
+                update.description = description
+                update.page_wise_summary = page_wise_summary
             except Exception as e:
                 log.error(
                     "[files] update: summary regeneration failed",
@@ -356,21 +348,20 @@ class FileService:
                 )
                 raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}") from e
 
-        description_updated = "description" in set_fields
         # updated_at is stamped by the repository.
         updated_file = await file_repository.apply_metadata_update(
-            file_id, user_id=user_id, update=FileUpdate(**set_fields)
+            file_id, user_id=user_id, update=update
         )
         if not updated_file:
             raise HTTPException(status_code=404, detail="File not found after update")
 
-        if description_updated:
+        if update.description is not None:
             await reindex_file(
                 file_id=file_id,
                 user_id=user_id,
                 filename=updated_file.filename,
                 content_type=updated_file.type,
-                summary=set_fields["description"],
+                summary=update.description,
                 conversation_id=conversation_id,
             )
 
@@ -386,8 +377,8 @@ class FileService:
         """Associate pre-conversation uploads with a freshly created session.
 
         Files attached before a conversation existed landed in Cloudinary only.
-        Once the session exists, mirror each into `user-uploaded/`, write its
-        summary sidecar, and stamp `conversation_id` on its Mongo record so
+        Once the session exists, mirror each into user-uploaded/, write its
+        summary sidecar, and stamp conversation_id on its Mongo record so
         conversation-scoped search can find it.
         """
         if not file_data:
@@ -417,7 +408,7 @@ class FileService:
     ) -> str | None:
         """Mirror an upload + its summary sidecar into the session workspace (best-effort).
 
-        Returns the `/workspace/...` path the file was mirrored to, or None when
+        Returns the /workspace/... path the file was mirrored to, or None when
         the filename is unsafe or JuiceFS is unavailable.
         """
         try:

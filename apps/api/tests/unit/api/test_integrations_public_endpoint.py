@@ -1,16 +1,21 @@
-"""Tests for app/api/v1/endpoints/integrations/public.py"""
+"""Tests for app/api/v1/endpoints/integrations/public.py."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 import pytest
 
+from app.helpers.integration_helpers import ParsedIntegrationSlug
 from app.models.integration_models import (
     Integration,
     IntegrationWithCreator,
+    StoredIntegrationTool,
     UserIntegrationDocument,
 )
-from app.services.analytics_service import AnalyticsEvents
+from app.models.workflow_models import PublicWorkflowRow
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import IntegrationConnected
+from tests.conftest import FAKE_USER
 
 # Base URL for integration public endpoints
 # routes.py: prefix="/integrations", public.py router has no extra prefix
@@ -18,6 +23,8 @@ from app.services.analytics_service import AnalyticsEvents
 BASE = "/api/v1/integrations"
 
 _PUBLIC = "app.api.v1.endpoints.integrations.public"
+_NO_SLUG = ParsedIntegrationSlug(name_part="bad-slug", category=None, shortid=None)
+_LEGACY_SLUG = ParsedIntegrationSlug(name_part="legacy", category=None, shortid="abc123")
 
 
 def _integration(integration_id: str, name: str, **overrides: object) -> Integration:
@@ -76,13 +83,18 @@ class TestGetPublicIntegration:
             patch(
                 "app.api.v1.endpoints.integrations.public.get_integration_tools",
                 new_callable=AsyncMock,
-                return_value=[{"name": "create_event", "description": "Create event"}],
-            ),
+                return_value=[
+                    StoredIntegrationTool(name="create_event", description="Create event")
+                ],
+            ) as get_tools,
         ):
             resp = await client.get(f"{BASE}/public/googlecalendar")
 
         assert resp.status_code == 200
+        get_tools.assert_awaited_once_with("googlecalendar")
         body = resp.json()
+        assert body["tools"][0]["name"] == "create_event"
+        assert body["tools"][0]["description"] == "Create event"
         assert body["integrationId"] == "googlecalendar"
         assert body["name"] == "Google Calendar"
         assert body["source"] == "platform"
@@ -128,7 +140,7 @@ class TestGetPublicIntegration:
         with (
             patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", [fake_native]),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
-            patch(f"{_PUBLIC}.parse_integration_slug", return_value={}),
+            patch(f"{_PUBLIC}.parse_integration_slug", return_value=_NO_SLUG),
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=None)
             resp = await client.get(f"{BASE}/public/internal_tool")
@@ -147,9 +159,11 @@ class TestGetPublicIntegration:
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=integration)
-            resp = await client.get(f"{BASE}/public/my-tool")
+            with patch(f"{_PUBLIC}.log") as mock_log:
+                resp = await client.get(f"{BASE}/public/my-tool")
 
         assert resp.status_code == 200
+        mock_log.set.assert_any_call(integration_name="My Tool")
         body = resp.json()
         assert body["name"] == "My Tool"
         assert body["slug"] == "my-tool"
@@ -163,7 +177,7 @@ class TestGetPublicIntegration:
         with (
             patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
-            patch(f"{_PUBLIC}.parse_integration_slug", return_value={"shortid": "abc123"}),
+            patch(f"{_PUBLIC}.parse_integration_slug", return_value=_LEGACY_SLUG),
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=None)
             mock_repo.get_public_by_id_prefix = AsyncMock(return_value=integration)
@@ -178,7 +192,7 @@ class TestGetPublicIntegration:
         with (
             patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
-            patch(f"{_PUBLIC}.parse_integration_slug", return_value={}),
+            patch(f"{_PUBLIC}.parse_integration_slug", return_value=_NO_SLUG),
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=None)
             resp = await client.get(f"{BASE}/public/nonexistent")
@@ -196,7 +210,7 @@ class TestGetPublicIntegration:
             resp = await client.get(f"{BASE}/public/bad")
 
         assert resp.status_code == 500
-        assert "Failed to fetch integration" in resp.json()["detail"]
+        assert "Failed to fetch integration" in resp.json()["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +349,7 @@ class TestAddPublicIntegration:
                 new_callable=AsyncMock,
                 return_value=connect_result,
             ),
-            patch("app.api.v1.endpoints.integrations.public.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.integrations.public.capture") as mock_capture,
         ):
             mock_repo.get_public = AsyncMock(
                 return_value=Integration.model_validate(
@@ -361,8 +375,8 @@ class TestAddPublicIntegration:
         assert body["status"] == "connected"
         assert body["toolsCount"] == 5
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "integ3", "source": "marketplace"},
+            UserId(FAKE_USER.user_id),
+            IntegrationConnected(integration_id="integ3", source="marketplace"),
         )
 
     @pytest.mark.asyncio
@@ -535,7 +549,7 @@ class TestSearchIntegrations:
                 f"{_PUBLIC}.search_public_integrations",
                 new_callable=AsyncMock,
                 return_value=search_results,
-            ),
+            ) as search,
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
             patch(
                 f"{_PUBLIC}.generate_integration_slug",
@@ -546,6 +560,7 @@ class TestSearchIntegrations:
             resp = await client.get(f"{BASE}/search", params={"q": "tool"})
 
         assert resp.status_code == 200
+        search.assert_awaited_once_with(query="tool", limit=20)
         body = resp.json()
         assert len(body["integrations"]) == 2
         assert body["integrations"][0]["name"] == "Tool A"
@@ -583,4 +598,115 @@ class TestSearchIntegrations:
             resp = await client.get(f"{BASE}/search", params={"q": "test"})
 
         assert resp.status_code == 500
-        assert "Failed to search" in resp.json()["detail"]
+        assert "Failed to search" in resp.json()["message"]
+
+
+# ---------------------------------------------------------------------------
+# GET /integrations/public/{identifier}/workflows
+# ---------------------------------------------------------------------------
+
+
+def _workflow_row(**overrides: object) -> PublicWorkflowRow:
+    data: dict[str, object] = {
+        "id": "wf_digest",
+        "user_id": "creator_1",
+        "created_by": "creator_1",
+        "title": "Inbox digest",
+        "description": "Summarise unread mail",
+        "slug": "inbox-digest",
+        "is_public": True,
+        "prompt": "Summarise my unread mail",
+        "steps": [{"id": "s1", "title": "Read inbox", "description": "d", "category": "gmail"}],
+        "trigger_config": {"type": "manual"},
+        "delivery": "now",
+        "total_executions": 7,
+        "created_at": "2026-01-02T03:04:05+00:00",
+        "creator_info": [{"name": "Ada"}],
+    }
+    data.update(overrides)
+    return PublicWorkflowRow.model_validate(data)
+
+
+class TestGetRelatedWorkflows:
+    """Tests for GET /integrations/public/{identifier}/workflows."""
+
+    @pytest.mark.asyncio
+    async def test_rows_are_rendered_as_marketplace_cards_with_the_total(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
+            mock_repo.find_public_by_step_category = AsyncMock(return_value=[_workflow_row()])
+            mock_repo.count_public_by_step_category = AsyncMock(return_value=3)
+            resp = await client.get(f"{BASE}/public/gmail/workflows")
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "workflows": [
+                {
+                    "id": "wf_digest",
+                    "title": "Inbox digest",
+                    "description": "Summarise unread mail",
+                    "slug": "inbox-digest",
+                    "prompt": "Summarise my unread mail",
+                    "icon": None,
+                    "icon_color": None,
+                    "system_workflow_key": None,
+                    "source_integration": None,
+                    "trigger_config": None,
+                    "steps": [
+                        {"id": "s1", "title": "Read inbox", "description": "d", "category": "gmail"}
+                    ],
+                    "created_at": "2026-01-02T03:04:05Z",
+                    "creator": {"id": "creator_1", "name": "Ada", "avatar": None},
+                    "categories": None,
+                    "total_executions": 7,
+                }
+            ],
+            "total": 3,
+        }
+
+    @pytest.mark.asyncio
+    async def test_identifier_and_normalised_paging_reach_the_repository(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
+            mock_repo.find_public_by_step_category = AsyncMock(return_value=[])
+            mock_repo.count_public_by_step_category = AsyncMock(return_value=0)
+            resp = await client.get(
+                f"{BASE}/public/gmail/workflows", params={"limit": 500, "offset": -4}
+            )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"workflows": [], "total": 0}
+        mock_repo.find_public_by_step_category.assert_awaited_once_with("gmail", limit=50, offset=0)
+        mock_repo.count_public_by_step_category.assert_awaited_once_with("gmail")
+
+    @pytest.mark.asyncio
+    async def test_a_legacy_row_without_a_slug_is_backfilled_before_rendering(
+        self, client: AsyncClient
+    ) -> None:
+        async def backfill(row: PublicWorkflowRow) -> None:
+            row.slug = "inbox-digest-backfilled"
+
+        with (
+            patch(f"{_PUBLIC}.workflow_repository") as mock_repo,
+            patch(f"{_PUBLIC}.ensure_public_workflow_slug", side_effect=backfill) as ensure,
+        ):
+            mock_repo.find_public_by_step_category = AsyncMock(
+                return_value=[_workflow_row(slug=None)]
+            )
+            mock_repo.count_public_by_step_category = AsyncMock(return_value=1)
+            resp = await client.get(f"{BASE}/public/gmail/workflows")
+
+        assert resp.status_code == 200
+        assert resp.json()["workflows"][0]["slug"] == "inbox-digest-backfilled"
+        assert ensure.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
+        with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
+            mock_repo.find_public_by_step_category = AsyncMock(side_effect=RuntimeError("db down"))
+            resp = await client.get(f"{BASE}/public/gmail/workflows")
+
+        assert resp.status_code == 500
+        assert "Failed to fetch related workflows" in resp.json()["message"]

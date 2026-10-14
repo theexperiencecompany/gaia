@@ -5,9 +5,12 @@ excluded paths, agent-only paths, session refresh cookie setting,
 and the _authenticate_session helper.
 """
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from posthog.contexts import get_context_distinct_id
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -15,20 +18,31 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
+from app.api.v1.middleware.agent_auth import AgentTokenInfo
 from app.api.v1.middleware.auth import (
     PostHogRequestContextMiddleware,
     WorkOSAuthMiddleware,
     get_current_user,
 )
-from app.models.user_models import UserDocument
+from app.api.v1.middleware.client_type import (
+    BACKGROUND_REQUEST_ORIGIN,
+    CLIENT_TYPE_HEADER,
+    REQUEST_ORIGIN_HEADER,
+)
+from app.constants.analytics import AT_MOST_ONCE_TASK_NAME, POSTHOG_SESSION_HEADER
+from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
+from app.constants.error_codes import NOT_AUTHENTICATED
+from app.core.request_context import get_authenticated_user
+from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.analytics_service import capture
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.memory import NotesCreated
+from tests.helpers import captured_wide_event
 
 
 @pytest.fixture(autouse=True)
 def _no_dev_bypass(monkeypatch):
-    """This file tests the WorkOS session/agent paths. The developer's ambient
-    .env legitimately sets DEV_AUTH_BYPASS_EMAIL, which would short-circuit the
-    middleware before anything under test runs — pin it off. The bypass path
-    itself is covered in tests/integration/api/test_dev_endpoints.py."""
+    """Pin off DEV_AUTH_BYPASS_EMAIL, which the developer's ambient .env may set and which would short-circuit the middleware before anything under test runs."""
     from app.config.settings import settings
 
     monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
@@ -42,9 +56,16 @@ def _no_dev_bypass(monkeypatch):
 class TestGetCurrentUser:
     def test_returns_user_from_request_state(self) -> None:
         request = MagicMock()
-        request.state.user = {"user_id": "u1", "email": "a@b.com"}
+        user = AuthenticatedUser(user_id="u1", email="a@b.com")
+        request.state.user = user
         result = get_current_user(request)
-        assert result == {"user_id": "u1", "email": "a@b.com"}
+        assert result is user
+
+    def test_returns_none_when_state_holds_something_else(self) -> None:
+        """Only an AuthenticatedUser counts — a stray dict on state is nobody."""
+        request = MagicMock()
+        request.state.user = {"user_id": "u1"}
+        assert get_current_user(request) is None
 
     def test_returns_none_when_no_user(self) -> None:
         request = MagicMock()
@@ -121,7 +142,7 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         assert data["user"] is None
 
     def test_cookie_session_authenticates(self) -> None:
-        user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
+        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
         app = _build_test_app()
         with patch.object(
             WorkOSAuthMiddleware,
@@ -138,7 +159,7 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         assert data["user"]["email"] == "a@b.com"
 
     def test_bearer_header_fallback(self) -> None:
-        user_info = {"user_id": "u2", "email": "b@c.com", "name": "User2"}
+        user_info = AuthenticatedUser(user_id="u2", email="b@c.com", name="User2")
         app = _build_test_app()
         with patch.object(
             WorkOSAuthMiddleware,
@@ -155,7 +176,7 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         assert resp.json()["authenticated"] is True
 
     def test_session_refresh_sets_cookie(self) -> None:
-        user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
+        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
         new_session = "refreshed_session_token"
         app = _build_test_app()
         with patch.object(
@@ -216,10 +237,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
-                return_value={
-                    "user_id": "507f1f77bcf86cd799439011",
-                    "impersonated": True,
-                },
+                return_value=AgentTokenInfo(user_id="507f1f77bcf86cd799439011"),
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
@@ -256,10 +274,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
-                return_value={
-                    "user_id": "507f1f77bcf86cd799439011",
-                    "impersonated": True,
-                },
+                return_value=AgentTokenInfo(user_id="507f1f77bcf86cd799439011"),
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
@@ -279,7 +294,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         app = _build_test_app()
         with patch(
             "app.api.v1.middleware.auth.verify_agent_token",
-            return_value={"user_id": "not-an-objectid", "impersonated": True},
+            return_value=AgentTokenInfo(user_id="not-an-objectid"),
         ):
             client = TestClient(app)
             resp = client.post(
@@ -291,11 +306,256 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         assert resp.json()["authenticated"] is False
 
 
+def _bare_request(
+    path: str = "/api/v1/protected",
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+):
+    """Build a Request with just the pieces the middleware touches, no ASGI stack.
+
+    The two authenticate helpers are called directly here rather than through
+    TestClient: WorkOSAuthMiddleware runs outside LoggingMiddleware's context,
+    so a wide event captured around a full request would not receive its
+    log.error at all.
+    """
+    raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
+    request = Request(
+        {
+            "type": "http",
+            "method": method,
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "headers": raw,
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "state": {},
+        }
+    )
+    # Seeded the way dispatch() seeds it before delegating, so "left alone"
+    # means the same thing here as it does in production.
+    request.state.user = None
+    request.state.authenticated = False
+    request.state.new_session = None
+    return request
+
+
+def _middleware() -> WorkOSAuthMiddleware:
+    return WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
+
+
+class TestExcludedShareDownloads:
+    def test_share_downloads_never_reach_session_authentication(self) -> None:
+        # Composio fetches these server-side with no session at all; the token in
+        # the query string is the credential. A wrong entry here would put every
+        # fetch through WorkOS session handling it can never satisfy.
+        app = _build_test_app()
+
+        @app.get("/api/v1/files/s/{filename}")
+        async def shared(filename: str):
+            return {"ok": True}
+
+        with patch.object(
+            WorkOSAuthMiddleware, "_authenticate_wos_session", new_callable=AsyncMock
+        ) as authenticate:
+            client = TestClient(app)
+            client.cookies.set("wos_session", "tok")
+            resp = client.get("/api/v1/files/s/report.pdf?token=t")
+
+        assert resp.status_code == 200
+        assert authenticate.called is False
+
+
+class TestExcludedSandboxCallbacks:
+    @pytest.mark.parametrize("path", ["/api/v1/sandbox/execute", "/api/v1/sandbox/tool-schema"])
+    def test_sandbox_callbacks_never_reach_session_authentication(self, path: str) -> None:
+        # The E2B script has no session; its HMAC run token is the credential.
+        app = _build_test_app()
+
+        @app.post(path)
+        async def callback() -> dict[str, bool]:
+            return {"ok": True}
+
+        with patch.object(
+            WorkOSAuthMiddleware, "_authenticate_wos_session", new_callable=AsyncMock
+        ) as authenticate:
+            client = TestClient(app)
+            client.cookies.set("wos_session", "tok")
+            resp = client.post(path)
+
+        assert resp.status_code == 200
+        assert authenticate.called is False
+
+
+class TestAuthenticateWosSessionDirectly:
+    async def test_the_session_from_the_request_is_what_gets_verified(self) -> None:
+        request = _bare_request()
+        with patch.object(
+            _middleware().__class__,
+            "_authenticate_session",
+            new_callable=AsyncMock,
+            return_value=({"user_id": "u1"}, None),
+        ) as verify:
+            await _middleware()._authenticate_wos_session(request, "session-token")
+
+        assert verify.call_args.args == ("session-token",)
+        assert request.state.authenticated is True
+
+    def test_the_dispatch_hands_the_cookie_through_untouched(self) -> None:
+        app = _build_test_app()
+        with patch.object(
+            WorkOSAuthMiddleware, "_authenticate_wos_session", new_callable=AsyncMock
+        ) as authenticate:
+            client = TestClient(app)
+            client.cookies.set("wos_session", "cookie-token")
+            client.get("/api/v1/protected")
+
+        assert authenticate.call_args.args[1] == "cookie-token"
+
+    async def test_a_rejected_session_is_flagged_for_the_route_layer(self) -> None:
+        # The middleware cannot log here (wrong context), so this exact value on
+        # request.state is the only handoff — the route matches on it.
+        request = _bare_request()
+        with patch.object(
+            WorkOSAuthMiddleware,
+            "_authenticate_session",
+            new_callable=AsyncMock,
+            return_value=(None, None),
+        ):
+            await _middleware()._authenticate_wos_session(request, "bad")
+
+        assert request.state.auth_failure == "invalid_or_expired_session"
+        assert request.state.authenticated is False
+
+    async def test_a_broken_verifier_is_recorded_with_the_request_it_broke_on(
+        self,
+    ) -> None:
+        # The request continues unauthenticated by design, so the event is the
+        # only evidence WorkOS failed rather than the user being logged out.
+        request = _bare_request(path="/api/v1/protected", method="POST")
+        with patch.object(
+            WorkOSAuthMiddleware,
+            "_authenticate_session",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("WorkOS down"),
+        ):
+            async with captured_wide_event() as event:
+                await _middleware()._authenticate_wos_session(request, "tok")
+
+        (error,) = event["errors"]
+        assert "auth_middleware_error" in error["msg"]
+        assert error["auth_failure"] == "RuntimeError"
+        assert error["error"] == "WorkOS down"
+        assert error["path"] == "/api/v1/protected"
+        assert error["method"] == "POST"
+        assert error["session_present"] is True
+        assert request.state.authenticated is False
+
+
+class TestAuthenticateAgentTokenDirectly:
+    async def test_a_request_without_an_authorization_header_is_a_noop(self) -> None:
+        request = _bare_request()
+        with patch("app.api.v1.middleware.auth.verify_agent_token") as verify:
+            await _middleware()._authenticate_agent_token(request)
+
+        assert verify.called is False
+        assert request.state.authenticated is False
+
+    async def test_a_non_bearer_authorization_header_is_a_noop(self) -> None:
+        request = _bare_request(headers={"Authorization": "Basic dXNlcjpwYXNz"})
+        with patch("app.api.v1.middleware.auth.verify_agent_token") as verify:
+            await _middleware()._authenticate_agent_token(request)
+
+        assert verify.called is False
+
+    async def test_only_the_credential_is_verified_not_the_scheme(self) -> None:
+        # Everything after the first space is the token; splitting anywhere else
+        # hands the verifier a fragment and every agent request stops working.
+        request = _bare_request(headers={"Authorization": "Bearer aaa bbb"})
+        with patch("app.api.v1.middleware.auth.verify_agent_token", return_value=None) as verify:
+            await _middleware()._authenticate_agent_token(request)
+
+        assert verify.call_args.args == ("aaa bbb",)
+
+    async def test_the_credential_is_taken_verbatim_after_the_first_space(self) -> None:
+        # Split on a literal single space, not whitespace runs: "Bearer  jwt"
+        # verifies " jwt" and fails; loosening to a whitespace split would
+        # accept headers we reject today.
+        request = _bare_request(headers={"Authorization": "Bearer  jwt"})
+        with patch("app.api.v1.middleware.auth.verify_agent_token", return_value=None) as verify:
+            await _middleware()._authenticate_agent_token(request)
+
+        assert verify.call_args.args == (" jwt",)
+
+    async def test_the_user_named_in_the_token_is_the_one_looked_up(self) -> None:
+        request = _bare_request(headers={"Authorization": "Bearer jwt"})
+        with (
+            patch(
+                "app.api.v1.middleware.auth.verify_agent_token",
+                return_value=AgentTokenInfo(user_id="507f1f77bcf86cd799439011"),
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=None,
+            ) as get_user,
+        ):
+            await _middleware()._authenticate_agent_token(request)
+
+        assert get_user.call_args.args == ("507f1f77bcf86cd799439011",)
+
+    async def test_a_failed_user_lookup_is_recorded_on_the_wide_event(self) -> None:
+        request = _bare_request(headers={"Authorization": "Bearer jwt"})
+        with (
+            patch(
+                "app.api.v1.middleware.auth.verify_agent_token",
+                return_value=AgentTokenInfo(user_id="not-an-objectid"),
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.get",
+                new_callable=AsyncMock,
+                side_effect=ValueError("bad ObjectId"),
+            ),
+        ):
+            async with captured_wide_event() as event:
+                await _middleware()._authenticate_agent_token(request)
+
+        (error,) = event["errors"]
+        assert "Invalid user_id in agent token" in error["msg"]
+        assert error["error_type"] == "ValueError"
+        assert error["error"] == "bad ObjectId"
+        assert request.state.authenticated is False
+
+    async def test_the_agent_context_is_marked_workos_and_impersonated(self) -> None:
+        # Downstream reads auth_provider to decide which identity it is holding;
+        # impersonated=True is what tells it this is an agent acting as the user.
+        request = _bare_request(headers={"Authorization": "Bearer jwt"})
+        user_doc = UserDocument.model_validate(
+            {"id": "507f1f77bcf86cd799439011", "email": "agent@test.com", "name": "Agent"}
+        )
+        with (
+            patch(
+                "app.api.v1.middleware.auth.verify_agent_token",
+                return_value=AgentTokenInfo(user_id="507f1f77bcf86cd799439011"),
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=user_doc,
+            ),
+        ):
+            await _middleware()._authenticate_agent_token(request)
+
+        assert request.state.authenticated is True
+        assert request.state.user.auth_provider == "workos"
+        assert request.state.user.impersonated is True
+
+
 class TestAuthenticateSession:
     """Unit tests for _authenticate_session helper."""
 
     async def test_successful_authentication_updates_last_activity(self) -> None:
-        user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
+        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
         middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
         with (
             patch(
@@ -325,10 +585,8 @@ class TestAuthenticateSession:
         assert result_sess is None
 
     async def test_auth_outcome_is_independent_of_last_active_touch(self) -> None:
-        """The last-active touch is fire-and-forget: a valid WorkOS session
-        authenticates regardless of the touch (the previous swallow that turned a
-        touch failure into a failed auth is gone; touch_last_active never raises)."""
-        user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
+        """A valid WorkOS session authenticates regardless of the fire-and-forget last-active touch; touch_last_active never raises."""
+        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
         middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
         with (
             patch(
@@ -345,24 +603,37 @@ class TestAuthenticateSession:
         assert result_user == user_info
         mock_touch.assert_awaited_once_with("a@b.com")
 
+    async def test_a_user_without_an_email_touches_last_active_with_an_empty_key(self) -> None:
+        middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
+        with (
+            patch(
+                "app.api.v1.middleware.auth.authenticate_workos_session",
+                new_callable=AsyncMock,
+                return_value=(AuthenticatedUser(user_id="u1"), None),
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.touch_last_active",
+                new_callable=AsyncMock,
+            ) as mock_touch,
+        ):
+            await middleware._authenticate_session("tok")
+        mock_touch.assert_awaited_once_with("")
 
-# ---------------------------------------------------------------------------
-# PostHogRequestContextMiddleware — the identity every authenticated capture
-# inherits. If it binds nothing, or binds the wrong id, every event a route
-# handler emits lands on an anonymous (or a second) profile and cross-surface
-# funnels silently stop joining.
-# ---------------------------------------------------------------------------
+
+# PostHogRequestContextMiddleware is the identity every authenticated capture
+# inherits; a wrong or missing id lands events on the wrong profile and
+# breaks cross-surface funnel joins.
 
 GAIA_USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 REQUEST_PATH = "/api/v1/notes"
 
 
 async def _noop_asgi(scope, receive, send) -> None:  # pragma: no cover - never called
-    """BaseHTTPMiddleware requires an inner app; ``dispatch`` is driven directly."""
+    """BaseHTTPMiddleware requires an inner app; dispatch is driven directly."""
 
 
-def _authenticated_request(user: dict | None) -> Request:
-    """A plain GET carrying ``state.user`` exactly as WorkOSAuthMiddleware leaves it."""
+def _authenticated_request(user: AuthenticatedUser | None) -> Request:
+    """Build a plain GET carrying state.user exactly as WorkOSAuthMiddleware leaves it."""
     request = Request(
         {
             "type": "http",
@@ -383,9 +654,9 @@ def _authenticated_request(user: dict | None) -> Request:
 
 
 async def _dispatch(request: Request) -> tuple[Response, dict]:
-    """Run the middleware over ``request``, reporting what the route saw.
+    """Run the middleware over request, reporting what the route saw.
 
-    ``downstream`` records the identity a capture inside the handler would be
+    downstream records the identity a capture inside the handler would be
     attributed to, plus the path the handler could still read — the middleware
     must hand the route its own request, not a substitute.
     """
@@ -405,11 +676,12 @@ class TestPostHogRequestContextIdentity:
     async def test_authenticated_request_is_identified_by_gaia_user_id(
         self, posthog_provider
     ) -> None:
-        """The whole point of the middleware: a capture in the route handler is
-        attributed to the stable Mongo user id, with no call site repeating it."""
+        """A capture in the route handler is attributed to the stable Mongo user id, with no call site repeating it."""
         posthog_provider(available=True, client=object())
 
-        response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+        response, downstream = await _dispatch(
+            _authenticated_request(AuthenticatedUser(user_id=GAIA_USER_ID))
+        )
 
         assert downstream["distinct_id"] == GAIA_USER_ID
         assert downstream["path"] == REQUEST_PATH
@@ -419,13 +691,12 @@ class TestPostHogRequestContextIdentity:
         """The context is per-request; work after it must not inherit the user."""
         posthog_provider(available=True, client=object())
 
-        await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+        await _dispatch(_authenticated_request(AuthenticatedUser(user_id=GAIA_USER_ID)))
 
         assert get_context_distinct_id() is None
 
     async def test_unauthenticated_request_is_not_identified(self, posthog_provider) -> None:
-        """Nobody to attribute to — the request must stay personless rather than
-        binding the string "None" as a distinct_id and inventing a profile."""
+        """Nobody to attribute to — the request must stay personless rather than binding "None" as a distinct_id."""
         posthog_provider(available=True, client=object())
 
         response, downstream = await _dispatch(_authenticated_request(None))
@@ -438,7 +709,9 @@ class TestPostHogRequestContextIdentity:
         """A user document missing the id is still nobody — never identify ""."""
         posthog_provider(available=True, client=object())
 
-        _, downstream = await _dispatch(_authenticated_request({"email": "a@b.com"}))
+        _, downstream = await _dispatch(
+            _authenticated_request(AuthenticatedUser(user_id="", email="a@b.com"))
+        )
 
         assert downstream["distinct_id"] is None
 
@@ -446,7 +719,9 @@ class TestPostHogRequestContextIdentity:
         """Analytics is never load-bearing: no token configured still serves the route."""
         posthog_provider(available=False, client=object())
 
-        response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+        response, downstream = await _dispatch(
+            _authenticated_request(AuthenticatedUser(user_id=GAIA_USER_ID))
+        )
 
         assert downstream["distinct_id"] is None
         assert downstream["path"] == REQUEST_PATH
@@ -455,19 +730,19 @@ class TestPostHogRequestContextIdentity:
     async def test_request_is_served_when_the_posthog_client_is_none(
         self, posthog_provider
     ) -> None:
-        """Available-but-unbuilt: the provider resolves to None, and identifying
-        against no client would raise inside every authenticated request."""
+        """An available-but-unbuilt provider resolves to None; identifying against no client would raise inside every authenticated request."""
         posthog_provider(available=True, client=None)
 
-        response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+        response, downstream = await _dispatch(
+            _authenticated_request(AuthenticatedUser(user_id=GAIA_USER_ID))
+        )
 
         assert downstream["distinct_id"] is None
         assert downstream["path"] == REQUEST_PATH
         assert response.body == b"handler ran"
 
     def test_identity_is_bound_through_the_real_asgi_stack(self, posthog_provider) -> None:
-        """The unit tests above drive ``dispatch`` directly; this one proves the
-        middleware still binds identity when Starlette runs it for real."""
+        """Proves the middleware still binds identity when Starlette runs it for real, not just via direct dispatch."""
         posthog_provider(available=True, client=object())
         seen: dict = {}
 
@@ -475,7 +750,7 @@ class TestPostHogRequestContextIdentity:
 
         class _AuthenticateEveryone(BaseHTTPMiddleware):
             async def dispatch(self, request, call_next):
-                request.state.user = {"user_id": GAIA_USER_ID}
+                request.state.user = AuthenticatedUser(user_id=GAIA_USER_ID)
                 return await call_next(request)
 
         app.add_middleware(PostHogRequestContextMiddleware)
@@ -488,3 +763,251 @@ class TestPostHogRequestContextIdentity:
 
         assert TestClient(app).get("/notes").status_code == 200
         assert seen["distinct_id"] == GAIA_USER_ID
+
+
+def _route_events(events: list[dict]) -> list[dict]:
+    """Return the events the route captured, without the user:active mark a user's request adds."""
+    return [event for event in events if event["event"] == NotesCreated.event]
+
+
+class TestPostHogSessionJoin:
+    """The browser's X-PostHog-Session-Id lands on every server event of its request.
+
+    Without it a server event joins no session, so replay cannot show the
+    click that caused it.
+    """
+
+    @staticmethod
+    def _app(user: AuthenticatedUser | None) -> FastAPI:
+        app = FastAPI()
+
+        class _Authenticate(BaseHTTPMiddleware):
+            async def dispatch(
+                self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+            ) -> Response:
+                if user is not None:
+                    request.state.user = user
+                return await call_next(request)
+
+        app.add_middleware(PostHogRequestContextMiddleware)
+        app.add_middleware(_Authenticate)
+
+        @app.post("/notes")
+        async def notes() -> dict:
+            capture(UserId(GAIA_USER_ID), NotesCreated())
+            return {"ok": True}
+
+        return app
+
+    def test_session_header_reaches_an_authenticated_capture(
+        self, posthog_events: list[dict[str, object]]
+    ) -> None:
+        client = TestClient(self._app(AuthenticatedUser(user_id=GAIA_USER_ID)))
+
+        client.post("/notes", headers={POSTHOG_SESSION_HEADER: "sess-1"})
+
+        [event] = _route_events(posthog_events)
+        assert event["distinct_id"] == GAIA_USER_ID
+        assert event["properties"]["$session_id"] == "sess-1"
+
+    def test_session_header_reaches_an_explicit_capture_on_an_unauthenticated_route(
+        self, posthog_events: list[dict[str, object]]
+    ) -> None:
+        client = TestClient(self._app(None))
+
+        client.post("/notes", headers={POSTHOG_SESSION_HEADER: "sess-2"})
+
+        [event] = _route_events(posthog_events)
+        assert event["properties"]["$session_id"] == "sess-2"
+
+    def test_no_header_means_no_session(self, posthog_events: list[dict[str, object]]) -> None:
+        client = TestClient(self._app(AuthenticatedUser(user_id=GAIA_USER_ID)))
+
+        client.post("/notes")
+
+        [event] = _route_events(posthog_events)
+        assert "$session_id" not in event["properties"]
+
+
+class TestRequestAttribution:
+    """Each request is attributed once, by the middleware, from how it authenticated and who sent it."""
+
+    @staticmethod
+    def _client(state: dict[str, object]) -> TestClient:
+        return TestClient(TestRequestAttribution._app(state))
+
+    @staticmethod
+    async def _post_in_loop(state: dict[str, object], headers: dict[str, str]) -> None:
+        """Post on the test's own loop, so the user:active gate reaches the per-test fake Redis."""
+        transport = ASGITransport(app=TestRequestAttribution._app(state))
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.post("/api/v1/chat-stream", headers=headers)
+        await asyncio.gather(
+            *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
+        )
+
+    @staticmethod
+    def _app(state: dict[str, object]) -> FastAPI:
+        app = FastAPI()
+
+        class _Authenticate(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                for key, value in state.items():
+                    setattr(request.state, key, value)
+                return await call_next(request)
+
+        app.add_middleware(PostHogRequestContextMiddleware)
+        app.add_middleware(_Authenticate)
+
+        @app.post("/api/v1/chat-stream")
+        @app.post("/api/v1/payments/webhooks/dodo")
+        async def route() -> dict:
+            capture(UserId(GAIA_USER_ID), NotesCreated())
+            return {"ok": True}
+
+        return app
+
+    @staticmethod
+    def _attribution(events: list[dict]) -> tuple[object, object, object]:
+        [event] = _route_events(events)
+        props = event["properties"]
+        return props["actor"], props["trigger"], props["surface"]
+
+    def test_a_web_chat_turn_is_the_users_own_interactive_web_action(self, posthog_events):
+        user = AuthenticatedUser(user_id=GAIA_USER_ID)
+        self._client({"user": user}).post("/api/v1/chat-stream")
+
+        assert self._attribution(posthog_events) == ("user", "interactive", "web")
+
+    def test_the_desktop_app_is_its_own_surface(self, posthog_events):
+        user = AuthenticatedUser(user_id=GAIA_USER_ID)
+        self._client({"user": user}).post(
+            "/api/v1/chat-stream", headers={CLIENT_TYPE_HEADER: "desktop"}
+        )
+
+        assert self._attribution(posthog_events) == ("user", "interactive", "desktop")
+
+    def test_a_bot_request_is_the_bot_surface(self, posthog_events):
+        user = AuthenticatedUser(user_id=GAIA_USER_ID, bot_authenticated=True)
+        self._client({"user": user, "bot_api_key_valid": True}).post("/api/v1/chat-stream")
+
+        assert self._attribution(posthog_events) == ("user", "interactive", "bot")
+
+    def test_the_voice_workers_agent_token_is_the_voice_surface(self, posthog_events):
+        user = AuthenticatedUser(user_id=GAIA_USER_ID, impersonated=True)
+        self._client({"user": user}).post("/api/v1/chat-stream")
+
+        assert self._attribution(posthog_events) == ("user", "interactive", "voice")
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_an_automatic_client_request_is_not_the_users_action(self, posthog_events):
+        """An idle tab's poll must never mark its user active for the day."""
+        user = AuthenticatedUser(user_id=GAIA_USER_ID)
+        await self._post_in_loop(
+            {"user": user},
+            {REQUEST_ORIGIN_HEADER: BACKGROUND_REQUEST_ORIGIN, CLIENT_TYPE_HEADER: "desktop"},
+        )
+
+        assert self._attribution(posthog_events) == ("agent", "system", "desktop")
+        assert [e for e in posthog_events if e["event"] == "user:active"] == []
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_users_own_request_still_marks_them_active(self, posthog_events):
+        user = AuthenticatedUser(user_id=GAIA_USER_ID)
+        await self._post_in_loop({"user": user}, {})
+
+        [mark] = [e for e in posthog_events if e["event"] == "user:active"]
+        assert mark["distinct_id"] == GAIA_USER_ID
+
+    def test_a_webhook_is_the_workers_not_the_users(self, posthog_events):
+        self._client({}).post("/api/v1/payments/webhooks/dodo")
+
+        assert self._attribution(posthog_events) == ("agent", "webhook", "worker")
+
+    def test_a_malformed_session_header_joins_no_session(self, posthog_events):
+        user = AuthenticatedUser(user_id=GAIA_USER_ID)
+        with patch("app.api.v1.middleware.auth.log") as mock_log:
+            self._client({"user": user}).post(
+                "/api/v1/chat-stream", headers={POSTHOG_SESSION_HEADER: "not a session"}
+            )
+
+        [event] = _route_events(posthog_events)
+        assert "$session_id" not in event["properties"]
+        # The rejection is logged by shape only: the header's value never reaches the log.
+        mock_log.warning.assert_called_once_with("posthog_session_header_rejected", length=13)
+
+
+class TestDevBypassWithoutAMongoUser:
+    """A bypass target with no Mongo user fails loud, as the one envelope."""
+
+    def test_the_401_names_the_target_and_how_to_mint_it(self, monkeypatch) -> None:
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@example.com")
+        app = _build_test_app()
+        with patch(
+            "app.api.v1.middleware.auth.resolve_dev_bypass_user",
+            new_callable=AsyncMock,
+            return_value=("ghost@example.com", None),
+        ):
+            resp = TestClient(app).get("/api/v1/protected")
+
+        assert resp.status_code == 401
+        assert resp.json() == {
+            "message": f"No GAIA user exists for 'ghost@example.com' — {DEV_USER_MISSING_HINT}",
+            "code": NOT_AUTHENTICATED,
+        }
+
+
+class TestDevBypassWithAMongoUser:
+    """The bypass resolves the requested user and hands the route a dev-bypass context."""
+
+    _USER = UserDocument.model_validate(
+        {"id": "507f1f77bcf86cd799439011", "email": "alice@example.com", "name": "Alice"}
+    )
+
+    @pytest.fixture(autouse=True)
+    def _bypass_on(self, monkeypatch) -> None:
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@example.com")
+
+    def test_the_impersonated_user_is_looked_up_and_marked_dev_bypass(self) -> None:
+        app = _build_test_app()
+        with patch(
+            "app.utils.auth_utils.user_repository.get_by_email",
+            new_callable=AsyncMock,
+            return_value=self._USER,
+        ) as get_by_email:
+            resp = TestClient(app).get(
+                "/api/v1/protected", headers={DEV_USER_HEADER: "alice@example.com"}
+            )
+
+        assert get_by_email.call_args.args == ("alice@example.com",)
+        user = resp.json()["user"]
+        assert resp.json()["authenticated"] is True
+        assert (user["user_id"], user["email"]) == ("507f1f77bcf86cd799439011", "alice@example.com")
+        assert (user["auth_provider"], user["dev_bypass"], user["impersonated"]) == (
+            "workos",
+            True,
+            False,
+        )
+
+    def test_the_bypass_user_is_published_to_the_request_context(self) -> None:
+        app = _build_test_app()
+
+        @app.get("/api/v1/whoami")
+        async def whoami() -> dict:
+            user = get_authenticated_user()
+            return {"user_id": user.user_id if user else None}
+
+        with patch(
+            "app.utils.auth_utils.user_repository.get_by_email",
+            new_callable=AsyncMock,
+            return_value=self._USER,
+        ):
+            resp = TestClient(app).get("/api/v1/whoami")
+
+        assert resp.json() == {"user_id": "507f1f77bcf86cd799439011"}

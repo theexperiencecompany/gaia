@@ -1,13 +1,13 @@
-"""Integration tests for chat API endpoints.
-
-Tests POST /api/v1/chat-stream and POST /api/v1/cancel-stream/{stream_id}
-with mocked service layer to verify routing, auth enforcement, response
-structure, and SSE format through the full FastAPI request lifecycle.
-"""
+"""Integration tests for chat API endpoints."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from app.db.redis import redis_cache
+from app.models.payment_models import PlanType
+from app.services.payments.payment_service import payment_service
+from tests.conftest import FAKE_USER
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,12 +37,32 @@ def _make_mock_task() -> MagicMock:
     return t
 
 
-def _make_subscription_mock():
-    from app.models.payment_models import PlanType
-
+def _make_subscription_mock(plan_type: PlanType | None = None) -> MagicMock:
     sub = MagicMock()
-    sub.plan_type = PlanType.FREE
+    # PRO by default so these tests clear the paywall gate; FREE-plan behavior
+    # is covered separately by TestChatStreamPaywall.
+    sub.plan_type = plan_type or PlanType.PRO
     return sub
+
+
+@pytest.fixture(autouse=True)
+def fresh_redis_client():
+    """Start each test with a fresh Redis client, since a prior test's stays bound to a dead loop."""
+    redis_cache.redis = None
+    yield
+    redis_cache.redis = None
+
+
+@pytest.fixture(autouse=True)
+def bypass_plan_cache():
+    """Answer the paid-only gate's plan lookup straight from the mock, bypassing a stale Redis cache."""
+
+    async def _uncached(user_id: str) -> PlanType:
+        status = await payment_service.get_user_subscription_status(user_id)
+        return PlanType(status.plan_type)
+
+    with patch.object(payment_service, "get_cached_plan_type", side_effect=_uncached):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +78,7 @@ class TestChatStreamEndpoint:
     def mock_rate_limiter(self):
         """Bypass the tiered rate limiter's Redis calls for all chat tests.
 
-        `tiered_limiter` is a module-level TieredRateLimiter() singleton whose
+        tiered_limiter is a module-level TieredRateLimiter() singleton whose
         .redis attribute is bound to the real redis_cache at import time.
         Patching check_and_increment directly avoids any real Redis connection.
         """
@@ -293,7 +313,7 @@ class TestChatStreamEndpoint:
         call_kwargs = mock_start_stream.call_args.kwargs
         assert "stream_id" in call_kwargs
         assert call_kwargs["conversation_id"] == "conv-test-123"
-        assert call_kwargs["user_id"] == "integration-test-user-1"
+        assert call_kwargs["user_id"] == FAKE_USER.user_id
 
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
@@ -390,6 +410,205 @@ class TestChatStreamEndpoint:
         assert response.status_code == 422
 
 
+_WORKFLOW = {"title": "Morning brief", "description": "Daily digest", "steps": []}
+
+
+@pytest.mark.integration
+class TestChatStreamSelectionIsValidatedBeforeTheTurnStarts:
+    """A selection the analytics catalog cannot carry is refused up front, never after the turn started."""
+
+    @pytest.fixture(autouse=True)
+    def mock_rate_limiter(self):
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            yield
+
+    @pytest.fixture
+    def stream_mocks(self):
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+                new=_empty_subscribe_stream,
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock
+            ) as start_stream,
+            patch("app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.chat.spawn_background_task",
+                side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+            ) as spawn,
+            patch("app.api.v1.endpoints.chat.redis_cache") as cache,
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=_make_subscription_mock(),
+            ),
+        ):
+            cache.redis = MagicMock()
+            yield start_stream, spawn
+
+    @pytest.mark.parametrize(
+        "selection",
+        [
+            {"selectedTool": "send email"},
+            {"selectedTool": "GMAIL_SEND_EMAIL", "toolCategory": "Google Calendar"},
+            {"selectedWorkflow": {**_WORKFLOW, "id": "wf 1"}},
+        ],
+    )
+    async def test_an_untrackable_selection_is_a_422_before_any_stream_work(
+        self, selection, stream_mocks, test_client
+    ):
+        start_stream, spawn = stream_mocks
+
+        response = await test_client.post("/api/v1/chat-stream", json={**_VALID_BODY, **selection})
+
+        assert response.status_code == 422
+        start_stream.assert_not_called()
+        spawn.assert_not_called()
+
+    async def test_a_real_selection_starts_the_turn(self, stream_mocks, test_client):
+        start_stream, spawn = stream_mocks
+        selection = {
+            "selectedTool": "GMAIL_SEND_EMAIL",
+            "toolCategory": "gmail",
+            "selectedWorkflow": {**_WORKFLOW, "id": "wf_3f2a9c1b7d4e"},
+        }
+
+        response = await test_client.post("/api/v1/chat-stream", json={**_VALID_BODY, **selection})
+
+        assert response.status_code == 200
+        start_stream.assert_called_once()
+        spawn.assert_called_once()
+
+
+class TestTheSubmittedEventKeysTheTurn:
+    """chat:message_submitted carries the turn's stream id, so a funnel can join it to its completion."""
+
+    @pytest.fixture(autouse=True)
+    def mock_rate_limiter(self):
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            yield
+
+    @pytest.fixture
+    def submitted(self):
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+                new=_empty_subscribe_stream,
+            ),
+            patch("app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock),
+            patch("app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.chat.spawn_background_task",
+                side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+            ),
+            patch("app.api.v1.endpoints.chat.redis_cache") as cache,
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=_make_subscription_mock(),
+            ),
+            patch("app.api.v1.endpoints.chat.capture") as capture,
+        ):
+            cache.redis = MagicMock()
+            yield capture
+
+    @pytest.mark.regression
+    async def test_the_event_names_the_stream_the_response_serves(self, submitted, test_client):
+        response = await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
+
+        event = submitted.call_args.args[1]
+        assert (event.event, event.stream_id) == (
+            "chat:message_submitted",
+            response.headers["X-Stream-Id"],
+        )
+        assert event.is_retry is False
+
+    @pytest.mark.regression
+    async def test_a_retried_send_is_marked_as_a_retry(self, submitted, test_client):
+        await test_client.post("/api/v1/chat-stream", json={**_VALID_BODY, "is_retry": True})
+
+        assert submitted.call_args.args[1].is_retry is True
+
+
+@pytest.mark.integration
+class TestChatStreamPaywall:
+    """GAIA is paid-only: a FREE-plan user must 402 before any stream work starts."""
+
+    @patch(
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+    )
+    @patch(
+        "app.decorators.entitlements.payment_service.create_pro_checkout",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+        new_callable=AsyncMock,
+    )
+    async def test_free_user_gets_402_with_the_exact_wire_contract(
+        self,
+        mock_subscription,
+        mock_checkout,
+        mock_spawn,
+        gated_test_client,
+    ):
+        """The 402 carries a null checkout_url and cost Dodo nothing, through the real middleware."""
+        mock_subscription.return_value = _make_subscription_mock(PlanType.FREE)
+        checkout = MagicMock()
+        checkout.checkout.payment_link = "https://checkout.dodo.test/xyz"
+        mock_checkout.return_value = checkout
+
+        response = await gated_test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
+
+        assert response.status_code == 402
+        assert response.json() == {
+            "code": "subscription_required",
+            "message": "GAIA is paid only. Subscribe to GAIA Pro to keep chatting.",
+            "checkout_url": None,
+            "discount_code": None,
+        }
+        mock_checkout.assert_not_awaited()
+
+    @patch(
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+    )
+    @patch(
+        "app.decorators.entitlements.payment_service.create_pro_checkout",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+        new_callable=AsyncMock,
+    )
+    async def test_free_user_never_starts_the_background_stream(
+        self,
+        mock_subscription,
+        mock_checkout,
+        mock_spawn,
+        gated_test_client,
+    ):
+        mock_subscription.return_value = _make_subscription_mock(PlanType.FREE)
+        checkout = MagicMock()
+        checkout.checkout.payment_link = None
+        mock_checkout.return_value = checkout
+
+        response = await gated_test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
+
+        assert response.status_code == 402
+        mock_spawn.assert_not_called()
+
+
 @pytest.mark.integration
 class TestCancelStreamEndpoint:
     """Tests for POST /api/v1/cancel-stream/{stream_id}."""
@@ -411,7 +630,7 @@ class TestCancelStreamEndpoint:
     ):
         """POST /api/v1/cancel-stream/{id} should return 200 with success=True."""
         mock_get_progress.return_value = {
-            "user_id": test_user["user_id"],
+            "user_id": test_user.user_id,
             "conversation_id": "conv-abc",
         }
         mock_cancel.return_value = True

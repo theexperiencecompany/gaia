@@ -1,4 +1,4 @@
-"""Tests for app/api/v1/endpoints/short_links.py"""
+"""Tests for app/api/v1/endpoints/short_links.py."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -19,9 +19,7 @@ class TestResolveShortLink:
 
     @pytest.mark.asyncio
     async def test_resolved_view_is_never_cached(self, client: AsyncClient) -> None:
-        """A capability URL can be revoked at any moment; a cached 200 in a
-        browser or an intermediary would keep serving content the owner has
-        already taken back."""
+        """A capability URL can be revoked at any moment, so nothing may cache it."""
         view = PublicTodoDeliverable(
             target_type=ShortLinkTargetType.TODO_DELIVERABLE,
             title="Q3 plan",
@@ -46,8 +44,7 @@ class TestResolveShortLink:
 class TestResolveStorageOutage:
     @pytest.mark.asyncio
     async def test_workspace_storage_offline_is_503_not_500(self, client: AsyncClient) -> None:
-        """A session-artifact link while workspace storage is down is an outage
-        the viewer can retry, not a crash."""
+        """A session-artifact link while storage is down is a retryable outage, not a crash."""
         with patch(
             f"{_ENDPOINT}.get_public_view",
             AsyncMock(side_effect=JuiceFSUnavailable("mount missing")),

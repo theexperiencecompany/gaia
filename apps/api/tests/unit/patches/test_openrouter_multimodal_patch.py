@@ -1,10 +1,10 @@
 """Tests for the OpenRouter ToolMessage media patch.
 
-``langchain_openrouter`` formats media blocks (``{"type": "image", ...}`` →
-``image_url``) for user messages but passes ToolMessage content through
+langchain_openrouter formats media blocks ({"type": "image", ...} →
+image_url) for user messages but passes ToolMessage content through
 untouched, so a tool that returns an image dies in the SDK's pydantic
-validation. The patch reuses the library's own formatter for ``role ==
-"tool"`` content; plain-string tool content must pass through unchanged.
+validation. The patch reuses the library's own formatter for role ==
+"tool" content; plain-string tool content must pass through unchanged.
 """
 
 from __future__ import annotations

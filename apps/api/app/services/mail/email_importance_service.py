@@ -14,7 +14,7 @@ from shared.py.wide_events import MailContext, log
 
 
 def _mail_dict(summary: MailDocument) -> dict[str, Any]:
-    """JSON-safe email-summary dict the read endpoints return (string ``_id``)."""
+    """JSON-safe email-summary dict the read endpoints return (string _id)."""
     return {**summary.model_dump(mode="json", exclude={"id"}), "_id": summary.id}
 
 

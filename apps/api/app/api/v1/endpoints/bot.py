@@ -1,41 +1,50 @@
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 import json
-import secrets
-from typing import Annotated, Any
+import time
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.middleware.auth import get_current_user as get_request_user
 from app.config.settings import settings
-from app.constants.auth import AUDIT_ACTOR_BOT_API, AUDIT_ACTOR_UNAUTHENTICATED
-from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
+from app.constants.auth import AUDIT_ACTOR_BOT_API
+from app.constants.bot import BotRequestFailure
+from app.constants.cache import BOT_UPGRADE_LINK_PREFIX, BOT_UPGRADE_LINK_TTL
+from app.constants.error_codes import BOT_ACCOUNT_NOT_LINKED, BOT_API_KEY_INVALID
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager, with_heartbeat
 from app.db.redis import redis_cache
-from app.decorators import enforce_daily_cost_budget, enforce_tiered_limit, tiered_rate_limit
+from app.decorators import (
+    SubscriptionRequiredException,
+    is_paid,
+    require_active_subscription,
+    tiered_rate_limit,
+)
 from app.models.bot_models import (
     BotAuthStatusResponse,
     BotChatRequest,
+    BotRateLimitCardData,
     BotSettingsResponse,
-    CreateLinkTokenRequest,
-    CreateLinkTokenResponse,
+    BotStreamToolCard,
+    BotWebStreamPayload,
     IntegrationInfo,
     LinkedUsersResponse,
-    LinkTokenInfoResponse,
-    LinkTokenRecord,
     ResetSessionRequest,
     ResetSessionResponse,
     TranscribeAudioResponse,
     UnlinkAccountResponse,
 )
-from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.integration_models import UserIntegrationDocument
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.schemas.errors import error_responses
+from app.services.analytics_service import capture
 from app.services.audio_transcription_service import (
     MAX_AUDIO_BYTES,
     AudioTooLargeError,
@@ -43,24 +52,54 @@ from app.services.audio_transcription_service import (
     transcribe_audio,
     validate_audio_payload,
 )
-from app.services.bot_service import BotService
+from app.services.bot.stream_frames import (
+    approval_frame,
+    comment_keepalive_frame,
+    done_frame,
+    emoji_ack_frame,
+    error_frame,
+    keepalive_frame,
+    message_boundary_frame,
+    notice_frame,
+    session_token_frame,
+    stream_error_frame,
+    text_frame,
+)
+from app.services.bot_service import (
+    BotService,
+    build_bot_message_request,
+    charge_bot_turn,
+)
 from app.services.bot_token_service import create_bot_session_token
 from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
+from app.services.latency_metrics import observe_sse_delivery
 from app.services.payments.payment_service import payment_service
 from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
     platform_requires_upgrade,
 )
+from app.utils.auth_utils import resolve_bot_user
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
+from shared.py.analytics.catalog.chat import ChatMessageRefused
+from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import get_trace_id, log, log_context
 
 router = APIRouter()
 
 BOT_STREAM_ERROR_NOT_AUTHENTICATED = "not_authenticated"
 BOT_STREAM_ERROR_PLAN_REQUIRED = "plan_required"
+
+# A user who has never linked GAIA has no personal checkout link to offer, so
+# this stays generic — the /auth flow that follows resolves their identity
+# first, and the linked-but-free notice below picks up from there next turn.
+_UNLINKED_PAYWALL_NOTICE = (
+    "GAIA is paid only. Link your account with /auth, then subscribe to GAIA Pro to chat."
+)
 
 
 def _refusal_stream(error_code: str) -> StreamingResponse:
@@ -72,54 +111,164 @@ def _refusal_stream(error_code: str) -> StreamingResponse:
     """
 
     async def frame() -> AsyncGenerator[str, None]:
-        yield f"data: {json.dumps({'error': error_code})}\n\n"
+        yield error_frame(error_code)
 
     return StreamingResponse(frame(), media_type="text/event-stream")
 
 
-def _capture_bot_turn_refused(user_id: str, platform: str, reason: str) -> None:
-    """A bot turn stopped at a gate, with why — the counterpart to submitted."""
-    capture_event(
-        user_id,
-        AnalyticsEvents.CHAT_MESSAGE_REFUSED,
-        {"platform": platform, "reason": reason},
-    )
+def _refusal_stream_with_notice(notice_text: str, error_code: str) -> StreamingResponse:
+    """`_refusal_stream`, preceded by a `notice` frame carrying free-form text.
 
-
-def _resolve_user_id(user: dict[str, Any]) -> str:
-    """The stable GAIA user id from a user document, or "" if it carries neither key.
-
-    Both keys must be tried: ``PlatformLinkService`` returns a transitional
-    shape (``_id``, no ``user_id``) while the auth middleware's
-    ``build_user_context()`` returns the opposite. This is the id every bot
-    capture and audit line attributes to, so a wrong answer here silently moves
-    the record onto another profile.
+    Used for the unlinked-user paywall notice: the `notice` frame delivers it
+    as a real outbound message (`deliverOutOfBand` in the shared streamer),
+    and the trailing `error` frame is untouched so the existing /auth-link
+    flow (token minting, `buildAuthLinkMessage`) still fires — no adapter
+    change needed for either half.
     """
-    return str(user.get("user_id") or user.get("_id") or "")
+
+    async def frame() -> AsyncGenerator[str, None]:
+        yield notice_frame(notice_text)
+        yield error_frame(error_code)
+
+    return StreamingResponse(frame(), media_type="text/event-stream")
+
+
+def _notice_only_stream(notice_text: str) -> StreamingResponse:
+    """Answer a turn with one canned line and no agent run: `notice` + `done`.
+
+    No `text` frame is ever sent, so `onDone` receives an empty `fullText`
+    and delivers nothing further — the `notice` is the whole reply. Reuses
+    the same generic frames the rate-limit notice (`_bot_rate_limit_notice`)
+    already proves out for arbitrary, per-user text (a checkout link, a
+    discount code) with zero bot-adapter changes.
+    """
+
+    async def frame() -> AsyncGenerator[str, None]:
+        yield notice_frame(notice_text)
+        yield done_frame("")
+
+    return StreamingResponse(frame(), media_type="text/event-stream")
+
+
+def _paywall_notice(checkout_url: str) -> str:
+    notice = f"GAIA is paid only. Subscribe to GAIA Pro to keep chatting: {checkout_url}"
+    if settings.PAYWALL_DISCOUNT_CODE:
+        notice += f" Use code {settings.PAYWALL_DISCOUNT_CODE} for a discount."
+    return notice
+
+
+def _capture_bot_turn_refused(
+    user_id: str, platform: str, reason: Literal["plan_required", "subscription_required"]
+) -> None:
+    """A bot turn stopped at a gate, with why — the counterpart to submitted."""
+    capture(UserId(user_id), ChatMessageRefused(platform=platform, reason=reason))
+
+
+def _bot_request_refused(
+    status_code: int, reason: BotRequestFailure, message: str, code: str | None = None
+) -> HTTPException:
+    """Mark the wide event failed with its reason and build the refusal to raise."""
+    log.fail(reason)
+    detail: str | dict[str, str] = {"message": message, "code": code} if code else message
+    return HTTPException(status_code=status_code, detail=detail)
+
+
+async def _resolve_bot_caller(
+    request: Request, platform: str, platform_user_id: str
+) -> AuthenticatedUser | None:
+    """Return the middleware-resolved user, else the platform account's linked user, else None."""
+    user = get_request_user(request)
+    if user is not None and getattr(request.state, "authenticated", False):
+        return user
+    return await resolve_bot_user(platform, platform_user_id)
+
+
+async def _require_linked_bot_caller(
+    request: Request, platform: str, platform_user_id: str
+) -> AuthenticatedUser:
+    """The caller's linked user; a 401 naming the unlinked account otherwise."""
+    user = await _resolve_bot_caller(request, platform, platform_user_id)
+    if user is None:
+        raise _bot_request_refused(
+            401,
+            BotRequestFailure.ACCOUNT_NOT_LINKED,
+            "This platform account is not linked to a GAIA account.",
+            BOT_ACCOUNT_NOT_LINKED,
+        )
+    return user
+
+
+def _require_valid_platform(platform: str) -> None:
+    if not Platform.is_valid(platform):
+        raise _bot_request_refused(400, BotRequestFailure.INVALID_PLATFORM, "Invalid platform")
 
 
 async def require_bot_api_key(request: Request) -> None:
     """Verify that the request has a valid bot API key (set by BotAuthMiddleware)."""
     if not getattr(request.state, "bot_api_key_valid", False):
-        raise HTTPException(status_code=401, detail="Invalid or missing bot API key")
+        raise _bot_request_refused(
+            401,
+            BotRequestFailure.BOT_API_KEY_INVALID,
+            "Invalid or missing bot API key",
+            BOT_API_KEY_INVALID,
+        )
+
+
+async def _may_mint_bot_upgrade_link(user_id: str) -> bool:
+    """Whether this turn may mint a fresh Dodo session for ``user_id``.
+
+    A ``SET NX EX`` window, the same gate shape as
+    ``workflow_repository.claim_limit_notice`` — one mint per user per
+    ``BOT_UPGRADE_LINK_TTL``, so a burst of blocked turns costs one session
+    instead of one per message.
+
+    Fails CLOSED, unlike that sibling, because what is at stake differs. There,
+    losing the gate costs the user a duplicate notification; here it costs a
+    trail of orphan Dodo sessions, and the newest of those buries the session
+    the user actually paid on when ``get_latest_for_user`` looks for it. A
+    degraded link is a marketing regression; a buried payment is a paying
+    customer told they have no subscription.
+    """
+    try:
+        claimed = await redis_cache.client.set(
+            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL
+        )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.PAYMENT} Bot upgrade-link window unavailable, falling back to pricing page",
+            user={"id": user_id},
+            payment={"operation": "bot_upgrade_link_window"},
+            failure_reason="window_unavailable",
+            error_type=type(e).__name__,
+        )
+        return False
+    return bool(claimed)
 
 
 async def _bot_upgrade_url(user_id: str) -> str:
-    """A one-tap Dodo checkout URL for this user, or the pricing page if Dodo fails.
+    """A one-tap Dodo checkout URL for this user, or the pricing page.
 
     Bots are where the pricing page is worst: a WhatsApp user has to go find the
     web app and sign in before they can pay, and most never do. A personalised
     checkout link removes both steps and attributes the subscription correctly.
-    The session is cached for an hour, so a user who hits limits repeatedly gets
-    the same link rather than a trail of abandoned ones.
+
+    Bounded by ``_may_mint_bot_upgrade_link``: this is the ONE place a bot turn
+    reaches Dodo, and both walls that call it — the paid-only gate and the
+    rate-limit notice — repeat for every message until the user acts, so an
+    ungated mint here is one throwaway session per inbound message. Outside the
+    window the caller still gets a working URL, just the pricing page rather
+    than a personalised one. The session itself is never cached and never
+    reused: Dodo sessions are single-use, and handing back a spent one shows
+    "link expired" (see ``create_pro_checkout``).
     """
+    if not await _may_mint_bot_upgrade_link(user_id):
+        return f"{settings.FRONTEND_URL}/pricing"
     try:
         pro = await payment_service.create_pro_checkout(user_id)
     except Exception as e:
-        # A marketing link must never cost the user their reply — degrade to the
-        # pricing page, loudly.
-        # Bounded fields, not provider error text: the event stays queryable
-        # without leaking upstream payloads into telemetry.
+        # A marketing link must never cost the user their reply — degrade to
+        # the pricing page, loudly. Bounded fields, not provider error text,
+        # so the event stays queryable without leaking upstream payloads.
         log.warning(
             f"{LogTag.PAYMENT} Could not mint bot upgrade link, falling back to pricing page",
             user={"id": user_id},
@@ -131,7 +280,41 @@ async def _bot_upgrade_url(user_id: str) -> str:
     return pro.checkout.payment_link or f"{settings.FRONTEND_URL}/pricing"
 
 
-async def _bot_rate_limit_notice(chunk: dict[str, Any], user_id: str) -> str | None:
+def _bot_upgrade_url_once(user_id: str) -> Callable[[], Awaitable[str]]:
+    """A per-request resolver for this user's upgrade URL, minted at most once.
+
+    Called from the stream translator, which used to mint a fresh Dodo
+    checkout for every rate-limit card it saw. The resolver stays lazy on
+    purpose: resolving eagerly before the stream opens would mint a checkout
+    session on every bot turn, including the paying users who never see a
+    paywall.
+
+    Only the within-turn bound. Across turns the cap lives in
+    ``_bot_upgrade_url`` itself, so a caller that reaches it directly (the
+    paid-only gate does, having no stream to hang a resolver off) is bounded
+    too.
+    """
+    cached: list[str] = []
+
+    async def resolve() -> str:
+        if not cached:
+            cached.append(await _bot_upgrade_url(user_id))
+        return cached[0]
+
+    return resolve
+
+
+def _bot_tool_card(chunk: BotWebStreamPayload, tool_name: str) -> BotStreamToolCard | None:
+    """Return the payload's tool_data card when it is a tool_name card, else None."""
+    if not isinstance(chunk.tool_data, dict):
+        return None
+    card = BotStreamToolCard.model_validate(chunk.tool_data)
+    return card if card.tool_name == tool_name else None
+
+
+async def _bot_rate_limit_notice(
+    chunk: BotWebStreamPayload, upgrade_url: Callable[[], Awaitable[str]]
+) -> str | None:
     """Render a web-only rate-limit card as a plain-text notice for bots.
 
     Rate limits are streamed as a ``tool_data`` card for the web UI to render.
@@ -142,250 +325,181 @@ async def _bot_rate_limit_notice(chunk: dict[str, Any], user_id: str) -> str | N
     localises it to its platform's link syntax (WhatsApp ``label (url)``, Slack
     ``<url|label>``, Telegram keeps ``[label](url)``).
     """
-    tool_data = chunk.get("tool_data")
-    if not isinstance(tool_data, dict) or tool_data.get("tool_name") != "rate_limit_data":
+    tool_card = _bot_tool_card(chunk, "rate_limit_data")
+    if tool_card is None:
         return None
 
-    card = tool_data.get("data") or {}
-    feature = str(card.get("feature") or "this feature").replace("_", " ")
+    card = (
+        BotRateLimitCardData.model_validate(tool_card.data)
+        if isinstance(tool_card.data, dict)
+        else BotRateLimitCardData()
+    )
+    feature = str(card.feature or "this feature").replace("_", " ")
     notice = f"⏳ You've reached your {feature} limit. Please try again later."
 
     # Nudge an upgrade only for non-Pro users (Pro is the top tier).
-    if card.get("current_plan") != PlanType.PRO.value:
-        notice += f" [Upgrade to Pro]({await _bot_upgrade_url(user_id)}) for higher limits."
+    if card.current_plan != PlanType.PRO.value:
+        notice += f" [Upgrade to Pro]({await upgrade_url()}) for higher limits."
     return notice
 
 
-def _bot_approval_payload(chunk: dict[str, Any]) -> dict[str, Any] | None:
-    """Extract a HIL ``approval_request`` card as a bot ``approval`` payload.
+def _bot_approval_payload(chunk: BotWebStreamPayload) -> dict[str, JsonValue] | None:
+    """Extract a HIL approval_request card as a bot approval payload.
 
     Bots drop ``tool_data``, but the approval prompt MUST reach the user — a bot
     has no buttons, so the user answers yes/no in chat and the conversational
     resolver relays it. The bot client renders this as an out-of-band message.
     Returns the approval data, or ``None`` if ``chunk`` isn't such a card.
     """
-    tool_data = chunk.get("tool_data")
-    if not isinstance(tool_data, dict) or tool_data.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME:
+    tool_card = _bot_tool_card(chunk, APPROVAL_REQUEST_TOOL_NAME)
+    if tool_card is None:
         return None
-    data = tool_data.get("data")
-    return data if isinstance(data, dict) else None
+    return tool_card.data if isinstance(tool_card.data, dict) else None
 
 
-@router.post(
-    "/create-link-token",
-    response_model=CreateLinkTokenResponse,
-    status_code=200,
-    summary="Create Platform Link Token",
-    description="Generate a secure, time-limited token for platform account linking.",
-)
-async def create_link_token(
-    request: Request, body: CreateLinkTokenRequest
-) -> CreateLinkTokenResponse:
-    """Create a secure token that bots include in auth URLs.
+def _bot_stream_control_frame(
+    chunk: str, conversation_id: str
+) -> tuple[str | None, BotWebStreamPayload | None, bool]:
+    """Peel Redis SSE framing off one raw chunk from _bot_stream_from_redis.
 
-    This prevents CSRF attacks where an attacker crafts a link with someone
-    else's platform user ID to hijack their account linking.
+    Returns ``(frame, data, stop)`` — see the tri-state contract below.
     """
-    await require_bot_api_key(request)
-    log.set(operation="create_link_token", platform=body.platform)
+    if chunk.startswith(":"):
+        return chunk, None, False
 
-    # Validate body matches the authenticated platform headers to prevent any
-    # API key holder from generating tokens for arbitrary platform users.
-    state_platform = getattr(request.state, "bot_platform", None)
-    state_user_id = getattr(request.state, "bot_platform_user_id", None)
+    # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...") for
+    # Last-Event-ID resume — split the id line off before the data checks, or
+    # every content frame is silently dropped.
+    if chunk.startswith("id: "):
+        _, _, chunk = chunk.partition("\n")
 
-    if state_platform and state_platform != body.platform:
-        log.audit(
-            "platform link token rejected",
-            actor=AUDIT_ACTOR_BOT_API,
-            resource=body.platform_user_id,
-            provider=body.platform,
-            reason="platform_header_mismatch",
-        )
-        raise HTTPException(
-            status_code=403,
-            detail="Platform in body does not match X-Bot-Platform header",
-        )
-    if state_user_id and state_user_id != body.platform_user_id:
-        log.audit(
-            "platform link token rejected",
-            actor=AUDIT_ACTOR_BOT_API,
-            resource=body.platform_user_id,
-            provider=body.platform,
-            reason="platform_user_id_header_mismatch",
-        )
-        raise HTTPException(
-            status_code=403,
-            detail="platform_user_id in body does not match X-Bot-Platform-User-Id header",
-        )
+    if not chunk.startswith("data: "):
+        return None, None, False
 
-    token = secrets.token_urlsafe(32)
-    redis_client = redis_cache.client
-    token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{token}"
+    raw = chunk[len("data: ") :].strip()
+    if raw == "[DONE]":
+        return done_frame(conversation_id), None, True
 
-    mapping: dict[str, str] = {
-        "platform": body.platform,
-        "platform_user_id": body.platform_user_id,
+    try:
+        return None, BotWebStreamPayload.model_validate(json.loads(raw)), False
+    except (json.JSONDecodeError, ValidationError) as exc:
+        log.warning(
+            f"{LogTag.API} Bot stream: dropped a malformed SSE chunk",
+            error_type=type(exc).__name__,
+        )
+        return None, None, False
+
+
+# ``get_user_integration_records`` returns dumped documents; the settings route
+# validates them back into the document model where they enter the handler.
+_USER_INTEGRATION_RECORDS = TypeAdapter(list[UserIntegrationDocument])
+
+# Web stream payload keys that carry nothing a bot renders.
+_WEB_ONLY_STREAM_FIELDS = frozenset(
+    {
+        "conversation_description",
+        "user_message_id",
+        "bot_message_id",
+        "stream_id",
+        "tool_data",
+        "tool_output",
+        "follow_up_actions",
     }
-    if body.username:
-        mapping["username"] = body.username
-    if body.display_name:
-        mapping["display_name"] = body.display_name
-
-    await redis_client.hset(token_key, mapping=mapping)
-    await redis_client.expire(token_key, PLATFORM_LINK_TOKEN_TTL)
-
-    auth_url = f"{settings.FRONTEND_URL}/auth/link-platform?platform={body.platform}&token={token}"
-
-    # `token` (and the auth_url embedding it) is the link credential — the record
-    # names the platform account it was minted for, never the token.
-    log.audit(
-        "platform link token issued",
-        actor=AUDIT_ACTOR_BOT_API,
-        resource=body.platform_user_id,
-        provider=body.platform,
-    )
-    log.set(outcome="success")
-    return CreateLinkTokenResponse(token=token, auth_url=auth_url)
-
-
-@router.get(
-    "/link-token-info/{token}",
-    response_model=LinkTokenInfoResponse,
-    status_code=200,
-    summary="Get Link Token Display Info",
-    description="Return non-sensitive display metadata for a pending link token.",
 )
-async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
-    """Return display metadata from a link token for the confirmation page.
 
-    The token itself is the credential — no additional auth required.
-    Only returns non-sensitive display fields (platform, username, display_name).
-    Does NOT consume the token.
+
+async def _bot_stream_payload_frame(
+    data: BotWebStreamPayload, upgrade_url: Callable[[], Awaitable[str]]
+) -> tuple[str | None, bool]:
+    """Translate one parsed web SSE payload into a bot frame.
+
+    Returns ``(frame, stop)`` — ``frame`` is ``None`` when nothing bots need.
     """
-    log.set(operation="get_link_token_info")
-    redis_client = redis_cache.client
-    token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{token}"
-    data = await redis_client.hgetall(token_key)
-    if not data:
-        # The route is unauthenticated and the token in the path is the whole
-        # credential, so a miss is a probe against the link flow — recorded with
-        # the outcome, never with the token that was presented.
-        log.audit(
-            "platform link token lookup rejected",
-            actor=AUDIT_ACTOR_UNAUTHENTICATED,
-            reason="unknown_or_expired_token",
-        )
-        raise HTTPException(status_code=404, detail="Token not found or expired")
-    record = LinkTokenRecord.model_validate(data)
-    log.set(platform=record.platform)
-    log.audit(
-        "platform link token presented",
-        actor=AUDIT_ACTOR_UNAUTHENTICATED,
-        provider=record.platform,
-    )
-    log.set(outcome="success")
-    return LinkTokenInfoResponse(
-        platform=record.platform,
-        username=record.username,
-        display_name=record.display_name,
-    )
+    # `frame` is None for a payload that carries nothing bots need (a
+    # web-only field, an unrecognized shape). `stop` marks the terminal
+    # `error` frame.
+    if data.keepalive:
+        # Forward keepalives so bot clients reset inactivity timers.
+        return keepalive_frame(), False
+    if (card := await _bot_card_frame(data, upgrade_url)) is not None:
+        return card, False
+    return _bot_message_frame(data)
 
 
-@router.post(
-    "/chat-stream",
-    status_code=200,
-    summary="Streaming Bot Chat",
-    description="Stream a chat response as Server-Sent Events.",
-)
-async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingResponse:
-    """Stream a bot chat reply as SSE, resolving the linked user and replaying history."""
-    await require_bot_api_key(request)
-    log.set(operation="bot_chat_stream", platform=body.platform)
-    await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
+async def _bot_card_frame(
+    data: BotWebStreamPayload, upgrade_url: Callable[[], Awaitable[str]]
+) -> str | None:
+    """Translate a payload into an out-of-band card frame, or None when it carries no card.
 
-    # Use middleware-resolved user if available
-    user = getattr(request.state, "user", None)
-    if not user or not getattr(request.state, "authenticated", False):
-        user = await PlatformLinkService.get_user_by_platform_id(
-            body.platform, body.platform_user_id
-        )
+    Runs before _bot_message_frame, which drops the web-only fields both read.
+    """
+    # Rate-limit cards go out as a notice, not {"text"}: text is tied to the
+    # in-flight message and would vanish with it if that message is discarded.
+    if (rate_limit_notice := await _bot_rate_limit_notice(data, upgrade_url)) is not None:
+        return notice_frame(rate_limit_notice)
+    # HIL approvals render as their own prompt, so they must survive that drop.
+    if (approval_payload := _bot_approval_payload(data)) is not None:
+        return approval_frame(approval_payload)
+    return None
 
-    if not user:
-        return _refusal_stream(BOT_STREAM_ERROR_NOT_AUTHENTICATED)
 
-    user_id = _resolve_user_id(user)
-    user["user_id"] = user_id  # Ensure user_id is always set in the dict
-    log.set(user={"id": user_id}, outcome="success")
-    # Linking is Pro-gated for premium platforms; re-check on every turn so a
-    # user who downgrades after linking is refused here, not silently served.
-    if await platform_requires_upgrade(user_id, body.platform):
+def _bot_message_frame(data: BotWebStreamPayload) -> tuple[str | None, bool]:
+    """Translate the message half of a payload — boundary, ack, text or terminal error."""
+    # An assistant message just ended. Bots need this to know a bubble is
+    # finished — and, when `discarded`, to take back the handoff preamble
+    # they already showed.
+    present = data.model_fields_set
+    if "message_boundary" in present:
+        return message_boundary_frame(data.message_boundary), False
+
+    # A turn resolved to a comms `<EMOJI>…</EMOJI>` ack: no text was streamed,
+    # and the bot delivers the bare emoji as the turn's reply.
+    if "emoji_ack" in present and data.emoji_ack is not None:
+        return emoji_ack_frame(
+            emoji=data.emoji_ack.emoji,
+            reacts_to_message_id=data.emoji_ack.reacts_to_message_id,
+        ), False
+
+    # Skip web-only fields.
+    if present & _WEB_ONLY_STREAM_FIELDS:
+        return None, False
+
+    # Translate {"response": "..."} → {"text": "..."}
+    if data.response is not None:
+        return text_frame(data.response), False
+    if data.error is not None:
+        return error_frame(data.error), True
+
+    return None, False
+
+
+async def _bot_stream_entitlement_gate(user_id: str, platform: str) -> StreamingResponse | None:
+    """Refuse a bot chat turn the linked user isn't entitled to send, or clear it.
+
+    Re-checked every turn so a downgrade after linking is caught here.
+    """
+    # Two distinct gates: Pro-gated platform linking (premium platforms
+    # only), then GAIA's paid-only gate, which blocks every platform
+    # regardless of which ones require Pro to link at all.
+    if await platform_requires_upgrade(user_id, platform):
         log.set(outcome="plan_required")  # pragma: no mutate
-        _capture_bot_turn_refused(user_id, body.platform, "plan_required")
+        _capture_bot_turn_refused(user_id, platform, "plan_required")
         return _refusal_stream(BOT_STREAM_ERROR_PLAN_REQUIRED)
 
-    # Same quota the web chat endpoint charges via @tiered_rate_limit. It cannot
-    # be a decorator here: the caller is resolved from a platform link above, so
-    # there is no authenticated user when the decorator would run. Without this a
-    # free user had no message limit through a bot, and bot turns never reached
-    # `record_activity` — leaving them off the heatmap, streak and badge.
-    # `BotService.enforce_rate_limit` above stays: it is flat per-platform
-    # anti-spam (20/min, plan-blind), not the plan quota.
-    await enforce_tiered_limit(user_id, "chat_messages")
-    # The second half of what web chat charges: the tiered limit caps how MANY
-    # messages, this caps how EXPENSIVE the day has been. `LLMAccountingMiddleware`
-    # is an unbypassable mid-flight backstop, so cost was always bounded — but
-    # without this a bot user over budget got a stream that opened and then died
-    # partway instead of a clean refusal before any work.
-    await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
+    if not await is_paid(user_id):
+        log.set(outcome="subscription_required")  # pragma: no mutate
+        _capture_bot_turn_refused(user_id, platform, "subscription_required")
+        return _notice_only_stream(_paywall_notice(await _bot_upgrade_url(user_id)))
 
-    # Captured HERE, past every gate, for the same reason the web endpoint
-    # captures after its own: chat:message_submitted is the ground-truth volume
-    # metric, and a turn refused for plan or quota never reached the agent.
-    # Counting refusals as submissions inflates bot volume by exactly the
-    # traffic of the users who hit walls most, and makes the two surfaces
-    # incomparable. A refusal is its own event, with a reason.
-    capture_event(
-        user_id,
-        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
-        {
-            "platform": body.platform,
-            "has_files": bool(body.file_ids or body.file_data),
-        },
-    )
+    return None
 
-    conversation_id = await BotService.get_or_create_session(
-        body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
-    )
 
-    raw_history = await BotService.load_conversation_history(conversation_id, user_id)
-    raw_history.append({"role": "user", "content": body.message})
-    history: list[MessageDict] = [
-        MessageDict(role=m["role"], content=m["content"]) for m in raw_history
-    ]
+def _bot_stream_failure_logger(
+    stream_id: str, conversation_id: str
+) -> Callable[[asyncio.Task[None]], None]:
+    """Build the on_done callback that logs an unhandled background stream failure."""
 
-    message_request = MessageRequestWithHistory(
-        message=body.message,
-        conversation_id=conversation_id,
-        messages=history,
-        fileIds=body.file_ids or [],
-        fileData=body.file_data or [],
-    )
-
-    # Generate session token upfront so it can be sent in the stream
-    session_token = create_bot_session_token(
-        user_id=user_id,
-        platform=body.platform,
-        platform_user_id=body.platform_user_id,
-        expires_minutes=15,
-    )
-
-    # Generate stream ID and start background streaming
-    stream_id = str(uuid4())
-    await stream_manager.start_stream(stream_id, conversation_id, user_id)
-
-    # Launch background task
-    def _log_stream_failure(t: asyncio.Task) -> None:
+    def _log_stream_failure(t: asyncio.Task[None]) -> None:
         if not t.cancelled() and (exc := t.exception()):
             log.error(
                 f"{LogTag.API} Background stream task failed",
@@ -395,6 +509,165 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                 error=str(exc),
             )
 
+    return _log_stream_failure
+
+
+async def _forward_bot_frames(
+    request: Request,
+    *,
+    stream_id: str,
+    conversation_id: str,
+    upgrade_url: Callable[[], Awaitable[str]],
+) -> AsyncGenerator[str, None]:
+    """Translate the Redis stream into bot frames until it ends or the client leaves."""
+    async for chunk in stream_manager.subscribe_stream(stream_id):
+        # Match the web stream path: stop forwarding if the bot client
+        # dropped the connection. The background task keeps running and
+        # persists the conversation.
+        if await request.is_disconnected():
+            log.set(client_disconnected=True)
+            log.info(
+                f"{LogTag.API} Bot client disconnected, stream continues in background",
+                stream_id=stream_id,
+            )
+            return
+
+        frame, data, stop = _bot_stream_control_frame(chunk, conversation_id)
+        if frame is not None:
+            yield frame
+            if stop:
+                return
+            continue
+        if data is None:
+            continue
+
+        payload_frame, stop = await _bot_stream_payload_frame(data, upgrade_url)
+        if payload_frame is not None:
+            yield payload_frame
+        if stop:
+            return
+
+
+async def _bot_stream_from_redis(
+    request: Request,
+    *,
+    stream_id: str,
+    conversation_id: str,
+    upgrade_url: Callable[[], Awaitable[str]],
+    session_token: str,
+    platform: str,
+) -> AsyncGenerator[str, None]:
+    """Subscribe to Redis stream and translate chunks for bot clients.
+
+    The body runs while the response streams — after the request's
+    ``http_request`` event has emitted — so it needs its own boundary or
+    the delivery outcome is silently discarded. The generator body
+    inherits the request's context, so ``get_trace_id()`` still returns
+    the request's trace_id.
+    """
+    async with log_context(
+        "sse_delivery",
+        trace_id=get_trace_id() or None,
+        stream_id=stream_id,
+        platform=platform,
+    ):
+        # Send session token as first event
+        yield session_token_frame(session_token)
+
+        # Send initial keepalive to establish connection
+        yield comment_keepalive_frame()
+
+        delivery_start = time.perf_counter()
+        delivery_status = "completed"
+        try:
+            async for frame in _forward_bot_frames(
+                request,
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+                upgrade_url=upgrade_url,
+            ):
+                yield frame
+            # The forwarder ends the same way for a finished turn and for a
+            # client that polled as gone; only the request knows which.
+            if await request.is_disconnected():
+                delivery_status = "disconnected"
+        except GeneratorExit:
+            delivery_status = "abandoned"
+            raise
+        except asyncio.CancelledError:
+            # Client disconnected mid-stream — expected, not an error. The
+            # background LangGraph task keeps running and persists the result.
+            delivery_status = "disconnected"
+            log.set(client_disconnected=True)
+            log.info(f"{LogTag.API} Bot stream cancelled (client disconnected)")
+            raise
+        except Exception as e:
+            delivery_status = "error"
+            log.error(
+                f"{LogTag.API} Bot stream subscription error",
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            yield stream_error_frame()
+        finally:
+            observe_sse_delivery(time.perf_counter() - delivery_start, status=delivery_status)
+
+
+@router.post(
+    "/chat-stream",
+    status_code=200,
+    response_class=StreamingResponse,
+    summary="Streaming Bot Chat",
+    description="Stream a chat response as Server-Sent Events.",
+)
+async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingResponse:
+    """Stream a bot chat reply as SSE, resolving the linked user and replaying history."""
+    await require_bot_api_key(request)
+    log.set(operation="bot_chat_stream", platform=body.platform)
+    await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
+
+    user = await _resolve_bot_caller(request, body.platform, body.platform_user_id)
+
+    if user is None:
+        log.set(
+            outcome=BOT_STREAM_ERROR_NOT_AUTHENTICATED,
+            reason=BotRequestFailure.ACCOUNT_NOT_LINKED,
+        )
+        return _refusal_stream_with_notice(
+            _UNLINKED_PAYWALL_NOTICE, BOT_STREAM_ERROR_NOT_AUTHENTICATED
+        )
+
+    user_id = user.user_id
+    log.set(user={"id": user_id}, outcome="success")
+
+    if (refusal := await _bot_stream_entitlement_gate(user_id, body.platform)) is not None:
+        return refusal
+
+    stream_id = str(uuid4())
+    await charge_bot_turn(user_id, body, stream_id)
+
+    conversation_id = await BotService.get_or_create_session(
+        body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
+    )
+
+    message_request = await build_bot_message_request(body, conversation_id, user_id)
+
+    # Generate session token upfront so it can be sent in the stream
+    session_token = create_bot_session_token(
+        user_id=user_id,
+        platform=body.platform,
+        platform_user_id=body.platform_user_id,
+        expires_minutes=15,
+    )
+
+    await stream_manager.start_stream(stream_id, conversation_id, user_id)
+    # Same request-accepted clock as the web endpoint, so bot turns share
+    # the web turns' TTFT/E2E definition.
+    t0_perf = time.perf_counter()
+
+    # Launch background task
     spawn_background_task(
         run_chat_stream_background(
             stream_id=stream_id,
@@ -402,149 +675,32 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
             user=user,
             conversation_id=conversation_id,
             source=body.platform,
+            t0_perf=t0_perf,
         ),
-        on_done=_log_stream_failure,
+        on_done=_bot_stream_failure_logger(stream_id, conversation_id),
     )
 
-    async def stream_from_redis() -> AsyncGenerator[str, None]:
-        """Subscribe to Redis stream and translate chunks for bot clients.
+    # One resolver for the whole request, built before the stream opens, so a
+    # turn that hits the rate limit repeatedly reuses one checkout link instead
+    # of minting a fresh one per chunk.
+    upgrade_url = _bot_upgrade_url_once(user_id)
 
-        The body runs while the response streams — after the request's
-        ``http_request`` event has emitted — so it needs its own boundary or
-        the delivery outcome is silently discarded. The generator body
-        inherits the request's context, so ``get_trace_id()`` still returns
-        the request's trace_id.
-        """
-        async with log_context(
-            "sse_delivery",
-            trace_id=get_trace_id() or None,
-            stream_id=stream_id,
-            platform=body.platform,
-        ):
-            # Send session token as first event
-            yield f"data: {json.dumps({'session_token': session_token})}\n\n"
-
-            # Send initial keepalive to establish connection
-            yield ": keepalive\n\n"
-
-            try:
-                async for chunk in stream_manager.subscribe_stream(stream_id):
-                    # Match the web stream path: stop forwarding if the bot client
-                    # dropped the connection. The background task keeps running and
-                    # persists the conversation.
-                    if await request.is_disconnected():
-                        log.set(client_disconnected=True)
-                        log.info(
-                            f"{LogTag.API} Bot client disconnected, stream continues in background",
-                            stream_id=stream_id,
-                        )
-                        break
-                    # Forward keepalive comments directly
-                    if chunk.startswith(":"):
-                        yield chunk
-                        continue
-
-                    # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...")
-                    # for Last-Event-ID resume — split the id line off before the data
-                    # checks, or every content frame is silently dropped.
-                    if chunk.startswith("id: "):
-                        _, _, chunk = chunk.partition("\n")
-
-                    if not chunk.startswith("data: "):
-                        continue
-
-                    raw = chunk[len("data: ") :].strip()
-                    if raw == "[DONE]":
-                        yield f"data: {json.dumps({'done': True, 'conversation_id': conversation_id})}\n\n"
-                        return
-
-                    try:
-                        data = json.loads(raw)
-
-                        # Forward keepalives so bot clients reset inactivity timers
-                        if data.get("keepalive"):
-                            yield f"data: {json.dumps({'keepalive': True})}\n\n"
-                            continue
-
-                        # Surface rate-limit cards (web-only UI) to bots as a
-                        # dedicated notice frame the client delivers out of band,
-                        # before the web-only fields are dropped below.
-                        #
-                        # Its own frame, not a {"text"} one: text belongs to the
-                        # assistant message in flight, so a notice sent that way
-                        # was dropped whenever that message was discarded (a
-                        # handoff preamble, a rewritten draft) — the user hit a
-                        # limit and was told nothing.
-                        rate_limit_notice = await _bot_rate_limit_notice(data, user_id)
-                        if rate_limit_notice is not None:
-                            payload = json.dumps({"notice": {"text": rate_limit_notice}})
-                            yield f"data: {payload}\n\n"
-                            continue
-
-                        # Surface HIL approval cards to bots as a dedicated frame the
-                        # client renders as an out-of-band prompt (before tool_data
-                        # is dropped below).
-                        approval_payload = _bot_approval_payload(data)
-                        if approval_payload is not None:
-                            yield f"data: {json.dumps({'approval': approval_payload})}\n\n"
-                            continue
-
-                        # An assistant message just ended. Bots need this to
-                        # know a bubble is finished — and, when `discarded`, to
-                        # take back the handoff preamble they already showed.
-                        if "message_boundary" in data:
-                            payload = json.dumps({"message_boundary": data["message_boundary"]})
-                            yield f"data: {payload}\n\n"
-                            continue
-
-                        # Skip web-only fields
-                        if any(
-                            key in data
-                            for key in [
-                                "conversation_description",
-                                "user_message_id",
-                                "bot_message_id",
-                                "stream_id",
-                                "tool_data",
-                                "tool_output",
-                                "follow_up_actions",
-                            ]
-                        ):
-                            continue
-
-                        # Translate {"response": "..."} → {"text": "..."}
-                        if "response" in data:
-                            yield f"data: {json.dumps({'text': data['response']})}\n\n"
-                        elif "error" in data:
-                            yield f"data: {json.dumps({'error': data['error']})}\n\n"
-                            break
-                    except json.JSONDecodeError as exc:
-                        log.warning(
-                            f"{LogTag.API} Bot stream: dropped a malformed SSE chunk",
-                            error_type=type(exc).__name__,
-                        )
-                        continue
-            except asyncio.CancelledError:
-                # Client disconnected mid-stream — expected, not an error. The
-                # background LangGraph task keeps running and persists the result.
-                log.set(client_disconnected=True)
-                log.info(f"{LogTag.API} Bot stream cancelled (client disconnected)")
-                raise
-            except Exception as e:
-                log.error(
-                    f"{LogTag.API} Bot stream subscription error",
-                    stream_id=stream_id,
-                    conversation_id=conversation_id,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-                yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
-
-    # The translator above drops every web-only frame, so the socket can go
-    # quiet for minutes while the turn is busy. with_heartbeat guarantees a
-    # byte on the wire regardless, so no proxy in the path can mistake a
-    # working stream for a dead one.
-    return StreamingResponse(with_heartbeat(stream_from_redis()), media_type="text/event-stream")
+    # The translator drops every web-only frame, so the socket can go quiet
+    # for minutes; with_heartbeat guarantees a byte on the wire so no proxy
+    # mistakes a working stream for a dead one.
+    return StreamingResponse(
+        with_heartbeat(
+            _bot_stream_from_redis(
+                request,
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+                upgrade_url=upgrade_url,
+                session_token=session_token,
+                platform=body.platform,
+            )
+        ),
+        media_type="text/event-stream",
+    )
 
 
 @router.post(
@@ -559,36 +715,16 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     await require_bot_api_key(request)
     log.set(operation="reset_session", platform=body.platform)
 
-    # `user` is one of two genuinely different untyped dict shapes here —
-    # middleware's `build_user_context()` output (has "user_id", no "_id") or
-    # PlatformLinkService's legacy dict (has "_id", no "user_id") — normalized
-    # below and handed to BotService, which re-normalizes it the same way for
-    # every other bot endpoint. Unifying the two shapes is a cross-file change
-    # (platform_link_service.py, bot_auth_middleware.py, bot_service.py) out
-    # of scope here; see API CLAUDE.md Type Safety §14.
-    user = getattr(request.state, "user", None)
-    if not user or not getattr(request.state, "authenticated", False):
-        user = await PlatformLinkService.get_user_by_platform_id(
-            body.platform, body.platform_user_id
-        )
-
-    if not user:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-
-    user_id = _resolve_user_id(user)
-    user["user_id"] = user_id  # Ensure user_id is always set in the dict
-    log.set(user={"id": user_id}, platform=body.platform)
+    user = await _require_linked_bot_caller(request, body.platform, body.platform_user_id)
+    user_id = user.user_id
+    log.set(user={"id": user_id})
 
     new_conversation_id = await BotService.reset_session(
         body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
     )
     # Explicit id: bot routes are auth-excluded, so the request context has
     # nobody to attribute to (see apps/api/CLAUDE.md, Analytics).
-    capture_event(
-        user_id,
-        AnalyticsEvents.BOT_SESSION_RESET,
-        {"platform": body.platform},
-    )
+    capture(UserId(user_id), BotSessionReset(platform=body.platform))
     log.set(outcome="success")
     return ResetSessionResponse(success=True, conversation_id=new_conversation_id)
 
@@ -609,19 +745,17 @@ async def check_auth_status(
     """Report whether a platform user is linked to a GAIA account."""
     await require_bot_api_key(request)
     log.set(operation="check_auth_status", platform=platform)
-    if not Platform.is_valid(platform):
-        raise HTTPException(status_code=400, detail="Invalid platform")
-    user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
+    _require_valid_platform(platform)
+    user = await resolve_bot_user(platform, platform_user_id)
     # The linked id is returned, not just the boolean: it is what the bot uses as
     # its PostHog distinct_id, so bot events land on the same profile as this
     # user's web and API events instead of a parallel `<platform>:<id>` ghost.
-    user_id = _resolve_user_id(user) if user else None
     log.set(outcome="success")
     return BotAuthStatusResponse(
         authenticated=user is not None,
         platform=platform,
         platform_user_id=platform_user_id,
-        user_id=user_id or None,
+        user_id=user.user_id if user is not None and user.user_id else None,
     )
 
 
@@ -635,8 +769,7 @@ async def list_linked_users(request: Request, platform: str) -> LinkedUsersRespo
     """Return the platform_user_ids linked on the given platform."""
     await require_bot_api_key(request)
     log.set(operation="list_linked_users", platform=platform)
-    if not Platform.is_valid(platform):
-        raise HTTPException(status_code=400, detail="Invalid platform")
+    _require_valid_platform(platform)
     ids = await PlatformLinkService.list_platform_user_ids(platform)
     log.set(outcome="success", linked_count=len(ids))
     return LinkedUsersResponse(platform_user_ids=ids)
@@ -657,11 +790,10 @@ async def get_settings(
     """Return the platform user's settings, connected integrations, and model."""
     await require_bot_api_key(request)
     log.set(operation="get_bot_settings", platform=platform)
-    if not Platform.is_valid(platform):
-        raise HTTPException(status_code=400, detail="Invalid platform")
-    user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
+    _require_valid_platform(platform)
+    user = await resolve_bot_user(platform, platform_user_id)
 
-    if not user:
+    if user is None:
         return BotSettingsResponse(
             authenticated=False,
             user_name=None,
@@ -670,15 +802,16 @@ async def get_settings(
             connected_integrations=[],
         )
 
-    user_id = _resolve_user_id(user)
-    user["user_id"] = user_id  # Ensure user_id is always set in the dict
+    user_id = user.user_id
 
     connected_integrations_list = []
     try:
-        integrations = await get_user_integration_records(user_id)
+        integrations = _USER_INTEGRATION_RECORDS.validate_python(
+            await get_user_integration_records(user_id)
+        )
         for integration_doc in integrations:
-            integration_id = integration_doc.get("integration_id")
-            status = integration_doc.get("status", "created")
+            integration_id = integration_doc.integration_id
+            status = integration_doc.status
             if integration_id:
                 integration_details = await get_integration_details(integration_id)
                 if integration_details:
@@ -692,16 +825,17 @@ async def get_settings(
     except Exception as e:
         log.error(
             f"{LogTag.API} Error fetching integrations for settings",
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
 
-    user_name = user.get("name") or user.get("username")
-    profile_image_url = user.get("profile_image_url") or user.get("avatar_url")
-    account_created_at = None
-    if user.get("created_at"):
-        account_created_at = user["created_at"].isoformat()
+    user_name = user.name
+    # ``picture`` is the profile image the user document actually carries; the
+    # keys read here before (``profile_image_url``/``avatar_url``) never
+    # existed on it, so bot settings always answered with no image.
+    profile_image_url = user.picture
+    account_created_at = user.created_at.isoformat() if user.created_at else None
 
     log.set(outcome="success")
     return BotSettingsResponse(
@@ -729,27 +863,29 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
     platform_user_id = request.headers.get("X-Bot-Platform-User-Id")
 
     if not platform or not platform_user_id:
-        raise HTTPException(status_code=400, detail="Missing platform headers")
+        raise _bot_request_refused(
+            400, BotRequestFailure.MISSING_PLATFORM_HEADERS, "Missing platform headers"
+        )
 
-    if not Platform.is_valid(platform):
-        raise HTTPException(status_code=400, detail="Invalid platform")
+    _require_valid_platform(platform)
 
-    # PlatformLinkService.get_user_by_platform_id returns a transitional
-    # legacy dict (see `user_to_legacy_dict`) shared by several bot endpoints;
-    # only "_id" is read here, so it stays a dict rather than introducing a
-    # one-off model for a single field (API CLAUDE.md Type Safety §14).
-    user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
-    if not user:
+    user = await resolve_bot_user(platform, platform_user_id)
+    if user is None:
         log.audit(
             "platform account unlink rejected",
             actor=AUDIT_ACTOR_BOT_API,
             resource=platform_user_id,
             provider=platform,
-            reason="account_not_linked",
+            reason=BotRequestFailure.ACCOUNT_NOT_LINKED,
         )
-        raise HTTPException(status_code=404, detail="Account not linked")
+        raise _bot_request_refused(
+            404,
+            BotRequestFailure.ACCOUNT_NOT_LINKED,
+            "Account not linked",
+            BOT_ACCOUNT_NOT_LINKED,
+        )
 
-    user_id = str(user["_id"])
+    user_id = user.user_id
     await PlatformLinkService.unlink_account(user_id, platform)
     log.audit(
         "platform account unlinked",
@@ -763,11 +899,7 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
 
     # Same event the web-side platform unlink emits — one user action, one name,
     # regardless of which surface triggered it.
-    capture_event(
-        user_id,
-        AnalyticsEvents.INTEGRATION_DISCONNECTED,
-        {"integration_id": platform},
-    )
+    capture(UserId(user_id), IntegrationDisconnected(integration_id=platform))
     log.set(platform=platform, outcome="success")
     return UnlinkAccountResponse(success=True)
 
@@ -780,47 +912,55 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
         "Transcribe a short audio clip (e.g. WhatsApp voice note) to text. "
         "Requires the bot to be authenticated as a linked platform user."
     ),
-    responses={
-        401: {"description": "Account not linked."},
-        413: {"description": "Audio exceeds the maximum allowed size."},
-        415: {"description": "Unsupported audio format."},
-        502: {"description": "Transcription provider failed."},
-    },
+    responses=error_responses(
+        {
+            401: "Account not linked.",
+            402: "Subscription required.",
+            413: "Audio exceeds the maximum allowed size.",
+            415: "Unsupported audio format.",
+            502: "Transcription provider failed.",
+        }
+    ),
 )
 @tiered_rate_limit("audio_transcription")
 async def transcribe_bot_audio(
     request: Request,
     file: Annotated[UploadFile, File(...)],
-    # `tiered_rate_limit` finds the caller by reading the `user` keyword argument
-    # FastAPI injects and pulling "user_id" off it, so this stays the full auth
-    # dict rather than a `get_user_id` string — narrowing it would silently skip
-    # rate limiting for this route.
+    # `tiered_rate_limit` reads "user_id" off the `user` kwarg FastAPI injects,
+    # so this stays the full auth dict — narrowing it to a `get_user_id`
+    # string would silently skip rate limiting for this route.
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     content_length: Annotated[int | None, Header(alias="content-length")] = None,
 ) -> TranscribeAudioResponse:
     """Convert audio bytes into a transcript for bot adapters."""
     await require_bot_api_key(request)
-    log.set(operation="bot_transcribe_audio", user={"id": user.get("user_id")})
+    log.set(operation="bot_transcribe_audio", user={"id": user.user_id})
 
-    if content_length is not None and content_length > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio exceeds the {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit.",
+    # Imperative gate, not @require_subscription(): the bot API key is checked in the body, so a decorator would 402 an unverified caller (unlinked callers 401 earlier at get_current_user).
+    # tiered_rate_limit already charged one transcription by this point — harmless, since a blocked user can't spend it. Outcome value matches _bot_stream_entitlement_gate for one query across both bot surfaces.
+    # No ChatMessageRefused here since a transcribe isn't a chat turn.
+    try:
+        await require_active_subscription(user.user_id, feature="bot_transcribe")
+    except SubscriptionRequiredException:
+        log.set(  # pragma: no mutate
+            outcome="subscription_required", reason=BotRequestFailure.SUBSCRIPTION_REQUIRED
         )
+        raise
+
+    too_large = f"Audio exceeds the {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit."
+    if content_length is not None and content_length > MAX_AUDIO_BYTES:
+        raise _bot_request_refused(413, BotRequestFailure.AUDIO_TOO_LARGE, too_large)
 
     audio_bytes = await file.read(MAX_AUDIO_BYTES + 1)
     if len(audio_bytes) > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio exceeds the {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit.",
-        )
+        raise _bot_request_refused(413, BotRequestFailure.AUDIO_TOO_LARGE, too_large)
 
     try:
         normalized = validate_audio_payload(content_type=file.content_type, size=len(audio_bytes))
     except AudioTooLargeError as e:
-        raise HTTPException(status_code=413, detail=str(e)) from e
+        raise _bot_request_refused(413, BotRequestFailure.AUDIO_TOO_LARGE, str(e)) from e
     except UnsupportedAudioFormatError as e:
-        raise HTTPException(status_code=415, detail=str(e)) from e
+        raise _bot_request_refused(415, BotRequestFailure.UNSUPPORTED_AUDIO_FORMAT, str(e)) from e
 
     filename = file.filename or "voice-note"
     try:
@@ -837,13 +977,15 @@ async def transcribe_bot_audio(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=502, detail="Transcription failed") from e
+        raise _bot_request_refused(
+            502, BotRequestFailure.TRANSCRIPTION_FAILED, "Transcription failed"
+        ) from e
 
     # After the transcription succeeds: an event on entry would count failures
     # as successes. Length, not content — the transcript is user speech.
-    capture_event(
-        str(user.get("user_id")),
-        AnalyticsEvents.BOT_AUDIO_TRANSCRIBED,
-        {"audio_bytes": len(audio_bytes), "transcript_length": len(text)},
+    capture(
+        UserId(user.user_id),
+        BotAudioTranscribed(audio_bytes=len(audio_bytes), transcript_length=len(text)),
     )
+    log.set(outcome="transcribed")  # pragma: no mutate
     return TranscribeAudioResponse(text=text)

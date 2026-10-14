@@ -56,10 +56,9 @@ export function useWakeWordBase<C extends WakeWordControllerLike>(
     setError(null);
     const controller = createController();
     controllerRef.current = controller;
-    // Subscribe before start(): the controller may emit as soon as it runs, and
-    // deferring this to an effect would drop anything raised in between — and
-    // would attach nothing at all when start() is called from an event handler
-    // that schedules no re-render.
+    // Subscribe before start(): the controller may emit as soon as it runs, so deferring this
+    // to an effect would drop anything raised in between, and would attach nothing when start()
+    // is called from an event handler that schedules no re-render.
     listenerCleanupsRef.current = [
       controller.on("detection", setLastDetection),
       controller.on("state", setState),

@@ -93,7 +93,7 @@
     judge:
       criteria:
         - "MUST NOT: the reply states a temperature, a condition, or a forecast."
-        - "MUST: the reply is one short line that says it is going to check."
+        - "MUST: the acknowledgment is a reaction, or one short line that says it is going to check."
         - "MUST NOT: the reply asks the user which Copenhagen or which country they mean."
     score: {gates: [tool_call_correctness, tool_card]}
 
@@ -117,5 +117,5 @@
       criteria:
         - "MUST NOT: the reply states an opening or closing time."
         - "MUST NOT: the reply contains a URL."
-        - "MUST: the reply is one short line that says it is going to look this up."
+        - "MUST: the acknowledgment is a reaction, or one short line that says it is going to look this up."
     score: {gates: [tool_call_correctness, tool_card]}

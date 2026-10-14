@@ -16,10 +16,18 @@
 #                       --env (default) --json.
 #   dep-marker <kind>   Print the marker path that decides whether a persisted
 #                       node|python install is stale.
+#   heal-venv <dir>     Remove a persisted uv venv that holds no runnable
+#                       interpreter, so the next uv command recreates it.
 #   with-slots N -- cmd Acquire N host CPU tokens (lib/cpu-slots.sh), run cmd,
 #                       release them. For a lane whose heavy command is not its
 #                       own script — the nx build step passes NX_PARALLEL — so a
 #                       workflow step stays one command line.
+#   health              Print, as JSON, what the box is actually doing: the home
+#                       listener pool from the GitHub API, load average, thread
+#                       count, who holds CPU slots, and how many mutmut/pytest
+#                       processes are running. It answers the one question a
+#                       queued lane cannot: is the BOX oversubscribed, or is the
+#                       GitHub pool simply busy? Read-only; never fails.
 #
 # Env contract:
 #   select             GITHUB_TOKEN (repo scope), GITHUB_REPOSITORY,
@@ -36,6 +44,9 @@
 #   prime-archive      gh auth; ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE, GAIA_REPO
 #                      (checkout to scan when run from a copy outside the repo).
 #   parallel           PYTEST_WORKER_GB (1.5) — per-xdist-worker RAM budget.
+#   health             gh auth (optional — the listener block is null without
+#                      it), GITHUB_REPOSITORY, RUNNER_LABEL (default gaia-home);
+#                      reads the cpu-slots pool dir, never writes to it.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -681,6 +692,22 @@ _dep_marker_key() {
   done | sha256sum | cut -c1-16
 }
 
+# ── heal-venv ─────────────────────────────────────────────────────────────
+# A persisted venv whose interpreter is gone (dangling bin/python, or a dir
+# with no pyvenv.cfg left) is one uv refuses to touch: "cannot be used because
+# it is not a valid Python environment (no Python executable was found)". Every
+# later job on that runner then fails the same way, so the dir is removed and
+# the next uv sync/run builds it fresh. `-x` follows the symlink, so a dangling
+# one counts as missing.
+cmd_heal_venv() {
+  local dir="${1:?usage: runner.sh heal-venv <dir>}"
+  if [[ ! -e "$dir" || -x "$dir/bin/python" ]]; then
+    return 0
+  fi
+  echo "::warning::runner.sh heal-venv: $dir has no runnable interpreter — removing it so uv recreates it"
+  rm -rf "$dir"
+}
+
 # ── with-slots ──────────────────────────────────────────────────────────────
 # Take N host CPU tokens for the duration of a command, then give them back.
 # The scriptless heavy lane (the nx build) uses this so its workflow step is
@@ -700,8 +727,126 @@ cmd_with_slots() {
   return "$rc"
 }
 
+# ── health ────────────────────────────────────────────────────────────────
+# "My lane has been queued for six minutes" has two completely different
+# causes, and the fix for one makes the other worse: the BOX is oversubscribed
+# (load far above its threads, every CPU slot held, mutmut everywhere) and the
+# answer is to wait or shrink a lane, or the GitHub POOL is busy (every
+# listener online and busy) and the answer is more listeners. Nothing printed
+# both, so the two were guessed at.
+
+# The pool's own online/idle/total for this label, as `online|idle|total`, or
+# nothing when gh cannot answer. Parsed by `_select_parse_runner`, which
+# already turns that payload into exactly these counts — a second parser here
+# would be a third way to ask one question.
+_health_listeners() {
+  local json line
+  json="$(gh api "repos/${GITHUB_REPOSITORY:-theexperiencecompany/gaia}/actions/runners?per_page=100" 2> /dev/null || true)"
+  [ -n "$json" ] || return 0
+  line="$(_select_parse_runner "$json" "${RUNNER_LABEL:-gaia-home}" || true)"
+  [ -n "$line" ] || return 0
+  printf '%s' "$line" | cut -d'|' -f6,7,8
+}
+
+cmd_health() {
+  local pool
+  # `|| true`: an unwritable pool dir is a fact to report, not a failure. This
+  # is the same resolution every acquire uses, read rather than re-derived.
+  pool="$(_cpu_slots_dir 2> /dev/null || true)"
+  GAIA_HEALTH_POOL="$pool" \
+    GAIA_HEALTH_TOKENS="$(_cpu_slots_total)" \
+    GAIA_HEALTH_LISTENERS="$(_health_listeners)" \
+    python3 - <<'PY'
+import json
+import os
+import subprocess
+import time
+
+pool = os.environ.get("GAIA_HEALTH_POOL", "")
+listeners = os.environ.get("GAIA_HEALTH_LISTENERS", "")
+
+
+def pool_holders(directory: str) -> list[dict[str, object]]:
+    """Every live grant in the pool: who holds it, how many tokens, how long.
+
+    Read-only, and deliberately outside the lock: taking it would make a
+    diagnostic able to block the lanes it is diagnosing. A holder that is
+    reaped between the listing and the read simply drops out.
+    """
+    holders = os.path.join(directory, "holders") if directory else ""
+    if not holders or not os.path.isdir(holders):
+        return []
+    now = time.time()
+    found = []
+    for name in sorted(os.listdir(holders)):
+        path = os.path.join(holders, name)
+        pid = name.split(".", 1)[0]
+        try:
+            tokens = int(open(path).read().strip())
+            age = int(now - os.path.getmtime(path))
+        except (OSError, ValueError):
+            continue
+        alive = pid.isdigit() and os.path.isdir(f"/proc/{pid}")
+        found.append({"pid": pid, "tokens": tokens, "alive": alive, "age_s": age})
+    return found
+
+
+def processes() -> dict[str, int]:
+    """How many mutmut / pytest / runner listeners are actually running."""
+    proc = subprocess.run(["ps", "-eo", "args="], capture_output=True, text=True, check=False)
+    lines = [line for line in proc.stdout.splitlines() if "ps -eo args=" not in line]
+    return {
+        "mutmut": sum(1 for line in lines if "mutmut" in line),
+        "pytest": sum(1 for line in lines if "pytest" in line),
+        "runner_listeners": sum(1 for line in lines if "Runner.Listener" in line),
+    }
+
+
+counts = processes()
+online, idle, total = (
+    [int(part) for part in listeners.split("|")] if listeners.count("|") == 2 else [None] * 3
+)
+holders = pool_holders(pool)
+tokens_total = int(os.environ.get("GAIA_HEALTH_TOKENS") or 0)
+held = sum(int(h["tokens"]) for h in holders if h["alive"])
+load1, load5, load15 = os.getloadavg()
+threads = os.cpu_count() or 0
+
+print(
+    json.dumps(
+        {
+            # True only where the listeners actually live: off the box this whole
+            # report is about a machine that is not running any CI.
+            "is_runner_host": counts["runner_listeners"] > 0
+            or os.environ.get("RUNNER_ENVIRONMENT") == "self-hosted",
+            "listeners": {
+                "online": online,
+                "busy": None if online is None else online - (idle or 0),
+                "idle": idle,
+                "registered": total,
+            },
+            "loadavg": {"1m": round(load1, 2), "5m": round(load5, 2), "15m": round(load15, 2)},
+            "threads": threads,
+            "cpu_slots": {
+                "dir": pool or None,
+                "total": tokens_total,
+                "held": held,
+                "available": max(tokens_total - held, 0),
+                "holders": holders,
+            },
+            "processes": counts,
+        },
+        indent=2,
+    )
+)
+PY
+}
+
 usage() {
-  sed -n '2,36p' "$0" >&2
+  # From the line after the shebang to the first line that is not a comment,
+  # minus that line. A hardcoded range drifts silently the first time the
+  # header grows — it already had, by one subcommand.
+  sed -n '2,/^[^#]/p' "$0" | sed '$d' >&2
 }
 
 main() {
@@ -714,7 +859,9 @@ main() {
     prime-archive)     cmd_prime_archive "$@" ;;
     parallel)          cmd_parallel "$@" ;;
     dep-marker)        cmd_dep_marker "$@" ;;
+    heal-venv)         cmd_heal_venv "$@" ;;
     with-slots)        cmd_with_slots "$@" ;;
+    health)            cmd_health "$@" ;;
     *)
       echo "runner.sh: unknown subcommand '${sub}'" >&2
       usage

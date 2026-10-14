@@ -1,9 +1,6 @@
-"""
-User-related ARQ tasks.
-"""
+"""User-related ARQ tasks."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -12,11 +9,12 @@ from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.timezone import as_utc
+from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import log
 
 
 def _emails_sent_this_episode(user: UserDocument) -> int:
-    """Sends in the current inactivity episode; the counter resets when the user returns."""
+    """Count sends in the current inactivity episode; the counter resets when the user returns."""
     last_active = as_utc(user.last_active_at)
     last_email_sent = as_utc(user.last_inactive_email_sent)
 
@@ -50,17 +48,8 @@ def _should_send_inactive_email(user: UserDocument) -> bool:
     return _emails_sent_this_episode(user) < 2
 
 
-async def check_inactive_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- contract
-    """
-    Check for inactive users and send emails to those inactive for more than 7 days.
-    Emails are sent only once after 7 days and once more after 14 days to avoid spam.
-
-    Args:
-        ctx: ARQ context
-
-    Returns:
-        Processing result message
-    """
+async def check_inactive_users(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- contract
+    """Email users inactive for 7+ days, and again after 14+ days, then no more."""
     # Deferred import: email delivery stack kept off worker-task module load path until the check runs
     from app.services.email import send_inactive_user_email  # noqa: PLC0415 -- deferred
 

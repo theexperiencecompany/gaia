@@ -1,20 +1,17 @@
 """Integration test: summarization must not poison the model's message list.
 
-Drives the real compiled ``create_agent`` graph — real ``acall_model``, real
-``MiddlewareExecutor``, real ``SummarizationMiddleware`` — and validates the
-message list the agent node hands the model with the actual provider serializer
-that rejected it in production.
+Drives the real compiled create_agent graph -- real acall_model, real MiddlewareExecutor, real
+SummarizationMiddleware -- and validates the message list the agent node hands the model with the
+actual provider serializer that rejected it in production.
 
-Regression for the executor-endpoint 500s: ``SummarizationMiddleware`` clears
-history by returning ``{"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), ...]}``,
-a LangGraph state update. The executor merged it with ``dict.update``, so the
-tombstone reached the model and
-``langchain_google_genai._parse_chat_history`` raised
-"Unexpected message with type RemoveMessage at the position 0."
+Regression for the executor-endpoint 500s: SummarizationMiddleware clears history by returning
+{"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), ...]}, a LangGraph state update. The executor
+merged it with dict.update, so the tombstone reached the model and
+langchain_google_genai._parse_chat_history raised "Unexpected message with type RemoveMessage at
+the position 0."
 
-Not exercised here: the network call to Gemini. ``_parse_chat_history`` runs
-inside ``_prepare_request`` before any HTTP, so it is the real code that raised —
-but nothing past request serialization is covered.
+Not exercised: the network call to Gemini. _parse_chat_history runs inside _prepare_request before
+any HTTP, so it is the real code that raised, but nothing past request serialization is covered.
 """
 
 from __future__ import annotations
@@ -50,7 +47,7 @@ class ProviderValidatingFakeModel(BindableToolsFakeModel):
     """Fake model that serializes its input exactly as ChatGoogleGenerativeAI does.
 
     A plain fake accepts any object at all, so it would happily swallow the
-    tombstone and prove nothing. Running the real ``_parse_chat_history`` makes
+    tombstone and prove nothing. Running the real _parse_chat_history makes
     this test fail on precisely the production symptom.
     """
 
@@ -72,7 +69,7 @@ def _long_history() -> list[BaseMessage]:
 
 @pytest.fixture
 def summarizing_agent_graph():
-    """The real bigtool graph with only the summarization middleware attached."""
+    """Build the real bigtool graph with only the summarization middleware attached."""
     model = ProviderValidatingFakeModel(responses=[AIMessage(content="done")])
     summarizer = GenericFakeChatModel(messages=iter([AIMessage(content="SUMMARY")] * 50))
     middleware = [

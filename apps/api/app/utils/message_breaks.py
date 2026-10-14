@@ -1,14 +1,14 @@
 """Bubble-break sentinel handling for outbound assistant text.
 
-The model is told to emit ``<NEW_MESSAGE_BREAK>`` between bubbles, but it emits
-near-misses constantly: ``<NEW_LINE_BREAK>``, ``[NEW_MESSAGE_BREAK]``,
-``</NEW_MESSAGE_BREAK>``, ``<NEW MESSAGE BREAK>`` — and, when a chunk boundary
-lands mid-token, a truncated ``<NEW_MESSAGE_B``. Every one of those used to ship
+The model is told to emit <NEW_MESSAGE_BREAK> between bubbles, but it emits
+near-misses constantly: <NEW_LINE_BREAK>, [NEW_MESSAGE_BREAK],
+</NEW_MESSAGE_BREAK>, <NEW MESSAGE BREAK> — and, when a chunk boundary
+lands mid-token, a truncated <NEW_MESSAGE_B. Every one of those used to ship
 to the user as literal text. This module is the single place that knows what a
 sentinel looks like; every outbound path splits through
-:func:`split_message_bubbles` rather than matching the literal token itself.
+:func:split_message_bubbles rather than matching the literal token itself.
 
-The TypeScript half is ``libs/shared/ts/src/utils/messageBreakUtils.ts`` — the
+The TypeScript half is libs/shared/ts/src/utils/messageBreakUtils.ts — the
 two must accept the same spellings.
 """
 
@@ -38,7 +38,7 @@ MESSAGE_BREAK_SENTINEL_RE = re.compile(
 
 
 def _word_prefixes(word: str) -> str:
-    """Regex matching any non-empty prefix of ``word`` (``N``, ``NE``, ``NEW``)."""
+    """Regex matching any non-empty prefix of word (N, NE, NEW)."""
     pattern = ""
     for char in reversed(word):
         pattern = f"{char}(?:{pattern})?" if pattern else char
@@ -48,7 +48,7 @@ def _word_prefixes(word: str) -> str:
 def _partial_sequence(words: tuple[str, ...]) -> str:
     """Regex matching any non-empty prefix of one whole spelling.
 
-    Built inside-out so ``NEW``, ``NEW_MESS`` and ``NEW_MESSAGE_BRE`` all match
+    Built inside-out so NEW, NEW_MESS and NEW_MESSAGE_BRE all match
     while a complete, closed sentinel does not (there is no closing bracket).
     """
     pattern = ""
@@ -59,9 +59,8 @@ def _partial_sequence(words: tuple[str, ...]) -> str:
 
 
 #: A sentinel truncated by a chunk boundary, anchored to the end of the text.
-#: At least one character of the spelling is required: a bare trailing ``<`` is
-#: ordinary text far more often than it is a half-received sentinel, and eating
-#: it would corrupt code snippets and comparisons.
+#: At least one character is required: a bare trailing ``<`` is ordinary text
+#: far more often than a half-received sentinel.
 PARTIAL_MESSAGE_BREAK_RE = re.compile(
     _OPEN + "(?:" + "|".join(_partial_sequence(w) for w in _SENTINEL_WORD_SEQUENCES) + ")$",
     re.IGNORECASE,
@@ -69,7 +68,7 @@ PARTIAL_MESSAGE_BREAK_RE = re.compile(
 
 
 def strip_partial_message_break(text: str) -> str:
-    """Drop a sentinel that a chunk boundary cut in half at the end of ``text``."""
+    """Drop a sentinel that a chunk boundary cut in half at the end of text."""
     return PARTIAL_MESSAGE_BREAK_RE.sub("", text)
 
 
@@ -95,3 +94,43 @@ def split_message_bubbles(text: str) -> list[str]:
         strip_partial_message_break(part).strip() for part in MESSAGE_BREAK_SENTINEL_RE.split(text)
     )
     return [bubble for bubble in bubbles if bubble]
+
+
+_CAPTION_PARAGRAPH = "\n\n"
+
+
+def _cut_words(paragraph: str, limit: int) -> list[str]:
+    """Cut a paragraph longer than limit between words."""
+    chunks: list[str] = []
+    current = ""
+    for word in paragraph.split():
+        candidate = f"{current} {word}" if current else word
+        if len(candidate) > limit and current:
+            chunks.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def split_for_caption(text: str, *, limit: int) -> list[str]:
+    """Cut text into a first caption plus follow-up messages, each within limit chars.
+
+    Breaks fall between paragraphs (then words), never mid-word.
+    """
+    parts: list[str] = []
+    current = ""
+    for paragraph in text.split(_CAPTION_PARAGRAPH):
+        pieces = [paragraph] if len(paragraph) <= limit else _cut_words(paragraph, limit)
+        for piece in pieces:
+            candidate = f"{current}{_CAPTION_PARAGRAPH}{piece}" if current else piece
+            if len(candidate) > limit and current:
+                parts.append(current)
+                current = piece
+            else:
+                current = candidate
+    if current:
+        parts.append(current)
+    return parts

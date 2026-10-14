@@ -14,11 +14,11 @@ import TableOfContents from "@/features/blog/components/TableOfContents";
 import { parseHeadings } from "@/features/blog/utils/parseHeadings";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import type { BlogPost, BlogPostMeta } from "@/lib/blog";
+import { track } from "@/lib/analytics";
+import type { BlogContentPost, BlogPostMeta } from "@/lib/blog";
 
 interface BlogPostClientProps {
-  blog: BlogPost;
+  blog: BlogContentPost;
   suggestedPosts: BlogPostMeta[];
   structuredData: WithContext<Article>;
   breadcrumbSchema: WithContext<BreadcrumbList>;
@@ -32,9 +32,8 @@ export default function BlogPostClient({
 }: BlogPostClientProps) {
   useEffect(() => {
     if (!blog) return;
-    trackEvent(ANALYTICS_EVENTS.BLOG_ARTICLE_VIEWED, {
+    track("blog:article_viewed", {
       slug: blog.slug,
-      title: blog.title,
     });
   }, [blog]);
 

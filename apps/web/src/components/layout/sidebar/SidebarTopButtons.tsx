@@ -1,5 +1,6 @@
 "use client";
 
+import type { EventProperties } from "@gaia/shared/analytics/events";
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import {
@@ -12,31 +13,32 @@ import {
 } from "@icons";
 import Link from "next/link";
 import React from "react";
+import { ChevronLeft } from "@/components/shared/icons";
 import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
-import { useNotifications } from "@/features/notification/hooks/useNotifications";
-import {
-  usePricing,
-  useUserSubscriptionStatus,
-} from "@/features/pricing/hooks/usePricing";
+import { paywallCopyFor } from "@/features/pricing/constants";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { useProMonthlyPlan } from "@/features/pricing/hooks/useProMonthlyPlan";
+import { toMajorUnits } from "@/features/pricing/utils/money";
 import { usePathname } from "@/i18n/navigation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
-import { NotificationStatus } from "@/types/features/notificationTypes";
+import { track } from "@/lib/analytics";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import { SidebarPromo } from "./SidebarPromo";
 
-const buttonData = [
+type SidebarNavigation = EventProperties["navigation:sidebar_clicked"];
+
+interface SidebarButton {
+  route: SidebarNavigation["destination"];
+  icon: React.JSX.Element;
+  label: SidebarNavigation["label"];
+}
+
+const buttonData: SidebarButton[] = [
   {
     route: "/dashboard",
     icon: <Home11Icon />,
     label: "Home",
   },
-  // Temporarily disabled — Calendar feature is not yet ready.
-  // {
-  //   route: "/calendar",
-  //   icon: <Calendar03Icon />,
-  //   label: "Calendar",
-  // },
   {
     route: "/todos",
     icon: <CheckListIcon />,
@@ -47,11 +49,6 @@ const buttonData = [
     icon: <ConnectIcon />,
     label: "Integrations",
   },
-  // {
-  //   route: "/mail",
-  //   icon: <Mail01Icon />,
-  //   label: "Mail",
-  // },
   {
     route: "/workflows",
     icon: <ZapIcon />,
@@ -62,32 +59,33 @@ const buttonData = [
     icon: <MessageMultiple02Icon />,
     label: "Chats",
   },
-
-  // {
-  //   route: "/browser",
-  //   icon: <AiBrowserIcon height={23} width={23} />,
-  //   label: "Use Browser",
-  // },
 ];
 
 export default function SidebarTopButtons() {
   const pathname = usePathname();
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  const { plans } = usePricing();
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
-  const { notifications } = useNotifications({
-    status: NotificationStatus.DELIVERED,
-    limit: 50,
-  });
+  const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
+  const { plan: monthlyPlan, isLoading: isPriceLoading } = useProMonthlyPlan();
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
-  const monthlyPlan = plans.find(
-    (p) => p.name === "Pro" && p.duration === "monthly",
-  );
-  const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
+  const price = monthlyPlan
+    ? toMajorUnits(monthlyPlan.amount, monthlyPlan.currency)
+    : null;
 
-  const unreadCount = notifications.filter(
-    (n) => n.status !== NotificationStatus.READ,
-  ).length;
+  // In settings, the app nav is noise — a single "Back to chats" is all you need.
+  if (pathname.startsWith("/settings")) {
+    return (
+      <Button
+        as={Link}
+        href="/c"
+        size="sm"
+        variant="light"
+        className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
+        startContent={<ChevronLeft className="size-4" />}
+      >
+        Back to chats
+      </Button>
+    );
+  }
 
   const isRouteActive = (route: string) => {
     if (route === "/c") {
@@ -98,9 +96,21 @@ export default function SidebarTopButtons() {
 
   return (
     <div className="flex flex-col">
-      {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
-      {!subscriptionStatus?.is_subscribed && (
-        <SidebarPromo price={price} onUpgrade={openPricingModal} />
+      {/* Only show Upgrade to Pro button when the plan is known and the user
+          doesn't have an active subscription — never while unknown, or a
+          paying user on a cold cache briefly sees the free-tier promo. */}
+      {!isUnknown && !isPaid && (
+        <SidebarPromo
+          price={price}
+          isPriceLoading={isPriceLoading}
+          copy={paywallCopyFor(hasEverSubscribed)}
+          onUpgrade={() =>
+            openUpgradeModal(undefined, {
+              dismissible: true,
+              source: "sidebar",
+            })
+          }
+        />
       )}
 
       <div className="flex w-full flex-col gap-0.5">
@@ -136,7 +146,7 @@ export default function SidebarTopButtons() {
                   as={Link}
                   href={route}
                   onPress={() => {
-                    trackEvent(ANALYTICS_EVENTS.NAVIGATION_SIDEBAR_CLICKED, {
+                    track("navigation:sidebar_clicked", {
                       destination: route,
                       label,
                     });
@@ -157,13 +167,6 @@ export default function SidebarTopButtons() {
                   </div>
                 </Button>
               </Tooltip>
-              {route === "/notifications" && unreadCount > 0 && (
-                <div className="absolute top-0 right-2 flex h-full items-center justify-center">
-                  <div className="flex aspect-square h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-zinc-950">
-                    {unreadCount > 99 ? "9+" : unreadCount}
-                  </div>
-                </div>
-              )}
             </div>
           );
         })}

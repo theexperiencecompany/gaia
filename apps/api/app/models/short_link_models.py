@@ -62,7 +62,7 @@ class _PublicView(BaseModel):
 
 class PublicTodoDeliverable(_PublicView):
     """A tracked todo's result: its title and the deliverable facet of its
-    canvas (``project_canvas_deliverable``), never the working sections."""
+    canvas (``canvas_markdown.deliverable_markdown``), never the working sections."""
 
     target_type: Literal[ShortLinkTargetType.TODO_DELIVERABLE]
     title: str
@@ -71,8 +71,12 @@ class PublicTodoDeliverable(_PublicView):
 
 
 class PublicBriefingItem(_PublicView):
+    """An item as the brief page lists it. ``link`` is the item's own public
+    heygaia.link; the todo id it is bound to stays private."""
+
     text: str
     kind: BriefingItemKind
+    link: str | None
 
 
 class PublicBriefingSection(_PublicView):
@@ -81,11 +85,17 @@ class PublicBriefingSection(_PublicView):
     items: list[PublicBriefingItem]
 
 
-class PublicBriefing(_PublicView):
-    """A persisted daily/weekly brief as its full web page renders it."""
+class PublicBriefingEvent(_PublicView):
+    """A calendar entry on the brief: when and what, never where."""
 
-    target_type: Literal[ShortLinkTargetType.BRIEFING]
-    kind: BriefingKind
+    date: str
+    start: str | None
+    title: str
+
+
+class PublicBriefingPayload(_PublicView):
+    """The brief fields the standalone brief page reads (``BriefingEdition``)."""
+
     kicker: str
     date: str
     headline: str
@@ -95,6 +105,17 @@ class PublicBriefing(_PublicView):
     mood: BriefingMood
     caption: str
     hue: int
+    calendar: list[PublicBriefingEvent]
+
+
+class PublicBriefing(_PublicView):
+    """A persisted daily/weekly brief: its rendered edition image and payload,
+    shaped like the ``BriefingModel`` fields ``StandaloneBriefing`` renders."""
+
+    target_type: Literal[ShortLinkTargetType.BRIEFING]
+    kind: BriefingKind
+    edition_image_url: str | None
+    payload: PublicBriefingPayload
 
 
 class PublicSessionArtifact(_PublicView):

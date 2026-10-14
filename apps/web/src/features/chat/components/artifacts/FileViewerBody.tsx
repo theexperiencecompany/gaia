@@ -188,12 +188,9 @@ export function FileViewerBody({
     );
   }
   if (isPdf) {
-    // Render via the browser's native PDF viewer. Never fetch a PDF as text
-    // (the old fallback did, streaming the whole binary as a string — slow on
-    // a cold R2 read, and the bytes rendered as a garbage code block). Fully
-    // sandboxed like the HTML preview below: a passive viewer frame needs no
-    // scripts/forms/popups/top-navigation, and downloads stay available via
-    // the panel's own Download button.
+    // Native PDF viewer — never fetch as text (old fallback streamed the
+    // binary as a string, slow on cold R2 reads, rendered as garbage). Fully
+    // sandboxed like the HTML preview; downloads stay via the panel's own button.
     return (
       <iframe
         title={filename}

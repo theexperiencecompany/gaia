@@ -1,7 +1,7 @@
 """Repository for the workflow_executions collection.
 
-Identity is the business key ``execution_id`` (Mongo's ``_id`` is an incidental
-ObjectId). A global repository: completion is keyed by ``execution_id`` alone
+Identity is the business key execution_id (Mongo's _id is an incidental
+ObjectId). A global repository: completion is keyed by execution_id alone
 with no user in context, while history listing filters by workflow + user.
 """
 
@@ -36,8 +36,7 @@ class WorkflowExecutionsRepository(
         conversation_id: str | None = None,
         trace: list[RecordedCall] | None = None,
     ) -> WorkflowExecutionDocument | None:
-        """Mark an execution finished, computing its duration from ``started_at``.
-        Returns the updated document, or ``None`` if the execution was not found."""
+        """Mark an execution finished, computing its duration from started_at; None if not found."""
         execution = await self.get(execution_id)
         if execution is None:
             return None
@@ -62,21 +61,17 @@ class WorkflowExecutionsRepository(
     async def get_for_user(
         self, execution_id: str, user_id: str
     ) -> WorkflowExecutionDocument | None:
-        """One execution, only when ``user_id`` owns it."""
+        """One execution, only when user_id owns it."""
         return await self._find_one({"execution_id": execution_id, "user_id": user_id})
 
-    async def find_latest_with_trace(
-        self, workflow_id: str, user_id: str
-    ) -> WorkflowExecutionDocument | None:
-        """The workflow's most recent finished run that recorded a trace.
+    async def find_recent_with_trace(
+        self, workflow_id: str, user_id: str, *, limit: int
+    ) -> list[WorkflowExecutionDocument]:
+        """Return the workflow's most recent finished runs that recorded a trace, newest first.
 
-        What the next run reads to learn what the previous one did, now that its
-        checkpoint threads are reset before every fire. Runs that recorded
-        nothing are skipped: an empty trace would tell the next run nothing while
-        hiding the last one that had something to say. A FAILED run counts: it
-        ran steps with side effects before it stopped, and hiding it would show
-        the next run the fire before, which then repeats them. The brief and
-        ``$last_run`` both carry the status, so a reader can tell.
+        Runs with no trace are skipped, since an empty one would hide the last
+        run that had something to say. A FAILED run still counts: it ran steps
+        with side effects, and hiding it would repeat them on the next fire.
         """
         rows = await self._find(
             {
@@ -86,14 +81,14 @@ class WorkflowExecutionsRepository(
                 "trace.0": {"$exists": True},
             },
             sort=[("started_at", -1)],
-            limit=1,
+            limit=limit,
         )
-        return rows[0] if rows else None
+        return rows
 
     async def list_for_workflow(
         self, workflow_id: str, user_id: str, *, limit: int, offset: int
     ) -> tuple[list[WorkflowExecutionDocument], int]:
-        """A page of a workflow's executions (most recent first) plus the total."""
+        """Return a page of a workflow's executions (most recent first) plus the total."""
         filter_: dict[str, object] = {"workflow_id": workflow_id, "user_id": user_id}
         total = await self._count(filter_)
         executions = await self._find(filter_, sort=[("started_at", -1)], limit=limit, skip=offset)
@@ -102,8 +97,10 @@ class WorkflowExecutionsRepository(
     async def list_since(
         self, user_id: str, since: datetime, *, limit: int
     ) -> list[WorkflowExecutionDocument]:
-        """A user's executions started at/after ``since`` — the briefing engine's
-        look-back read."""
+        """Return a user's executions started at/after since.
+
+        Used as the briefing engine's look-back read.
+        """
         return await self._find({"user_id": user_id, "started_at": {"$gte": since}}, limit=limit)
 
 

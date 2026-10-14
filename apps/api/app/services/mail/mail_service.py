@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 from typing import Any
@@ -6,9 +7,12 @@ from typing import Any
 from fastapi import UploadFile
 from langchain_core.tools import StructuredTool
 
+from app.constants.email import GMAIL_MULTIPLE_ATTACHMENTS_ERROR
 from app.constants.log_tags import LogTag
+from app.models.composio_schemas.gmail import GmailDraftEntry
+from app.models.integrations.gmail_messages import GmailMessageTimestamps
 from app.models.mail_models import (
-    GmailAttachmentPayload,
+    ComposioAttachment,
     GmailDraftsResponse,
     GmailEmailResult,
     GmailFetchEmailsData,
@@ -17,6 +21,7 @@ from app.models.mail_models import (
     GmailMessagesResponse,
     GmailToolResult,
 )
+from app.services.composio.attachments import upload_bytes_sync
 from app.services.composio.composio_service import (
     get_composio_service,
 )
@@ -24,14 +29,26 @@ from app.utils.general_utils import transform_gmail_message
 from shared.py.wide_events import MailContext, log
 
 
-def get_gmail_tool(tool_name: str, user_id: str) -> StructuredTool | None:
-    """Get a specific Gmail tool by name via ComposioService, or None if not found."""
+def get_gmail_tool(
+    tool_name: str, user_id: str, *, use_schema_modifier: bool = True
+) -> StructuredTool | None:
+    """Get a specific Gmail tool by name via ComposioService, or None if not found.
+
+    use_schema_modifier=False asks for the tool's own schema instead of the
+    agent-facing one. Callers that speak Composio's native argument shape need
+    it: the modifiers exist to hide that shape from the model, and LangChain
+    silently drops any argument the bound schema does not declare.
+    """
     log.set(user={"id": user_id}, mail=MailContext(provider="gmail"))
     composio_service = get_composio_service()
 
     try:
         return composio_service.get_tool(
-            tool_name, use_before_hook=False, use_after_hook=False, user_id=user_id
+            tool_name,
+            use_before_hook=False,
+            use_after_hook=False,
+            use_schema_modifier=use_schema_modifier,
+            user_id=user_id,
         )
     except Exception as e:
         log.error(
@@ -45,20 +62,25 @@ def get_gmail_tool(tool_name: str, user_id: str) -> StructuredTool | None:
 
 
 async def invoke_gmail_tool(
-    user_id: str, tool_name: str, parameters: dict[str, Any]
+    user_id: str,
+    tool_name: str,
+    parameters: Mapping[str, object],
+    *,
+    use_schema_modifier: bool = True,
 ) -> GmailToolResult:
     """Invoke a specific Gmail tool with the given parameters.
 
-    ``parameters`` stays a loose mapping on purpose: every Gmail tool accepts a
+    parameters stays a loose mapping on purpose: every Gmail tool accepts a
     different argument set, and Composio validates it against the tool's own schema.
+    use_schema_modifier is passed through to get_gmail_tool.
     """
     try:
-        tool = get_gmail_tool(tool_name, user_id)
+        tool = get_gmail_tool(tool_name, user_id, use_schema_modifier=use_schema_modifier)
 
         if not tool:
             return GmailToolResult(error=f"Tool {tool_name} not found", successful=False)
 
-        result = await tool.ainvoke(parameters)
+        result = await tool.ainvoke(dict(parameters))
         # BaseTool.ainvoke is typed Any (arbitrary tool output); this is the
         # provider boundary, so validate Composio's response before it travels on.
         return GmailToolResult.model_validate(result)
@@ -73,19 +95,26 @@ async def invoke_gmail_tool(
         return GmailToolResult(error=str(e), successful=False)
 
 
-def _process_attachments(attachments: list[UploadFile]) -> list[GmailAttachmentPayload]:
-    """Process UploadFile objects into format expected by Composio."""
-    processed: list[GmailAttachmentPayload] = [
-        {
-            "filename": att.filename,
-            "content": att.file.read(),
-            "content_type": att.content_type,
-        }
-        for att in attachments
-    ]
-    # Reset file pointers
+def _process_attachments(attachments: list[UploadFile], tool_name: str) -> list[ComposioAttachment]:
+    """Upload each multipart file to Composio, returning its {name, mimetype, s3key}.
+
+    Composio's compose tools take files already uploaded to their store, not raw
+    bytes; upload_bytes_sync does that upload. Runs sync (called via
+    asyncio.to_thread) because the Composio upload client is synchronous.
+    """
+    processed: list[ComposioAttachment] = []
     for att in attachments:
-        att.file.seek(0)
+        content = att.file.read()
+        att.file.seek(0)  # reset so a later reader sees the whole file
+        processed.append(
+            upload_bytes_sync(
+                content,
+                att.filename or "attachment",
+                att.content_type,
+                tool=tool_name,
+                toolkit="gmail",
+            )
+        )
     return processed
 
 
@@ -131,8 +160,8 @@ async def send_email(
     """Send an email via Composio Gmail tools.
 
     Uses GMAIL_REPLY_TO_THREAD when thread_id is given, else GMAIL_SEND_EMAIL.
-    Body is always delivered as HTML; the Composio before-hook converts Markdown
-    so Gmail renders formatting instead of literal ``**`` / ``###``.
+    The body is handed to Gmail as given: this path runs no Composio hooks, so
+    the Markdown-to-HTML normalisation the agent path gets does not apply here.
     """
     log.set(
         user={"id": user_id},
@@ -144,10 +173,6 @@ async def send_email(
         tool_name = "GMAIL_REPLY_TO_THREAD" if is_reply else "GMAIL_SEND_EMAIL"
         body_param = "message_body" if is_reply else "body"
 
-        # Build parameters. The Composio before-hook (gmail_compose_before_hook)
-        # normalises body → HTML and sets is_html=True for every compose tool,
-        # so callers can hand us either Markdown or HTML and Gmail will render
-        # consistently.
         parameters: dict[str, Any] = {
             "recipient_email": to,
             "extra_recipients": content.extra_recipients or [],
@@ -165,7 +190,13 @@ async def send_email(
         if content.bcc_list:
             parameters["bcc"] = content.bcc_list
         if attachments:
-            parameters["attachments"] = await asyncio.to_thread(_process_attachments, attachments)
+            # Composio types Gmail's `attachment` as a single FileUploadable, not
+            # an array, so reject extra files up front instead of uploading them
+            # all and failing the send.
+            if len(attachments) > 1:
+                return GmailToolResult(error=GMAIL_MULTIPLE_ATTACHMENTS_ERROR, successful=False)
+            processed = await asyncio.to_thread(_process_attachments, attachments, tool_name)
+            parameters["attachment"] = processed[0]
 
         log.info(
             f"{LogTag.MAIL} Sending email via Gmail tool",
@@ -175,7 +206,12 @@ async def send_email(
             to=to,
         )
 
-        result = await invoke_gmail_tool(user_id, tool_name, parameters)
+        # ``attachment`` is Gmail's native param; the agent schema modifier swaps it
+        # for ``attachments``, but its before-hook is off on this path, so that
+        # schema would drop the key and send with no file — use the native schema.
+        result = await invoke_gmail_tool(
+            user_id, tool_name, parameters, use_schema_modifier=not attachments
+        )
         if not result.successful:
             log.error(
                 f"{LogTag.MAIL} Error from tool",
@@ -282,23 +318,21 @@ async def unstar_messages(user_id: str, message_ids: list[str]) -> list[GmailMes
     return await modify_message_labels(user_id, message_ids, remove_labels=["STARRED"])
 
 
-async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
-    """Move Gmail messages to trash.
+async def trash_messages(user_id: str, message_ids: list[str]) -> list[GmailMessageResource]:
+    """Move Gmail messages to trash, returning one resource per message trashed.
 
-    Each entry is the raw Composio envelope, not a Gmail message resource, so it
-    stays an untyped payload: the route reads ``msg["id"]`` off it, which the
-    envelope does not carry. Returning a real message resource here would change
-    what the route receives, so that mismatch is left for a deliberate fix.
+    Each resource carries the id that was asked for: the tool's result is the
+    Composio {data, error, successful} envelope, which has no top-level message id.
     """
     log.info(f"{LogTag.MAIL} Moving messages to trash", message_ids_count=len(message_ids))
-    results: list[dict[str, Any]] = []
+    results: list[GmailMessageResource] = []
 
     for message_id in message_ids:
         try:
             parameters = {"message_id": message_id}
             result = await invoke_gmail_tool(user_id, "GMAIL_TRASH_MESSAGE", parameters)
             if result.successful:
-                results.append(result.as_payload())
+                results.append(GmailMessageResource(id=message_id))
             else:
                 log.error(
                     f"{LogTag.MAIL} Error trashing message",
@@ -317,17 +351,17 @@ async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str,
     return results
 
 
-async def untrash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
-    """Restore Gmail messages from trash — entries are raw envelopes, see ``trash_messages``."""
+async def untrash_messages(user_id: str, message_ids: list[str]) -> list[GmailMessageResource]:
+    """Restore Gmail messages from trash, one resource per message — see trash_messages."""
     log.info(f"{LogTag.MAIL} Restoring messages from trash", message_ids_count=len(message_ids))
-    results: list[dict[str, Any]] = []
+    results: list[GmailMessageResource] = []
 
     for message_id in message_ids:
         try:
             parameters = {"message_id": message_id}
             result = await invoke_gmail_tool(user_id, "GMAIL_UNTRASH_MESSAGE", parameters)
             if result.successful:
-                results.append(result.as_payload())
+                results.append(GmailMessageResource(id=message_id))
             else:
                 log.error(
                     f"{LogTag.MAIL} Error untrashing message",
@@ -372,11 +406,17 @@ async def fetch_thread(user_id: str, thread_id: str) -> GmailToolResult:
         if result.successful:
             # Transform messages in the thread for easier frontend processing
             if result.messages is not None:
-                messages = [transform_gmail_message(msg) for msg in result.messages]
-
-                # Sort messages by date (oldest first)
-                messages.sort(key=lambda msg: int(msg.get("internalDate", 0)))
-                result.messages = messages
+                # Oldest first. The thread is forwarded as the provider's own
+                # envelope, whose ``messages`` are dicts, hence the dump.
+                oldest_first = sorted(
+                    result.messages,
+                    key=lambda msg: int(
+                        GmailMessageTimestamps.model_validate(msg).internal_date or 0
+                    ),
+                )
+                result.messages = [
+                    transform_gmail_message(msg).model_dump(by_alias=True) for msg in oldest_first
+                ]
 
             log.set_ns("mail", message_count=len(result.messages or []), success=True)
             return result
@@ -616,10 +656,15 @@ async def list_drafts(
 
         if result.successful:
             # Transform draft messages if needed
-            detailed_drafts = []
+            detailed_drafts: list[dict[str, Any]] = []
             for draft in result.drafts or []:
-                if "message" in draft:
-                    draft["message"] = transform_gmail_message(draft["message"])
+                message = GmailDraftEntry.model_validate(draft).message
+                if message is not None:
+                    # The drafts ride to the client as the provider's own dicts.
+                    draft = {
+                        **draft,
+                        "message": transform_gmail_message(message).model_dump(by_alias=True),
+                    }
                 detailed_drafts.append(draft)
 
             return GmailDraftsResponse(
@@ -649,7 +694,7 @@ async def get_draft(user_id: str, draft_id: str) -> GmailToolResult:
         if result.successful:
             # Transform the message data if present
             if result.message is not None:
-                result.message = transform_gmail_message(result.message)
+                result.message = transform_gmail_message(result.message).model_dump(by_alias=True)
             return result
         log.error(f"{LogTag.MAIL} Error from GMAIL_GET_DRAFT", error=result.error)
         return GmailToolResult(error=result.error, successful=False)
@@ -790,7 +835,9 @@ async def get_email_by_id(user_id: str, message_id: str) -> GmailEmailResult:
 
         if result.successful:
             # Transform the message data for easier frontend processing
-            transformed_message = transform_gmail_message(result.as_payload())
+            transformed_message = transform_gmail_message(result.as_payload()).model_dump(
+                by_alias=True
+            )
             log.set_ns("mail", result_count=1, success=True)
             return GmailEmailResult(success=True, message=transformed_message)
         log.error(f"{LogTag.MAIL} Error from GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", error=result.error)

@@ -1,9 +1,11 @@
 """Helper functions for email processing."""
 
+from dataclasses import dataclass
 import time
 import unicodedata
 
 import html2text
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.memory.profile_extractor import PLATFORM_CONFIG
 from app.agents.prompts.email_filter_prompts import EMAIL_MEMORY_EXTRACTION_PROMPT
@@ -11,8 +13,23 @@ from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
 from app.constants.memory import MemorySourceType
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
-from app.memory.ingestion import MemorySource
+from app.models.mail_models import GmailMessageSummary
 from shared.py.wide_events import log
+
+
+class _PlatformSenderDomains(BaseModel):
+    """The one ``PlatformConfig`` key this module reads (ideal home: profile_extractor)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sender_domains: list[str]
+
+
+_PLATFORM_SENDER_DOMAINS: tuple[str, ...] = tuple(
+    domain
+    for platform_config in PLATFORM_CONFIG.values()
+    for domain in _PlatformSenderDomains.model_validate(platform_config).sender_domains
+)
 
 # HTML to text converter
 _html_converter = html2text.HTML2Text()
@@ -23,16 +40,7 @@ _html_converter.skip_internal_links = True
 
 
 def _build_user_context(user_name: str | None, user_email: str | None) -> str:
-    """
-    Build user context string for memory extraction.
-
-    Args:
-        user_name: User's name (optional)
-        user_email: User's email (optional)
-
-    Returns:
-        Formatted context string
-    """
+    """Build a user context string for memory extraction."""
     if not user_name:
         return ""
 
@@ -48,37 +56,31 @@ def remove_invisible_chars(s: str) -> str:
     return "".join(c for c in s if unicodedata.category(c) not in ("Cf", "Cc"))
 
 
-def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
-    """
-    Process email content converting HTML to clean text.
-    Skips platform emails (they're only used for profile discovery).
+@dataclass(slots=True, frozen=True)
+class ProcessedEmail:
+    """One email's clean text plus the metadata its memory entry cites."""
 
-    Args:
-        emails: Raw email data from Gmail API
+    content: str
+    message_id: str
+    sender: str
+    subject: str
 
-    Returns:
-        Tuple of (processed_emails, failed_count)
-    """
-    processed = []
+
+def process_email_content(emails: list[GmailMessageSummary]) -> tuple[list[ProcessedEmail], int]:
+    """Convert HTML email content to clean text, skipping platform emails (profile-discovery only)."""
+    processed: list[ProcessedEmail] = []
     failed_count = 0
 
     for email_data in emails:
         try:
             # Skip platform emails - only used for profile discovery
-            sender = (email_data.get("sender") or email_data.get("from", "")).lower()
+            sender = email_data.sender.lower()
 
             # Check against all platform sender domains from config
-            is_platform_email = False
-            for platform_config in PLATFORM_CONFIG.values():
-                sender_domains = platform_config.get("sender_domains", [])
-                if any(domain in sender for domain in sender_domains):
-                    is_platform_email = True
-                    break
-
-            if is_platform_email:
+            if any(domain in sender for domain in _PLATFORM_SENDER_DOMAINS):
                 continue
 
-            message_text = email_data.get("messageText", "")
+            message_text = email_data.body
             if not message_text.strip():
                 failed_count += 1
                 continue
@@ -92,17 +94,12 @@ def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
                 continue
 
             processed.append(
-                {
-                    "content": clean_text,
-                    "metadata": {
-                        "type": "email",
-                        "source": "gmail",
-                        "message_id": email_data.get("messageId") or email_data.get("id"),
-                        "sender": email_data.get("sender")
-                        or email_data.get("from", UNKNOWN_SENDER),
-                        "subject": email_data.get("subject", NO_SUBJECT),
-                    },
-                }
+                ProcessedEmail(
+                    content=clean_text,
+                    message_id=email_data.id,
+                    sender=email_data.sender or UNKNOWN_SENDER,
+                    subject=email_data.subject or NO_SUBJECT,
+                )
             )
         except Exception:
             failed_count += 1
@@ -112,19 +109,11 @@ def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
 
 async def store_emails_to_memory(
     user_id: str,
-    processed_emails: list[dict],
+    processed_emails: list[ProcessedEmail],
     user_name: str | None = None,
     user_email: str | None = None,
 ) -> None:
-    """
-    Ingest an email batch into the memory engine.
-
-    Args:
-        user_id: User ID
-        processed_emails: List of processed email dicts
-        user_name: User's name (optional)
-        user_email: User's email (optional)
-    """
+    """Ingest an email batch into the memory engine."""
     if not processed_emails:
         return
 
@@ -134,13 +123,13 @@ async def store_emails_to_memory(
                 "role": "user",
                 "content": f"""The user RECEIVED this email (not sent by the user).
 
-From: {email_data.get("metadata", {}).get("sender", UNKNOWN_SENDER)}
-Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
+From: {email_data.sender}
+Subject: {email_data.subject}
 
-{email_data.get("content", "")}""",
+{email_data.content}""",
             }
             for email_data in processed_emails
-            if email_data.get("content", "").strip()
+            if email_data.content.strip()
         ]
 
         if not messages:
@@ -152,7 +141,7 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
         result = await memory_engine.retain(
             user_id,
             messages,
-            source=MemorySource(MemorySourceType.EMAIL),
+            source_type=MemorySourceType.EMAIL,
             extraction_hints=f"{user_context}\n\n{EMAIL_MEMORY_EXTRACTION_PROMPT}",
             user_name=user_name,
         )
@@ -176,13 +165,7 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
 
 
 async def mark_email_processing_complete(user_id: str, memory_count: int) -> None:
-    """
-    Mark user's email processing as complete in database.
-
-    Args:
-        user_id: User ID
-        memory_count: Number of memories stored
-    """
+    """Mark the user's email processing as complete in the database."""
     await user_repository.mark_email_processing_complete(user_id, memory_count)
 
 
@@ -193,23 +176,15 @@ async def store_single_profile(
     content: str,
     user_name: str | None = None,
 ) -> None:
-    """
-    Store a single social profile to memory.
-
-    Args:
-        user_id: User ID
-        platform: Platform name (twitter, github, etc.)
-        profile_url: Profile URL
-        content: Crawled profile content
-        user_name: User's name (optional)
-    """
+    """Store a single social profile to memory."""
     try:
         memory_content = f"User's {platform} profile: {profile_url} {content}"
 
         await memory_engine.retain(
             user_id,
             [{"role": "user", "content": memory_content}],
-            source=MemorySource(MemorySourceType.EMAIL, profile_url),
+            source_type=MemorySourceType.EMAIL,
+            source_id=profile_url,
             extraction_hints=(
                 f"This is the user's own {platform} profile, discovered during email "
                 "onboarding. Extract durable facts about the user: their handle, bio, "

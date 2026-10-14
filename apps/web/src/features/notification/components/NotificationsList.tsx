@@ -4,14 +4,14 @@ import { Spinner } from "@heroui/spinner";
 import { useMemo } from "react";
 import type {
   ModalConfig,
-  NotificationRecord,
+  NotificationView,
 } from "@/types/features/notificationTypes";
 import { groupNotificationsByTimezone } from "@/utils/notificationUtils";
 import { NotificationCard } from "./NotificationCard";
 import { NotificationsEmptyState } from "./NotificationsEmptyState";
 
 interface NotificationListProps {
-  notifications: NotificationRecord[];
+  notifications: NotificationView[];
   loading: boolean;
   emptyMessage?: string;
   emptyDescription?: string;

@@ -110,10 +110,9 @@ function TextInner({
   innerRef?: React.RefObject<HTMLSpanElement | null>;
   baseId?: string;
 }>) {
-  // The per-character spans are decorative (aria-hidden); a visually-hidden copy
-  // of the full string is the real accessible text. This gives the wrapping
-  // element an accessible name via its content, instead of an `aria-label` —
-  // which ARIA prohibits on generic <span>/<div> elements that have no role.
+  // The per-character spans are decorative (aria-hidden); a visually-hidden
+  // copy of the full string is the real accessible text — ARIA prohibits
+  // `aria-label` on generic <span>/<div> elements with no role.
   if (splitBy === "char") {
     return (
       <>

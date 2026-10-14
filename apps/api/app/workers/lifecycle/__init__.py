@@ -1,6 +1,4 @@
-"""
-Lifecycle modules for ARQ worker.
-"""
+"""Lifecycle modules for ARQ worker."""
 
 from .shutdown import shutdown
 from .startup import startup

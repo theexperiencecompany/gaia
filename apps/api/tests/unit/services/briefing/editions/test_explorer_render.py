@@ -1,10 +1,7 @@
 """Unit tests for the vendored-explorer HTML document builder.
 
-``render_explorer_edition`` produces a self-contained document that a headless
-Chromium later rasters. These tests assert on the document itself — the
-inlined modules, the embedded ``ed``/seed literals, the script-tag escaping
-and the failure path — not on the rastered pixels, which need a real browser
-and belong to the render pipeline's own tier.
+Assertions are on the document itself (inlined modules, embedded ed/seed literals,
+script-tag escaping, the failure path), not on rastered pixels.
 """
 
 from collections.abc import Iterator
@@ -15,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions import explorer_render
 from app.services.briefing.editions.explorer_render import (
     _art_credit,
@@ -25,10 +23,8 @@ from app.services.briefing.editions.explorer_render import (
     render_explorer_edition,
 )
 
-# Every loader is @lru_cache(maxsize=1) over a file read, and the cache outlives
-# the test that fills it — without this each test would assert against whatever
-# an earlier test happened to load, and a broken loader would only ever be seen
-# by the first test to call it.
+# Every loader is @lru_cache(maxsize=1) and the cache outlives the test that fills it,
+# so each test must start cold.
 _CACHED_LOADERS = (
     _module_sources,
     explorer_family_ids,
@@ -86,23 +82,22 @@ EXPECTED_ASSET_KEYS = {
 }
 
 
-def _payload(**overrides: Any) -> dict[str, Any]:
+def _payload(**overrides: Any) -> BriefingPayload:
     payload: dict[str, Any] = {
         "kicker": "Daily brief",
         "date": "2026-07-05",
         "headline": "A quiet Sunday",
         "lede": "Two approvals and one flight.",
-        "stats": [{"value": "3", "label": "Done overnight"}],
-        "sections": [
-            {"numeral": "I", "title": "Today", "items": [{"text": "Standup", "kind": "note"}]},
-        ],
+        "tallies": {"done_by_you": 1, "done_by_gaia": 2},
+        "calendar": [{"date": "2026-07-05", "start": "09:00", "title": "Standup"}],
+        "mood": "clear",
         "caption": "Made by GAIA",
     }
     payload.update(overrides)
-    return payload
+    return BriefingPayload.model_validate(payload)
 
 
-def _render(payload: dict[str, Any] | None = None, **overrides: Any) -> str:
+def _render(payload: BriefingPayload | None = None, **overrides: Any) -> str:
     kwargs: dict[str, Any] = {
         "family": "swiss",
         "skin_seed": "2026-07-05",
@@ -227,7 +222,8 @@ class TestEmbeddedLiterals:
         assert ed["n"] == 12
         assert ed["time"] == "6:02 AM"
         assert ed["time24"] == "06:02"
-        assert ed["deck"] == "Two approvals and one flight."
+        assert ed["headline"] == "A quiet Sunday"
+        assert ed["deck"] == "A quiet Sunday"
         assert ed["dateLong"] == "Sunday, 5 July 2026"
         assert ed["content"]["today"][0]["label"] == "Standup"
         assert ed["content"]["stats"]["done"] == 3
@@ -274,19 +270,19 @@ class TestArtCredit:
 @pytest.mark.unit
 class TestScriptEscaping:
     def test_payload_text_cannot_close_the_inline_script_tag(self) -> None:
-        html = _render(_payload(lede="</script><img src=x>"))
+        html = _render(_payload(headline="</script><img src=x>"))
 
         assert "</script><img src=x>" not in html
         assert '"deck": "<\\/script><img src=x>"' in html
 
     def test_payload_text_cannot_open_an_html_comment(self) -> None:
-        html = _render(_payload(lede="<!--hide"))
+        html = _render(_payload(headline="<!--hide"))
 
         assert "<!--hide" not in html
         assert "<\\!--hide" in html
 
     def test_escaped_payload_still_decodes_to_the_original_text(self) -> None:
-        ed = _embedded_const(_render(_payload(lede="</script><!--boom")), "ed")
+        ed = _embedded_const(_render(_payload(headline="</script><!--boom")), "ed")
 
         assert ed["deck"] == "</script><!--boom"
 

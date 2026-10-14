@@ -1,7 +1,7 @@
 """Regex-injection hardening for the community-integration search fallback.
 
 The escaping now lives in the repository's filter builder — a raw metacharacter
-query must be fed to ``$regex`` as a *literal* (escaped) pattern, never run as an
+query must be fed to $regex as a *literal* (escaped) pattern, never run as an
 attacker-controlled pattern against the public collection.
 """
 
@@ -50,15 +50,11 @@ def _as_items(rows: list[SimpleNamespace]) -> list[CommunityIntegrationItem]:
 
 
 async def test_semantic_search_results_respect_the_category_filter() -> None:
-    """A category filter must constrain semantic-search hits, not just the fallback.
-
-    ChromaDB indexes only {"integration_id": ...} for public integrations, so the
-    vector search cannot filter by category itself and returns hits from every
-    category. Filtering therefore has to happen once the hits are hydrated from
-    Mongo, or picking a category on the marketplace silently does nothing on the
-    search path while working on the browse path right beside it.
-    """
-    hits = [{"integration_id": "int-a"}, {"integration_id": "int-b"}]
+    """A category filter must constrain semantic-search hits too, not just the fallback: ChromaDB indexes no category."""
+    hits = [
+        {"integration_id": "int-a", "relevance_score": 0.9},
+        {"integration_id": "int-b", "relevance_score": 0.9},
+    ]
     hydrated = [_hit("int-a", "productivity"), _hit("int-b", "developer")]
 
     with (
@@ -78,8 +74,11 @@ async def test_semantic_search_results_respect_the_category_filter() -> None:
 
 
 async def test_semantic_search_category_all_keeps_every_hit() -> None:
-    """ "all" is the no-filter sentinel, matching _community_search_filter."""
-    hits = [{"integration_id": "int-a"}, {"integration_id": "int-b"}]
+    """The "all" category is the no-filter sentinel, matching _community_search_filter."""
+    hits = [
+        {"integration_id": "int-a", "relevance_score": 0.9},
+        {"integration_id": "int-b", "relevance_score": 0.9},
+    ]
     hydrated = [_hit("int-a", "productivity"), _hit("int-b", "developer")]
 
     with (
@@ -98,12 +97,8 @@ async def test_semantic_search_category_all_keeps_every_hit() -> None:
 
 
 async def test_semantic_hits_all_filtered_out_falls_back_to_mongo() -> None:
-    """Every hit in another category is the same situation as no hits at all.
-
-    The Mongo path filters by category itself, so it can surface rows the vector
-    search ranked below the cut. Returning an empty page instead would hide them.
-    """
-    hits = [{"integration_id": "int-b"}]
+    """Every hit filtered out falls back to the Mongo path, which can surface rows the vector search ranked below the cut."""
+    hits = [{"integration_id": "int-b", "relevance_score": 0.9}]
     hydrated = [_hit("int-b", "developer")]
     fallback = [_hit("int-c", "productivity")]
 

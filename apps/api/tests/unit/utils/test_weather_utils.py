@@ -1,11 +1,20 @@
 """Comprehensive unit tests for app.utils.weather_utils."""
 
+import datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
+from app.models.integrations.weather import (
+    DailyForecast,
+    GeocodedLocation,
+    OpenWeatherCurrent,
+    OpenWeatherForecast,
+    ResolvedLocation,
+    WeatherReport,
+)
 from app.utils.weather_utils import (
     fetch_weather_data,
     geocode_location,
@@ -20,6 +29,7 @@ from app.utils.weather_utils import (
 # ---------------------------------------------------------------------------
 
 FAKE_API_KEY = "test-api-key-12345"  # pragma: allowlist secret
+_LOCATION = {"city": "London", "country": "GB", "region": "England"}
 
 
 def _make_forecast_item(
@@ -27,12 +37,14 @@ def _make_forecast_item(
     hour: str,
     temp: float,
     humidity: int,
-    condition: str,
-    description: str,
-    icon: str,
+    weather: tuple[str, str, str],
     dt: int = 1700000000,
 ) -> dict[str, Any]:
-    """Build a single forecast list item matching the OpenWeatherMap schema."""
+    """Build a single forecast list item matching the OpenWeatherMap schema.
+
+    The weather argument is a (condition, description, icon) tuple.
+    """
+    condition, description, icon = weather
     return {
         "dt": dt,
         "dt_txt": f"{date} {hour}",
@@ -41,8 +53,16 @@ def _make_forecast_item(
     }
 
 
-def _make_forecast_data(items: list[dict[str, Any]]) -> dict[str, Any]:
-    return {"list": items}
+def _make_forecast_data(items: list[dict[str, Any]]) -> OpenWeatherForecast:
+    return OpenWeatherForecast.model_validate({"list": items})
+
+
+def _resolved(
+    city: str | None, country: str | None, region: str | None, cache_key: str = "weather:test"
+) -> ResolvedLocation:
+    return ResolvedLocation(
+        lat=51.5, lon=-0.12, city=city, country=country, region=region, cache_key=cache_key
+    )
 
 
 def _make_current_weather(
@@ -91,54 +111,56 @@ class TestProcessForecastData:
     """Tests for the synchronous process_forecast_data helper."""
 
     def test_empty_list_returns_empty(self) -> None:
-        result = process_forecast_data({"list": []})
+        result = process_forecast_data(OpenWeatherForecast.model_validate({"list": []}))
         assert result == []
 
     def test_missing_list_key_returns_empty(self) -> None:
-        result = process_forecast_data({})
+        result = process_forecast_data(OpenWeatherForecast.model_validate({}))
         assert result == []
 
     def test_single_day_single_item(self) -> None:
         items = [
-            _make_forecast_item("2024-01-15", "12:00:00", 10.0, 60, "Clear", "clear sky", "01d"),
+            _make_forecast_item("2024-01-15", "12:00:00", 10.0, 60, ("Clear", "clear sky", "01d")),
         ]
         result = process_forecast_data(_make_forecast_data(items))
         assert len(result) == 1
         day = result[0]
-        assert day["date"] == "2024-01-15"
-        assert day["temp_min"] == pytest.approx(10.0)
-        assert day["temp_max"] == pytest.approx(10.0)
-        assert day["humidity"] == 60
-        assert day["weather"]["main"] == "Clear"
-        assert day["weather"]["description"] == "clear sky"
-        assert day["weather"]["icon"] == "01d"
+        assert isinstance(day, DailyForecast)
+        assert day.model_dump() == {
+            "date": "2024-01-15",
+            "timestamp": 1700000000,
+            "temp_min": 10.0,
+            "temp_max": 10.0,
+            "humidity": 60,
+            "weather": {"main": "Clear", "description": "clear sky", "icon": "01d"},
+        }
 
     def test_single_day_multiple_items_aggregates(self) -> None:
         items = [
-            _make_forecast_item("2024-01-15", "06:00:00", 5.0, 80, "Clouds", "overcast", "04d"),
-            _make_forecast_item("2024-01-15", "12:00:00", 12.0, 50, "Clear", "clear sky", "01d"),
+            _make_forecast_item("2024-01-15", "06:00:00", 5.0, 80, ("Clouds", "overcast", "04d")),
+            _make_forecast_item("2024-01-15", "12:00:00", 12.0, 50, ("Clear", "clear sky", "01d")),
             _make_forecast_item(
-                "2024-01-15", "18:00:00", 8.0, 70, "Clouds", "broken clouds", "04d"
+                "2024-01-15", "18:00:00", 8.0, 70, ("Clouds", "broken clouds", "04d")
             ),
         ]
         result = process_forecast_data(_make_forecast_data(items))
         assert len(result) == 1
         day = result[0]
-        assert day["temp_min"] == pytest.approx(5.0)
-        assert day["temp_max"] == pytest.approx(12.0)
-        assert day["humidity"] == round((80 + 50 + 70) / 3)
+        assert day.temp_min == pytest.approx(5.0)
+        assert day.temp_max == pytest.approx(12.0)
+        assert day.humidity == round((80 + 50 + 70) / 3)
         # "Clouds" appears twice, so it is the most common condition
-        assert day["weather"]["main"] == "Clouds"
+        assert day.weather.main == "Clouds"
 
     def test_multiple_days_sorted_by_date(self) -> None:
         items = [
-            _make_forecast_item("2024-01-17", "12:00:00", 20.0, 40, "Clear", "clear sky", "01d"),
-            _make_forecast_item("2024-01-15", "12:00:00", 10.0, 60, "Rain", "light rain", "10d"),
-            _make_forecast_item("2024-01-16", "12:00:00", 15.0, 50, "Clouds", "overcast", "04d"),
+            _make_forecast_item("2024-01-17", "12:00:00", 20.0, 40, ("Clear", "clear sky", "01d")),
+            _make_forecast_item("2024-01-15", "12:00:00", 10.0, 60, ("Rain", "light rain", "10d")),
+            _make_forecast_item("2024-01-16", "12:00:00", 15.0, 50, ("Clouds", "overcast", "04d")),
         ]
         result = process_forecast_data(_make_forecast_data(items))
         assert len(result) == 3
-        assert [d["date"] for d in result] == [
+        assert [d.date for d in result] == [
             "2024-01-15",
             "2024-01-16",
             "2024-01-17",
@@ -151,7 +173,7 @@ class TestProcessForecastData:
                 "main": {"temp": 10, "humidity": 50},
                 "weather": [{"main": "Clear", "description": "clear", "icon": "01d"}],
             },
-            _make_forecast_item("2024-01-15", "12:00:00", 12.0, 60, "Clear", "clear sky", "01d"),
+            _make_forecast_item("2024-01-15", "12:00:00", 12.0, 60, ("Clear", "clear sky", "01d")),
         ]
         result = process_forecast_data(_make_forecast_data(items))
         assert len(result) == 1
@@ -164,7 +186,7 @@ class TestProcessForecastData:
                 "main": {"temp": 10, "humidity": 50},
                 "weather": [{"main": "Clear", "description": "clear", "icon": "01d"}],
             },
-            _make_forecast_item("2024-01-15", "12:00:00", 12.0, 60, "Clear", "clear sky", "01d"),
+            _make_forecast_item("2024-01-15", "12:00:00", 12.0, 60, ("Clear", "clear sky", "01d")),
         ]
         result = process_forecast_data(_make_forecast_data(items))
         assert len(result) == 1
@@ -172,26 +194,26 @@ class TestProcessForecastData:
     def test_icon_matches_most_common_condition(self) -> None:
         """Icon should come from an item whose main condition == most_common_condition."""
         items = [
-            _make_forecast_item("2024-01-15", "06:00:00", 5.0, 80, "Rain", "light rain", "10d"),
-            _make_forecast_item("2024-01-15", "12:00:00", 12.0, 50, "Clear", "clear sky", "01d"),
-            _make_forecast_item("2024-01-15", "15:00:00", 11.0, 55, "Clear", "clear sky", "01d"),
-            _make_forecast_item("2024-01-15", "18:00:00", 8.0, 70, "Clear", "clear sky", "01n"),
+            _make_forecast_item("2024-01-15", "06:00:00", 5.0, 80, ("Rain", "light rain", "10d")),
+            _make_forecast_item("2024-01-15", "12:00:00", 12.0, 50, ("Clear", "clear sky", "01d")),
+            _make_forecast_item("2024-01-15", "15:00:00", 11.0, 55, ("Clear", "clear sky", "01d")),
+            _make_forecast_item("2024-01-15", "18:00:00", 8.0, 70, ("Clear", "clear sky", "01n")),
         ]
         result = process_forecast_data(_make_forecast_data(items))
         # Clear appears 3 times; its icon should be picked (first match = "01d")
-        assert result[0]["weather"]["icon"] == "01d"
+        assert result[0].weather.icon == "01d"
 
     def test_timestamp_from_first_item_of_day(self) -> None:
         items = [
             _make_forecast_item(
-                "2024-01-15", "06:00:00", 5.0, 80, "Clouds", "overcast", "04d", dt=111
+                "2024-01-15", "06:00:00", 5.0, 80, ("Clouds", "overcast", "04d"), dt=111
             ),
             _make_forecast_item(
-                "2024-01-15", "12:00:00", 12.0, 50, "Clear", "clear sky", "01d", dt=222
+                "2024-01-15", "12:00:00", 12.0, 50, ("Clear", "clear sky", "01d"), dt=222
             ),
         ]
         result = process_forecast_data(_make_forecast_data(items))
-        assert result[0]["timestamp"] == 111
+        assert result[0].timestamp == 111
 
     @pytest.mark.parametrize(
         "temps, expected_min, expected_max",
@@ -212,24 +234,22 @@ class TestProcessForecastData:
                 f"{i:02d}:00:00",
                 t,
                 50,
-                "Clear",
-                "clear sky",
-                "01d",
+                ("Clear", "clear sky", "01d"),
             )
             for i, t in enumerate(temps)
         ]
         result = process_forecast_data(_make_forecast_data(items))
-        assert result[0]["temp_min"] == expected_min
-        assert result[0]["temp_max"] == expected_max
+        assert result[0].temp_min == expected_min
+        assert result[0].temp_max == expected_max
 
     def test_humidity_rounded(self) -> None:
         items = [
-            _make_forecast_item("2024-01-15", "06:00:00", 10.0, 33, "Clear", "clear", "01d"),
-            _make_forecast_item("2024-01-15", "12:00:00", 10.0, 34, "Clear", "clear", "01d"),
+            _make_forecast_item("2024-01-15", "06:00:00", 10.0, 33, ("Clear", "clear", "01d")),
+            _make_forecast_item("2024-01-15", "12:00:00", 10.0, 34, ("Clear", "clear", "01d")),
         ]
         result = process_forecast_data(_make_forecast_data(items))
         # (33 + 34) / 2 = 33.5 → rounds to 34
-        assert result[0]["humidity"] == round(33.5)
+        assert result[0].humidity == round(33.5)
 
 
 # ---------------------------------------------------------------------------
@@ -261,12 +281,14 @@ class TestGeocodeLocation:
         with patch("app.utils.weather_utils.http_async_client", mock_client):
             result = await geocode_location("London")
 
-        assert result["lat"] == pytest.approx(51.5074)
-        assert result["lon"] == -0.1278
-        assert result["city"] == "London"
-        assert result["country"] == "United Kingdom"
-        assert result["region"] == "England"
-        assert result["display_name"] == "London, Greater London, England, UK"
+        assert result == GeocodedLocation(
+            lat=51.5074,
+            lon=-0.1278,
+            display_name="London, Greater London, England, UK",
+            city="London",
+            country="United Kingdom",
+            region="England",
+        )
 
     async def test_empty_results_raises(self) -> None:
         mock_resp = _mock_httpx_response([])
@@ -293,11 +315,9 @@ class TestGeocodeLocation:
         with patch("app.utils.weather_utils.http_async_client", mock_client):
             result = await geocode_location("New York")
 
-        assert result["lat"] == pytest.approx(40.7128)
-        assert result["lon"] == -74.006
-        assert result["city"] is None
-        assert result["country"] is None
-        assert result["region"] is None
+        assert result == GeocodedLocation(
+            lat=40.7128, lon=-74.006, display_name="New York", city=None, country=None, region=None
+        )
 
     async def test_http_error_raises(self) -> None:
         mock_resp = _mock_httpx_response({}, status_code=500)
@@ -334,14 +354,14 @@ class TestGetLocationData:
     """Tests for get_location_data (location_name vs ip_address paths)."""
 
     async def test_with_location_name_success(self) -> None:
-        geocode_result = {
-            "lat": 48.8566,
-            "lon": 2.3522,
-            "city": "Paris",
-            "country": "France",
-            "region": "Ile-de-France",
-            "display_name": "Paris, France",
-        }
+        geocode_result = GeocodedLocation(
+            lat=48.8566,
+            lon=2.3522,
+            city="Paris",
+            country="France",
+            region="Ile-de-France",
+            display_name="Paris, France",
+        )
         with patch(
             "app.utils.weather_utils.geocode_location",
             new_callable=AsyncMock,
@@ -349,22 +369,24 @@ class TestGetLocationData:
         ):
             result = await get_location_data(location_name="Paris")
 
-        assert result["lat"] == pytest.approx(48.8566)
-        assert result["lon"] == 2.3522
-        assert result["city"] == "Paris"
-        assert result["country"] == "France"
-        assert result["region"] == "Ile-de-France"
-        assert result["cache_key"] == "weather:location:paris"
+        assert result == ResolvedLocation(
+            lat=48.8566,
+            lon=2.3522,
+            city="Paris",
+            country="France",
+            region="Ile-de-France",
+            cache_key="weather:location:paris",
+        )
 
     async def test_location_name_with_spaces_normalised_in_cache_key(self) -> None:
-        geocode_result = {
-            "lat": 40.0,
-            "lon": -74.0,
-            "city": "New York",
-            "country": "US",
-            "region": "NY",
-            "display_name": "New York, US",
-        }
+        geocode_result = GeocodedLocation(
+            lat=40.0,
+            lon=-74.0,
+            city="New York",
+            country="US",
+            region="NY",
+            display_name="New York, US",
+        )
         with patch(
             "app.utils.weather_utils.geocode_location",
             new_callable=AsyncMock,
@@ -372,36 +394,49 @@ class TestGetLocationData:
         ):
             result = await get_location_data(location_name="New York")
 
-        assert result["cache_key"] == "weather:location:new_york"
+        assert result.cache_key == "weather:location:new_york"
 
     async def test_location_name_missing_city_falls_back_to_display_name(self) -> None:
-        geocode_result = {
-            "lat": 51.0,
-            "lon": 0.0,
-            "city": None,
-            "country": "UK",
-            "region": "Kent",
-            "display_name": "Tunbridge Wells, Kent, UK",
-        }
+        geocode_result = GeocodedLocation(
+            lat=51.0,
+            lon=0.0,
+            city=None,
+            country="UK",
+            region="Kent",
+            display_name="Tunbridge Wells, Kent, UK",
+        )
         with patch(
             "app.utils.weather_utils.geocode_location",
             new_callable=AsyncMock,
             return_value=geocode_result,
         ):
-            result = await get_location_data(location_name="Tunbridge Wells")
+            result = await get_location_data(location_name="TN1")
 
-        # city extracted from display_name split
-        assert result["city"] == "Tunbridge Wells"
+        # city extracted from display_name split, not the query the user typed
+        assert result.city == "Tunbridge Wells"
+
+    async def test_geocoded_city_wins_over_the_display_name(self) -> None:
+        geocode_result = GeocodedLocation(
+            lat=51.5,
+            lon=-0.13,
+            city="Westminster",
+            country="UK",
+            region="England",
+            display_name="London, England, UK",
+        )
+        with patch(
+            "app.utils.weather_utils.geocode_location",
+            new_callable=AsyncMock,
+            return_value=geocode_result,
+        ):
+            result = await get_location_data(location_name="SW1A")
+
+        assert result.city == "Westminster"
 
     async def test_location_name_missing_city_and_display_name(self) -> None:
-        geocode_result = {
-            "lat": 51.0,
-            "lon": 0.0,
-            "city": None,
-            "country": "UK",
-            "region": "Kent",
-            "display_name": None,
-        }
+        geocode_result = GeocodedLocation(
+            lat=51.0, lon=0.0, city=None, country="UK", region="Kent", display_name=None
+        )
         with patch(
             "app.utils.weather_utils.geocode_location",
             new_callable=AsyncMock,
@@ -410,7 +445,7 @@ class TestGetLocationData:
             result = await get_location_data(location_name="SomePlace")
 
         # city stays None because display_name is falsy
-        assert result["city"] is None
+        assert result.city is None
 
     async def test_geocode_failure_propagates(self) -> None:
         with patch(
@@ -437,12 +472,32 @@ class TestGetLocationData:
         with patch("app.utils.weather_utils.http_async_client", mock_client):
             result = await get_location_data(ip_address="8.8.8.8")
 
-        assert result["lat"] == 37.7749
-        assert result["lon"] == -122.4194
-        assert result["city"] == "San Francisco"
-        assert result["country"] == "United States"
-        assert result["region"] == "California"
-        assert result["cache_key"] == "weather:ip:8.8.8.8"
+        assert result == ResolvedLocation(
+            lat=37.7749,
+            lon=-122.4194,
+            city="San Francisco",
+            country="United States",
+            region="California",
+            cache_key="weather:ip:8.8.8.8",
+        )
+
+    @pytest.mark.parametrize(
+        "ip_response",
+        [
+            {"status": "fail", "lat": 1.0, "lon": 2.0},
+            {"status": "success", "lat": None, "lon": 2.0},
+            {"status": "success", "lat": 1.0, "lon": None},
+        ],
+    )
+    async def test_ip_lookup_needs_success_and_both_coordinates(
+        self, ip_response: dict[str, Any]
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=_mock_httpx_response(ip_response))
+
+        with patch("app.utils.weather_utils.http_async_client", mock_client):
+            with pytest.raises(Exception, match="Failed to get location from IP address"):
+                await get_location_data(ip_address="8.8.8.8")
 
     async def test_with_ip_address_failed_status(self) -> None:
         ip_response = {"status": "fail", "message": "invalid query"}
@@ -486,8 +541,9 @@ class TestFetchWeatherData:
         with patch("app.utils.weather_utils.http_async_client", mock_client):
             current, forecast = await fetch_weather_data(51.5, -0.12, FAKE_API_KEY)
 
-        assert current == weather_json
-        assert forecast == forecast_json
+        assert current == OpenWeatherCurrent.model_validate(weather_json)
+        assert current.model_dump(exclude_unset=True) == weather_json
+        assert forecast == OpenWeatherForecast(list=[])
         assert mock_client.get.call_count == 2
 
     async def test_weather_request_fails(self) -> None:
@@ -539,24 +595,27 @@ class TestPrepareWeatherData:
 
     async def _call(
         self,
-        location_info: dict[str, Any],
+        location_info: ResolvedLocation,
         current_weather: dict[str, Any] | None = None,
-        forecast_data: dict[str, Any] | None = None,
+        forecast_data: OpenWeatherForecast | None = None,
     ) -> dict[str, Any]:
+        """Return the card payload exactly as the weather tool ships it."""
         if current_weather is None:
             current_weather = _make_current_weather()
         if forecast_data is None:
-            forecast_data = {"list": []}
+            forecast_data = OpenWeatherForecast(list=[])
 
         with patch(
             "app.utils.weather_utils.fetch_weather_data",
             new_callable=AsyncMock,
-            return_value=(current_weather, forecast_data),
+            return_value=(OpenWeatherCurrent.model_validate(current_weather), forecast_data),
         ):
-            return await prepare_weather_data(51.5, -0.12, location_info, FAKE_API_KEY)
+            report = await prepare_weather_data(51.5, -0.12, location_info, FAKE_API_KEY)
+        assert isinstance(report, WeatherReport)
+        return report.model_dump(exclude_unset=True)
 
     async def test_with_sys_and_country(self) -> None:
-        loc = {"city": "London", "country": "GB", "region": "England"}
+        loc = _resolved("London", "GB", "England")
         result = await self._call(loc)
         assert result["sys"]["country"] == "GB"
         assert result["location"]["city"] == "London"
@@ -566,20 +625,20 @@ class TestPrepareWeatherData:
     async def test_sys_present_but_missing_country_uses_location_country(self) -> None:
         current = _make_current_weather()
         del current["sys"]["country"]
-        loc = {"city": "Berlin", "country": "DE", "region": "Berlin"}
+        loc = _resolved("Berlin", "DE", "Berlin")
         result = await self._call(loc, current_weather=current)
         assert result["sys"]["country"] == "DE"
 
     async def test_sys_present_missing_country_no_location_country(self) -> None:
         current = _make_current_weather()
         del current["sys"]["country"]
-        loc = {"city": "Somewhere", "country": None, "region": None}
+        loc = _resolved("Somewhere", None, None)
         result = await self._call(loc, current_weather=current)
         assert result["sys"]["country"] == ""
 
     async def test_no_sys_field_creates_minimal_sys(self) -> None:
         current = _make_current_weather(include_sys=False)
-        loc = {"city": "Tokyo", "country": "JP", "region": "Kanto"}
+        loc = _resolved("Tokyo", "JP", "Kanto")
         result = await self._call(loc, current_weather=current)
         assert "sys" in result
         assert result["sys"]["country"] == "JP"
@@ -588,47 +647,90 @@ class TestPrepareWeatherData:
         # sunset should be ~12 hours after sunrise
         assert result["sys"]["sunset"] > result["sys"]["sunrise"]
 
+    async def test_minimal_sys_sunrise_is_now_and_sunset_twelve_hours_later(self) -> None:
+        frozen = datetime.datetime(2024, 1, 15, 6, 0, tzinfo=datetime.UTC)
+
+        with patch("app.utils.weather_utils.time.time", return_value=frozen.timestamp()):
+            result = await self._call(
+                _resolved("Tokyo", "JP", "Kanto"),
+                current_weather=_make_current_weather(include_sys=False),
+            )
+
+        now_ts = int(frozen.timestamp())
+        assert (result["sys"]["sunrise"], result["sys"]["sunset"]) == (now_ts, now_ts + 43200)
+
     async def test_no_sys_field_no_country_defaults_empty(self) -> None:
         current = _make_current_weather(include_sys=False)
-        loc = {"city": "Unknown", "country": None, "region": None}
+        loc = _resolved("Unknown", None, None)
         result = await self._call(loc, current_weather=current)
         assert result["sys"]["country"] == ""
 
     async def test_name_field_set_from_city_when_missing(self) -> None:
         current = _make_current_weather()
         current["name"] = ""
-        loc = {"city": "Oslo", "country": "NO", "region": None}
+        loc = _resolved("Oslo", "NO", None)
         result = await self._call(loc, current_weather=current)
         assert result["name"] == "Oslo"
 
     async def test_name_field_preserved_when_present(self) -> None:
         current = _make_current_weather(name="ExistingName")
-        loc = {"city": "DifferentCity", "country": "XX", "region": None}
+        loc = _resolved("DifferentCity", "XX", None)
         result = await self._call(loc, current_weather=current)
         assert result["name"] == "ExistingName"
 
     async def test_name_not_set_when_both_missing(self) -> None:
         current = _make_current_weather()
         current["name"] = ""
-        loc = {"city": None, "country": None, "region": None}
+        loc = _resolved(None, None, None)
         result = await self._call(loc, current_weather=current)
         # name stays empty because city is None
         assert result.get("name") == ""
 
+    async def test_name_absent_from_provider_and_no_city_stays_absent(self) -> None:
+        current = _make_current_weather()
+        del current["name"]
+        result = await self._call(
+            current_weather=current, location_info=_resolved(None, None, None)
+        )
+        assert "name" not in result
+
+    async def test_card_payload_is_the_provider_response_plus_forecast_and_location(self) -> None:
+        current = _make_current_weather(name="London", country="GB", temp=15.0)
+        forecast = _make_forecast_data(
+            [_make_forecast_item("2024-01-15", "12:00:00", 10.0, 50, ("Clear", "clear", "01d"))]
+        )
+        result = await self._call(
+            _resolved("London", "GB", None), current_weather=current, forecast_data=forecast
+        )
+        assert result == {
+            **current,
+            "forecast": [
+                {
+                    "date": "2024-01-15",
+                    "timestamp": 1700000000,
+                    "temp_min": 10.0,
+                    "temp_max": 10.0,
+                    "humidity": 50,
+                    "weather": {"main": "Clear", "description": "clear", "icon": "01d"},
+                }
+            ],
+            "location": {"city": "London", "country": "GB", "region": None},
+        }
+
     async def test_forecast_data_included(self) -> None:
         forecast = _make_forecast_data(
             [
-                _make_forecast_item("2024-01-15", "12:00:00", 10.0, 50, "Clear", "clear", "01d"),
+                _make_forecast_item("2024-01-15", "12:00:00", 10.0, 50, ("Clear", "clear", "01d")),
             ]
         )
-        loc = {"city": "Rome", "country": "IT", "region": "Lazio"}
+        loc = _resolved("Rome", "IT", "Lazio")
         result = await self._call(loc, forecast_data=forecast)
         assert len(result["forecast"]) == 1
         assert result["forecast"][0]["date"] == "2024-01-15"
 
     async def test_current_weather_fields_spread(self) -> None:
         current = _make_current_weather(temp=25.0)
-        loc = {"city": "Cairo", "country": "EG", "region": None}
+        loc = _resolved("Cairo", "EG", None)
         result = await self._call(loc, current_weather=current)
         # Current weather fields should be spread into the top level
         assert result["main"]["temp"] == 25.0
@@ -671,16 +773,11 @@ class TestUserWeather:
     async def test_cached_weather_returned(self) -> None:
         mock_settings = MagicMock()
         mock_settings.OPENWEATHER_API_KEY = FAKE_API_KEY
-        cached_data = {"name": "London", "main": {"temp": 15}}
+        cached_data = WeatherReport.model_validate(
+            {"name": "London", "main": {"temp": 15}, "forecast": [], "location": _LOCATION}
+        )
 
-        location_data = {
-            "lat": 51.5,
-            "lon": -0.12,
-            "city": "London",
-            "country": "GB",
-            "region": "England",
-            "cache_key": "weather:location:london",
-        }
+        location_data = _resolved("London", "GB", "England", "weather:location:london")
 
         with (
             patch("app.utils.weather_utils.settings", mock_settings),
@@ -702,22 +799,17 @@ class TestUserWeather:
             result = await user_weather(location_name="London")
 
         assert result == cached_data
-        mock_get_cache.assert_awaited_once_with("weather:location:london")
+        mock_get_cache.assert_awaited_once_with("weather:location:london", WeatherReport)
         mock_prepare.assert_not_awaited()
 
     async def test_success_no_cache_fetches_and_caches(self) -> None:
         mock_settings = MagicMock()
         mock_settings.OPENWEATHER_API_KEY = FAKE_API_KEY
-        weather_data = {"name": "Paris", "main": {"temp": 22}}
+        weather_data = WeatherReport.model_validate(
+            {"name": "Paris", "main": {"temp": 22}, "forecast": [], "location": _LOCATION}
+        )
 
-        location_data = {
-            "lat": 48.8566,
-            "lon": 2.3522,
-            "city": "Paris",
-            "country": "France",
-            "region": "Ile-de-France",
-            "cache_key": "weather:location:paris",
-        }
+        location_data = _resolved("Paris", "France", "Ile-de-France", "weather:location:paris")
 
         with (
             patch("app.utils.weather_utils.settings", mock_settings),
@@ -786,14 +878,7 @@ class TestUserWeather:
         mock_settings = MagicMock()
         mock_settings.OPENWEATHER_API_KEY = FAKE_API_KEY
 
-        location_data = {
-            "lat": 51.5,
-            "lon": -0.12,
-            "city": "London",
-            "country": "GB",
-            "region": "England",
-            "cache_key": "weather:location:london",
-        }
+        location_data = _resolved("London", "GB", "England", "weather:location:london")
 
         with (
             patch("app.utils.weather_utils.settings", mock_settings),
@@ -822,16 +907,11 @@ class TestUserWeather:
         """Verify the cache is set with ONE_HOUR_TTL (3600 seconds)."""
         mock_settings = MagicMock()
         mock_settings.OPENWEATHER_API_KEY = FAKE_API_KEY
-        weather_data = {"name": "Berlin"}
+        weather_data = WeatherReport.model_validate(
+            {"name": "Berlin", "forecast": [], "location": _LOCATION}
+        )
 
-        location_data = {
-            "lat": 52.52,
-            "lon": 13.405,
-            "city": "Berlin",
-            "country": "DE",
-            "region": "Berlin",
-            "cache_key": "weather:location:berlin",
-        }
+        location_data = _resolved("Berlin", "DE", "Berlin", "weather:location:berlin")
 
         with (
             patch("app.utils.weather_utils.settings", mock_settings),

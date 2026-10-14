@@ -874,6 +874,195 @@ groups:
           severity: critical
           service: api
 
+      # 26. Chat TTFT p95 >5s for 10m. First user-visible text is late.
+      - uid: gaia-chat-ttft-p95
+        title: Chat first reply is slow
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum by (le) (rate(chat_ttft_seconds_bucket{job="gaia-api"}[5m])))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Chat p95 time-to-first-reply is
+            {{ printf "%.2f" $values.B.Value }}s (threshold 5s){{ else }}Unable to
+            read the chat TTFT p95 — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            One chat turn in twenty waits over five seconds for its first reply
+            text. Decompose with llm_ttft_seconds (provider) vs chat_ttft_seconds
+            (pipeline): if llm_ttft moved, the provider is slow; if only chat_ttft
+            moved, suspect context assembly (context_assemble_seconds) or the
+            pre-LLM graph spans. No latency dashboard panel exists for these
+            metrics yet — query /metrics histograms directly.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95
+        labels:
+          severity: warning
+          service: api
+
+      # 27. Chat TTFT p95 >10s for 5m. Critical tier: also pages email.
+      - uid: gaia-chat-ttft-p95-critical
+        title: Chat first reply is critically slow
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum by (le) (rate(chat_ttft_seconds_bucket{job="gaia-api"}[5m])))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [10] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Chat p95 time-to-first-reply is
+            {{ printf "%.2f" $values.B.Value }}s (critical threshold 10s){{ else }}Unable
+            to read the chat TTFT p95 — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Same signal as the warning-tier TTFT rule, at the point where chat
+            feels broken rather than slow. This tier also pages email. Treat it
+            as an incident — check provider status first (llm_ttft_seconds),
+            then executor queue wait (executor_queue_wait_seconds) for a stuck
+            conversation lock.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95-critical
+        labels:
+          severity: critical
+          service: api
+
+      # 28. Chat E2E-ack p95 >30s for 10m. Comms replies take too long.
+      - uid: gaia-chat-e2e-p95
+        title: Chat replies are slow end to end
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum by (le) (rate(chat_e2e_ack_seconds_bucket{job="gaia-api"}[5m])))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [30] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Chat p95 end-to-end ack time is
+            {{ printf "%.2f" $values.B.Value }}s (threshold 30s){{ else }}Unable to
+            read the chat E2E p95 — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            One chat turn in twenty takes over thirty seconds to complete its
+            comms reply. Split delegated vs direct via the delegated label, then
+            executor_active_seconds (executor work) vs HIL wait
+            (hil_user_wait_seconds) vs delivery (delivery_narration_seconds,
+            delivery_persist_seconds). No latency dashboard panel exists for
+            these metrics yet — query /metrics histograms directly.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95
+        labels:
+          severity: warning
+          service: api
+
+      # 29. Chat E2E-ack p95 >60s for 5m. Critical tier: also pages email.
+      - uid: gaia-chat-e2e-p95-critical
+        title: Chat replies are critically slow end to end
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum by (le) (rate(chat_e2e_ack_seconds_bucket{job="gaia-api"}[5m])))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [60] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Chat p95 end-to-end ack time is
+            {{ printf "%.2f" $values.B.Value }}s (critical threshold 60s){{ else }}Unable
+            to read the chat E2E p95 — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Same signal as the warning-tier E2E rule, at the point where turns
+            time out rather than lag. This tier also pages email. Treat it as an
+            incident — look for a wedged executor lock (executor_queue_wait_seconds
+            climbing), a provider outage, or a runaway tool (tool_call_seconds).
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95-critical
+        labels:
+          severity: critical
+          service: api
+
       # 20. Postgres itself is refusing connections. `up{job="postgres"}` (rule
       # 10) scrapes postgres_exporter:9187 — the sidecar, which keeps answering
       # scrapes while the database behind it is dead, so rule 10 stays green.

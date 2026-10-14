@@ -1,8 +1,8 @@
 """
-Memory Extraction Prompts for Subagents.
+Memory Extraction Prompts for integrations.
 
 This module contains integration-specific prompts that tell the memory engine WHAT to extract
-and remember from agent conversations. Each subagent has its own prompt tailored
+and remember from agent conversations. Each integration has its own prompt tailored
 to the entities, patterns, and preferences relevant to that integration.
 
 Memory Categories:
@@ -17,7 +17,8 @@ Memory Categories:
 # BASE MEMORY EXTRACTION PROMPT
 # =============================================================================
 
-BASE_MEMORY_EXTRACTION_PROMPT = """These notes say WHAT to prioritize when extracting memories from {provider_name} activity. They SUPPLEMENT the core extraction rules and never override them: output format, fact structure, folder routing, importance calibration, temporal fields, and the stranger/noise gate always follow the core prompt. When a note below conflicts with a core rule, the core rule wins.
+BASE_MEMORY_EXTRACTION_PROMPT = """You are a memory extraction specialist for the {provider_name} integration.
+Your job is to extract CRITICAL REUSABLE INFORMATION that will help future tasks succeed.
 
 EXTRACTION PRIORITY (HIGHEST TO LOWEST):
 
@@ -77,6 +78,15 @@ Capture explicit and implicit preferences:
 4. AVOID DUPLICATES: Don't re-extract information already known
 5. SKIP EPHEMERAL DATA: One-time values with no future use
 6. NO SECRETS: Never extract passwords, tokens, API keys, or credentials
+
+## MEMORY FORMAT:
+
+Each memory should be a clear, standalone statement that can be retrieved and used:
+- BAD: "The user mentioned something about email"
+- GOOD: "User's manager Sarah Chen can be reached at sarah.chen@company.com"
+
+- BAD: "Sent a message to a channel"
+- GOOD: "The #product-updates channel (C0912345ABC) is used for announcing new features"
 """
 
 
@@ -144,14 +154,15 @@ TIMING PREFERENCES:
 - "Don't send emails to Japan team after 6pm JST"
 - Scheduling/delay sending patterns
 
-EXTRACT EMAIL ADDRESSES OF PEOPLE THE USER ACTUALLY KNOWS OR CORRESPONDS WITH:
-Teammates, clients they work with, friends, family, and anyone the user
-deliberately emails or replies to. Store as "[Name if known] - [email] - [context/role if known]".
+CRITICALLY EXTRACT EVERY EMAIL ADDRESS SEEN:
+When you see ANY email address in the conversation - whether it's:
+- A recipient of an email
+- In a CC or BCC field
+- Mentioned in email body
+- Part of a signature
+- Referenced as a contact
 
-Do NOT store the address of a stranger who merely appears in the inbox:
-newsletter senders, no-reply addresses, cold outreach, one-off support
-threads, or names that only occur in the signature or From-field of
-unengaged mail. Minting a memory per inbox sender is noise, not thoroughness.
+ALWAYS create a memory: "[Name if known] - [email] - [context/role if known]"
 """,
 )
 
@@ -238,13 +249,9 @@ CHANNEL HIERARCHY:
 - Which channels require specific etiquette
 - Read-only announcement channels vs discussion channels
 
-STORE USER-ID MAPPINGS FOR PEOPLE THE USER ACTUALLY INTERACTS WITH:
-When you see <@U1234567> for a teammate, collaborator, or someone the user
-works with, create a memory mapping that ID to their name. When the user says
-"ask John" or "tell Sarah", resolve and store the mapping.
-
-Do NOT store bots, apps, or drive-by mentions of people the user has no
-relationship with: mapping every ID that scrolls past is noise, not a directory.
+EVERY USER MENTION SHOULD BE STORED:
+When you see <@U1234567>, immediately create a memory mapping that ID.
+When someone says "ask John" or "tell Sarah", resolve and store the mapping.
 """,
 )
 
@@ -765,6 +772,51 @@ COLLABORATION PATTERNS:
 EXPORT PREFERENCES:
 - PDF vs Word vs other formats
 - When to export vs share link
+""",
+)
+
+
+# =============================================================================
+# GOOGLE DRIVE MEMORY PROMPT
+# =============================================================================
+
+GOOGLE_DRIVE_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Google Drive",
+    entity_instructions="""
+## GOOGLE DRIVE-SPECIFIC IDENTITY EXTRACTION:
+
+1. FILE ID MAPPINGS (CRITICAL):
+   - File ID <-> Name <-> Purpose
+   - "file_abc123 is 'Q4 Board Deck.pdf'"
+   - "file_xyz789 is 'Brand Assets.zip'"
+
+2. FOLDER STRUCTURE:
+   - Folder IDs and hierarchy
+   - "folder_123 is 'Contracts' under 'Legal'"
+
+3. SHARED DRIVES:
+   - Shared drive IDs and their team/purpose
+   - "drive_456 is the 'Design Team' shared drive"
+
+4. COLLABORATOR EMAILS:
+   - Who has access to which files/folders
+   - "finance@company.com has editor access to the Budgets folder"
+""",
+    provider_specific_instructions="""
+## GOOGLE DRIVE-SPECIFIC MEMORIES:
+
+FILE ORGANIZATION:
+- Where different kinds of files live
+- Naming and foldering conventions
+- "Signed contracts go in Legal/Signed"
+
+SHARING DEFAULTS:
+- Typical permission role (viewer/commenter/editor)
+- Whether links are shared org-wide or per person
+
+RETRIEVAL PATTERNS:
+- Files the user references often
+- Which folder a recurring deliverable belongs to
 """,
 )
 
@@ -1554,29 +1606,6 @@ AUTOMATION PATTERNS:
 """,
 )
 
-BROWSERBASE_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
-    provider_name="Browserbase",
-    entity_instructions="""
-## BROWSERBASE-SPECIFIC EXTRACTION:
-
-1. URL PATTERNS:
-   - Common sites visited
-   - Navigation patterns
-
-2. AUTOMATION PATTERNS:
-   - Workflow types
-   - Session configurations
-""",
-    provider_specific_instructions="""
-## BROWSERBASE-SPECIFIC MEMORIES:
-
-BROWSER PATTERNS:
-- Navigation workflows
-- Form filling preferences
-- Screenshot/capture patterns
-""",
-)
-
 POSTHOG_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
     provider_name="PostHog",
     entity_instructions="""
@@ -1703,5 +1732,165 @@ WEBINAR PREFERENCES:
    - Q&A handling preferences
    - Panelist organization
    - Recording auto-start settings
+""",
+)
+
+# =============================================================================
+# CAL.COM MEMORY PROMPT
+# =============================================================================
+
+CALCOM_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Cal.com",
+    entity_instructions="""
+## CAL.COM-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. EVENT TYPE MAPPINGS (CRITICAL):
+   - Event type name <-> slug <-> id <-> duration
+   - "The '30 Min Intro' event type is slug 'intro' (id 123456), 30 minutes"
+
+2. BOOKING LINKS:
+   - User's Cal.com username and public booking URLs
+   - "User's Cal.com page is https://cal.com/janedoe"
+
+3. RECURRING ATTENDEES:
+   - Attendee name <-> email for people who book with the user regularly
+""",
+    provider_specific_instructions="""
+## CAL.COM-SPECIFIC MEMORIES TO CAPTURE:
+
+SCHEDULING PREFERENCES:
+   - Which event type to use for which kind of meeting
+   - "User sends the 15 min event type for quick calls with candidates"
+   - Preferred meeting hours, buffers, and timezone
+""",
+)
+
+# =============================================================================
+# CALENDLY MEMORY PROMPT
+# =============================================================================
+
+CALENDLY_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Calendly",
+    entity_instructions="""
+## CALENDLY-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. EVENT TYPE MAPPINGS (CRITICAL):
+   - Event type name <-> URI <-> duration
+   - "The 'Discovery Call' Calendly event type is https://api.calendly.com/event_types/ABC123 (45 min)"
+
+2. USER IDENTITY:
+   - User's Calendly user URI and organization URI
+   - User's public scheduling page URL
+
+3. RECURRING INVITEES:
+   - Invitee name <-> email for people who book regularly
+""",
+    provider_specific_instructions="""
+## CALENDLY-SPECIFIC MEMORIES TO CAPTURE:
+
+SHARING PREFERENCES:
+   - Whether the user prefers single-use links or the public page
+   - Which event type to share with which audience
+   - "User shares the 'Discovery Call' link with new prospects"
+""",
+)
+
+# =============================================================================
+# OUTLOOK MEMORY PROMPT
+# =============================================================================
+
+OUTLOOK_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Outlook",
+    entity_instructions="""
+## OUTLOOK-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. CONTACT MAPPINGS (CRITICAL):
+   - Name <-> email address for people the user corresponds with
+   - "Priya Nair is priya.nair@contoso.com (finance team)"
+
+2. MAIL FOLDERS AND CALENDARS:
+   - Folder name <-> folder id for folders the user files mail into
+   - Calendar name <-> calendar id when the user works with more than one
+
+3. MAILBOX IDENTITY:
+   - The user's Outlook address and mailbox timezone
+""",
+    provider_specific_instructions="""
+## OUTLOOK-SPECIFIC MEMORIES TO CAPTURE:
+
+EMAIL PREFERENCES:
+   - Tone, sign-off and signature conventions the user approves
+   - Which folders specific senders' mail is filed into
+
+MEETING PREFERENCES:
+   - Whether meetings should include a Teams link by default
+   - Default meeting length and preferred hours
+""",
+)
+
+# =============================================================================
+# JIRA MEMORY PROMPT
+# =============================================================================
+
+JIRA_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Jira",
+    entity_instructions="""
+## JIRA-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. PROJECT MAPPINGS (CRITICAL):
+   - Project name <-> project key <-> site
+   - "The 'Mobile App' project has key MOB"
+
+2. PEOPLE:
+   - Display name <-> Jira accountId for assignees the user works with
+   - "Alex Kim's Jira accountId is 5b10ac8d82e05b22cc7d4ef5"
+
+3. BOARDS AND SPRINTS:
+   - Board name <-> board id; the user's active sprint naming
+""",
+    provider_specific_instructions="""
+## JIRA-SPECIFIC MEMORIES TO CAPTURE:
+
+WORKFLOW CONVENTIONS:
+   - Default issue type, priority and labels the user applies
+   - Transition names for the team's workflow ("In Review", "Ready for QA")
+   - JQL filters the user relies on
+""",
+)
+
+# =============================================================================
+# DROPBOX MEMORY PROMPT
+# =============================================================================
+
+DROPBOX_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Dropbox",
+    entity_instructions="""
+## DROPBOX-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. PATH MAPPINGS (CRITICAL):
+   - Friendly name <-> exact Dropbox path
+   - "The client contracts folder is /Work/Clients/Contracts"
+
+2. KEY FILES:
+   - Frequently used files with their paths and purpose
+   - "The monthly invoice template is /Finance/Templates/invoice.docx"
+""",
+    provider_specific_instructions="""
+## DROPBOX-SPECIFIC MEMORIES TO CAPTURE:
+
+ORGANIZATION PREFERENCES:
+   - Where the user files new documents by type
+   - Naming conventions for files and folders
+   - Who the user regularly shares folders with
 """,
 )

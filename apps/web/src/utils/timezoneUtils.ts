@@ -209,10 +209,9 @@ export const getTimezoneList = (includeAll = false): TimezoneInfo[] => {
   return includeAll ? getAllTimezones() : getPopularTimezones();
 };
 
-// IANA ids don't encode the country, so searching "india" wouldn't match
-// "Asia/Kolkata". This maps the common zones to country/alias keywords so a
-// country search resolves. City, region and offset are always searchable; this
-// only adds the country dimension for the zones people actually search by name.
+// IANA ids don't encode the country (searching "india" wouldn't match "Asia/Kolkata"), so this
+// maps common zones to country/alias keywords for that one dimension — city, region and offset
+// are already searchable on their own.
 const TZ_COUNTRY_KEYWORDS: Record<string, string> = {
   "Asia/Kolkata": "india bharat",
   "Asia/Calcutta": "india bharat",

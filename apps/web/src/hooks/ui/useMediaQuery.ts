@@ -45,11 +45,9 @@ function subscribeToQuery(query: string, callback: () => void): () => void {
   };
 }
 
-// The server (and the first, hydrating client render) always sees `false`.
-// useSyncExternalStore uses this for both SSR and hydration, so the server
-// render and the first client render always agree; the real viewport result is
-// applied only after hydration completes. This prevents React hydration
-// mismatches (error #418) on SSR pages that branch their markup on this hook.
+// The server (and the first, hydrating client render) always sees `false` —
+// useSyncExternalStore uses this for both, so they agree; the real viewport
+// result applies only after hydration, avoiding a hydration mismatch (#418).
 const getServerSnapshot = (): boolean => false;
 
 const useMediaQuery = (query: string): boolean => {

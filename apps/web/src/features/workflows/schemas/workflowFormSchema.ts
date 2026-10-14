@@ -9,10 +9,15 @@
  * - New triggers can be added without changing this schema
  */
 
+import type { WorkflowDelivery } from "@shared/api/generated";
 import { z } from "zod";
 import { isValidTimezone } from "@/lib/timezone";
-import type { Workflow } from "@/types/features/workflowTypes";
-import { describeCron } from "../utils/cronUtils";
+import type {
+  TriggerConfigDraft,
+  Workflow,
+} from "@/types/features/workflowTypes";
+import { workflowApi } from "../api/workflowApi";
+import { WORKFLOW_DELIVERIES } from "../constants/delivery";
 
 // =============================================================================
 // TRIGGER CONFIG SCHEMAS
@@ -26,8 +31,15 @@ const scheduleTriggerConfigSchema = z.object({
     .string()
     .trim()
     .min(1, "Cron expression is required")
-    .refine((value) => describeCron(value).isValid, {
-      message: "Invalid cron expression",
+    .superRefine(async (value, ctx) => {
+      // The server owns the recurring-schedule rule; asked once per submit.
+      const verdict = await workflowApi.validateCron(value);
+      if (!verdict.valid) {
+        ctx.addIssue({
+          code: "custom",
+          message: verdict.error ?? "Invalid schedule",
+        });
+      }
     }),
   timezone: z
     .string()
@@ -41,22 +53,23 @@ const manualTriggerConfigSchema = z.object({
   enabled: z.boolean(),
 });
 
-// Generic trigger config for all integration triggers (gmail, calendar, slack, etc.)
-// Only validates base fields - backend validates trigger-specific fields
-// This allows new triggers to be added without frontend schema changes
+// Integration triggers (gmail, calendar, slack, ...): base fields only, the backend validates the rest.
+// A built-in type is judged by its own schema only, so a refused schedule cannot pass as an integration.
 const integrationTriggerConfigSchema = z
   .object({
-    type: z.string(),
+    type: z.string().refine((type) => type !== "schedule" && type !== "manual"),
     enabled: z.boolean(),
   })
   .catchall(z.unknown()); // Allow any additional properties
 
 // Combined trigger config - tries built-in first, then falls back to generic
-const triggerConfigSchema = z.union([
-  scheduleTriggerConfigSchema,
-  manualTriggerConfigSchema,
-  integrationTriggerConfigSchema,
-]);
+// The form edits a TriggerConfigDraft; the API validates the wire config.
+const triggerConfigSchema: z.ZodType<TriggerConfigDraft, TriggerConfigDraft> =
+  z.union([
+    scheduleTriggerConfigSchema,
+    manualTriggerConfigSchema,
+    integrationTriggerConfigSchema,
+  ]);
 
 // =============================================================================
 // MAIN FORM SCHEMA
@@ -78,7 +91,19 @@ export const workflowFormSchema = z.object({
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
-  notify_on_completion: z.boolean(),
+  // null until chosen: a new workflow has no default delivery, and the save
+  // gate plus this refusal keep it from being created without one.
+  delivery: z
+    .enum(WORKFLOW_DELIVERIES)
+    .nullable()
+    .superRefine((delivery, ctx) => {
+      if (delivery === null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Choose how you hear about each run",
+        });
+      }
+    }),
 });
 
 // Export the inferred type
@@ -103,8 +128,19 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
     type: "manual",
     enabled: true,
   },
-  notify_on_completion: true,
+  delivery: null,
 });
+
+/**
+ * The delivery a submitted form carries. The schema refuses null, so a form
+ * that reached submit always has one; reaching here without it is a bug.
+ */
+export const chosenDelivery = (data: WorkflowFormData): WorkflowDelivery => {
+  if (data.delivery === null) {
+    throw new Error("A workflow cannot be saved without a delivery mode");
+  }
+  return data.delivery;
+};
 
 /**
  * Convert existing workflow to form data for editing.
@@ -113,10 +149,9 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
 export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
   const triggerType = workflow.trigger_config.type;
 
-  // For integration triggers, try multiple locations for the specific trigger slug:
-  // 1. trigger_name at top level (new format)
-  // 2. trigger_data.trigger_name (properly structured format)
-  // 3. type field itself (old format, where type contained the specific slug)
+  // For integration triggers, the specific trigger slug may live at
+  // `trigger_name` (new format), `trigger_data.trigger_name` (structured), or
+  // in `type` itself (old format) — check all three for backward compat.
   const triggerName = (workflow.trigger_config as { trigger_name?: string })
     .trigger_name;
   const triggerDataName = (
@@ -149,6 +184,6 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
     activeTab,
     selectedTrigger,
     trigger_config: workflow.trigger_config,
-    notify_on_completion: workflow.notify_on_completion ?? true,
+    delivery: workflow.delivery,
   };
 };

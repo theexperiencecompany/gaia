@@ -9,12 +9,9 @@ import { useActiveLoading } from "@/stores/streamStore";
 import CopyButton from "./CopyButton";
 import DownloadButton from "./DownloadButton";
 
-// Dynamic imports — keep heavy syntax/diagram deps out of the SSR bundle.
-// On Cloudflare Workers via OpenNext, every server-rendered import lands in
-// handler.mjs (no runtime chunk loading). Forcing ssr:false here means the
-// initial HTML is a tiny placeholder; Prism + refractor + mermaid only load
-// on the client. The mermaid SDK init now lives in FlowchartPreview so the
-// `import("mermaid")` is unreachable from any server-render code path.
+// Dynamic imports keep heavy syntax/diagram deps out of the SSR bundle —
+// on Cloudflare Workers via OpenNext every server import lands in
+// handler.mjs, so ssr:false here keeps Prism/refractor/mermaid client-only.
 const StandardCodeBlock = dynamic(() => import("./StandardCodeBlock"), {
   ssr: false,
   loading: () => (

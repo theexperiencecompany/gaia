@@ -14,14 +14,17 @@ from fastapi import (
 )
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
+from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.files_models import FileDocument
 from app.models.message_models import FileData
 from app.models.user_models import AuthenticatedUser
 from app.schemas.file import FileDeletedResponse, UpdateFileRequest
+from app.services.analytics_service import capture
 from app.services.files import FileService
-from app.services.storage import SAFE_PATH_ID_PATTERN
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import ChatFileDeleted, ChatFileUpdated
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -36,7 +39,7 @@ async def upload_file_endpoint(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> FileData:
     """Upload a file, persist metadata, and generate embeddings for images."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
@@ -108,10 +111,11 @@ async def update_file_endpoint(
         result = await FileService.update(
             file_id=file_id,
             user_id=user_id,
-            update_data=payload.model_dump(exclude_none=True),
+            update_data=payload,
         )
 
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
+        capture(UserId(user_id), ChatFileUpdated())
         # CacheInvalidator erases the wrapped function's return type; FileService.update
         # is declared -> FileDocument, so this is correct by construction.
         return cast(FileDocument, result)
@@ -147,6 +151,7 @@ async def delete_file_endpoint(
             file_id=file_id,
             outcome="success",
         )
+        capture(UserId(user_id), ChatFileDeleted())
         # CacheInvalidator erases the wrapped function's return type; FileService.delete
         # is declared -> FileDeletedResponse, so this is correct by construction.
         return cast(FileDeletedResponse, result)

@@ -18,10 +18,7 @@ from datetime import UTC, datetime
 from app.constants.briefing import IDLE_DORMANT_DAYS, IDLE_WARN_DAYS
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
-
-# Marker on the user doc:
-# {"idle_days": int, "date": "YYYY-MM-DD", "dormant_since": datetime | None}.
-DORMANCY_FIELD = "briefing_dormancy"
+from app.models.user_models import BriefingDormancy, UserDocument
 
 WIND_DOWN_WARN = "warn"
 WIND_DOWN_FINAL = "final"
@@ -34,20 +31,13 @@ class DormancyState:
     dormant_since: datetime | None
 
 
-def state_from_user(user: dict) -> DormancyState:
-    marker = user.get(DORMANCY_FIELD) or {}
-    since = marker.get("dormant_since")
-    if isinstance(since, datetime):
-        # Mongo returns naive UTC datetimes; normalize before comparing.
-        if since.tzinfo is None:
-            since = since.replace(tzinfo=UTC)
-    else:
-        since = None
-    return DormancyState(
-        idle_days=int(marker.get("idle_days", 0)),
-        date=marker.get("date"),
-        dormant_since=since,
-    )
+def state_from_user(user: UserDocument) -> DormancyState:
+    marker = user.briefing_dormancy or BriefingDormancy()
+    since = marker.dormant_since
+    # Mongo returns naive UTC datetimes; normalize before comparing.
+    if since is not None and since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)
+    return DormancyState(idle_days=marker.idle_days, date=marker.date, dormant_since=since)
 
 
 def wind_down_stage(idle_days: int) -> str | None:
@@ -59,12 +49,11 @@ def wind_down_stage(idle_days: int) -> str | None:
 
 
 async def reactivation_signal_since(user_id: str, since: datetime) -> bool:
-    """True when the user did anything since ``since`` that should wake the loop.
+    """Report whether the user did anything since the cutoff that should wake the loop.
 
-    This is the canonical "the user was active since T" predicate: authenticated
-    activity (``last_active_at``) or any user message in any conversation. Shared by the dormancy ladder (wake a paused loop) and winback
-    acknowledgement (``context.compute_winback_state``) so the two never diverge on
-    what counts as the user showing up. ``since`` must be timezone-aware.
+    The canonical "user was active since T" predicate: last_active_at or any user message
+    in any conversation. Shared by the dormancy ladder and winback acknowledgement
+    (context.compute_winback_state). The cutoff must be timezone-aware.
     """
     last_active = await user_repository.get_last_active_at(user_id)
     if isinstance(last_active, datetime):

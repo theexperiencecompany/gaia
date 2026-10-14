@@ -132,11 +132,6 @@
     var(--font-geist-mono), ui-monospace, "Cascadia Code", "Source Code Pro",
     Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
-  /* Briefing display families (Aeonik masthead + Playfair Display serif) */
-  --font-display:
-    var(--font-playfair-display), Georgia, "Times New Roman", serif;
-  --font-aeonik-display: var(--font-aeonik), system-ui, sans-serif;
-
   --color-secondary-bg: #1a1a1a; /* sidebar */
   --color-primary-bg: #111111; /*  main */
 
@@ -1258,4 +1253,30 @@
     transform: translateY(-3px);
     opacity: 0.9;
   }
+}
+
+/* Electron desktop title-bar drag region. The macOS window uses `hiddenInset`
+   chrome, so the app must mark its own top bar as the draggable title bar —
+   otherwise the window can't be dragged from the top and double-clicking it
+   won't zoom (macOS only treats `-webkit-app-region: drag` rectangles as the
+   title bar). Applied to the header in the Electron+macOS shell only
+   (see (main)/layout.tsx). Interactive descendants opt back out so buttons,
+   links and inputs stay clickable. */
+.electron-drag {
+  -webkit-app-region: drag;
+}
+.electron-drag
+  :where(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    label,
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    [contenteditable="true"]
+  ) {
+  -webkit-app-region: no-drag;
 }

@@ -1,30 +1,30 @@
 """Comms suite — the user-facing agent's own judgement, not the executor's work.
 
-The comms agent holds NO work tools (``build_comms_*`` in
-``app/agents/core/graph_builder/build_graph.py``); its only lever on the world is
-``call_executor``. That makes its job a routing and honesty problem, and every
+The comms agent holds NO work tools (build_comms_* in
+app/agents/core/graph_builder/build_graph.py); its only lever on the world is
+call_executor. That makes its job a routing and honesty problem, and every
 case here is one of the four ways it goes wrong:
 
 * **under-delegation** — answering a question it cannot possibly know the answer
   to, because the data lives behind a tool it does not have. Gated by
-  ``delegation: required``.
+  delegation: required.
 * **over-delegation** — handing "hey" or "thanks" to the executor, which spends a
   detached run, a model call and seconds of latency on small talk. Gated by
-  ``delegation: forbidden``.
+  delegation: forbidden.
 * **guessing** — filling an underspecified request with an invented default
-  instead of asking one short question. Gated by ``communicate`` on the thing it
-  has to ask about, plus ``must_not_communicate`` on the invented answer.
+  instead of asking one short question. Gated by communicate on the thing it
+  has to ask about, plus must_not_communicate on the invented answer.
 * **fabricating** — claiming an action happened, or inventing a capability or a
-  fact. Gated by ``must_not_communicate`` plus rubric criteria.
+  fact. Gated by must_not_communicate plus rubric criteria.
 
-Transport is the live ``chat-stream`` SSE wire via
-:class:`~scripts.evals.suites.livechat.SuiteChatTransport` — the same frames the
+Transport is the live chat-stream SSE wire via
+:class:~scripts.evals.suites.livechat.SuiteChatTransport — the same frames the
 web client renders — under this suite's own dev user, so its memories never mix
 with the quality or safety suites'.
 
 What these cases do NOT exercise: the executor's answer. On a delegated turn the
 SSE text is the comms ack and the final answer arrives out of band (WebSocket +
-Mongo), so ``communicate`` strings are always matched against the ack, never
+Mongo), so communicate strings are always matched against the ack, never
 against work output. That is a deliberate boundary — the executor's answers are
 the capability suite's job.
 """

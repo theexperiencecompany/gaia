@@ -1,9 +1,9 @@
-"""Canonical service test — copy into ``tests/unit/services/``, rename, adapt.
+"""Canonical service test — copy into tests/unit/services/, rename, adapt.
 
-Mirrors ``tests/unit/services/test_todo_service.py``: the repository singleton
+Mirrors tests/unit/services/test_todo_service.py: the repository singleton
 is patched at the module where the service imports it, and the test asserts the
 service's orchestration — never the repo's behavior (that lives in
-``tests/contracts/``). Arranged (fixture + mocks) → acted (one await) →
+tests/contracts/). Arranged (fixture + mocks) → acted (one await) →
 asserted (result + the mock's call contract). Every test covers a failure path.
 """
 

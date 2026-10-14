@@ -355,10 +355,15 @@
         .join("");
       const stats = c.stats;
       const statBody =
-        rItem("Done yesterday", stats.done) +
-        rNote(`You ${stats.you} / GAIA ${stats.gaia}`) +
-        rItem("Emails handled", stats.mail) +
-        rItem("Focus time", stats.focus);
+        (stats.done ? rItem("Done yesterday", stats.done) : "") +
+        (stats.you || stats.gaia
+          ? rNote([stats.you ? `You ${stats.you}` : "", stats.gaia ? `GAIA ${stats.gaia}` : ""].filter(Boolean).join(" / "))
+          : "") +
+        (stats.mail ? rItem("Emails handled", stats.mail) : "") +
+        (stats.focus ? rItem("Focus time", stats.focus) : "");
+
+      // an empty group and its rule are left out entirely
+      const ruledGroup = (sec, body) => (body ? rRule + rGroup(sec, body) : "");
 
       const style =
         `--paper:${stock.paper};--edge:${stock.edge};--ink:${density.ink};--ink-soft:${density.inkSoft};` +
@@ -371,21 +376,17 @@
         `<p class="t-receipt__meta">${meta}</p>` +
         rRule +
         `<p class="t-receipt__greet">${esc(ed.deck)}</p>` +
-        rRule +
-        rGroup("TODAY", today) +
-        rRule +
-        rGroup("OVERNIGHT &mdash; PREPAID BY GAIA", overnight) +
-        rRule +
-        rGroup(
+        ruledGroup("TODAY", today) +
+        ruledGroup("OVERNIGHT &mdash; PREPAID BY GAIA", overnight) +
+        ruledGroup(
           `AWAITING PAYMENT &mdash; ${c.decisions.length} ITEMS`,
           decisions,
         ) +
-        rRule +
-        rGroup("", statBody) +
+        ruledGroup("", statBody) +
         rRuleD +
         rItem("TOTAL", `1 ${ed.weekday}`) +
         `<div class="t-receipt__tender">` +
-        `<span>ITEMS: ${itemCount}</span>` +
+        (itemCount ? `<span>ITEMS: ${itemCount}</span>` : "") +
         `<span>AUTH ${ed.editionNo}-0602 &middot; APPROVED</span>` +
         `</div>` +
         rRule +

@@ -1,11 +1,8 @@
 """Firing a briefing workflow runs the briefing pipeline, not a chat turn.
 
-Two system workflows (daily brief, weekly digest) share one
-ARQ entry point with every other workflow, and the only thing separating them
-is ``system_workflow_key``. Route one wrongly and the user gets somebody else's
-brief — or an agent chat turn billed against their budget — so the key-to-
-pipeline mapping is asserted per key, and the execution record the fire writes
-is asserted whole: a briefing threads no conversation and records no tool calls.
+Briefing workflows share one ARQ entry point with every other workflow, separated only
+by system_workflow_key, so the key-to-pipeline mapping is asserted per key and the
+execution record is asserted whole.
 """
 
 from contextlib import ExitStack
@@ -17,6 +14,7 @@ from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
@@ -33,10 +31,13 @@ BRIEFING_SERVICE = "app.services.briefing.service"
 BRIEFING_SUMMARY = "Briefing delivered"
 
 
+USER_ID = "64f1c0ffee0000000000abcd"
+
+
 def _briefing_workflow(system_workflow_key: str) -> Workflow:
     return Workflow(
         id="wf_brief",
-        user_id="u_1",
+        user_id=USER_ID,
         title="Daily brief",
         description="The morning brief",
         prompt="Brief me",
@@ -50,6 +51,7 @@ def _briefing_workflow(system_workflow_key: str) -> Workflow:
         ],
         trigger_config=TriggerConfig(type=TriggerType.SCHEDULE, enabled=True),
         system_workflow_key=system_workflow_key,
+        delivery=WorkflowDelivery.SILENT,
     )
 
 
@@ -74,7 +76,7 @@ def pipelines() -> _Pipelines:
 
 @pytest.mark.unit
 class TestKeyChoosesThePipeline:
-    """``_run_briefing_workflow`` maps the key to exactly one pipeline."""
+    """_run_briefing_workflow maps the key to exactly one pipeline."""
 
     async def test_daily_key_runs_the_daily_brief_for_that_user(
         self, pipelines: _Pipelines
@@ -86,7 +88,7 @@ class TestKeyChoosesThePipeline:
                 stack.enter_context(patcher)
             summary = await _run_briefing_workflow(workflow)
 
-        pipelines.daily.assert_awaited_once_with("u_1")
+        pipelines.daily.assert_awaited_once_with(USER_ID)
         pipelines.weekly.assert_not_awaited()
         assert summary == BRIEFING_SUMMARY
 
@@ -100,7 +102,7 @@ class TestKeyChoosesThePipeline:
                 stack.enter_context(patcher)
             summary = await _run_briefing_workflow(workflow)
 
-        pipelines.weekly.assert_awaited_once_with("u_1")
+        pipelines.weekly.assert_awaited_once_with(USER_ID)
         pipelines.daily.assert_not_awaited()
         assert summary == BRIEFING_SUMMARY
 
@@ -127,7 +129,7 @@ class _FireHarness:
             patch(f"{MODULE}.WorkflowService", MagicMock(increment_execution_count=self.increment)),
             patch(f"{MODULE}.distrust_fresh_playbook", AsyncMock()),
             patch(f"{MODULE}.execute_workflow_as_chat", self.chat),
-            patch(f"{MODULE}.capture_event", MagicMock()),
+            patch(f"{MODULE}.capture", MagicMock()),
             patch(f"{MODULE}._completed_onboarding", AsyncMock(return_value=True)),
             patch(f"{MODULE}._claim_scheduled_fire", AsyncMock(return_value=True)),
         ]
@@ -150,14 +152,13 @@ class TestTheFireTakesTheBriefingPath:
 
         await _fire(harness, pipelines)
 
-        pipelines.daily.assert_awaited_once_with("u_1")
+        pipelines.daily.assert_awaited_once_with(USER_ID)
         harness.chat.assert_not_awaited()
 
     async def test_the_execution_record_says_a_briefing_was_delivered(
         self, pipelines: _Pipelines
     ) -> None:
-        """A briefing owns its own delivery, so it threads no conversation and
-        replays no tool calls — the record has to say exactly that."""
+        """The record says a briefing owns its delivery: no conversation, no tool calls."""
         harness = _FireHarness(_briefing_workflow(WEEKLY_DIGEST_WORKFLOW_KEY))
 
         await _fire(harness, pipelines)
@@ -173,8 +174,7 @@ class TestTheFireTakesTheBriefingPath:
     async def test_an_ordinary_workflow_still_runs_the_chat_turn(
         self, pipelines: _Pipelines
     ) -> None:
-        """The branch is keyed off the system key alone, so a workflow without
-        one must be untouched by it."""
+        """A workflow without a system key still runs the ordinary chat turn."""
         harness = _FireHarness(_briefing_workflow(system_workflow_key="todo_followup"))
 
         await _fire(harness, pipelines)

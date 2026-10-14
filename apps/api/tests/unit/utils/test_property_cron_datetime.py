@@ -2,16 +2,16 @@
 
 The invariants pinned here are the ones the module's own docstring promises:
 
-- ``get_next_run_time`` always returns a tz-aware datetime in UTC, strictly in
+- get_next_run_time always returns a tz-aware datetime in UTC, strictly in
   the future, whose wall-clock time in the schedule's timezone matches the
   cron's hour/minute fields.
 - The wall-clock match must survive DST transitions: a daily 09:00 schedule in
   America/New_York must fire at 09:00 local whether the fire lands in EST or
   EDT. If the naive wall-clock stepping were reverted, the fire would come out
   an hour off and this property fails.
-- ``calculate_next_occurrences`` returns exactly ``count`` strictly increasing
+- calculate_next_occurrences returns exactly count strictly increasing
   aware-UTC datetimes.
-- Invalid or never-firing expressions raise ``CronError`` and nothing else.
+- Invalid or never-firing expressions raise CronError and nothing else.
 """
 
 from datetime import UTC, datetime
@@ -24,8 +24,8 @@ from app.utils.cron_utils import (
     CronError,
     calculate_next_occurrences,
     get_next_run_time,
-    validate_cron_expression,
 )
+from app.utils.schedule import schedule_rejection
 from app.utils.timezone import Timezone
 
 ZONE_NAMES = ["UTC", "Asia/Kolkata", "America/New_York", "Europe/London", "+05:30"]
@@ -88,15 +88,9 @@ class TestGetNextRunTime:
         local = result.astimezone(tz.tzinfo)
         minute, hour = (int(part) for part in cron_expr.split()[:2])
         if (local.hour, local.minute) != (hour, minute):
-            # Spring-forward gap: the cron wall time does not exist on the
-            # fire date (e.g. 02:30 in America/New_York on the transition
-            # day), and the schedule library fires at the next real instant —
-            # the wall time shifted forward by the DST offset. Assert that is
-            # what happened, not a genuine miss.
-            # zoneinfo has no "this time does not exist" answer — it resolves a
-            # gap time to the pre-transition offset at fold=0 and the
-            # post-transition one at fold=1, and returns the same offset for
-            # both when the time is real. That disagreement IS the gap.
+            # Spring-forward gap: the wall time doesn't exist that day, so the
+            # library fires at the next real instant, shifted forward by the
+            # DST offset. zoneinfo flags this via a fold=0/fold=1 offset disagreement.
             wall_naive = datetime(local.year, local.month, local.day, hour, minute)
             in_zone = wall_naive.replace(tzinfo=tz.tzinfo)
             assert in_zone.utcoffset() != in_zone.replace(fold=1).utcoffset(), (
@@ -130,20 +124,16 @@ class TestGetNextRunTime:
             get_next_run_time("0 9 31 2 *", datetime(2026, 1, 1, tzinfo=UTC))
 
 
-class TestValidateCronExpression:
+class TestScheduleRejection:
     @settings(deadline=None)
     @given(s=st.text())
-    def test_never_raises_and_agrees_with_get_next_run_time(self, s: str) -> None:
+    def test_never_raises_and_an_accepted_schedule_always_has_a_next_run(self, s: str) -> None:
         try:
-            valid = validate_cron_expression(s)
+            rejection = schedule_rejection(s)
         except Exception as e:  # pragma: no cover - a raised exception IS the bug
-            raise AssertionError(f"validate_cron_expression raised on {s!r}: {e!r}") from e
-        base = datetime(2026, 1, 1, tzinfo=UTC)
-        if valid:
-            assert get_next_run_time(s, base).tzinfo is UTC
-        else:
-            with pytest.raises(CronError):
-                get_next_run_time(s, base)
+            raise AssertionError(f"schedule_rejection raised on {s!r}: {e!r}") from e
+        if rejection is None:
+            assert get_next_run_time(s, datetime(2026, 1, 1, tzinfo=UTC)).tzinfo is UTC
 
 
 class TestCalculateNextOccurrences:

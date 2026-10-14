@@ -1,16 +1,16 @@
 """The autouse wide-event isolation fixture must reset a leaked boundary.
 
-Regression for a cross-test leak: ``current_workflow_execution_id()`` returned a
-value in a test that opened no boundary. A bare ``log.reset()`` in one test
-seeds a shared, MUTABLE ``_EventState`` in the runner ContextVar; a later test's
-``log.set(...)`` mutates that same object in place (an async test's context copy
+Regression for a cross-test leak: current_workflow_execution_id() returned a
+value in a test that opened no boundary. A bare log.reset() in one test
+seeds a shared, MUTABLE _EventState in the runner ContextVar; a later test's
+log.set(...) mutates that same object in place (an async test's context copy
 shares the reference), so a workflow execution id set in one test surfaced in an
-unrelated one and failed ``test_no_boundary_means_no_execution_id``.
+unrelated one and failed test_no_boundary_means_no_execution_id.
 
 Driven in-process against the real fixture so it stays deterministic: a two-test
-cross-leak reproduction can split across xdist workers (``--dist load``) and stop
-reproducing. Left unmarked (not ``@pytest.mark.regression``) on purpose — the fix
-lives in the overlaid ``tests/conftest.py``, so the regression-proof lane would
+cross-leak reproduction can split across xdist workers (--dist load) and stop
+reproducing. Left unmarked (not @pytest.mark.regression) on purpose — the fix
+lives in the overlaid tests/conftest.py, so the regression-proof lane would
 see the fixture on base too and the test would pass there.
 """
 

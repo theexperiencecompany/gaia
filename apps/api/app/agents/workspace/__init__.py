@@ -1,6 +1,6 @@
 """Workspace layout — session-aware path model for the agent sandbox.
 
-`/workspace` inside every E2B sandbox is a bind-mount of the user's JuiceFS
+/workspace inside every E2B sandbox is a bind-mount of the user's JuiceFS
 prefix. This package owns the single source of truth for the directory
 convention (sessions, scratch, uploads, artifacts artifacts, runtime logs)
 so tools, the upload pipeline, the artifact watcher, and HTTP endpoints all

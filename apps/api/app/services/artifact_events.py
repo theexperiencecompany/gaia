@@ -5,7 +5,7 @@ three sites that touch it: the per-sandbox ArtifactWatcher (publisher), the
 upload pipeline (publisher), and the chat stream (subscriber/forwarder).
 
 Keeping this here — depending only on storage + redis, never on the sandbox
-package — keeps `chat_service`/`file_service` from reaching into watcher
+package — keeps chat_service/file_service from reaching into watcher
 internals just to learn the channel name.
 """
 
@@ -26,7 +26,7 @@ ARTIFACT_CHANNEL_PREFIX = "artifacts:"
 
 
 class ArtifactFileEvent(TypedDict):
-    """A file appeared or changed — `upsert` from the sandbox, `upload` host-side."""
+    """A file appeared or changed — upsert from the sandbox, upload host-side."""
 
     event: Literal["upsert", "upload"]
     session_id: str
@@ -50,15 +50,12 @@ ArtifactEvent = ArtifactFileEvent | ArtifactRemoveEvent
 
 
 def artifact_channel(user_id: str) -> str:
-    """Per-user pub/sub channel name.
+    """Return the per-user pub/sub channel name.
 
-    ``ensure_safe_path_id`` belt-and-suspenders behind the auth layer: today
-    ``user_id`` comes only from authenticated context (WorkOS-issued opaque
-    string), but any future identity source that returns a value containing
-    ``:`` or a wildcard would otherwise be able to alias another user's
-    channel. Raises ``ValueError`` on a malformed id — callers treat that
-    the same as a missing Redis (event delivery is a latency optimization;
-    the listing endpoint is the authoritative recovery path).
+    ensure_safe_path_id guards against a future identity source injecting ':'
+    or a wildcard to alias another user's channel. Raises ValueError on a bad
+    id, treated like a missing Redis — delivery here is a latency
+    optimization; the listing endpoint is the authoritative recovery path.
     """
     ensure_safe_path_id(user_id, label="user_id")
     return f"{ARTIFACT_CHANNEL_PREFIX}{user_id}"
@@ -67,18 +64,11 @@ def artifact_channel(user_id: str) -> str:
 async def upsert_event(
     user_id: str, session_id: str, info: ArtifactInfo, *, body: str | None = None
 ) -> ArtifactFileEvent:
-    """An `artifacts/` file was created or changed.
+    """Return an artifacts/ file-created-or-changed event carrying the file's heygaia.link.
 
-    The file's heygaia.link is minted here, the one place every agent-produced
-    artifact passes through, so the chat card, the bot message and the agent's
-    own tool result all read the same URL off this event. Minting is
-    idempotent, so a re-emit of the same file returns the same link.
-
-    `body` is the UTF-8 file contents inlined for small textual artifacts —
-    callers must enforce the size/type rule (see paths.is_inlineable_content_type
-    and INLINE_ARTIFACT_MAX_BYTES). When present, the side panel renders
-    instantly without a follow-up fetch and the value survives a reload via
-    the persisted conversation. Omitted for large or binary files.
+    Every agent-produced file passes through here, so the chat card, bot message
+    and tool result all read one idempotently minted URL. body inlines small
+    text files (callers enforce the inline rule); omitted for large or binary.
     """
     payload: ArtifactFileEvent = {
         "event": "upsert",
@@ -99,7 +89,7 @@ async def upsert_event(
 
 
 def remove_event(session_id: str, path: str) -> ArtifactRemoveEvent:
-    """A `artifacts/` file was removed or renamed away."""
+    """Return an artifacts/ file-removed-or-renamed event."""
     return {"event": "remove", "session_id": session_id, "path": path}
 
 
@@ -111,7 +101,7 @@ def upload_event(
     content_type: str | None,
     mtime: float | None = None,
 ) -> ArtifactFileEvent:
-    """A user upload landed in `user-uploaded/` (host-side, cross-mount)."""
+    """Return a user-upload-landed event, for uploads written host-side into user-uploaded/ (cross-mount)."""
     return {
         "event": "upload",
         "session_id": session_id,
@@ -123,10 +113,10 @@ def upload_event(
 
 
 async def publish_artifact_event(user_id: str, payload: ArtifactEvent) -> None:
-    """Stamp user_id + ts and publish to `artifacts:{user_id}`.
+    """Stamp user_id + ts and publish to artifacts:{user_id}.
 
     No-ops if Redis is unavailable and never raises — artifact delivery is a
-    latency optimization; the `GET /sessions/{conv}/artifacts` endpoint is the
+    latency optimization; the GET /sessions/{conv}/artifacts endpoint is the
     authoritative recovery path.
     """
     if redis_cache.redis is None:

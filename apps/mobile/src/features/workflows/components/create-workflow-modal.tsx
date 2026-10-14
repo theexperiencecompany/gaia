@@ -1,3 +1,4 @@
+import type { WorkflowDelivery } from "@gaia/shared/api/generated";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Image as ExpoImage } from "expo-image";
 import { useRef, useState } from "react";
@@ -9,7 +10,8 @@ import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { WORKFLOW_COLORS } from "../constants/colors";
 import { useWorkflowActions } from "../hooks/use-workflow-actions";
 import type { TriggerConfig } from "../types/trigger-types";
-import type { CreateWorkflowPayload, Workflow } from "../types/workflow-types";
+import type { CreateWorkflowRequest, Workflow } from "../types/workflow-types";
+import { DeliveryModeTabs } from "./delivery-mode-tabs";
 import {
   ScheduleBuilder,
   type ScheduleConfig,
@@ -17,7 +19,7 @@ import {
 } from "./schedule-builder";
 import { type TriggerMode, TriggerModeTabs } from "./trigger-mode-tabs";
 import {
-  type TriggerOption,
+  type TriggerPickerOption,
   TriggerPickerSheet,
   type TriggerPickerSheetRef,
 } from "./trigger-picker-sheet";
@@ -45,12 +47,12 @@ export function CreateWorkflowModal({
   const [description, setDescription] = useState("");
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<TriggerMode>("manual");
+  const [delivery, setDelivery] = useState<WorkflowDelivery | null>(null);
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>(
     DEFAULT_SCHEDULE_CONFIG,
   );
-  const [selectedTrigger, setSelectedTrigger] = useState<TriggerOption | null>(
-    null,
-  );
+  const [selectedTrigger, setSelectedTrigger] =
+    useState<TriggerPickerOption | null>(null);
   const [triggerConfig, setTriggerConfig] = useState<TriggerConfig | null>(
     null,
   );
@@ -61,12 +63,13 @@ export function CreateWorkflowModal({
     setDescription("");
     setPrompt("");
     setMode("manual");
+    setDelivery(null);
     setScheduleConfig(DEFAULT_SCHEDULE_CONFIG);
     setSelectedTrigger(null);
     setTriggerConfig(null);
   };
 
-  const buildTriggerConfig = (): CreateWorkflowPayload["trigger_config"] => {
+  const buildTriggerConfig = (): CreateWorkflowRequest["trigger_config"] => {
     if (mode === "manual") {
       return {
         type: "manual",
@@ -96,13 +99,14 @@ export function CreateWorkflowModal({
   };
 
   const handleCreate = async () => {
-    if (!title.trim() || !prompt.trim()) return;
+    if (!title.trim() || !prompt.trim() || delivery === null) return;
 
-    const payload: CreateWorkflowPayload = {
+    const payload: CreateWorkflowRequest = {
       title: title.trim(),
       description: description.trim() || undefined,
       prompt: prompt.trim(),
       trigger_config: buildTriggerConfig(),
+      delivery,
     };
     const workflow = await createWorkflow(payload);
     if (workflow) {
@@ -119,13 +123,17 @@ export function CreateWorkflowModal({
   const canSubmit =
     title.trim().length > 0 &&
     prompt.trim().length > 0 &&
+    delivery !== null &&
     (mode !== "trigger" || selectedTrigger !== null);
 
-  const handleTriggerSelect = (trigger: TriggerOption) => {
+  const handleTriggerSelect = (trigger: TriggerPickerOption) => {
     setSelectedTrigger(trigger);
   };
 
-  const handleTriggerSave = (trigger: TriggerOption, config: TriggerConfig) => {
+  const handleTriggerSave = (
+    trigger: TriggerPickerOption,
+    config: TriggerConfig,
+  ) => {
     setSelectedTrigger(trigger);
     setTriggerConfig(config);
   };
@@ -261,6 +269,13 @@ export function CreateWorkflowModal({
               )}
             </View>
 
+            <View style={{ gap: spacing.sm }}>
+              <Text style={{ fontSize: fontSize.xs, color: "#8a9099" }}>
+                When a run finishes
+              </Text>
+              <DeliveryModeTabs value={delivery} onChange={setDelivery} />
+            </View>
+
             {createError ? (
               <Text style={{ fontSize: fontSize.xs, color: "#ef4444" }}>
                 {createError}
@@ -390,7 +405,7 @@ function ManualPanel() {
 }
 
 interface TriggerPanelProps {
-  selected: TriggerOption | null;
+  selected: TriggerPickerOption | null;
   onPick: () => void;
 }
 

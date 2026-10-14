@@ -1,10 +1,10 @@
 """Fan a fired Composio trigger out to the tracked todos subscribed to it.
 
-Called from ``TriggerHandler.process_event`` before the no-matching-workflow
+Called from TriggerHandler.process_event before the no-matching-workflow
 short-circuit, because an event with no workflow can still have a todo waiting on
 it — and today that event is dropped.
 
-Resolution mirrors ``GmailTriggerHandler.find_workflows`` and runs both
+Resolution mirrors GmailTriggerHandler.find_workflows and runs both
 strategies, for the same reason it does: per-resource triggers are found by the
 Composio instance id on the webhook, while account-level triggers (Gmail) have no
 instance to register and can only be found by user and trigger name. A lookup on
@@ -13,11 +13,11 @@ case.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 from redis.exceptions import RedisError
 
-from app.constants.todos import BLOCKING_LABELS
+from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
+from app.constants.todos import BLOCKING_LABELS, EXECUTE_TRACKED_TODO_TASK, TodoActivityEvent
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
@@ -28,17 +28,27 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
-    SubscriptionStatus,
     TriggerOrigin,
     TriggerSubscription,
+    TriggerSubscriptionStatus,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.notification_service import notification_service
+from app.services.todo_activity import record_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.condition_matching import conditions_match
+from app.services.triggers.todo_trigger_window import (
+    TODO_TRIGGER_WINDOW_CLAIMED,
+    buffer_todo_trigger_event,
+    trigger_window,
+)
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.catalog.todos import TodosTriggerFired
+from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
 
 COOLDOWN_KEY = "todo_subscription_cooldown:{subscription_id}"
@@ -48,9 +58,19 @@ async def dispatch_to_subscribed_todos(
     trigger_name: str,
     trigger_id: str | None,
     user_id: str | None,
-    payload: dict[str, Any],
+    payload: dict[str, object],
 ) -> int:
-    """Run every matching subscription's action. Returns how many fired."""
+    """Run every matching subscription's action, as integration-triggered work. Returns how many fired."""
+    with analytics_context(worker_context(Trigger.INTEGRATION_TRIGGER)):
+        return await _dispatch(trigger_name, trigger_id, user_id, payload)
+
+
+async def _dispatch(
+    trigger_name: str,
+    trigger_id: str | None,
+    user_id: str | None,
+    payload: dict[str, object],
+) -> int:
     todos = await _resolve_subscribers(trigger_name, trigger_id, user_id)
     if not todos:
         return 0
@@ -104,23 +124,39 @@ async def _fire_if_matching(
     subscription: TriggerSubscription,
     trigger_name: str,
     trigger_id: str | None,
-    payload: dict[str, Any],
+    payload: dict[str, object],
 ) -> bool:
     """Gate one subscription on trigger, instance, status, conditions and cooldown, then act."""
     if subscription.trigger_name != trigger_name:
         return False
-    # Instance isolation: a resource-scoped subscription must only fire for one of
-    # the instances it registered. The account-level lookup returns every todo on
-    # this trigger name for the user, so without this gate an event from one
-    # resource would fire a todo subscribed to a different one. Account-level
-    # subscriptions register no instance and match on user + trigger name alone.
+    # A resource-scoped subscription must only fire for one of the instances it
+    # registered — without this gate, an event from one resource would fire a
+    # todo subscribed to a different one. Account-level subscriptions register no instance.
     if subscription.composio_trigger_ids and trigger_id not in subscription.composio_trigger_ids:
         return False
-    if subscription.status is not SubscriptionStatus.ACTIVE:
+    if subscription.status is not TriggerSubscriptionStatus.ACTIVE:
+        return False
+    if (
+        subscription.account_id is not None
+        and payload.get(EVENT_ACCOUNT_ID_KEY) != subscription.account_id
+    ):
         return False
     if not conditions_match(trigger_name, subscription.conditions, payload, subscription.match):
         return False
-    if not await _claim_cooldown(subscription):
+    if subscription.action is SubscriptionAction.EXECUTE:
+        # A run costs an agent turn, so the todo runs once per window and an event
+        # inside it rides the next run instead of being dropped.
+        window = trigger_window(todo)
+        coalesced = not await _claim_slot(
+            subscription, window.key, window.seconds, TODO_TRIGGER_WINDOW_CLAIMED
+        )
+    elif await _claim_slot(
+        subscription,
+        COOLDOWN_KEY.format(subscription_id=subscription.id),
+        subscription.cooldown_seconds,
+    ):
+        coalesced = False
+    else:
         log.info(
             "todo_subscription.cooldown_suppressed",
             todo_id=todo.id,
@@ -128,34 +164,34 @@ async def _fire_if_matching(
         )
         return False
 
-    await _perform_action(todo, subscription, payload)
+    await _perform_action(todo, subscription, payload, coalesced=coalesced)
     # After the action, not on arrival: an event that was filtered out or
     # suppressed by cooldown is not a fire, and counting it as one would make
     # every funnel off this event read high.
-    capture_event(
-        todo.user_id,
-        AnalyticsEvents.TODO_TRIGGER_FIRED,
-        {
-            "trigger_name": trigger_name,
-            "action": subscription.action.value,
-            "resolution": subscription.resolution.value,
-            "condition_count": len(subscription.conditions),
-        },
+    capture(
+        UserId(todo.user_id),
+        TodosTriggerFired(
+            trigger_name=trigger_name,
+            action=subscription.action.value,
+            resolution=subscription.resolution.value,
+            condition_count=len(subscription.conditions),
+            coalesced=coalesced,
+        ),
     )
     return True
 
 
-async def _claim_cooldown(subscription: TriggerSubscription) -> bool:
-    """Take the subscription's cooldown slot, or report it is still held.
+async def _claim_slot(
+    subscription: TriggerSubscription, key: str, seconds: int, value: str = "1"
+) -> bool:
+    """Take a cooldown or trigger-window slot for seconds, or report it is still held.
 
-    Set-if-absent rather than read-then-write: two events for one subscription can
-    arrive in the same second, and a read-then-write would let both through.
-
-    The key is written here — when the action is about to run — not when an event
-    merely arrives, so an event that was filtered out or deferred past a held
-    execution lock does not burn the window and suppress the real one.
+    Set-if-absent rather than read-then-write: two events for one subscription
+    can arrive in the same second, and a read-then-write would let both
+    through. The key is written when the action is about to run, not on mere
+    arrival, so a filtered-out event doesn't burn the window.
     """
-    if subscription.cooldown_seconds <= 0:
+    if seconds <= 0:
         return True
     client = redis_cache.redis
     if client is None:
@@ -164,12 +200,7 @@ async def _claim_cooldown(subscription: TriggerSubscription) -> bool:
         log.warning("todo_subscription.cooldown_unavailable", subscription_id=subscription.id)
         return True
     try:
-        claimed = await client.set(
-            COOLDOWN_KEY.format(subscription_id=subscription.id),
-            "1",
-            nx=True,
-            ex=subscription.cooldown_seconds,
-        )
+        claimed = await client.set(key, value, nx=True, ex=seconds)
     except (RedisError, OSError) as e:
         log.warning(
             "todo_subscription.cooldown_unavailable",
@@ -182,7 +213,11 @@ async def _claim_cooldown(subscription: TriggerSubscription) -> bool:
 
 
 async def _perform_action(
-    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, Any]
+    todo: TodoDocument,
+    subscription: TriggerSubscription,
+    payload: dict[str, object],
+    *,
+    coalesced: bool,
 ) -> None:
     log.set(
         component="trigger_subscription",
@@ -191,33 +226,58 @@ async def _perform_action(
         subscription_id=subscription.id,
         trigger_name=subscription.trigger_name,
         subscription_action=subscription.action.value,
+        coalesced=coalesced,
     )
-    match subscription.action:
-        case SubscriptionAction.EXECUTE:
-            await _execute(todo, subscription, payload)
-        case SubscriptionAction.NOTIFY:
-            await _notify(todo, subscription)
-        case SubscriptionAction.COMPLETE:
-            await _complete(todo, subscription)
-        case SubscriptionAction.UNBLOCK:
-            await _unblock(todo, subscription)
+    held = "; held for the todo's next run" if coalesced else ""
+    await record_activity(
+        todo.id,
+        todo.user_id,
+        TodoActivityEvent.TRIGGER_FIRED,
+        f"{subscription.trigger_name} matched; action: {subscription.action.value}{held}",
+    )
+    try:
+        match subscription.action:
+            case SubscriptionAction.EXECUTE:
+                await _execute(todo, subscription, payload, coalesced=coalesced)
+            case SubscriptionAction.NOTIFY:
+                await _notify(todo, subscription)
+            case SubscriptionAction.COMPLETE:
+                await _complete(todo, subscription)
+            case SubscriptionAction.UNBLOCK:
+                await _unblock(todo, subscription)
+    except Exception as e:
+        # The fire is already on the timeline; without this it reads as if the action ran.
+        await record_activity(
+            todo.id,
+            todo.user_id,
+            TodoActivityEvent.TRIGGER_ACTION_FAILED,
+            f"{subscription.action.value} failed: {type(e).__name__}",
+        )
+        raise
 
 
 async def _execute(
-    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, Any]
+    todo: TodoDocument,
+    subscription: TriggerSubscription,
+    payload: dict[str, object],
+    *,
+    coalesced: bool,
 ) -> None:
-    """Enqueue the todo's normal execution, stamped with where it came from."""
-    pool = await RedisPoolManager.get_pool()
-    await enqueue_worker_job(
-        pool,
-        "execute_tracked_todo",
-        todo.id,
-        TriggerOrigin(
-            subscription_id=subscription.id,
-            trigger_name=subscription.trigger_name,
-            payload=payload,
-        ),
+    """Run the todo now, stamped with where it came from, or hold the event for its next run.
+
+    A held event that cannot be buffered runs now: an extra run is recoverable,
+    a lost reply is not.
+    """
+    origin = TriggerOrigin(
+        subscription_id=subscription.id,
+        trigger_name=subscription.trigger_name,
+        payload=payload,
     )
+    if coalesced and await buffer_todo_trigger_event(todo.id, origin):
+        log.info("todo_subscription.execution_coalesced", todo_id=todo.id)
+        return
+    pool = await RedisPoolManager.get_pool()
+    await enqueue_worker_job(pool, EXECUTE_TRACKED_TODO_TASK, todo.id, origin)
     log.info("todo_subscription.execution_enqueued", todo_id=todo.id)
 
 

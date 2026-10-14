@@ -487,9 +487,6 @@ async function getNativeIntegrationPages(
   }
 }
 
-/**
- * Get sitemap entries for a given sitemap ID.
- */
 export async function getSitemapEntries(
   id: number,
 ): Promise<MetadataRoute.Sitemap> {

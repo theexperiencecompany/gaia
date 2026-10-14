@@ -1,6 +1,6 @@
 """Core documents + consolidation — rewrites, versioning, debounce, hot cache.
 
-The consolidation LLM is canned (``ConsolidatedDocument``); everything else
+The consolidation LLM is canned (ConsolidatedDocument); everything else
 (fact gathering from Postgres, document versioning, Redis pending set,
 debounce waiter, hot-context invalidation) runs for real. The debounce wait
 is a monkeypatched seam the test releases — no sleeps against the production
@@ -22,7 +22,6 @@ from app.constants.memory import (
 )
 from app.memory import consolidation, pg_store
 from app.memory.engine import memory_engine
-from app.memory.ingestion import MemorySource
 from app.memory.schemas import (
     ConsolidatedDocument,
     ExtractedMemoryBatch,
@@ -140,13 +139,9 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
     monkeypatch: pytest.MonkeyPatch,
     real_redis: Redis,
 ) -> None:
-    # The window is released by the test, never by the clock. Shrinking
-    # CONSOLIDATION_DEBOUNCE_SECONDS instead raced the producer: at 1.5s the
-    # second retain (real embeddings + store writes) could land after the
-    # waiter woke under CI CPU contention, and the waiter fired a partial
-    # pass; the 10s window that cured it cost 10s of wall clock per run.
-    # Gating the waiter on an event set after both retains removes the race
-    # and the wait.
+    # The window is released by an event, not the clock: shrinking
+    # CONSOLIDATION_DEBOUNCE_SECONDS to 1.5s let the second retain race the
+    # waiter under CI CPU contention (a partial pass); a fixed 10s window just cost 10s per run instead.
     release = asyncio.Event()
 
     async def _wait_for_release() -> None:
@@ -171,7 +166,7 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
     await memory_engine.retain(
         memory_user,
         [{"role": "user", "content": "first"}],
-        source=MemorySource(MemorySourceType.CONVERSATION),
+        source_type=MemorySourceType.CONVERSATION,
     )
     waiter = consolidation._waiters.get(memory_user)
     assert waiter is not None, "first retain must start a debounce waiter"
@@ -183,7 +178,7 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
     await memory_engine.retain(
         memory_user,
         [{"role": "user", "content": "second"}],
-        source=MemorySource(MemorySourceType.CONVERSATION),
+        source_type=MemorySourceType.CONVERSATION,
     )
     assert consolidation._waiters.get(memory_user) is waiter, (
         "second retain inside the window must reuse the live waiter"
@@ -231,7 +226,7 @@ async def test_core_context_cache_serves_stale_until_retain_invalidates(
     await memory_engine.retain(
         memory_user,
         [{"role": "user", "content": "transcript"}],
-        source=MemorySource(MemorySourceType.CONVERSATION),
+        source_type=MemorySourceType.CONVERSATION,
     )
 
     fresh = await memory_engine.get_core_context(memory_user)

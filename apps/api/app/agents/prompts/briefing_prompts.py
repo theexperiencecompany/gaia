@@ -1,14 +1,13 @@
 """Briefing generation prompts, the retention keystone.
 
-The daily briefing is the one message a day that either earns the next open or
-loses the user. These builders assemble the contract the silent agent runs
-against; the service (``app/services/briefing/service.py``) does the deterministic
-curation and context-gathering and feeds the formatted blocks in here. The agent
-proposes work with the ``create_tracked_todo`` tool, then emits exactly one
-``BriefingPayload`` JSON object as its entire final message.
+The builders assemble the contract the silent agent runs against; the service feeds in
+the formatted blocks. The agent proposes work with the create_tracked_todo tool, then
+emits exactly one BriefingPayload JSON object as its entire final message.
 """
 
 from dataclasses import dataclass
+
+from app.constants.briefing import MAX_BRIEF_ITEMS
 
 # The exact output contract, shared by daily and weekly so the parser sees one
 # shape. ``hue`` is set deterministically in code post-run, so the model leaves
@@ -70,7 +69,7 @@ string; the renderer owns all styling.
 
 # What separates a briefing the user acts on from a list they ignore. Shared by
 # both prompts so item quality never drifts between daily and weekly.
-_ITEM_QUALITY = """
+_ITEM_QUALITY = f"""
 ## ITEM QUALITY (this is the whole product)
 
 A bare todo title is a failure: a title alone tells the user nothing they can
@@ -90,7 +89,8 @@ rather than inventing one. A fabricated "your lawyer needs this by Friday" for
 a user who has no lawyer destroys trust in one message.
 
 Selection beats coverage: pick items by leverage toward the user's goal, never
-by listing whatever todos exist. If a todo's title is vague, use its canvas,
+by listing whatever todos exist. A brief is finite: at most {MAX_BRIEF_ITEMS} items
+across all sections, fewer when fewer matter. If a todo's title is vague, use its canvas,
 description, or serves to say something specific; if you know nothing concrete
 about it, it does not belong in the brief.
 """.strip()
@@ -117,6 +117,14 @@ failed, what needs the user) are assembled by the system and shown below; they
 are already final. You cannot add, remove, or reword facts, only give the day
 its voice. Every specific in your prose must appear in the facts below; if it is
 not there, you do not say it.
+
+The HEADLINE and LEDE are printed above the brief's items, so they are written
+from TODAY'S FACTS alone: name only people and things that appear in an item or
+in today's calendar, use only the numbers in [COUNTS] or the calendar, and never
+say something needs the user, or mention an event, unless an item or the
+calendar shows it. Yesterday, the user's replies and goal memory may shape the
+bubbles and caption, never the headline or lede. The system checks this and
+rejects a headline or lede that does not match.
 
 ``bubbles`` is an array of chat messages that land in the user's
 Telegram/WhatsApp. YOU decide how many and where to break them — text the way a
@@ -213,9 +221,8 @@ def build_briefing_voice_prompt(
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
-    ``wind_down`` escalates an idle streak: "warn" announces that the loop
-    pauses tomorrow unless a goal arrives; "final" is the one goodbye message
-    before GAIA goes dormant.
+    wind_down escalates an idle streak: "warn" announces that the loop pauses tomorrow
+    unless a goal arrives; "final" is the one goodbye message before GAIA goes dormant.
     """
     wind_down_note = ""
     if wind_down == "warn":
@@ -294,11 +301,20 @@ a hard failure. Never ask an open-ended "what can I help with".
 """
 
 
+def voice_correction_note(problems: list[str]) -> str:
+    """Return the retry instruction naming how the last headline and lede broke the facts."""
+    listed = "\n".join(f"- {problem}" for problem in problems)
+    return (
+        "## YOUR LAST HEADLINE AND LEDE WERE REJECTED\n"
+        f"They did not match today's facts:\n{listed}\n"
+        "Write them again from today's facts and [COUNTS] only, then return the whole JSON."
+    )
+
+
 def build_weekly_digest_prompt(
     *,
     date_local: str,
     week_summary_block: str,
-    hours_saved: int,
 ) -> str:
     """Assemble the weekly digest contract (kind=weekly payload)."""
 
@@ -310,13 +326,13 @@ only. Produce ONE structured payload.
 ## THE WEEK
 {week_summary_block}
 
-Estimated time saved this week: about {hours_saved} hours.
 {_ITEM_QUALITY}
 
 ## VOICE
 Warm but not saccharine; write like a person, vary sentence length, open on the
 point. The headline names the week's shape in one plain line. Stats carry the
-week's real totals (completed by GAIA, completed by you, hours saved).
+week's real totals (completed by GAIA, completed by you); never estimate a
+figure you were not given.
 Set mood to "weekly". The caption is one witty line worth sharing.
 
 ## NEXT WEEK'S EDGE
@@ -331,7 +347,7 @@ phrased as one question the user can answer with a single word. Never a generic
 
 
 def build_day_zero_hello_prompt(*, first_name: str, goal_block: str, has_goal: bool) -> str:
-    """The first text GAIA sends a user right after they link a chat platform."""
+    """Build the first text GAIA sends a user right after they link a chat platform."""
 
     if has_goal:
         task = f"""Say hi to {first_name} by name, warm and quick. Then, from what you know

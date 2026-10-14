@@ -5,10 +5,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import uuid
 
+from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.db.mongodb.indexes import (
+    CUSTOM_SERVER_URL_DEDUP_KEYS,
+    CUSTOM_SERVER_URL_DEDUP_OPTIONS,
+)
 from app.db.repositories.integrations import IntegrationsRepository
-from app.models.integration_models import Integration, IntegrationTool
+from app.models.integration_models import Integration, StoredIntegrationTool
 from app.models.mcp_config import MCPConfig
 
 
@@ -192,11 +197,11 @@ class TestIntegrationsRepository:
     async def test_store_and_get_tools_upserts(self, repo):
         iid = f"tools-{uuid.uuid4().hex}"
         # store_tools upserts a tools-only stub even with no integration doc yet.
-        await repo.store_tools(iid, [IntegrationTool(name="t1", description="d1")])
+        await repo.store_tools(iid, [StoredIntegrationTool(name="t1", description="d1")])
         got = await repo.get_tools(iid)
         assert [t.name for t in got] == ["t1"]
         # Overwrites on the next store.
-        await repo.store_tools(iid, [IntegrationTool(name="t2")])
+        await repo.store_tools(iid, [StoredIntegrationTool(name="t2")])
         assert [t.name for t in await repo.get_tools(iid)] == ["t2"]
         # Missing integration → empty list, not error.
         assert await repo.get_tools(f"absent-{uuid.uuid4().hex}") == []
@@ -206,7 +211,7 @@ class TestIntegrationsRepository:
         b = f"bb-{uuid.uuid4().hex}"
         await repo.create(_integration(a, "Aname", icon_url="https://a.png"))
         await repo.store_tools_batch(
-            [(a, [IntegrationTool(name="ta")]), (b, [IntegrationTool(name="tb")])]
+            [(a, [StoredIntegrationTool(name="ta")]), (b, [StoredIntegrationTool(name="tb")])]
         )
         records = {r.integration_id: r for r in await repo.all_with_tools()}
         assert a in records and b in records
@@ -379,3 +384,96 @@ class TestIntegrationsRepository:
         assert [i.name for i in by_name] == ["Alpha", "Bravo"]
         by_popular = await repo.community_browse("popular", cat, offset=0, limit=10)
         assert by_popular[0].name == "Bravo"  # highest clone_count first
+
+
+def _keyed_integration(
+    integration_id: str, name: str, owner: str, server_url: str, normalized: str
+) -> Integration:
+    """Build a custom integration carrying the dedup key, as create_custom_integration writes."""
+    return _integration(
+        integration_id,
+        name,
+        source="custom",
+        created_by=owner,
+        mcp_config=MCPConfig(server_url=server_url, server_url_normalized=normalized),
+    )
+
+
+class TestCustomServerUrlDedup:
+    async def test_find_matches_spelling_variants(self, repo) -> None:
+        owner = f"spell-{uuid.uuid4().hex}"
+        iid = f"sp-{uuid.uuid4().hex}"
+        await repo.create(
+            _keyed_integration(iid, "Spelled", owner, "https://host/mcp", "https://host/mcp")
+        )
+        # Trailing slash, case, and fragment differences all resolve to one row.
+        for spelling in (
+            "https://host/mcp/",
+            "HTTPS://HOST/mcp",
+            "https://host/mcp#frag",
+        ):
+            found = await repo.find_custom_by_server_url(spelling, owner)
+            assert found is not None and found.integration_id == iid
+        assert await repo.find_custom_by_server_url("https://host/other", owner) is None
+        assert await repo.find_custom_by_server_url("https://host/mcp", "intruder") is None
+
+    async def test_shipped_unique_index_rejects_logical_duplicate(
+        self, repo, raw_collection
+    ) -> None:
+        # The exact spec startup builds — proving the shipped index (not a
+        # lookalike) is what makes concurrent creates atomic.
+        await raw_collection.create_index(
+            CUSTOM_SERVER_URL_DEDUP_KEYS, **CUSTOM_SERVER_URL_DEDUP_OPTIONS
+        )
+        owner = f"dup-{uuid.uuid4().hex}"
+        await repo.create(
+            _keyed_integration(
+                f"d1-{uuid.uuid4().hex}", "First", owner, "https://host/mcp/", "https://host/mcp"
+            )
+        )
+        with pytest.raises(DuplicateKeyError):
+            await repo.create(
+                _keyed_integration(
+                    f"d2-{uuid.uuid4().hex}",
+                    "Second",
+                    owner,
+                    "https://host/mcp",
+                    "https://host/mcp",
+                )
+            )
+        # Same URL under a different creator is a different key — allowed.
+        await repo.create(
+            _keyed_integration(
+                f"d3-{uuid.uuid4().hex}",
+                "Third",
+                f"other-{uuid.uuid4().hex}",
+                "https://host/mcp",
+                "https://host/mcp",
+            )
+        )
+
+    async def test_keyless_legacy_rows_do_not_violate_the_index(self, repo, raw_collection) -> None:
+        # Rows the backfill left keyless (conflicts) are excluded by the partial
+        # filter: they coexist and stay writable without tripping the index.
+        await raw_collection.create_index(
+            CUSTOM_SERVER_URL_DEDUP_KEYS, **CUSTOM_SERVER_URL_DEDUP_OPTIONS
+        )
+        owner = f"legacy-{uuid.uuid4().hex}"
+        await repo.create(_integration(f"l1-{uuid.uuid4().hex}", "Legacy One", created_by=owner))
+        await repo.create(_integration(f"l2-{uuid.uuid4().hex}", "Legacy Two", created_by=owner))
+        # ...and a keyed row beside them is still protected.
+        await repo.create(
+            _keyed_integration(
+                f"l3-{uuid.uuid4().hex}", "Keyed", owner, "https://host/mcp", "https://host/mcp"
+            )
+        )
+        with pytest.raises(DuplicateKeyError):
+            await repo.create(
+                _keyed_integration(
+                    f"l4-{uuid.uuid4().hex}",
+                    "Keyed Dup",
+                    owner,
+                    "https://host/mcp/",
+                    "https://host/mcp",
+                )
+            )

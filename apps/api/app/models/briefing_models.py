@@ -10,10 +10,9 @@ from datetime import UTC, datetime
 from typing import Literal
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, HUE_MAX
-from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY
 from app.db.repositories.base import UserScopedDocument
 
 BriefingKind = Literal["daily", "weekly"]
@@ -23,12 +22,24 @@ BriefingKind = Literal["daily", "weekly"]
 BriefingMood = Literal["clear", "packed", "idle", "winback", "weekly"]
 
 # ``kind`` on a section item tags how the renderer treats it (a GAIA action, a
-# user ask, a look-back note, a plain highlight).
-BriefingItemKind = Literal["gaia", "you", "lookback", "note"]
+# user ask, a look-back note, work that failed, a plain highlight). The kind is
+# the item's state; ``text`` is only its title, so no renderer repeats the state.
+BriefingItemKind = Literal["gaia", "you", "lookback", "failed", "note"]
+
+# The state each kind reads as where plain text is all there is (the voice facts).
+BRIEFING_ITEM_STATES: dict[BriefingItemKind, str] = {
+    "you": "Waiting on you",
+    "gaia": "In progress",
+    "lookback": "Done",
+    "failed": "Failed",
+    "note": "Note",
+}
 
 
 class BriefingStat(BaseModel):
     """One tuple in the stat row (e.g. value="12" label="drafts staged")."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     value: str
     label: str
@@ -37,6 +48,8 @@ class BriefingStat(BaseModel):
 
 class BriefingItem(BaseModel):
     """A single line inside a section, optionally bound to a todo."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     text: str
     todo_id: str | None = None
@@ -50,13 +63,52 @@ class BriefingItem(BaseModel):
 class BriefingSection(BaseModel):
     """A Roman-numeraled section of the briefing."""
 
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     numeral: str
     title: str
     items: list[BriefingItem] = Field(default_factory=list)
 
 
+class BriefingEvent(BaseModel):
+    """One calendar event on the user's own clock, read from their calendar."""
+
+    date: str  # user-local YYYY-MM-DD
+    start: str | None = None  # user-local "HH:MM"; None for an all-day event
+    title: str
+    location: str | None = None
+
+
+class BriefingTallies(BaseModel):
+    """Completed-todo counts behind the brief, computed from the todos store —
+    never parsed back out of stat labels, so every renderer agrees with them."""
+
+    done_by_you: int = Field(ge=0)
+    done_by_gaia: int = Field(ge=0)
+
+
+class BriefingWeekDay(BaseModel):
+    """Todos completed on one day of the week, by owner."""
+
+    you: int = Field(ge=0)
+    gaia: int = Field(ge=0)
+
+
+class BriefingWeek(BaseModel):
+    """The real week the weekly edition draws: Monday-to-Sunday completions,
+    what shipped, what GAIA handled, and the calendar ahead. Every field is
+    counted or read, never estimated."""
+
+    days: list[BriefingWeekDay] = Field(min_length=7, max_length=7)
+    shipped: list[str] = Field(default_factory=list)
+    handled: list[str] = Field(default_factory=list)
+    ahead: list[BriefingEvent] = Field(default_factory=list)
+
+
 class BriefingPayload(BaseModel):
     """The structured briefing the run emits and every channel renders."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     kicker: str
     date: str
@@ -70,11 +122,25 @@ class BriefingPayload(BaseModel):
     template_family: str | None = Field(
         default=None,
         description=(
-            "Weekly editions only: the edition template family this payload was "
-            "assigned by the shuffled-cycle rotation. Persisted so the archive "
-            "re-renders identically forever; None on daily briefs and legacy rows."
+            "The edition template family this brief was drawn in. Persisted so "
+            "the archive re-renders identically forever; None on legacy rows."
         ),
     )
+    stamp_city: str | None = Field(
+        default=None,
+        description=(
+            "Air Mail editions only: the city stamp (a stamps/cities.json slug) "
+            "this brief carried. The Postmarks page reads it."
+        ),
+    )
+    generated_at: str | None = Field(
+        default=None, description='User-local generation time, e.g. "6:02 AM".'
+    )
+    calendar: list[BriefingEvent] = Field(
+        default_factory=list, description="Today's calendar events, in start order."
+    )
+    tallies: BriefingTallies | None = None
+    week: BriefingWeek | None = None
     message: str | None = Field(
         default=None,
         description=(
@@ -104,13 +170,20 @@ class BriefingModel(UserScopedDocument):
     persisted as Mongo's ``_id`` (``uses_object_id=False``).
     """
 
-    model_config = ConfigDict(extra="ignore", from_attributes=True)
+    model_config = ConfigDict(
+        extra="ignore", from_attributes=True, json_schema_serialization_defaults_required=True
+    )
 
     id: str = Field(default_factory=lambda: f"brief_{uuid.uuid4().hex[:12]}")
     date: str  # user-local YYYY-MM-DD
     kind: BriefingKind = BRIEFING_KIND_DAILY
     payload: BriefingPayload
     delivered_channels: list[str] = Field(default_factory=list)
+    #: The hosted full edition render: the in-app page, the email and the short link show it.
+    edition_image_url: str | None = None
+    # The brief's public heygaia.link, minted at delivery: the one URL the email
+    # image and the chat skim both link to.
+    short_url: str | None = None
     opened_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
@@ -127,49 +200,10 @@ class BriefingUpdate(BaseModel):
     payload: BriefingPayload | None = None
     delivered_channels: list[str] | None = None
     opened_at: datetime | None = None
-
-
-class AwardDocument(UserScopedDocument):
-    """One earned badge (``awards`` collection). ``(user_id, key)`` is unique —
-    each badge is earnable once (``AwardsRepository`` in
-    ``app/db/repositories/awards.py``). ``created_at`` (base-stamped on insert)
-    IS the earned timestamp — no separate field for the same moment."""
-
-    key: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime | None = None
-
-
-class AwardUpdate(BaseModel):
-    """Awards are immutable once earned — no field is ever updated in place.
-    Exists only to satisfy the repository base's typed-update-model contract."""
-
-    model_config = ConfigDict(extra="forbid")
+    short_url: str | None = None
 
 
 class BriefingListResponse(BaseModel):
     """Archive response shape (frontend is coded against this)."""
 
     briefings: list[BriefingModel]
-
-
-class ChannelPriorityResponse(BaseModel):
-    """The user's briefing chat-channel priority order (settings UI reads this)."""
-
-    chat_channel_priority: list[str]
-
-
-class ChannelPriorityUpdate(BaseModel):
-    """A non-empty, duplicate-free ordered subset of the chat platforms."""
-
-    chat_channel_priority: list[str] = Field(min_length=1)
-
-    @field_validator("chat_channel_priority")
-    @classmethod
-    def _validate_platforms(cls, value: list[str]) -> list[str]:
-        if len(set(value)) != len(value):
-            raise ValueError("chat_channel_priority must not contain duplicates")
-        unknown = [p for p in value if p not in DEFAULT_CHAT_CHANNEL_PRIORITY]
-        if unknown:
-            raise ValueError(f"unknown chat platform(s): {', '.join(unknown)}")
-        return value

@@ -1,4 +1,4 @@
-"""Unit tests for ``app.memory.reconciliation`` — dedupe/supersession verdicts.
+"""Unit tests for app.memory.reconciliation — dedupe/supersession verdicts.
 
 Chroma similarity, Postgres hydration and the reconcile LLM are mocked seams;
 the similarity banding, exact-duplicate collapse and candidate liveness
@@ -22,9 +22,7 @@ EMBEDDING = [0.1, 0.2]
 
 
 def freeze_time(*args, **kwargs):
-    """freeze_time that skips transformers — its module-restore walk trips on
-    the library's lazy attributes (same workaround as the worker lifecycle
-    tests)."""
+    """Freeze time while skipping transformers, whose lazy attributes trip the module-restore walk."""
     kwargs.setdefault("ignore", ["transformers"])
     return _freeze_time(*args, **kwargs)
 
@@ -51,7 +49,7 @@ def make_row(
     is_forgotten: bool = False,
     forget_after: datetime | None = None,
 ) -> MemoryRecord:
-    """A detached candidate row — no session, no DB."""
+    """Build a detached candidate row — no session, no DB."""
     return MemoryRecord(
         id=uuid.uuid4(),
         user_id=USER,
@@ -78,7 +76,7 @@ async def _reconcile_one(
     similarity: float = 0.99,
     llm: AsyncMock | None = None,
 ) -> tuple[list[reconciliation.ReconciledFact], AsyncMock]:
-    """Run ``reconcile`` for one fact whose only Chroma hit hydrates to ``row``."""
+    """Run reconcile for one fact whose only Chroma hit hydrates to row."""
     llm_mock = llm if llm is not None else AsyncMock(return_value=ReconcileBatchResult())
     with (
         patch.object(
@@ -88,7 +86,11 @@ async def _reconcile_one(
         ),
         patch.object(reconciliation.pg_store, "get_memories_by_ids", AsyncMock(return_value=[row])),
         patch.object(reconciliation, "reconcile_facts", llm_mock),
+        # The rows' expiry is relative to NOW; read against the real clock, a
+        # "live for 30 days" row expired on 2026-09-26 and the suite went red.
+        patch.object(reconciliation, "datetime", wraps=datetime) as clock,
     ):
+        clock.now.return_value = NOW
         results = await reconciliation.reconcile(USER, [fact], [EMBEDDING])
     return results, llm_mock
 
@@ -122,7 +124,8 @@ class TestCandidateLiveness:
         fact = make_fact()
         row = make_row(content=fact.content, forget_after=NOW - timedelta(days=1))
 
-        results, llm = await _reconcile_one(fact, row)
+        with freeze_time(NOW):
+            results, llm = await _reconcile_one(fact, row)
 
         (reconciled,) = results
         assert reconciled.outcome is ReconcileOutcome.NEW
@@ -141,12 +144,12 @@ class TestCandidateLiveness:
         llm.assert_not_awaited()
 
     async def test_live_identical_candidate_still_collapses_to_duplicate(self) -> None:
-        """The liveness filter must not be over-broad: a genuinely live exact
-        match keeps collapsing without the LLM."""
+        """The liveness filter must not be over-broad: a genuinely live exact match still collapses."""
         fact = make_fact()
         row = make_row(content=fact.content, forget_after=NOW + timedelta(days=30))
 
-        results, llm = await _reconcile_one(fact, row)
+        with freeze_time(NOW):
+            results, llm = await _reconcile_one(fact, row)
 
         (reconciled,) = results
         assert reconciled.outcome is ReconcileOutcome.DUPLICATE
@@ -176,8 +179,7 @@ class TestCandidateLiveness:
         llm.assert_awaited_once()
 
     async def test_candidate_expiring_exactly_now_is_already_dead(self) -> None:
-        """forget_after == now is the deletion boundary: at the very instant a
-        memory expires it must stop absorbing restatements."""
+        """forget_after == now is the deletion boundary; expiry must stop absorbing restatements at once."""
         fact = make_fact()
         row = make_row(content=fact.content, forget_after=NOW)
 
@@ -200,9 +202,7 @@ class TestCandidateLiveness:
     async def test_a_dead_first_neighbor_does_not_mask_a_live_duplicate(
         self, dead_row: MemoryRecord
     ) -> None:
-        """Skipping a dead neighbor must move on to the NEXT neighbor, not end
-        the scan: a live exact duplicate ranked behind a dead row still has to
-        collapse to DUPLICATE, or the store grows a copy per restatement."""
+        """Skipping a dead neighbor must continue the scan so a live duplicate behind it still collapses."""
         fact = make_fact()
         live = make_row(content=fact.content)
         llm = AsyncMock(return_value=ReconcileBatchResult())
@@ -227,8 +227,7 @@ class TestCandidateLiveness:
         llm.assert_not_awaited()
 
     async def test_a_dead_shortcut_new_does_not_stop_reconciliation_of_later_facts(self) -> None:
-        """The all-neighbors-dead NEW shortcut settles ONE fact; the facts
-        after it must still get their own verdicts."""
+        """The all-neighbors-dead NEW shortcut settles one fact only; later facts still get their own verdicts."""
         first, second = make_fact("sam plays chess"), make_fact("sam likes green tea")
         dead = make_row(content=first.content, is_forgotten=True)
         live = make_row(content=second.content)

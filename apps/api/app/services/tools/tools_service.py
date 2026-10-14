@@ -1,15 +1,13 @@
 """Tools service for managing and retrieving tool information.
 
-`get_available_tools` is the single source for the tools a user can use: core
+get_available_tools is the single source for the tools a user can use: core
 (no-integration) tools plus the tools of integrations in their workspace. It is
 leak-safe (only the user's own added integrations, never another user's MCP) and
-self-describing — each tool carries server-computed `locked` (added but not
+self-describing — each tool carries server-computed locked (added but not
 connected), so the client never re-derives lock state. Per-user results cache
-under `tools:user:{user_id}:*`, which the integration mutators bust via
-`USER_INTEGRATION_CACHE_PATTERNS`.
+under tools:user:{user_id}:*, which the integration mutators bust via
+USER_INTEGRATION_CACHE_PATTERNS.
 """
-
-from typing import Any
 
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
@@ -22,7 +20,10 @@ from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.schemas.integrations.responses import IntegrationTool
-from app.services.integrations.user_integrations import get_user_integration_records
+from app.services.integrations.user_integrations import (
+    UserIntegrationRecord,
+    get_user_integration_records,
+)
 from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
 from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
@@ -37,9 +38,11 @@ def get_integration_name(integration_id: str) -> str | None:
 
 
 async def get_available_tools(user_id: str | None = None) -> ToolsListResponse:
-    """Core tools + the tools of the user's workspace integrations, each tagged
-    with `locked`. Anonymous callers (warmup) get core tools only. Per-user
-    results are cached; the anonymous build is coalesced."""
+    """Return core tools plus the user's workspace integration tools, each tagged with locked.
+
+    Anonymous callers (warmup) get core tools only. Per-user results are cached;
+    the anonymous build is coalesced.
+    """
     log.set(component="tools_service", operation="get_available_tools", user_id=user_id)
     if user_id is None:
         return await coalesce_request("global_tools", _build_tools_response)
@@ -57,8 +60,10 @@ def filter_tools_response(
     *,
     include_desktop: bool = False,
 ) -> ToolsListResponse:
-    """Drop desktop-only tools unless the caller is the desktop client (mirrors
-    the chat endpoint's X-Client-Type gating). Applied per-request, post-cache."""
+    """Drop desktop-only tools unless the caller is the desktop client.
+
+    Mirrors the chat endpoint's X-Client-Type gating. Applied per-request, post-cache.
+    """
     if include_desktop:
         return response
     tools = [t for t in response.tools if t.category != DESKTOP_TOOL_CATEGORY]
@@ -76,14 +81,14 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
     categories: set[str] = set()
     seen_tool_names: set[str] = set()
 
-    # The user's workspace: every integration they've added. `added` scopes which
-    # integration tools appear at all; `connected` decides locked vs unlocked.
-    # Registry category ids can be upper/mixed case (Composio toolkits) while
-    # records are lowercase, so all membership tests go through `.lower()`.
+    # `added` scopes which integration tools appear at all; `connected` decides locked vs
+    # unlocked. Registry category ids can be upper/mixed case, records lowercase, so
+    # membership tests go through `.lower()`.
     added: set[str] = set()
     connected: set[str] = set()
     if user_id:
-        for record in await get_user_integration_records(user_id):
+        records: list[UserIntegrationRecord] = await get_user_integration_records(user_id)
+        for record in records:
             iid = record.get("integration_id")
             if not iid:
                 continue
@@ -126,7 +131,7 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
     # workspace here is also the leak guard: an entry the user hasn't added — a
     # platform MCP they never connected, or another user's custom MCP — is skipped.
     try:
-        global_mcp_tools: dict[str, dict[str, Any]] = await get_all_mcp_tools()
+        global_mcp_tools = await get_all_mcp_tools()
     except Exception as e:
         log.warning(
             f"{LogTag.TOOL} Failed to fetch MCP tools",
@@ -141,14 +146,14 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
         if iid not in added:
             continue
         display_name = (
-            data.get("name")
+            data.name
             or get_integration_name(integration_id)
             or integration_id.replace("_", " ").title()
         )
-        icon_url = data.get("icon_url")
+        icon_url = data.icon_url
         locked = iid not in connected
-        for tool_dict in data.get("tools", []):
-            tool_name = tool_dict.get("name")
+        for stored_tool in data.tools:
+            tool_name = stored_tool.name
             if not tool_name:
                 log.warning(
                     f"{LogTag.TOOL} Skipping tool with missing 'name' from custom MCP",
@@ -223,12 +228,12 @@ async def get_tool_categories() -> dict[str, int]:
 
 
 async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool]:
-    """Full tool list for one integration from its source of truth: the registry
-    catalog for Composio/platform toolkits, the MCP store for MCP/custom servers.
+    """Return the full tool list for one integration from its source of truth.
 
-    Registry category ids may be upper/mixed case, so the match is case-insensitive.
-    ``destructive`` marks each tool's HIL default from the curated set (empty for
-    uncurated/MCP toolkits, so those tools report ``False``).
+    The registry catalog covers Composio/platform toolkits, the MCP store covers
+    MCP/custom servers; the match is case-insensitive. destructive marks each
+    tool's HIL default from the curated set (empty for uncurated/MCP toolkits,
+    so those tools report False).
     """
     destructive = integration_destructive_tools(integration_id) or set()
     tool_registry = await get_tool_registry()
@@ -250,10 +255,10 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
     stored = await get_integration_tools(integration_id)
     return [
         IntegrationTool(
-            name=tool["name"],
-            description=tool.get("description"),
-            destructive=tool["name"] in destructive,
+            name=tool.name,
+            description=tool.description,
+            destructive=tool.name in destructive,
         )
         for tool in stored
-        if tool.get("name")
+        if tool.name
     ]

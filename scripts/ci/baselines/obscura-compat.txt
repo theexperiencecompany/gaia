@@ -1,0 +1,32 @@
+# obscura-compat: sites where Obscura differs from headless Chrome, as found by
+# apps/api/scripts/obscura_compat_probe.py (.github/workflows/obscura-compat.yml).
+# One URL per line; a rendering gap at any other probed site fails the run.
+#
+# Entries are rendering gaps: the server sent both engines the same document and
+# Obscura made less of it (named JS errors to patch in bootstrap.js, or a live
+# site that varies between loads). A bot wall needs no entry: the probe reports
+# a site that served Obscura a different document on its own, never failing.
+# Seeded 2026-09-23 from two local runs: a site is here if it gapped in either
+# run, from before the probe told the two apart.
+#
+# A line whose site now matches Chrome is reported as removable and does not
+# fail the run; remove it. A site added after the seed carries its evidence in
+# a comment above it.
+
+https://duckduckgo.com/?q=attention+is+all+you+need&ia=web
+https://stackoverflow.com/questions
+https://www.booking.com/
+https://www.airbnb.com/
+https://www.bbc.com/news
+https://vercel.com/
+https://www.youtube.com/
+# 2026-10-02: same 1.56 MB document as Chrome, Obscura shows 10 buttons vs 24, with
+# ad-script fetch errors and "Couldn't find a style target" (local probe, PR engine).
+https://www.nytimes.com/
+# 2026-10-02: same document; MediaWiki's collapsed sidebar lists get `hidden` on the
+# container itself in Obscura (their 13 "show" toggles vanish) and table parts compute
+# display:block. 16 buttons vs 29-39 in Chrome, by Chrome's layout of the responsive header.
+https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)
+# 2026-10-03: both engines get a 202 AWS WAF challenge, whose script reloads into a page
+# variant Amazon picks per load (Obscura 8-10 buttons; Chrome 8-20 across runs).
+https://www.amazon.com/

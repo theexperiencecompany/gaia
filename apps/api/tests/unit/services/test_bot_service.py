@@ -6,10 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from fastapi import HTTPException
 import pytest
 
+from app.constants.chat import ConversationSource
 from app.models.bot_models import BotSessionDocument
 from app.models.conversation_models import ConversationDocument
 from app.models.user_models import AuthenticatedUser
+from app.services import bot_service as bot_service_mod
 from app.services.bot_service import BOT_RATE_LIMIT, BOT_RATE_WINDOW, BotService
+from app.services.browser.job_stop import RequesterChat
 
 
 def _conv(messages: list[dict]) -> ConversationDocument:
@@ -75,13 +78,12 @@ def mock_merge_repo() -> Iterator[MagicMock]:
 
 @pytest.fixture
 def sample_user() -> AuthenticatedUser:
-    """Return a sample user dict with id, email and name for session tests."""
-    return {
-        "_id": "507f1f77bcf86cd799439011",
-        "user_id": "507f1f77bcf86cd799439011",
-        "email": "test@example.com",
-        "name": "Test User",
-    }
+    """Provide a sample user with id, email and name for session tests."""
+    return AuthenticatedUser(
+        user_id="507f1f77bcf86cd799439011",
+        email="test@example.com",
+        name="Test User",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -143,17 +145,18 @@ class TestEnforceRateLimit:
 
 
 class TestBuildSessionKey:
-    """The exact key each surface resolves. A DM has to key the same whether the
-    caller came in from the chat (real channel id) or from a background delivery
-    that only knows the platform link (no channel id) — otherwise one DM becomes
-    two conversations."""
+    """The exact key each surface resolves.
+
+    A DM has to key the same whether the caller came in from the chat (real channel id)
+    or from a background delivery that only knows the platform link (no channel id) —
+    otherwise one DM becomes two conversations.
+    """
 
     #: The prod user whose Telegram chat forked across the two key formats.
     TELEGRAM_USER = "6222050155"
 
     def test_a_telegram_dm_keys_the_same_inbound_and_backend_originated(self) -> None:
-        """Telegram's private chat id IS the user id, so the inbound path sends it
-        as ``channel_id`` while a workflow delivery has none. Both are the same DM."""
+        """Telegram's private chat id IS the user id, so an inbound message and a workflow delivery match."""
         inbound = BotService.build_session_key("telegram", self.TELEGRAM_USER, self.TELEGRAM_USER)
         backend_originated = BotService.build_session_key("telegram", self.TELEGRAM_USER, None)
 
@@ -201,6 +204,9 @@ class TestGetOrCreateSession:
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
         assert result == "conv-existing"
+        mock_conversations.exists.assert_awaited_once_with(
+            "conv-existing", user_id=sample_user.user_id
+        )
 
     async def test_creates_new_session_when_no_existing(
         self,
@@ -227,8 +233,7 @@ class TestGetOrCreateSession:
         mock_create_conversation: AsyncMock,
         sample_user: AuthenticatedUser,
     ) -> None:
-        """The created bot conversation must carry the platform as its source so the
-        web list query's $nin filter excludes it."""
+        """The platform-as-source is what the web list query's $nin filter uses to exclude it."""
         mock_bot_repo.claim_session = AsyncMock(side_effect=self._claim_insert)
         mock_conversations.exists = AsyncMock(return_value=False)
 
@@ -245,9 +250,7 @@ class TestGetOrCreateSession:
         mock_create_conversation: AsyncMock,
         sample_user: AuthenticatedUser,
     ) -> None:
-        """If the session exists but its conversation was deleted (web UI / race),
-        the conversation is recreated with the SAME id — never a new one — so the
-        thread is not orphaned or forked."""
+        """A deleted conversation is recreated with the SAME id — never a new one — so the thread isn't forked."""
         mock_bot_repo.claim_session = AsyncMock(return_value=_session("conv-deleted"))
         mock_conversations.exists = AsyncMock(return_value=False)
 
@@ -266,8 +269,7 @@ class TestGetOrCreateSession:
         mock_create_conversation: AsyncMock,
         sample_user: AuthenticatedUser,
     ) -> None:
-        """Recreation must not mint a new conversation_id that differs from the one
-        already stored on the session."""
+        """Recreation must not mint a conversation_id that differs from the one stored on the session."""
         mock_bot_repo.claim_session = AsyncMock(return_value=_session("conv-deleted"))
         mock_conversations.exists = AsyncMock(return_value=False)
 
@@ -276,22 +278,6 @@ class TestGetOrCreateSession:
         # The candidate id passed to claim_session is discarded on an existing
         # session, so the returned id must be the stored one.
         assert result == "conv-deleted"
-
-    async def test_normalizes_user_dict_with_underscore_id(
-        self,
-        mock_bot_repo: MagicMock,
-        mock_conversations: MagicMock,
-        mock_create_conversation: AsyncMock,
-    ) -> None:
-        """User dict with _id but no user_id should be normalized."""
-        user: AuthenticatedUser = {"_id": "507f1f77bcf86cd799439011", "email": "test@example.com"}
-        mock_bot_repo.claim_session = AsyncMock(side_effect=self._claim_insert)
-        mock_conversations.exists = AsyncMock(return_value=False)
-
-        result = await BotService.get_or_create_session("discord", "user123", None, user)
-
-        assert result is not None
-        mock_create_conversation.assert_awaited_once()
 
     async def test_conversation_description_uses_platform(
         self,
@@ -316,11 +302,13 @@ class TestGetOrCreateSession:
 
 
 class TestADmKeysOffTheUserWhateverItsChannelId:
-    """Discord and Slack DM channel ids differ from the user id, so an inbound
-    DM used to key ``platform:<user>:<dm-channel>`` while workflow delivery
-    keyed ``platform:<user>:<user>`` — one DM, two conversations, and the
-    second one carried none of the history. The bot now flags DMs, and a
-    flagged claim keys off the user id and folds the channel-keyed row in."""
+    """Discord and Slack DM channel ids differ from the user id.
+
+    An inbound DM used to key platform:<user>:<dm-channel> while workflow delivery keyed
+    platform:<user>:<user> — one DM, two conversations, the second carrying none of the
+    history. The bot now flags DMs, and a flagged claim keys off the user id and folds
+    the channel-keyed row in.
+    """
 
     DM_CHANNEL = "9876543210"
 
@@ -375,8 +363,7 @@ class TestADmKeysOffTheUserWhateverItsChannelId:
         mock_conversations: MagicMock,
         sample_user: AuthenticatedUser,
     ) -> None:
-        """The user's whole history sits under the channel-keyed row and nothing
-        sits on the user-id key: the row moves, the conversation continues."""
+        """The whole history sits under the channel-keyed row; the row moves and the conversation continues."""
         legacy = self._row(
             f"discord:user123:{self.DM_CHANNEL}", "conv-history", "2026-08-20T00:00:00+00:00"
         )
@@ -403,9 +390,7 @@ class TestADmKeysOffTheUserWhateverItsChannelId:
         mock_conversations: MagicMock,
         sample_user: AuthenticatedUser,
     ) -> None:
-        """Both rows exist (the fork already happened). The channel-keyed row was
-        used more recently — the user chats there — so the user-id key is
-        repointed at that conversation and the channel row is dropped."""
+        """Both rows exist; the more recently used one wins and the stale row is dropped."""
         legacy = self._row(
             f"slack:user123:{self.DM_CHANNEL}", "conv-chat", "2026-08-25T00:00:00+00:00"
         )
@@ -434,10 +419,7 @@ class TestADmKeysOffTheUserWhateverItsChannelId:
         mock_conversations: MagicMock,
         sample_user: AuthenticatedUser,
     ) -> None:
-        """The two lookups must hit the exact legacy (platform:user:channel) and
-        canonical (platform:user:user) keys, in that order — a wrong platform,
-        user id, or channel baked into either key, or a swapped/dropped lookup
-        argument, would silently miss the row that needs folding."""
+        """The two lookups must hit the exact legacy and canonical keys, in that order, or silently miss the row."""
         legacy = self._row(
             f"discord:user123:{self.DM_CHANNEL}", "conv-history", "2026-08-20T00:00:00+00:00"
         )
@@ -465,8 +447,7 @@ class TestADmKeysOffTheUserWhateverItsChannelId:
         mock_conversations: MagicMock,
         sample_user: AuthenticatedUser,
     ) -> None:
-        """Telegram and WhatsApp: the DM channel IS the user id, so there is no
-        second key to fold in and no lookup to pay for."""
+        """Telegram and WhatsApp: the DM channel IS the user id, so there is no second key to fold in."""
         mock_bot_repo.claim_session = AsyncMock(return_value=_session("conv-tg"))
         mock_conversations.exists = AsyncMock(return_value=True)
 
@@ -478,6 +459,7 @@ class TestADmKeysOffTheUserWhateverItsChannelId:
         claim = mock_bot_repo.claim_session.await_args.kwargs
         assert claim["session_key"] == "telegram:user123:user123"
 
+    @pytest.mark.usefixtures("fake_redis")
     async def test_resetting_a_flagged_dm_clears_both_keys(
         self,
         mock_bot_repo: MagicMock,
@@ -485,8 +467,7 @@ class TestADmKeysOffTheUserWhateverItsChannelId:
         mock_create_conversation: AsyncMock,
         sample_user: AuthenticatedUser,
     ) -> None:
-        """A reset that only deleted the user-id key would let the next inbound
-        merge resurrect the channel-keyed conversation the user just reset."""
+        """Deleting only the user-id key would let the next merge resurrect the reset conversation."""
         mock_bot_repo.delete_by_session_key = AsyncMock()
         mock_bot_repo.get_by_session_key = AsyncMock(return_value=None)
         mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
@@ -521,6 +502,7 @@ class TestResetSession:
         sample_user: AuthenticatedUser,
     ) -> None:
         mock_bot_repo.delete_by_session_key = AsyncMock()
+        mock_bot_repo.get_by_session_key = AsyncMock(return_value=None)
         mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
         mock_conversations.exists = AsyncMock(return_value=False)
 
@@ -529,14 +511,56 @@ class TestResetSession:
         assert result is not None
         mock_bot_repo.delete_by_session_key.assert_awaited_once_with("discord:user123:user123")
 
+    @pytest.mark.usefixtures("mock_create_conversation")
+    @pytest.mark.parametrize(
+        ("session", "conversation"),
+        [("conv-dm", "conv-dm"), (None, "discord:507f1f77bcf86cd799439011")],
+    )
+    async def test_stop_stops_the_sessions_browser_run_and_the_users_from_any_group(
+        self,
+        session: str | None,
+        conversation: str,
+        mock_bot_repo: MagicMock,
+        mock_conversations: MagicMock,
+        sample_user: AuthenticatedUser,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """/stop resets the session, and a browser run outlives the turn that started it; a group's run talks to the user in this DM."""
+        stopped: list[tuple[str, RequesterChat | None]] = []
+
+        async def _stop(conversation_id: str, requester: RequesterChat | None) -> dict[str, object]:
+            stopped.append((conversation_id, requester))
+            return {}
+
+        monkeypatch.setattr(bot_service_mod, "stop_chat_jobs", _stop)
+        mock_bot_repo.delete_by_session_key = AsyncMock()
+        mock_bot_repo.get_by_session_key = AsyncMock(
+            return_value=session and MagicMock(conversation_id=session)
+        )
+        mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
+        mock_conversations.exists = AsyncMock(return_value=False)
+
+        await BotService.reset_session("discord", "user123", "dm-chan", sample_user, is_dm=True)
+
+        mock_bot_repo.get_by_session_key.assert_awaited_once_with("discord:user123:user123")
+        # Its own run (or, with no session, the DM's address), and through the DM's
+        # requester chat, the user's run from any group.
+        assert stopped == [
+            (conversation, RequesterChat(sample_user.user_id, ConversationSource.DISCORD))
+        ]
+
     async def test_reset_with_channel_id(
         self,
         mock_bot_repo: MagicMock,
         mock_conversations: MagicMock,
         mock_create_conversation: AsyncMock,
         sample_user: AuthenticatedUser,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        stop = AsyncMock()
+        monkeypatch.setattr(bot_service_mod, "stop_chat_jobs", stop)
         mock_bot_repo.delete_by_session_key = AsyncMock()
+        mock_bot_repo.get_by_session_key = AsyncMock(return_value=None)
         mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
         mock_conversations.exists = AsyncMock(return_value=False)
 
@@ -546,6 +570,8 @@ class TestResetSession:
         # The fresh session must be the SAME channel's, not the user's DM.
         claim = mock_bot_repo.claim_session.await_args.kwargs
         assert claim["session_key"] == "slack:user123:channel789"
+        # A group's /stop reaches only that group's own run.
+        stop.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -622,3 +648,10 @@ class TestLoadConversationHistory:
 
         assert len(result) == 1
         assert result[0]["content"] == ""
+
+    async def test_handles_empty_bot_response_field(self, mock_conversations: MagicMock) -> None:
+        mock_conversations.get = AsyncMock(return_value=_conv([{"type": "bot", "response": ""}]))
+
+        result = await BotService.load_conversation_history("conv1", "user1")
+
+        assert result == [{"role": "assistant", "content": ""}]

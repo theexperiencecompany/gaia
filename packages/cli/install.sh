@@ -45,7 +45,7 @@ install_node() {
   if [ "$(detect_os)" = "windows" ]; then
     error "Please install Node.js manually on Windows: https://nodejs.org"
   fi
-  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+  curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
   export NVM_DIR="$HOME/.nvm"
   # shellcheck source=/dev/null
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
@@ -108,9 +108,9 @@ main() {
   # Install GAIA CLI globally
   info "Installing @heygaia/cli via $PKG_MGR..."
   case "$PKG_MGR" in
-    npm)  npm install -g @heygaia/cli ;;
+    npm)  npm install -g --ignore-scripts @heygaia/cli ;;
     pnpm) pnpm add -g @heygaia/cli ;;
-    bun)  bun install -g @heygaia/cli ;;
+    bun)  bun install -g --ignore-scripts @heygaia/cli ;;
   esac
 
   if check_command gaia; then

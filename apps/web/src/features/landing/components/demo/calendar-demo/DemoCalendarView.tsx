@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
+import { formatHour12 } from "@/utils/date/hours";
 import {
   DAY_START_HOUR,
   DEMO_CALENDARS,
@@ -10,13 +11,6 @@ import {
   PX_PER_HOUR,
   PX_PER_MINUTE,
 } from "./calendarDemoConstants";
-
-function formatHour(hour: number): string {
-  if (hour === 0) return "12 AM";
-  if (hour < 12) return `${hour} AM`;
-  if (hour === 12) return "12 PM";
-  return `${hour - 12} PM`;
-}
 
 function formatTime12(date: Date): string {
   const h = date.getHours();
@@ -115,7 +109,7 @@ export default function DemoCalendarView() {
               style={{ height: PX_PER_HOUR }}
             >
               <span className="relative -top-2 text-[10px] text-zinc-500">
-                {formatHour(hour)}
+                {formatHour12(hour)}
               </span>
             </div>
           ))}
@@ -189,7 +183,7 @@ export default function DemoCalendarView() {
                         </div>
                         {height > 30 && (
                           <div className="text-[10px] text-zinc-400">
-                            {formatTime12(startDate)} – {formatTime12(endDate)}
+                            {formatTime12(startDate)} to {formatTime12(endDate)}
                           </div>
                         )}
                       </div>

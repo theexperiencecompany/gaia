@@ -26,8 +26,11 @@ class ResendEmailProvider:
             params["reply_to"] = message.reply_to
         if message.headers:
             params["headers"] = message.headers
+        options: resend.Emails.SendOptions | None = (
+            {"idempotency_key": message.idempotency_key} if message.idempotency_key else None
+        )
         # The Resend SDK is synchronous — run it in a thread to keep the event loop free.
-        await asyncio.to_thread(resend.Emails.send, params)
+        await asyncio.to_thread(resend.Emails.send, params, options)
 
     async def add_contact(self, user_email: str, user_name: str | None = None) -> None:
         """Add a contact to the Resend audience. No-op when RESEND_AUDIENCE_ID is unset."""

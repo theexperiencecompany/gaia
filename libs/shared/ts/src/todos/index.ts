@@ -13,6 +13,7 @@ export type {
   TodoStoreHook,
 } from "./store";
 export { createTodoStore } from "./store";
+export { isTrackedTodo } from "./tracked";
 export type { WorkflowStatusCacheEntry } from "./workflowStatus";
 export {
   buildWorkflowStatusEntry,

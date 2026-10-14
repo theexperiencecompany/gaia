@@ -1,11 +1,16 @@
 /**
- * Telegram / WhatsApp / Slack / Discord platform-link picker. Each button
- * opens that platform's bot link in a new tab. Rendered both by the active
- * `platforms` stage and by the completed-stages accordion, so the buttons stay
- * available for connecting additional platforms after the first.
+ * Telegram / WhatsApp / iMessage platform-link picker for the `platformPick`
+ * stage. Slack and Discord are deliberately absent — they live in
+ * Settings → Linked accounts, which offers all five.
  *
- * Each button emits `onHoverPlatform` so the parent can drive a
- * preview surface above (`OnboardingPlatformPreview`).
+ * The button's behaviour comes entirely from `onConnect`; this component
+ * knows nothing about deep links or phone registration. Phase 7 upgrades
+ * those links to carry a one-time code by changing `useConnectPlatform`
+ * alone.
+ *
+ * Each button emits `onHoverPlatform` so the parent can drive the preview
+ * surface above (`OnboardingPlatformPreview`); iMessage has no preview
+ * script, so it reports `null`.
  */
 
 "use client";
@@ -15,38 +20,36 @@ import * as m from "motion/react-m";
 import Image from "next/image";
 import type { FC } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import {
+  BOT_PLATFORM_ICONS,
+  BOT_PLATFORM_LABELS,
+  type BotPlatform,
+} from "@/config/botPlatforms";
 import type { PlatformPreviewPlatform } from "../constants/platformPreviewMessages";
+import { isPreviewPlatform } from "../constants/platformPreviewMessages";
 
-const PLATFORMS = [
-  {
-    label: "Telegram",
-    id: "telegram" as const,
-    icon: "/images/icons/macos/telegram.webp",
-  },
-  {
-    label: "WhatsApp",
-    id: "whatsapp" as const,
-    icon: "/images/icons/macos/whatsapp.webp",
-  },
-  {
-    label: "Slack",
-    id: "slack" as const,
-    icon: "/images/icons/macos/slack.webp",
-  },
-  {
-    label: "Discord",
-    id: "discord" as const,
-    icon: "/images/icons/macos/discord.webp",
-  },
-];
+const PLATFORMS: BotPlatform[] = ["telegram", "whatsapp", "imessage"];
 
 interface OnboardingPlatformConnectProps {
-  onConnect: (platform: string) => void;
+  onConnect: (platform: BotPlatform) => void;
   onSkip: () => void;
   onHoverPlatform: (platform: PlatformPreviewPlatform | null) => void;
   hideSkip?: boolean;
   embedded?: boolean;
 }
+
+const PlatformMention: FC<{ platform: BotPlatform }> = ({ platform }) => (
+  <span className="inline-flex items-center gap-1 text-zinc-300">
+    <Image
+      src={BOT_PLATFORM_ICONS[platform]}
+      alt=""
+      width={100}
+      height={100}
+      className="size-3.5"
+    />
+    {BOT_PLATFORM_LABELS[platform]}
+  </span>
+);
 
 export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
   onConnect,
@@ -55,12 +58,15 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
   hideSkip = false,
   embedded = false,
 }) => {
+  const hover = (platform: BotPlatform) =>
+    onHoverPlatform(isPreviewPlatform(platform) ? platform : null);
+
   return (
     <div
       className={
         embedded
           ? "flex flex-col items-start gap-2"
-          : "flex flex-col items-start gap-2 ml-10.75"
+          : "flex flex-col items-start gap-2 sm:ml-10.75"
       }
     >
       <div
@@ -69,45 +75,48 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
       >
         {PLATFORMS.map((platform, index) => (
           <m.div
-            key={platform.id}
+            key={platform}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, delay: index * 0.08 }}
-            onMouseEnter={() => onHoverPlatform(platform.id)}
-            onFocus={() => onHoverPlatform(platform.id)}
+            onMouseEnter={() => hover(platform)}
+            onFocus={() => hover(platform)}
             onBlur={() => onHoverPlatform(null)}
           >
             <RaisedButton
               color="black"
-              className="pl-2 pr-3"
-              onClick={() => onConnect(platform.id)}
+              className="pr-3 pl-2"
+              onClick={() => onConnect(platform)}
             >
               <Image
-                src={platform.icon}
-                alt={platform.label}
+                src={BOT_PLATFORM_ICONS[platform]}
+                alt={BOT_PLATFORM_LABELS[platform]}
                 width={100}
                 height={100}
                 className="size-6 max-h-6 max-w-6"
               />
-              {platform.label}
+              {BOT_PLATFORM_LABELS[platform]}
             </RaisedButton>
           </m.div>
         ))}
       </div>
       {!hideSkip && (
         <m.div
+          className="flex flex-col items-start gap-1"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.25, delay: PLATFORMS.length * 0.08 }}
         >
-          <Button
-            variant="light"
-            size="sm"
-            onPress={onSkip}
-            className="text-zinc-400 hover:text-zinc-200"
-          >
-            I'll do it later
+          <Button variant="flat" size="md" onPress={onSkip}>
+            Skip
           </Button>
+          <p className="flex flex-wrap items-center gap-1 px-1 text-xs text-zinc-400">
+            Don't worry, you can connect more platforms like
+            <PlatformMention platform="slack" />
+            and
+            <PlatformMention platform="discord" />
+            later.
+          </p>
         </m.div>
       )}
     </div>

@@ -54,7 +54,7 @@ def _event_type_name(ev: object) -> str:
 
 
 async def _wait_for(queue: asyncio.Queue[Any], suffix: str, timeout: float) -> dict[str, Any]:
-    """Drain events until one whose name ends with `suffix`, or time out."""
+    """Drain events until one whose name ends with suffix, or time out."""
     seen: list[str] = []
     try:
         async with asyncio.timeout(timeout):

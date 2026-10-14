@@ -21,7 +21,7 @@ import {
 } from "@/features/chat/components/artifacts/FileViewerBody";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
 import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
-import { useRightSidebar } from "@/stores/rightSidebarStore";
+import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 interface FileViewerPanelProps {
   conversationId: string;
@@ -51,7 +51,7 @@ export default function FileViewerPanel({
     error,
   } = useArtifactText(conversationId, path, inlineBody, !isImage && !isPdf);
   const [copied, setCopied] = useState(false);
-  const closeSidebar = useRightSidebar((state) => state.close);
+  const closeSidebar = useCloseRightSidebar();
 
   const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(contentType) || isImage;
 

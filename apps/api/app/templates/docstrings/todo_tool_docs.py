@@ -68,7 +68,7 @@ UPDATE_TODO = """
     - When changing task priority or due date
     - When moving tasks between projects
     - When updating task details or descriptions
-    - When modifying labels or subtasks
+    - When modifying labels or the checklist
 
     Input:
     - todo_id: Required, the ID of the todo to update
@@ -80,7 +80,7 @@ UPDATE_TODO = """
     - priority: Optional, new priority level
     - project_id: Optional, move to different project
     - completed: Optional boolean, mark complete/incomplete
-    - subtasks: Optional, update subtask list
+    - subtasks: Optional, replace the todo's checklist items
 
     Output:
     - Updated TodoResponse with new values
@@ -106,7 +106,7 @@ DELETE_TODO = """
     - Success confirmation (no content returned)
     - Error if todo not found or deletion fails
 
-    Warning: This permanently deletes the todo and all its subtasks.
+    Warning: This permanently deletes the todo and its checklist.
     """
 
 SEARCH_TODOS = """
@@ -396,80 +396,59 @@ BULK_DELETE_TODOS = """
     - Success confirmation (no content)
     - Error if any todo not found
 
-    Warning: Permanently deletes todos and their subtasks.
+    Warning: Permanently deletes todos and their checklists.
     """
 
-ADD_SUBTASK = """
-    Add a subtask to an existing todo.
+ADD_CHECKLIST_ITEM = """
+    Add a checklist item to an existing todo.
 
-    This tool creates a new subtask within a parent todo, useful for breaking
-    down complex tasks into smaller, manageable steps.
+    A checklist item is a line to tick off inside one todo. It does not run, has no
+    notes and watches nothing. It is not a sub-todo: a tracked todo's sub-todos are
+    full tracked todos, created with create_tracked_todo(parent_todo_id=...).
 
     When to use:
-    - When breaking down a complex task into multiple related subtasks
-    - When a parent task requires sequential steps to complete
-    - When creating a checklist of related items under a main task
-    - When a task has multiple components that should be tracked separately
-    - When organizing work that logically belongs under a single parent task
-    - Only use for tasks that need multiple different components tracked individually
+    - When the user wants a task broken into steps they will tick off themselves
+    - When building a checklist under a main task
 
     Input:
-    - todo_id: Required, parent todo ID
-    - title: Required, subtask title
+    - todo_id: Required, the todo the checklist belongs to
+    - title: Required, checklist item title
 
     Output:
-    - Updated TodoResponse with new subtask
+    - Updated TodoResponse with the new checklist item
     - Error if todo not found or limit exceeded
 
-    Note: Each todo can have up to 50 subtasks. For completely independent tasks, create separate todos instead.
+    Note: Each todo can have up to 50 checklist items. For independent tasks, create separate todos.
     """
 
-UPDATE_SUBTASK = """
-    Update a specific subtask within a todo.
-
-    This tool modifies subtask properties like title or completion status,
-    enabling granular task progress tracking.
-
-    When to use:
-    - When marking subtasks as complete
-    - When renaming subtasks
-    - When updating subtask details
-    - For subtask progress tracking
+UPDATE_CHECKLIST_ITEM = """
+    Update one checklist item inside a todo: rename it or tick it off.
 
     Input:
-    - todo_id: Required, parent todo ID
-    - subtask_id: Required, subtask ID to update
-    - title: Optional, new subtask title
-    - completed: Optional boolean, completion status
+    - todo_id: Required, the todo the checklist belongs to
+    - item_id: Required, checklist item ID to update
+    - title: Optional, new checklist item title
+    - completed: Optional boolean, whether the item is ticked off
 
     Output:
-    - Updated TodoResponse with modified subtask
-    - Error if todo or subtask not found
+    - Updated TodoResponse with the modified checklist item
+    - Error if todo or checklist item not found
 
-    Note: Subtask completion doesn't affect parent todo status.
+    Note: Ticking items off does not complete the todo.
     """
 
-DELETE_SUBTASK = """
-    Delete a subtask from a todo.
-
-    This tool removes a subtask from its parent todo, useful for cleaning up
-    or reorganizing task breakdown structures.
-
-    When to use:
-    - When removing unnecessary subtasks
-    - When consolidating subtasks
-    - When cleaning up task details
-    - When user wants to delete a subtask
+DELETE_CHECKLIST_ITEM = """
+    Remove one checklist item from a todo.
 
     Input:
-    - todo_id: Required, parent todo ID
-    - subtask_id: Required, subtask ID to delete
+    - todo_id: Required, the todo the checklist belongs to
+    - item_id: Required, checklist item ID to delete
 
     Output:
-    - Updated TodoResponse without the deleted subtask
-    - Error if todo or subtask not found
+    - Updated TodoResponse without the deleted checklist item
+    - Error if todo or checklist item not found
 
-    Note: Only removes the subtask, parent todo remains unchanged.
+    Note: Only the checklist item is removed; the todo remains unchanged.
     """
 
 SEMANTIC_SEARCH_TODOS = """

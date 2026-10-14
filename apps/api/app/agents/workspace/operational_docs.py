@@ -1,47 +1,31 @@
 """GAIA's operating manual: the single source of truth for self-knowledge.
 
-This module consolidates what used to be smeared across the static prompts,
-the per-directory ``GUIDE.md`` files, and the ``gaia-*`` built-in skills into
-ONE canonical place, structured as:
+Consolidates what used to be spread across static prompts, per-directory
+GUIDE.md files, and the gaia-* built-in skills: GAIA_CORE is the always-on
+operating core in the static prompt prefix (rides the provider's prompt
+cache); MANUAL_DOCS is one self-contained doc per concern, surfaced via
+read_manual or signal-gated injection.
 
-- ``GAIA_CORE``: the always-on operating core (the "solid start"). It is
-  user-independent, so it lives in the *static* prompt prefix and rides the
-  provider's prompt cache. It orients the agent and routes to the topic docs.
-- ``MANUAL_DOCS``: one self-contained doc per concern (integrations, tracked
-  todos, user todos, sessions/artifacts, notifications). Each doc is the single
-  unit that gets surfaced, today on demand via the ``read_manual`` tool or
-  signal-gated injection, later auto-injected on semantic similarity. One file
-  per concern == one clean embedding unit.
+These are app-owned constants held in process memory — reading them must
+never spin up the E2B sandbox. system_docs.py re-exports the per-directory
+guide bodies from here.
 
-Crucially these are *app-owned constants loaded in the API process*. Reading
-them must NOT spin up the E2B sandbox: the sandbox is for the user's real
-files and code execution, not for the agent reading its own manual. So the
-agent gets this content by injection or via ``read_manual`` (process memory),
-never by ``cat``-ing a file inside the sandbox.
-
-``system_docs.py`` re-exports the per-directory guide bodies from here so the
-on-disk projections stay a thin, non-duplicated view of this source.
-
-Scale note: these docs are app-authored constants held in process memory (one
-copy per replica). At the current scale (a handful of docs, a few KB) that is
-negligible and the fastest possible read, faster than a Mongo/Redis round-trip.
-If this corpus ever grows to thousands of docs, move to a Redis(TTL) ->
-Mongo/JuiceFS read-through cache instead of holding everything in RAM.
+Scale note: fine in RAM at the current scale (a handful of docs, a few KB);
+move to a Redis/Mongo read-through cache if this ever grows to thousands.
 """
 
 from __future__ import annotations
 
 from typing import Final, Literal, NamedTuple, get_args
 
-# ---------------------------------------------------------------------------
-# Topic docs: one self-contained file per concern.
-# Bodies are faithful merges of the prior GUIDE.md + gaia-* skill content.
-# ---------------------------------------------------------------------------
+# Topic docs: one self-contained file per concern, faithfully merged from
+# the prior GUIDE.md + gaia-* skill content.
 
 INTEGRATIONS_DOC: Final[str] = """# Integrations: connecting and configuring services
 
 Each external service the user connects (gmail, googlecalendar, slack, …)
-becomes a per-integration *subagent* with its own tools, and gets a directory:
+becomes an integration you load with activate_integration, with its own
+tools, and gets a directory:
 
     integrations/
         <integration>/
@@ -62,13 +46,20 @@ becomes a per-integration *subagent* with its own tools, and gets a directory:
 - `connect_integration`: start the connection flow for one or more services.
   In the web UI it renders a "Connect" card; on bot / non-UI surfaces the reply
   embeds a login-free connect link instead. Use whenever the user asks to
-  connect / link / set up a service.
-- `check_integrations_status`: is a specific service connected? Use for
-  "is Gmail connected?".
+  connect / link / set up a service. GAIA supports several accounts per
+  service (up to 5): when they want another, use `mode="add_account"`; if you're
+  not sure they do, tell them which accounts are connected and ask.
+  `mode="reconnect"` when they ask to reconnect or refresh a connection; with
+  several accounts, pass the expired one as `account`.
+- `disconnect_integration`: remove a connection, or one account of a service
+  with several (pass `account`). Asks the user to approve first.
+- `set_primary_integration_account` / `rename_integration_account`: change which
+  account is the default, or give one a clear name.
+- `check_integrations_status`: is a service connected, and with which accounts?
+  Use for "is Gmail connected?" or "which Gmail accounts do I have?".
 
-When a handoff to a subagent fails because the service isn't connected, the
-same connect prompt is surfaced automatically. Relay it, then retry once
-connected.
+When activation reports a service isn't connected, the same connect prompt
+is surfaced automatically. Relay it, then activate again once connected.
 
 ## Per-integration custom instructions ("remember this for Gmail")
 
@@ -77,9 +68,9 @@ it used: focus channels, default projects, conventions. This is durable and
 scoped to one integration; it is honored on every future task on that service.
 
 - **Source of truth:** the user's account (one record per integration).
-- **Surfaced automatically** to the matching subagent every turn as a
-  "CUSTOM INSTRUCTIONS FOR <INTEGRATION>" block: the slack subagent always
-  sees the slack instructions without reading a file.
+- **Surfaced automatically** whenever you activate the matching integration,
+  as a "CUSTOM INSTRUCTIONS FOR <INTEGRATION>" block: activating slack
+  surfaces the slack instructions without reading a file.
 - **Mirrored read-only** to `integrations/<id>/agent/instructions.md`. Never
   edit that file directly: it's a projection and the edit won't stick.
 - **Editable by the user** on the integrations page in the app.
@@ -87,8 +78,8 @@ scoped to one integration; it is honored on every future task on that service.
 Reading & updating:
 
 - `get_integration_instructions(integration_id)`: current content. Call this
-  before amending so you preserve what's there. A subagent already has its own
-  instructions in context and rarely needs it.
+  before amending so you preserve what's there. An activated integration
+  already has its instructions in context and rarely needs it.
 - `update_integration_instructions(integration_id, content)`: saves the FULL
   new body (replaces, does not append). To amend: read first, merge, write the
   whole thing back.
@@ -105,18 +96,20 @@ Typical flow:
 1. User: "From now on, for Slack, focus on #eng, #design, and #pm."
 2. Recognize a durable preference for the `slack` integration.
 3. `update_integration_instructions("slack", "<full instructions>")`.
-4. Confirm briefly. The slack subagent sees it every future turn.
+4. Confirm briefly. Activating slack surfaces them every future turn.
 """
 
 
 TRACKED_TODOS_DOC: Final[str] = """# Tracked todos: GAIA-managed todos with memory
 
 Tracked todos are **GAIA-managed todos**: they show on the user's todos page, but
-GAIA owns them and keeps a canvas of working notes (key IDs, state, activity log,
-learnings) so it can act on them over time. They are distinct from the user's own
+GAIA owns them and keeps working notes as files (a recall doc plus a dated activity
+log) so it can act on them over time. They are distinct from the user's own
 hand-created action items. Create one only when GAIA performs or schedules a real
 action on an external system it needs to remember, follow up on, or repeat; never
-for read-only work (fetching, listing, summarizing), no matter how often it runs.
+for work that only reads (fetching, listing, summarizing), no matter how often it
+runs. Recurring work that also writes on the user's behalf (an inbox desk that saves
+reply drafts) qualifies even when its final message is a summary.
 When the user says "email Rahul about the contract" and months later asks "what
 happened with Rahul's contract?", the tracked todo and its canvas surface the answer.
 
@@ -129,25 +122,29 @@ These live at `/workspace/gaia-tasks/`:
     gaia-tasks/
         index.md                      one-line summary per task, freshest first
         <slug>-<shortid>/
-            canvas.md                 your brain dump (Key Details / State / …)
-            log.md                    system-written audit trail
-            meta.json                 labels, due, priority, schedule, refs
+            canvas.md                 recall doc: Standing rules / Key Details / Current State / Context / Learnings
+            activity.md               dated log, oldest first: what happened, by whom, outcome
+            observations.md           evidence behind learned patterns, when the todo keeps one (the Inbox desk does)
+            log.md                    system-written audit trail (read-only)
+            meta.json                 labels, due, priority, schedule, refs (read-only)
 
 ## Tools (always available: no retrieve_tools)
 
-- `create_tracked_todo`: create a todo with a canvas.
+- `create_tracked_todo`: create a todo; the result names its folder.
+  `parent_todo_id=` makes it a sub-todo of a larger tracked job; `references=[...]`
+  links past todos whose Learnings it reads.
 - `update_tracked_todo`: labels, due_date, priority, scheduled_at,
-  recurrence, expires_at, references.
-- `update_tracked_todo_canvas`: write canvas.md; modes append / section /
-  replace.
+  recurrence, expires_at, references, parent_todo_id.
 - `complete_tracked_todo`: mark done (requires a completion summary).
-- `search_todo_context`: semantic search over all canvases (includes done).
-- `list_tracked_todos`: active tracked todos (≤50) with metadata.
+- `search_todo_context`: semantic search over all notes (includes done).
+- `list_tracked_todos`: active tracked todos (≤50) with metadata; filter with
+  `labels=[...]` (todos carrying all of them) or `gmail_thread_id=...`.
 
-The files are read-only projections of MongoDB. `Write`/`Edit`/`sed -i` fail
-with Permission denied; that's intentional. Mutate through the tools above.
-To read a known one fast: `cat gaia-tasks/<slug>-<shortid>/canvas.md` or
-`grep -r "rahul" gaia-tasks/` beats a semantic search.
+The notes are ordinary files for you: `read`, `edit` and `write` work on
+`canvas.md`, `activity.md` and `observations.md` (they are stored on the todo, so this works even
+when the folder is not on disk). `log.md`, `meta.json` and `index.md` are
+generated; edits to them are refused. In `bash`, the folder is a read-only
+projection: `cat` and `grep -r "rahul" gaia-tasks/` are fine, `sed -i` is not.
 
 ## Search first, create last
 
@@ -172,23 +169,28 @@ Overusing tracked todos degrades search quality and clutters GAIA's memory.
 - **Immediate** (finishes this conversation): create → delegate → document →
   complete.
 - **Long-running** (spans conversations / needs follow-up): create with
-  `scheduled_at` → act → update canvas → leave open → resume later via active
+  `scheduled_at` → act → update the files → leave open → resume later via active
   todos or search → eventually complete with learnings.
 
-## Canvas
+## The two files
 
-`update_tracked_todo_canvas` modes: pick the right one, never default to
-`replace`:
-- `append` (default): add activity-log entries / timeline / notes. No read
-  needed.
-- `section`: replace one named section body (e.g. "Current State"). No read
-  needed.
-- `replace`: full rewrite. Only for restructuring.
+`canvas.md` is what you want to recall later. Sections: `Standing rules` (the
+user's instructions for how this todo behaves, one dated line each; every run
+obeys them), `Key Details` (ids, addresses, URLs needed to act), `Current State` (true right now; rewrite it
+after every action), `Context` (decisions, open questions, signals), `Learnings`
+(written ONLY at completion: what worked, timing insights, reusable patterns).
+One section each, plus any of your own. Keep it short and current: `edit` the
+section that changed, never append to the end of the file. A write that
+repeats a section or carries a log or dated entries is refused.
 
-Default template sections: `Key Details` (ids, addresses, URLs needed to act),
-`Current State` (true right now), `Activity Log` (which agent did what, tools,
-outcome), `Timeline` (dated actions), `Context`, `Learnings` (written ONLY at
-completion: what worked, timing insights, reusable patterns).
+`activity.md` is the chronological record: one dated entry per thing that
+happened (`- 2026-09-02T10:15:00+00:00 Gmail agent: sent ... thread 18f3a2b`),
+oldest first, newest at the end. It is append-only: add entries at the end, and
+a write that changes or drops an earlier one is refused. GAIA records its own
+lifecycle entries here as `- <time> [event] detail` (runs and their outcome,
+schedule and delivery changes, watches, trigger fires, failures, completion).
+After delegation, add what each agent did (tools used, ids, outcome). Never
+write learnings here, and never write activity into canvas.md.
 
 ## Scheduling & recurrence
 
@@ -199,18 +201,49 @@ completion: what worked, timing insights, reusable patterns).
   `every_4h`, `every_1h`) need `scheduled_at` as anchor; cron (`0 9 * * 1-5`)
   does not: first fire is computed from the cron. If both are passed,
   `scheduled_at` is ignored.
-- `due_date` (set via `update_tracked_todo`) = deadline; overdue still needs
-  doing. `expires_at` = relevance window; expired is skipped entirely.
+- `due_date` (set at creation or via `update_tracked_todo`, with a timezone
+  offset) = deadline; overdue still needs doing. `expires_at` = relevance
+  window; expired is skipped entirely.
 - Execution: Redis-locked (no double-run); retries 3× with 1h then 4h backoff;
   after 3 failures a `failed` label is added and the user notified; success
   with recurrence advances `scheduled_at` and re-enqueues.
+
+## Results & notifications
+
+When a scheduled or triggered run finishes, GAIA reads its final report and
+messages the user's chat app (WhatsApp/Telegram/Discord/Slack) only if the run
+found something they need to know or decide; a routine or no-op run sends
+nothing. So end with a factual report of what you did and what changed, and do
+NOT call `send_notification` to announce it, which sends it twice. Every run's
+outcome, sent or not, is recorded in activity.md.
+
+`notify_on_run` (on `create_tracked_todo` / `update_tracked_todo`, default on)
+turns that delivery off entirely. It is the user's setting: change it only when
+they ask. A silent todo reaches the user only if the run deliberately calls
+`send_notification`.
+
+Unrelated to the todo being marked completed, and separate from the failure
+notification above, which always fires.
+
+## The user's feedback on a todo
+
+Feedback on how a todo should behave from now on ("Apply the user's feedback to
+this todo: ...") is kept in exactly one place, so every later run obeys it:
+- How this todo behaves (what it shows or skips, what it does on its own, how it
+  reports): one dated line in its canvas.md `Standing rules`. Rewrite a rule the
+  feedback changes; remove one only when the user retracts it.
+- How GAIA writes email, to one person or in general: the Gmail integration
+  instructions (`update_integration_instructions`), so chat drafting obeys it too.
+- When it runs: `update_tracked_todo` with `recurrence` / `scheduled_at`.
+A sub-todo's run also obeys its parent's Standing rules.
 
 ## Anti-patterns
 
 - Not creating one when GAIA touched an external system (even "just" an email).
 - Multiple todos for one initiative.
-- Vague canvas ("made progress") instead of ids + tool names.
-- Not collecting subagent activity reports before writing the canvas.
+- Vague notes ("made progress") instead of ids + tool names.
+- Not collecting subagent activity reports before writing activity.md.
+- Appending activity to the end of canvas.md (it belongs in activity.md).
 - Not searching before creating.
 - Not writing learnings before completing.
 """
@@ -225,8 +258,8 @@ The user's own action items (the ones they see in their UI) project to:
         <slug>-<shortid>/meta.json    title, due, priority, labels, project,
                                       subtasks, completion
 
-`ls todos/` shows the user's plate at a glance. "Active" = a todo NOT
-assigned to GAIA AND open or completed within the last 7 days.
+`ls todos/` shows the user's plate at a glance. "Active" = NOT a
+`gaia-tracked` doc AND open or completed within the last 7 days.
 
 - `ls todos/`: what's on the user's plate now.
 - `cat todos/index.md`: one-line summary per todo.
@@ -243,7 +276,7 @@ When the user asks "what are my todos / add to my todo list / show my tasks",
 they mean this list, never tracked todos and never a connected task provider:
 a todo here is GAIA's own and lives nowhere else, so never report it as Todoist,
 Google Tasks, or Notion. Only an explicit "add it to my <provider>" goes to that
-provider's subagent.
+provider's integration (activate it first).
 """
 
 
@@ -289,9 +322,23 @@ Everything below is reachable via relative paths once you're there.
 4. **Don't ask where files are.** Attachments are already at
    `./user-uploaded/<name>`; `ls` if unsure of the exact name.
 
+## GAIA tools from session scripts
+
+Python scripts you run here can call GAIA integration tools directly; the
+import works from any directory (PYTHONPATH is injected per bash run):
+
+    from gaia import execute, schema
+    emails = execute("GMAIL_FETCH_EMAILS", {"max_results": 50})
+
+Check a tool's return shape BEFORE consuming its fields: `schema("TOOL_NAME")`
+in the script, or read `/workspace/.gaia/tools/<TOOL_NAME>.json`. Read the
+`code-mode-scripting` skill for the full pattern (one script, batched calls,
+minimal stdout). If the import fails with "No module named 'gaia'", code mode
+is not configured on this deployment; use the `execute` tool instead.
+
 ## Subagent sessions
 
-A per-integration subagent gets its own scratch at
+A spawned subagent gets its own scratch at
 `/workspace/sessions/<conv_id>/<integration>-<datetime>/scratch/`, but
 user-visible output from a subagent STILL goes in the parent session's
 `artifacts/`; that's the one place the UI watches.
@@ -344,12 +391,19 @@ OAuth integration, so `connect_integration("whatsapp")` will fail with "not
 found". Linking a platform and toggling which channels are enabled are done by
 the user in their app settings; there is no agent tool for that yet.
 
-## Workflow result delivery
+## Automatic result delivery
 
-When a workflow finishes it delivers its result automatically to the user's
-linked platforms + in-app (unless the workflow is silent). Do NOT also call
-`send_notification` to announce a result that completion delivery already
-sends; that double-notifies. See the `workflows` doc.
+Two things already deliver their own results, and calling `send_notification`
+to announce one of them sends it to the user twice:
+
+- A finished **workflow** run delivers its result to the user's linked platforms
+  plus in-app, unless the workflow is silent. See the `workflows` doc.
+- A finished **tracked todo** run is reported to the user's chat app when it
+  found something that matters, unless that todo has `notify_on_run` off. See
+  the `tracked-todos` doc.
+
+In both cases the run's result is delivered for you. Notify only for something
+genuinely separate and urgent.
 """
 
 
@@ -493,12 +547,14 @@ Offer to pause it instead, or point them to the app to delete.
 
 ## Results & notifications
 
-By default (`notify_on_completion` on) the final result is delivered
-automatically: posted as real messages into the user's linked messaging
-platforms (WhatsApp/Telegram/Discord/Slack) and surfaced as an in-app completion
-notification. A silent workflow delivers nothing on success; it only reaches the
-user if its own prompt sends something (e.g. an explicit `send_notification`).
-Failures always notify. So do NOT add a `send_notification` to announce a result
+Every workflow has a `delivery` mode that decides what a successful run does:
+`now` posts the result as real messages into the user's preferred messaging
+platform (WhatsApp/Telegram/Discord/Slack) and raises an in-app completion
+notification; `brief` holds it for the user's next brief and pushes nothing;
+`silent` keeps it in the workflow's conversation only. A `brief` or `silent`
+workflow reaches the user mid-run only if its own prompt sends something (e.g.
+an explicit `send_notification`). A run with nothing worth reporting reaches
+nobody in any mode. Failures always notify. So do NOT add a `send_notification` to announce a result
 that completion delivery already sends, and do NOT double-send if the prompt
 already messages the user. See the `notifications` doc for channel details.
 
@@ -574,17 +630,15 @@ actions into todos.
 
 ## How to use it
 
-Goals are owned by the goals subagent: `handoff("goals", "...")`. It owns the
-goal tools (create, list, get, search, statistics, generate or regenerate a
-roadmap, mark roadmap nodes complete) and the roadmap generation; you do not call
-those directly.
+There is no goals subagent and no dedicated goal tools: break an ambition
+into tracked todos (create_tracked_todo, one per phase or milestone) and
+work those. Report progress as the share of its todos complete.
 
-Typical flow: create the goal, then offer to generate a roadmap; later, mark
-roadmap nodes complete as the user makes progress, and report completion
-percentages. Deleting a goal also removes its roadmap and needs explicit user
-confirmation.
+Typical flow: create the tracked todos for the goal's phases, then mark them
+complete as the user makes progress. Deleting the last todo closes the goal;
+deleting anything needs explicit user confirmation.
 
-Goals and their roadmaps show on the user's goals view in the app.
+Tracked todos show on the user's todos view in the app.
 """
 
 
@@ -601,15 +655,15 @@ this").
 
 - **global**: every agent (executor and all subagents).
 - **executor**: only the main executor.
-- **a specific subagent** (gmail, github, slack, …): only that specialist.
+- **a specific integration** (gmail, github, slack, …): only work on that integration.
 
 Pick the narrowest scope that fits; ask the user if it is ambiguous.
 
 ## How to use it
 
-Skills are owned by the skills subagent: `handoff("skills", "...")`. It owns the
-skill tools (install from GitHub, create inline, list installed, enable, disable,
-uninstall) and validates names and scopes; you do not call those directly.
+Skills are owned by the skills integration: `activate_integration("skills")`,
+then use its tools yourself (install from GitHub, create inline, list
+installed, enable, disable, uninstall). It validates names and scopes.
 
 - Installing from GitHub needs the specific skill folder path, not just the repo
   root (e.g. `owner/repo` with skill_path `skills/pdf-processing`).
@@ -634,14 +688,15 @@ spreadsheets), then delivers the finished file.
 
 ## How to use it
 
-The document generator is a subagent: `handoff("docgen", "...")`. Give it the
-request plus the source data (the content to put in the file). It writes,
+The document generator is an integration, not a subagent:
+`activate_integration("docgen")`, then drive it yourself. Give it the request
+plus the source data (the content to put in the file). It writes,
 compiles, and delivers the file into the session's `artifacts/`, where it renders
 as a downloadable card in chat; you do not run the compile toolchain yourself.
 
 - Use it whenever the deliverable is a file: PDF, `.docx`, `.pptx`, `.xlsx`, or CSV.
 - Do NOT use it to edit documents inside a connected app (Google Docs/Sheets);
-  those belong to that integration's subagent.
+  those belong to that integration's tools.
 - The finished file lands in `artifacts/` (see the `sessions-and-artifacts` doc).
 """
 
@@ -720,9 +775,9 @@ docs come to you (injected) or via the `read_manual` tool.
   work to you (the executor) via `call_executor`.
 - **Executor (you)**: the generalist. You hold a few tools always and retrieve
   the rest on demand with `retrieve_tools`. Lean context is by design.
-- **Per-integration subagents**: one specialist per connected service (gmail,
-  slack, …). You hand a scoped task to one via `handoff`; it owns that
-  service's tools and its custom instructions.
+- **Per-integration tools**: every connected service (gmail,
+  slack, …) loads in-context via `activate_integration`, then you act
+  yourself with its tools. Integrations are never separate agents.
 
 ## Your memory & state (three stores, never conflate them)
 
@@ -737,7 +792,7 @@ docs come to you (injected) or via the `read_manual` tool.
 
     sessions/<conv-id>/   this conversation's tree (scratch, user-uploaded,
                           artifacts). Final user-facing output → artifacts/.
-    integrations/         connected services: subagents, instructions, skills.
+    integrations/         connected services: tools, instructions, skills.
     skills/               reusable how-to docs.
     gaia-tasks/           your tracked-todo working memory.
     todos/                the user's own todo list.
@@ -767,18 +822,19 @@ these.
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
 | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
+| "Stop showing me X / brief me at 7" (feedback on a tracked todo) | record it on that todo | `tracked-todos` |
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
-| "Set a goal / make a roadmap / track progress on X" | `handoff("goals", ...)` | `goals` |
+| "Set a goal / make a roadmap / track progress on X" | break it into tracked todos | `tracked-todos` |
 | "Remind me / ping me / set a timer at <time>" | `create_reminder_tool(...)` | `reminders` |
 | "Text / notify me on WhatsApp/Telegram/Slack" | `send_notification(channels=[...])` | `notifications` |
 | "Automate X / every morning do Y / set up a workflow" | `create_workflow(user_request)` | `workflows` |
 | "Change / pause / resume a workflow" | `edit_workflow` / `pause_workflow` / `resume_workflow` (list first for the id) | `workflows` |
-| "Install / create a skill / teach you a repeatable procedure" | `handoff("skills", ...)` | `skills` |
-| "Make / export a downloadable file (PDF, Word, slides, spreadsheet, CSV)" | `handoff("docgen", ...)` | `documents` |
+| "Install / create a skill / teach you a repeatable procedure" | `activate_integration("skills", ...)` | `skills` |
+| "Make / export a downloadable file (PDF, Word, slides, spreadsheet, CSV)" | `activate_integration("docgen", ...)` | `documents` |
 | "Am I on Pro / what am I paying / show my invoices?" | `get_subscription_details` | `billing` |
 | "Upgrade me / I want Pro / how do I pay?" | `create_upgrade_link` | `billing` |
 | "How do you work / how do I configure you?" | answer from this core + the doc | (this core) |
-| "What is GAIA / what does it cost / who built it / what can't it do?" | `handoff("gaia_knowledge_guide", ...)` | (product Q&A) |
+| "What is GAIA / what does it cost / who built it / what can't it do?" | `activate_integration("gaia_knowledge_guide", ...)` | (product Q&A) |
 
 Persist a preference only when it is DURABLE, not a one-off for this turn.
 
@@ -793,12 +849,12 @@ context. It is cheap and keeps you from guessing how your own machinery works.
   response style and timezone, custom instructions, voice, linked platforms;
   the read-only `account/` projections and the account tools.
 - `integrations`: discover, connect, and configure integrations; per-
-  integration custom instructions; the subagent model.
+  integration custom instructions; the activation model.
 - `tracked-todos`: create / search / update / schedule / complete tracked
   todos; canvas conventions; recurrence; institutional memory.
 - `user-todos`: the user's own todo list and external task providers.
-- `goals`: long-term goals and AI-generated roadmaps; tracking progress (the
-  goals subagent).
+- `goals`: long-term goals and AI-generated roadmaps; tracking progress
+  (tracked todos).
 - `reminders`: one-off and recurring time-based nudges to the user; how a
   reminder differs from a workflow and a tracked todo (executor-direct tools,
   no subagent).
@@ -810,9 +866,9 @@ context. It is cheap and keeps you from guessing how your own machinery works.
 - `memory`: your long-term memory about the user. the `/workspace/memory/`
   layout, journal, core documents, and the memory tools.
 - `skills`: install (from GitHub) or author skills inline, scope them, and
-  manage them; how skills extend GAIA (the skills subagent).
+  manage them; how skills extend GAIA (the skills integration).
 - `documents`: generate downloadable files (PDF, Word, slides, spreadsheets,
-  CSV) from a request and its data (the docgen subagent).
+  CSV) from a request and its data (the docgen integration).
 - `billing`: the user's plan and payment history, handing them a checkout link
   to upgrade to Pro, and what to say when they hit a usage limit.
 
@@ -828,8 +884,8 @@ context. It is cheap and keeps you from guessing how your own machinery works.
 class ManualDoc(NamedTuple):
     """One self-contained operating-manual topic.
 
-    ``name`` is the stable handle passed to ``read_manual`` and used as the
-    embedding key for future similarity routing. ``description`` is the
+    name is the stable handle passed to read_manual and used as the
+    embedding key for future similarity routing. description is the
     one-line trigger shown in indexes.
     """
 
@@ -874,6 +930,58 @@ Per-topic details live beside the data: `account/GUIDE.md` and
 say so rather than presenting a read as live truth.
 """
 
+DEVICE_SETUP_DOC: Final[str] = """# Device Setup - connecting the user's own machine
+
+The user can connect their own computer to GAIA with the `gaia bridge` CLI, so
+GAIA can use MCP servers running on that machine and read or write files there.
+It runs over one outbound tunnel - no inbound ports.
+
+## Steps to walk the user through
+1. Install the CLI (needs Node 20+):
+     npm install -g @heygaia/cli   (or: pnpm add -g @heygaia/cli / bun add -g @heygaia/cli)
+   Works on macOS, Linux, and Windows (WSL2 recommended). Full guide: /cli/device-bridge
+2. Pair the machine:  gaia bridge login
+   It prints a short code. The user pastes that code in this chat (GAIA shows an
+   approve button that opens the trusted approval page) or approves it at
+   Settings -> Devices. Approving links the device to their account. GAIA never
+   approves a code on its own - the user confirms on the authenticated page.
+3. Expose something:  gaia bridge add  (a guided wizard)
+     - a command-run MCP server (stdio), e.g. npx -y @modelcontextprotocol/server-everything
+     - an MCP server already running at a local URL
+     - local files and folders (no MCP needed): specific folders or the entire
+       filesystem, read-only or read/write
+   Shortcut for folders:  gaia bridge fs ~/dir [--write]
+4. Keep it online:  gaia bridge up   (the device is online only while this runs)
+
+## Using a connected device
+A connected device gives you two DIFFERENT capabilities, reached two different ways:
+
+1. Its MCP servers' tools. When a device MCP server is added it is connected and
+   its tools are indexed into tool-retrieval exactly like any other integration -
+   so they surface through `retrieve_tools` (semantic search over all connected
+   tools) and you use them by handing off to that server's subagent, the SAME as
+   a cloud MCP. You do NOT shell out to an MCP server. `list_devices` shows each
+   server, its integration_id (the handoff target), and whether its tools are
+   synced yet (a server GAIA never reached has none). Indexing runs in the
+   background once the device is online, so a just-added server can take a moment
+   to appear in `retrieve_tools`.
+2. Shell + file access on the machine. Use `run_on_device(device_id, command)` to
+   run a shell command on the user's real machine - read/edit files, run a build,
+   list a directory. This is the ONLY way to touch the user's real files; the
+   cloud sandbox is a separate container that cannot see their machine, so never
+   answer a question about the user's own files by running commands in the sandbox.
+
+Both need the device online (`gaia bridge up`); `list_devices` shows live status.
+The routing is not magic: a device server's tools are addressed internally as
+`device://<device_id>/<server_key>` and every call runs on that machine over the
+one outbound tunnel.
+
+## Managing
+gaia bridge ls (status), gaia bridge rm <key> (remove a server),
+gaia bridge logout (forget local credentials). Revoke a device any time from
+Settings -> Devices.
+"""
+
 MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
     doc.name: doc
     for doc in (
@@ -893,7 +1001,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Integrations: connecting and configuring services",
             description=(
                 "Discover, connect, and configure integrations; per-integration "
-                "custom instructions ('remember this for Gmail'); the subagent model."
+                "custom instructions ('remember this for Gmail'); the activation model."
             ),
             body=INTEGRATIONS_DOC,
         ),
@@ -917,7 +1025,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Goals: long-term objectives and roadmaps",
             description=(
                 "Long-term goals and AI-generated roadmaps: create, track progress, "
-                "and complete roadmap nodes (handoff to the goals subagent)."
+                "and complete roadmap nodes (tracked todos)."
             ),
             body=GOALS_DOC,
         ),
@@ -970,7 +1078,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Skills: installable how-to procedures that extend GAIA",
             description=(
                 "Install (from GitHub) or author skills inline, set their scope, and "
-                "manage them; how skills extend GAIA (handoff to the skills subagent)."
+                "manage them; how skills extend GAIA (the skills integration)."
             ),
             body=SKILLS_DOC,
         ),
@@ -979,7 +1087,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Documents: generate downloadable files",
             description=(
                 "Produce downloadable files (PDF, Word, slides, spreadsheets, CSV) "
-                "from a request and its data (handoff to the docgen subagent)."
+                "from a request and its data (the docgen integration)."
             ),
             body=DOCUMENTS_DOC,
         ),
@@ -991,6 +1099,16 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
                 "to upgrade to Pro; what to say when they hit a usage limit."
             ),
             body=BILLING_DOC,
+        ),
+        ManualDoc(
+            name="device-setup",
+            title="Device Setup: connecting the user's own machine",
+            description=(
+                "Connect the user's computer with the gaia bridge CLI: install, "
+                "pair (paste the code in chat or approve in Settings), expose MCP "
+                "servers or local files, and keep it online; how to use a device."
+            ),
+            body=DEVICE_SETUP_DOC,
         ),
     )
 }
@@ -1013,6 +1131,7 @@ ManualTopic = Literal[
     "skills",
     "documents",
     "billing",
+    "device-setup",
 ]
 
 if set(get_args(ManualTopic)) != set(MANUAL_DOCS):

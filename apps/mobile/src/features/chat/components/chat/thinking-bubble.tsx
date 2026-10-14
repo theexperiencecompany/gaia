@@ -40,7 +40,8 @@ function ThinkingIndicator({ userMessage }: { userMessage?: string }) {
             : getRandomThinkingMessage(),
         );
       },
-      2000 + Math.random() * 1000,
+      // cosmetic jitter on the thinking-message rotation; nothing security-relevant
+      2000 + Math.random() * 1000, // NOSONAR typescript:S2245
     );
     return () => clearInterval(interval);
   }, [userMessage]);

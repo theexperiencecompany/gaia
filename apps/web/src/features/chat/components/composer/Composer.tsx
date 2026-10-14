@@ -1,6 +1,5 @@
 import type React from "react";
 import {
-  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -12,6 +11,7 @@ import FilePreview from "@/features/chat/components/files/FilePreview";
 import { ALLOWED_FILE_TYPES } from "@/features/chat/constants/files";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useComposerPaste } from "@/features/chat/hooks/useComposerPaste";
+import { useComposerSeeds } from "@/features/chat/hooks/useComposerSeeds";
 import { useComposerSubmit } from "@/features/chat/hooks/useComposerSubmit";
 import { useFileAttachments } from "@/features/chat/hooks/useFileAttachments";
 import { useSlashCommandDropdownControl } from "@/features/chat/hooks/useSlashCommandDropdownControl";
@@ -23,9 +23,9 @@ import {
   useComposerTextActions,
   useComposerUI,
   useInputText,
+  useReplyToMessage,
 } from "@/stores/composerStore";
-import { useReplyToMessage } from "@/stores/replyToMessageStore";
-import type { SearchMode } from "@/types/shared/searchTypes";
+import type { ComposerMode } from "@/types/shared/searchTypes";
 
 import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";
@@ -41,7 +41,6 @@ interface MainSearchbarProps {
   fileUploadRef?: React.RefObject<{
     attachFiles: (files: File[]) => Promise<void>;
   } | null>;
-  appendToInputRef?: React.RefObject<((text: string) => void) | null>;
   hasMessages: boolean;
   voiceModeActive: () => void;
   /** Hover intent on the voice button — used to prefetch the session token. */
@@ -52,7 +51,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
   scrollToBottom,
   inputRef,
   fileUploadRef,
-  appendToInputRef,
   hasMessages,
   voiceModeActive,
   onVoiceModeHover,
@@ -75,8 +73,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const { selectedWorkflow, clearSelectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent, clearSelectedCalendarEvent } =
     useCalendarEventSelection();
-  const { replyToMessage, clearReplyToMessage, setInputFocusCallback } =
-    useReplyToMessage();
+  const { replyToMessage, clearReplyToMessage } = useReplyToMessage();
 
   const { handleFormSubmit, handleRemoveSelectedTool, handleKeyDown } =
     useComposerSubmit({ inputRef, scrollToBottom });
@@ -94,23 +91,15 @@ const Composer: React.FC<MainSearchbarProps> = ({
     [selectedMode],
   );
 
-  // Set up input focus callback for reply-to-message functionality
+  // Picking a reply target hands focus to the composer — focus is the
+  // composer's job, it owns the textarea ref.
   useEffect(() => {
-    setInputFocusCallback(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    });
+    if (replyToMessage) inputRef.current?.focus();
+  }, [replyToMessage, inputRef]);
 
-    // Clean up on unmount
-    return () => setInputFocusCallback(null);
-  }, [inputRef, setInputFocusCallback]);
-
-  // NOTE: Workflow auto-send logic lives in ChatPage, NOT here.
-  // Composer remounts across the NewChatLayout → ChatWithMessages layout
-  // switch that happens when the optimistic message makes hasMessages toggle
-  // to true, which would reset the once-only guard and fire the workflow
-  // twice. ChatPage is memoized and never remounts, so it hosts that guard.
+  // Workflow auto-send lives in ChatPage, not here: Composer remounts across
+  // the NewChatLayout -> ChatWithMessages switch (hasMessages toggling true),
+  // which would reset a once-only guard and fire the workflow twice.
 
   // Let the parent (drag-and-drop on the chat page) attach files directly.
   useImperativeHandle(fileUploadRef, () => ({ attachFiles }), [attachFiles]);
@@ -128,7 +117,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
     if (files.length > 0) attachFiles(files);
   };
 
-  const handleSelectionChange = (mode: SearchMode) => {
+  const handleSelectionChange = (mode: ComposerMode) => {
     if (currentMode === mode) setSelectedMode(new Set([null]));
     else setSelectedMode(new Set([mode]));
     // Clear selected tool when mode changes
@@ -156,21 +145,9 @@ const Composer: React.FC<MainSearchbarProps> = ({
     clearSelectedCalendarEvent();
   };
 
-  // Function to append text to the input
-  const appendToInput = useCallback(
-    (text: string) => {
-      const newText = inputText ? `${inputText} ${text}` : text;
-      setInputText(newText);
-      // Focus the input after appending
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    },
-    [inputText, setInputText, inputRef],
-  );
-
-  // Expose appendToInput function to parent via ref
-  useImperativeHandle(appendToInputRef, () => appendToInput, [appendToInput]);
+  // Out-of-band seeds (staged prompt, `?q=` deep link) land in the box here,
+  // where the input actually lives.
+  useComposerSeeds(inputRef);
 
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">

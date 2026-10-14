@@ -46,7 +46,7 @@ async def create_short_link_route(
     body: ShortLinkCreateRequest, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> ShortLinkResponse:
     """Mint (or return) the heygaia.link for an artifact the caller owns."""
-    user_id = user["user_id"]
+    user_id = user.user_id
     log.set(
         user={"id": user_id},
         short_link={"operation": "create", "target_type": body.target_type.value},
@@ -103,7 +103,7 @@ async def revoke_short_link_route(
     slug: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> Response:
     """Revoke a short link you own; the URL goes dead immediately."""
-    user_id = user["user_id"]
+    user_id = user.user_id
     log.set(user={"id": user_id}, short_link={"operation": "revoke", "slug": slug})
     if not await revoke_short_link(user_id, slug):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)

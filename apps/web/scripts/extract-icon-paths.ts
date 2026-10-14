@@ -208,7 +208,7 @@ function extractSvgPaths(
   const html = ReactDOMServer.renderToStaticMarkup(
     React.createElement(IconComponent, {
       size: 24,
-      color: style === "stroke" ? "currentColor" : "currentColor",
+      color: "currentColor",
       strokeWidth: style === "stroke" ? 1.5 : undefined,
     }),
   );

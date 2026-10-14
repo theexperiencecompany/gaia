@@ -4,7 +4,7 @@ Runs at tool-execution time, not at the request boundary: the lane is already
 known there (compaction reads it the same way), and the ToolMessage that comes
 out is persisted — so each image is described once, ever. A pre-model hook cannot
 cache anything (its return value feeds one model call and is then discarded),
-which is why this does not live in ``MediaAdapter``.
+which is why this does not live in MediaAdapter.
 
 The canonical image block stays in the message; only the description is added, so
 the thread still works if the lane later changes to one that can see pixels.
@@ -32,11 +32,11 @@ async def describe_tool_media(
     message: ToolMessage,
     config: RunnableConfig,
 ) -> ToolMessage | None:
-    """Attach descriptions of ``message``'s media blocks when the lane can't see.
+    """Attach descriptions of message's media blocks when the lane can't see.
 
-    Returns ``None`` when there is nothing to do — no media, a lane that takes
+    Returns None when there is nothing to do — no media, a lane that takes
     pixels directly, or descriptions already attached — matching
-    ``compact_tool_output``'s keep-as-is contract.
+    compact_tool_output's keep-as-is contract.
     """
     blocks = media_blocks(message.content)
     if not blocks:

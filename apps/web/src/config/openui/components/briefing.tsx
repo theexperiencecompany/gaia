@@ -2,17 +2,15 @@ import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import type { z } from "zod";
 
-import { BriefingCard } from "@/features/briefing/components/BriefingCard";
+import { BriefingEdition } from "@/features/briefing";
 
 import { briefingSchema } from "../promptSpecs";
 
-// The editorial rendering lives in exactly one place — `BriefingCard` in the
-// `briefing` feature module — so the dashboard and this LLM-emitted path stay
-// visually identical. This view is a thin adapter: OpenUI props are the same
-// shape as `BriefingPayload`, so they pass straight through.
+// BriefingEdition is the one brief view; OpenUI props share the payload's shape,
+// so they pass straight through (no rendered edition image on this path).
 
 function BriefingView(props: z.infer<typeof briefingSchema>) {
-  return <BriefingCard payload={props} defaultCollapsed={false} />;
+  return <BriefingEdition payload={props} />;
 }
 
 export const briefingDef = defineComponent({

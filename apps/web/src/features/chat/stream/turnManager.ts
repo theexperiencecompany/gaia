@@ -1,31 +1,18 @@
 /**
- * ARCHITECTURE INVARIANTS — these govern everything under features/chat/stream/.
+ * ARCHITECTURE INVARIANTS for features/chat/stream/: a turn's state spans five
+ * stores (event log, Mongo, SSE, IndexedDB, per-tab Zustand), and every bug
+ * here has been two of them disagreeing at a boundary.
  *
- * A turn's state is distributed across five stores: the backend event log
- * (Redis Stream), Mongo, the SSE connection, IndexedDB, and per-tab Zustand.
- * A reload destroys tab memory at an arbitrary instant while the server keeps
- * streaming — so every bug this system has ever had was two of those stores
- * disagreeing at a boundary. These rules make that class of bug unwritable:
- *
- * 1. DERIVE, don't synchronize. Client state that matters must be
- *    reconstructable from a source of truth — the event log for server facts,
- *    IndexedDB for client facts. A fix that reconciles two stores with a flag
- *    or heuristic is wrong; re-derive instead. (The send queue is rebuilt from
- *    persisted "queued" records; a missing user record is rebuilt from the
- *    replayed init frame.)
- *
- * 2. Check the store you write. Zustand is per-tab, IndexedDB is shared
- *    across tabs — never gate a write to one on a read from the other.
- *
- * 3. One identity. The client's send id IS the server's user_message_id and
- *    the turn's idempotency key. Never mint a second id or reconcile ids —
- *    reuse is what makes redelivery safe (the backend rejects duplicates).
- *
- * 4. The event log is complete. A session attaching mid-turn must render the
- *    turn exactly as if the page had been open the whole time, from replay
- *    alone. A new client-visible fact about a turn must therefore be carried
- *    in a frame (see apps/api/app/models/stream_events.py), never assumed to
- *    survive in tab memory.
+ * 1. DERIVE, don't synchronize — reconstruct from a source of truth (event log
+ *    for server facts, IndexedDB for client facts) rather than reconciling
+ *    two stores with a flag/heuristic.
+ * 2. Check the store you write — Zustand is per-tab, IndexedDB is cross-tab;
+ *    never gate a write to one on a read from the other.
+ * 3. One identity — the client's send id IS the server's user_message_id and
+ *    the turn's idempotency key; never mint a second id.
+ * 4. The event log is complete — a mid-turn attach must render from replay
+ *    alone, so a new client-visible fact must ride a frame (see
+ *    `apps/api/app/models/stream_events.py`), never tab memory.
  */
 import { v4 as uuidv4 } from "uuid";
 import { db } from "@/lib/db/chatDb";
@@ -79,6 +66,7 @@ const buildResumeArgs = (
     replyToMessage: null,
     conversationId,
     isOnboardingDemo: false,
+    isRetry: false,
     resumeStreamId,
   },
 });
@@ -108,11 +96,26 @@ class TurnManager {
     return this.sessions.has(this.resolveKey(conversationId));
   }
 
-  /** Start a turn, or queue the send if this conversation is mid-turn. */
+  /** Start a turn, or steer the live one when this conversation is mid-turn.
+   *
+   *  A mid-turn send starts immediately as a steering session (same POST, same
+   *  bubbles, no shared-slot ownership — see TurnSession's `steering` flag);
+   *  the backend folds it into the live run's next reasoning step. Only a
+   *  not-yet-created conversation still queues — no id, nothing to fold into.
+   */
   send(args: SendArgs): void {
     const key = this.resolveKey(args.options.conversationId);
 
     if (this.sessions.has(key)) {
+      if (!key.startsWith(PENDING_KEY_PREFIX)) {
+        const steerKey = `${key}:steer:${args.options.optimisticUserId ?? uuidv4()}`;
+        streamLog("lifecycle", "send:steer", {
+          turnKey: steerKey,
+          conversationId: args.options.conversationId,
+        });
+        this.startSession(steerKey, args, true);
+        return;
+      }
       const queue = this.queues.get(key) ?? [];
       queue.push(args);
       this.queues.set(key, queue);
@@ -124,17 +127,15 @@ class TurnManager {
       return;
     }
 
-    this.startSession(key, args);
+    this.startSession(key, args, false);
   }
 
   /**
    * Re-attach to a conversation's in-flight turn after a reload, if one
-   * exists. The caller supplies the server's verdict — the active stream id,
-   * or null when nothing is streaming — fetched alongside the conversation
-   * sync, so opening a conversation costs a single request. The event log
-   * replays everything missed, so the resumed session renders the turn
-   * exactly as if the page had been open the whole time. No-op when a resume
-   * for this conversation is already in flight.
+   * exists. The caller supplies the server's verdict (active stream id or
+   * null) fetched alongside the conversation sync, so opening a conversation
+   * costs one request. No-op when a resume for this conversation is already
+   * in flight.
    */
   async resumeIfActive(
     conversationId: string,
@@ -153,10 +154,9 @@ class TurnManager {
         return;
       }
       if (!activeStreamId) {
-        // Authoritative verdict: no turn is running for this conversation.
-        // Any record still claiming to be in flight is a dead send from a
-        // previous page — surface it as failed (visible, retryable) instead
-        // of leaving a zombie spinner or silently deleting the message.
+        // Authoritative verdict: no turn running. A record still claiming to be
+        // in flight is a dead send from a previous page — surface it as failed
+        // (visible, retryable) rather than a zombie spinner or silent deletion.
         await markDeadSendsFailed(conversationId);
         return;
       }
@@ -168,6 +168,7 @@ class TurnManager {
       this.startSession(
         conversationId,
         buildResumeArgs(conversationId, activeStreamId),
+        false,
       );
       await this.restoreQueuedSends(conversationId);
     } catch (error) {
@@ -181,11 +182,15 @@ class TurnManager {
     }
   }
 
-  /** Abort the active turn for a conversation. Returns true if one existed. */
+  /** Abort every live turn for a conversation — the main turn and any steers.
+   *  Stopping halts the exchange, so queued sends are discarded as before. */
   async stop(conversationId: string | null): Promise<boolean> {
     const key = this.resolveKey(conversationId);
-    const session = this.sessions.get(key);
-    if (!session) return false;
+    const targets = [...this.sessions.entries()].filter(
+      ([sessionKey, session]) =>
+        sessionKey === key || session.boundConversationId === key,
+    );
+    if (targets.length === 0) return false;
     // Stopping also discards this conversation's queued sends — the user is
     // halting the exchange, not asking for the next queued turn to fire.
     const queued = this.queues.get(key) ?? [];
@@ -199,7 +204,7 @@ class TurnManager {
         );
       }
     }
-    await session.abort();
+    await Promise.all(targets.map(([, session]) => session.abort()));
     return true;
   }
 
@@ -239,11 +244,16 @@ class TurnManager {
     });
   }
 
-  private startSession(key: string, args: SendArgs): void {
-    const session = new TurnSession(key, args, {
-      onEnd: (ended) => this.handleSessionEnd(ended),
-      onRekey: (oldKey, newKey) => this.rekey(oldKey, newKey),
-    });
+  private startSession(key: string, args: SendArgs, steering: boolean): void {
+    const session = new TurnSession(
+      key,
+      args,
+      {
+        onEnd: (ended) => this.handleSessionEnd(ended),
+        onRekey: (oldKey, newKey) => this.rekey(oldKey, newKey),
+      },
+      { steering },
+    );
     this.sessions.set(key, session);
     if (key.startsWith(PENDING_KEY_PREFIX)) this.pendingKey = key;
     void session.start();
@@ -264,11 +274,17 @@ class TurnManager {
   }
 
   private handleSessionEnd(session: TurnSession): void {
-    const key = session.boundConversationId ?? session.key;
-    this.sessions.delete(key);
-    this.sessions.delete(session.key);
+    // By identity, never by key: a steer is filed under its own key but reports
+    // the conversation it writes into, so deleting `boundConversationId` evicted
+    // the still-streaming main turn — after which Stop found nothing to abort.
+    for (const [key, active] of [...this.sessions.entries()]) {
+      if (active === session) this.sessions.delete(key);
+    }
     if (this.pendingKey === session.key) this.pendingKey = null;
-    this.dispatchQueued(key);
+    // A steer owns neither the conversation's session slot nor its queue; the
+    // main turn it folded into still holds both and will dispatch when it ends.
+    if (session.isSteering) return;
+    this.dispatchQueued(session.boundConversationId ?? session.key);
   }
 
   private dispatchQueued(key: string): void {
@@ -281,10 +297,9 @@ class TurnManager {
     if (queue.length === 0) this.queues.delete(key);
     if (!next) return;
 
-    // The held message is now actually being sent: flip its optimistic bubble
-    // from "queued" (grey) to "sending", and refresh its timestamp to dispatch
-    // time — messages sort by createdAt, so a queued send must order after
-    // everything that streamed in while it waited, not at its typing time.
+    // Flip the optimistic bubble from "queued" to "sending" and refresh its
+    // timestamp to dispatch time — messages sort by createdAt, so a queued
+    // send must order after everything that streamed in while it waited.
     const dispatchedAt = new Date();
     if (next.options.optimisticUserId) {
       db.updateMessage(next.options.optimisticUserId, {

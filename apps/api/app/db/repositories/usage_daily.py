@@ -1,11 +1,11 @@
-"""Repository for the ``usage_daily`` collection — durable per-day usage rollups.
+"""Repository for the usage_daily collection — durable per-day usage rollups.
 
-One document per user per UTC day (``{user_id, date: "YYYY-MM-DD", count, cost,
-aux_cost, ...token counts}``), ``$inc``-upserted on every metered action. Backs
+One document per user per UTC day ({user_id, date: "YYYY-MM-DD", count, cost,
+aux_cost, ...token counts}), $inc-upserted on every metered action. Backs
 the activity heatmap, the percentile badge, and the durable cost history
-(``cost``/``*_tokens`` mirror the charged Redis budget windows; ``aux_cost``/
-``aux_*_tokens`` are un-charged background COGS — see
-``app.services.usage_activity.record_cost``). The token counts ride alongside
+(cost/*_tokens mirror the charged Redis budget windows; aux_cost/
+aux_*_tokens are un-charged background COGS — see
+app.services.usage_activity.record_cost). The token counts ride alongside
 their cost in the same write so a mispriced call can be re-derived from the
 raw usage after the fact, instead of only the (possibly wrong) dollar amount
 surviving.
@@ -34,10 +34,9 @@ class UsageDailyDocument(UserScopedDocument):
     aux_output_tokens: int = 0
     aux_cached_tokens: int = 0
     aux_reasoning_tokens: int = 0
-    # What the provider actually billed, reconstructed after the fact by
-    # scripts/backfill_true_cost.py. Absent on every row the backfill has not
-    # reached (and on every row written before it existed), which is why these
-    # are optional rather than 0.0 — a missing reconstruction is not "$0 spent".
+    # What the provider actually billed, reconstructed by scripts/backfill_true_cost.py.
+    # Absent (not 0.0) on any row the backfill hasn't reached yet — a missing
+    # reconstruction is not "$0 spent".
     cost_actual: float | None = None
     aux_cost_actual: float | None = None
     cost_actual_coverage: float | None = None
@@ -77,8 +76,7 @@ class UsageDailyIncrement(BaseModel):
 
 
 class UsageDailyUpdate(BaseModel):
-    """Typed ``$set`` fields for a rollup row. Rollups move via ``$inc``-only
-    raw updates, so nothing is typed-settable."""
+    """Typed ``$set`` fields for a rollup row; nothing is typed-settable since rollups move via ``$inc``."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -93,13 +91,11 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
     async def increment(
         self, user_id: str, day: str, delta: UsageDailyIncrement, *, charged: bool = True
     ) -> None:
-        """``$inc``-upsert the user's rollup row for ``day`` (``YYYY-MM-DD``).
+        """$inc-upsert the user's rollup row for day (YYYY-MM-DD).
 
-        ``charged=False`` books the spend and its tokens under the ``aux_*``
-        fields instead: auxiliary background work is tracked for per-user COGS
-        but never counts against the user's allowance, so the charged fields
-        stay an exact mirror of the Redis windows the budget wall enforces. The
-        action count is not split — the heatmap counts actions, not dollars.
+        charged=False books spend/tokens under the aux_* fields instead, so the
+        charged fields stay an exact mirror of the Redis budget windows. The
+        action count is never split — the heatmap counts actions, not dollars.
         """
         prefix = "" if charged else "aux_"
         inc: dict[str, object] = {
@@ -127,14 +123,10 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
     async def apply_true_cost(self, user_id: str, date: str, actuals: TrueCostActuals) -> bool:
         """Stamp the reconstructed provider spend onto an EXISTING rollup row.
 
-        Deliberately never touches ``cost``/``aux_cost``: budget enforcement
-        already acted on those numbers, so rewriting them would retroactively
-        change what a user was charged and what the Redis windows were metered
-        against. The actuals land in their own fields beside them.
-
-        No upsert — a user-day with no rollup row was never metered, and inventing
-        one from log lines alone would fabricate usage history. Returns whether a
-        row matched.
+        Never touches cost/aux_cost, since budget enforcement already acted on
+        those; the actuals land in their own fields instead. No upsert — a
+        user-day with no rollup row was never metered, and inventing one would
+        fabricate usage history.
         """
         matched = await self._apply_raw_update_unfetched(
             {"user_id": user_id, "date": date},
@@ -153,12 +145,12 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
         return matched > 0
 
     async def counts_since(self, user_id: str, since_day: str) -> dict[str, int]:
-        """The user's per-day action counts from ``since_day`` (inclusive) on."""
+        """Return the user's per-day action counts from since_day (inclusive) on."""
         rows = await self.rollups_since(user_id, since_day)
         return {row.date: row.count for row in rows}
 
     async def rollups_since(self, user_id: str, since_day: str) -> list[UsageDailyDocument]:
-        """The user's full rollup rows from ``since_day`` (inclusive) on."""
+        """Return the user's full rollup rows from since_day (inclusive) on."""
         return await self._find({"user_id": user_id, "date": {"$gte": since_day}})
 
     async def rank_thresholds(
@@ -166,14 +158,10 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
     ) -> dict[str, float]:
         """Cross-user activity thresholds at each top-X% RANK position.
 
-        One server-side pass: sum each user's window total, sort descending,
-        push the totals into a single Mongo-side array, then read the value at
-        each top-X% rank position (0-based index ``ceil(fraction * n) - 1``,
-        floored at 0). Rank-based (not value-quantile) so a single whale cannot
-        stretch a threshold past every other user. The sorted array is bounded
-        by the 16MB BSON doc limit (fine for realistic user counts) and never
-        leaves Mongo; only the threshold scalars come back. Returns ``{}`` when
-        the window has no rows at all.
+        One server-side pass: sum each user's window total, sort descending, and
+        read the value at each rank position (index ceil(fraction * n) - 1, floored
+        at 0) — rank-based, not value-quantile, so one whale can't skew it. Bounded
+        by the 16MB BSON doc limit; returns {} when the window has no rows.
         """
         threshold_at = {
             key: {
@@ -209,7 +197,7 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
         return {key: float(rows[0][key]) for key in rank_fractions}
 
     async def user_window_totals(self, window_start: str) -> list[tuple[str, int]]:
-        """Every user's summed action count since ``window_start``, one pass."""
+        """Every user's summed action count since window_start, one pass."""
         return [
             (str(row["_id"]), int(row["total"]))
             async for row in self._raw_collection().aggregate(

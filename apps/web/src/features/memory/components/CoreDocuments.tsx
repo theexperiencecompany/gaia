@@ -6,15 +6,12 @@ import { Textarea } from "@heroui/input";
 import { Skeleton } from "@heroui/skeleton";
 import { Tab, Tabs } from "@heroui/tabs";
 import { FileEmpty02Icon, PencilEdit02Icon } from "@icons";
+import type { MemoryDocType, MemoryDocument } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type {
-  MemoryDocType,
-  MemoryDocument,
-} from "@/features/memory/api/types";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";

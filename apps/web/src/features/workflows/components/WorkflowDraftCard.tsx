@@ -68,10 +68,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
 
   return (
     <>
-      <div
-        className="group relative z-1 flex w-full max-w-md cursor-pointer flex-col gap-3 rounded-3xl border border-dashed border-warning/40 bg-zinc-800/40 p-4 backdrop-blur-lg transition-colors hover:bg-zinc-700/50"
-        onClick={() => setIsModalOpen(true)}
-      >
+      <div className="group relative z-1 flex w-full max-w-md flex-col gap-3 rounded-3xl border border-dashed border-warning/40 bg-zinc-800/40 p-4 backdrop-blur-lg transition-colors hover:bg-zinc-700/50">
         <Chip
           size="sm"
           variant="flat"
@@ -84,43 +81,49 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           Draft
         </Chip>
 
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15">
-              <FlowIcon className="size-5 text-primary" />
+        <button
+          type="button"
+          className="flex cursor-pointer flex-col gap-3 text-left"
+          onClick={() => setIsModalOpen(true)}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15">
+                <FlowIcon className="size-5 text-primary" />
+              </div>
+              <div className="flex flex-col">
+                <span className="line-clamp-2 text-base font-medium leading-tight">
+                  {draft.suggested_title}
+                </span>
+                <span className="text-xs text-warning/80">
+                  Review to create workflow
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="line-clamp-2 text-base font-medium leading-tight">
-                {draft.suggested_title}
-              </span>
-              <span className="text-xs text-warning/80">
-                Review to create workflow
-              </span>
-            </div>
+            <Chip
+              size="sm"
+              variant="flat"
+              color={trigger.color}
+              startContent={trigger.icon}
+              classNames={{
+                base: `${trigger.bgColor} shrink-0`,
+                content: "text-xs font-medium",
+              }}
+            >
+              {trigger.label}
+            </Chip>
           </div>
-          <Chip
-            size="sm"
-            variant="flat"
-            color={trigger.color}
-            startContent={trigger.icon}
-            classNames={{
-              base: `${trigger.bgColor} shrink-0`,
-              content: "text-xs font-medium",
-            }}
-          >
-            {trigger.label}
-          </Chip>
-        </div>
 
-        <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">
-          {draft.suggested_description}
-        </p>
-
-        {draft.trigger_type === "integration" && (
-          <p className="text-xs text-zinc-500">
-            Configure trigger settings to complete setup
+          <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">
+            {draft.suggested_description}
           </p>
-        )}
+
+          {draft.trigger_type === "integration" && (
+            <p className="text-xs text-zinc-500">
+              Configure trigger settings to complete setup
+            </p>
+          )}
+        </button>
 
         <Button
           size="sm"

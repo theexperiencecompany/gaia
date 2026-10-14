@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { workflowApi } from "../api/workflow-api";
 import type {
-  CreateWorkflowPayload,
+  CreateWorkflowRequest,
   UpdateWorkflowPayload,
   Workflow,
 } from "../types/workflow-types";
@@ -14,7 +14,7 @@ interface UseWorkflowActionsReturn {
   isExecuting: boolean;
   createError: string | null;
   actionError: string | null;
-  createWorkflow: (payload: CreateWorkflowPayload) => Promise<Workflow | null>;
+  createWorkflow: (payload: CreateWorkflowRequest) => Promise<Workflow | null>;
   updateWorkflow: (
     id: string,
     payload: UpdateWorkflowPayload,
@@ -34,7 +34,7 @@ export function useWorkflowActions(): UseWorkflowActionsReturn {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const createWorkflow = useCallback(
-    async (payload: CreateWorkflowPayload): Promise<Workflow | null> => {
+    async (payload: CreateWorkflowRequest): Promise<Workflow | null> => {
       setIsCreating(true);
       setCreateError(null);
       try {

@@ -1,0 +1,1064 @@
+From d88713eaada52f6c7ebd424be7e6cd588bf928bf Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 01:11:28 +0530
+Subject: [PATCH] fix(render): hit-test in paint order, so a click lands on
+ what is drawn on top
+
+element_at_point picked the box with the highest NodeId that contained the
+point: a proxy for tree order that breaks for any node inserted later, and that
+ignored z-index, fixed positioning, the CSS 2 painting layers and
+pointer-events. A click aimed at an absolutely positioned menu item went to the
+in-flow container painted under it, and focused that.
+
+Paint order is now one function (stacking_paint_order) shared by paint and hit
+testing. It also paints what CSS 2 Appendix E says: a stacking context's own
+background under its negative z-index children; positioned boxes with
+z-index:auto, and opacity/transform stacking contexts, in the z-index:0 layer
+above floats and in-flow content; floats and z-index:auto positioned boxes as
+pseudo stacking contexts whose positioned descendants belong to the enclosing
+context; and in-flow inline text before the positioned layers rather than over
+them. Hit testing walks that order backwards, through transforms (inverse
+mapped) and overflow clips, and skips visibility:hidden and pointer-events:none
+boxes (now parsed, inherited); opacity does not matter, as in Chrome.
+
+elementsFromPoint returns every hit topmost first, ending at the root element,
+and elementFromPoint is its first entry, so the two agree. Both retarget each
+hit against the document or shadow root asking, so no shadow tree, open or
+closed, leaks through them. __obscura_hitTarget gives input dispatch the real,
+un-retargeted target.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js  | 182 +++++-----
+ crates/obscura-js/src/ops.rs       |  38 +-
+ crates/obscura-js/src/runtime.rs   |  10 +-
+ crates/obscura-render/src/lib.rs   |   4 +
+ crates/obscura-render/src/paint.rs | 551 ++++++++++++++++++++++-------
+ crates/obscura-render/src/style.rs |  33 +-
+ 6 files changed, 580 insertions(+), 238 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 8940433..f7d9257 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -15824,96 +15824,106 @@ if (typeof Element !== 'undefined' && !Element.prototype.toggleAttribute) {
+   };
+ }
+ 
+-// Document.elementFromPoint / elementsFromPoint — no layout engine, so this is a stub:
+-// in-viewport coords return <body> (or <html> as fallback), out-of-viewport returns null.
+-// Wrong-but-non-throwing beats "undefined", which traps ad/analytics bootstraps in retry loops
+-// (see issue #63).
+-if (typeof Document !== 'undefined' && !Document.prototype.elementFromPoint) {
+-  // Real hit testing against the synthetic bboxes from getBoundingClientRect.
+-  // Flat iteration over every element, NOT a tree walk: our synthetic rects
+-  // don't form a proper containment hierarchy (a child's rect can lie far
+-  // outside its parent's), so a tree walk that only descends into ancestors
+-  // containing (x,y) would never reach a deep <input> inside <label><p>.
+-  // Returns the deepest matching element (highest nid wins as a proxy for
+-  // tree depth) so descendants beat ancestors.
+-  Document.prototype.elementFromPoint = function(x, y) {
+-    if (typeof x !== 'number' || typeof y !== 'number' || !isFinite(x) || !isFinite(y)) {
+-      return null;
+-    }
+-    var w = (typeof window !== 'undefined' && window.innerWidth) || 1280;
+-    var h = (typeof window !== 'undefined' && window.innerHeight) || 720;
+-    if (x < 0 || y < 0 || x > w || y > h) return null;
+-    // With layout, hit testing runs natively over the laid-out boxes: the
+-    // walk below costs a JS round trip per element and stalls large pages.
+-    if (typeof Deno.core.ops.op_element_from_point === 'function') {
+-      var rootNid = this.documentElement ? (this.documentElement._nid | 0) : 0;
+-      var bodyNid = this.body ? (this.body._nid | 0) : 0;
+-      var hit = Deno.core.ops.op_element_from_point(x, y, rootNid, bodyNid, _realmFrameId);
+-      if (hit > 0) return _wrap(hit) || this.body || this.documentElement || null;
+-      if (hit === 0) return this.body || this.documentElement || null;
+-    }
+-    var all = this.querySelectorAll('*');
+-    var best = null;
+-    var bestNid = -1;
+-    for (var i = 0; i < all.length; i++) {
+-      var el = all[i];
+-      if (!el || !el.getBoundingClientRect) continue;
+-      // documentElement / body span the viewport; skip them so we pick a
+-      // real descendant instead of falling back to <html>/<body>.
+-      if (el === this.documentElement || el === this.body) continue;
+-      var r = el.getBoundingClientRect();
+-      if (r.width === 0 || r.height === 0) continue;
+-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+-        // A descendant's layout rect can extend beyond an overflow clip. It
+-        // must not win hit testing where its scrolling ancestor hides it —
+-        // otherwise a wheel well outside a small pane scrolls that pane
+-        // instead of the page behind it.
+-        var visible = true;
+-        var ancestor = el.parentElement;
+-        while (ancestor && ancestor !== this.documentElement && ancestor !== this.body) {
+-          var style = null;
+-          try { style = getComputedStyle(ancestor); } catch (_e) {}
+-          var ox = style ? (style.overflowX || style.overflow || '') : '';
+-          var oy = style ? (style.overflowY || style.overflow || '') : '';
+-          var clipsX = ox === 'auto' || ox === 'scroll' || ox === 'hidden' || ox === 'clip';
+-          var clipsY = oy === 'auto' || oy === 'scroll' || oy === 'hidden' || oy === 'clip';
+-          if (clipsX || clipsY) {
+-            var ar = ancestor.getBoundingClientRect();
+-            // Overflow clips at the padding box, inside the border. Renderer
+-            // client metrics expose that box's size; computed border widths
+-            // locate it within the border-box rect.
+-            var borderLeft = parseFloat(style && style.borderLeftWidth) || 0;
+-            var borderTop = parseFloat(style && style.borderTopWidth) || 0;
+-            var clipLeft = ar.left + borderLeft;
+-            var clipTop = ar.top + borderTop;
+-            var clipRight = clipLeft + ancestor.clientWidth;
+-            var clipBottom = clipTop + ancestor.clientHeight;
+-            if ((clipsX && (x < clipLeft || x > clipRight)) ||
+-                (clipsY && (y < clipTop || y > clipBottom))) {
+-              visible = false;
+-              break;
+-            }
+-          }
+-          ancestor = ancestor.parentElement;
+-        }
+-        if (!visible) continue;
+-        var nid = el._nid | 0;
+-        if (nid > bestNid) { best = el; bestNid = nid; }
++// DOM "retarget A against B": climb out of every shadow tree around A that
++// does not also contain B, so a closed (or any) shadow tree never leaks its
++// nodes to a caller outside it.
++function _retarget(a, b) {
++  while (a && typeof a.getRootNode === 'function') {
++    const root = a.getRootNode();
++    if (!(root instanceof ShadowRoot) || _rootContainsShadowIncluding(root, b)) return a;
++    a = root.host;
++  }
++  return a;
++}
++// Whether `root` (a document or shadow root) is a shadow-including inclusive
++// ancestor of `node`.
++function _rootContainsShadowIncluding(root, node) {
++  for (let n = node; n && typeof n.getRootNode === 'function';) {
++    const r = n.getRootNode();
++    if (r === root) return true;
++    if (!(r instanceof ShadowRoot)) return false;
++    n = r.host;
++  }
++  return false;
++}
++globalThis.__obscura_retarget = _retarget;
++
++// Without a layout engine (a build without the render feature) the only
++// geometry is getBoundingClientRect's; take the last element in tree order
++// whose rect holds the point and that no overflow-clipping ancestor cuts off.
++function _hitTestWithoutLayout(doc, x, y) {
++  const all = doc.querySelectorAll('*');
++  let best = null;
++  for (let i = 0; i < all.length; i++) {
++    const el = all[i];
++    if (!el || !el.getBoundingClientRect) continue;
++    const r = el.getBoundingClientRect();
++    if (r.width === 0 || r.height === 0) continue;
++    if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
++    let visible = true;
++    for (let ancestor = el.parentElement; ancestor; ancestor = ancestor.parentElement) {
++      let style = null;
++      try { style = getComputedStyle(ancestor); } catch (_e) {}
++      const ox = style ? (style.overflowX || style.overflow || '') : '';
++      const oy = style ? (style.overflowY || style.overflow || '') : '';
++      const clipsX = ox === 'auto' || ox === 'scroll' || ox === 'hidden' || ox === 'clip';
++      const clipsY = oy === 'auto' || oy === 'scroll' || oy === 'hidden' || oy === 'clip';
++      if (!clipsX && !clipsY) continue;
++      const ar = ancestor.getBoundingClientRect();
++      const clipLeft = ar.left + (parseFloat(style && style.borderLeftWidth) || 0);
++      const clipTop = ar.top + (parseFloat(style && style.borderTopWidth) || 0);
++      if ((clipsX && (x < clipLeft || x > clipLeft + ancestor.clientWidth)) ||
++          (clipsY && (y < clipTop || y > clipTop + ancestor.clientHeight))) {
++        visible = false;
++        break;
+       }
+     }
+-    return best || this.body || this.documentElement || null;
+-  };
+-  Document.prototype.elementsFromPoint = function(x, y) {
+-    var el = this.elementFromPoint(x, y);
+-    return el ? [el] : [];
+-  };
++    if (visible) best = el;
++  }
++  return best ? [best] : [];
++}
++
++// Every element under a viewport point, topmost first: the renderer's hit
++// test, which walks paint order backwards (z-index, fixed positioning,
++// pointer-events and visibility included). `scope` is the document or shadow
++// root asking; each hit is retargeted against it unless `retarget` is false
++// (input dispatch wants the real target, and lets event dispatch retarget).
++// The root element covers the whole viewport, so it ends every list.
++function _elementsFromPoint(scope, x, y, retarget) {
++  x = Number(x);
++  y = Number(y);
++  if (!isFinite(x) || !isFinite(y)) return [];
++  const doc = scope.nodeType === 9 ? scope : scope.ownerDocument;
++  if (!doc) return [];
++  const w = (typeof window !== 'undefined' && window.innerWidth) || 1280;
++  const h = (typeof window !== 'undefined' && window.innerHeight) || 720;
++  if (x < 0 || y < 0 || x > w || y > h) return [];
++  let hits = null;
++  if (typeof Deno.core.ops.op_elements_from_point === 'function') {
++    const raw = Deno.core.ops.op_elements_from_point(x, y, _realmFrameId);
++    if (raw) hits = JSON.parse(raw).map(_wrap);
++  }
++  if (hits === null) hits = _hitTestWithoutLayout(doc, x, y);
++  const out = [];
++  for (const hit of hits) {
++    if (!hit) continue;
++    const target = retarget ? _retarget(hit, scope) : hit;
++    if (target && target.nodeType === 1 && !out.includes(target)) out.push(target);
++  }
++  const root = doc.documentElement;
++  if (root && !out.includes(root)) out.push(root);
++  return out;
+ }
+-if (typeof ShadowRoot !== 'undefined' && !ShadowRoot.prototype.elementFromPoint) {
+-  ShadowRoot.prototype.elementFromPoint = function(x, y) {
+-    return Document.prototype.elementFromPoint.call(globalThis.document || this, x, y);
++// The node a pointer event at (x, y) is dispatched to, not retargeted.
++globalThis.__obscura_hitTarget = function(x, y) {
++  return globalThis.document ? (_elementsFromPoint(globalThis.document, x, y, false)[0] || null) : null;
++};
++for (const _scopeProto of [Document.prototype, ShadowRoot.prototype]) {
++  _scopeProto.elementFromPoint = function elementFromPoint(x, y) {
++    return _elementsFromPoint(this, x, y, true)[0] || null;
+   };
+-  ShadowRoot.prototype.elementsFromPoint = function(x, y) {
+-    return Document.prototype.elementsFromPoint.call(globalThis.document || this, x, y);
++  _scopeProto.elementsFromPoint = function elementsFromPoint(x, y) {
++    return _elementsFromPoint(this, x, y, true);
+   };
+ }
+ 
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index f7546ce..729a6c8 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -2102,6 +2102,11 @@ fn op_dom_inner(shared: SharedState, cmd: String, arg1: String, arg2: String) ->
+         // first same-name slot in the shadow tree wins). `null` when the node is
+         // not an HTML slot inside a shadow tree, so JS can tell "no slot" from
+         // "slot without assignments" and fall back to the slot's own children.
++        "assigned_slot" => {
++            let nid = arg1.parse::<u32>().unwrap_or(0);
++            dom.assigned_slot(NodeId::new(nid))
++                .map_or_else(|| "-1".into(), |slot| slot.index().to_string())
++        }
+         "assigned_nodes" => {
+             let nid = arg1.parse::<u32>().unwrap_or(0);
+             match dom.assigned_nodes(NodeId::new(nid)) {
+@@ -6106,7 +6111,7 @@ pub fn build_extension() -> Extension {
+         ops.push(op_image_metadata());
+         ops.push(op_load_image_metadata());
+         ops.push(op_layout_geometry());
+-        ops.push(op_element_from_point());
++        ops.push(op_elements_from_point());
+         ops.push(op_element_visibility());
+         ops.push(op_resize_observer_measurements());
+         ops.push(op_intersection_observer_measurements());
+@@ -7062,31 +7067,32 @@ fn op_layout_geometry(state: &OpState, #[string] nid_str: String, frame_id: u32)
+     String::new()
+ }
+ 
+-/// Native hit test for `document.elementFromPoint`: the node id of the
+-/// element box under the viewport point (see
+-/// `PreparedRender::element_at_point`), 0 when none but the root or body
+-/// contains it, or -1 when layout is unavailable.
++/// Native hit test for `elementsFromPoint` / `elementFromPoint`: the node ids
++/// of every element box under the viewport point, topmost first, as a JSON
++/// array (see `PreparedRender::elements_at_point`). Ids inside shadow trees
++/// are returned as they are; script retargets them. An empty string means
++/// layout is unavailable.
+ #[cfg(feature = "render")]
+-#[op2(fast)]
+-fn op_element_from_point(state: &OpState, x: f64, y: f64, root_nid: u32, body_nid: u32, frame_id: u32) -> i32 {
++#[op2]
++#[string]
++fn op_elements_from_point(state: &OpState, x: f64, y: f64, frame_id: u32) -> String {
+     let shared = frame_state(state, frame_id);
+     let mut gs = shared.borrow_mut();
+     sample_live_document_animations(&mut gs);
+     if ensure_resolved_scroll_for_geometry(&mut gs).is_none() {
+-        return -1;
++        return String::new();
+     }
+     let (Some((_, scroll)), Some(prepared), Some(dom)) =
+         (gs.resolved_scroll.as_ref(), gs.prepared_render.as_ref(), gs.dom.as_ref())
+     else {
+-        return -1;
++        return String::new();
+     };
+-    let skip = [
+-        obscura_dom::tree::NodeId::new(root_nid),
+-        obscura_dom::tree::NodeId::new(body_nid),
+-    ];
+-    prepared
+-        .element_at_point(dom, scroll, x as f32, y as f32, &skip)
+-        .map_or(0, |id| id.index() as i32)
++    let ids: Vec<u32> = prepared
++        .elements_at_point(dom, scroll, x as f32, y as f32)
++        .into_iter()
++        .map(|id| id.index() as u32)
++        .collect();
++    serde_json::to_string(&ids).unwrap_or_default()
+ }
+ 
+ /// What `Element.checkVisibility` needs from layout, as bits: 1 the element
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 22acabe..0d99896 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -19289,12 +19289,18 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn test_element_from_point_in_viewport_returns_body() {
++    fn test_element_from_point_in_viewport_returns_what_is_there() {
+         let mut rt = setup_runtime("<html><body><h1>Hi</h1></body></html>");
++        let tag = rt
++            .evaluate("document.elementFromPoint(10, 30)?.tagName")
++            .unwrap();
++        assert_eq!(tag, serde_json::json!("H1"));
++        // The h1's top margin collapses through the body, so the body box
++        // starts below y=10 and the root element takes the hit, as in Chrome.
+         let tag = rt
+             .evaluate("document.elementFromPoint(10, 10)?.tagName")
+             .unwrap();
+-        assert_eq!(tag, serde_json::json!("BODY"));
++        assert_eq!(tag, serde_json::json!("HTML"));
+     }
+ 
+     #[test]
+diff --git a/crates/obscura-render/src/lib.rs b/crates/obscura-render/src/lib.rs
+index 9d69c35..a6d635e 100644
+--- a/crates/obscura-render/src/lib.rs
++++ b/crates/obscura-render/src/lib.rs
+@@ -1413,6 +1413,10 @@ pub struct LayoutStyle {
+     /// a real inherited CSS property). Resolved into `effectively_invisible`
+     /// during `dom::layout_dom`'s inheritance pass.
+     pub visibility_hidden: Option<bool>,
++    /// `pointer-events: none`, own value; `None` inherits the parent's
++    /// computed value. Hit testing skips such a box, but not its
++    /// descendants that set `pointer-events` back to `auto`.
++    pub pointer_events_none: Option<bool>,
+     /// `opacity`, own (non-inherited) value in 0.0-1.0. `None` means the
+     /// default of 1.0.
+     pub opacity: Option<f32>,
+diff --git a/crates/obscura-render/src/paint.rs b/crates/obscura-render/src/paint.rs
+index 70590e3..4750cf6 100644
+--- a/crates/obscura-render/src/paint.rs
++++ b/crates/obscura-render/src/paint.rs
+@@ -1052,19 +1052,29 @@ impl PreparedRender {
+         &self.layout
+     }
+ 
+-    /// Whether an element's computed visibility is hidden. Visibility is
+-    /// inherited, so the nearest element that sets it (itself first) decides.
+-    pub fn visibility_hidden(&self, tree: &DomTree, id: obscura_dom::tree::NodeId) -> bool {
++    /// The computed value of an inherited boolean property: the nearest
++    /// element in the flat tree (itself first) that sets it decides.
++    fn inherited_flag(
++        &self,
++        tree: &DomTree,
++        id: obscura_dom::tree::NodeId,
++        own: impl Fn(&crate::LayoutStyle) -> Option<bool>,
++    ) -> bool {
+         let mut current = Some(id);
+         while let Some(node) = current {
+-            if let Some(hidden) = self.layout.styles.get(&node).and_then(|style| style.visibility_hidden) {
+-                return hidden;
++            if let Some(value) = self.layout.styles.get(&node).and_then(&own) {
++                return value;
+             }
+             current = crate::dom::rendered_parent(tree, node);
+         }
+         false
+     }
+ 
++    /// Whether an element's computed visibility is hidden.
++    pub fn visibility_hidden(&self, tree: &DomTree, id: obscura_dom::tree::NodeId) -> bool {
++        self.inherited_flag(tree, id, |style| style.visibility_hidden)
++    }
++
+     /// Whether the element or a flat-tree ancestor has a computed opacity of zero.
+     pub fn opacity_zero(&self, tree: &DomTree, id: obscura_dom::tree::NodeId) -> bool {
+         let mut current = Some(id);
+@@ -1083,50 +1093,135 @@ impl PreparedRender {
+         false
+     }
+ 
+-    /// Hit testing for `document.elementFromPoint`: of the element boxes that
+-    /// contain the viewport point, are not visibility-hidden, and are not
+-    /// clipped away there by an ancestor's overflow, the one latest in tree
+-    /// order. `skip` names boxes never returned (the root and body).
+-    pub fn element_at_point(
++    /// Hit testing for `document.elementsFromPoint`: every element whose box
++    /// contains the viewport point, topmost first.
++    ///
++    /// The walk is paint order reversed (`stacking_paint_order`), entering
++    /// stacking contexts, floats, and positioned boxes the way paint does, so
++    /// z-index, fixed positioning, and the CSS 2 painting layers decide what
++    /// is on top exactly as the screenshot shows it. A box is a target when
++    /// its border box (through its transform) contains the point, no
++    /// ancestor's overflow clips the point away, and its computed
++    /// `visibility` and `pointer-events` let it receive events. Opacity does
++    /// not matter: a transparent box still takes the click, as in Chrome.
++    pub fn elements_at_point(
+         &self,
+         tree: &DomTree,
+         scroll: &ResolvedScrollState,
+         x: f32,
+         y: f32,
+-        skip: &[obscura_dom::tree::NodeId],
+-    ) -> Option<obscura_dom::tree::NodeId> {
+-        let mut best: Option<obscura_dom::tree::NodeId> = None;
+-        for &id in self.layout.rects.keys() {
+-            if best.is_some_and(|best| best.index() >= id.index()) || skip.contains(&id) {
+-                continue;
+-            }
+-            if !tree.get_node(id).is_some_and(|node| node.is_element()) {
+-                continue;
+-            }
+-            let Some(rect) = self.viewport_rect_with_scroll(id, scroll) else {
++    ) -> Vec<obscura_dom::tree::NodeId> {
++        let mut hits = Vec::new();
++        self.hit_test_stacking_context(tree, scroll, (x, y), None, None, None, None, &mut hits);
++        hits
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    fn hit_test_stacking_context(
++        &self,
++        tree: &DomTree,
++        scroll: &ResolvedScrollState,
++        point: (f32, f32),
++        paint_root: Option<obscura_dom::tree::NodeId>,
++        suppress_opacity_for: Option<obscura_dom::tree::NodeId>,
++        suppress_stacking_for: Option<obscura_dom::tree::NodeId>,
++        suppress_transform_for: Option<obscura_dom::tree::NodeId>,
++        hits: &mut Vec<obscura_dom::tree::NodeId>,
++    ) {
++        let laid = &self.layout;
++        let (_, paint_order, _) = stacking_paint_order(
++            tree,
++            laid,
++            paint_root,
++            suppress_opacity_for,
++            suppress_stacking_for,
++            suppress_transform_for,
++        );
++        // The same atomic entries the paint loop re-enters, in reverse.
++        for nid in paint_order.into_iter().rev() {
++            let Some(style) = laid.styles.get(&nid) else {
+                 continue;
+             };
+-            if rect.width <= 0.0
+-                || rect.height <= 0.0
+-                || x < rect.x
+-                || y < rect.y
+-                || x > rect.x + rect.width
+-                || y > rect.y + rect.height
++            let enter = if suppress_stacking_for != Some(nid)
++                && stacking_z_index(tree, laid, nid).is_some()
+             {
+-                continue;
+-            }
+-            if scroll
+-                .inherited_clip_for(id)
+-                .is_some_and(|clip| !clip.contains_point(x, y))
++                Some((suppress_opacity_for, Some(nid), suppress_transform_for))
++            } else if paint_root != Some(nid) && is_pseudo_stacking_root(tree, laid, nid) {
++                Some((suppress_opacity_for, suppress_stacking_for, suppress_transform_for))
++            } else if suppress_transform_for != Some(nid) && has_authored_transform(style) {
++                Some((suppress_opacity_for, suppress_stacking_for, Some(nid)))
++            } else if suppress_opacity_for != Some(nid)
++                && style.opacity.is_some_and(|opacity| opacity.clamp(0.0, 1.0) < 1.0)
+             {
++                Some((Some(nid), suppress_stacking_for, suppress_transform_for))
++            } else {
++                None
++            };
++            if let Some((opacity, stacking, transform)) = enter {
++                self.hit_test_stacking_context(
++                    tree,
++                    scroll,
++                    point,
++                    Some(nid),
++                    opacity,
++                    stacking,
++                    transform,
++                    hits,
++                );
+                 continue;
+             }
+-            if self.visibility_hidden(tree, id) {
+-                continue;
++            if self.box_hit(tree, scroll, nid, style, point) {
++                hits.push(nid);
+             }
+-            best = Some(id);
+         }
+-        best
++    }
++
++    /// Whether one element's own box takes a hit at the viewport point.
++    fn box_hit(
++        &self,
++        tree: &DomTree,
++        scroll: &ResolvedScrollState,
++        id: obscura_dom::tree::NodeId,
++        style: &crate::LayoutStyle,
++        (x, y): (f32, f32),
++    ) -> bool {
++        if style.display == crate::Display::None
++            || style.display_contents
++            || !tree.get_node(id).is_some_and(|node| node.is_element())
++        {
++            return false;
++        }
++        let movement = scroll.movement_for(id);
++        // Layout boxes live in document space, mapped by the accumulated
++        // transform and then moved by scrolling (`viewport_rect_with_scroll`);
++        // undo both to test the point against the untransformed box.
++        let document_point = (x - movement.0, y - movement.1);
++        let local = match self.layout.transforms.get(&id) {
++            Some(transform) => match transform.inverse() {
++                Some(inverse) => inverse.map_point(document_point.0, document_point.1),
++                // A singular transform leaves no area to hit.
++                None => return false,
++            },
++            None => document_point,
++        };
++        let contains = |rect: &crate::Rect| {
++            rect.width > 0.0
++                && rect.height > 0.0
++                && local.0 >= rect.x
++                && local.1 >= rect.y
++                && local.0 <= rect.x + rect.width
++                && local.1 <= rect.y + rect.height
++        };
++        let inside = match self.layout.inline_fragments.get(&id) {
++            Some(fragments) if !fragments.is_empty() => fragments.iter().any(contains),
++            _ => self.layout.rects.get(&id).is_some_and(contains),
++        };
++        inside
++            && !scroll
++                .inherited_clip_for(id)
++                .is_some_and(|clip| !clip.contains_point(x, y))
++            && !self.visibility_hidden(tree, id)
++            && !self.inherited_flag(tree, id, |style| style.pointer_events_none)
+     }
+ 
+     pub fn content_size(&self) -> (f32, f32) {
+@@ -3514,6 +3609,220 @@ fn paint_canvas_background(
+     }
+ }
+ 
++/// Whether an element's box is positioned (`position` other than `static`).
++fn is_positioned(laid: &crate::DomLayout, id: obscura_dom::tree::NodeId) -> bool {
++    laid.styles.get(&id).is_some_and(|style| {
++        style.display != crate::Display::None
++            && !style.display_contents
++            && (style.position.is_some() || style.position_fixed || style.position_sticky)
++    })
++}
++
++/// Whether an element is a non-atomic inline box. Its glyphs are shaped into
++/// the enclosing block's inline formatting context and paint with that
++/// block's text, so it keeps its tree-order place among in-flow boxes unless
++/// a z-index lifts it.
++fn is_inline_level(laid: &crate::DomLayout, id: obscura_dom::tree::NodeId) -> bool {
++    laid.styles
++        .get(&id)
++        .is_some_and(|style| style.display == crate::Display::Inline)
++}
++
++/// Whether an element establishes a stacking context of its own: a used
++/// z-index, opacity below one, or an authored transform.
++fn establishes_stacking_context(
++    tree: &DomTree,
++    laid: &crate::DomLayout,
++    id: obscura_dom::tree::NodeId,
++) -> bool {
++    stacking_z_index(tree, laid, id).is_some()
++        || laid.styles.get(&id).is_some_and(|style| {
++            style
++                .opacity
++                .is_some_and(|opacity| opacity.clamp(0.0, 1.0) < 1.0)
++                || has_authored_transform(style)
++        })
++}
++
++/// A float, or a positioned block-level box with `z-index:auto`: painted
++/// atomically "as if" it created a stacking context, without being one
++/// (CSS 2 Appendix E).
++fn is_pseudo_stacking_root(
++    tree: &DomTree,
++    laid: &crate::DomLayout,
++    id: obscura_dom::tree::NodeId,
++) -> bool {
++    !establishes_stacking_context(tree, laid, id)
++        && (is_effective_float(tree, laid, id)
++            || (is_positioned(laid, id) && !is_inline_level(laid, id)))
++}
++
++/// A descendant a pseudo stacking context does not own: it is ordered in the
++/// enclosing stacking context instead.
++fn escapes_pseudo_stacking_context(
++    tree: &DomTree,
++    laid: &crate::DomLayout,
++    id: obscura_dom::tree::NodeId,
++) -> bool {
++    stacking_z_index(tree, laid, id).is_some()
++        || (!is_inline_level(laid, id)
++            && (is_positioned(laid, id) || establishes_stacking_context(tree, laid, id)))
++}
++
++/// The members of a pseudo stacking context rooted at `root` (a float, or a
++/// positioned box with `z-index:auto`), root first, in tree order: its
++/// flat-tree subtree minus every descendant that escapes to the enclosing
++/// stacking context, together with that descendant's own subtree.
++fn pseudo_stacking_members(
++    tree: &DomTree,
++    laid: &crate::DomLayout,
++    root: obscura_dom::tree::NodeId,
++) -> Vec<obscura_dom::tree::NodeId> {
++    let limit = tree.len();
++    let mut members = vec![root];
++    let mut stack = crate::dom::rendered_children(tree, root);
++    stack.reverse();
++    let mut visited = std::collections::HashSet::new();
++    while let Some(id) = stack.pop() {
++        if !visited.insert(id) || members.len() >= limit {
++            continue;
++        }
++        if tree.get_node(id).is_some_and(|node| node.is_element())
++            && escapes_pseudo_stacking_context(tree, laid, id)
++        {
++            continue;
++        }
++        members.push(id);
++        let children = crate::dom::rendered_children(tree, id);
++        stack.extend(children.into_iter().rev());
++    }
++    members
++}
++
++/// One stacking context's paint order, shared by paint and hit testing so a
++/// click lands on what the screenshot shows.
++///
++/// The nodes of the context rooted at `paint_root` (the document when none)
++/// are returned in DOM preorder, followed by the order CSS 2 Appendix E paints
++/// them in: negative z-index stacking contexts, the in-flow boxes in tree
++/// order, floats, then the z-index:0 / auto layer (positioned boxes and
++/// opacity/transform stacking contexts, in tree order) and positive z-index
++/// stacking contexts, each sorted by z-index and stable in tree order. The
++/// third value is the index in that order where the positioned layers begin:
++/// in-flow inline content paints just before it.
++///
++/// A stacking context, a float, and a positioned box are atomic entries: the
++/// caller paints (or hit-tests) each by re-entering with that node as
++/// `paint_root` and the matching `suppress_*` set. A float or a
++/// `z-index:auto` positioned root is a pseudo stacking context: its
++/// positioned and stacking-context descendants are left out of its entry and
++/// ordered here, in the enclosing context.
++fn stacking_paint_order(
++    tree: &DomTree,
++    laid: &crate::DomLayout,
++    paint_root: Option<obscura_dom::tree::NodeId>,
++    suppress_opacity_for: Option<obscura_dom::tree::NodeId>,
++    suppress_stacking_for: Option<obscura_dom::tree::NodeId>,
++    suppress_transform_for: Option<obscura_dom::tree::NodeId>,
++) -> (Vec<obscura_dom::tree::NodeId>, Vec<obscura_dom::tree::NodeId>, usize) {
++    let mut neg_layers: Vec<(i32, obscura_dom::tree::NodeId)> = Vec::new();
++    let mut pos_layers: Vec<(i32, obscura_dom::tree::NodeId)> = Vec::new();
++    let mut float_layers: Vec<obscura_dom::tree::NodeId> = Vec::new();
++    let mut normal: Vec<obscura_dom::tree::NodeId> = Vec::new();
++    let mut consumed: std::collections::HashSet<obscura_dom::tree::NodeId> =
++        std::collections::HashSet::new();
++    // A root that only paints as if it were a stacking context (a float, or a
++    // positioned box with z-index:auto) does not own its escaping descendants:
++    // the enclosing context orders them.
++    let paint_nodes = match paint_root {
++        Some(root) if !establishes_stacking_context(tree, laid, root) => {
++            pseudo_stacking_members(tree, laid, root)
++        }
++        _ => {
++            let mut nodes = paint_root.into_iter().collect::<Vec<_>>();
++            nodes.extend(crate::dom::rendered_descendants(
++                tree,
++                paint_root.unwrap_or_else(|| tree.document()),
++            ));
++            nodes
++        }
++    };
++    if let Some(root) = paint_root {
++        // A root with a stacking effect still to apply (its z-index, its
++        // transform, or its opacity) is re-entered once per effect, each
++        // wrapping the whole subtree; until the last one it is one entry.
++        let reentered = laid.styles.get(&root).is_some_and(|style| {
++            (suppress_stacking_for != Some(root) && stacking_z_index(tree, laid, root).is_some())
++                || (suppress_transform_for != Some(root) && has_authored_transform(style))
++                || (suppress_opacity_for != Some(root)
++                    && style
++                        .opacity
++                        .is_some_and(|opacity| opacity.clamp(0.0, 1.0) < 1.0))
++        });
++        if reentered {
++            return (paint_nodes, vec![root], 1);
++        }
++    }
++    for nid in paint_nodes.iter().copied() {
++        if consumed.contains(&nid) {
++            continue;
++        }
++        if paint_root == Some(nid) {
++            // The root's own background and borders paint first, under even
++            // its negative z-index children.
++            continue;
++        }
++        let Some(style) = laid.styles.get(&nid) else {
++            normal.push(nid);
++            continue;
++        };
++        let z = (suppress_stacking_for != Some(nid))
++            .then(|| stacking_z_index(tree, laid, nid))
++            .flatten();
++        let is_opacity_root = suppress_opacity_for != Some(nid)
++            && style
++                .opacity
++                .is_some_and(|opacity| opacity.clamp(0.0, 1.0) < 1.0);
++        let is_transform_root =
++            suppress_transform_for != Some(nid) && has_authored_transform(style);
++        if z.is_some() || is_opacity_root || is_transform_root {
++            // A stacking context is one atomic entry; its internal order is
++            // resolved when it is re-entered. Without a z-index it paints in
++            // the z-index:0 layer, except an inline box, whose text stays
++            // with its block's.
++            consumed.insert(nid);
++            consumed.extend(crate::dom::rendered_descendants(tree, nid));
++            match z {
++                Some(z) if z < 0 => neg_layers.push((z, nid)),
++                Some(z) => pos_layers.push((z, nid)),
++                None if is_inline_level(laid, nid) => normal.push(nid),
++                None => pos_layers.push((0, nid)),
++            }
++        } else if is_pseudo_stacking_root(tree, laid, nid) {
++            consumed.extend(pseudo_stacking_members(tree, laid, nid));
++            if is_positioned(laid, nid) {
++                pos_layers.push((0, nid));
++            } else {
++                float_layers.push(nid);
++            }
++        } else {
++            normal.push(nid);
++        }
++    }
++    neg_layers.sort_by_key(|(z, _)| *z);
++    pos_layers.sort_by_key(|(z, _)| *z);
++    let positioned_start =
++        usize::from(paint_root.is_some()) + neg_layers.len() + normal.len() + float_layers.len();
++    let paint_order = paint_root
++        .into_iter()
++        .chain(neg_layers.into_iter().map(|(_, nid)| nid))
++        .chain(normal)
++        .chain(float_layers)
++        .chain(pos_layers.into_iter().map(|(_, nid)| nid))
++        .collect();
++    (paint_nodes, paint_order, positioned_start)
++}
++
+ fn paint_laid_dom_scrolled(
+     tree: &DomTree,
+     viewport: (f32, f32),
+@@ -3635,88 +3944,14 @@ fn paint_laid_dom_scrolled(
+     // zero, so skip the per-node ancestor walk entirely and keep the paint
+     // path free of any added cost.
+ 
+-    // Paint order follows CSS2's stacking bands: in-flow block backgrounds
+-    // and borders first, then non-positioned floats, then inline/text content
+-    // (painted by the later text pass). A float is an atomic paint unit in
+-    // this band, so its background, replaced content, and descendants cannot
+-    // be covered by a later full-width normal block background.
+-    //
+-    // A positioned element or a flex/grid item
+-    // with a non-auto z-index lifts its whole subtree into an atomic stacking
+-    // unit: negative layers paint under the normal flow, non-negative ones
+-    // above it, each sorted by z-index ascending (stable, so equal z keeps
+-    // tree order). The unit is recursively painted at its sorted position,
+-    // preventing its backgrounds, replaced content, and shaped text from
+-    // leaking into different global paint phases.
+-    let mut neg_layers: Vec<(i32, Vec<obscura_dom::tree::NodeId>)> = Vec::new();
+-    let mut pos_layers: Vec<(i32, Vec<obscura_dom::tree::NodeId>)> = Vec::new();
+-    let mut float_layers: Vec<obscura_dom::tree::NodeId> = Vec::new();
+-    let mut normal: Vec<obscura_dom::tree::NodeId> = Vec::new();
+-    let mut consumed: std::collections::HashSet<obscura_dom::tree::NodeId> =
+-        std::collections::HashSet::new();
+-    let mut paint_nodes = paint_root.into_iter().collect::<Vec<_>>();
+-    paint_nodes.extend(crate::dom::rendered_descendants(
++    let (paint_nodes, paint_order, positioned_start) = stacking_paint_order(
+         tree,
+-        paint_root.unwrap_or_else(|| tree.document()),
+-    ));
+-    for nid in paint_nodes.iter().copied() {
+-        if consumed.contains(&nid) {
+-            continue;
+-        }
+-        let is_opacity_root = suppress_opacity_for != Some(nid)
+-            && laid
+-                .styles
+-                .get(&nid)
+-                .and_then(|style| style.opacity)
+-                .is_some_and(|opacity| opacity.clamp(0.0, 1.0) < 1.0);
+-        let is_transform_root = suppress_transform_for != Some(nid)
+-            && laid.styles.get(&nid).is_some_and(has_authored_transform);
+-        let z = (suppress_stacking_for != Some(nid))
+-            .then(|| stacking_z_index(tree, laid, nid))
+-            .flatten();
+-        let is_float_root = paint_root != Some(nid) && is_effective_float(tree, laid, nid);
+-        if is_opacity_root || is_transform_root {
+-            let mut sub = vec![nid];
+-            sub.extend(crate::dom::rendered_descendants(tree, nid));
+-            for &member in &sub {
+-                consumed.insert(member);
+-            }
+-            // An opacity effect is one atomic paint-order unit. Its internal
+-            // z-order is resolved while painting its isolated surface.
+-            match z {
+-                Some(z) if z < 0 => neg_layers.push((z, vec![nid])),
+-                Some(z) => pos_layers.push((z, vec![nid])),
+-                None if is_float_root => float_layers.push(nid),
+-                None => normal.push(nid),
+-            }
+-        } else if let Some(z) = z {
+-            let mut sub = vec![nid];
+-            sub.extend(crate::dom::rendered_descendants(tree, nid));
+-            for &m in &sub {
+-                consumed.insert(m);
+-            }
+-            if z < 0 {
+-                neg_layers.push((z, vec![nid]));
+-            } else {
+-                pos_layers.push((z, vec![nid]));
+-            }
+-        } else if is_float_root {
+-            consumed.insert(nid);
+-            consumed.extend(crate::dom::rendered_descendants(tree, nid));
+-            float_layers.push(nid);
+-        } else {
+-            normal.push(nid);
+-        }
+-    }
+-    neg_layers.sort_by_key(|(z, _)| *z);
+-    pos_layers.sort_by_key(|(z, _)| *z);
+-    let paint_order: Vec<obscura_dom::tree::NodeId> = neg_layers
+-        .into_iter()
+-        .flat_map(|(_, sub)| sub)
+-        .chain(normal)
+-        .chain(float_layers)
+-        .chain(pos_layers.into_iter().flat_map(|(_, sub)| sub))
+-        .collect();
++        laid,
++        paint_root,
++        suppress_opacity_for,
++        suppress_stacking_for,
++        suppress_transform_for,
++    );
+ 
+     // Generated boxes are anonymous layout children. ::before paints directly
+     // after its host's own box; ::after paints after the host's last DOM
+@@ -3772,7 +4007,28 @@ fn paint_laid_dom_scrolled(
+         }
+     }
+ 
++    let positioned_entries = paint_order[positioned_start..].to_vec();
++    let mut inline_text_painted = false;
+     for (paint_index, nid) in paint_order.into_iter().enumerate() {
++        if paint_index == positioned_start {
++            // Every positioned entry paints its own subtree, text included.
++            for &entry in &positioned_entries {
++                opacity_subtree_skip.insert(entry);
++                opacity_subtree_skip.extend(crate::dom::rendered_descendants(tree, entry));
++            }
++            paint_shaped_inline_text(
++                &paint_nodes,
++                |nid| svg_subtree_skip.contains(&nid) || opacity_subtree_skip.contains(&nid),
++                laid,
++                &scroll_state,
++                &mut pixmap,
++                &mut overflow_mask_cache,
++                viewport,
++                raster_scale,
++                print_economy,
++            );
++            inline_text_painted = true;
++        }
+         if svg_subtree_skip.contains(&nid) {
+             continue;
+         }
+@@ -3815,13 +4071,14 @@ fn paint_laid_dom_scrolled(
+             )?;
+             continue;
+         }
+-        if paint_root != Some(nid) && is_effective_float(tree, laid, nid) {
++        if paint_root != Some(nid) && is_pseudo_stacking_root(tree, laid, nid) {
+             opacity_subtree_skip.insert(nid);
+             opacity_subtree_skip.extend(crate::dom::rendered_descendants(tree, nid));
+-            // CSS paints each float as an atomic unit in the float band. The
+-            // recursive display-list build preserves the float's own stacking,
+-            // opacity, transforms, generated boxes, replaced content, and
+-            // inline text while keeping outer in-flow inline content above it.
++            // CSS paints each float, and each positioned box with z-index:auto,
++            // as an atomic unit in its band (see `stacking_paint_order`). The
++            // recursive display-list build preserves the unit's own opacity,
++            // transforms, generated boxes, replaced content, and inline text
++            // while keeping outer in-flow inline content above a float.
+             pixmap = paint_laid_dom_scrolled(
+                 tree,
+                 viewport,
+@@ -4986,12 +5243,42 @@ fn paint_laid_dom_scrolled(
+         }
+     }
+ 
+-    // Inline formatting contexts shaped by cosmic-text (paragraphs, headings,
+-    // cells, labels) draw last, in tree order, so their glyphs sit above the
+-    // box backgrounds/borders painted in the loop above. Each item already
+-    // carries its final origin and clip from `TextEngine::finalize`.
+-    for nid in paint_nodes {
+-        if svg_subtree_skip.contains(&nid) || opacity_subtree_skip.contains(&nid) {
++    if !inline_text_painted {
++        paint_shaped_inline_text(
++            &paint_nodes,
++            |nid| svg_subtree_skip.contains(&nid) || opacity_subtree_skip.contains(&nid),
++            laid,
++            &scroll_state,
++            &mut pixmap,
++            &mut overflow_mask_cache,
++            viewport,
++            raster_scale,
++            print_economy,
++        );
++    }
++
++    Some(pixmap)
++}
++
++/// Inline formatting contexts shaped by cosmic-text (paragraphs, headings,
++/// cells, labels) of one stacking context, in tree order. They paint after
++/// the in-flow boxes and floats, so their glyphs sit above those backgrounds,
++/// and before the positioned layers, which cover them (CSS 2 Appendix E step
++/// 7). Each item already carries its final origin and clip from
++/// `TextEngine::finalize`.
++fn paint_shaped_inline_text(
++    paint_nodes: &[obscura_dom::tree::NodeId],
++    skip: impl Fn(obscura_dom::tree::NodeId) -> bool,
++    laid: &mut crate::DomLayout,
++    scroll_state: &ScrollPaintState<'_>,
++    pixmap: &mut Pixmap,
++    overflow_mask_cache: &mut OverflowClipMaskCache,
++    viewport: (f32, f32),
++    raster_scale: f32,
++    print_economy: bool,
++) {
++    for &nid in paint_nodes {
++        if skip(nid) {
+             continue;
+         }
+         let whole = laid.ifc_items.get(&nid).copied();
+@@ -5017,7 +5304,7 @@ fn paint_laid_dom_scrolled(
+             .map(|clip| clip.viewport_rect(scroll_state.surface_extent.unwrap_or(viewport)));
+         let clip_mask = overflow_clip.as_ref().and_then(|clip| {
+             cached_overflow_clip_mask(
+-                &mut overflow_mask_cache,
++                overflow_mask_cache,
+                 pixmap.width(),
+                 pixmap.height(),
+                 clip,
+@@ -5027,7 +5314,7 @@ fn paint_laid_dom_scrolled(
+         if let Some(idx) = whole {
+             laid.text_engine.paint_item_with_clip_mask_scaled_for_print(
+                 idx,
+-                &mut pixmap,
++                pixmap,
+                 off,
+                 clip,
+                 clip_mask.as_deref(),
+@@ -5041,7 +5328,7 @@ fn paint_laid_dom_scrolled(
+             for idx in items {
+                 laid.text_engine.paint_item_with_clip_mask_scaled_for_print(
+                     idx,
+-                    &mut pixmap,
++                    pixmap,
+                     off,
+                     clip,
+                     clip_mask.as_deref(),
+@@ -5051,8 +5338,6 @@ fn paint_laid_dom_scrolled(
+             }
+         }
+     }
+-
+-    Some(pixmap)
+ }
+ 
+ fn raster_transform(scale: f32) -> Transform {
+diff --git a/crates/obscura-render/src/style.rs b/crates/obscura-render/src/style.rs
+index 37c7ba0..d942964 100644
+--- a/crates/obscura-render/src/style.rs
++++ b/crates/obscura-render/src/style.rs
+@@ -1465,7 +1465,23 @@ fn apply_value(style: &mut LayoutStyle, name: &str, value: &str) {
+                 0
+             };
+         }
+-        "visibility" => style.visibility_hidden = Some(value.eq_ignore_ascii_case("hidden")),
++        "visibility" => {
++            style.visibility_hidden = match value.trim().to_ascii_lowercase().as_str() {
++                "hidden" | "collapse" => Some(true),
++                "visible" => Some(false),
++                // Inherited: an explicit inherit/unset defers to the parent.
++                _ => None,
++            }
++        }
++        "pointer-events" => {
++            style.pointer_events_none = match value.trim().to_ascii_lowercase().as_str() {
++                "none" => Some(true),
++                "inherit" | "unset" | "revert" | "revert-layer" => None,
++                // `auto`, `initial`, and the SVG painted/fill/stroke keywords
++                // all leave an HTML box a hit-test target.
++                _ => Some(false),
++            }
++        }
+         "opacity" => style.opacity = value.trim().parse::<f32>().ok(),
+         "animation" => apply_animation_shorthand(style, value),
+         "animation-name" => {
+@@ -2123,6 +2139,7 @@ pub fn supports_declaration(name: &str, value: &str) -> bool {
+             | "overflow-y"
+             | "scrollbar-gutter"
+             | "visibility"
++            | "pointer-events"
+             | "opacity"
+             | "animation"
+             | "animation-name"
+@@ -2309,6 +2326,20 @@ pub fn supports_declaration(name: &str, value: &str) -> bool {
+             value.to_ascii_lowercase().as_str(),
+             "visible" | "hidden" | "collapse"
+         ),
++        "pointer-events" => matches!(
++            value.to_ascii_lowercase().as_str(),
++            "auto"
++                | "none"
++                | "visiblepainted"
++                | "visiblefill"
++                | "visiblestroke"
++                | "visible"
++                | "painted"
++                | "fill"
++                | "stroke"
++                | "all"
++                | "bounding-box"
++        ),
+         "scrollbar-gutter" => matches!(
+             value.to_ascii_lowercase().as_str(),
+             "auto" | "stable" | "stable both-edges"

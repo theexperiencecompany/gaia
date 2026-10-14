@@ -1,17 +1,13 @@
-"""
-Workflow Execution Models.
-
-Models for tracking workflow execution history.
-"""
-
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY, TOOL_RESULT_NOTE_SEPARATOR
 from app.db.repositories.base import MongoDocument
+from app.schemas.common import ResponseModel
 
 #: How much of a tool's result is kept on the record. Enough to tell the next run
 #: what came back (ids, a count, a cursor) without storing message bodies — the
@@ -74,12 +70,12 @@ def _trim_strings(value: object, limit: int) -> object:
 
 
 def _fit_elements(
-    items: list[Any], rebuild: Callable[[list[Any]], object], max_chars: int
+    items: list[object], rebuild: Callable[[list[object]], object], max_chars: int
 ) -> str | None:
     """The value with elements shed off the end until it fits; ``None`` when not
     even the first element fits, so the caller keeps cutting strings instead of
     recording a list that had items as an empty one."""
-    kept: list[Any] = []
+    kept: list[object] = []
     for item in items:
         kept.append(item)
         if len(_compact(rebuild(kept))) > max_chars:
@@ -120,13 +116,13 @@ def _bounded_json(value: object, max_chars: int) -> str:
         limit //= 2
 
 
-def _as_is(items: list[Any]) -> object:
+def _as_is(items: list[object]) -> object:
     return items
 
 
 def _largest_sequence(
     value: object,
-) -> tuple[list[Any] | None, Callable[[list[Any]], object]]:
+) -> tuple[list[object] | None, Callable[[list[object]], object]]:
     """The list inside ``value`` worth shedding, and how to put it back.
 
     Searched at any depth under dicts, because tool results are envelopes: the
@@ -138,8 +134,8 @@ def _largest_sequence(
     if not isinstance(value, dict):
         return None, _as_is
 
-    best: list[Any] | None = None
-    best_rebuild: Callable[[list[Any]], object] = _as_is
+    best: list[object] | None = None
+    best_rebuild: Callable[[list[object]], object] = _as_is
     # Any sentinel below 2 is equivalent: a candidate is compact JSON of a list,
     # never shorter than "[]", so the first one always wins the comparison.
     best_size = -1  # pragma: no mutate
@@ -152,14 +148,72 @@ def _largest_sequence(
             best, best_size = items, size
 
             def rebuild(
-                replacement: list[Any],
+                replacement: list[object],
                 key: str = key,
-                rebuild_child: Callable[[list[Any]], object] = rebuild_child,
+                rebuild_child: Callable[[list[object]], object] = rebuild_child,
             ) -> object:
                 return {**value, key: rebuild_child(replacement)}
 
             best_rebuild = rebuild
     return best, best_rebuild
+
+
+_RESULT_DECODER = json.JSONDecoder()
+
+
+def parse_result(text: str) -> object:
+    """A tool result as JSON when it is a JSON document, and as its own text otherwise.
+
+    The document may be followed by a note a middleware appended for the model
+    after ``TOOL_RESULT_NOTE_SEPARATOR``; the note is not part of the result.
+    Anything else after a document means the text was never a document ("3
+    items found" starts with a number and is prose).
+    """
+    body = text.lstrip()
+    try:
+        value, end = _RESULT_DECODER.raw_decode(body)
+    except ValueError:
+        return text
+    rest = body[end:]
+    if rest.strip() and not rest.startswith(TOOL_RESULT_NOTE_SEPARATOR):
+        return text
+    return value
+
+
+def carries_no_data(value: object) -> bool:
+    """Whether a tool's result came back with nothing in it.
+
+    ``largest_list_len`` answers a different question: it finds the largest list
+    ANYWHERE in the result, so an empty attribute of a record the call did
+    return reads as "no items". ``create_todo`` answers with the todo it just
+    made, whose ``labels`` is ``[]`` when the caller passed none, and four of
+    the eight suspect playbooks in production were exactly that.
+
+    So the question here is whether the result carries any DATA. Empty lists,
+    empty dicts, empty strings and nulls are not data. Booleans are not data
+    either: ``successful: true`` is the provider envelope's bookkeeping, present
+    on every result whether or not it found anything. Anything left over, a
+    string, a number, or a list with something in it, means the call answered
+    with something and the run has no gap to paper over.
+    """
+    if isinstance(value, bool) or value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (int, float)):
+        # A zero count is the tool saying it found nothing, not a finding.
+        # Results carry their own tally next to the list ("fetched_count": 0,
+        # "messages": []), and reading that as data would defeat the check.
+        return value == 0
+    if isinstance(value, Mapping):
+        return all(
+            carries_no_data(item)
+            for key, item in value.items()
+            if key != TOOL_RESULT_FETCHED_AT_KEY
+        )
+    if isinstance(value, list):
+        return all(carries_no_data(item) for item in value)
+    return False
 
 
 def largest_list_len(value: object) -> int | None:
@@ -187,12 +241,9 @@ def largest_list_len(value: object) -> int | None:
     return best
 
 
-# The run-states an execution record may hold: created as ``running``, then
-# exactly one terminal write. Named once here because the document, the update
-# model, the repository's ``complete`` and the service's ``complete_execution``
-# all speak it (Type Safety items 3 and 5).
-#: ``skipped``: the fire never ran because another run of the same workflow
-#: was in flight; that run delivered the result. Not a failure to show in red.
+# Run-states an execution record may hold (Type Safety items 3, 5): created as
+# running, then exactly one terminal write. skipped means another run of the
+# same workflow was already in flight and delivered the result — not a failure.
 WorkflowExecutionStatus = Literal["running", "success", "failed", "skipped"]
 
 
@@ -212,6 +263,10 @@ class RecordedCall(BaseModel):
     #: Which subagent ran it, so a recorded handoff keeps its children — a trace
     #: flattened to the executor level is just one ``handoff`` call and useless.
     subagent_id: str | None = None
+    #: The stable id of the subagent that made the call (``todos``), or
+    #: ``None`` for the executor's own. What a playbook step inside
+    #: ``handoff: todos`` is matched against; ``subagent_id`` is the dispatch.
+    subagent: str | None = None
     args: dict[str, Any] = Field(default_factory=dict)
     result_digest: str = Field(
         default="", max_length=RESULT_DIGEST_MAX_CHARS, description="Bounded result summary"
@@ -222,7 +277,7 @@ class RecordedCall(BaseModel):
     replayed: bool = False
 
 
-class WorkflowExecution(BaseModel):
+class WorkflowExecution(ResponseModel):
     """A single workflow execution record."""
 
     execution_id: str = Field(description="Unique execution identifier")
@@ -247,14 +302,13 @@ class WorkflowExecution(BaseModel):
         default="manual",
         description="What triggered the execution: manual, schedule, or integration name",
     )
-    #: What this run actually did, in order. Replaces the LangGraph checkpoint as
-    #: the way a workflow remembers itself: the previous run's trace is injected
-    #: into the next run's opening message, so history stops being re-sent as a
-    #: full transcript on every fire.
+    #: What this run did, in order. Replaces the LangGraph checkpoint as how a
+    #: workflow remembers itself: the previous run's trace is injected into the
+    #: next run's opening message, instead of re-sending history as a full transcript.
     trace: list[RecordedCall] = Field(default_factory=list)
 
 
-class WorkflowExecutionsResponse(BaseModel):
+class WorkflowExecutionsResponse(ResponseModel):
     """Response for workflow executions list endpoint."""
 
     executions: list[WorkflowExecution] = Field(

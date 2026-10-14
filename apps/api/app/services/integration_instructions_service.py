@@ -1,13 +1,13 @@
 """Per-integration custom instructions — MongoDB-backed source of truth.
 
-Mirrors the skills-registry pattern: a Redis-cached read (``get_all_instructions``)
-with event-driven invalidation on write (``upsert_instructions``). The content
+Mirrors the skills-registry pattern: a Redis-cached read (get_all_instructions)
+with event-driven invalidation on write (upsert_instructions). The content
 is the single source of truth; the VFS projection at
-``integrations/<id>/agent/instructions.md`` and the subagent dynamic-context
+integrations/<id>/agent/instructions.md and the subagent dynamic-context
 block are both derived from it.
 
-Both the user (via REST) and the agent (via the ``update_integration_instructions``
-tool) write through ``upsert_instructions`` — there is no other write path, so the
+Both the user (via REST) and the agent (via the update_integration_instructions
+tool) write through upsert_instructions — there is no other write path, so the
 cache and the materialized projection stay consistent.
 """
 
@@ -34,7 +34,7 @@ _INSTRUCTIONS_INVALIDATION_PATTERNS = [INTEGRATION_INSTRUCTIONS_CACHE_KEY]
 
 @Cacheable(key_pattern=INTEGRATION_INSTRUCTIONS_CACHE_KEY, ttl=INTEGRATION_INSTRUCTIONS_CACHE_TTL)
 async def get_all_instructions(user_id: str) -> dict[str, str]:
-    """Return ``{integration_id: content}`` for every non-empty instruction.
+    """Return {integration_id: content} for every non-empty instruction.
 
     Cached per user (invalidated on write). Drives both the materialized VFS
     projection and the per-turn subagent context injection, so it must stay a
@@ -45,7 +45,7 @@ async def get_all_instructions(user_id: str) -> dict[str, str]:
 
 
 async def get_instructions(user_id: str, integration_id: str) -> str | None:
-    """Return the markdown for one integration, or ``None`` if unset/empty."""
+    """Return the markdown for one integration, or None if unset/empty."""
     instructions: dict[str, str] = await get_all_instructions(user_id)
     return instructions.get(integration_id)
 
@@ -53,10 +53,10 @@ async def get_instructions(user_id: str, integration_id: str) -> str | None:
 async def get_instructions_record(
     user_id: str, integration_id: str
 ) -> IntegrationInstructions | None:
-    """Return the full instructions record (content + audit fields), or ``None``.
+    """Return the full instructions record (content + audit fields), or None.
 
     Uncached single read — used by the UI editor on open, where the freshest
-    ``updated_by`` / ``updated_at`` matter for the audit line.
+    updated_by / updated_at matter for the audit line.
     """
     doc = await integration_instructions_repository.get_record(user_id, integration_id)
     if doc is None:
@@ -80,11 +80,9 @@ async def upsert_instructions(
 ) -> IntegrationInstructions:
     """Create or replace one integration's instructions (full-content write).
 
-    Truncates to ``MAX_INSTRUCTIONS_CHARS`` so a runaway agent write can't bloat
-    every subsequent context window. Whitespace-only content is stored as ""
-    (i.e. cleared) so it never surfaces as a noisy, empty instructions block.
-    Invalidates the per-user cache; the VFS projection re-syncs on the next
-    session bootstrap via the staleness gate.
+    Truncates to MAX_INSTRUCTIONS_CHARS; whitespace-only content is stored as
+    "". Invalidates the per-user cache; the VFS projection re-syncs on the
+    next session bootstrap.
     """
     log.set(
         user_id=user_id,

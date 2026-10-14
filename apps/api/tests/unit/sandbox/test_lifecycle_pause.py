@@ -1,6 +1,6 @@
 """Layer 3 — idle pause uses beta_pause (the original-bug regression).
 
-The outage was `getattr(sbx, "pause")` → None → pause silently skipped. These
+The outage was getattr(sbx, "pause") → None → pause silently skipped. These
 assert the lifecycle actually calls beta_pause and records the paused state, and
 that the scheduler doesn't leak overlapping pause tasks.
 """
@@ -82,19 +82,7 @@ async def test_scheduled_pause_aborts_if_work_arrived() -> None:
 
 
 async def test_scheduled_pause_aborts_if_another_replica_is_using_the_sandbox() -> None:
-    """The sibling of the refcount check, for the replica that armed the timer.
-
-    ``refcount`` is this process's own count, and the pause task outlives the
-    acquisition lock that guarded the turn. So: replica A finishes a turn and
-    arms the pause; the user replies and the LB sends it to replica B, which
-    connects to the SAME sandbox (its id comes from Mongo) and starts a long
-    run; A's timer then fires and pauses it underneath B. The user's tool call
-    dies mid-command and its artifacts stop streaming.
-
-    ``last_used_at`` in Mongo is the cross-replica proof of use — every release
-    stamps it — so a recent stamp must abort the pause exactly like a local
-    refcount would.
-    """
+    """A recent last_used_at from another replica aborts the pause even at zero local refcount."""
     sbx = AsyncMock()
     sbx.beta_pause = AsyncMock()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", refcount=0)

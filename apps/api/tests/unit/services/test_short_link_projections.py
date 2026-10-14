@@ -133,8 +133,7 @@ class TestWorkflowRun:
 
 class TestWorkflowRunStillFinishing:
     async def test_a_run_not_yet_completed_reads_as_running(self):
-        """The link is delivered before the run is marked complete, so the page
-        must say it is still running rather than invent a finished run."""
+        """A run not yet marked complete reads as running, never as a finished run."""
         execution = WorkflowExecutionDocument(
             execution_id="exec-1",
             workflow_id="wf-1",

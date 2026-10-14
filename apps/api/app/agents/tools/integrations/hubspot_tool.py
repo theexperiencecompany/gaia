@@ -1,13 +1,18 @@
 """HubSpot tools using Composio custom tool infrastructure."""
 
-from typing import Any
-
 from composio import Composio
 from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
-from app.services.composio.proxy_client import proxy_request_sync
+from app.models.integrations.composio import CustomToolAuthCredentials
+from app.models.integrations.hubspot import (
+    HubSpotContact,
+    HubSpotContactsPage,
+    HubSpotDeal,
+    HubSpotDealsPage,
+)
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
 HUBSPOT_TOOLKIT = "HUBSPOT"
@@ -20,75 +25,75 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get HubSpot CRM context snapshot: recent contacts and deals.
 
         Zero required parameters. Returns current CRM state for situational awareness.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "hubspot", "action": "gather_context"})
-        user_id = auth_credentials.get("user_id")
-        if not user_id:
-            raise ValueError("Missing user_id in auth_credentials")
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
-        contacts: list[dict[str, Any]] = []
+        contacts: list[HubSpotContact] = []
         try:
-            data = (
+            contacts = HubSpotContactsPage.model_validate(
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=HUBSPOT_TOOLKIT,
-                    endpoint="https://api.hubapi.com/crm/v3/objects/contacts",
-                    method="GET",
-                    query={
-                        "limit": 10,
-                        "properties": "firstname,lastname,email,hs_lead_status",
-                        "sort": "-createdate",
-                    },
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=HUBSPOT_TOOLKIT,
+                        endpoint="https://api.hubapi.com/crm/v3/objects/contacts",
+                        method="GET",
+                        query={
+                            "limit": 10,
+                            "properties": "firstname,lastname,email,hs_lead_status",
+                            "sort": "-createdate",
+                        },
+                    )
                 )
                 or {}
-            )
-            contacts = data.get("results", [])
+            ).results
         except Exception as e:
             log.debug(f"{LogTag.TOOL} HubSpot contacts fetch failed", error_type=type(e).__name__)
 
-        deals: list[dict[str, Any]] = []
+        deals: list[HubSpotDeal] = []
         try:
-            data = (
+            deals = HubSpotDealsPage.model_validate(
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=HUBSPOT_TOOLKIT,
-                    endpoint="https://api.hubapi.com/crm/v3/objects/deals",
-                    method="GET",
-                    query={
-                        "limit": 10,
-                        "properties": "dealname,amount,dealstage,closedate",
-                        "sort": "-createdate",
-                    },
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=HUBSPOT_TOOLKIT,
+                        endpoint="https://api.hubapi.com/crm/v3/objects/deals",
+                        method="GET",
+                        query={
+                            "limit": 10,
+                            "properties": "dealname,amount,dealstage,closedate",
+                            "sort": "-createdate",
+                        },
+                    )
                 )
                 or {}
-            )
-            deals = data.get("results", [])
+            ).results
         except Exception as e:
             log.debug(f"{LogTag.TOOL} HubSpot deals fetch failed", error_type=type(e).__name__)
 
         recent_contacts = [
             {
-                "id": c.get("id"),
-                "firstname": c.get("properties", {}).get("firstname"),
-                "lastname": c.get("properties", {}).get("lastname"),
-                "email": c.get("properties", {}).get("email"),
-                "lead_status": c.get("properties", {}).get("hs_lead_status"),
+                "id": c.id,
+                "firstname": c.properties.firstname,
+                "lastname": c.properties.lastname,
+                "email": c.properties.email,
+                "lead_status": c.properties.hs_lead_status,
             }
             for c in contacts
         ]
         recent_deals = [
             {
-                "id": d.get("id"),
-                "dealname": d.get("properties", {}).get("dealname"),
-                "amount": d.get("properties", {}).get("amount"),
-                "dealstage": d.get("properties", {}).get("dealstage"),
-                "closedate": d.get("properties", {}).get("closedate"),
+                "id": d.id,
+                "dealname": d.properties.dealname,
+                "amount": d.properties.amount,
+                "dealstage": d.properties.dealstage,
+                "closedate": d.properties.closedate,
             }
             for d in deals
         ]

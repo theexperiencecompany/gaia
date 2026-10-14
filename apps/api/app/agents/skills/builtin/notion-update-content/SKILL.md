@@ -1,6 +1,6 @@
 ---
 name: notion-manage-content
-description: Manage Notion page content — insert, append, update blocks, delete blocks, override/replace content, and create new linked pages. Supports full markdown including tables.
+description: "Manage Notion page content: insert, append, update blocks, delete blocks, override/replace content, and create new linked pages. Supports full markdown including tables."
 target: notion_agent
 ---
 
@@ -112,7 +112,7 @@ NOTION_APPEND_LAYOUT_BLOCKS(...)    # dividers, TOC, columns
 
 ### Tables
 
-**Use markdown table syntax directly** — `NOTION_INSERT_MARKDOWN` automatically converts it to a proper Notion table via `NOTION_APPEND_TABLE_BLOCKS` under the hood:
+**Use markdown table syntax directly**: `NOTION_INSERT_MARKDOWN` automatically converts it to a proper Notion table via `NOTION_APPEND_TABLE_BLOCKS` under the hood:
 
 ```
 NOTION_INSERT_MARKDOWN(
@@ -134,19 +134,23 @@ If you need more control (e.g., inserting a table at a specific position), use `
 ```
 NOTION_APPEND_TABLE_BLOCKS(
   block_id="<page_id>",
-  table_width=3,
-  has_column_header=true,
-  rows=[
-    {"cells": [
-      [{"type": "text", "text": {"content": "Name"}}],
-      [{"type": "text", "text": {"content": "Status"}}],
-      [{"type": "text", "text": {"content": "Due"}}]
-    ]},
-    {"cells": [
-      [{"type": "text", "text": {"content": "Task A"}}],
-      [{"type": "text", "text": {"content": "In Progress"}}],
-      [{"type": "text", "text": {"content": "Mar 10"}}]
-    ]}
+  tables=[
+    {
+      "table_width": 3,
+      "has_column_header": true,
+      "rows": [
+        {"cells": [
+          [{"type": "text", "text": {"content": "Name"}}],
+          [{"type": "text", "text": {"content": "Status"}}],
+          [{"type": "text", "text": {"content": "Due"}}]
+        ]},
+        {"cells": [
+          [{"type": "text", "text": {"content": "Task A"}}],
+          [{"type": "text", "text": {"content": "In Progress"}}],
+          [{"type": "text", "text": {"content": "Mar 10"}}]
+        ]}
+      ]
+    }
   ]
 )
 ```
@@ -182,7 +186,7 @@ NOTION_DELETE_BLOCK(block_id="<block_uuid>")
 
 ### Override / Replace Page Content
 
-To completely replace a page's content (destructive — confirm with user first):
+To completely replace a page's content (destructive, confirm with user first):
 
 ```
 NOTION_REPLACE_PAGE_CONTENT(
@@ -219,7 +223,7 @@ NOTION_INSERT_MARKDOWN(
 )
 
 # 3. Link the new page inside the parent page
-# Notion auto-links child pages — confirm by mentioning the link to the user
+# Notion auto-links child pages: confirm by mentioning the link to the user
 ```
 
 After creating, always report:

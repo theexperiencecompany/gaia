@@ -23,7 +23,7 @@ export default function GeneratedImageSheet({
         prompt: imageData.prompt,
         improved_prompt: imageData.improvedPrompt,
       }
-    : { url: "" };
+    : { url: "", prompt: "" };
 
   return (
     <Sheet open={openImage} onOpenChange={setOpenImage}>

@@ -38,7 +38,7 @@ def _offered_trigger_names() -> set[str]:
 
 
 def _unwrap_optional(annotation: object) -> object:
-    """``str | None`` -> ``str``. Payload fields are optional almost everywhere."""
+    """Str | None -> str. Payload fields are optional almost everywhere."""
     if get_origin(annotation) not in (Union, UnionType):
         return annotation
     args = [a for a in get_args(annotation) if a is not type(None)]
@@ -46,7 +46,7 @@ def _unwrap_optional(annotation: object) -> object:
 
 
 def _resolve(model: type[BaseModel], dotted_name: str) -> object:
-    """The annotation for ``dotted_name`` on ``model``, or None if it does not exist."""
+    """Return the annotation for dotted_name on model, or None if it does not exist."""
     current: object = model
     for segment in dotted_name.split("."):
         if not (isinstance(current, type) and issubclass(current, BaseModel)):
@@ -69,7 +69,7 @@ _CATALOG_ITEMS = sorted(MATCHABLE_TRIGGERS.items())
 
 
 def _covered_prefixes(entry: MatchableTrigger) -> set[str]:
-    """Top-level names reached only through a dotted child (``document.id``)."""
+    """Top-level names reached only through a dotted child (document.id)."""
     named = set(entry.field_names) | set(entry.excluded)
     return {name.split(".", 1)[0] for name in named if "." in name}
 
@@ -176,6 +176,23 @@ class TestLookup:
         # Both fire GMAIL_NEW_GMAIL_MESSAGE and deliver the same payload.
         assert MATCHABLE_TRIGGERS["gmail_new_message"] is MATCHABLE_TRIGGERS["gmail_poll_inbox"]
 
+    def test_the_sent_trigger_is_subscribable_by_thread_and_recipient(self) -> None:
+        entry = get_matchable_trigger("gmail_email_sent")
+        assert entry is not None
+        assert {"thread_id", "message_id", "recipients", "to", "subject"} <= set(entry.field_names)
+        # Composio sends recipients as one comma-separated string, so reaching a
+        # single address is a text contains, not a list membership test.
+        recipients = entry.field("recipients")
+        assert recipients is not None
+        assert recipients.type is MatchableFieldType.STRING
+
+    def test_the_sent_trigger_has_its_own_payload_shape(self) -> None:
+        # A sent message carries no labels and adds cc/bcc/recipients, so reusing
+        # the inbox entry would offer fields that are never present.
+        sent = MATCHABLE_TRIGGERS["gmail_email_sent"]
+        assert sent is not MATCHABLE_TRIGGERS["gmail_new_message"]
+        assert sent.field("label_ids") is None
+
     def test_field_lookup_finds_a_catalogued_field(self) -> None:
         entry = MATCHABLE_TRIGGERS["gmail_new_message"]
         field = entry.field("thread_id")
@@ -193,8 +210,8 @@ _STRING = MatchableFieldType.STRING
 class TestFactoryHelpers:
     """Exercise the field builder and the three shared-envelope factories directly.
 
-    ``MATCHABLE_TRIGGERS`` is frozen at import, so a mutation to a literal inside
-    ``_f`` / ``_google_doc`` / ``_notion`` / ``_linear`` is invisible through the
+    MATCHABLE_TRIGGERS is frozen at import, so a mutation to a literal inside
+    _f / _google_doc / _notion / _linear is invisible through the
     catalog — the description and example text the agent is shown before writing a
     condition would silently drift with nothing to catch it. These pin every name,
     type, description and example the factories emit.

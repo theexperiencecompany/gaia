@@ -4,6 +4,12 @@
  * hooks and non-React modules (axios client, stream handlers) can use it.
  */
 
+import type { AddOptions } from "@shared/bridge-core/config-builders";
+import type {
+  BridgeInvokeResult,
+  BridgeStatus,
+  DeviceServerView,
+} from "@shared/bridge-core/ipc.types";
 import type {
   DesktopPermissionPane,
   DesktopPermissionStatus,
@@ -11,6 +17,8 @@ import type {
   DesktopShortcutUpdateResult,
   DesktopToolRequest,
   DesktopToolResult,
+  FolderAccessResult,
+  ProtectedFolder,
 } from "@shared/desktop-tools";
 
 /** The API surface exposed by the desktop app's preload script. */
@@ -36,12 +44,36 @@ export interface ElectronAPI {
   requestDesktopPermission: (
     pane: DesktopPermissionPane,
   ) => Promise<DesktopPermissionStatus>;
+  requestFolderAccess: (folder: ProtectedFolder) => Promise<FolderAccessResult>;
   relaunchDesktopApp: () => void;
   getDesktopSettings: () => Promise<DesktopSettingsSnapshot>;
   setPopupShortcut: (
     accelerator: string,
   ) => Promise<DesktopShortcutUpdateResult>;
   setAppIcon: (id: string) => Promise<boolean>;
+  /** Device bridge control surface (pair, tunnel run/stop, MCP servers). Every
+   * call resolves to a {@link BridgeInvokeResult} envelope; the device refresh
+   * token never crosses this boundary. */
+  bridge: {
+    pair: () => Promise<BridgeInvokeResult<BridgeStatus>>;
+    status: () => Promise<BridgeInvokeResult<BridgeStatus>>;
+    start: () => Promise<BridgeInvokeResult<BridgeStatus>>;
+    stop: () => Promise<BridgeInvokeResult<BridgeStatus>>;
+    listServers: () => Promise<BridgeInvokeResult<DeviceServerView[]>>;
+    addServer: (
+      opts: AddOptions,
+    ) => Promise<BridgeInvokeResult<DeviceServerView[]>>;
+    retryServer: (
+      key: string,
+    ) => Promise<BridgeInvokeResult<DeviceServerView[]>>;
+    removeServer: (
+      key: string,
+    ) => Promise<BridgeInvokeResult<DeviceServerView[]>>;
+    onStatusChanged: (callback: (status: BridgeStatus) => void) => () => void;
+    onServersChanged: (
+      callback: (servers: DeviceServerView[]) => void,
+    ) => () => void;
+  };
 }
 
 /** Type guard: `win.api` exists and is the Electron preload API. */

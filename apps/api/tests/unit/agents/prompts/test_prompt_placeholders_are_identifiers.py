@@ -1,15 +1,15 @@
-"""Every ``{placeholder}`` in a prompt that is ``str.format``-ed must be a kwarg name.
+"""Every {placeholder} in a prompt that is str.format-ed must be a kwarg name.
 
-A literal example inside the prose, ``"- {date}: {what happened}"``, is not an
+A literal example inside the prose, "- {date}: {what happened}", is not an
 example to the formatter: it is two placeholders nobody passes, and the call
-raises ``KeyError``. That shipped: every calendar-triggered workflow run for a
-user with tracked todos failed with ``KeyError: 'date'``, 54 times in one day,
+raises KeyError. That shipped: every calendar-triggered workflow run for a
+user with tracked todos failed with KeyError: 'date', 54 times in one day,
 and the failure read as a data problem because the message was one bare word.
 
 A placeholder that is not a Python identifier (a space, a quote, a colon)
-cannot be satisfied by any ``.format(**kwargs)`` call, so it is always a
-literal that forgot its ``{{`` ``}}``. Only constants that actually reach a
-``.format(`` call are checked: prompts handed to the model verbatim may carry
+cannot be satisfied by any .format(**kwargs) call, so it is always a
+literal that forgot its {{ }}. Only constants that actually reach a
+.format( call are checked: prompts handed to the model verbatim may carry
 JSON examples in single braces, and those are fine.
 """
 
@@ -26,7 +26,7 @@ FORMAT_CALL = re.compile(r"\b([A-Z][A-Z0-9_]+)\.format\(")
 
 
 def _formatted_constant_names() -> set[str]:
-    """Names that appear as ``NAME.format(`` anywhere under ``app/``."""
+    """Names that appear as NAME.format( anywhere under app/."""
     names: set[str] = set()
     for path in APP_ROOT.rglob("*.py"):
         names.update(FORMAT_CALL.findall(path.read_text(encoding="utf-8")))

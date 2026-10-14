@@ -20,15 +20,42 @@ inputs:
 runs:
   using: composite
   steps:
-    # dest is load-bearing. pnpm/action-setup self-installs into ~/setup-pnpm
-    # by default — one path shared by every runner instance on the home box.
-    # Three jobs starting together raced on it (ENOTEMPTY on rmdir, ENOENT on
-    # package.json) and all three failed. runner.temp is per instance.
-    - name: Setup pnpm
-      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      with:
-        version: 10.17.1
-        dest: ${{ runner.temp }}/setup-pnpm
+    # pnpm comes from corepack, not pnpm/action-setup. The action bootstraps
+    # pnpm with `npm ci` against the registry, which stalled for 4+ minutes on
+    # both the home box and GitHub-hosted runners (2026-09-04, four runs in a
+    # day) and tipped the 5-minute `changes` / `changelog-sync` jobs over their
+    # cap before a single test ran. corepack fetches ONE tarball into
+    # COREPACK_HOME and reuses it: on the box that home persists under
+    # ci-cache, so after the first run pnpm setup is a local unpack; on
+    # GitHub-hosted it is one small download instead of an npm resolve.
+    # A pnpm already on PATH at the pinned version is used as-is.
+    - name: Setup pnpm (corepack)
+      shell: bash
+      env:
+        PNPM_VERSION: "10.17.1"
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      run: |
+        set -euo pipefail
+        if command -v pnpm >/dev/null 2>&1 && [ "$(pnpm --version 2>/dev/null || true)" = "$PNPM_VERSION" ]; then
+          echo "pnpm $PNPM_VERSION already on PATH ($(command -v pnpm))"
+          exit 0
+        fi
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+          COREPACK_HOME="$HOME/ci-cache/corepack"
+        else
+          COREPACK_HOME="$RUNNER_TEMP/corepack"
+        fi
+        SHIMS="$RUNNER_TEMP/corepack-shims"
+        mkdir -p "$COREPACK_HOME" "$SHIMS"
+        export COREPACK_HOME
+        # `--install-directory` keeps the shims out of the node install (which
+        # may be read-only or shared) and per job.
+        corepack enable pnpm --install-directory "$SHIMS"
+        corepack prepare "pnpm@${PNPM_VERSION}" --activate
+        echo "$SHIMS" >> "$GITHUB_PATH"
+        echo "COREPACK_HOME=$COREPACK_HOME" >> "$GITHUB_ENV"
+        export PATH="$SHIMS:$PATH"
+        echo "pnpm $(pnpm --version) via corepack (home: $COREPACK_HOME)"
 
     # Self-hosted: ONE persistent per-user store, named explicitly. pnpm's
     # default store is $PNPM_HOME/store whenever PNPM_HOME is set, and

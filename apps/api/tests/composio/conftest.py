@@ -3,17 +3,15 @@
 After the GAIA-641 proxy migration, the per-toolkit unit tests previously
 in this directory (test_gmail.py, test_calendar.py, test_google_docs.py,
 test_linkedin.py, test_notion.py, test_twitter.py) were deleted: they
-mocked `httpx.Client` against the legacy direct-API contract that no
-longer exists. Equivalent coverage now lives in `tests/unit/` and patches
-`proxy_request_sync` at the call-site module instead.
+mocked httpx.Client against the legacy direct-API contract that no longer
+exists. Equivalent coverage now lives in tests/unit/, patching
+proxy_request_sync at the call-site module instead.
 
-Only `test_linear.py` remains because it patches at the
-`graphql_request` boundary (which is still the public surface of
-`linear_utils`) rather than the now-removed httpx layer.
+test_linear.py remains because it patches at the graphql_request boundary
+(still the public surface of linear_utils), not the removed httpx layer.
 
-New live-credential tests added here should patch nothing — they should
-exercise the real `proxy_request_sync` path with a real Composio API key
-and a real connected account.
+New live-credential tests here should patch nothing — exercise the real
+proxy_request_sync path with a real Composio API key and account.
 """
 
 from pathlib import Path
@@ -28,14 +26,9 @@ _LIVE_TIER = Path(__file__).parent
 def pytest_collection_modifyitems(config, items):
     """Mark this tier so the default run skips it — these tests bill real Composio calls.
 
-    Scoped to this directory by path, not by the substring "composio": that
-    matched every hermetic test whose path merely mentions Composio
-    (`tests/unit/services/composio/`, `tests/unit/api/test_webhook_composio_endpoint.py`,
-    `tests/integration/real/test_webhook_composio.py` — 545 tests in 18 files) and
-    silently dropped all of them from every CI run, since the default marker
-    expression is `not composio`. Targeting one of those files directly still
-    collected it, because this conftest never loaded, so the gap was invisible
-    locally.
+    Scoped to this directory by path, not the substring "composio": that once
+    matched 545 hermetic tests in 18 files (paths merely mentioning Composio)
+    and silently dropped them from every CI run.
     """
     for item in items:
         if _LIVE_TIER in Path(str(item.fspath)).parents:
@@ -51,9 +44,9 @@ def pytest_collection_modifyitems(config, items):
 def mock_gmail_credentials() -> dict[str, Any]:
     """Auth credentials shape Composio passes into custom tools post-migration.
 
-    Composio no longer returns OAuth `access_token` in connected-account
-    credentials. The patched `CustomTool.__call__` injects only `user_id`,
-    and tools route provider requests through `proxy_request_sync`.
+    Composio no longer returns OAuth access_token in connected-account
+    credentials. The patched CustomTool.__call__ injects only user_id,
+    and tools route provider requests through proxy_request_sync.
     """
     return {"user_id": "test_user_123"}
 
@@ -90,10 +83,9 @@ def mock_composio_client():
     return composio
 
 
-# Live-credential tier: declare the real keys these tests may use so the root
-# hermetic fence (tests/conftest.py) does not blank them. Set at import time —
-# before the session fence runs. Only keys needed by genuine live tests belong
-# here; mocked tests do not require them.
+# Declares the real keys these tests may use so the root hermetic fence
+# (tests/conftest.py) does not blank them; set at import time, before the
+# session fence runs.
 import os
 
 os.environ.setdefault(

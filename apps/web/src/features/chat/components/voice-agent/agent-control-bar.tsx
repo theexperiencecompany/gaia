@@ -66,10 +66,9 @@ export function AgentControlBar({
     });
 
   const session = useVoiceSession();
-  // During room connect the mic is ALREADY capturing into the pre-connect
-  // buffer (and that audio reaches the agent), but no track publication
-  // exists yet so `enabled` reads false. Show the truth: mic live, control
-  // not actionable yet (toggling mid-connect would queue an unmute anyway).
+  // During connect the mic is ALREADY capturing into the pre-connect buffer
+  // (reaching the agent), but no track publication exists yet so `enabled`
+  // reads false — show mic live, control not actionable (toggling would queue an unmute).
   const preConnectCapture =
     !microphoneToggle.enabled && (session?.isConnecting ?? false);
   const micLive = microphoneToggle.enabled || preConnectCapture;

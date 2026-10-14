@@ -6,7 +6,7 @@ multi-step operations: conversation CRUD, todo creation with subtasks,
 message ordering, concurrent updates, partial failure handling, and
 bulk operations.
 
-All tests mock at the repository boundary (the typed ``*_repository``
+All tests mock at the repository boundary (the typed *_repository
 singletons) while exercising real service logic. The repositories return typed
 document models, exactly as they do at runtime; assertions target the resulting
 data state and the documents handed to the repository, not mock call counts.
@@ -39,6 +39,7 @@ from app.models.todo_models import (
     TodoUpdate,
     TodoUpdateRequest,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import (
     create_conversation_service,
     delete_all_conversations,
@@ -47,18 +48,25 @@ from app.services.conversation_service import (
 )
 from app.services.todos.todo_service import TodoService
 from app.utils.errors import AppError
+from tests.helpers import users_get
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-USER_ID = "user_txn_test_001"
-FAKE_USER: dict[str, Any] = {"user_id": USER_ID}
+USER_ID = "64abc123def4567890abcde1"
+FAKE_USER = AuthenticatedUser(user_id=USER_ID)
+
+
+@pytest.fixture(autouse=True)
+def _owners_are_users():
+    """Answer the owner check the way the real users collection does."""
+    with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+        yield
 
 
 def _stored_todo(document: TodoDocument, **overrides: Any) -> TodoDocument:
-    """Echo a to-be-created ``TodoDocument`` back as the repository would after a
-    write: same fields, plus a stored id and creation/update timestamps."""
+    """Echo a to-be-created TodoDocument back as the repository would after a write: same fields, plus a stored id and timestamps."""
     now = datetime.now(UTC)
     data = {
         **document.model_dump(),
@@ -141,11 +149,11 @@ class TestConversationCreationConsistency:
         assert "connection refused" in exc_info.value.detail
 
     async def test_create_conversation_requires_user_id(self) -> None:
-        """Missing user_id in user dict must raise 403."""
+        """An empty user_id must raise 403."""
         conversation = ConversationModel(conversation_id=str(uuid4()), description="No user")
 
         with pytest.raises(HTTPException) as exc_info:
-            await create_conversation_service(conversation, {})
+            await create_conversation_service(conversation, AuthenticatedUser(user_id=""))
 
         assert exc_info.value.status_code == 403
 
@@ -265,11 +273,6 @@ class TestTodoCreationWithSubtasks:
                 "app.services.todos.todo_service.project_repository.get_or_create_inbox",
                 AsyncMock(return_value=_inbox_project()),
             ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService."
-                "queue_todo_workflow_generation",
-                AsyncMock(),
-            ),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
         ):
@@ -304,11 +307,6 @@ class TestTodoCreationWithSubtasks:
             patch(
                 "app.services.todos.todo_service.project_repository.get_or_create_inbox",
                 AsyncMock(return_value=_inbox_project()),
-            ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService."
-                "queue_todo_workflow_generation",
-                AsyncMock(),
             ),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
@@ -401,7 +399,7 @@ class TestMessageOrdering:
 
     Insertion ordering and id assignment now live inside the repository and are
     asserted end-to-end against real Mongo in
-    ``tests/contracts/test_conversations_repository.py::TestMessages::test_append_returns_ids_and_persists``.
+    tests/contracts/test_conversations_repository.py::TestMessages::test_append_returns_ids_and_persists.
     """
 
     async def test_forwards_all_messages_in_order(self) -> None:
@@ -521,6 +519,10 @@ class TestBulkOperations:
                 "app.services.todos.todo_service.todo_repository.bulk_delete",
                 AsyncMock(return_value=5),
             ),
+            patch(
+                "app.services.todos.todo_service.todo_repository.find_sub_todos",
+                AsyncMock(return_value=[]),
+            ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
         ):
@@ -546,6 +548,10 @@ class TestBulkOperations:
             patch(
                 "app.services.todos.todo_service.todo_repository.bulk_delete",
                 AsyncMock(return_value=3),
+            ),
+            patch(
+                "app.services.todos.todo_service.todo_repository.find_sub_todos",
+                AsyncMock(return_value=[]),
             ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),

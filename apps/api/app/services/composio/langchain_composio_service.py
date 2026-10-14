@@ -1,11 +1,14 @@
-"""ComposioLangChain class definition"""
+"""ComposioLangChain class definition."""
 
 import asyncio
+from dataclasses import dataclass
 from inspect import Parameter, Signature
 import types
 import typing as t
 
+from composio.core.models.tools import ToolExecutionResponse
 from composio.core.provider import AgenticProvider, AgenticProviderExecuteFn
+from composio.core.provider.base import BaseProviderConfig
 from composio.types import Tool
 from composio.utils.pydantic import parse_pydantic_error
 from composio.utils.shared import (
@@ -18,32 +21,50 @@ from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
 from app.config.oauth_config import get_integration_by_toolkit
+from app.constants.integrations import INTEGRATION_STATUS_EXPIRED, ConnectMode
 from app.constants.log_tags import LogTag
-from app.services.integrations.integration_expiry import ExpiryOptions, expire_user_integration
+from app.models.agent_config import RunMetadata
+from app.services.composio.account_scope import account_scope
+from app.services.composio.dead_account import (
+    ConnectedAccountGoneError,
+    is_dead_account_error,
+    message_mentions_dead_account,
+)
+from app.services.integrations.integration_accounts import (
+    get_account_record,
+    primary_account,
+)
+from app.services.integrations.integration_expiry import expire_account
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log, log_context
 
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
-_obj_marker = "-_object_-"
-
-# Composio's tool-execute failure for a connected account that is missing, expired
-# or revoked: error code 1810, name `ActionExecute_ConnectedAccountNotFound`. It
-# surfaces two ways — as a raised `composio_client.NotFoundError` (404) and as a
-# non-raising `{"successful": False, "error": "..."}` result — so both paths gate
-# on this one marker set rather than on two drifting copies.
-_DEAD_ACCOUNT_ERROR_CODE = "1810"
-_DEAD_ACCOUNT_ERROR_NAME = "actionexecute_connectedaccountnotfound"
-_DEAD_ACCOUNT_MESSAGE_MARKERS = (
-    _DEAD_ACCOUNT_ERROR_CODE,
-    _DEAD_ACCOUNT_ERROR_NAME,
-    "no active connected account",
-    "no connected account",
-)
 
 # How long the tool wrapper waits on the main loop for the expiry write plus the
 # connect prompt. A timeout only abandons the wait — the coroutine keeps running
 # on the loop, so the expiry still lands; the agent just gets the raw error.
 _RECONNECT_PROMPT_TIMEOUT_S = 10.0
+
+
+class _JsonSchema(t.TypedDict, total=False):
+    """The JSON-schema keys this module reads; every other key rides along untouched."""
+
+    type: object
+    properties: dict[str, "_JsonSchema"]
+
+
+@dataclass(frozen=True)
+class _RenamedKeyword:
+    """A schema property renamed off a Python keyword, with the renames inside it."""
+
+    original: str
+    nested: dict[str, "_RenamedKeyword"]
+
+
+class _ToolCallTransport(t.TypedDict, total=False):
+    """The one key the wrapper reads off a tool call's kwargs; the rest are tool arguments."""
+
+    __runnable_config__: object
 
 
 def _running_loop_or_none() -> asyncio.AbstractEventLoop | None:
@@ -53,57 +74,39 @@ def _running_loop_or_none() -> asyncio.AbstractEventLoop | None:
         return None
 
 
-def _message_mentions_dead_account(message: str) -> bool:
-    lowered = message.lower()
-    return any(marker in lowered for marker in _DEAD_ACCOUNT_MESSAGE_MARKERS)
+async def _expire_and_request_reconnect(
+    user_id: str,
+    integration_id: str,
+    integration_name: str,
+    connected_account_id: str | None,
+    reason: str,
+) -> str:
+    """Mark the account expired, then show the card that signs that account back in.
 
-
-def _is_dead_account_error(error: composio_client.NotFoundError) -> bool:
-    """Confirm a Composio 404 is the dead-connected-account failure, not some other 404.
-
-    Prefers the structured error body, because a false positive here marks a
-    healthy integration expired; falls back to the message, which carries the
-    same code and name.
-    """
-    body = error.body
-    if isinstance(body, dict):
-        detail = body.get("error") if isinstance(body.get("error"), dict) else body
-        if isinstance(detail, dict):
-            code = detail.get("error_code", detail.get("code"))
-            name = detail.get("name", detail.get("type"))
-            if str(code) == _DEAD_ACCOUNT_ERROR_CODE:
-                return True
-            if isinstance(name, str) and name.lower() == _DEAD_ACCOUNT_ERROR_NAME:
-                return True
-    return _message_mentions_dead_account(str(error))
-
-
-async def _expire_with_log_boundary(user_id: str, integration_id: str, reason: str) -> None:
-    """Run the expiry transition under its own wide-event boundary.
-
-    The dispatch comes from an executor thread via ``run_coroutine_threadsafe``,
-    which carries no boundary of its own — without this the transition's
-    ``log.set()`` fields would be silently discarded.
+    Ordered, not concurrent: the card reads the stored status. Own wide-event
+    boundary: executor threads carry none.
     """
     async with log_context("composio_tool_integration_expiry", user_id=user_id):
-        await expire_user_integration(
-            user_id,
-            integration_id,
-            ExpiryOptions(reason=reason, trigger="tool_execution", notify=False),
+        await expire_account(
+            user_id, integration_id, connected_account_id, trigger="tool_execution", reason=reason
         )
-
-
-async def _expire_and_request_reconnect(
-    user_id: str, integration_id: str, integration_name: str, reason: str
-) -> str:
-    """Mark the integration expired, then ask the user to reconnect.
-
-    Ordered, not concurrent: the prompt reads the stored status to tell "expired"
-    from "never connected", so racing the write would show first-time-connect copy
-    for a connection that plainly died.
-    """
-    await _expire_with_log_boundary(user_id, integration_id, reason)
-    return await request_integration_connection(integration_id, integration_name, user_id)
+    # Read back rather than trusting the expiry's outcome: a repeat call on an account
+    # already expired changes nothing, yet still needs that account named.
+    record = await get_account_record(user_id, integration_id)
+    dead = None
+    if record is not None:
+        dead = (
+            record.find_provider_account(connected_account_id)
+            if connected_account_id
+            else primary_account(record)
+        )
+    return await request_integration_connection(
+        integration_id,
+        integration_name,
+        user_id,
+        mode=ConnectMode.RECONNECT,
+        account=dead if dead is not None and dead.status == INTEGRATION_STATUS_EXPIRED else None,
+    )
 
 
 def _clean_reserved_keyword(keyword: str) -> str:
@@ -111,94 +114,114 @@ def _clean_reserved_keyword(keyword: str) -> str:
 
 
 def _substitute_reserved_python_keywords(
-    schema: dict[str, t.Any],
-) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
+    schema: _JsonSchema,
+) -> tuple[_JsonSchema, dict[str, _RenamedKeyword]]:
     if "properties" not in schema:
         return schema, {}
 
-    keywords: dict[str, t.Any] = {}
+    keywords: dict[str, _RenamedKeyword] = {}
     for p_name in list(schema["properties"]):
         if p_name not in _python_reserved:
             continue
 
-        _keywords: dict[str, t.Any] = {}
-        p_val = schema["properties"].pop(p_name)
+        # Unmutated: nested is only ever read as a truth value, where None and {} agree.
+        nested: dict[str, _RenamedKeyword] = {}  # pragma: no mutate
+        p_val: _JsonSchema = schema["properties"].pop(p_name)
         if p_val.get("type") == "object":
-            p_val, _keywords = _substitute_reserved_python_keywords(schema=p_val)
+            p_val, nested = _substitute_reserved_python_keywords(schema=p_val)
 
         p_name_clean = _clean_reserved_keyword(keyword=p_name)
         schema["properties"][p_name_clean] = p_val
-        keywords[p_name_clean] = p_name
-        keywords[f"{p_name_clean}{_obj_marker}"] = _keywords
+        keywords[p_name_clean] = _RenamedKeyword(original=p_name, nested=nested)
 
     return schema, keywords
 
 
 def _reinstate_reserved_python_keywords(
-    request: dict[str, t.Any], keywords: dict[str, t.Any]
-) -> dict[str, t.Any]:
-    for clean_key in sorted(list(keywords), reverse=True):
-        subkeys = None
-        if clean_key.endswith(_obj_marker):
-            subkeys = keywords[clean_key]
-            clean_key, _ = clean_key.split(_obj_marker, maxsplit=1)
-
+    request: dict[str, object], keywords: dict[str, _RenamedKeyword]
+) -> dict[str, object]:
+    for clean_key, renamed in keywords.items():
         if clean_key not in request:
             continue
 
-        orginal_value = request.pop(clean_key)
-        if subkeys is not None:
-            orginal_value = _reinstate_reserved_python_keywords(
-                request=orginal_value,
-                keywords=subkeys,
+        original_value = request.pop(clean_key)
+        # LangChain hands an object argument over as its args-schema model, and as None when omitted.
+        if renamed.nested and original_value is not None:
+            nested_request = (
+                original_value.model_dump(exclude_unset=True)
+                if isinstance(original_value, pydantic.BaseModel)
+                else t.cast(dict[str, object], original_value)
             )
-        request[keywords[clean_key]] = orginal_value
+            original_value = _reinstate_reserved_python_keywords(
+                request=nested_request, keywords=renamed.nested
+            )
+        request[renamed.original] = original_value
     return request
+
+
+_P = t.ParamSpec("_P")
+_R = t.TypeVar("_R")
+
+
+class ValidationFailure(t.TypedDict):
+    """The failure result a tool call with invalid arguments returns instead of raising."""
+
+    successful: bool
+    error: str
+    data: None
+
+
+def _validation_failure_as_result(
+    run: t.Callable[_P, _R],
+) -> t.Callable[_P, _R | ValidationFailure]:
+    """Wrap a tool's run so invalid arguments come back as a failure result, not a raise."""
+
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R | ValidationFailure:
+        try:
+            # Unmutated: this wraps run at class definition, before mutmut can switch a
+            # mutant in; replaying the edit shows TestInvalidArgumentsReturnAFailure fails.
+            return run(*args, **kwargs)  # pragma: no mutate
+        except pydantic.ValidationError as e:
+            return {"successful": False, "error": parse_pydantic_error(e), "data": None}
+
+    return wrapper
 
 
 class StructuredTool(BaseStructuredTool):
     """StructuredTool that returns a structured failure instead of raising on invalid args."""
 
-    def run(self, *args: t.Any, **kwargs: t.Any) -> t.Any:  # noqa: ANN401 -- contract
-        """Run the tool, converting argument validation errors into a failure result."""
-        try:
-            return super().run(*args, **kwargs)
-        except pydantic.ValidationError as e:
-            return {"successful": False, "error": parse_pydantic_error(e), "data": None}
+    run = _validation_failure_as_result(BaseStructuredTool.run)
 
 
 class LangchainProvider(
     AgenticProvider[StructuredTool, list[StructuredTool]],
     name="langchain",
 ):
-    """
-    Composio toolset for Langchain framework.
-    """
+    """Composio toolset for Langchain framework."""
 
     runtime = "langchain"
 
-    def __init__(self, **kwargs: t.Any) -> None:  # noqa: ANN401 -- forwards LangChain's arbitrary tool-init bag upstream
+    def __init__(self, **kwargs: t.Unpack[BaseProviderConfig]) -> None:
         super().__init__(**kwargs)
-        # The wrapped tool callables are sync and run in an executor thread, so
-        # they cannot await the async expiry transition. Hold the loop they were
-        # built on and dispatch onto it with run_coroutine_threadsafe. Capture is
-        # best-effort here because the provider is built by a lazy provider whose
-        # first caller may not be on the loop — wrap_tools tops it up.
+        # Wrapped tool callables are sync (executor thread) and can't await the
+        # async expiry transition, so the loop they were built on is captured
+        # here and dispatched via run_coroutine_threadsafe; wrap_tools tops it up if this capture missed the loop.
         self._loop: asyncio.AbstractEventLoop | None = _running_loop_or_none()
 
     def _handle_dead_connected_account(
         self,
         tool: str,
         toolkit: str | None,
-        user_id: str | None,
+        run_metadata: RunMetadata,
         reason: str,
-    ) -> dict[str, t.Any]:
+    ) -> dict[str, object]:
         """Reconcile a confirmed dead connected account and ask the user to reconnect.
 
         Marks the integration expired (so the integrations page, the tool registry
         and the pre-flight guard all stop treating it as usable) and hands the
         agent the connect instruction plus, on UI surfaces, the connect card.
         """
+        user_id = run_metadata.user_id
         integration = get_integration_by_toolkit(toolkit) if toolkit else None
         log.set(
             composio_tool_invocation={
@@ -232,15 +255,22 @@ class LangchainProvider(
         # This does not pause the workflows depending on the integration: that needs
         # the workflow layer, which cannot be imported from inside this wrapper. The
         # connection webhook is what pauses them, off the same dead account.
+        selection = run_metadata.composio_account
         message = self._run_on_loop(
-            _expire_and_request_reconnect(user_id, integration.id, integration.name, reason),
+            _expire_and_request_reconnect(
+                user_id,
+                integration.id,
+                integration.name,
+                selection.connected_account_id if selection else None,
+                reason,
+            ),
             timeout=_RECONNECT_PROMPT_TIMEOUT_S,
         )
 
         return {"successful": False, "error": message or reason, "data": None}
 
     def _run_on_loop(
-        self, coro: t.Coroutine[t.Any, t.Any, str | None], *, timeout: float
+        self, coro: t.Coroutine[object, object, str | None], *, timeout: float
     ) -> str | None:
         """Await a coroutine on the captured loop from this executor thread, bounded."""
         if self._loop is None:
@@ -259,27 +289,27 @@ class LangchainProvider(
         self,
         tool: str,
         description: str,
-        schema_params: dict[str, t.Any],
+        schema_params: _JsonSchema,
         execute_tool: AgenticProviderExecuteFn,
-        keywords: dict[str, t.Any],
+        keywords: dict[str, _RenamedKeyword],
         toolkit: str | None = None,
     ) -> types.FunctionType:
-        def function(**kwargs: t.Any) -> dict[str, t.Any]:  # noqa: ANN401 -- contract
-            """Wrapper function for composio action."""
+        def function(**kwargs: object) -> dict[str, object]:
+            """Execute the composio action for this tool call."""
 
-            # Discarding other data except metadata from __runnable_config__
-            # Use 'or {}' to handle None case when called directly without LangChain
-            runnable_config = kwargs.get("__runnable_config__") or {}
-            metadata = (
-                runnable_config.get("metadata", {}) if isinstance(runnable_config, dict) else {}
+            call: _ToolCallTransport = t.cast(_ToolCallTransport, kwargs)
+            # 'or {}' handles being called directly without LangChain (no config).
+            runnable_config = call.get("__runnable_config__") or {}
+            metadata: object = {}
+            if isinstance(runnable_config, dict):
+                config: RunnableConfig = t.cast(RunnableConfig, runnable_config)
+                metadata = config.get("metadata", {})
+            # user_id is None for trigger-option calls, which bind the user at
+            # get_tool(user_id=...) time; the before-execute hook resolves it then.
+            run_metadata = RunMetadata.model_validate(
+                metadata if isinstance(metadata, dict) else {}
             )
-            # user_id is read only for the observability log below. It is present
-            # for agent-flow calls (which pass it in config metadata) and None for
-            # trigger-option calls (which bind the user at get_tool(user_id=...)
-            # time — invisible here but still used for auth at execution). Identity
-            # is resolved at execution, not here, so a None is harmless; Composio
-            # errors loudly if no user_id reaches it either way.
-            user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+            user_id = run_metadata.user_id
 
             kwargs = _reinstate_reserved_python_keywords(
                 request=kwargs,
@@ -289,23 +319,29 @@ class LangchainProvider(
             kwargs["__runnable_config__"] = {"metadata": metadata}
 
             try:
-                result = execute_tool(tool, kwargs)
+                with account_scope(run_metadata.composio_account):
+                    result = execute_tool(tool, kwargs)
             except composio_client.NotFoundError as e:
                 # Only the dead-connected-account 404 is recoverable here. Any
                 # other 404 — and every timeout, 5xx and genuine bug — must stay
                 # loud so it still reaches Sentry.
-                if not _is_dead_account_error(e):
+                if not is_dead_account_error(e):
                     raise
-                return self._handle_dead_connected_account(tool, toolkit, user_id, str(e))
+                return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
+            except ConnectedAccountGoneError as e:
+                # Custom tools reach the provider through the proxy, which reports
+                # the same dead account as this error instead of a raised 404.
+                return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
 
             # Surface tool invocation outcome for observability.
             try:
-                succeeded = result.get("successful") if isinstance(result, dict) else None
-                err_preview = (
-                    str(result.get("error"))[:200]
-                    if isinstance(result, dict) and succeeded is False
-                    else None
-                )
+                succeeded: bool | None = None
+                err_preview: str | None = None
+                if isinstance(result, dict):
+                    response: ToolExecutionResponse = t.cast(ToolExecutionResponse, result)
+                    succeeded = response.get("successful")
+                    if succeeded is False:
+                        err_preview = str(response.get("error"))[:200]
                 log.set(
                     composio_tool_invocation={
                         "tool": tool,
@@ -318,7 +354,7 @@ class LangchainProvider(
                 # string match is too loose to drive a state mutation, so this
                 # stays a log line — but it shares the raising path's markers.
                 if err_preview is not None:
-                    if _message_mentions_dead_account(err_preview):
+                    if message_mentions_dead_account(err_preview):
                         log.warning(
                             f"{LogTag.COMPOSIO} composio tool failed — likely a dead connected account",
                             tool=tool,
@@ -344,7 +380,9 @@ class LangchainProvider(
 
             return result
 
-        parameters = get_signature_format_from_schema_params(schema_params=schema_params)
+        parameters = get_signature_format_from_schema_params(
+            schema_params=t.cast(dict[str, object], schema_params)
+        )
 
         parameters.append(
             Parameter(
@@ -380,7 +418,23 @@ class LangchainProvider(
             self._loop = _running_loop_or_none()
 
         # Replace reserved python keywords
-        schema_params, keywords = _substitute_reserved_python_keywords(schema=tool.input_parameters)
+        schema_params, keywords = _substitute_reserved_python_keywords(
+            schema=t.cast(_JsonSchema, tool.input_parameters)
+        )
+
+        # The provider's output schema feeds the Returns section of the execute
+        # schema docs (schema_docs.py). A shapeless schema (no properties)
+        # documents nothing, so it must not render a Returns section at all.
+        output_parameters: _JsonSchema | None = (
+            t.cast(_JsonSchema, tool.output_parameters)
+            if isinstance(tool.output_parameters, dict)
+            else None
+        )
+        metadata = (
+            {"output_parameters": output_parameters}
+            if output_parameters and output_parameters.get("properties")
+            else None
+        )
 
         return t.cast(
             StructuredTool,
@@ -388,7 +442,7 @@ class LangchainProvider(
                 name=tool.slug,
                 description=tool.description,
                 args_schema=json_schema_to_model(
-                    json_schema=schema_params,
+                    json_schema=t.cast(dict[str, object], schema_params),
                     skip_default=self.skip_default,
                 ),
                 return_schema=True,
@@ -402,6 +456,7 @@ class LangchainProvider(
                 ),
                 handle_tool_error=True,
                 handle_validation_error=True,
+                metadata=metadata,
             ),
         )
 
@@ -410,7 +465,5 @@ class LangchainProvider(
         tools: t.Sequence[Tool],
         execute_tool: AgenticProviderExecuteFn,
     ) -> list[StructuredTool]:
-        """
-        Get composio tools wrapped as Langchain StructuredTool objects.
-        """
+        """Get composio tools wrapped as Langchain StructuredTool objects."""
         return [self.wrap_tool(tool=tool, execute_tool=execute_tool) for tool in tools]

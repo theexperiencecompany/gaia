@@ -10,8 +10,20 @@
 
 import { app, type BrowserWindow } from "electron";
 
-/** Port the external Next.js dev server (`nx dev web`) listens on. */
-export const DEV_SERVER_PORT = 3000;
+/** Default port the external Next.js dev server (`nx dev web`) listens on. */
+const DEFAULT_DEV_SERVER_PORT = 3000;
+
+/**
+ * Port the external Next.js dev server (`nx dev web`) listens on.
+ *
+ * Honors `WEB_PORT` because a worktree allocates its own web port
+ * (`mise run wt:env` → `.env.worktree`); hardcoding 3000 pointed Electron at a
+ * dead port and the window failed with `ERR_CONNECTION_REFUSED`.
+ */
+export const DEV_SERVER_PORT = Number.parseInt(
+  process.env["WEB_PORT"] ?? `${DEFAULT_DEV_SERVER_PORT}`,
+  10,
+);
 
 /** Origin of the external Next.js dev server. */
 export const DEV_SERVER_ORIGIN = `http://localhost:${DEV_SERVER_PORT}`;

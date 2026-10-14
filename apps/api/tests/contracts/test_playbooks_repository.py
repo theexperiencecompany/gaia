@@ -14,10 +14,13 @@ import pytest
 
 from app.db.repositories.playbooks import PlaybooksRepository
 from app.models.playbook_models import (
+    AskSlot,
+    ForEachStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
     PlaybookUpdate,
+    ToolStep,
 )
 from app.utils.errors import EmptyUpdateError
 
@@ -92,11 +95,32 @@ class TestPlaybooksRepository:
         # The rewrite is the heal run's answer; only a trusted replay clears the streak.
         assert replaced.suspect_streak == 1
 
+    async def test_a_rewrite_out_of_a_heal_carries_the_attempts_and_a_trusted_one_resets(
+        self, repo
+    ) -> None:
+        await repo.upsert_for_workflow(make_doc())
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.FAILED, reason="stopped")
+        )
+        healed = await repo.upsert_for_workflow(make_doc(description="second"))
+        assert healed.last_run_status is PlaybookRunStatus.NOT_RUN
+        assert healed.heal_attempts == 1
+        assert healed.revision == 2
+
+        # A second write before any replay carries the count, not resets it.
+        again = await repo.upsert_for_workflow(make_doc(description="second, fixed"))
+        assert again.heal_attempts == 1
+        assert again.revision == 3
+
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUCCESS)
+        )
+        trusted = await repo.upsert_for_workflow(make_doc(description="third"))
+        assert trusted.heal_attempts == 0
+        assert trusted.revision == 4
+
     async def test_suspect_runs_grow_the_streak_until_a_success_resets_it(self, repo) -> None:
-        """A suspect grows the streak once per verdict on a body: a second
-        suspect with no heal between (two replays of one body racing) counts
-        once, the rewrite a heal makes puts the body back to NOT_RUN, and the
-        next suspect grows it again."""
+        """A suspect grows the streak once per verdict on a body; a heal's rewrite resets it to NOT_RUN before the next suspect grows it again."""
         await repo.create(make_doc())
 
         first = await repo.record_run_outcome(
@@ -126,7 +150,9 @@ class TestPlaybooksRepository:
         reread = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
         assert reread == cleared
 
-    async def test_every_write_bumps_the_revision_and_resets_the_heal_attempts(self, repo) -> None:
+    async def test_every_write_bumps_the_revision_and_a_write_before_any_replay_keeps_the_attempts(
+        self, repo
+    ) -> None:
         first = await repo.upsert_for_workflow(make_doc())
         counted = await repo.increment_heal_attempts(
             WORKFLOW_ID, USER_ID, playbook_id=first.playbook_id
@@ -136,7 +162,9 @@ class TestPlaybooksRepository:
         assert first.revision == 1
         assert counted.heal_attempts == 1
         assert second.revision == 2
-        assert second.heal_attempts == 0
+        # The count is the heal run's, not the body's: a body never replayed
+        # carries it, and only a trusted replay clears it.
+        assert second.heal_attempts == 1
         assert second.playbook_id == first.playbook_id
 
     async def test_a_heal_count_for_a_rewritten_body_lands_nowhere(self, repo) -> None:
@@ -161,8 +189,7 @@ class TestPlaybooksRepository:
         )
 
     async def test_record_run_outcome_scoped_to_the_replayed_revision(self, repo) -> None:
-        """A rewrite keeps the id, so a replay that finishes after the agent
-        rewrote the body must not stamp its verdict on the new body."""
+        """A rewrite keeps the id; a replay finishing after it must not stamp its verdict on the new body."""
         replayed = await repo.upsert_for_workflow(make_doc())
         rewritten = await repo.upsert_for_workflow(make_doc(description="second"))
         assert rewritten.playbook_id == replayed.playbook_id
@@ -226,8 +253,7 @@ class TestPlaybooksRepository:
         )
 
     async def test_record_run_outcome_scoped_to_the_replayed_playbook(self, repo) -> None:
-        """A replay that finishes after the agent re-authored the playbook must
-        not stamp the old sequence's verdict on the new one."""
+        """A replay finishing after the playbook was re-authored must not stamp the old sequence's verdict on the new one."""
         replayed = await repo.create(make_doc())
         assert (
             await repo.record_run_outcome(
@@ -278,6 +304,36 @@ class TestPlaybooksRepository:
         assert await repo.delete_for_workflow(WORKFLOW_ID, "attacker") is False
         assert await repo.get_for_workflow(WORKFLOW_ID, USER_ID) == created
 
+    async def test_delete_revision_removes_only_the_body_it_was_told(self, repo) -> None:
+        """A heal rewrites in place and bumps the revision; a discard against the old body must leave the new one alone."""
+        created = await repo.create(make_doc())
+        rewritten = await repo.upsert_for_workflow(
+            make_doc(description="rewritten", steps=created.steps)
+        )
+        assert rewritten.revision == created.revision + 1
+
+        stale = await repo.delete_revision(
+            WORKFLOW_ID, USER_ID, playbook_id=created.playbook_id, revision=created.revision
+        )
+        assert stale is False
+        assert await repo.get_for_workflow(WORKFLOW_ID, USER_ID) == rewritten
+
+        current = await repo.delete_revision(
+            WORKFLOW_ID, USER_ID, playbook_id=rewritten.playbook_id, revision=rewritten.revision
+        )
+        assert current is True
+        assert await repo.get_for_workflow(WORKFLOW_ID, USER_ID) is None
+
+    async def test_delete_revision_cannot_reach_another_user(self, repo) -> None:
+        created = await repo.create(make_doc())
+        assert (
+            await repo.delete_revision(
+                WORKFLOW_ID, "attacker", playbook_id=created.playbook_id, revision=created.revision
+            )
+            is False
+        )
+        assert await repo.get_for_workflow(WORKFLOW_ID, USER_ID) == created
+
     async def test_empty_update_raises_empty_update_error(self, repo) -> None:
         created = await repo.create(make_doc())
         with pytest.raises(EmptyUpdateError):
@@ -291,10 +347,7 @@ class TestPlaybooksRepository:
 
 
 class TestPlaybooksUniqueIndexSurface:
-    """The one-per-workflow index lives on the real collection, not the ephemeral
-    fixture — recreate it here to prove the DuplicateKeyError surface the
-    repository's upsert retry depends on, and that the upsert itself never
-    trips it."""
+    """Recreate the real one-per-workflow index to prove the DuplicateKeyError surface the upsert retry depends on."""
 
     async def _create_indexes(self, raw_collection) -> None:
         # Mirrors app/db/mongodb/indexes.py::create_playbook_indexes.
@@ -314,3 +367,30 @@ class TestPlaybooksUniqueIndexSurface:
         second = await repo.upsert_for_workflow(make_doc(description="second"))
         assert second.playbook_id == first.playbook_id
         assert await raw_collection.count_documents({"workflow_id": WORKFLOW_ID}) == 1
+
+
+class TestTheStoredFormReadsBack:
+    async def test_a_for_each_over_an_ask_slot_survives_the_write_and_the_read(self, repo) -> None:
+        """Regression: the repository stored an AskSlot under its field name (prompt) instead of its alias ($ask), so the read refused what it had just written."""
+        stored = await repo.upsert_for_workflow(
+            make_doc(
+                steps=[
+                    ToolStep(id="ls", tool="list_todos", args={}),
+                    ForEachStep(
+                        id="mark",
+                        tool="update_todo",
+                        args={"todo_id": "$item.id"},
+                        for_each=AskSlot.model_validate({"$ask": "the overdue ones"}),
+                        max_items=5,
+                    ),
+                ]
+            )
+        )
+        read = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
+
+        assert read is not None
+        assert read.steps == stored.steps
+        loop = read.steps[1]
+        assert isinstance(loop, ForEachStep)
+        assert isinstance(loop.for_each, AskSlot)
+        assert loop.for_each.prompt == "the overdue ones"

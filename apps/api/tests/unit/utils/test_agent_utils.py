@@ -1,5 +1,6 @@
-"""Tests for app/utils/agent_utils.py"""
+"""Tests for app/utils/agent_utils.py."""
 
+from datetime import UTC, datetime, timedelta
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,13 +8,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.browser import BROWSER_TOOL_CATEGORY
+from app.constants.cache import CUSTOM_INT_METADATA_CACHE_PREFIX, CUSTOM_INT_METADATA_TTL
 from app.models.integration_models import Integration
+from app.models.stream_events import ToolOutputPayload
+from app.services.browser.captions import describe_action
 from app.utils.agent_utils import (
+    IntegrationDisplayMetadata,
+    ToolCallView,
     _general_tool_category,
     _lookup_custom_integration_name,
     _registry_mcp_ui_metadata,
     _resolve_handoff_display_name,
+    _resolve_mcp_ui_metadata,
     _special_tool_display,
+    format_browser_action_entry,
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
@@ -21,6 +30,7 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
     strip_internal_agent_tags,
 )
+from app.utils.stream_publishers import ExtractedToolData, publish_tool_output
 
 
 def _integration(integration_id: str, name: str) -> Integration:
@@ -177,6 +187,27 @@ class TestFormatToolCallEntry:
         assert result["data"]["show_category"] is False
 
     @pytest.mark.asyncio
+    async def test_activate_integration_is_categorised_not_unknown(self) -> None:
+        # Bound straight into the graph, so it is in no registry category: without
+        # a _SPECIAL_TOOLS entry the card read "unknown: activate integration".
+        tool_call = {"name": "activate_integration", "args": {}, "id": "tc3"}
+        mock_registry = MagicMock()
+        mock_registry.get_category_of_tool.return_value = "unknown"
+        mock_registry.get_all_tools_for_search.return_value = []
+        with patch(
+            "app.utils.agent_utils.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=mock_registry,
+        ):
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+
+        assert result is not None
+        # "integrations" is the frontend icon-config key carrying ConnectIcon.
+        assert result["data"]["tool_category"] == "integrations"
+        assert result["data"]["message"] == "Activating integration"
+        assert result["data"]["show_category"] is False
+
+    @pytest.mark.asyncio
     async def test_handoff_tool(self) -> None:
         tool_call = {
             "name": "handoff",
@@ -279,10 +310,116 @@ class TestFormatToolCallEntry:
 
 
 # ---------------------------------------------------------------------------
-# format_tool_call_entry -> _resolve_mcp_icon_name (custom MCP integration
-# icon/name lazy-fill; only reached when integration_id + user_id are set,
-# the tool isn't a core tool, and no icon_url was pre-supplied)
+# format_browser_action_entry
 # ---------------------------------------------------------------------------
+
+
+class TestFormatBrowserActionEntry:
+    def test_navigate_action_produces_a_real_caption_and_exact_shape(self) -> None:
+        inputs = {"url": "https://www.github.com/x"}
+        before = datetime.now(UTC)
+
+        entry = format_browser_action_entry(
+            name="navigate",
+            inputs=inputs,
+            target=None,
+            subagent_id="sub-1",
+            tool_call_id="tc-1",
+        )
+
+        after = datetime.now(UTC)
+
+        assert entry["tool_name"] == "tool_calls_data"
+        assert entry["tool_category"] == BROWSER_TOOL_CATEGORY
+        assert entry["subagent_id"] == "sub-1"
+        assert entry["mcp_ui"] is None
+        assert entry["mcp_server_url"] is None
+
+        data = entry["data"]
+        assert data["tool_name"] == "navigate"
+        assert data["tool_category"] == BROWSER_TOOL_CATEGORY
+        assert data["message"] == describe_action("navigate", inputs, None)
+        assert data["message"] == "Opening github.com"
+        assert data["show_category"] is False
+        assert data["tool_call_id"] == "tc-1"
+        assert data["inputs"] == inputs
+        assert data["icon_url"] is None
+        assert data["integration_name"] is None
+
+        timestamp = datetime.fromisoformat(entry["timestamp"])
+        assert timestamp.tzinfo is not None
+        assert timestamp.utcoffset() == timedelta(0)
+        assert before <= timestamp <= after + timedelta(seconds=5)
+
+    def test_typing_action_with_a_target_names_both_text_and_field(self) -> None:
+        inputs = {"text": "hello world"}
+        target = "Search box"
+
+        entry = format_browser_action_entry(
+            name="input",
+            inputs=inputs,
+            target=target,
+            subagent_id="sub-2",
+            tool_call_id="tc-2",
+        )
+
+        expected_message = describe_action("input", inputs, target)
+        assert expected_message == 'Typing "hello world" into "Search box"'
+        assert entry["data"]["message"] == expected_message
+        assert entry["subagent_id"] == "sub-2"
+        assert entry["data"]["tool_call_id"] == "tc-2"
+        assert entry["data"]["inputs"] == inputs
+
+
+# ---------------------------------------------------------------------------
+# _resolve_mcp_icon_name: reached only for non-core tools with integration_id+user_id, no icon_url
+# ---------------------------------------------------------------------------
+
+
+class TestPublishToolOutput:
+    @pytest.mark.asyncio
+    async def test_an_empty_output_is_streamed_but_never_captured_for_the_saved_turn(self) -> None:
+        tool_outputs: dict[str, str] = {}
+        new_data = ExtractedToolData(tool_output=ToolOutputPayload(tool_call_id="tc-1", output=""))
+
+        with patch("app.utils.stream_publishers.stream_manager") as sm:
+            sm.publish_chunk = AsyncMock()
+            await publish_tool_output("stream-1", new_data, tool_outputs)
+
+        assert tool_outputs == {}
+        sm.publish_chunk.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_non_empty_output_is_captured_under_its_tool_call(self) -> None:
+        tool_outputs: dict[str, str] = {}
+        new_data = ExtractedToolData(
+            tool_output=ToolOutputPayload(tool_call_id="tc-1", output="42 results")
+        )
+
+        with patch("app.utils.stream_publishers.stream_manager") as sm:
+            sm.publish_chunk = AsyncMock()
+            await publish_tool_output("stream-1", new_data, tool_outputs)
+
+        assert tool_outputs == {"tc-1": "42 results"}
+
+
+class TestResolveMcpUiMetadata:
+    @pytest.mark.asyncio
+    async def test_the_named_tools_mcp_ui_and_server_url_are_returned(self) -> None:
+        tool = MagicMock()
+        tool.name = "ui_tool"
+        tool.metadata = {"mcp_ui": {"type": "form"}, "mcp_server_url": "https://mcp.example.com"}
+        client = MagicMock()
+        client._tools = {"notion_int": [tool]}
+
+        with patch(
+            "app.services.mcp.mcp_client.get_mcp_client",
+            new_callable=AsyncMock,
+            return_value=client,
+        ):
+            result = await _resolve_mcp_ui_metadata("ui_tool", "user123")
+
+        assert result == ({"type": "form"}, "https://mcp.example.com")
 
 
 class TestResolveMcpIconName:
@@ -302,7 +439,9 @@ class TestResolveMcpIconName:
                 new_callable=AsyncMock,
                 return_value=mock_registry,
             ),
-            patch("app.db.redis.get_cache", new_callable=AsyncMock, return_value=None),
+            patch(
+                "app.db.redis.get_cache", new_callable=AsyncMock, return_value=None
+            ) as mock_get_cache,
             patch("app.db.redis.set_cache", new_callable=AsyncMock) as mock_set_cache,
             patch(
                 "app.utils.agent_utils.integration_repository.get",
@@ -320,7 +459,17 @@ class TestResolveMcpIconName:
         assert result["data"]["icon_url"] == "https://cdn.example.com/icon.png"
         assert result["data"]["integration_name"] == "Custom Service"
         mock_repo_get.assert_awaited_once_with("custom_integration_1")
-        mock_set_cache.assert_awaited_once()
+        cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:custom_integration_1"
+        mock_get_cache.assert_awaited_once_with(cache_key, IntegrationDisplayMetadata)
+        mock_set_cache.assert_awaited_once_with(
+            cache_key,
+            IntegrationDisplayMetadata(
+                icon_url="https://cdn.example.com/icon.png",
+                integration_id="custom_integration_1",
+                integration_name="Custom Service",
+            ),
+            ttl=CUSTOM_INT_METADATA_TTL,
+        )
 
     @pytest.mark.asyncio
     async def test_cache_hit_skips_db_lookup(self) -> None:
@@ -329,7 +478,7 @@ class TestResolveMcpIconName:
         mock_registry.get_category_of_tool.return_value = None
         mock_registry.get_all_tools_for_search.return_value = []
 
-        cached = {"icon_url": "cached.png", "integration_name": "Cached"}
+        cached = IntegrationDisplayMetadata(icon_url="cached.png", integration_name="Cached")
 
         with (
             patch(
@@ -361,15 +510,12 @@ class TestResolveMcpIconName:
 
 
 def _no_known_handoff_target() -> Any:
-    """Neither a platform subagent nor a custom integration answers to the id, so
-    the display name falls through to the title-cased id itself."""
+    """Fall back to the title-cased id when no subagent or integration claims it."""
     return patch("app.utils.agent_utils.get_subagent_by_id", return_value=None)
 
 
 class TestSpecialToolDisplay:
-    """A ``handoff`` card names the target agent. The args it reads come straight
-    off the model's tool call, so both the missing-``args`` and the
-    missing-``subagent_id`` shapes are routine, not malformed input."""
+    """Missing-args and missing-subagent_id are routine tool-call shapes, not malformed input."""
 
     @pytest.mark.asyncio
     async def test_a_handoff_with_no_args_at_all_still_renders(self) -> None:
@@ -381,7 +527,7 @@ class TestSpecialToolDisplay:
                 return_value=None,
             ),
         ):
-            result = await _special_tool_display("handoff", {"name": "handoff", "id": "tc"})  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+            result = await _special_tool_display("handoff", ToolCallView(name="handoff", id="tc"))
 
         assert result == ("handoff", "Handing off to Subagent", False)
 
@@ -396,8 +542,7 @@ class TestSpecialToolDisplay:
             ) as mock_lookup,
         ):
             result = await _special_tool_display(
-                "handoff",  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
-                {"name": "handoff", "args": {}, "id": "tc"},
+                "handoff", ToolCallView(name="handoff", args={}, id="tc")
             )
 
         assert result == ("handoff", "Handing off to Subagent", False)
@@ -405,7 +550,7 @@ class TestSpecialToolDisplay:
 
     @pytest.mark.asyncio
     async def test_a_non_handoff_special_tool_uses_its_table_row_verbatim(self) -> None:
-        result = await _special_tool_display("run_playbook", {"name": "run_playbook", "args": {}})  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+        result = await _special_tool_display("run_playbook", ToolCallView(name="run_playbook"))
 
         assert result == ("playbooks", "Run playbook", True)
 
@@ -437,9 +582,7 @@ def _mcp_lookup(integration_id: str = "notion_int") -> Any:
 
 
 class TestGeneralToolCategory:
-    """A core tool running inside an MCP subagent keeps its own category, so the
-    card shows the tool's icon rather than the subagent's logo. Everything here
-    turns on whether the registry category counts as core."""
+    """A core tool running inside an MCP subagent keeps its own category, not the subagent's."""
 
     @pytest.mark.asyncio
     async def test_a_core_tool_keeps_its_category_and_never_consults_the_mcp_client(self) -> None:
@@ -505,8 +648,7 @@ def _registry_tool(name: str, tool: Any) -> Any:
 
 
 class TestRegistryMcpUiMetadata:
-    """The global registry is the first of two mcp_ui sources; a miss here has to
-    read as "nothing found" so the per-user MCPClient fallback still runs."""
+    """A registry miss must read as not-found so the per-user MCPClient fallback still runs."""
 
     def test_a_tool_the_registry_does_not_hold_yields_two_nones(self) -> None:
         registry = MagicMock()
@@ -515,8 +657,7 @@ class TestRegistryMcpUiMetadata:
         assert _registry_mcp_ui_metadata(registry, "ui_tool") == (None, None)
 
     def test_a_tool_carrying_no_metadata_is_normal_and_not_logged_as_a_failure(self) -> None:
-        """A plain platform tool simply has no ``metadata``. Reading that as a
-        registry outage buries the real outages in noise."""
+        """Treating missing metadata as an outage would bury genuine registry failures in noise."""
 
         class _PlainTool:
             pass
@@ -531,8 +672,7 @@ class TestRegistryMcpUiMetadata:
         mock_log.debug.assert_not_called()
 
     def test_metadata_that_is_not_a_dict_is_ignored_rather_than_duck_typed(self) -> None:
-        """Only a real dict is metadata. Anything else that happens to expose
-        ``.get`` would otherwise hand the frontend an arbitrary object as mcp_ui."""
+        """Only a real dict is metadata — anything else with a .get would leak as mcp_ui."""
 
         class _LooksLikeAMapping:
             def get(self, key: str) -> str:
@@ -586,8 +726,7 @@ class TestFormatToolCallEntryCategoryWiring:
 
     @pytest.mark.asyncio
     async def test_the_calling_user_is_carried_into_the_mcp_provenance_lookup(self) -> None:
-        """Without the user there is no MCPClient to ask, and every MCP tool would
-        fall back to an empty category — the frontend's "no icon" state."""
+        """No user id means no MCPClient to ask; the category falls back to the frontend's empty state."""
         registry_patch, ui_patch, icon_patch = self._patches(_FakeRegistry({}))
         with registry_patch, ui_patch, icon_patch, _mcp_lookup():
             result = await format_tool_call_entry(
@@ -629,10 +768,11 @@ class TestProcessCustomEventForTools:
     def test_with_payload(self) -> None:
         with patch(
             "app.utils.agent_utils.extract_tool_data",
-            return_value={"tool": "data"},
-        ):
+            return_value={"tool_data": [{"tool_name": "t", "data": 1}]},
+        ) as mock_extract:
             result = process_custom_event_for_tools({"some": "payload"})
-        assert result == {"tool": "data"}
+        assert result == ExtractedToolData(tool_data=[{"tool_name": "t", "data": 1}])
+        assert mock_extract.call_args.args == ('{"some": "payload"}',)
 
     def test_with_none_payload(self) -> None:
         with patch(
@@ -640,7 +780,7 @@ class TestProcessCustomEventForTools:
             return_value=None,
         ):
             result = process_custom_event_for_tools(None)
-        assert result == {}
+        assert result == ExtractedToolData()
 
     def test_extract_returns_none(self) -> None:
         with patch(
@@ -648,7 +788,7 @@ class TestProcessCustomEventForTools:
             return_value=None,
         ):
             result = process_custom_event_for_tools({"x": 1})
-        assert result == {}
+        assert result == ExtractedToolData()
 
     def test_exception_returns_empty(self) -> None:
         with patch(
@@ -656,7 +796,7 @@ class TestProcessCustomEventForTools:
             side_effect=RuntimeError("parse fail"),
         ):
             result = process_custom_event_for_tools({"x": 1})
-        assert result == {}
+        assert result == ExtractedToolData()
 
 
 # ---------------------------------------------------------------------------
@@ -676,17 +816,13 @@ class TestWrapAgentPayload:
         )
 
     def test_a_payload_with_no_producing_agent_carries_no_attribute(self) -> None:
-        """Only a subagent result is attributed; an executor result naming an
-        empty agent would be a tag the strip pattern still matches but a reader
-        cannot parse."""
+        """A tag with an empty agent attribute still matches the strip pattern but reads as broken markup."""
         assert wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "done", agent=None) == (
             "<executor_result>\ndone\n</executor_result>\n"
         )
 
     def test_consecutive_blocks_concatenate_without_running_together(self) -> None:
-        """Callers build a message by string-joining blocks, so the trailing
-        newline is load-bearing: without it a close tag and the next open tag
-        land on one line and the frame stops reading as structure."""
+        """The trailing newline is load-bearing: without it, joined blocks' tags land on one line."""
         joined = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "a card is up") + (
             wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "3 unread")
         )
@@ -704,8 +840,7 @@ class TestStripInternalAgentTags:
         assert strip_internal_agent_tags(text) == "you have 3 unread"
 
     def test_a_lone_closing_tag_is_stripped(self) -> None:
-        """The common half-leak: the model writes its own reply and then closes
-        the block it was handed."""
+        """Covers the common half-leak: the model writes its reply then closes the handed block."""
         assert strip_internal_agent_tags("3 unread</executor_result>") == "3 unread"
 
     def test_an_attributed_tag_is_stripped(self) -> None:
@@ -718,15 +853,12 @@ class TestStripInternalAgentTags:
         assert strip_internal_agent_tags("<Executor_Result> done") == "done"
 
     def test_ordinary_markup_in_a_reply_survives(self) -> None:
-        """The pattern names the internal tags exactly — a reply that legitimately
-        contains angle brackets (code, HTML, a comparison) must come through
-        untouched, or the backstop starts eating the answer."""
+        """A reply with legitimate angle brackets (code, HTML, comparisons) must pass through untouched."""
         reply = "use `<div>` for that, and 3 < 5 is true"
 
         assert strip_internal_agent_tags(reply) == reply
 
     @pytest.mark.parametrize("tag", list(AgentTag))
     def test_every_declared_tag_is_covered_by_the_strip(self, tag: AgentTag) -> None:
-        """Drift guard: a tag added to ``AgentTag`` extends the backstop for free.
-        A hand-listed pattern would leak the new tag on its first use."""
+        """Drift guard: a new AgentTag member extends the backstop for free, unlike a hand-listed pattern."""
         assert strip_internal_agent_tags(wrap_agent_payload(tag, "payload")) == "payload"

@@ -1,8 +1,7 @@
 """Unit tests for the edition renderers' shared plumbing.
 
-``font_face`` and ``format_date`` are pure and touch only the vendored font
-files on disk, so every assertion here pins the exact string the renderers
-embed — no mocking, no fixtures.
+font_face and format_date are pure, so every assertion pins the exact string the
+renderers embed; no mocking, no fixtures.
 """
 
 import base64

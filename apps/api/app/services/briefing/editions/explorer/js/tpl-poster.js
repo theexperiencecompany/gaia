@@ -357,9 +357,19 @@
 
       return `<article class="t-swiss t-swiss--${comp}" style="${fieldVars}--paper:${g.paper}; --hair:${g.hair}; --signal:${signal}; --spine-size:${spineSize}px">${spineHero}<div class="sw-content">${numHero}${stamp}<p class="sw-deck">${esc(
         ed.deck,
-      )}</p><div class="sw-board"><section class="sw-sec"><div class="sw-lab"><span class="sw-n">01</span><span>What matters today</span></div>${today}</section><section class="sw-sec"><div class="sw-lab"><span class="sw-n">02</span><span>While you slept</span></div>${overnight}</section><section class="sw-sec"><div class="sw-lab"><span class="sw-sq"></span><span>Needs your call</span></div>${decisions}</section></div><div class="sw-strip"><div class="sw-stat"><div class="sw-fig">${stats.done}</div><div class="sw-slab">Done yesterday &middot; you ${stats.you} / GAIA ${stats.gaia}</div></div><div class="sw-stat"><div class="sw-fig">${stats.mail}</div><div class="sw-slab">Emails handled</div></div><div class="sw-stat"><div class="sw-fig">${esc(
-        stats.focus,
-      )}</div><div class="sw-slab">Focus time today</div></div></div><div class="sw-colophon">Edition N&ordm; ${
+      )}</p><div class="sw-board">${today ? `<section class="sw-sec"><div class="sw-lab"><span class="sw-n">01</span><span>What matters today</span></div>${today}</section>` : ""}${overnight ? `<section class="sw-sec"><div class="sw-lab"><span class="sw-n">02</span><span>While you slept</span></div>${overnight}</section>` : ""}${decisions ? `<section class="sw-sec"><div class="sw-lab"><span class="sw-sq"></span><span>Needs your call</span></div>${decisions}</section>` : ""}</div><div class="sw-strip">${
+        stats.done
+          ? `<div class="sw-stat"><div class="sw-fig">${stats.done}</div><div class="sw-slab">${["Done yesterday", stats.you ? `you ${stats.you}` : "", stats.gaia ? `GAIA ${stats.gaia}` : ""].filter(Boolean).join(" &middot; ")}</div></div>`
+          : ""
+      }${
+        stats.mail
+          ? `<div class="sw-stat"><div class="sw-fig">${stats.mail}</div><div class="sw-slab">Emails handled</div></div>`
+          : ""
+      }${
+        stats.focus
+          ? `<div class="sw-stat"><div class="sw-fig">${esc(stats.focus)}</div><div class="sw-slab">Focus time today</div></div>`
+          : ""
+      }</div><div class="sw-colophon">Edition N&ordm; ${
         ed.editionNo
       } &middot; Generated ${esc(ed.time)} by GAIA</div></div></article>`;
     },
@@ -569,7 +579,7 @@
     render(ed, skin) {
       const edge = skin.axis.id === "edge";
       const stats = ed.content.stats;
-      const gy = dlY(ed.time24);
+      const gy = ed.time24 ? dlY(ed.time24) : null;
 
       let ticks = "";
       for (let h = DL_START; h <= 24; h++) {
@@ -583,16 +593,17 @@
       // Overnight is a dim pre-dawn *cluster*: pin to true time, but keep a
       // minimum vertical gap so near-coincident entries never overprint.
       const DL_DIM_GAP = 74;
-      let dimPrev = -Infinity;
+      // Start below the cluster label so the first untimed entry clears it.
+      let dimPrev = 30 - DL_DIM_GAP;
       const overnight = ed.content.overnight
-        .filter((it) => it.t24)
         .map((it) => {
-          let y = dlY(it.t24);
+          // An untimed entry joins the cluster after the last one placed.
+          let y = it.t24 ? dlY(it.t24) : 0;
           if (y < dimPrev + DL_DIM_GAP) y = dimPrev + DL_DIM_GAP;
           dimPrev = y;
-          return `<div class="dl-ev dl-ev--dim" style="--t:${y}"><time class="dl-time">${to12(
-            it.t24,
-          )}</time><div class="dl-body">${esc(it.label)}${
+          return `<div class="dl-ev dl-ev--dim" style="--t:${y}"><time class="dl-time">${
+            it.t24 ? to12(it.t24) : ""
+          }</time><div class="dl-body">${esc(it.label)}${
             it.note ? ` &mdash; ${esc(it.note)}` : ""
           }.</div></div>`;
         })
@@ -610,22 +621,41 @@
         )
         .join("");
 
-      const decY = [dlY("09:30"), dlY("11:20")];
+      // Decisions float in the morning, in the first free slots that clear every
+      // real event and the generated marker by more than one entry's height.
+      const taken = [
+        dlY("12:40"), // the "What matters today" label
+        ...(gy === null ? [] : [gy]),
+        ...ed.content.today.filter((it) => it.t24).map((it) => dlY(it.t24)),
+        ...ed.content.today.filter((it) => !it.t24).map((_, i) => dlY("17:30") + i * DL_DIM_GAP),
+      ];
+      const decY = [];
+      for (let y = dlY("07:00"); decY.length < ed.content.decisions.length; y += DL_DIM_GAP) {
+        // Past the evening every slot is free: the day is full, stack the rest.
+        if (y > dlY("19:00") || taken.every((t) => Math.abs(t - y) > DL_PPH * 1.1)) {
+          decY.push(y);
+          taken.push(y);
+        }
+      }
       const decisions = ed.content.decisions
         .map(
           (d, i) =>
-            `<aside class="dl-decide" style="--t:${decY[i] != null ? decY[i] : dlY("09:30") + i * Math.round(DL_PPH * 1.9)}"><div class="dl-decide-mark"></div><div class="dl-decide-label">Needs your call</div><div class="dl-decide-body"><span class="dl-decide-verb">${esc(
+            `<aside class="dl-decide" style="--t:${decY[i]}"><div class="dl-decide-mark"></div><div class="dl-decide-label">Needs your call</div><div class="dl-decide-body"><span class="dl-decide-verb">${esc(
               d.verb,
             )}</span>${esc(d.label)}${d.note ? `. ${cap(esc(d.note))}.` : ""}</div></aside>`,
         )
         .join("");
 
-      const ship = ed.content.today.find((it) => !it.t24);
-      const shipBlock = ship
-        ? `<div class="dl-ev" style="--t:${dlY("17:30")}"><time class="dl-time">Before EOD</time><div class="dl-body">${esc(
-            ship.label,
-          )}.${ship.note ? `<span class="dl-note">${esc(ship.note)}</span>` : ""}</div></div>`
-        : "";
+      // Every untimed item sits in the before-EOD slot, one under the other.
+      const shipBlock = ed.content.today
+        .filter((it) => !it.t24)
+        .map(
+          (ship, i) =>
+            `<div class="dl-ev" style="--t:${dlY("17:30") + i * DL_DIM_GAP}"><time class="dl-time">Before EOD</time><div class="dl-body">${esc(
+              ship.label,
+            )}.${ship.note ? `<span class="dl-note">${esc(ship.note)}</span>` : ""}</div></div>`,
+        )
+        .join("");
 
       return `<article class="t-dayline${edge ? " t-dayline--edge" : ""}" style="--paper:${skin.ground.paper}; --accent:${skin.accent.accent}; --body:${skin.face.body}; --axis:${skin.axis.pos}"><div class="dl-sheet"><header class="dl-mast"><div class="dl-kicker">GAIA &middot; Daily Brief</div><h1 class="dl-title">The ${esc(
         ed.weekday,
@@ -633,19 +663,23 @@
         ed.editionNo
       }</div><p class="dl-deck">${esc(
         ed.deck,
-      )}</p></header><div class="dl-axiswrap"><div class="dl-axis"></div>${ticks}<div class="dl-clabel" style="--t:-6">While you slept</div>${overnight}<div class="dl-ev dl-ev--gen" style="--t:${gy}"><time class="dl-time">${to12(
+      )}</p></header><div class="dl-axiswrap"><div class="dl-axis"></div>${ticks}${overnight ? `<div class="dl-clabel" style="--t:-6">While you slept</div>` : ""}${overnight}${gy === null ? "" : `<div class="dl-ev dl-ev--gen" style="--t:${gy}"><time class="dl-time">${to12(
         ed.time24,
-      )}</time><div class="dl-body">Brief generated by GAIA.</div></div>${decisions}<div class="dl-clabel" style="--t:${dlY(
+      )}</time><div class="dl-body">Brief generated by GAIA.</div></div>`}${decisions}${ed.content.today.length ? `<div class="dl-clabel" style="--t:${dlY(
         "12:40",
-      )}">What matters today</div>${timed}${shipBlock}<div class="dl-evening" style="--t:${dlY(
+      )}">What matters today</div>` : ""}${timed}${shipBlock}<div class="dl-evening" style="--t:${dlY(
         "20:00",
-      )}">then the evening is yours.</div></div><footer class="dl-base"><div>Done yesterday <b>${
+      )}">then the evening is yours.</div></div><footer class="dl-base">${
         stats.done
-      }</b> &middot; you&nbsp;${stats.you} / GAIA&nbsp;${stats.gaia}</div><div>Emails handled <b>${
-        stats.mail
-      }</b></div><div>Focus time today <b>${esc(
-        stats.focus,
-      )}</b></div><div class="dl-colophon">Edition No.&nbsp;${ed.editionNo} &middot; Generated ${esc(
+          ? `<div>Done yesterday <b>${stats.done}</b>${
+              stats.you || stats.gaia
+                ? ` &middot; ${[stats.you ? `you&nbsp;${stats.you}` : "", stats.gaia ? `GAIA&nbsp;${stats.gaia}` : ""].filter(Boolean).join(" / ")}`
+                : ""
+            }</div>`
+          : ""
+      }${stats.mail ? `<div>Emails handled <b>${stats.mail}</b></div>` : ""}${
+        stats.focus ? `<div>Focus time today <b>${esc(stats.focus)}</b></div>` : ""
+      }<div class="dl-colophon">Edition No.&nbsp;${ed.editionNo} &middot; Generated ${esc(
         ed.time,
       )} by GAIA</div></footer></div></article>`;
     },
@@ -851,25 +885,29 @@
         )
         .join("");
 
+      const figures = [
+        stats.done ? `<span><span class="pb-n">${stats.done}</span> Done Yesterday</span>` : "",
+        stats.mail ? `<span><span class="pb-n">${stats.mail}</span> Letters Handled</span>` : "",
+        stats.focus ? `<span><span class="pb-n">${esc(stats.focus)}</span> Held for Focus</span>` : "",
+      ]
+        .filter(Boolean)
+        .join('<span class="pb-dot">&mdash;</span>');
+
       return `<article class="t-playbill" style="--paper:${skin.paper.paper}; --spot:${skin.spot.spot}; --face:${skin.display.face}; --day-size:${daySize}"><div class="pb-bill"><p class="pb-caps pb-spaced pb-presents">GAIA Presents &mdash; For One Day Only</p><hr class="pb-rule thin" /><h1 class="pb-caps pb-day">${wd}</h1><hr class="pb-rule spot" /><p class="pb-caps pb-spaced pb-datum">The ${ordinal(
         ed.day,
       )} of ${esc(ed.month)}, ${ed.year}</p><p class="pb-caps pb-spaced pb-datum pb-edition">Edition No. ${
         ed.editionNo
       }</p><hr class="pb-rule spot" /><p class="pb-ital pb-deck">&ldquo;${esc(
         ed.deck,
-      )}&rdquo;</p><hr class="pb-rule double" /><p class="pb-caps pb-spaced pb-billing">This Day&rsquo;s Grand Programme</p><hr class="pb-rule thick" />${acts}<hr class="pb-rule thick" /><p class="pb-caps pb-spaced pb-banner">Performed While You Slept</p><hr class="pb-rule thin" />${feats}<hr class="pb-rule spot" /><p class="pb-caps pb-callhead">The Management Awaits Your Decision</p><hr class="pb-rule spot" />${decisions}<hr class="pb-rule double" /><p class="pb-figures"><span><span class="pb-n">${
-        stats.done
-      }</span> Done Yesterday</span><span class="pb-dot">&mdash;</span><span><span class="pb-n">${
-        stats.mail
-      }</span> Letters Handled</span><span class="pb-dot">&mdash;</span><span><span class="pb-n">${esc(
-        stats.focus,
-      )}</span> Held for Focus</span></p><hr class="pb-rule thick" /><p class="pb-imprint"><span class="pb-mark">&#9758; &nbsp; Edition No. ${
+      )}&rdquo;</p><hr class="pb-rule double" />${acts ? `<p class="pb-caps pb-spaced pb-billing">This Day&rsquo;s Grand Programme</p><hr class="pb-rule thick" />${acts}<hr class="pb-rule thick" />` : ""}${feats ? `<p class="pb-caps pb-spaced pb-banner">Performed While You Slept</p><hr class="pb-rule thin" />${feats}` : ""}${decisions ? `${feats ? `<hr class="pb-rule spot" />` : ""}<p class="pb-caps pb-callhead">The Management Awaits Your Decision</p><hr class="pb-rule spot" />${decisions}` : ""}${acts || feats || decisions ? `<hr class="pb-rule double" />` : ""}${figures ? `<p class="pb-figures">${figures}</p><hr class="pb-rule thick" />` : ""}<p class="pb-imprint"><span class="pb-mark">&#9758; &nbsp; Edition No. ${
         ed.editionNo
       } &nbsp; &#9756;</span>Struck &amp; billed at ${esc(
         ed.time,
-      )} by the House of GAIA.<br />Yesterday&rsquo;s labour: ${stats.you} by your hand, ${
-        stats.gaia
-      } by the House.</p></div></article>`;
+      )} by the House of GAIA.${
+        stats.you || stats.gaia
+          ? `<br />Yesterday&rsquo;s labour: ${[stats.you ? `${stats.you} by your hand` : "", stats.gaia ? `${stats.gaia} by the House` : ""].filter(Boolean).join(", ")}.`
+          : ""
+      }</p></div></article>`;
     },
   });
 })();

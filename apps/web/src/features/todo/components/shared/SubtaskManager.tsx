@@ -94,10 +94,10 @@ export default function SubtaskManager({
 
   return (
     <div className={cn("space-y-3", className)}>
-      {/* Subtasks Header */}
+      {/* Checklist header */}
       {subtasks.length > 0 && (
         <div className="flex items-center justify-between text-sm text-zinc-500">
-          <span>Subtasks</span>
+          <span>Checklist</span>
           <span>
             {" "}
             ({subtasks.filter((s) => s.completed).length}/{subtasks.length})
@@ -109,30 +109,30 @@ export default function SubtaskManager({
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Input
-            placeholder="Add a subtask..."
+            placeholder="Add a checklist item..."
             value={newSubtaskTitle}
             onChange={(e) => setNewSubtaskTitle(e.target.value)}
             onKeyDown={(e) => handleKeyDown(e, "add")}
-            className="h-9 rounded-lg border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 hover:bg-zinc-700/60 focus:ring-0 focus:outline-none focus-visible:ring-zinc-500 focus-visible:ring-2"
+            className="hover:bg-zinc-750 h-9 rounded-lg border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 focus:ring-0 focus:outline-none focus-visible:ring-zinc-500 focus-visible:ring-2"
           />
         </div>
         <Button
           size="sm"
           onClick={handleAddSubtask}
           disabled={!newSubtaskTitle.trim()}
-          className={`h-9 w-9 rounded-lg border-0 p-0 ${!newSubtaskTitle.trim() ? "bg-zinc-800 text-zinc-600 hover:bg-zinc-700/60" : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700/60"}`}
+          className={`h-9 w-9 rounded-lg border-0 p-0 ${!newSubtaskTitle.trim() ? "hover:bg-zinc-750 bg-zinc-800 text-zinc-600" : "hover:bg-zinc-750 bg-zinc-800 text-zinc-200"}`}
         >
           <PlusSignIcon size={16} />
         </Button>
       </div>
 
-      {/* Existing Subtasks */}
+      {/* Existing checklist items */}
       {subtasks.length > 0 && (
         <div className="space-y-2">
           {subtasks.map((subtask) => (
             <div
               key={subtask.id}
-              className="group hover:bg-zinc-800/50 flex items-center gap-2 rounded-xl transition-colors p-2"
+              className="group hover:bg-zinc-800/50 flex items-center gap- rounded-xl transition-colors p-2"
             >
               <Checkbox
                 isSelected={subtask.completed}
@@ -148,7 +148,7 @@ export default function SubtaskManager({
                     value={editingTitle}
                     onChange={(e) => setEditingTitle(e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "edit")}
-                    className="h-7 flex-1 rounded-md border-0 bg-zinc-800 text-sm text-zinc-200 focus:ring-0 focus:outline-none focus-visible:ring-zinc-700 focus-visible:ring-2"
+                    className="bg-zinc-750 h-7 flex-1 rounded-md border-0 text-sm text-zinc-200 focus:ring-0 focus:outline-none focus-visible:ring-zinc-700 focus-visible:ring-2"
                     autoFocus
                   />
                   <Button

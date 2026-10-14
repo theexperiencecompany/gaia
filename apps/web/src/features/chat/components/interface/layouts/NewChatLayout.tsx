@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import type React from "react";
 import { useState } from "react";
+import { ChevronUp } from "@/components/shared/icons";
 import { NewChatSection } from "@/features/chat/components/interface/sections/NewChatSection";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 
@@ -18,7 +19,6 @@ interface NewChatLayoutProps {
     fileUploadRef: React.RefObject<{
       attachFiles: (files: File[]) => Promise<void>;
     } | null>;
-    appendToInputRef: React.RefObject<((text: string) => void) | null>;
     hasMessages: boolean;
     voiceModeActive: () => void;
   };
@@ -47,7 +47,7 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
             variant="flat"
             onPress={() => setShowUseCases(true)}
           >
-            Explore Use Cases
+            Explore Use Cases <ChevronUp />
           </Button>
         )}
 

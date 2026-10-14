@@ -37,11 +37,8 @@ async def search_uploaded_files(
             log.error(f"{LogTag.TOOL} Configurable is not set in the config.")
             raise ValueError("Configurable is not set in the config.")
 
-        # NOT thread_id: this tool is bound to the executor, which runs on the
-        # derived `executor_<conversation_id>` thread, so thread_id scopes the
-        # lookup to a conversation that owns no files. build_agent_config keeps
-        # the true conversation id here precisely because it is unrecoverable
-        # from thread_id.
+        # NOT thread_id: the executor runs on the derived `executor_<conversation_id>`
+        # thread, which owns no files and can't recover the true conversation id.
         conversation_id = configurable["conversation_id"]
 
         similar_documents = await _get_similar_documents(

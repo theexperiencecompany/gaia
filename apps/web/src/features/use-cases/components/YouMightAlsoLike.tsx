@@ -20,10 +20,9 @@ export default function YouMightAlsoLike({
   const [items, setItems] = useState<CommunityWorkflow[]>([]);
 
   useEffect(() => {
-    // Per-run cancellation flag (NOT a shared mountedRef): the cleanup runs
-    // before every re-execution, so each run — including re-runs after
-    // currentId/categories change on client-side navigation — may update
-    // state. A one-shot ref would freeze recommendations permanently here.
+    // Per-run cancellation flag (NOT a shared mountedRef): cleanup runs before
+    // every re-execution, so each run (incl. re-runs after currentId/categories
+    // change) may update state — a one-shot ref would freeze recommendations.
     let cancelled = false;
 
     const fetchItems = async () => {

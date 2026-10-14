@@ -6,7 +6,7 @@
 
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
 // =============================================================================
 // SCHEDULE HANDLER
@@ -15,7 +15,7 @@ import type { TriggerConfig } from "../types";
 export const scheduleTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["schedule"],
 
-  createDefaultConfig: (): TriggerConfig => ({
+  createDefaultConfig: (): TriggerConfigDraft => ({
     type: "schedule",
     enabled: true,
     cron_expression: "0 9 * * *", // Daily at 9 AM
@@ -40,7 +40,7 @@ export const scheduleTriggerHandler: RegisteredHandler = {
 export const manualTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["manual"],
 
-  createDefaultConfig: (): TriggerConfig => ({
+  createDefaultConfig: (): TriggerConfigDraft => ({
     type: "manual",
     enabled: true,
   }),

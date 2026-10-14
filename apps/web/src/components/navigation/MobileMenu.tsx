@@ -21,8 +21,8 @@ import {
   product,
   resources,
 } from "@/config/appConfig";
-import { useUser } from "@/features/auth/hooks/useUser";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { track } from "@/lib/analytics";
 
 const LINK_CLASS =
   "py-1.5 text-sm text-zinc-200 transition-colors hover:text-white";
@@ -69,7 +69,7 @@ const GENERAL_LINKS: AppLink[] = [
 
 export default function MobileMenu() {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const user = useUser();
+  const user = useCurrentUser();
   const isAuthenticated = user?.email;
   const router = useRouter();
   const closeSheet = () => setSheetOpen(false);
@@ -94,7 +94,7 @@ export default function MobileMenu() {
           type="button"
           className="text-left text-sm font-semibold text-primary transition-colors hover:text-primary"
           onClick={() => {
-            trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+            track("navigation:cta_clicked", {
               is_logged_in: Boolean(isAuthenticated),
               destination: link.href,
             });
@@ -112,7 +112,7 @@ export default function MobileMenu() {
           href={link.href}
           className="text-sm font-semibold text-primary transition-colors hover:text-primary"
           onClick={() => {
-            trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+            track("navigation:cta_clicked", {
               is_logged_in: Boolean(isAuthenticated),
               destination: link.href,
             });
@@ -138,6 +138,11 @@ export default function MobileMenu() {
             <VisuallyHidden.Root>Menu</VisuallyHidden.Root>
           </SheetTitle>
           <SheetDescription className="flex flex-col gap-1 pb-20! pt-8 px-6">
+            {/* The primary action first: on a phone the menu is where a
+                visitor decides, so sign up / open the app must not sit below
+                the fold under every section. */}
+            <div className="flex flex-col gap-2">{authLinks}</div>
+
             {sections.map((section) => (
               <div key={section.title} className="mt-6 flex flex-col gap-0.5">
                 <p className="mb-2 text-xs tracking-wide text-zinc-500 uppercase">
@@ -152,9 +157,6 @@ export default function MobileMenu() {
                 ))}
               </div>
             ))}
-
-            {/* Authentication links */}
-            <div className="mt-8 flex flex-col gap-2">{authLinks}</div>
           </SheetDescription>
         </SheetHeader>
       </SheetContent>

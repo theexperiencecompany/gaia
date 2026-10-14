@@ -13,7 +13,11 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.mongodb import indexes as indexes_module
-from app.db.mongodb.indexes import create_playbook_indexes, create_short_link_indexes
+from app.db.mongodb.indexes import (
+    create_payment_indexes,
+    create_playbook_indexes,
+    create_short_link_indexes,
+)
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX
 
@@ -343,8 +347,7 @@ class TestCollectionsLazyLoading:
 
 
 class TestGetAsyncCollection:
-    """The single supported accessor — the named per-collection module
-    attributes were removed once every domain moved behind a repository."""
+    """The single supported accessor; named per-collection module attributes were removed once every domain moved behind a repository."""
 
     def test_resolves_by_mongo_name(self) -> None:
         with patch("app.db.mongodb.collections._get_collection") as mock_get:
@@ -381,8 +384,7 @@ class TestCreatePlaybookIndexes:
     async def test_one_playbook_per_workflow_is_a_unique_index(
         self, mock_get_collection: MagicMock
     ) -> None:
-        """The repository's atomic upsert relies on the (workflow_id, user_id)
-        unique index to reject the loser of two concurrent first authorings."""
+        """The repository's atomic upsert relies on the (workflow_id, user_id) unique index to reject the loser of a concurrent race."""
         collection = MagicMock()
         collection.create_index = AsyncMock()
         mock_get_collection.return_value = collection
@@ -400,8 +402,7 @@ class TestCreateShortLinkIndexes:
     async def test_one_live_link_per_target_is_a_unique_index(
         self, mock_get_collection: MagicMock
     ) -> None:
-        """Two overlapping mints for one target must collide on the index — a
-        second live link would outlive the first one's revocation."""
+        """Two overlapping mints for one target must collide on the index."""
         collection = MagicMock()
         collection.create_index = AsyncMock()
         mock_get_collection.return_value = collection
@@ -416,6 +417,34 @@ class TestCreateShortLinkIndexes:
         )
 
 
+class TestCreatePaymentIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_checkout_sessions_indexes_back_the_webhook_race_lookups(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """A checkout session is looked up by its unique provider session_id and listed per user newest-first."""
+        collections: dict[str, MagicMock] = {}
+
+        def collection_for(name: str) -> MagicMock:
+            if name not in collections:
+                collection = MagicMock()
+                collection.create_index = AsyncMock()
+                collections[name] = collection
+            return collections[name]
+
+        mock_get_collection.side_effect = collection_for
+
+        await create_payment_indexes()
+
+        assert "checkout_sessions" in collections
+        checkout_calls = collections["checkout_sessions"].create_index.await_args_list
+        assert [call.args for call in checkout_calls] == [
+            ("session_id",),
+            ([("user_id", 1), ("created_at", -1)],),
+        ]
+        assert [call.kwargs for call in checkout_calls] == [{"unique": True}, {}]
+
+
 class TestCreateAllIndexes:
     """Tests for create_all_indexes() and its error handling."""
 
@@ -424,8 +453,7 @@ class TestCreateAllIndexes:
     async def test_a_failed_short_links_index_build_is_not_swallowed(
         self, mock_log: MagicMock
     ) -> None:
-        """Without its unique indexes a mint can hand out a duplicate capability
-        URL, so this failure must stop index creation, not become a log line."""
+        """A failed short_links index build must stop index creation, not become a log line."""
         patches = {
             name: patch(f"app.db.mongodb.indexes.{name}", new_callable=AsyncMock)
             for name in _INDEX_CREATORS

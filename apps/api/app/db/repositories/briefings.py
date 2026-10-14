@@ -1,16 +1,11 @@
 """Repository for the briefings collection.
 
-User-scoped: every operation is keyed by ``user_id`` plus a date/kind or a
-briefing id. Identity is the string business key ``id`` (persisted as Mongo's
-``_id``, ``uses_object_id=False``) — the daily/weekly run mints it once on
-insert and every subsequent write for that user/date/kind is a targeted
-``$set``, never a replace.
+User-scoped: every operation is keyed by user_id plus a date/kind or a briefing id.
+Identity is the string business key id (persisted as Mongo _id, uses_object_id=False);
+every write after the first insert is a targeted $set, never a replace.
 
-No ``CachePolicy``: the dashboard's hot read (``get_latest``) is cheap and
-infrequent relative to a per-request entity cache's upkeep, and several reads
-(``list_recent``, ``get_before_date``) are list/range queries a single-id
-entity cache can't serve anyway. Revisit only with evidence of a hot by-id
-read path.
+No CachePolicy: the hot read (get_latest) is cheap, and list/range queries cannot
+be served by a single-id entity cache.
 """
 
 from datetime import UTC, datetime
@@ -31,21 +26,13 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
 
     # ------------------------------------------------------------------ reads
 
-    async def get_latest(
-        self, user_id: str, *, kind: BriefingKind = BRIEFING_KIND_DAILY
-    ) -> BriefingModel | None:
-        """The user's most recent briefing of ``kind`` — the dashboard read."""
-        docs = await self._find(
-            {"user_id": user_id, "kind": kind}, sort=[("created_at", -1)], limit=1
-        )
-        return docs[0] if docs else None
-
     async def get_before_date(
         self, user_id: str, *, kind: BriefingKind, before_date: str
     ) -> BriefingModel | None:
-        """Latest briefing of ``kind`` strictly before ``before_date`` (``YYYY-MM-DD``,
-        lexical ``$lt``) — the look-back comparison target, excluding a same-day
-        rerun's own briefing."""
+        """Return the latest briefing of kind strictly before before_date.
+
+        before_date is YYYY-MM-DD, compared lexically with $lt.
+        """
         docs = await self._find(
             {"user_id": user_id, "kind": kind, "date": {"$lt": before_date}},
             sort=[("date", -1)],
@@ -56,9 +43,11 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     async def list_recent(
         self, user_id: str, *, limit: int, kind: BriefingKind | None = None
     ) -> list[BriefingModel]:
-        """Newest-first briefings. The archive view reads every kind
-        (``kind=None``); the winback lookback narrows to ``kind=daily`` so a
-        weekly digest never breaks a daily unacknowledged-streak count."""
+        """Return briefings newest first.
+
+        kind=None reads every kind; the winback lookback passes kind=daily so a weekly
+        digest never breaks a daily unacknowledged-streak count.
+        """
         query: dict[str, object] = {"user_id": user_id}
         if kind is not None:
             query["kind"] = kind
@@ -71,15 +60,23 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     # ----------------------------------------------------------------- writes
 
     async def upsert_briefing(
-        self, user_id: str, date: str, kind: BriefingKind, payload: BriefingPayload
+        self,
+        user_id: str,
+        date: str,
+        kind: BriefingKind,
+        payload: BriefingPayload,
+        *,
+        edition_image_url: str,
     ) -> BriefingModel:
-        """Store the payload (one per user/date/kind), preserving ``opened_at``
-        and ``delivered_channels`` across a same-day rerun. Persisted BEFORE
-        delivery so the dashboard never misses a brief that reached a channel."""
+        """Store the payload (one per user/date/kind).
+
+        Preserves opened_at and delivered_channels across a same-day rerun. Persisted
+        BEFORE delivery so the dashboard never misses a brief that reached a channel.
+        """
         doc = await self._apply_raw_update(
             {"user_id": user_id, "date": date, "kind": kind},
             {
-                "$set": {"payload": payload.model_dump()},
+                "$set": {"payload": payload.model_dump(), "edition_image_url": edition_image_url},
                 "$setOnInsert": {
                     "_id": f"brief_{uuid.uuid4().hex[:12]}",
                     "created_at": datetime.now(UTC),
@@ -103,9 +100,15 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             scope=user_id,
         )
 
+    async def set_short_url(self, user_id: str, briefing_id: str, short_url: str) -> None:
+        """Persist the brief's heygaia.link so every surface reads the same URL."""
+        await self.update(briefing_id, user_id=user_id, update=BriefingUpdate(short_url=short_url))
+
     async def mark_opened(self, user_id: str, briefing_id: str) -> BriefingModel | None:
-        """Stamp ``opened_at`` once (idempotent). ``None`` when already opened or
-        the briefing doesn't exist — the caller only cares whether it flipped."""
+        """Stamp opened_at once (idempotent).
+
+        Return None when already opened or the briefing does not exist.
+        """
         return await self._apply_update(
             briefing_id,
             user_id,

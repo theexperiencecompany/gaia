@@ -50,6 +50,7 @@ const KEPT = { boundary: { discarded: false } } as const;
 function streamingGaia(
   chunks: StreamStep[],
   approvalAfter?: number,
+  approval?: Partial<ApprovalRequestData>,
 ): GaiaClient {
   return {
     chatStream: async (
@@ -101,6 +102,7 @@ function streamingGaia(
             status: "pending",
             feedback: null,
             timeout_seconds: 3600,
+            ...approval,
           } as ApprovalRequestData);
         }
       }
@@ -153,11 +155,13 @@ async function deliver(
   {
     editable = true,
     approvalAfter,
+    approval,
     failEdit,
     failStream,
   }: {
     editable?: boolean;
     approvalAfter?: number;
+    approval?: Partial<ApprovalRequestData>;
     /** Throws on the Nth edit (0-based), emulating a platform rejection. */
     failEdit?: { at: number; error: unknown };
     /** The transport error to fail the whole stream with, instead of streaming. */
@@ -209,7 +213,7 @@ async function deliver(
 
   await handleStreamingChat(
     failStream === undefined
-      ? streamingGaia(chunks, approvalAfter)
+      ? streamingGaia(chunks, approvalAfter, approval)
       : failingGaia(failStream),
     {
       message: "drive the streamer",
@@ -238,6 +242,11 @@ async function deliver(
 function words(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
+
+// Each is a message on its own: a segment under 40 characters is glued to its neighbour.
+const GREETING = "Hey there, I just looked into this for you.";
+const CHECKED = "I checked your calendar for the whole of next week.";
+const ANSWER = "You are free at 3pm on Tuesday and all of Thursday.";
 
 describe("handleStreamingChat delivery", () => {
   describe("a trailing break token must not swallow the reply", () => {
@@ -296,17 +305,17 @@ describe("handleStreamingChat delivery", () => {
       "%s emits one bubble per segment",
       async (platform) => {
         const { bubbles } = await deliver(platform, [
-          "Hey there.",
+          GREETING,
           BREAK,
-          "I checked your calendar.",
+          CHECKED,
           BREAK,
-          "You are free at 3pm.",
+          ANSWER,
         ]);
 
         expect(bubbles).toEqual([
-          renderForPlatform("Hey there.", platform),
-          renderForPlatform("I checked your calendar.", platform),
-          renderForPlatform("You are free at 3pm.", platform),
+          renderForPlatform(GREETING, platform),
+          renderForPlatform(CHECKED, platform),
+          renderForPlatform(ANSWER, platform),
         ]);
       },
     );
@@ -329,11 +338,9 @@ describe("handleStreamingChat delivery", () => {
   });
 
   it("does not overwrite an out-of-band approval prompt", async () => {
-    // The approval prompt is posted through the adapter's `sendNewMessage`,
-    // which on editing platforms moves that adapter's live-edit cursor onto the
-    // prompt. If the streamer keeps editing "the current message" afterwards it
-    // writes the rest of the reply over the question the user still has to
-    // answer.
+    // The approval prompt posts via the adapter's `sendNewMessage`, moving that
+    // adapter's live-edit cursor onto the prompt on editing platforms; if the
+    // streamer kept editing "the current message" it'd overwrite the question.
     const { bubbles } = await deliver(
       "telegram",
       ["Checking that first. ", "Now the rest of the answer."],
@@ -346,6 +353,19 @@ describe("handleStreamingChat delivery", () => {
     // Whatever streamed after the prompt must land in its own message.
     expect(bubbles.at(-1)).toContain("Now the rest of the answer");
     expect(bubbles.at(-1)).not.toContain("Approval needed");
+  });
+
+  it("shows how long ago the approval was asked", async () => {
+    // Ledger-backed approvals carry age_seconds; the prompt should surface it
+    // so a user answering hours later knows the request is stale.
+    const { bubbles } = await deliver("telegram", ["Checking that first. "], {
+      approvalAfter: 0,
+      approval: { age_seconds: 3700 },
+    });
+
+    const prompt = bubbles.find((b) => b.includes("Approval needed"));
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain("asked 1h ago");
   });
 
   it("never shows a break token, whole or partially received", async () => {
@@ -370,14 +390,14 @@ describe("handleStreamingChat delivery", () => {
     // <NEW_MESSAGE_BREAK>. Only the exact token was split on, so the variant
     // shipped to Telegram as literal text.
     const { bubbles } = await deliver("telegram", [
-      "Hey there.",
+      GREETING,
       "<NEW_LINE_BREAK>",
-      "I checked your calendar.",
+      CHECKED,
     ]);
 
     expect(bubbles).toEqual([
-      renderForPlatform("Hey there.", "telegram"),
-      renderForPlatform("I checked your calendar.", "telegram"),
+      renderForPlatform(GREETING, "telegram"),
+      renderForPlatform(CHECKED, "telegram"),
     ]);
   });
 
@@ -475,11 +495,9 @@ describe("handleStreamingChat delivery", () => {
   });
 
   it("retries a rate-limited edit instead of re-sending the whole reply", async () => {
-    // Any edit failure used to fall into one branch that posted the full text
-    // as a NEW message — so a 429, with the original bubble still on screen,
-    // delivered the reply twice.
-    // Discord streams nothing mid-flight, so the only edit is the final
-    // delivery — the one that used to double-post.
+    // Any edit failure used to post the full text as a NEW message, double-delivering
+    // on a 429 with the original bubble still on screen. Discord streams nothing
+    // mid-flight, so the final edit is the one that used to double-post.
     const { bubbles, newMessages } = await deliver(
       "discord",
       ["Here is the answer you asked for, in full."],
@@ -520,10 +538,9 @@ describe("handleStreamingChat delivery", () => {
   });
 
   it("replaces a retracted handoff preamble in place", async () => {
-    // The comms agent narrates its own handoff ("let me get the tasks
-    // created…") and the backend retracts that message once the tool call shows
-    // up. The user must end up with ONE message holding the real reply, not the
-    // preamble followed by a second message repeating it.
+    // The comms agent narrates its own handoff, and the backend retracts that
+    // message once the tool call shows up — the user must end with ONE message
+    // holding the real reply, not the preamble plus a repeat.
     const { bubbles, newMessages } = await deliver("telegram", [
       "yeah, i can set all that up. let me get the tasks created",
       DISCARDED,
@@ -537,11 +554,9 @@ describe("handleStreamingChat delivery", () => {
   });
 
   describe("a style-guard regeneration delivers only the rewrite", () => {
-    // Live on Telegram this shipped the reply TWICE. The draft's segments were
-    // sealed as their own messages while it was still streaming, so the
-    // retraction — which can only reopen the ONE bubble still being edited —
-    // left every sealed draft bubble on screen and the rewrite streamed into
-    // fresh ones underneath: 9 draft bubbles + 10 rewrite bubbles = 19 messages.
+    // Live on Telegram this shipped the reply twice: draft segments sealed as
+    // their own messages while streaming, so retraction (reopens only the ONE
+    // bubble being edited) left every draft bubble plus a fresh rewrite underneath (9+10=19 msgs).
     const DRAFT: StreamStep[] = [
       "Hey — I've gone ahead and looked at all of this for you.",
       BREAK,
@@ -590,46 +605,40 @@ describe("handleStreamingChat delivery", () => {
       "First paragraph, long enough to stand on its own as a bubble.\n\n" +
       "Second paragraph, also long enough to stand on its own here.\n\n" +
       "Third paragraph, which is likewise long enough to be a bubble.";
-    const PARAGRAPH_BUBBLES = [
-      "First paragraph, long enough to stand on its own as a bubble.",
-      "Second paragraph, also long enough to stand on its own here.",
-      "Third paragraph, which is likewise long enough to be a bubble.",
-    ].map((bubble) => renderForPlatform(bubble, "telegram"));
+    const PARAGRAPH_BUBBLES = [renderForPlatform(PARAGRAPHS, "telegram")];
 
-    it("segments a multi-paragraph reply at the boundary", async () => {
+    it("delivers a multi-paragraph reply with no sentinel as one bubble at the boundary", async () => {
       const { bubbles } = await deliver("telegram", [PARAGRAPHS, KEPT]);
       expect(bubbles).toEqual(PARAGRAPH_BUBBLES);
     });
 
-    it("segments the same reply when no boundary ever arrives", async () => {
+    it("delivers the same one bubble when no boundary ever arrives", async () => {
       const { bubbles } = await deliver("telegram", [PARAGRAPHS]);
       expect(bubbles).toEqual(PARAGRAPH_BUBBLES);
     });
 
     it("splits a sentinel reply into the same bubbles at the boundary", async () => {
       const { bubbles } = await deliver("telegram", [
-        "Hey there.",
+        GREETING,
         BREAK,
-        "I checked your calendar.",
+        CHECKED,
         BREAK,
-        "You are free at 3pm.",
+        ANSWER,
         KEPT,
       ]);
 
       expect(bubbles).toEqual([
-        renderForPlatform("Hey there.", "telegram"),
-        renderForPlatform("I checked your calendar.", "telegram"),
-        renderForPlatform("You are free at 3pm.", "telegram"),
+        renderForPlatform(GREETING, "telegram"),
+        renderForPlatform(CHECKED, "telegram"),
+        renderForPlatform(ANSWER, "telegram"),
       ]);
     });
   });
 
   it("caps the live preview at the platform limit, then delivers the overflow", async () => {
-    // The preview holds a whole in-flight message now, so it can outgrow the
-    // 4096-char limit long before the boundary that splits it. An oversized
-    // edit is rejected outright, which would freeze the bubble on whatever it
-    // last showed — so the preview is capped, and the rest goes out at the
-    // boundary.
+    // The preview holds a whole in-flight message, so it can outgrow the 4096-char
+    // limit before the boundary splits it; an oversized edit is rejected outright
+    // (freezing the bubble), so the preview is capped and overflow goes out at the boundary.
     const text = body("Alpha", 200);
     const { bubbles, writes } = await deliver("telegram", [text, KEPT]);
 
@@ -662,24 +671,21 @@ describe("a stream that fails before it starts", () => {
       response: {
         status: 429,
         data: {
-          detail: {
-            error: "rate_limit_exceeded",
-            feature: "chat_messages",
-            message:
-              "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
-            plan_required: "pro",
-            current_plan: "free",
-          },
+          code: "rate_limit_exceeded",
+          feature: "chat_messages",
+          message:
+            "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
+          plan_required: "pro",
+          current_plan: "free",
         },
       },
     },
   );
 
   it("tells the user once, not twice", async () => {
-    // `streamChat` reports a non-retryable failure through `onError` AND
-    // rethrows it, and the streamer's outer catch reported it a second time —
-    // so every rate limit and every dead backend arrived as two identical
-    // messages.
+    // `streamChat` reports a non-retryable failure via `onError` AND rethrows, and
+    // the streamer's outer catch reported it again — every rate limit/dead backend
+    // arrived as two identical messages.
     const { errors } = await deliver("telegram", [], {
       failStream: RATE_LIMITED,
     });

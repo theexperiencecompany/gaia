@@ -1,11 +1,8 @@
 """Prompts for email processing and memory extraction."""
 
-# Prompt for extracting memories from user emails.
-#
 # Appended as the final section of EXTRACTION_SYSTEM_PROMPT, so it must OVERRIDE
-# the permissive "capture anyone the user interacts with" guidance written above
-# it for the conversation case. Uses "the user" literally (never {placeholders}):
-# this string is inserted as a .format() value and its braces are not substituted.
+# the permissive conversation-case guidance above it. Uses "the user" literally
+# (never {placeholders}): inserted as a .format() value, braces aren't substituted.
 EMAIL_MEMORY_EXTRACTION_PROMPT = """## This transcript is the user's email inbox: read it that way
 
 Everything above frames the transcript as a conversation between the user and

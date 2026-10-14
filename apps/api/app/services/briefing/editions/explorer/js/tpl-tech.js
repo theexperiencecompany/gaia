@@ -312,7 +312,7 @@ EXPLORER.register({
           <div class="dline" style="left:${x1.toFixed(3)}%; width:${(x2 - x1).toFixed(3)}%; top:${DIMY}px"></div>
           <div class="ah r" style="left:calc(${x1.toFixed(3)}% - 8px); top:${DIMY - 4}px"></div>
           <div class="ah l" style="left:${x2.toFixed(3)}%; top:${DIMY - 4}px"></div>
-          <div class="meas" style="left:${xc.toFixed(3)}%; top:${DIMY - 22}px">${it.t24}<span class="u"> &ndash; ${_clock(e)}</span></div>`;
+          <div class="meas" style="left:${xc.toFixed(3)}%; top:${DIMY - 22}px">${it.t24}</div>`;
         // shelf leader up-left or up-right, 45deg rise then horizontal shelf
         const rise = 60,
           shelfW = 210;
@@ -353,7 +353,7 @@ EXPLORER.register({
     if (eod) {
       const sx = X(23.4); // near end of day
       ship = `
-        <div class="ship" style="left:calc(${sx.toFixed(3)}% - 30px); top:${DATUM - 19}px; width:60px; height:38px"><b>PR</b></div>
+        <div class="ship" style="left:calc(${sx.toFixed(3)}% - 30px); top:${DATUM - 19}px; width:60px; height:38px"><b>EOD</b></div>
         <div class="dring" style="left:calc(${sx.toFixed(3)}% - 44px); top:${DATUM - 44}px; width:88px; height:88px"></div>
         <div class="dkey" style="left:calc(${sx.toFixed(3)}% - 0.5px); top:172px; height:${DATUM - 44 - 172}px"></div>`;
     }
@@ -362,7 +362,7 @@ EXPLORER.register({
           <div class="dhd">Detail A</div><div class="dsc">scale 2:1</div>
           <div class="dcirc">
             <div class="mbox"></div>
-            <div class="mtx"><div class="a">Ship approval-flow PR</div><div class="b">CI green 05:40</div></div>
+            <div class="mtx"><div class="a">${_esc(eod.label)}</div>${eod.note ? `<div class="b">${_esc(eod.note)}</div>` : ""}</div>
           </div>
         </div>`
       : "";
@@ -396,8 +396,12 @@ EXPLORER.register({
         </div>`,
       )
       .join("");
-    const overnight = `
-      <div class="seclabel" style="left:${SEC_X}%; top:${SEC_Y - 22}px">Overnight <span>&middot; section 02:14&ndash;04:09, while you slept</span></div>
+    const nightTimes = rows.map((it) => it.t24).filter(Boolean).sort();
+    const nightSpan = nightTimes.length
+      ? `section ${nightTimes[0]}${nightTimes.length > 1 ? `&ndash;${nightTimes[nightTimes.length - 1]}` : ""}, `
+      : "";
+    const overnight = !rows.length ? "" : `
+      <div class="seclabel" style="left:${SEC_X}%; top:${SEC_Y - 22}px">Overnight <span>&middot; ${nightSpan}while you slept</span></div>
       <div class="sec ${secClass}" style="left:${SEC_X}%; top:${SEC_Y}px; width:${SEC_W}%; height:${SEC_H}px"></div>
       ${bubbles}${callouts}`;
 
@@ -423,7 +427,17 @@ EXPLORER.register({
       .join("");
 
     const s = c.stats;
-    const yieldLine = `<b>Yield</b> &mdash; <b>${s.done}</b> done (${s.you} you &middot; ${s.gaia} GAIA) &middot; <b>${s.mail}</b> letters cleared &middot; <b>${_esc(s.focus)}</b> held`;
+    const yieldParts = [
+      s.done
+        ? `<b>${s.done}</b> done` +
+          (s.you || s.gaia
+            ? ` (${[s.you ? `${s.you} you` : "", s.gaia ? `${s.gaia} GAIA` : ""].filter(Boolean).join(" &middot; ")})`
+            : "")
+        : "",
+      s.mail ? `<b>${s.mail}</b> letters cleared` : "",
+      s.focus ? `<b>${_esc(s.focus)}</b> held` : "",
+    ].filter(Boolean);
+    const yieldLine = yieldParts.length ? `<b>Yield</b> &mdash; ${yieldParts.join(" &middot; ")}` : "";
 
     return `<article class="t-flightplan" style="--paper:${skin.ground.paper};--ink:${skin.ground.ink};--soft:${skin.ground.soft};--rgb:${skin.ground.rgb};--disp:${skin.face.stack};--track:${skin.face.track}">
       <div class="frame"></div>${crops}
@@ -448,7 +462,7 @@ EXPLORER.register({
           <div class="tblock">
             <div class="ban">GAIA &middot; Daily Operations</div>
             <div class="tr"><div class="tk">Project</div><div class="tv">${_esc(ed.weekday)}</div></div>
-            <div class="tr"><div class="tk">Sheet</div><div class="tv">${sheetNo} of 100</div></div>
+            <div class="tr"><div class="tk">Sheet</div><div class="tv">No. ${sheetNo}</div></div>
             <div class="tr"><div class="tk">Scale</div><div class="tv">One day</div></div>
             <div class="tr"><div class="tk">Drawn by</div><div class="tv">GAIA</div></div>
             <div class="tr"><div class="tk">Date</div><div class="tv">${dateCode}</div></div>
@@ -655,7 +669,7 @@ EXPLORER.register({
 
     const s = c.stats;
     const gauge = (n, k) =>
-      `<div class="gauge"><div class="n">${_esc(n)}</div><div class="k">${k}</div></div>`;
+      n ? `<div class="gauge"><div class="n">${_esc(n)}</div><div class="k">${k}</div></div>` : "";
 
     return `<article class="t-instrument" style="--func:${skin.func.color};--display:${skin.face.stack};--panel:${skin.finish.panel};--panel2:${skin.finish.panel2};--num-op:${skin.scale.num}">
       <div class="face">
@@ -685,23 +699,23 @@ EXPLORER.register({
           </div>
         </div>
 
-        <section class="cluster" style="margin-top:16px">
+        ${c.today.length ? `<section class="cluster" style="margin-top:16px">
           <div class="cl-h"><span>Today</span><span>${c.today.length} items</span></div>
           ${todayRows}
-        </section>
+        </section>` : ""}
 
-        <div class="cols">
-          <section class="cluster">
+        ${c.overnight.length || c.decisions.length ? `<div class="cols">
+          ${c.overnight.length ? `<section class="cluster">
             <div class="cl-h"><span>While you slept</span><span>${c.overnight.length}</span></div>
             ${overRows}
-          </section>
-          <section class="cluster">
+          </section>` : ""}
+          ${c.decisions.length ? `<section class="cluster">
             <div class="cl-h"><span>Needs your call</span><span>${c.decisions.length}</span></div>
             ${decRows}
-          </section>
-        </div>
+          </section>` : ""}
+        </div>` : ""}
 
-        <section class="cluster" style="margin-top:16px">
+        ${s.done || s.you || s.gaia || s.mail || s.focus ? `<section class="cluster" style="margin-top:16px">
           <div class="cl-h"><span>Yesterday</span><span>readout</span></div>
           <div class="readout">
             ${gauge(s.done, "done")}
@@ -710,7 +724,7 @@ EXPLORER.register({
             ${gauge(s.mail, "mail")}
             ${gauge(s.focus, "focus today")}
           </div>
-        </section>
+        </section>` : ""}
 
         <div class="foot">
           <span>GAIA Daily Brief &middot; Edition No. ${ed.editionNo}</span>

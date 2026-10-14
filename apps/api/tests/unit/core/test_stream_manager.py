@@ -12,6 +12,7 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from prometheus_client import REGISTRY
 import pytest
 
 from app.constants.cache import (
@@ -30,6 +31,7 @@ from app.constants.streaming import (
     STREAM_ERROR_SIGNAL,
 )
 from app.core.stream_manager import StreamManager, StreamProgress
+from app.utils.message_breaks import split_message_bubbles
 from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
@@ -38,6 +40,7 @@ from tests.helpers import captured_wide_event
 
 EVENTS_KEY = f"{STREAM_EVENTS_PREFIX}s1"
 ACTIVE_KEY = f"{STREAM_ACTIVE_PREFIX}user-1:conv-1"
+PROGRESS_KEY = f"{STREAM_PROGRESS_PREFIX}s1"
 
 XReadBatch = list[tuple[str, list[tuple[str, dict[str, str]]]]]
 
@@ -46,12 +49,13 @@ def _progress_dict(**overrides: Any) -> dict[str, Any]:
     """Return a dict that mirrors what Redis stores for StreamProgress.
 
     Pass any field as a keyword to override its default, e.g.
-    ``_progress_dict(is_cancelled=True)``.
+    _progress_dict(is_cancelled=True).
     """
     return {
         "conversation_id": "conv-1",
         "user_id": "user-1",
         "complete_message": "",
+        "pending_message": "",
         "tool_data": {},
         "started_at": "2026-01-01T00:00:00+00:00",
         "is_cancelled": False,
@@ -59,6 +63,11 @@ def _progress_dict(**overrides: Any) -> dict[str, Any]:
         "error": None,
         **overrides,
     }
+
+
+def _progress_get(progress: dict[str, Any]) -> AsyncMock:
+    """Serve s1's progress record from a fake redis_cache.get, under its real key only."""
+    return AsyncMock(side_effect=lambda key: progress if key == PROGRESS_KEY else None)
 
 
 def _entries_batch(*entries: tuple[str, str]) -> XReadBatch:
@@ -213,7 +222,10 @@ class TestCompleteStream:
 class TestCleanup:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
-        self.mock_get = AsyncMock(return_value=_progress_dict())
+        self.progress: dict[str, Any] | None = _progress_dict()
+        self.mock_get = AsyncMock(
+            side_effect=lambda key: self.progress if key == PROGRESS_KEY else None
+        )
         self.mock_delete = AsyncMock()
         patcher = patch(
             "app.core.stream_manager.redis_cache",
@@ -239,7 +251,7 @@ class TestCleanup:
         assert EVENTS_KEY not in calls
 
     async def test_skips_active_index_when_progress_missing(self) -> None:
-        self.mock_get.return_value = None
+        self.progress = None
         await StreamManager.cleanup("s1")
 
         calls = [c[0][0] for c in self.mock_delete.call_args_list]
@@ -325,6 +337,33 @@ class TestPublishChunk:
         ):
             # Should not raise
             await StreamManager.publish_chunk("s1", "data: hello\n\n")
+
+    async def test_publish_observes_transport_span(self) -> None:
+        before = REGISTRY.get_sample_value("transport_redis_publish_seconds_count", {}) or 0.0
+        await StreamManager.publish_chunk("s1", "data: hello\n\n")
+        assert REGISTRY.get_sample_value("transport_redis_publish_seconds_count", {}) == before + 1
+
+    async def test_no_observation_without_redis(self) -> None:
+        before = REGISTRY.get_sample_value("transport_redis_publish_seconds_count", {}) or 0.0
+        with patch(
+            "app.core.stream_manager.redis_cache",
+            new=MagicMock(redis=None),
+        ):
+            await StreamManager.publish_chunk("s1", "data: hello\n\n")
+        assert REGISTRY.get_sample_value("transport_redis_publish_seconds_count", {}) == before
+
+    async def test_publish_records_exact_elapsed_seconds(self) -> None:
+        # Two pinned clock reads land exactly 0.5; a sign error (end + start) would
+        # record 200.5, so this pins the direction of the subtraction, not just that
+        # an observation happened.
+        before = REGISTRY.get_sample_value("transport_redis_publish_seconds_sum", {}) or 0.0
+        with patch(
+            "app.core.stream_manager.time.perf_counter",
+            side_effect=[100.0, 100.5],
+        ):
+            await StreamManager.publish_chunk("s1", "data: hello\n\n")
+        after = REGISTRY.get_sample_value("transport_redis_publish_seconds_sum", {})
+        assert after == before + 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -669,7 +708,7 @@ class TestUpdateProgress:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
         self.progress = _progress_dict()
-        self.mock_get = AsyncMock(return_value=self.progress)
+        self.mock_get = _progress_get(self.progress)
         self.mock_set = AsyncMock()
         patcher = patch(
             "app.core.stream_manager.redis_cache",
@@ -682,12 +721,41 @@ class TestUpdateProgress:
         yield
         patcher.stop()
 
-    async def test_appends_message_chunk(self) -> None:
-        self.progress["complete_message"] = "Hello "
+    async def test_appends_message_chunk_to_the_unsettled_message(self) -> None:
+        """Streamed text is held until its message ends: a tool-call announcement is a preamble the user is told to drop."""
+        self.progress["pending_message"] = "Hello "
         await StreamManager.update_progress("s1", message_chunk="World")
 
         saved = self.mock_set.call_args[0][1]
-        assert saved["complete_message"] == "Hello World"
+        assert saved["pending_message"] == "Hello World"
+        assert saved["complete_message"] == ""
+
+    async def test_a_kept_message_becomes_a_bubble_of_the_reply(self) -> None:
+        self.progress["pending_message"] = "Here's the three-liner."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] == "Here's the three-liner."
+        assert saved["pending_message"] == ""
+
+    async def test_a_discarded_preamble_never_reaches_the_reply(self) -> None:
+        """The exact production artifact: a retracted preamble was still recovered from Redis glued onto the real answer."""
+        self.progress["complete_message"] = ""
+        self.progress["pending_message"] = "Let me start by gathering context."
+        await StreamManager.settle_message_progress("s1", discarded=True)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] == ""
+        assert saved["pending_message"] == ""
+
+    async def test_two_kept_messages_are_separate_bubbles_not_one_sentence(self) -> None:
+        self.progress["complete_message"] = "First."
+        self.progress["pending_message"] = "Second."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] != "First.Second."
+        assert split_message_bubbles(saved["complete_message"]) == ["First.", "Second."]
 
     async def test_merges_tool_data(self) -> None:
         self.progress["tool_data"] = {"existing": "data"}
@@ -705,9 +773,30 @@ class TestUpdateProgress:
         saved = self.mock_set.call_args[0][1]
         assert saved["tool_data"]["tool_data"] == [{"id": 1}, {"id": 2}]
 
+    async def test_the_first_tool_data_keeps_its_companion_fields(self) -> None:
+        incoming = {"tool_data": [{"id": 1}], "other_data": {"k": "v"}}
+        await StreamManager.update_progress("s1", tool_data=incoming)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["tool_data"] == incoming
+
+    async def test_companion_fields_land_beside_accumulated_tool_data(self) -> None:
+        self.progress["tool_data"] = {"tool_data": [{"id": 1}]}
+        await StreamManager.update_progress("s1", tool_data={"tool_output": {"ok": True}})
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["tool_data"] == {"tool_data": [{"id": 1}], "tool_output": {"ok": True}}
+
+    async def test_a_record_without_tool_data_accepts_the_first_tool_data(self) -> None:
+        """StreamProgressRecord promises every read tolerates a missing key, tool_data included."""
+        del self.progress["tool_data"]
+        await StreamManager.update_progress("s1", tool_data={"tool_data": [{"id": 1}]})
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["tool_data"] == {"tool_data": [{"id": 1}]}
+
     async def test_noop_when_progress_missing(self) -> None:
-        self.mock_get.return_value = None
-        await StreamManager.update_progress("s1", message_chunk="hello")
+        await StreamManager.update_progress("s-without-progress", message_chunk="hello")
         self.mock_set.assert_not_awaited()
 
     async def test_no_update_when_no_chunk_or_tool_data(self) -> None:
@@ -717,11 +806,46 @@ class TestUpdateProgress:
         self.mock_set.assert_awaited_once()
 
     async def test_message_chunk_appends_to_empty(self) -> None:
-        self.progress["complete_message"] = ""
+        self.progress["pending_message"] = ""
         await StreamManager.update_progress("s1", message_chunk="first")
 
         saved = self.mock_set.call_args[0][1]
-        assert saved["complete_message"] == "first"
+        assert saved["pending_message"] == "first"
+
+    async def test_a_record_predating_the_pending_field_starts_from_empty(self) -> None:
+        """A progress record written before pending_message existed must have the read supply the empty string itself."""
+        del self.progress["pending_message"]
+        await StreamManager.update_progress("s1", message_chunk="first token")
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["pending_message"] == "first token"
+
+    async def test_settling_a_record_without_a_pending_field_keeps_the_reply(self) -> None:
+        """Same record, settled instead of appended to: the already-settled reply must survive the boundary untouched."""
+        del self.progress["pending_message"]
+        self.progress["complete_message"] = "The answer."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] == "The answer."
+        assert saved["pending_message"] == ""
+
+    async def test_the_first_kept_bubble_is_the_whole_reply(self) -> None:
+        """Nothing settled yet, so the bubble is the reply verbatim, with no separator or leading text."""
+        del self.progress["complete_message"]
+        self.progress["pending_message"] = "Here it is."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] == "Here it is."
+
+    async def test_settle_writes_this_streams_progress_key_with_the_full_ttl(self) -> None:
+        """A settled boundary must re-arm the full TTL, or a shortened one expires the record mid-turn."""
+        self.progress["pending_message"] = "Done."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        assert self.mock_set.call_args[0][0] == f"{STREAM_PROGRESS_PREFIX}s1"
+        assert self.mock_set.call_args.kwargs == {"ttl": STREAM_TTL}
 
 
 # ---------------------------------------------------------------------------
@@ -762,7 +886,7 @@ class TestSetError:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
         self.progress = _progress_dict()
-        self.mock_get = AsyncMock(return_value=self.progress)
+        self.mock_get = _progress_get(self.progress)
         self.mock_set = AsyncMock()
         self.mock_redis_client = _stream_client()
 
@@ -792,8 +916,7 @@ class TestSetError:
         )
 
     async def test_appends_error_even_when_progress_missing(self) -> None:
-        self.mock_get.return_value = None
-        await StreamManager.set_error("s1", "kaboom")
+        await StreamManager.set_error("s-without-progress", "kaboom")
 
         self.mock_set.assert_not_awaited()
         # Error signal should still be appended

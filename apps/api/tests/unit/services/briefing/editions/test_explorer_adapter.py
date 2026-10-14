@@ -1,14 +1,16 @@
-"""Unit tests for the ``BriefingPayload`` -> explorer ``ed`` adapter.
+"""Unit tests for the BriefingPayload -> explorer ed adapter.
 
-``build_ed`` is pure, so every test drives the real function with a real
-payload dict and pins the exact ``ed`` values the vendored JS templates read.
+build_ed is pure, so every test drives the real function and pins the exact ed values
+the vendored JS templates read.
 """
 
 from typing import Any
 
 import pytest
 
+from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.explorer_adapter import build_ed
+from app.services.briefing.editions.explorer_render import explorer_family_ids
 
 ASSETS = {"ART1": "data:image/jpeg;base64,AAAA", "BAND": "data:image/webp;base64,BBBB"}
 CREDIT = "Wheat Field with Cypresses — Vincent van Gogh"
@@ -18,18 +20,22 @@ def _item(text: str, kind: str = "note") -> dict[str, Any]:
     return {"text": text, "kind": kind}
 
 
-def _payload(**overrides: Any) -> dict[str, Any]:
+def _payload(**overrides: Any) -> BriefingPayload:
     payload: dict[str, Any] = {
+        "kicker": "",
         "date": "2026-07-05",
+        "headline": "",
         "lede": "Three things need you before noon.",
         "stats": [],
         "sections": [],
+        "mood": "clear",
+        "caption": "",
     }
     payload.update(overrides)
-    return payload
+    return BriefingPayload.model_validate(payload)
 
 
-def _build(payload: dict[str, Any], *, generated_local: str = "6:02 AM") -> dict[str, Any]:
+def _build(payload: BriefingPayload, *, generated_local: str = "6:02 AM") -> dict[str, Any]:
     return dict(
         build_ed(
             payload,
@@ -80,8 +86,8 @@ class TestDateline:
         assert ed["year"] == 0
         assert ed["dateLong"] == "last tuesday"
 
-    def test_missing_date_key_degrades_without_raising(self) -> None:
-        ed = _build({"lede": "x"})
+    def test_empty_date_degrades_without_raising(self) -> None:
+        ed = _build(_payload(date=""))
 
         assert ed["dateLong"] == ""
         assert ed["year"] == 0
@@ -95,23 +101,18 @@ class TestEditionScalars:
         assert ed["n"] == 42
         assert ed["editionNo"] == 42
 
-    def test_deck_is_the_payload_lede(self) -> None:
-        ed = _build(_payload(lede="Quiet morning."))
+    def test_deck_is_the_headline_for_a_deck_only_family(self) -> None:
+        ed = _build(_payload(headline="Quiet morning."))
 
         assert ed["deck"] == "Quiet morning."
 
-    def test_non_string_lede_is_coerced_rather_than_raising(self) -> None:
-        ed = _build(_payload(lede=7))
-
-        assert ed["deck"] == "7"
-
-    def test_absent_lede_key_becomes_an_empty_deck(self) -> None:
-        ed = _build({"date": "2026-07-05"})
+    def test_empty_headline_becomes_an_empty_deck(self) -> None:
+        ed = _build(_payload(headline=""))
 
         assert ed["deck"] == ""
 
     def test_text_is_not_pre_escaped_because_templates_escape_their_own(self) -> None:
-        ed = _build(_payload(lede="Ana & Bo <b>ship</b>"))
+        ed = _build(_payload(headline="Ana & Bo <b>ship</b>"))
 
         assert ed["deck"] == "Ana & Bo <b>ship</b>"
 
@@ -195,375 +196,206 @@ class TestArt:
 
 
 @pytest.mark.unit
-class TestBucketingByPosition:
-    def test_first_three_sections_map_to_today_overnight_decisions(self) -> None:
-        ed = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": [_item("Standup at nine")]},
-                    {"numeral": "II", "title": "Overnight", "items": [_item("Drafted the memo")]},
-                    {"numeral": "III", "title": "Decisions", "items": [_item("Approve the SOW")]},
-                ]
-            )
+class TestContent:
+    """Each bucket holds what its heading promises.
+
+    "Today" is the user's calendar led by the first thing waiting on them;
+    GAIA's work (and any note) is "while you slept"; every ask, including a
+    failed run to retry, is a decision. A status word is never a headline.
+    """
+
+    def _daily(self, **overrides: Any) -> BriefingPayload:
+        return _payload(
+            sections=[
+                {
+                    "numeral": "I",
+                    "title": "NEEDS YOU",
+                    "items": [
+                        _item("Approve the Priya reply", "you"),
+                        _item("Sync Stripe invoices", "failed"),
+                    ],
+                },
+                {
+                    "numeral": "II",
+                    "title": "GAIA'S WORK",
+                    "items": [
+                        _item("Investor update", "lookback"),
+                        _item("Q4 hiring plan", "gaia"),
+                    ],
+                },
+            ],
+            calendar=[
+                {
+                    "date": "2026-07-05",
+                    "start": "11:00",
+                    "title": "Sequoia",
+                    "location": "Menlo Park",
+                },
+                {"date": "2026-07-05", "start": None, "title": "Offsite"},
+            ],
+            **overrides,
         )
-        content = ed["content"]
 
-        assert [row["label"] for row in content["today"]] == ["Standup at nine"]
-        assert [row["label"] for row in content["overnight"]] == ["Drafted the memo"]
-        assert content["decisions"] == [
-            {"verb": "Approve", "label": "the SOW", "note": None},
-        ]
+    def test_today_is_the_calendar_only(self) -> None:
+        today = _build(self._daily())["content"]["today"]
 
-    def test_every_bucket_gets_an_honest_placeholder_when_empty(self) -> None:
-        content = _build(_payload())["content"]
-
-        assert content["today"] == [
+        assert today == [
             {
-                "time": None,
-                "t24": None,
-                "label": "Nothing on the calendar today",
-                "note": None,
+                "time": "11:00 AM",
+                "t24": "11:00",
+                "label": "Sequoia",
+                "note": "Menlo Park",
                 "tag": "",
-            }
+            },
+            {"time": None, "t24": None, "label": "Offsite", "note": None, "tag": ""},
         ]
-        assert content["overnight"] == [
-            {"t24": None, "label": "Nothing to report from overnight", "note": None, "tag": ""}
+
+    @pytest.mark.parametrize("family", sorted({"edition", *explorer_family_ids()}))
+    def test_no_item_appears_in_two_sections_in_any_family(self, family: str) -> None:
+        content = build_ed(
+            self._daily(),
+            edition_no=1,
+            generated_local="",
+            assets=ASSETS,
+            art_credit=CREDIT,
+            family=family,
+        )["content"]
+
+        labels = [
+            row["label"]
+            for bucket in ("today", "overnight", "decisions")
+            for row in content[bucket]
+            if row["label"] != "—"
         ]
+        assert len(labels) == len(set(labels)), labels
+
+    def test_a_failed_run_is_a_decision_to_retry_never_a_today_item(self) -> None:
+        content = _build(self._daily())["content"]
+
         assert content["decisions"] == [
-            {"verb": "Review", "label": "Nothing pending your review", "note": None}
+            {"verb": "Approve", "label": "the Priya reply", "note": None},
+            {"verb": "Retry", "label": "Sync Stripe invoices", "note": None},
+        ]
+        assert all("Stripe" not in row["label"] for row in content["today"])
+
+    def test_gaias_work_is_overnight_with_its_state(self) -> None:
+        overnight = _build(self._daily())["content"]["overnight"]
+
+        assert [(r["label"], r["tag"]) for r in overnight] == [
+            ("Investor update", "DONE"),
+            ("Q4 hiring plan", "IN PROGRESS"),
         ]
 
-    def test_a_section_with_no_items_still_leaves_its_bucket_placeheld(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": []},
-                    {"numeral": "II", "title": "Overnight", "items": [_item("Filed the report")]},
-                ]
-            )
-        )["content"]
+    def test_an_empty_day_leaves_every_bucket_empty_instead_of_a_fake_row(self) -> None:
+        """Regression: empty buckets rendered as "EOD Nothing on the calendar today" rows."""
+        content = _build(_payload(sections=[]))["content"]
 
-        assert content["today"][0]["label"] == "Nothing on the calendar today"
-        assert [row["label"] for row in content["overnight"]] == ["Filed the report"]
+        assert (content["today"], content["overnight"], content["decisions"]) == ([], [], [])
 
-    def test_items_within_a_section_keep_their_order(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {
-                        "numeral": "I",
-                        "title": "Today",
-                        "items": [_item("first"), _item("second"), _item("third")],
-                    }
-                ]
-            )
-        )["content"]
+    def test_a_note_reads_as_overnight_without_a_tag(self) -> None:
+        overnight = _build(
+            _payload(sections=[{"numeral": "I", "title": "X", "items": [_item("Heads up")]}])
+        )["content"]["overnight"]
 
-        assert [row["label"] for row in content["today"]] == ["first", "second", "third"]
-
-    @pytest.mark.parametrize(
-        ("kind", "bucket"),
-        [
-            ("gaia", "overnight"),
-            ("lookback", "overnight"),
-            ("you", "decisions"),
-            ("needs_you", "decisions"),
-            ("proposal", "decisions"),
-            ("note", "today"),
-            ("something-new", "today"),
-        ],
-    )
-    def test_fourth_section_items_fold_into_a_bucket_by_kind(self, kind: str, bucket: str) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": [_item("anchor today")]},
-                    {"numeral": "II", "title": "Overnight", "items": [_item("anchor overnight")]},
-                    {"numeral": "III", "title": "Decisions", "items": [_item("anchor decision")]},
-                    {"numeral": "IV", "title": "Extra", "items": [_item("folded", kind)]},
-                ]
-            )
-        )["content"]
-
-        labels = {
-            name: [row["label"] for row in content[name]] for name in content if name != "stats"
-        }
-        assert "folded" in labels[bucket]
-        for name, values in labels.items():
-            if name != bucket:
-                assert "folded" not in values
-
-    def test_fifth_section_folds_too_and_lands_after_the_fourth(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": []},
-                    {"numeral": "II", "title": "Overnight", "items": []},
-                    {"numeral": "III", "title": "Decisions", "items": []},
-                    {"numeral": "IV", "title": "Extra", "items": [_item("fourth", "gaia")]},
-                    {"numeral": "V", "title": "More", "items": [_item("fifth", "lookback")]},
-                ]
-            )
-        )["content"]
-
-        assert [row["label"] for row in content["overnight"]] == ["fourth", "fifth"]
+        assert overnight == [{"t24": None, "label": "Heads up", "note": None, "tag": ""}]
 
 
 @pytest.mark.unit
-class TestItemMapping:
-    @pytest.mark.parametrize(
-        ("kind", "tag"),
-        [
-            ("proposal", "APPROVAL"),
-            ("you", "YOUR MOVE"),
-            ("needs_you", "YOUR MOVE"),
-            ("gaia", "DONE"),
-            ("lookback", "DONE"),
-            ("note", ""),
-            ("unknown-kind", ""),
-        ],
-    )
-    def test_kind_condenses_to_the_templates_caps_tag(self, kind: str, tag: str) -> None:
-        content = _build(
-            _payload(
-                sections=[{"numeral": "I", "title": "Today", "items": [_item("a thing", kind)]}]
-            )
-        )["content"]
+class TestHeadline:
+    @pytest.mark.parametrize("family", ["memo", "postal", "broadsheet"])
+    def test_families_with_a_title_slot_get_both_lines(self, family: str) -> None:
+        ed = build_ed(
+            _payload(headline="Two replies need you"),
+            edition_no=1,
+            generated_local="",
+            assets=ASSETS,
+            art_credit=CREDIT,
+            family=family,
+        )
 
-        assert content["today"][0]["tag"] == tag
+        assert ed["headline"] == "Two replies need you"
+        assert ed["deck"] == "Three things need you before noon."
 
-    def test_item_with_no_kind_defaults_to_note(self) -> None:
-        content = _build(
-            _payload(sections=[{"numeral": "I", "title": "Today", "items": [{"text": "bare"}]}])
-        )["content"]
+    @pytest.mark.parametrize("family", ["playbill", "receipt", "swiss"])
+    def test_a_deck_only_family_leads_with_the_headline(self, family: str) -> None:
+        ed = build_ed(
+            _payload(headline="Two replies need you"),
+            edition_no=1,
+            generated_local="",
+            assets=ASSETS,
+            art_credit=CREDIT,
+            family=family,
+        )
 
-        assert content["today"][0] == {
-            "time": None,
-            "t24": None,
-            "label": "bare",
-            "note": None,
-            "tag": "",
-        }
-
-    def test_item_with_no_text_becomes_an_empty_label(self) -> None:
-        content = _build(
-            _payload(sections=[{"numeral": "I", "title": "Today", "items": [{"kind": "note"}]}])
-        )["content"]
-
-        assert content["today"][0]["label"] == ""
-
-    def test_clock_prefix_is_lifted_out_of_the_today_label(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {
-                        "numeral": "I",
-                        "title": "Today",
-                        "items": [_item("1:30 PM — Sync with Ana")],
-                    }
-                ]
-            )
-        )["content"]
-
-        assert content["today"][0]["time"] == "1:30 PM"
-        assert content["today"][0]["t24"] == "13:30"
-        assert content["today"][0]["label"] == "Sync with Ana"
-
-    @pytest.mark.parametrize("separator", ["-", "–", "—"])
-    def test_hyphen_en_dash_and_em_dash_all_separate_the_clock_prefix(self, separator: str) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {
-                        "numeral": "I",
-                        "title": "Today",
-                        "items": [_item(f"9:00 AM {separator} Standup")],
-                    }
-                ]
-            )
-        )["content"]
-
-        assert content["today"][0]["time"] == "9:00 AM"
-        assert content["today"][0]["label"] == "Standup"
-
-    def test_text_without_a_clock_prefix_keeps_the_whole_label(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": [_item("Lunch with the team")]}
-                ]
-            )
-        )["content"]
-
-        assert content["today"][0]["time"] is None
-        assert content["today"][0]["t24"] is None
-        assert content["today"][0]["label"] == "Lunch with the team"
-
-    def test_overnight_item_with_no_text_becomes_an_empty_label(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": []},
-                    {"numeral": "II", "title": "Overnight", "items": [{"kind": "gaia"}]},
-                ]
-            )
-        )["content"]
-
-        assert content["overnight"][0] == {
-            "t24": None,
-            "label": "",
-            "note": None,
-            "tag": "DONE",
-        }
-
-    @pytest.mark.parametrize(
-        ("kind", "tag"),
-        [
-            ("gaia", "DONE"),
-            ("lookback", "DONE"),
-            ("proposal", "APPROVAL"),
-            ("note", ""),
-            ("unknown-kind", ""),
-        ],
-    )
-    def test_overnight_kind_condenses_to_the_templates_caps_tag(self, kind: str, tag: str) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": []},
-                    {
-                        "numeral": "II",
-                        "title": "Overnight",
-                        "items": [_item("a thing", kind)],
-                    },
-                ]
-            )
-        )["content"]
-
-        assert content["overnight"][0]["tag"] == tag
-
-    def test_overnight_rows_keep_t24_but_carry_no_display_time_field(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": []},
-                    {
-                        "numeral": "II",
-                        "title": "Overnight",
-                        "items": [_item("2:15 AM — Rebuilt the index", "gaia")],
-                    },
-                ]
-            )
-        )["content"]
-
-        assert content["overnight"][0] == {
-            "t24": "02:15",
-            "label": "Rebuilt the index",
-            "note": None,
-            "tag": "DONE",
-        }
+        assert ed["deck"] == "Two replies need you"
 
 
 @pytest.mark.unit
-class TestDecisionVerbs:
+class TestFixedSlots:
+    """Some vendored families index fixed item slots.
+
+    The founder fixture always held three today, three overnight and two decision items.
+    A family handed fewer threw in the page script, and Chromium shipped a blank 2px PNG.
+    """
+
+    def _sparse(self) -> BriefingPayload:
+        return _payload(
+            sections=[{"numeral": "I", "title": "X", "items": [_item("Pick a slot", "you")]}]
+        )
+
     @pytest.mark.parametrize(
-        ("text", "verb", "label"),
+        ("family", "today", "overnight", "decisions"),
         [
-            ("Approve the vendor contract", "Approve", "the vendor contract"),
-            ("decide on the venue", "Decide", "on the venue"),
-            ("REVIEW the pull request", "Review", "the pull request"),
-            ("Approve: the renewal", "Approve", "the renewal"),
-            ("Send — the invoice", "Send", "the invoice"),
-            ("Approve", "Approve", ""),
-            ("Ponder the roadmap", "Review", "Ponder the roadmap"),
-            ("ApproveX the SOW", "Review", "ApproveX the SOW"),
-            ("Approve X-ray budget", "Approve", "X-ray budget"),
-            ("", "Review", ""),
-            ("   ", "Review", "   "),
+            ("boardingpass", 3, 3, 2),
+            ("metromap", 3, 3, 2),
+            ("menu", 3, 3, 1),
+            ("invoice", 3, 3, 1),
+            ("almanac", 2, 0, 1),
+            ("broadsheet", 0, 0, 1),
         ],
     )
-    def test_leading_imperative_becomes_the_verb(self, text: str, verb: str, label: str) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": []},
-                    {"numeral": "II", "title": "Overnight", "items": []},
-                    {"numeral": "III", "title": "Decisions", "items": [_item(text)]},
-                ]
-            )
+    def test_family_gets_every_slot_it_reads(
+        self, family: str, today: int, overnight: int, decisions: int
+    ) -> None:
+        content = build_ed(
+            self._sparse(),
+            edition_no=1,
+            generated_local="",
+            assets=ASSETS,
+            art_credit=CREDIT,
+            family=family,
         )["content"]
 
-        assert content["decisions"][0] == {"verb": verb, "label": label, "note": None}
+        counts = (len(content["today"]), len(content["overnight"]), len(content["decisions"]))
+        assert counts == (today, overnight, decisions)
 
-    def test_decision_item_with_no_text_becomes_an_empty_label(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {"numeral": "I", "title": "Today", "items": []},
-                    {"numeral": "II", "title": "Overnight", "items": []},
-                    {"numeral": "III", "title": "Decisions", "items": [{"kind": "you"}]},
-                ]
-            )
+    def test_padding_follows_the_real_items_and_reads_as_an_empty_slot(self) -> None:
+        content = build_ed(
+            self._sparse(),
+            edition_no=1,
+            generated_local="",
+            assets=ASSETS,
+            art_credit=CREDIT,
+            family="boardingpass",
         )["content"]
 
-        assert content["decisions"][0] == {"verb": "Review", "label": "", "note": None}
+        assert [d["label"] for d in content["decisions"]] == ["a slot", "—"]
+        assert content["decisions"][1] == {"verb": "", "label": "—", "note": None, "empty": True}
+        assert [(r["label"], r["t24"], r.get("empty")) for r in content["today"]] == [
+            ("—", None, True)
+        ] * 3
 
-
-@pytest.mark.unit
-class TestStats:
-    def test_labels_are_matched_by_keyword_and_coerced_to_ints(self) -> None:
-        content = _build(
-            _payload(
-                stats=[
-                    {"value": "7", "label": "Done overnight"},
-                    {"value": "3", "label": "Waiting on you"},
-                    {"value": "12", "label": "GAIA runs"},
-                    {"value": "41", "label": "Unread mail"},
-                    {"value": "4h 20m", "label": "Focus time"},
-                ]
-            )
+    def test_a_full_bucket_is_never_padded(self) -> None:
+        payload = _payload(
+            calendar=[{"date": "2026-07-05", "start": None, "title": f"n{i}"} for i in range(4)]
+        )
+        content = build_ed(
+            payload,
+            edition_no=1,
+            generated_local="",
+            assets=ASSETS,
+            art_credit=CREDIT,
+            family="menu",
         )["content"]
 
-        assert content["stats"] == {"done": 7, "you": 3, "gaia": 12, "mail": 41, "focus": "4h 20m"}
-
-    def test_an_email_label_counts_as_the_mail_stat(self) -> None:
-        content = _build(_payload(stats=[{"value": "9", "label": "Email triaged"}]))["content"]
-
-        assert content["stats"]["mail"] == 9
-
-    def test_missing_stats_fall_back_to_zero_and_zero_hours(self) -> None:
-        content = _build(_payload(stats=[]))["content"]
-
-        assert content["stats"] == {"done": 0, "you": 0, "gaia": 0, "mail": 0, "focus": "0h"}
-
-    def test_non_numeric_value_counts_as_zero_rather_than_raising(self) -> None:
-        content = _build(_payload(stats=[{"value": "many", "label": "done"}]))["content"]
-
-        assert content["stats"]["done"] == 0
-
-    def test_whitespace_padded_numbers_are_parsed(self) -> None:
-        content = _build(_payload(stats=[{"value": "  8  ", "label": "done"}]))["content"]
-
-        assert content["stats"]["done"] == 8
-
-    def test_first_matching_label_wins(self) -> None:
-        content = _build(
-            _payload(
-                stats=[
-                    {"value": "1", "label": "done today"},
-                    {"value": "99", "label": "done this week"},
-                ]
-            )
-        )["content"]
-
-        assert content["stats"]["done"] == 1
-
-    def test_focus_value_zero_is_kept_rather_than_replaced_by_the_default(self) -> None:
-        content = _build(_payload(stats=[{"value": "0", "label": "Focus"}]))["content"]
-
-        assert content["stats"]["focus"] == "0"
-
-    def test_stat_without_a_value_key_reads_as_zero(self) -> None:
-        content = _build(_payload(stats=[{"label": "done"}]))["content"]
-
-        assert content["stats"]["done"] == 0
+        assert [r["label"] for r in content["today"]] == ["n0", "n1", "n2", "n3"]

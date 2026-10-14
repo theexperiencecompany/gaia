@@ -13,6 +13,7 @@ from app.services.image_service import (
     generate_public_id,
     image_to_text_endpoint,
 )
+from app.utils.chat_utils import PromptResponse
 
 # ---------------------------------------------------------------------------
 # generate_public_id
@@ -71,7 +72,7 @@ class TestApiGenerateImage:
             patch(
                 "app.services.image_service.do_prompt_no_stream",
                 new_callable=AsyncMock,
-                return_value={"response": "enhanced artistic sunset"},
+                return_value=PromptResponse(response="enhanced artistic sunset"),
             ),
             patch(
                 "app.services.image_service.generate_image",
@@ -155,7 +156,7 @@ class TestApiGenerateImage:
             patch(
                 "app.services.image_service.do_prompt_no_stream",
                 new_callable=AsyncMock,
-                return_value={"response": ""},
+                return_value=PromptResponse(response=""),
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
@@ -169,7 +170,7 @@ class TestApiGenerateImage:
             patch(
                 "app.services.image_service.do_prompt_no_stream",
                 new_callable=AsyncMock,
-                return_value={"response": ""},
+                return_value=PromptResponse(response=""),
             ),
             patch(
                 "app.services.image_service.generate_image",
@@ -326,7 +327,7 @@ class TestApiGenerateImagePins:
             patch(
                 "app.services.image_service.do_prompt_no_stream",
                 new_callable=AsyncMock,
-                return_value={"response": "a watercolor cat"},
+                return_value=PromptResponse(response="a watercolor cat"),
             ),
             patch(
                 "app.services.image_service.generate_image",

@@ -1,5 +1,7 @@
 export type { ApiClientConfig } from "./apiClient";
-export { ApiError, buildUrl, createApiHeaders } from "./apiClient";
+export { buildUrl, createApiHeaders } from "./apiClient";
+export type { ErrorEnvelope } from "./apiError";
+export { ApiError, REQUEST_ID_HEADER, toErrorEnvelope } from "./apiError";
 export type {
   BatchSyncConversationsParams,
   ChatStreamFileData,
@@ -48,7 +50,7 @@ export type {
 export { NOTIFICATION_ENDPOINTS } from "./notificationsApi";
 export { buildQueryString } from "./queryBuilder";
 export { normalizeListResponse } from "./responseNormalizer";
-export type { SearchApi, SearchMode } from "./searchApi";
+export type { SearchApi, SearchScope } from "./searchApi";
 export { buildSearchQuery, SearchApiEndpoints } from "./searchApi";
 export type {
   SubtaskCreateParams,

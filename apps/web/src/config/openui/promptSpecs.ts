@@ -1,14 +1,10 @@
 /**
- * Node-safe single source of truth for the GAIA-only OpenUI component schemas.
+ * Node-safe single source of truth for GAIA-only OpenUI component schemas.
  *
- * This module imports ONLY `zod` — no `@/` aliases, no React, no browser deps —
- * so it can be imported both by the React component files (which add the views)
- * AND by the Node prompt generator (`scripts/openui/generate-prompt.ts`).
- *
- * Each component file re-exports its schema from here and supplies the view +
- * `defineComponent` call. The backend LLM prompt's component vocabulary is
- * generated from `GAIA_COMPONENT_SPECS` merged with `@openuidev/react-ui`'s
- * library — keeping the prompt and the renderer in lockstep.
+ * Imports ONLY `zod` — no `@/` aliases, no React, no browser deps — so both
+ * the React component files (which add the views) and the Node prompt
+ * generator (`scripts/openui/generate-prompt.ts`) can import it. The LLM
+ * prompt's vocabulary is generated from `GAIA_COMPONENT_SPECS` + `@openuidev/react-ui`.
  */
 import { z } from "zod";
 
@@ -198,7 +194,7 @@ export const briefingSchema = z.object({
     z.object({
       value: z.string(),
       label: z.string(),
-      delta: z.string().optional(),
+      delta: z.string().nullish(),
     }),
   ),
   sections: z.array(
@@ -208,8 +204,9 @@ export const briefingSchema = z.object({
       items: z.array(
         z.object({
           text: z.string(),
-          todo_id: z.string().optional(),
-          kind: z.string(),
+          todo_id: z.string().nullish(),
+          link: z.string().nullish(),
+          kind: z.enum(["gaia", "you", "lookback", "failed", "note"]),
         }),
       ),
     }),
@@ -287,7 +284,7 @@ export const GAIA_COMPONENT_SPECS = [
   {
     name: "KbdRow",
     description:
-      "A single keyboard shortcut row — keys + description. Compose inside a Card for a shortcut table.",
+      "A single keyboard shortcut row: keys + description. Compose inside a Card for a shortcut table.",
     props: kbdRowSchema,
   },
   {
@@ -309,7 +306,7 @@ export const GAIA_COMPONENT_SPECS = [
   {
     name: "TextDocument",
     description:
-      "Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters — never when sending a final email directly.",
+      "Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters. Never when sending a final email directly.",
     props: textDocumentSchema,
   },
   {

@@ -1,8 +1,8 @@
-"""Repository for the ``search_urls`` collection — scraped URL-metadata cache.
+"""Repository for the search_urls collection — scraped URL-metadata cache.
 
-Global, keyed by the business ``url``. A read-through cache: a URL is looked up
+Global, keyed by the business url. A read-through cache: a URL is looked up
 by its address, and a miss is scraped elsewhere and stored once. The incidental
-Mongo ``_id`` never surfaces above this boundary.
+Mongo _id never surfaces above this boundary.
 """
 
 from app.db.repositories.base import MongoRepository

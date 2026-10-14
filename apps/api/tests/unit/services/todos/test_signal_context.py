@@ -157,8 +157,7 @@ class TestGetSignalMatchingContext:
         assert warning["error"] == "read failed"
 
     async def test_stored_user_scoped_vfs_path_never_leaks_into_agent_context(self, deps) -> None:
-        """Old docs store vfs_path as /users/<uid>/todos/<id> — that host-side
-        path must never reach the LLM, which only knows /workspace-scoped paths."""
+        """Old docs store vfs_path as /users/<uid>/todos/<id>; that host-side path must never reach the workspace-scoped LLM."""
         deps.repo.list_active_tracked.return_value = [
             _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
         ]

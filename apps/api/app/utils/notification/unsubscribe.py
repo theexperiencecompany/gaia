@@ -19,14 +19,13 @@ def _serializer() -> URLSafeSerializer:
 
 
 def build_unsubscribe_url(user_id: str) -> str:
-    """Builds the absolute one-click unsubscribe URL for a user."""
+    """Build the absolute one-click unsubscribe URL for a user."""
     token = _serializer().dumps(user_id)
     return f"{settings.HOST}/api/v1/notifications/unsubscribe?token={token}"
 
 
 def build_unsubscribe_headers(user_id: str) -> dict[str, str]:
-    """RFC 8058 one-click unsubscribe headers for lifecycle email
-    (https://resend.com/docs/dashboard/emails/add-unsubscribe-to-transactional-emails)."""
+    """Build RFC 8058 one-click unsubscribe headers for a lifecycle email."""
     return {
         "List-Unsubscribe": f"<{build_unsubscribe_url(user_id)}>",
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
@@ -34,7 +33,7 @@ def build_unsubscribe_headers(user_id: str) -> dict[str, str]:
 
 
 def verify_unsubscribe_token(token: str) -> str | None:
-    """Returns the user_id a token was signed for, or None if invalid/tampered."""
+    """Return the user_id a token was signed for, or None if invalid/tampered."""
     if not settings.EMAIL_UNSUBSCRIBE_SECRET:
         return None
     try:

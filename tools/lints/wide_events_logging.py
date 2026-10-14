@@ -145,7 +145,7 @@ def _reserved_key_calls(tree: ast.Module) -> list[tuple[int, str]]:
 
 
 def _is_log_tag_prefix(node: ast.FormattedValue) -> bool:
-    """True for ``{LogTag.X}`` — the one interpolation a message may carry."""
+    """Return True for ``{LogTag.X}`` — the one interpolation a message may carry."""
     value = node.value
     return (
         isinstance(value, ast.Attribute)

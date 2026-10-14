@@ -74,8 +74,7 @@ class TestUpsertEvent:
         }
 
     async def test_the_artifact_link_is_minted_for_this_session_file(self, mint):
-        """Every surface (chat card, bot message, the agent's tool result) reads
-        the link off this event, so the event is where it is minted."""
+        """The event is where the link is minted, since every surface reads it from there."""
         await upsert_event(USER_ID, SESSION_ID, _artifact_info())
 
         mint.assert_awaited_once_with(

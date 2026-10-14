@@ -11,9 +11,10 @@ import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import {
   type ModalConfig,
+  type ModalProps,
   NotificationStatus,
 } from "../../../types/features/notificationTypes";
 import { NotificationCard } from "./NotificationCard";
@@ -31,6 +32,8 @@ export function NotificationCenter({
   const [activeTab, setActiveTab] = useState<"unread" | "all">("unread");
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
+  // `props` is untyped on the wire; the component name is what makes it an EmailPreview payload.
+  const modalProps = modalConfig?.props as ModalProps | undefined;
   const router = useRouter();
 
   const notificationOptions = useMemo(
@@ -44,14 +47,20 @@ export function NotificationCenter({
   const {
     notifications,
     unreadCount,
+    hasMoreUnseen,
     loading,
     markAsRead,
-    bulkMarkAsRead,
+    markAllAsRead,
     refetch,
   } = useNotifications(notificationOptions);
 
+  // The loaded page can undercount unread notifications, so gating on
+  // unreadCount alone could hide the button even though an older delivered
+  // notification exists beyond what's loaded.
+  const canMarkAllAsRead = unreadCount > 0 || hasMoreUnseen;
+
   const handleMarkAsRead = async (notificationId: string) => {
-    trackEvent(ANALYTICS_EVENTS.NOTIFICATION_VIEWED, {
+    track("notification:viewed", {
       notification_id: notificationId,
       source: "popover",
     });
@@ -59,13 +68,10 @@ export function NotificationCenter({
   };
 
   const handleMarkAllAsRead = async () => {
-    const unreadIds = notifications.flatMap((n) =>
-      n.status === NotificationStatus.DELIVERED ? [n.id] : [],
-    );
-    if (unreadIds.length === 0) return;
+    if (!canMarkAllAsRead) return;
     setIsMarkingAllRead(true);
     try {
-      await bulkMarkAsRead(unreadIds);
+      await markAllAsRead();
     } finally {
       setIsMarkingAllRead(false);
     }
@@ -122,7 +128,7 @@ export function NotificationCenter({
               <Tab key="all" title="All" />
             </Tabs>
 
-            {unreadCount > 0 && (
+            {canMarkAllAsRead && (
               <Button
                 size="sm"
                 variant="light"
@@ -190,17 +196,17 @@ export function NotificationCenter({
         </PopoverContent>
       </Popover>
 
-      {modalConfig?.component === "EmailPreviewModal" && modalConfig.props && (
+      {modalConfig?.component === "EmailPreviewModal" && modalProps && (
         <EmailPreviewModal
           isOpen={true}
           onClose={() => setModalConfig(null)}
-          subject={modalConfig.props.subject || ""}
-          body={modalConfig.props.body || ""}
-          recipients={modalConfig.props.recipients || []}
-          mode={modalConfig.props.mode === "view" ? "view" : "edit"}
+          subject={modalProps.subject || ""}
+          body={modalProps.body || ""}
+          recipients={modalProps.recipients || []}
+          mode={modalProps.mode === "view" ? "view" : "edit"}
           onEmailSent={refetch}
-          notificationId={modalConfig.props.notificationId}
-          actionId={modalConfig.props.actionId}
+          notificationId={modalProps.notificationId}
+          actionId={modalProps.actionId}
         />
       )}
     </div>

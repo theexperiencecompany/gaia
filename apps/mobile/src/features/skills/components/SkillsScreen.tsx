@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -11,15 +11,16 @@ import { AppIcon, Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { BackButton } from "@/shared/components/ui/back-button";
-import type { Skill } from "../api/skills-api";
+import type { DiscoveredSkill, Skill } from "../api/skills-api";
 import { useSkills } from "../hooks/useSkills";
-import { SkillCard } from "./SkillCard";
+import { DiscoveredSkillCard, SkillCard } from "./SkillCard";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ListItem =
   | { type: "section-header"; title: string; count: number }
   | { type: "skill"; skill: Skill }
+  | { type: "discover"; skill: DiscoveredSkill }
   | { type: "empty"; section: "my-skills" | "discover" };
 
 // ─── Section Header ───────────────────────────────────────────────────────────
@@ -191,6 +192,63 @@ function SkeletonCard() {
   );
 }
 
+function LoadingSkeletons() {
+  const { spacing } = useResponsive();
+  return (
+    <View style={{ paddingTop: spacing.md }}>
+      <SkeletonCard />
+      <SkeletonCard />
+      <SkeletonCard />
+    </View>
+  );
+}
+
+// ─── List shaping ─────────────────────────────────────────────────────────────
+
+function matchesQuery<T extends { name: string; description: string }>(
+  skills: T[],
+  q: string,
+): T[] {
+  if (!q) return skills;
+  return skills.filter(
+    (s) =>
+      s.name.toLowerCase().includes(q) ||
+      s.description.toLowerCase().includes(q),
+  );
+}
+
+function buildListItems(
+  mySkills: Skill[],
+  discoverSkills: DiscoveredSkill[],
+): ListItem[] {
+  const items: ListItem[] = [
+    { type: "section-header", title: "My Skills", count: mySkills.length },
+  ];
+  if (mySkills.length === 0) {
+    items.push({ type: "empty", section: "my-skills" });
+  } else {
+    for (const skill of mySkills) items.push({ type: "skill", skill });
+  }
+  items.push({
+    type: "section-header",
+    title: "Discover",
+    count: discoverSkills.length,
+  });
+  if (discoverSkills.length === 0) {
+    items.push({ type: "empty", section: "discover" });
+  } else {
+    for (const skill of discoverSkills) items.push({ type: "discover", skill });
+  }
+  return items;
+}
+
+function keyExtractor(item: ListItem, index: number): string {
+  if (item.type === "section-header") return `header-${item.title}`;
+  if (item.type === "empty") return `empty-${item.section}`;
+  if (item.type === "discover") return `discover-${item.skill.path}-${index}`;
+  return `skill-${item.skill.id}-${index}`;
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export function SkillsScreen() {
@@ -203,127 +261,54 @@ export function SkillsScreen() {
     useSkills();
 
   const [localMySkills, setLocalMySkills] = useState<Skill[] | null>(null);
-  const [localDiscoverSkills, setLocalDiscoverSkills] = useState<
-    Skill[] | null
-  >(null);
 
   const effectiveMySkills = localMySkills ?? mySkills;
-  const effectiveDiscoverSkills = localDiscoverSkills ?? discoverableSkills;
+  const effectiveDiscoverSkills = discoverableSkills;
 
-  const handleToggle = useCallback(
-    (skill: Skill, enabled: boolean) => {
-      setLocalMySkills((prev) => {
-        const base = prev ?? mySkills;
-        if (enabled) {
-          const exists = base.some((s) => s.id === skill.id);
-          return exists
-            ? base.map((s) => (s.id === skill.id ? { ...s, enabled } : s))
-            : [...base, { ...skill, enabled }];
-        }
-        return base.map((s) => (s.id === skill.id ? { ...s, enabled } : s));
-      });
-      setLocalDiscoverSkills((prev) => {
-        const base = prev ?? discoverableSkills;
-        return base.map((s) => (s.id === skill.id ? { ...s, enabled } : s));
-      });
-    },
-    [mySkills, discoverableSkills],
-  );
+  const handleToggle = (skill: Skill, enabled: boolean) => {
+    setLocalMySkills((prev) => {
+      const base = prev ?? mySkills;
+      if (enabled) {
+        const exists = base.some((s) => s.id === skill.id);
+        return exists
+          ? base.map((s) => (s.id === skill.id ? { ...s, enabled } : s))
+          : [...base, { ...skill, enabled }];
+      }
+      return base.map((s) => (s.id === skill.id ? { ...s, enabled } : s));
+    });
+  };
 
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = async () => {
     setLocalMySkills(null);
-    setLocalDiscoverSkills(null);
     await refresh();
-  }, [refresh]);
+  };
 
   const q = searchQuery.trim().toLowerCase();
+  const listItems = buildListItems(
+    matchesQuery(effectiveMySkills, q),
+    matchesQuery(effectiveDiscoverSkills, q),
+  );
 
-  const filteredMySkills = useMemo(() => {
-    if (!q) return effectiveMySkills;
-    return effectiveMySkills.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q),
-    );
-  }, [effectiveMySkills, q]);
-
-  const filteredDiscoverSkills = useMemo(() => {
-    if (!q) return effectiveDiscoverSkills;
-    return effectiveDiscoverSkills.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q),
-    );
-  }, [effectiveDiscoverSkills, q]);
-
-  const listItems = useMemo<ListItem[]>(() => {
-    const items: ListItem[] = [];
-
-    items.push({
-      type: "section-header",
-      title: "My Skills",
-      count: filteredMySkills.length,
-    });
-
-    if (filteredMySkills.length === 0) {
-      items.push({ type: "empty", section: "my-skills" });
-    } else {
-      for (const skill of filteredMySkills) {
-        items.push({ type: "skill", skill });
-      }
+  const renderItem = ({ item }: { item: ListItem }) => {
+    if (item.type === "section-header") {
+      return <SectionHeader title={item.title} count={item.count} />;
     }
-
-    items.push({
-      type: "section-header",
-      title: "Discover",
-      count: filteredDiscoverSkills.length,
-    });
-
-    if (filteredDiscoverSkills.length === 0) {
-      items.push({ type: "empty", section: "discover" });
-    } else {
-      for (const skill of filteredDiscoverSkills) {
-        items.push({ type: "skill", skill });
-      }
+    if (item.type === "empty") {
+      return <EmptySection section={item.section} hasSearch={q.length > 0} />;
     }
-
-    return items;
-  }, [filteredMySkills, filteredDiscoverSkills]);
-
-  const keyExtractor = useCallback((item: ListItem, index: number) => {
-    if (item.type === "section-header") return `header-${item.title}`;
-    if (item.type === "empty") return `empty-${item.section}`;
-    return `skill-${item.skill.id}-${index}`;
-  }, []);
-
-  const renderItem = useCallback(
-    ({ item }: { item: ListItem }) => {
-      if (item.type === "section-header") {
-        return <SectionHeader title={item.title} count={item.count} />;
-      }
-      if (item.type === "empty") {
-        return <EmptySection section={item.section} hasSearch={q.length > 0} />;
-      }
+    if (item.type === "discover") {
       return (
         <View style={{ paddingHorizontal: spacing.md, marginBottom: 8 }}>
-          <SkillCard skill={item.skill} onToggle={handleToggle} />
+          <DiscoveredSkillCard skill={item.skill} />
         </View>
       );
-    },
-    [spacing.md, handleToggle, q],
-  );
-
-  const ListEmpty = useCallback(
-    () =>
-      isLoading ? (
-        <View style={{ paddingTop: spacing.md }}>
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </View>
-      ) : null,
-    [isLoading, spacing.md],
-  );
+    }
+    return (
+      <View style={{ paddingHorizontal: spacing.md, marginBottom: 8 }}>
+        <SkillCard skill={item.skill} onToggle={handleToggle} />
+      </View>
+    );
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: "#131416" }}>
@@ -424,7 +409,7 @@ export function SkillsScreen() {
           data={listItems}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
-          ListEmptyComponent={ListEmpty}
+          ListEmptyComponent={isLoading ? <LoadingSkeletons /> : null}
           contentContainerStyle={{
             paddingTop: spacing.xs,
             paddingBottom: insets.bottom + spacing.xl,

@@ -1,12 +1,8 @@
 /**
- * Unified bot command definitions.
+ * Unified bot command definitions, consumed by all platform adapters via their
+ * `registerCommands()`, which maps them to platform-native registration APIs.
  *
- * Each command is defined once here and consumed by all platform adapters.
- * The adapter's `registerCommands()` method maps these definitions to
- * platform-native command registration APIs.
- *
- * The `allCommands` array provides the full set for bulk registration
- * and for generating help text.
+ * `allCommands` holds the full set for bulk registration and generating help text.
  *
  * @module
  */
