@@ -23,7 +23,6 @@ import type {
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import {
   isAnyLlmConfigured,
-  isProviderConfigured,
   useSetupStatus,
 } from "@/features/settings/hooks/useSetupStatus";
 import { ACCOUNT_STEP, WIZARD_STEPS, type WizardStepMeta } from "../constants";
@@ -40,7 +39,6 @@ const WALLPAPER_STYLE = {
 const CONTINUE_REASONS: Record<string, string> = {
   account: "Create the admin account above to continue.",
   provider: "Chat requires a provider — add one to start chatting.",
-  search: "Add a search key to continue, or skip this step.",
 };
 
 function continueReasonFor(stepId: string, objectiveMet: boolean) {
@@ -48,7 +46,7 @@ function continueReasonFor(stepId: string, objectiveMet: boolean) {
   return CONTINUE_REASONS[stepId] ?? null;
 }
 
-/** Each step's objective — Continue advances once met; Skip always escapes. */
+/** Whether Continue may advance: only the required steps (admin, AI provider) can hold it. */
 function isStepObjectiveMet(
   stepId: WizardStepMeta["id"],
   status: SetupStatus,
@@ -59,8 +57,6 @@ function isStepObjectiveMet(
       return status.has_admin_account;
     case "provider":
       return isAnyLlmConfigured(status, catalog);
-    case "search":
-      return isProviderConfigured(status, "tavily");
     default:
       return true;
   }
