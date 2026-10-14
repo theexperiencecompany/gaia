@@ -33,7 +33,11 @@ export function PublicWorkflowRunView({ view }: { view: PublicWorkflowRun }) {
         </h1>
       </div>
       <div className="rounded-2xl bg-zinc-800 p-4">
-        {view.summary ? (
+        {view.status === "running" ? (
+          <p className="text-sm text-zinc-400">
+            This run is still finishing. Check back in a moment.
+          </p>
+        ) : view.summary ? (
           <RichContentRenderer content={view.summary} className="text-base" />
         ) : (
           <p className="text-sm text-zinc-500">

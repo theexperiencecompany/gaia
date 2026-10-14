@@ -53,10 +53,12 @@ from app.models.chat_models import (
 )
 from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
+from app.services.short_link_service import get_or_create_short_link
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import get_trace_id, log, log_context
 
@@ -257,6 +259,25 @@ async def deliver_message_to_conversation(
     return source if delivered else None
 
 
+async def _workflow_run_link_line(run: ExecutorRun) -> str:
+    """The run's heygaia.link as a closing line, or ``""`` for a run that is not
+    a recorded workflow execution.
+
+    Minted on delivery because the execution id exists from the moment the run
+    starts, while ``complete_execution`` only runs after delivery; the public
+    page reports the run's real status, so a viewer who opens it in that window
+    sees it running, not done. Appended to the narrated text so the saved web
+    message and every platform delivery carry the same URL the run history's
+    copy button returns.
+    """
+    if not (run.workflow_id and run.workflow_execution_id):
+        return ""
+    url = await get_or_create_short_link(
+        run.user.get("user_id", ""), ShortLinkTargetType.WORKFLOW_RUN, run.workflow_execution_id
+    )
+    return f"\n\n[Open this run]({url})"
+
+
 async def _narrate_and_deliver(
     run: ExecutorRun,
     result_text: str,
@@ -272,6 +293,7 @@ async def _narrate_and_deliver(
     user_id = run.user.get("user_id", "")
 
     notification_text = await _narrate_result(run, result_text, result_type, returned_note)
+    notification_text += await _workflow_run_link_line(run)
 
     # A HIL-resumed run reconciles onto the ORIGINAL live turn's message
     # (``run.bot_message_id``, see ``_record_pause``) instead of minting a

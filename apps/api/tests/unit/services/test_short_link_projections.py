@@ -131,6 +131,32 @@ class TestWorkflowRun:
         executions.get_for_user.assert_awaited_once_with("exec-1", "owner")
 
 
+class TestWorkflowRunStillFinishing:
+    async def test_a_run_not_yet_completed_reads_as_running(self):
+        """The link is delivered before the run is marked complete, so the page
+        must say it is still running rather than invent a finished run."""
+        execution = WorkflowExecutionDocument(
+            execution_id="exec-1",
+            workflow_id="wf-1",
+            user_id="owner",
+            status="running",
+            started_at=datetime(2026, 10, 14, 8, tzinfo=UTC),
+        )
+        workflow = AsyncMock()
+        workflow.title = "Inbox triage"
+        with (
+            patch(f"{_MOD}.workflow_executions_repository") as executions,
+            patch(f"{_MOD}.workflow_repository") as workflows,
+        ):
+            executions.get_for_user = AsyncMock(return_value=execution)
+            workflows.get_for_user = AsyncMock(return_value=workflow)
+            view = await project_target(ShortLinkTargetType.WORKFLOW_RUN, "owner", "exec-1")
+
+        assert view is not None
+        assert view.status == "running"
+        assert view.completed_at is None
+
+
 class TestSessionArtifact:
     async def test_a_malformed_target_id_projects_to_nothing(self):
         with patch(f"{_MOD}.stat_artifact", AsyncMock()) as stat:

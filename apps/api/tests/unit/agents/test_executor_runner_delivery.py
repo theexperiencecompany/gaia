@@ -27,6 +27,7 @@ from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
+from app.models.short_link_models import ShortLinkTargetType
 from app.services.analytics_service import AnalyticsEvents
 from shared.py.wide_events import log
 
@@ -271,6 +272,50 @@ class TestWorkflowResultReachesThePlatformDelivery:
         assert kwargs["user_id"] == "user-1"
         assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
         notify.assert_awaited_once()  # the in-app badge still fires alongside
+
+
+class TestWorkflowResultCarriesTheRunLink:
+    """The run's heygaia.link rides the delivered workflow message itself, so
+    the web message and every bot platform show the same URL the run history's
+    copy button hands out."""
+
+    RUN_URL = "https://heygaia.link/runlink1234"
+
+    async def _deliver_workflow(self, run: ExecutorRun) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="Triaged 12 emails.",
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock),
+            patch.object(
+                rd, "get_or_create_short_link", new_callable=AsyncMock, return_value=self.RUN_URL
+            ) as mint,
+        ):
+            await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
+        return save, deliver, mint
+
+    async def test_the_platform_and_saved_message_both_carry_the_run_link(self) -> None:
+        run = replace(_run(workflow=True), workflow_execution_id="exec-7")
+
+        save, deliver, mint = await self._deliver_workflow(run)
+
+        mint.assert_awaited_once_with("user-1", ShortLinkTargetType.WORKFLOW_RUN, "exec-7")
+        assert self.RUN_URL in deliver.await_args.kwargs["notification_text"]
+        saved = save.await_args.args[0].messages[0]
+        assert self.RUN_URL in saved.response
+
+    async def test_a_run_without_an_execution_record_gets_no_link(self) -> None:
+        save, deliver, mint = await self._deliver_workflow(_run(workflow=True))
+
+        mint.assert_not_awaited()
+        assert "heygaia.link" not in deliver.await_args.kwargs["notification_text"]
 
 
 class TestGetConversationSource:
