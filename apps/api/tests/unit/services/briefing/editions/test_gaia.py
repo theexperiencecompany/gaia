@@ -45,6 +45,10 @@ class TestDocumentShell:
         assert '<meta name="viewport" content="width=1180">' in html
         assert "width: 1180px;" in html
 
+    def test_no_label_is_set_in_uppercase(self) -> None:
+        # The founder bans tracked caps labels; section titles are sentence case.
+        assert "uppercase" not in _render()
+
     def test_masthead_carries_the_wordmark_and_the_accent_mark(self) -> None:
         html = _render()
 

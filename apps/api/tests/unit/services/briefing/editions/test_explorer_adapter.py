@@ -9,12 +9,18 @@ from typing import Any
 import pytest
 
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions.explorer_adapter import build_ed
+from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
 from app.services.briefing.editions.explorer_render import explorer_family_ids
 from app.services.briefing.editions.stamps import stamp_for
 
 ASSETS = {"ART1": "data:image/jpeg;base64,AAAA", "BAND": "data:image/webp;base64,BBBB"}
-CREDIT = "Wheat Field with Cypresses — Vincent van Gogh"
+ART: ExplorerArt = {
+    "src": "data:image/jpeg;base64,AAAA",
+    "title": "Wheat Field with Cypresses",
+    "artist": "Vincent van Gogh",
+    "year": "1889",
+    "medium": "oil on canvas",
+}
 
 
 def _item(text: str, kind: str = "note") -> dict[str, Any]:
@@ -45,7 +51,7 @@ def _build(
             edition_no=42,
             generated_local=generated_local,
             assets=ASSETS,
-            art_credit=CREDIT,
+            art=ART,
             family=family,
         )
     )
@@ -147,54 +153,8 @@ class TestEditionScalars:
 
 @pytest.mark.unit
 class TestArt:
-    def test_credit_splits_into_title_and_artist_on_the_em_dash(self) -> None:
-        ed = _build(_payload())
-
-        assert ed["art"] == {
-            "src": "data:image/jpeg;base64,AAAA",
-            "title": "Wheat Field with Cypresses",
-            "artist": "Vincent van Gogh",
-            "year": 1889,
-            "medium": "oil on canvas",
-        }
-
-    def test_credit_without_an_em_dash_keeps_the_whole_string_as_the_title(self) -> None:
-        ed = build_ed(
-            _payload(),
-            edition_no=1,
-            generated_local="6:02 AM",
-            assets=ASSETS,
-            art_credit="  Untitled  ",
-            family="swiss",
-        )
-
-        assert ed["art"]["title"] == "Untitled"
-        assert ed["art"]["artist"] == ""
-
-    def test_only_the_first_em_dash_splits_the_credit(self) -> None:
-        ed = build_ed(
-            _payload(),
-            edition_no=1,
-            generated_local="6:02 AM",
-            assets=ASSETS,
-            art_credit="A — B — C",
-            family="swiss",
-        )
-
-        assert ed["art"]["title"] == "A"
-        assert ed["art"]["artist"] == "B — C"
-
-    def test_missing_art_asset_leaves_an_empty_src(self) -> None:
-        ed = build_ed(
-            _payload(),
-            edition_no=1,
-            generated_local="6:02 AM",
-            assets={"BAND": "data:image/webp;base64,BBBB"},
-            art_credit=CREDIT,
-            family="swiss",
-        )
-
-        assert ed["art"]["src"] == ""
+    def test_the_painting_is_passed_through_verbatim(self) -> None:
+        assert _build(_payload())["art"] == ART
 
     def test_assets_map_is_passed_through_verbatim(self) -> None:
         ed = _build(_payload())
@@ -264,7 +224,7 @@ class TestContent:
             edition_no=1,
             generated_local="",
             assets=ASSETS,
-            art_credit=CREDIT,
+            art=ART,
             family=family,
         )["content"]
 
@@ -305,109 +265,28 @@ class TestContent:
 
 @pytest.mark.unit
 class TestHeadline:
-    @pytest.mark.parametrize("family", ["memo", "postal", "broadsheet"])
-    def test_families_with_a_title_slot_get_both_lines(self, family: str) -> None:
-        ed = build_ed(
-            _payload(headline="Two replies need you"),
-            edition_no=1,
-            generated_local="",
-            assets=ASSETS,
-            art_credit=CREDIT,
-            family=family,
-        )
-
-        assert ed["headline"] == "Two replies need you"
-        assert ed["deck"] == "Three things need you before noon."
-
-    @pytest.mark.parametrize("family", ["playbill", "receipt", "swiss"])
-    def test_a_deck_only_family_leads_with_the_headline(self, family: str) -> None:
-        ed = build_ed(
-            _payload(headline="Two replies need you"),
-            edition_no=1,
-            generated_local="",
-            assets=ASSETS,
-            art_credit=CREDIT,
-            family=family,
-        )
+    @pytest.mark.parametrize("family", ["memo", "postal", "broadsheet", "receipt"])
+    def test_every_family_leads_with_the_headline(self, family: str) -> None:
+        ed = _build(_payload(headline="Two replies need you"), family=family)
 
         assert ed["deck"] == "Two replies need you"
 
+    def test_an_empty_bucket_is_never_padded_with_a_placeholder_row(self) -> None:
+        content = _build(_payload(), family="boardingpass")["content"]
+
+        assert (content["today"], content["overnight"], content["decisions"]) == ([], [], [])
+
 
 @pytest.mark.unit
-class TestFixedSlots:
-    """Some vendored families index fixed item slots.
+class TestRecipient:
+    def test_the_full_and_first_name_address_the_edition(self) -> None:
+        ed = _build(_payload(recipient_name="  Aryan   Randeriya "))
 
-    The founder fixture always held three today, three overnight and two decision items.
-    A family handed fewer threw in the page script, and Chromium shipped a blank 2px PNG.
-    """
+        assert ed["recipient"] == {"name": "Aryan Randeriya", "first": "Aryan"}
 
-    def _sparse(self) -> BriefingPayload:
-        return _payload(
-            sections=[{"numeral": "I", "title": "X", "items": [_item("Pick a slot", "you")]}]
-        )
-
-    @pytest.mark.parametrize(
-        ("family", "today", "overnight", "decisions"),
-        [
-            ("boardingpass", 3, 3, 2),
-            ("metromap", 3, 3, 2),
-            ("menu", 3, 3, 1),
-            ("invoice", 3, 3, 1),
-            ("almanac", 2, 0, 1),
-            ("broadsheet", 0, 0, 1),
-        ],
-    )
-    def test_family_gets_every_slot_it_reads(
-        self, family: str, today: int, overnight: int, decisions: int
-    ) -> None:
-        content = build_ed(
-            self._sparse(),
-            edition_no=1,
-            generated_local="",
-            assets=ASSETS,
-            art_credit=CREDIT,
-            family=family,
-        )["content"]
-
-        counts = (len(content["today"]), len(content["overnight"]), len(content["decisions"]))
-        assert counts == (today, overnight, decisions)
-
-    def test_padding_follows_the_real_items_and_reads_as_an_empty_slot(self) -> None:
-        content = build_ed(
-            self._sparse(),
-            edition_no=1,
-            generated_local="",
-            assets=ASSETS,
-            art_credit=CREDIT,
-            family="boardingpass",
-        )["content"]
-
-        assert [d["label"] for d in content["decisions"]] == ["a slot", "—"]
-        assert content["decisions"][1] == {"verb": "", "label": "—", "note": None, "empty": True}
-        assert [(r["label"], r["t24"], r.get("empty")) for r in content["today"]] == [
-            ("—", None, True)
-        ] * 3
-
-    def test_a_full_bucket_is_never_padded(self) -> None:
-        payload = _payload(
-            calendar=[{"date": "2026-07-05", "start": None, "title": f"n{i}"} for i in range(4)]
-        )
-        content = build_ed(
-            payload,
-            edition_no=1,
-            generated_local="",
-            assets=ASSETS,
-            art_credit=CREDIT,
-            family="menu",
-        )["content"]
-
-        assert [r["label"] for r in content["today"]] == ["n0", "n1", "n2", "n3"]
-
-
-def _asks(*texts: str) -> BriefingPayload:
-    return _payload(
-        sections=[{"numeral": "I", "title": "X", "items": [_item(t, "you") for t in texts]}]
-    )
+    @pytest.mark.parametrize("name", [None, "", "   "])
+    def test_no_name_leaves_no_recipient(self, name: str | None) -> None:
+        assert _build(_payload(recipient_name=name))["recipient"] is None
 
 
 @pytest.mark.unit
@@ -428,6 +307,12 @@ class TestOvernightClock:
         assert overnight == [
             {"t24": "13:30", "label": "Shipped the deck", "note": None, "tag": "DONE"}
         ]
+
+
+def _asks(*texts: str) -> BriefingPayload:
+    return _payload(
+        sections=[{"numeral": "I", "title": "X", "items": [_item(t, "you") for t in texts]}]
+    )
 
 
 @pytest.mark.unit
@@ -485,14 +370,13 @@ class TestStats:
 
         assert (stats["done"], stats["you"], stats["gaia"]) == (1, 1, None)
 
-    def test_no_tallies_leaves_every_figure_unknown(self) -> None:
-        assert _build(_payload())["content"]["stats"] == {
-            "done": None,
-            "you": None,
-            "gaia": None,
-            "mail": None,
-            "focus": None,
-        }
+    def test_no_tallies_leaves_no_stats_block(self) -> None:
+        assert _build(_payload())["content"]["stats"] is None
+
+    def test_zero_tallies_leave_no_stats_block(self) -> None:
+        payload = _payload(tallies={"done_by_you": 0, "done_by_gaia": 0})
+
+        assert _build(payload)["content"]["stats"] is None
 
 
 _WEEK = {

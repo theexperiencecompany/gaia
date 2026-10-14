@@ -1,7 +1,7 @@
 "use client";
 
+import { formatHour12 } from "@shared/utils";
 import { useEffect, useMemo, useRef } from "react";
-import { formatHour12 } from "@/utils/date/hours";
 import {
   DAY_START_HOUR,
   DEMO_CALENDARS,

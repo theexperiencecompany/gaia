@@ -19,7 +19,6 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
-    default_quiet_hours,
 )
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.canvas_markdown import bounded_canvas
@@ -27,7 +26,6 @@ from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
-from app.services.user_service import get_user_by_id
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
 
@@ -72,16 +70,10 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
 
     # Track health-check calls per user to cap LLM usage per sweep
     health_checks_used: dict[str, int] = {}
-    # Cache the quiet-hours decision per user for the duration of this sweep.
-    awake_cache: dict[str, bool] = {}
 
-    archived, notified_expired = await _process_expired(
-        expired, pool, now, health_checks_used, awake_cache
-    )
-    notified_overdue = await _process_overdue(overdue, pool, now, awake_cache)
-    requeued, needs_attention_todos = await _process_dormant(
-        dormant, pool, now, health_checks_used, awake_cache
-    )
+    archived, notified_expired = await _process_expired(expired, pool, health_checks_used)
+    notified_overdue = await _process_overdue(overdue, pool)
+    requeued, needs_attention_todos = await _process_dormant(dormant, pool, health_checks_used)
 
     if needs_attention_todos:
         await _send_dormant_digest(needs_attention_todos)
@@ -179,9 +171,7 @@ async def _classify_tracked_todos(
 async def _process_expired(
     expired: list[TodoDocument],
     pool: ArqRedis,
-    now: datetime,
     health_checks_used: dict[str, int],
-    awake_cache: dict[str, bool],
 ) -> tuple[int, int]:
     """Run the health-check agent on expired todos; archive or notify each.
 
@@ -191,9 +181,6 @@ async def _process_expired(
     notified_expired = 0
     for todo in expired:
         uid = todo.user_id
-        # Defer to a sweep outside quiet hours: no cooldown consumed, retried later.
-        if not await _outside_quiet_hours(uid, now, awake_cache):
-            continue
         if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
             continue
         # Counted before the call: a failed check has still spent the budget.
@@ -221,15 +208,11 @@ async def _process_expired(
 async def _process_overdue(
     overdue: list[TodoDocument],
     pool: ArqRedis,
-    now: datetime,
-    awake_cache: dict[str, bool],
 ) -> int:
     """Send an individual notification for each overdue todo. Returns notified count."""
     notified_overdue = 0
     for todo in overdue:
         uid = todo.user_id
-        if not await _outside_quiet_hours(uid, now, awake_cache):
-            continue
         try:
             notified = await _notify_overdue(todo, pool)
         except Exception as exc:
@@ -250,9 +233,7 @@ async def _process_overdue(
 async def _process_dormant(
     dormant: list[TodoDocument],
     pool: ArqRedis,
-    now: datetime,
     health_checks_used: dict[str, int],
-    awake_cache: dict[str, bool],
 ) -> tuple[int, list[TodoDocument]]:
     """Re-queue dormant todos via the agent, else collect them for the digest.
 
@@ -265,8 +246,6 @@ async def _process_dormant(
     needs_attention_candidates: list[TodoDocument] = []
     for todo in dormant:
         uid = todo.user_id
-        if not await _outside_quiet_hours(uid, now, awake_cache):
-            continue
         if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
             needs_attention_candidates.append(todo)
             continue
@@ -676,24 +655,3 @@ async def _register_notification(pool: ArqRedis, todo_id: str) -> bool:
     await pool.set(strike_key, str(strike), ex=STRIKE_TTL_DAYS * SECONDS_PER_DAY)
     await _set_cooldown(pool, todo_id, NOTIFICATION_BACKOFF_DAYS[strike - 1])
     return True
-
-
-async def _outside_quiet_hours(user_id: str, now: datetime, cache: dict[str, bool]) -> bool:
-    """Whether now falls outside user_id's quiet hours, on their clock (cached per sweep).
-
-    Proactive notifications wait out the user's quiet hours so they never arrive
-    overnight. A user that can't be read gets the default window on UTC.
-    """
-    if user_id in cache:
-        return cache[user_id]
-
-    user = None
-    try:
-        user = await get_user_by_id(user_id)
-    except Exception as exc:
-        log.warning("maintenance_sweep.user_lookup_failed", user_id=user_id, error=str(exc))
-
-    window = user.quiet_hours if user else default_quiet_hours()
-    result = not window.covers(now, user.timezone if user else None)
-    cache[user_id] = result
-    return result

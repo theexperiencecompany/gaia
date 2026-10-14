@@ -9,9 +9,12 @@ every failure path stays best-effort (logs, never raises).
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
 from app.services.delivery.chat_channel import ChatChannel
@@ -24,6 +27,8 @@ PLATFORM_CHAT = "app.agents.core.background.platform_chat"
 USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 USER_ID = "user-1"
 TEXT = f"Report is ready.{NEW_MESSAGE_BREAKER}It has 3 pages."
+
+pytestmark = pytest.mark.usefixtures("outside_quiet_hours")
 
 TELEGRAM = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-123")
 
@@ -38,7 +43,11 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_blank_text_is_a_no_op(self) -> None:
         with _channel(TELEGRAM) as resolve:
             await deliver_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text="   ", origin=self.ORIGIN
+                user=USER,
+                user_id=USER_ID,
+                notification_text="   ",
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
 
         resolve.assert_not_awaited()
@@ -49,7 +58,11 @@ class TestDeliverWorkflowResultToPlatforms:
             patch(f"{PLATFORM_CHAT}.BotService.get_or_create_session", AsyncMock()) as session,
         ):
             await deliver_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
 
         session.assert_not_called()
@@ -61,7 +74,11 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             async with captured_wide_event() as event:
                 await deliver_result_to_platforms(
-                    user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
+                    user=USER,
+                    user_id=USER_ID,
+                    notification_text=TEXT,
+                    origin=self.ORIGIN,
+                    message_class=ProactiveMessageClass.ROUTINE,
                 )
 
         session.assert_not_called()
@@ -84,7 +101,11 @@ class TestDeliverWorkflowResultToPlatforms:
             ) as publish,
         ):
             await deliver_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
 
         resolve.assert_awaited_once_with(USER_ID)
@@ -128,10 +149,34 @@ class TestDeliverWorkflowResultToPlatforms:
             patch(f"{PLATFORM_CHAT}.record_platform_delivery", AsyncMock()),
         ):
             delivered = await deliver_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
 
         assert delivered is ConversationSource.TELEGRAM
+
+    async def test_a_message_held_for_quiet_hours_counts_as_reaching_the_platform(self) -> None:
+        """A held result is not undelivered: a caller must not fall back to another surface."""
+        with (
+            _channel(TELEGRAM),
+            patch(
+                f"{MODULE}.post_to_platform_chat",
+                AsyncMock(return_value=OutboundResult.DEFERRED),
+            ) as post,
+        ):
+            delivered = await deliver_result_to_platforms(
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.USER_TIMED,
+            )
+
+        assert delivered is ConversationSource.TELEGRAM
+        assert post.await_args.kwargs["message_class"] is ProactiveMessageClass.USER_TIMED
 
     async def test_a_skipped_publish_reports_nobody_was_reached(self) -> None:
         with (
@@ -147,7 +192,11 @@ class TestDeliverWorkflowResultToPlatforms:
             ),
         ):
             delivered = await deliver_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
 
         assert delivered is None
@@ -166,7 +215,11 @@ class TestDeliverWorkflowResultToPlatforms:
             ),
         ):
             delivered = await deliver_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
 
         assert delivered is None
@@ -174,7 +227,11 @@ class TestDeliverWorkflowResultToPlatforms:
     async def test_blank_text_reports_nobody_was_reached(self) -> None:
         assert (
             await deliver_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text="   ", origin=self.ORIGIN
+                user=USER,
+                user_id=USER_ID,
+                notification_text="   ",
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
             is None
         )
@@ -195,7 +252,11 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             async with captured_wide_event() as event:
                 await deliver_result_to_platforms(
-                    user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
+                    user=USER,
+                    user_id=USER_ID,
+                    notification_text=TEXT,
+                    origin=self.ORIGIN,
+                    message_class=ProactiveMessageClass.ROUTINE,
                 )
 
         errors = [
@@ -217,6 +278,7 @@ class TestDeliverWorkflowResultToPlatforms:
                 user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
                 exclude_source=ConversationSource.TELEGRAM,
             )
 
@@ -243,6 +305,7 @@ class TestDeliverWorkflowResultToPlatforms:
                 user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
                 exclude_source=ConversationSource.SLACK,
             )
 
@@ -258,7 +321,11 @@ class TestDeliverWorkflowResultToPlatforms:
             patch(f"{PLATFORM_CHAT}.publish_outbound_message", AsyncMock()) as publish,
         ):
             await deliver_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
 
         publish.assert_not_called()
@@ -293,6 +360,7 @@ class TestDeliveredResultsReachTheSessionThread:
                 user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
         return recorder
 
@@ -336,6 +404,7 @@ class TestDeliveredResultsReachTheSessionThread:
                 user_id=USER_ID,
                 notification_text="hello",
                 origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
         assert recorder.await_args.args[1].startswith(
             "[Delivered to the user on WhatsApp (result of"
@@ -362,6 +431,7 @@ class TestDeliveredResultsReachTheSessionThread:
                 user_id=USER_ID,
                 notification_text="hello",
                 origin=self.ORIGIN,
+                message_class=ProactiveMessageClass.ROUTINE,
             )
         assert recorder.await_args.args[1].startswith(
             "[Delivered to the user on iMessage (result of"
@@ -396,6 +466,7 @@ class TestVariantBreakTokens:
                 user_id=USER_ID,
                 notification_text=text,
                 origin='workflow "Morning digest" (id wf-1)',
+                message_class=ProactiveMessageClass.ROUTINE,
             )
 
         bubbles = publish.await_args.args[2]

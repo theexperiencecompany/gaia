@@ -6,19 +6,18 @@ script-tag escaping, the failure path), not on rastered pixels.
 
 from collections.abc import Iterator
 import json
-from pathlib import Path
 import re
 from typing import Any
 
 import pytest
 
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions import explorer_render
+from app.services.briefing.editions.artworks import ARTWORKS
 from app.services.briefing.editions.explorer_render import (
-    _art_credit,
     _asset_data_uris,
     _font_faces_css,
     _module_sources,
+    _raw_assets,
     explorer_family_ids,
     render_explorer_edition,
 )
@@ -29,8 +28,8 @@ from app.services.briefing.editions.stamps import stamp_asset_url
 _CACHED_LOADERS = (
     _module_sources,
     explorer_family_ids,
+    _raw_assets,
     _asset_data_uris,
-    _art_credit,
     _font_faces_css,
 )
 
@@ -47,39 +46,34 @@ def _clear_loader_caches() -> Iterator[None]:
 EXPECTED_FAMILIES = (
     "band",
     "playfair",
-    "postal",
-    "metromap",
-    "boardingpass",
-    "librarycard",
-    "menu",
+    "broadsheet",
     "gradient",
-    "invoice",
     "exhibition",
     "weekly",
-    "receipt",
+    "librarycard",
+    "menu",
+    "invoice",
+    "postal",
     "swiss",
     "dayline",
-    "playbill",
     "memo",
-    "broadsheet",
     "almanac",
+    "receipt",
     "flightplan",
     "instrument",
+    "metromap",
+    "boardingpass",
 )
 
-EXPECTED_ASSET_KEYS = {
-    "ART1",
-    "BAND",
-    "STAMP_TOKYO",
-    "STAMP_LONDON",
-    "STAMP_PARIS",
-    "STAMP_VENICE",
-    "STAMP_ROME",
-    "STAMP_KYOTO",
-    "STAMP_NEWYORK",
-    "STAMP_AMSTERDAM",
-    "STAMP_ISTANBUL",
-    "STAMP_AGRA",
+EXPECTED_ASSET_KEYS = {"BAND", "TEC_MARK"}
+# The postal template's own city axis, loaded by URL when no city was drawn.
+AXIS_CITY_KEYS = {
+    "CITY_TOKYO",
+    "CITY_PARIS",
+    "CITY_LONDON",
+    "CITY_NEWYORK",
+    "CITY_MUMBAI",
+    "CITY_ISTANBUL",
 }
 
 
@@ -120,11 +114,12 @@ class TestFamilyIds:
     def test_ids_are_read_from_the_vendored_register_calls(self) -> None:
         assert explorer_family_ids() == EXPECTED_FAMILIES
 
-    def test_there_are_twenty_distinct_families(self) -> None:
+    def test_there_are_nineteen_distinct_families_and_no_playbill(self) -> None:
         ids = explorer_family_ids()
 
-        assert len(ids) == 20
-        assert len(set(ids)) == 20
+        assert len(ids) == 19
+        assert len(set(ids)) == 19
+        assert "playbill" not in ids
 
     def test_axis_option_ids_are_not_mistaken_for_families(self) -> None:
         ids = explorer_family_ids()
@@ -153,13 +148,13 @@ class TestUnknownFamily:
 
 @pytest.mark.unit
 class TestDocumentShell:
-    def test_document_is_a_full_html_page_at_the_1180px_canvas(self) -> None:
+    def test_document_is_a_full_html_page_at_the_540px_canvas(self) -> None:
         html = _render()
 
         assert html.startswith('<!doctype html>\n<html lang="en">')
         assert html.endswith("</body>\n</html>")
-        assert '<meta name="viewport" content="width=1180">' in html
-        assert "body { width: 1180px; }" in html
+        assert '<meta name="viewport" content="width=540">' in html
+        assert "body { width: 540px; }" in html
 
     def test_root_node_and_render_call_are_present(self) -> None:
         html = _render()
@@ -171,7 +166,7 @@ class TestDocumentShell:
     def test_every_vendored_module_is_inlined(self) -> None:
         html = _render()
 
-        assert html.count("EXPLORER.register({") == 20
+        assert html.count("EXPLORER.register({") == 19
         assert len(_module_sources()) == 10
 
     def test_each_module_gets_its_own_script_tag_on_its_own_line(self) -> None:
@@ -223,25 +218,34 @@ class TestEmbeddedLiterals:
         assert ed["n"] == 12
         assert ed["time"] == "6:02 AM"
         assert ed["time24"] == "06:02"
-        assert ed["headline"] == "A quiet Sunday"
         assert ed["deck"] == "A quiet Sunday"
         assert ed["dateLong"] == "Sunday, 5 July 2026"
         assert ed["content"]["today"][0]["label"] == "Standup"
         assert ed["content"]["stats"]["done"] == 3
 
-    def test_art_credit_comes_from_the_vendored_credits_file(self) -> None:
-        ed = _embedded_const(_render(), "ed")
+    def test_the_painting_and_its_catalogue_line_come_from_the_artwork_pool(self) -> None:
+        artwork = ARTWORKS[12 % len(ARTWORKS)]
 
-        assert ed["art"]["title"] == "Wheat Field with Cypresses"
-        assert ed["art"]["artist"] == "Vincent van Gogh"
+        art = _embedded_const(_render(edition_no=12), "ed")["art"]
 
-    def test_asset_map_is_restricted_to_the_known_mime_keys(self) -> None:
+        assert (art["title"], art["artist"]) == (artwork.title, artwork.artist)
+        assert (art["year"], art["medium"]) == (artwork.year, artwork.medium)
+        assert art["src"] == f"data:image/jpeg;base64,{_raw_assets()[artwork.asset_key]}"
+
+    def test_consecutive_editions_hang_different_paintings(self) -> None:
+        titles = [
+            _embedded_const(_render(edition_no=n), "ed")["art"]["title"]
+            for n in range(len(ARTWORKS))
+        ]
+
+        assert sorted(titles) == sorted(a.title for a in ARTWORKS)
+
+    def test_the_asset_map_is_the_band_and_the_experience_company_mark(self) -> None:
         ed = _embedded_const(_render(), "ed")
 
         assert set(ed["assets"]) == EXPECTED_ASSET_KEYS
-        assert ed["assets"]["ART1"].startswith("data:image/jpeg;base64,")
         assert ed["assets"]["BAND"].startswith("data:image/webp;base64,")
-        assert ed["art"]["src"] == ed["assets"]["ART1"]
+        assert ed["assets"]["TEC_MARK"].startswith("data:image/webp;base64,UklGR")
 
     def test_assets_are_exposed_on_the_explorer_shim_too(self) -> None:
         html = _render()
@@ -251,11 +255,10 @@ class TestEmbeddedLiterals:
         assert shim_match is not None
         assert json.loads(shim_match.group(1)) == _embedded_const(html, "ed")["assets"]
 
-    def test_title_slot_families_put_the_lede_in_the_deck(self) -> None:
+    def test_every_family_leads_with_the_headline(self) -> None:
         ed = _embedded_const(_render(family="memo"), "ed")
 
-        assert ed["headline"] == "A quiet Sunday"
-        assert ed["deck"] == "Two approvals and one flight."
+        assert ed["deck"] == "A quiet Sunday"
 
 
 @pytest.mark.unit
@@ -267,12 +270,13 @@ class TestPostalStamp:
         assert ed["assets"]["STAMP_CITY"] == stamp_asset_url("paris")
         assert ed["assets"]["STAMP_CITY"].startswith("https://")
         assert ed["stamp"]["id"] == "paris"
-        assert ed["stamp"]["src"] == "STAMP_CITY"
+        assert ed["stamp"]["key"] == "STAMP_CITY"
 
-    def test_postal_without_a_drawn_city_keeps_the_template_city_axis(self) -> None:
+    def test_postal_without_a_drawn_city_loads_the_template_city_axis_art(self) -> None:
         ed = _embedded_const(_render(family="postal"), "ed")
 
-        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS
+        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS | AXIS_CITY_KEYS
+        assert ed["assets"]["CITY_NEWYORK"] == stamp_asset_url("new_york_city")
         assert ed["stamp"] is None
 
     def test_other_families_ignore_the_stamp_city(self) -> None:
@@ -284,23 +288,6 @@ class TestPostalStamp:
     def test_a_postal_city_without_hosted_art_fails_loud(self) -> None:
         with pytest.raises(KeyError, match="atlantis"):
             _render(_payload(stamp_city="atlantis"), family="postal")
-
-
-@pytest.mark.unit
-class TestArtCredit:
-    def test_credit_is_the_art1_entry_of_the_vendored_credits_file(self) -> None:
-        assert _art_credit() == "Wheat Field with Cypresses — Vincent van Gogh"
-
-    def test_a_credits_file_without_art1_degrades_to_an_empty_credit(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # An empty string, never None: build_ed splits the credit on an em dash,
-        # so a None here would crash the render instead of dropping the caption.
-        credits_file = tmp_path / "credits.json"
-        credits_file.write_text(json.dumps({"STAMP_ROME": "A statue — Someone"}))
-        monkeypatch.setattr(explorer_render, "_CREDITS_JSON", credits_file)
-
-        assert _art_credit() == ""
 
 
 @pytest.mark.unit

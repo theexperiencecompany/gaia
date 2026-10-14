@@ -1,736 +1,226 @@
-/* ================================================================
-   tpl-tech.js — two "techy" templates for the Edition Explorer.
-   Register: flightplan (a drafted elevation of the day, chalk on
-   blue paper) and instrument (Braun/Rams instrument panel as print).
-   No terminal-green, no glow, no cyberpunk — real drafting heritage.
-   ================================================================ */
+/* ============================================================================
+   tpl-tech.js (round 2) — The Blueprint and The Instrument on a 540 px
+   portrait canvas (export at 3x). Body 17 px or larger.
+   Reading order: headline -> needs you -> today -> done overnight -> stats;
+   empty sections are omitted.
+   ========================================================================== */
+(() => {
+  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const grain = (id, freq) =>
+    `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
+  const hours = (t24) => {
+    const [h, m] = t24.split(":").map(Number);
+    return h + m / 60;
+  };
+  const pad2 = (n) => String(n).padStart(2, "0");
+  /* Position on the 06:00-24:00 operating window, 0..1; untimed deadlines sit at 18:00. */
+  const pos = (e) => ((e.t24 ? hours(e.t24) : 18) - 6) / 18;
+  /* Stagger callouts that would collide into alternating levels. */
+  function levels(items, minGap) {
+    let last = -1;
+    let lvl = 0;
+    return items.map((e) => {
+      const p = pos(e);
+      lvl = p - last < minGap ? (lvl + 1) % 2 : 0;
+      last = p;
+      return lvl;
+    });
+  }
 
-/* ---- shared local helpers (module-scoped, deterministic) ---- */
-function _two(n) {
-  return String(n).padStart(2, "0");
-}
-function _esc(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-function _sub(note) {
-  return note ? `<span class="sub">${_esc(note)}</span>` : "";
-}
-/* "13:30" -> 13.5 (decimal hours) */
-function _hr(t24) {
-  const [h, m] = t24.split(":").map(Number);
-  return h + m / 60;
-}
-/* decimal hours -> "HH:MM" */
-function _clock(hr) {
-  const h = Math.floor(hr + 1e-6);
-  const m = Math.round((hr - h) * 60);
-  return `${_two(h)}:${_two(m)}`;
-}
+  /* ==========================================================================
+     THE BLUEPRINT — signature moves from the desktop original:
+       cyanotype ground with a drafting grid and a ruled border; "DETAIL A"
+       sheet label; the day drawn as an elevation along a dimensioned
+       06-24 axis with leader lines and arrowed spans; a dimension marking
+       the free evening; a detail circle around the deadline; the overnight
+       as a hatched section with numbered balloons; numbered NOTES; a title
+       block (project, sheet, scale, drawn by, date) with the yield.
+     Added detail: revision triangles on what needs you, fold creases from
+     a sheet stored folded, diazo edge fade.
+     ======================================================================== */
+  EXPLORER.register({
+    id: "flightplan",
+    name: "The Blueprint",
+    axes: {
+      stock: [
+        { id: "cyanotype", label: "cyanotype", stock: "#1b3f9a", ink: "#eef3fc", soft: "#c3d1ef", line: "rgba(238,243,252,.6)", grid: "rgba(238,243,252,.075)", warn: "#ffd28a" },
+        { id: "prussian", label: "prussian blue", stock: "#163a63", ink: "#edf4fa", soft: "#bfd0e2", line: "rgba(237,244,250,.6)", grid: "rgba(237,244,250,.07)", warn: "#ffcf8f" },
+        { id: "vandyke", label: "vandyke brown", stock: "#4a2e1f", ink: "#f5ebdd", soft: "#dcc9b2", line: "rgba(245,235,221,.55)", grid: "rgba(245,235,221,.07)", warn: "#ffc98a" },
+        { id: "diazo", label: "diazo whiteprint", stock: "#f1efe6", ink: "#1f3487", soft: "#3d4f99", line: "rgba(31,52,135,.55)", grid: "rgba(31,52,135,.08)", warn: "#a8321c" },
+      ],
+      face: [
+        { id: "helvetica", label: "Helvetica Neue", stack: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
+        { id: "condensed", label: "Avenir Condensed", stack: "'Avenir Next Condensed', 'Helvetica Neue', sans-serif" },
+      ],
+      folds: [
+        { id: "folded", label: "folded sheet" },
+        { id: "flat", label: "flat sheet" },
+      ],
+    },
+    css: `
+.t-flightplan { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; padding: 18px; color: var(--ink); font: 400 17px/1.45 var(--face);
+  background: radial-gradient(120% 100% at 50% 40%, transparent 60%, rgba(0,0,0,.16) 100%),
+    linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 18px 18px, linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 18px 18px, var(--stock); }
+.t-flightplan * { box-sizing: border-box; margin: 0; padding: 0; }
+.t-flightplan .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: soft-light; opacity: .4; z-index: -1; }
+.t-flightplan .fold { position: absolute; pointer-events: none; }
+.t-flightplan .fold.h { left: 0; right: 0; top: 50%; height: 3px; background: linear-gradient(180deg, rgba(0,0,0,.14), rgba(255,255,255,.12)); }
+.t-flightplan .fold.v { top: 0; bottom: 0; left: 50%; width: 3px; background: linear-gradient(90deg, rgba(0,0,0,.12), rgba(255,255,255,.1)); }
+.t-flightplan .sheet { position: relative; border: 1.5px solid var(--line); outline: 1px solid var(--line); outline-offset: 4px; padding: 20px 20px 18px; }
+.t-flightplan .lbl { font-size: 14px; font-weight: 700; letter-spacing: 0; }
+.t-flightplan .strip { display: flex; justify-content: space-between; color: var(--soft); }
+.t-flightplan h1 { font-size: 27px; line-height: 1.2; font-weight: 600; margin-top: 14px; }
+.t-flightplan h2 { display: flex; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid var(--line); margin: 36px 0 12px; }
+.t-flightplan .rev { display: grid; grid-template-columns: 34px 1fr; padding: 6px 0; }
+.t-flightplan .tri { width: 24px; height: 22px; color: var(--warn); }
+.t-flightplan .rev b { color: var(--warn); font-weight: 700; }
+.t-flightplan .soft { color: var(--soft); }
+.t-flightplan svg.elev { display: block; width: 100%; height: auto; overflow: visible; }
+.t-flightplan svg.elev text { font-family: inherit; fill: currentColor; }
+.t-flightplan .sched { display: grid; grid-template-columns: 30px 64px 1fr; padding: 6px 0; align-items: baseline; }
+.t-flightplan .ball { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1.3px solid currentColor; border-radius: 50%; font-size: 12px; font-weight: 700; }
+.t-flightplan .t { font-weight: 700; font-variant-numeric: tabular-nums; }
+.t-flightplan .section { display: grid; grid-template-columns: 70px 1fr; gap: 14px; }
+.t-flightplan .hatch { border: 1.3px solid var(--line); background: repeating-linear-gradient(45deg, var(--line) 0 1px, transparent 1px 9px); }
+.t-flightplan .ov { display: grid; grid-template-columns: 30px 56px 1fr; padding: 5px 0; align-items: baseline; }
+.t-flightplan .tb { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--line); }
+.t-flightplan .tb div { padding: 7px 10px; border-top: 1px solid var(--line); }
+.t-flightplan .tb div:nth-child(-n+2) { border-top: 0; }
+.t-flightplan .tb div:nth-child(even) { border-left: 1px solid var(--line); }
+.t-flightplan .tb .wide { grid-column: 1 / -1; border-left: 0 !important; }
+.t-flightplan .tb span { display: block; font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
+.t-flightplan .tb b { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+`,
+    render(ed, skin) {
+      const c = ed.content;
+      const needs = c.decisions.slice(0, 3);
+      const W = 500;
+      const X = (p) => 10 + p * (W - 20);
+      const parts = [];
+      const tri = (n) => `<svg class="tri" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 1.5 L23 20.5 H1 Z" fill="none" stroke="currentColor" stroke-width="1.6"/><text x="12" y="17" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">${n}</text></svg>`;
+      if (needs.length) parts.push(`<h2 class="lbl"><span>Revisions · needs your call</span><span>${pad2(needs.length)}</span></h2>${needs.map((d, i) => `<div class="rev" data-role="body">${tri(i + 1)}<span><b>${esc(d.verb)}</b> — ${esc(d.label)}${d.note ? ` <span class="soft">(${esc(d.note)})</span>` : ""}</span></div>`).join("")}`);
+      if (c.today.length) {
+        const lv = levels(c.today, 0.1);
+        const ticks = [6, 9, 12, 15, 18, 21, 24].map((h) => `<line x1="${X((h - 6) / 18)}" y1="112" x2="${X((h - 6) / 18)}" y2="122" stroke="currentColor" stroke-width="1"/><text x="${X((h - 6) / 18)}" y="140" text-anchor="middle" font-size="12" font-weight="700">${pad2(h)}</text>`).join("");
+        const marks = c.today.map((e, i) => {
+          const x = X(pos(e));
+          const y = lv[i] ? 30 : 62;
+          if (!e.t24) return `<circle cx="${x}" cy="112" r="20" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3"/><line x1="${x}" y1="92" x2="${x}" y2="${y + 11}" stroke="currentColor" stroke-width=".8"/><circle cx="${x}" cy="${y}" r="11" fill="var(--stock)" stroke="currentColor" stroke-width="1.3"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="12" font-weight="700">${i + 1}</text>`;
+          const x2 = X(Math.min(1, pos(e) + 0.5 / 18)); // a 30-minute span
+          return `<line x1="${x}" y1="${y + 11}" x2="${x}" y2="112" stroke="currentColor" stroke-width=".8"/><line x1="${x}" y1="104" x2="${x2}" y2="104" stroke="currentColor" stroke-width="1"/><path d="M${x} 104 l5 -3 v6 z M${x2} 104 l-5 -3 v6 z" fill="currentColor"/><circle cx="${x}" cy="${y}" r="11" fill="var(--stock)" stroke="currentColor" stroke-width="1.3"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="12" font-weight="700">${i + 1}</text>`;
+        }).join("");
+        const lastT = Math.max(...c.today.filter((e) => e.t24).map((e) => hours(e.t24) + 0.5), 0);
+        const free = lastT && lastT < 22 ? `<line x1="${X((lastT + 0.5 - 6) / 18)}" y1="160" x2="${X(1)}" y2="160" stroke="currentColor" stroke-width="1"/><path d="M${X((lastT + 0.5 - 6) / 18)} 160 l6 -3 v6 z M${X(1)} 160 l-6 -3 v6 z" fill="currentColor"/><text x="${(X((lastT + 0.5 - 6) / 18) + X(1)) / 2}" y="178" text-anchor="middle" font-size="12" font-weight="700">${pad2(Math.ceil(lastT + 0.5))}:00 – 24:00 · YOURS</text>` : "";
+        const svg = `<svg class="elev" viewBox="0 0 ${W} 186" aria-hidden="true"><line x1="${X(0)}" y1="117" x2="${X(1)}" y2="117" stroke="currentColor" stroke-width="1.6"/>${ticks}${marks}${free}</svg>`;
+        parts.push(`<h2 class="lbl"><span>Elevation · the day, 06–24</span><span>Scale 1:1</span></h2>${svg}${c.today.map((e, i) => `<div class="sched" data-role="body"><span class="ball">${i + 1}</span><span class="t">${e.t24 ? esc(e.t24) : "EOD"}</span><span>${esc(e.label)}${e.note ? ` <span class="soft">(${esc(e.note)})</span>` : ""}</span></div>`).join("")}`);
+      }
+      if (c.overnight.length)
+        parts.push(`<h2 class="lbl"><span>Section 00–06 · while you slept</span><span>${pad2(c.overnight.length)}</span></h2><div class="section"><div class="hatch" aria-hidden="true"></div><div>${c.overnight.map((e, i) => `<div class="ov" data-role="body"><span class="ball">${String.fromCharCode(65 + i)}</span><span class="t">${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? ` <span class="soft">(${esc(e.note)})</span>` : ""}</span></div>`).join("")}</div></div>`);
+      const s = c.stats;
+      const tb = `<div class="tb"><div><span>Project</span><b>${esc(ed.weekday)}</b></div><div><span>Sheet</span><b>${String(ed.editionNo).padStart(3, "0")}</b></div><div><span>Drawn by</span><b>GAIA · ${esc(ed.time24)}</b></div><div><span>Date</span><b>${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())} ${ed.year}</b></div>${s ? `<div class="wide"><span>Yield</span><b>${s.done} done${s.you && s.gaia ? ` (${s.you} you · ${s.gaia} GAIA)` : ""}${s.mail ? ` · ${s.mail} letters cleared` : ""}${s.focus ? ` · ${esc(s.focus)} focus held` : ""}</b></div>` : ""}</div>`;
+      const folds = skin.folds.id === "folded" ? `<i class="fold h"></i><i class="fold v"></i>` : "";
+      return `<article class="t-flightplan" style="--stock:${skin.stock.stock}; --ink:${skin.stock.ink}; --soft:${skin.stock.soft}; --line:${skin.stock.line}; --grid:${skin.stock.grid}; --warn:${skin.stock.warn}; --face:${skin.face.stack}">
+${grain("bp-g", 0.85)}${folds}
+<div class="sheet">
+  <div class="strip lbl"><span>Detail A · the day — an elevation</span><span>No. ${ed.editionNo}</span></div>
+  <h1>${esc(ed.deck)}</h1>
+  ${parts.join("")}
+  ${tb}
+</div></article>`;
+    },
+  });
 
-/* ================================================================
-   1) FLIGHTPLAN — the day drawn as a technical elevation.
-   A single thick datum (06:00–24:00). Meetings are dimensioned
-   spans that rise off the datum on shelf-leaders. The overnight
-   work is a hatched section below grade with keyed callouts. The
-   free evening is a long open dimension. The EOD ship is a dashed
-   hidden-line box keyed to a Detail A blow-up. One ruled title
-   block carries all the metadata. Chalk lines on blue paper — or,
-   on the diazo skin, dark ink on near-white stock.
-   ================================================================ */
-EXPLORER.register({
-  id: "flightplan",
-  name: "The Blueprint",
-  axes: {
-    ground: [
-      {
-        id: "prussian",
-        label: "prussian ultramarine",
-        paper: "#17398a",
-        ink: "#eaf1fb",
-        soft: "#bcd0ee",
-        rgb: "234,241,251",
-      },
-      {
-        id: "washed",
-        label: "cyanotype turquoise",
-        paper: "#0e6379",
-        ink: "#eef8fb",
-        soft: "#bfe1ec",
-        rgb: "238,248,251",
-      },
-      {
-        id: "diazo",
-        label: "diazo whiteprint",
-        paper: "#eef4f6",
-        ink: "#06455e",
-        soft: "#2d6b80",
-        rgb: "6,69,94",
-      },
-    ],
-    face: [
-      {
-        id: "helv",
-        label: "Helvetica lettering",
-        stack: "'Helvetica Neue',Helvetica,Arial,sans-serif",
-        track: "0.22em",
-      },
-      {
-        id: "aeonik",
-        label: "Aeonik Extended",
-        stack: "'Aeonik Extended','Helvetica Neue',sans-serif",
-        track: "0.14em",
-      },
-    ],
-    grid: [
-      {
-        id: "grid",
-        label: "faint field grid",
-        showGrid: true,
-        showCrop: false,
-      },
-      {
-        id: "crop",
-        label: "corner crop marks",
-        showGrid: false,
-        showCrop: true,
-      },
-    ],
-    hatch: [
-      { id: "diag", label: "diagonal section", cross: false },
-      { id: "cross", label: "cross-hatched section", cross: true },
-    ],
-  },
-  css: `
-    .t-flightplan{
-      position:relative; box-sizing:border-box; width:100%; min-height:1400px; overflow:hidden;
-      background:var(--paper,#17398a); color:var(--ink,#eaf1fb);
-      font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-      -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
-      font-variant-numeric:tabular-nums lining-nums;
-      padding:clamp(38px,4.4vw,70px);
-    }
-    .t-flightplan *{ box-sizing:border-box; }
-    .t-flightplan .obj{ background:var(--ink); }
-    .t-flightplan .dim{ background:rgba(var(--rgb),0.66); }
-
-    /* ---- frame + crop marks ---- */
-    .t-flightplan .frame{
-      position:absolute; inset:20px; border:2px solid rgba(var(--rgb),0.62); pointer-events:none;
-    }
-    .t-flightplan .frame::after{
-      content:""; position:absolute; inset:7px; border:1px solid rgba(var(--rgb),0.22);
-    }
-    .t-flightplan .crop{ position:absolute; width:34px; height:34px; pointer-events:none; }
-    .t-flightplan .crop::before{ content:""; position:absolute; left:0; top:16px; width:34px; height:1.5px; background:rgba(var(--rgb),0.7); }
-    .t-flightplan .crop::after{ content:""; position:absolute; top:0; left:16px; width:1.5px; height:34px; background:rgba(var(--rgb),0.7); }
-    .t-flightplan .crop.tl{ left:8px; top:8px; } .t-flightplan .crop.tr{ right:8px; top:8px; }
-    .t-flightplan .crop.bl{ left:8px; bottom:8px; } .t-flightplan .crop.br{ right:8px; bottom:8px; }
-
-    .t-flightplan .sheet{ position:relative; width:100%; max-width:1080px; margin:0 auto; }
-
-    /* ---- drawing zone ---- */
-    .t-flightplan .draw{ position:relative; height:800px; }
-    .t-flightplan .grid{
-      position:absolute; inset:0; pointer-events:none; opacity:0.9;
-      background-image:
-        repeating-linear-gradient(to right, rgba(var(--rgb),0.10) 0 1px, transparent 1px 48px),
-        repeating-linear-gradient(to bottom, rgba(var(--rgb),0.10) 0 1px, transparent 1px 48px);
-      -webkit-mask-image:linear-gradient(#000,#000); mask-image:linear-gradient(#000,#000);
-    }
-    .t-flightplan .cap{
-      position:absolute; left:0; top:6px; font-size:11px; letter-spacing:0; color:var(--soft);
-      text-transform:uppercase;
-    }
-    .t-flightplan .cap b{ color:var(--ink); font-weight:700; letter-spacing:0.01em; }
-
-    /* datum + scale */
-    .t-flightplan .datum{ position:absolute; left:0; right:0; top:400px; height:2.5px; background:var(--ink); }
-    .t-flightplan .tick{ position:absolute; top:400px; width:1px; background:rgba(var(--rgb),0.5); transform:translateX(-0.5px); }
-    .t-flightplan .tick.mn{ height:7px; }
-    .t-flightplan .tick.mj{ height:14px; background:rgba(var(--rgb),0.8); }
-    .t-flightplan .hnum{ position:absolute; top:410px; transform:translateX(-50%); font-size:11px; color:var(--soft); }
-
-    /* dimension apparatus */
-    .t-flightplan .ext{ position:absolute; width:1px; transform:translateX(-0.5px); background:rgba(var(--rgb),0.6); }
-    .t-flightplan .dline{ position:absolute; height:1px; background:rgba(var(--rgb),0.66); }
-    .t-flightplan .ah{ position:absolute; width:0; height:0; border-style:solid; }
-    .t-flightplan .ah.r{ border-width:4px 0 4px 8px; border-color:transparent transparent transparent rgba(var(--rgb),0.9); }
-    .t-flightplan .ah.l{ border-width:4px 8px 4px 0; border-color:transparent rgba(var(--rgb),0.9) transparent transparent; }
-    .t-flightplan .meas{
-      position:absolute; transform:translateX(-50%); white-space:nowrap;
-      font-size:12px; font-weight:700; color:var(--ink); letter-spacing:0.01em;
-    }
-    .t-flightplan .meas .u{ font-weight:400; color:var(--soft); }
-
-    /* shelf leader + label */
-    .t-flightplan .lead{ position:absolute; }
-    .t-flightplan .lead .diag{ position:absolute; height:1px; background:rgba(var(--rgb),0.66); transform-origin:left center; }
-    .t-flightplan .lead .shelf{ position:absolute; height:1px; background:rgba(var(--rgb),0.66); }
-    .t-flightplan .lead .txt{ position:absolute; width:210px; }
-    .t-flightplan .lead .txt.rt{ text-align:right; }
-    .t-flightplan .lead .tt{ font-size:14px; font-weight:700; color:var(--ink); line-height:1.15; }
-    .t-flightplan .lead .tb{ font-size:12.5px; color:var(--soft); line-height:1.3; margin-top:2px; }
-    .t-flightplan .lead .dot{ position:absolute; width:5px; height:5px; border-radius:50%; background:var(--ink); transform:translate(-2.5px,-2.5px); }
-
-    /* EOD ship: hidden line box + detail ring */
-    .t-flightplan .ship{
-      position:absolute; border:1.5px dashed rgba(var(--rgb),0.85);
-      display:flex; align-items:center; justify-content:center;
-    }
-    .t-flightplan .ship b{ font-size:11px; font-weight:700; letter-spacing:0.04em; color:var(--ink); }
-    .t-flightplan .dring{ position:absolute; border:1px solid rgba(var(--rgb),0.7); border-radius:50%; }
-    .t-flightplan .dkey{ position:absolute; width:1px; background:rgba(var(--rgb),0.6); }
-
-    /* Detail A blow-up */
-    .t-flightplan .detail{ position:absolute; top:4px; right:2px; width:168px; }
-    .t-flightplan .detail .dcirc{
-      position:relative; width:168px; height:168px; border-radius:50%;
-      border:1.5px solid rgba(var(--rgb),0.8); overflow:hidden;
-    }
-    .t-flightplan .detail .mbox{
-      position:absolute; left:34px; top:56px; width:100px; height:52px;
-      border:1.5px dashed rgba(var(--rgb),0.85);
-    }
-    .t-flightplan .detail .mtx{ position:absolute; left:24px; right:16px; top:112px; }
-    .t-flightplan .detail .mtx .a{ font-size:11px; font-weight:700; color:var(--ink); line-height:1.2; }
-    .t-flightplan .detail .mtx .b{ font-size:10px; color:var(--soft); margin-top:3px; }
-    .t-flightplan .detail .dhd{
-      position:absolute; left:-2px; top:-26px; font-size:11px; font-weight:700;
-      font-family:var(--disp,'Helvetica Neue',Helvetica,Arial,sans-serif);
-      letter-spacing:var(--track,0.22em); text-transform:uppercase; color:var(--ink);
-    }
-    .t-flightplan .detail .dsc{ position:absolute; right:0; top:-24px; font-size:10px; color:var(--soft); letter-spacing:0.02em; }
-
-    /* overnight section */
-    .t-flightplan .seclabel{ position:absolute; font-size:11px; text-transform:uppercase; color:var(--ink); font-weight:700; letter-spacing:0.01em; }
-    .t-flightplan .seclabel span{ color:var(--soft); font-weight:400; }
-    .t-flightplan .sec{
-      position:absolute; border:1px solid rgba(var(--rgb),0.5);
-    }
-    .t-flightplan .sec.hatch{
-      background-image:repeating-linear-gradient(45deg, rgba(var(--rgb),0.34) 0 1px, transparent 1px 9px);
-    }
-    .t-flightplan .sec.cross{
-      background-image:
-        repeating-linear-gradient(45deg, rgba(var(--rgb),0.28) 0 1px, transparent 1px 10px),
-        repeating-linear-gradient(-45deg, rgba(var(--rgb),0.28) 0 1px, transparent 1px 10px);
-    }
-    .t-flightplan .cbub{
-      position:absolute; width:16px; height:16px; border-radius:50%;
-      border:1px solid var(--ink); background:var(--paper);
-      display:flex; align-items:center; justify-content:center;
-      font-size:9px; font-weight:700; color:var(--ink); transform:translate(-8px,-8px);
-    }
-    .t-flightplan .cout{ position:absolute; width:284px; }
-    .t-flightplan .cout .ct{ display:flex; align-items:baseline; }
-    .t-flightplan .cout .cl{ font-size:12.5px; line-height:1.32; color:var(--ink); }
-    .t-flightplan .cout .cl b{ font-weight:700; }
-    .t-flightplan .cout .sub{ display:block; color:var(--soft); font-size:11.5px; margin-top:1px; }
-    .t-flightplan .cleader{ position:absolute; height:1px; background:rgba(var(--rgb),0.55); }
-
-    /* ---- baseband: notes + title block ---- */
-    .t-flightplan .base{ display:grid; grid-template-columns:1fr 336px; gap:44px; margin-top:26px; align-items:start; }
-    .t-flightplan .nhd{
-      font-family:var(--disp,'Helvetica Neue',Helvetica,Arial,sans-serif);
-      font-size:11px; letter-spacing:var(--track,0.22em); text-transform:uppercase; color:var(--ink);
-      font-weight:700; padding-bottom:9px; border-bottom:2px solid var(--ink); margin-bottom:4px;
-    }
-    .t-flightplan .note{
-      display:grid; grid-template-columns:24px 1fr; gap:0 6px; padding:11px 0;
-      border-bottom:1px solid rgba(var(--rgb),0.18); align-items:baseline;
-    }
-    .t-flightplan .note .k{ font-size:13px; color:var(--soft); font-weight:700; }
-    .t-flightplan .note .b{ font-size:14.5px; line-height:1.42; color:var(--ink); }
-    .t-flightplan .note .b .v{ font-weight:700; }
-    .t-flightplan .note .sub{ color:var(--soft); }
-    .t-flightplan .yield{
-      margin-top:16px; font-size:12.5px; color:var(--soft); letter-spacing:0.01em;
-    }
-    .t-flightplan .yield b{ color:var(--ink); font-weight:700; }
-
-    .t-flightplan .tblock{ border:1.5px solid var(--ink); }
-    .t-flightplan .tblock .ban{
-      font-family:var(--disp,'Helvetica Neue',Helvetica,Arial,sans-serif);
-      padding:10px 14px; border-bottom:1.5px solid var(--ink);
-      font-size:11px; letter-spacing:var(--track,0.22em); text-transform:uppercase; font-weight:700; color:var(--ink);
-    }
-    .t-flightplan .tblock .tr{ display:grid; grid-template-columns:104px 1fr; border-bottom:1px solid rgba(var(--rgb),0.4); }
-    .t-flightplan .tblock .tr:last-child{ border-bottom:0; }
-    .t-flightplan .tblock .tk{
-      padding:9px 14px; font-size:9.5px; letter-spacing:0.02em; text-transform:uppercase; color:var(--soft);
-      border-right:1px solid rgba(var(--rgb),0.4);
-    }
-    .t-flightplan .tblock .tv{ padding:9px 14px; font-size:12.5px; font-weight:700; letter-spacing:0.01em; text-transform:uppercase; color:var(--ink); }
-
-    @media (max-width:900px){
-      .t-flightplan .base{ grid-template-columns:1fr; gap:26px; }
-      .t-flightplan .detail{ width:140px; }
-      .t-flightplan .detail .dcirc{ width:140px; height:140px; }
-    }
-  `,
-  render(ed, skin) {
-    const c = ed.content;
-    const dateCode = `${_two(ed.day)} ${ed.monthShort.toUpperCase()} ${ed.year}`;
-    const sheetNo = String(ed.editionNo).padStart(3, "0");
-
-    const H0 = 6,
-      H1 = 24,
-      SPAN = H1 - H0;
-    const L = 6,
-      R = 94; // datum runs 6%..94%
-    const X = (hr) => L + ((hr - H0) / SPAN) * (R - L);
-    const DATUM = 430;
-
-    // hour scale
-    let ticks = "";
-    for (let h = H0; h <= H1; h++) {
-      const x = X(h);
-      const mj = h % 3 === 0;
-      ticks += `<div class="tick ${mj ? "mj" : "mn"}" style="left:${x.toFixed(3)}%"></div>`;
-      if (mj)
-        ticks += `<div class="hnum" style="left:${x.toFixed(3)}%">${_two(h)}</div>`;
-    }
-
-    // meetings -> dimensioned spans that rise off the datum on shelf leaders
-    const timed = c.today.filter((it) => it.t24);
-    const DIMY = 360; // meeting dimension line
-    const meetings = timed
-      .map((it, i) => {
-        const s = _hr(it.t24);
-        const e = s + 0.5; // 30-minute engagement
-        const x1 = X(s),
-          x2 = X(e),
-          xc = (x1 + x2) / 2;
-        const left = i === 0; // first meeting labels left, second right
-        // witness lines (datum -> dim line) + tiny dimension line + outward arrows
-        const ext = `
-          <div class="ext" style="left:${x1.toFixed(3)}%; top:${DIMY}px; height:${DATUM - DIMY}px"></div>
-          <div class="ext" style="left:${x2.toFixed(3)}%; top:${DIMY}px; height:${DATUM - DIMY}px"></div>
-          <div class="dline" style="left:${x1.toFixed(3)}%; width:${(x2 - x1).toFixed(3)}%; top:${DIMY}px"></div>
-          <div class="ah r" style="left:calc(${x1.toFixed(3)}% - 8px); top:${DIMY - 4}px"></div>
-          <div class="ah l" style="left:${x2.toFixed(3)}%; top:${DIMY - 4}px"></div>
-          <div class="meas" style="left:${xc.toFixed(3)}%; top:${DIMY - 22}px">${it.t24}</div>`;
-        // shelf leader up-left or up-right, 45deg rise then horizontal shelf
-        const rise = 60,
-          shelfW = 210;
-        const shelfY = DIMY - rise; // 284
-        const diag = `<div class="diag" style="left:0; top:0; width:${(rise * 1.4142).toFixed(1)}px; transform:rotate(${left ? 225 : -45}deg)"></div>`;
-        const shelf = left
-          ? `<div class="shelf" style="right:${rise}px; top:${-rise}px; width:${shelfW}px"></div>`
-          : `<div class="shelf" style="left:${rise}px; top:${-rise}px; width:${shelfW}px"></div>`;
-        const txt = `<div class="txt ${left ? "rt" : ""}" style="${left ? "right" : "left"}:${rise}px; top:${-rise - 46}px">
-            <div class="tt">${_esc(it.label)}</div>
-            ${it.note ? `<div class="tb">${_esc(it.note)}</div>` : ""}
-          </div>`;
-        const lead = `<div class="lead" style="left:${xc.toFixed(3)}%; top:${DIMY}px">
-            <div class="dot"></div>${diag}${shelf}${txt}
-          </div>`;
-        return ext + lead;
-      })
-      .join("");
-
-    // free evening — a long open dimension below the datum
-    const evStart = 17,
-      evEnd = 24;
-    const ex1 = X(evStart),
-      ex2 = X(evEnd),
-      exc = (ex1 + ex2) / 2;
-    const EVY = 488;
-    const evening = `
-      <div class="ext" style="left:${ex1.toFixed(3)}%; top:${DATUM}px; height:${EVY - DATUM}px"></div>
-      <div class="ext" style="left:${ex2.toFixed(3)}%; top:${DATUM}px; height:${EVY - DATUM}px"></div>
-      <div class="dline" style="left:${ex1.toFixed(3)}%; width:${(ex2 - ex1).toFixed(3)}%; top:${EVY}px"></div>
-      <div class="ah r" style="left:${ex1.toFixed(3)}%; top:${EVY - 4}px"></div>
-      <div class="ah l" style="left:calc(${ex2.toFixed(3)}% - 8px); top:${EVY - 4}px"></div>
-      <div class="meas" style="left:${exc.toFixed(3)}%; top:${EVY + 8}px">17:00 &ndash; 24:00 <span class="u">&middot; yours</span></div>`;
-
-    // EOD ship — dashed hidden-line box keyed to Detail A
-    const eod = c.today.find((it) => !it.t24);
-    let ship = "";
-    if (eod) {
-      const sx = X(23.4); // near end of day
-      ship = `
-        <div class="ship" style="left:calc(${sx.toFixed(3)}% - 30px); top:${DATUM - 19}px; width:60px; height:38px"><b>EOD</b></div>
-        <div class="dring" style="left:calc(${sx.toFixed(3)}% - 44px); top:${DATUM - 44}px; width:88px; height:88px"></div>
-        <div class="dkey" style="left:calc(${sx.toFixed(3)}% - 0.5px); top:172px; height:${DATUM - 44 - 172}px"></div>`;
-    }
-    const detail = eod
-      ? `<div class="detail">
-          <div class="dhd">Detail A</div><div class="dsc">scale 2:1</div>
-          <div class="dcirc">
-            <div class="mbox"></div>
-            <div class="mtx"><div class="a">${_esc(eod.label)}</div>${eod.note ? `<div class="b">${_esc(eod.note)}</div>` : ""}</div>
-          </div>
-        </div>`
-      : "";
-
-    // overnight — hatched section below grade, keyed callouts
-    const SEC_X = 4,
-      SEC_W = 26,
-      SEC_Y = 540,
-      SEC_H = 182;
-    const secClass = skin.hatch.cross ? "cross" : "hatch";
-    const bubX = SEC_X + SEC_W - 3; // bubble sits inside the section's right edge
-    const outX = SEC_X + SEC_W + 4; // callouts to the right of the section
-    const rows = c.overnight.slice(0, 3);
-    const rowY = [560, 620, 680];
-    const bubbles = rows
-      .map(
-        (
-          it,
-          i,
-        ) => `<div class="cbub" style="left:${bubX.toFixed(3)}%; top:${rowY[i]}px">${i + 1}</div>
-          <div class="cleader" style="left:${bubX.toFixed(3)}%; width:${(outX - bubX + 0.3).toFixed(3)}%; top:${rowY[i]}px"></div>`,
-      )
-      .join("");
-    const callouts = rows
-      .map(
-        (
-          it,
-          i,
-        ) => `<div class="cout" style="left:${outX}%; top:${rowY[i] - 8}px">
-          <div class="ct"><span class="cl"><b>${it.t24 || ""}</b> &middot; ${_esc(it.label)}${_sub(it.note)}</span></div>
-        </div>`,
-      )
-      .join("");
-    const nightTimes = rows.map((it) => it.t24).filter(Boolean).sort();
-    const nightSpan = nightTimes.length
-      ? `section ${nightTimes[0]}${nightTimes.length > 1 ? `&ndash;${nightTimes[nightTimes.length - 1]}` : ""}, `
-      : "";
-    const overnight = !rows.length ? "" : `
-      <div class="seclabel" style="left:${SEC_X}%; top:${SEC_Y - 22}px">Overnight <span>&middot; ${nightSpan}while you slept</span></div>
-      <div class="sec ${secClass}" style="left:${SEC_X}%; top:${SEC_Y}px; width:${SEC_W}%; height:${SEC_H}px"></div>
-      ${bubbles}${callouts}`;
-
-    // corner crop marks
-    const crops = skin.grid.showCrop
-      ? `<div class="crop tl"></div><div class="crop tr"></div><div class="crop bl"></div><div class="crop br"></div>`
-      : "";
-    const gridEl = skin.grid.showGrid ? `<div class="grid"></div>` : "";
-
-    // notes: deck + the two decisions
-    const notesItems = [
-      `<span class="v"></span>${_esc(ed.deck)}`,
-      ...c.decisions.map(
-        (d) =>
-          `<span class="v">${_esc(d.verb)} &mdash; </span>${_esc(d.label)}.${d.note ? ` <span class="sub">${_esc(d.note)}.</span>` : ""}`,
-      ),
-    ];
-    const notes = notesItems
-      .map(
-        (t, i) =>
-          `<div class="note"><span class="k">${_two(i + 1)}</span><span class="b">${t}</span></div>`,
-      )
-      .join("");
-
-    const s = c.stats;
-    const yieldParts = [
-      s.done
-        ? `<b>${s.done}</b> done` +
-          (s.you || s.gaia
-            ? ` (${[s.you ? `${s.you} you` : "", s.gaia ? `${s.gaia} GAIA` : ""].filter(Boolean).join(" &middot; ")})`
-            : "")
-        : "",
-      s.mail ? `<b>${s.mail}</b> letters cleared` : "",
-      s.focus ? `<b>${_esc(s.focus)}</b> held` : "",
-    ].filter(Boolean);
-    const yieldLine = yieldParts.length ? `<b>Yield</b> &mdash; ${yieldParts.join(" &middot; ")}` : "";
-
-    return `<article class="t-flightplan" style="--paper:${skin.ground.paper};--ink:${skin.ground.ink};--soft:${skin.ground.soft};--rgb:${skin.ground.rgb};--disp:${skin.face.stack};--track:${skin.face.track}">
-      <div class="frame"></div>${crops}
-      <div class="sheet">
-        <div class="draw">
-          ${gridEl}
-          <div class="cap"><b>The day &mdash; an elevation.</b> One operating window, 06:00 to 24:00 local.</div>
-          <div class="datum obj"></div>
-          ${ticks}
-          ${meetings}
-          ${evening}
-          ${ship}
-          ${detail}
-          ${overnight}
-        </div>
-        <div class="base">
-          <div>
-            <div class="nhd">Notes</div>
-            ${notes}
-            <div class="yield">${yieldLine}</div>
-          </div>
-          <div class="tblock">
-            <div class="ban">GAIA &middot; Daily Operations</div>
-            <div class="tr"><div class="tk">Project</div><div class="tv">${_esc(ed.weekday)}</div></div>
-            <div class="tr"><div class="tk">Sheet</div><div class="tv">No. ${sheetNo}</div></div>
-            <div class="tr"><div class="tk">Scale</div><div class="tv">One day</div></div>
-            <div class="tr"><div class="tk">Drawn by</div><div class="tv">GAIA</div></div>
-            <div class="tr"><div class="tk">Date</div><div class="tv">${dateCode}</div></div>
-          </div>
-        </div>
-      </div>
-    </article>`;
-  },
-});
-
-/* ================================================================
-   2) INSTRUMENT — a Braun/Rams instrument panel as print.
-   Deep warm charcoal, light precise labels, the day's times drawn
-   as a real horizontal scale (06–24) inside a discreet recessed
-   panel with model/serial line, unit markings, and a marker legend.
-   One function color, used sparingly.
-   ================================================================ */
-EXPLORER.register({
-  id: "instrument",
-  name: "The Instrument",
-  axes: {
-    func: [
-      { id: "yellow", label: "function yellow", color: "#f0a500" },
-      { id: "green", label: "signal green", color: "#3d9970" },
-      { id: "red", label: "warm red", color: "#d8503a" },
-    ],
-    face: [
-      {
-        id: "helv",
-        label: "Helvetica Neue",
-        stack: "'Helvetica Neue',Helvetica,Arial,sans-serif",
-      },
-      {
-        id: "optima",
-        label: "Optima",
-        stack: "Optima,'Avenir Next','Helvetica Neue',sans-serif",
-      },
-    ],
-    finish: [
-      {
-        id: "warm",
-        label: "warm charcoal",
-        panel: "#26262a",
-        panel2: "#2e2e33",
-      },
-      {
-        id: "cool",
-        label: "cool graphite",
-        panel: "#232629",
-        panel2: "#2b2f33",
-      },
-    ],
-    scale: [
-      { id: "numbered", label: "ticks with numerals", num: "1" },
-      { id: "minimal", label: "minimal ticks", num: "0" },
-    ],
-  },
-  css: `
-    .t-instrument{
-      position:relative; box-sizing:border-box; width:100%; min-height:1240px;
-      overflow:hidden; background:var(--panel,#26262a); color:#e9e9e5;
-      font-family:var(--display,'Helvetica Neue',Helvetica,Arial,sans-serif); -webkit-font-smoothing:antialiased;
-      font-variant-numeric:tabular-nums lining-nums;
-      padding:clamp(32px,4.6vw,74px);
-    }
-    .t-instrument *{ box-sizing:border-box; }
-    .t-instrument .face{ max-width:1040px; margin:0 auto; }
-
-    .t-instrument .top{
-      display:flex; justify-content:space-between; align-items:flex-end; gap:20px 28px;
-      flex-wrap:wrap; border-bottom:1px solid rgba(255,255,255,0.16); padding-bottom:18px;
-    }
-    .t-instrument .brand{ font-size:clamp(28px,4.3vw,46px); font-weight:700; letter-spacing:0.01em; line-height:1; }
-    .t-instrument .meta{ text-align:right; }
-    .t-instrument .model{ font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:#a2a29d; }
-    .t-instrument .serial{ font-size:11px; letter-spacing:0.14em; color:#8f8f8a; margin-top:6px; }
-    .t-instrument .deck{
-      font-size:clamp(15px,1.9vw,20px); color:#c6c6c0; max-width:54ch;
-      margin:22px 0 8px; line-height:1.38;
-    }
-
-    .t-instrument .rule{ height:1px; background:rgba(255,255,255,0.12); border:0; margin:20px 0; }
-
-    /* ---- the scale: the day's times as a drawn ruler, recessed ---- */
-    .t-instrument .scalewrap{ background:rgba(0,0,0,0.16); padding:22px 26px 18px; }
-    .t-instrument .scale-hd{
-      display:flex; justify-content:space-between; align-items:baseline; gap:12px;
-      font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#a2a29d; margin-bottom:6px;
-    }
-    .t-instrument .scale-hd .unit{ color:#8f8f8a; letter-spacing:0.14em; }
-    .t-instrument .scale{ position:relative; height:104px; margin:6px 0 0; }
-    .t-instrument .scale .track{ position:absolute; left:0; right:0; top:70px; height:1px; background:rgba(255,255,255,0.34); }
-    .t-instrument .scale .tick{ position:absolute; top:70px; width:1px; background:rgba(255,255,255,0.26); transform:translateX(-0.5px); }
-    .t-instrument .scale .tick.min{ height:7px; }
-    .t-instrument .scale .tick.maj{ height:14px; background:rgba(255,255,255,0.5); }
-    .t-instrument .scale .tnum{
-      position:absolute; top:88px; transform:translateX(-50%);
-      font-size:10px; letter-spacing:0.1em; color:#8f8f8a; opacity:var(--num-op,1);
-    }
-    .t-instrument .mk{
-      position:absolute; top:6px; height:64px; transform:translateX(-50%);
-      display:flex; flex-direction:column; align-items:center; width:140px;
-    }
-    .t-instrument .mk .tm{ font-size:15px; font-weight:700; color:#f0f0ec; line-height:1; }
-    .t-instrument .mk .tg{ font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#a2a29d; margin-top:4px; }
-    .t-instrument .mk .stem{ width:1px; flex:1; min-height:14px; background:var(--func,#f0a500); margin-top:7px; }
-    .t-instrument .mk .dot{ width:8px; height:8px; border-radius:50%; background:var(--func,#f0a500); margin-top:-4px; }
-    .t-instrument .legend{
-      display:flex; gap:24px; align-items:center; margin-top:14px;
-      font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8f8f8a;
-    }
-    .t-instrument .legend .li{ display:flex; align-items:center; gap:8px; }
-    .t-instrument .legend .sw-dot{ width:8px; height:8px; border-radius:50%; background:var(--func,#f0a500); }
-    .t-instrument .legend .sw-maj{ width:1px; height:12px; background:rgba(255,255,255,0.55); }
-    .t-instrument .legend .sw-min{ width:1px; height:7px; background:rgba(255,255,255,0.32); }
-
-    /* ---- clusters ---- */
-    .t-instrument .cluster{ background:var(--panel2,#2e2e33); padding:20px 24px; }
-    .t-instrument .cluster + .cluster{ margin-top:16px; }
-    .t-instrument .cols{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
-    .t-instrument .cols .cluster + .cluster{ margin-top:0; }
-    .t-instrument .cl-h{
-      font-size:10px; letter-spacing:0.24em; text-transform:uppercase; color:#a2a29d;
-      margin-bottom:14px; display:flex; justify-content:space-between; gap:12px;
-    }
-
-    .t-instrument .row{
-      display:grid; grid-template-columns:66px 1fr; gap:0 16px; padding:10px 0;
-      border-top:1px solid rgba(255,255,255,0.08); align-items:baseline;
-    }
-    .t-instrument .row:first-of-type{ border-top:0; padding-top:0; }
-    .t-instrument .row .tm{ font-weight:700; color:#dbdbd6; white-space:nowrap; }
-    .t-instrument .row .tm.none{ color:#75756f; font-weight:400; }
-    .t-instrument .row .lb{ line-height:1.34; color:#e6e6e1; }
-    .t-instrument .sub{ display:block; color:#9a9a94; font-size:12px; margin-top:3px; }
-
-    .t-instrument .drow{
-      display:grid; grid-template-columns:14px 1fr; gap:0 15px; padding:12px 0;
-      border-top:1px solid rgba(255,255,255,0.08); align-items:baseline;
-    }
-    .t-instrument .drow:first-of-type{ border-top:0; padding-top:0; }
-    .t-instrument .drow .dot{ width:10px; height:10px; border-radius:50%; background:var(--func,#f0a500); margin-top:5px; }
-    .t-instrument .drow .verb{ font-weight:700; color:#f2f2ee; }
-    .t-instrument .drow .lb{ line-height:1.34; color:#e6e6e1; }
-
-    /* ---- readout (stats) ---- */
-    .t-instrument .readout{ display:flex; flex-wrap:wrap; gap:24px 44px; align-items:baseline; }
-    .t-instrument .gauge .n{ font-size:clamp(26px,3.2vw,36px); font-weight:700; letter-spacing:-0.01em; line-height:1; }
-    .t-instrument .gauge .k{ font-size:9px; letter-spacing:0.2em; text-transform:uppercase; color:#a2a29d; margin-top:8px; }
-
-    .t-instrument .foot{
-      margin-top:28px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.16);
-      font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8f8f8a;
-      display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;
-    }
-
-    @media (max-width:680px){
-      .t-instrument .cols{ grid-template-columns:1fr; }
-      .t-instrument .cols .cluster + .cluster{ margin-top:16px; }
-      .t-instrument .legend{ flex-wrap:wrap; gap:10px 18px; }
-    }
-  `,
-  render(ed, skin) {
-    const c = ed.content;
-    const dateCode = `${_two(ed.day)} ${ed.monthShort.toUpperCase()} ${ed.year}`;
-
-    // scale ruler 06 -> 24
-    let ticks = "";
-    for (let h = 6; h <= 24; h++) {
-      const pct = ((h - 6) / 18) * 100;
-      const maj = h % 3 === 0;
-      ticks += `<div class="tick ${maj ? "maj" : "min"}" style="left:${pct.toFixed(3)}%"></div>`;
-      if (maj)
-        ticks += `<div class="tnum" style="left:${pct.toFixed(3)}%">${_two(h)}</div>`;
-    }
-    const marks = c.today
-      .filter((it) => it.t24)
-      .map((it) => {
-        const [hh, mm] = it.t24.split(":").map(Number);
-        const hours = hh + mm / 60;
-        const pct = Math.min(100, Math.max(0, ((hours - 6) / 18) * 100));
-        return `<div class="mk" style="left:${pct.toFixed(3)}%"><div class="tm">${it.t24}</div><div class="tg">${_esc(it.tag)}</div><div class="stem"></div><div class="dot"></div></div>`;
-      })
-      .join("");
-
-    const todayRows = c.today
-      .map((it) => {
-        const timed = !!it.t24;
-        return `<div class="row"><div class="tm ${timed ? "" : "none"}">${timed ? it.t24 : "EOD"}</div><div class="lb">${_esc(it.label)}${_sub(it.note)}</div></div>`;
-      })
-      .join("");
-    const overRows = c.overnight
-      .map(
-        (it) =>
-          `<div class="row"><div class="tm">${it.t24 || ""}</div><div class="lb">${_esc(it.label)}${_sub(it.note)}</div></div>`,
-      )
-      .join("");
-    const decRows = c.decisions
-      .map(
-        (d) =>
-          `<div class="drow"><div class="dot"></div><div class="lb"><span class="verb">${_esc(d.verb)}</span> &mdash; ${_esc(d.label)}${_sub(d.note)}</div></div>`,
-      )
-      .join("");
-
-    const s = c.stats;
-    const gauge = (n, k) =>
-      n ? `<div class="gauge"><div class="n">${_esc(n)}</div><div class="k">${k}</div></div>` : "";
-
-    return `<article class="t-instrument" style="--func:${skin.func.color};--display:${skin.face.stack};--panel:${skin.finish.panel};--panel2:${skin.finish.panel2};--num-op:${skin.scale.num}">
-      <div class="face">
-        <header class="top">
-          <div class="brand">GAIA</div>
-          <div class="meta">
-            <div class="model">GAIA RB&#8209;${ed.editionNo} &middot; Daily Briefing Instrument</div>
-            <div class="serial">Ser. ${_esc(ed.weekday.slice(0, 3).toUpperCase())} ${dateCode} &middot; issued ${ed.time24}</div>
-          </div>
-        </header>
-
-        <p class="deck">${_esc(ed.deck)}</p>
-
-        <hr class="rule">
-
-        <div class="scalewrap">
-          <div class="scale-hd"><span>Operating Window</span><span class="unit">06:00&ndash;24:00 &middot; 24H local</span></div>
-          <div class="scale">
-            ${ticks}
-            <div class="track"></div>
-            ${marks}
-          </div>
-          <div class="legend">
-            <span class="li"><span class="sw-dot"></span>Scheduled</span>
-            <span class="li"><span class="sw-maj"></span>3-hour</span>
-            <span class="li"><span class="sw-min"></span>1-hour</span>
-          </div>
-        </div>
-
-        ${c.today.length ? `<section class="cluster" style="margin-top:16px">
-          <div class="cl-h"><span>Today</span><span>${c.today.length} items</span></div>
-          ${todayRows}
-        </section>` : ""}
-
-        ${c.overnight.length || c.decisions.length ? `<div class="cols">
-          ${c.overnight.length ? `<section class="cluster">
-            <div class="cl-h"><span>While you slept</span><span>${c.overnight.length}</span></div>
-            ${overRows}
-          </section>` : ""}
-          ${c.decisions.length ? `<section class="cluster">
-            <div class="cl-h"><span>Needs your call</span><span>${c.decisions.length}</span></div>
-            ${decRows}
-          </section>` : ""}
-        </div>` : ""}
-
-        ${s.done || s.you || s.gaia || s.mail || s.focus ? `<section class="cluster" style="margin-top:16px">
-          <div class="cl-h"><span>Yesterday</span><span>readout</span></div>
-          <div class="readout">
-            ${gauge(s.done, "done")}
-            ${gauge(s.you, "by you")}
-            ${gauge(s.gaia, "by gaia")}
-            ${gauge(s.mail, "mail")}
-            ${gauge(s.focus, "focus today")}
-          </div>
-        </section>` : ""}
-
-        <div class="foot">
-          <span>GAIA Daily Brief &middot; Edition No. ${ed.editionNo}</span>
-          <span>Issued ${ed.time24} &middot; ${_esc(ed.weekday)}</span>
-        </div>
-      </div>
-    </article>`;
-  },
-});
+  /* ==========================================================================
+     THE INSTRUMENT — signature moves from the desktop original:
+       a dark equipment panel; GAIA wordmark with a serial strip; recessed
+       modules with engraved labels; the operating-window gauge with labelled
+       amber pins on a 06-24 scale; amber annunciator dots on decisions; a
+       YESTERDAY readout of big numerals.
+     Added detail: corner screws on every module, brushed-metal grain,
+     engraved-label highlights, glowing LEDs, a NOW needle.
+     ======================================================================== */
+  EXPLORER.register({
+    id: "instrument",
+    name: "The Instrument",
+    axes: {
+      signal: [
+        { id: "amber", label: "amber", sig: "#f5b324" },
+        { id: "green", label: "avionics green", sig: "#4fd17f" },
+        { id: "orange", label: "signal orange", sig: "#ff7a2a" },
+        { id: "red", label: "alarm red", sig: "#ff5b4b" },
+      ],
+      panel: [
+        { id: "graphite", label: "graphite", panel: "#1d1e21", well: "#141517", plate: "#26282c", ink: "#eceae4", soft: "#a9a8a2", hair: "#36383d" },
+        { id: "olive", label: "olive drab", panel: "#23271e", well: "#161911", plate: "#2d3226", ink: "#ecebe2", soft: "#adb0a0", hair: "#3d4334" },
+      ],
+      face: [
+        { id: "helvetica", label: "Helvetica Neue", stack: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
+        { id: "din", label: "Avenir Condensed", stack: "'Avenir Next Condensed', 'Helvetica Neue', sans-serif" },
+      ],
+    },
+    css: `
+.t-instrument { position: relative; isolation: isolate; box-sizing: border-box; width: 540px; padding: 28px 22px 28px; background: var(--panel); color: var(--ink); font: 400 17px/1.45 var(--face); }
+.t-instrument * { box-sizing: border-box; margin: 0; padding: 0; }
+.t-instrument .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; mix-blend-mode: soft-light; opacity: .45; z-index: -1; }
+.t-instrument .brush { position: absolute; inset: 0; z-index: -1; background: repeating-linear-gradient(90deg, rgba(255,255,255,.012) 0 1px, transparent 1px 3px); }
+.t-instrument .lbl { font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); text-shadow: 0 1px 0 rgba(255,255,255,.06), 0 -1px 0 rgba(0,0,0,.6); }
+.t-instrument .top { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 14px; border-bottom: 1px solid var(--hair); }
+.t-instrument .brand { font: 700 34px/1 'Aeonik Extended', var(--face); letter-spacing: .01em; }
+.t-instrument .serial { text-align: right; line-height: 1.6; }
+.t-instrument .deck { font-size: 24px; line-height: 1.3; margin-top: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--hair); }
+.t-instrument .mod { position: relative; margin-top: 22px; background: var(--plate); border-radius: 6px; padding: 16px 18px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 -1px 0 rgba(0,0,0,.4), 0 1px 0 rgba(255,255,255,.03); }
+.t-instrument .screw { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #6d6f74, #2a2b2e 70%); box-shadow: 0 1px 0 rgba(255,255,255,.06); }
+.t-instrument .screw::after { content: ""; position: absolute; left: 1px; right: 1px; top: 3.5px; height: 1px; background: rgba(0,0,0,.6); transform: rotate(var(--r)); }
+.t-instrument .head { display: flex; justify-content: space-between; margin-bottom: 10px; }
+.t-instrument .row { display: grid; grid-template-columns: 60px 1fr; padding: 8px 0; border-top: 1px solid var(--hair); }
+.t-instrument .row:first-of-type { border-top: 0; }
+.t-instrument .t { font-weight: 700; font-variant-numeric: tabular-nums; }
+.t-instrument .n { display: block; font-size: 15px; color: var(--soft); }
+.t-instrument .ann { display: grid; grid-template-columns: 96px 1fr; column-gap: 14px; align-items: start; padding: 8px 0; }
+.t-instrument .lamp { display: grid; place-items: center; height: 30px; border-radius: 3px; background: var(--sig); color: #16130c; font-size: 14px; font-weight: 800; letter-spacing: 0;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.2), 0 0 12px color-mix(in srgb, var(--sig) 45%, transparent); }
+.t-instrument .gauge { position: relative; height: 96px; margin: 6px 0 10px; background: var(--well); border-radius: 4px; box-shadow: inset 0 2px 6px rgba(0,0,0,.6); }
+.t-instrument .gauge svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.t-instrument .gauge text { font-family: inherit; }
+.t-instrument .read { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 10px; }
+.t-instrument .read div { background: var(--well); border-radius: 4px; padding: 10px 8px; box-shadow: inset 0 2px 5px rgba(0,0,0,.55); }
+.t-instrument .read b { display: block; font-size: 30px; line-height: 1; font-weight: 700; color: var(--sig); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px color-mix(in srgb, var(--sig) 40%, transparent); }
+.t-instrument .read .lbl { display: block; margin-top: 6px; }
+.t-instrument .foot { display: flex; justify-content: space-between; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--hair); }
+`,
+    render(ed, skin) {
+      const c = ed.content;
+      const needs = c.decisions.slice(0, 3);
+      const screws = [["8px", "8px", "20deg"], ["8px", null, "70deg"], [null, "8px", "-35deg"], [null, null, "5deg"]]
+        .map(([t, l, r]) => `<i class="screw" style="${t ? `top:${t}` : "bottom:8px"};${l ? `left:${l}` : "right:8px"};--r:${r}"></i>`).join("");
+      const mod = (title, count, body) => `<div class="mod">${screws}<div class="head"><span class="lbl">${title}</span><span class="lbl">${count}</span></div>${body}</div>`;
+      const mods = [];
+      if (needs.length) mods.push(mod("Annunciator · needs your call", `${needs.length} lit`, needs.map((d) => `<div class="ann" data-role="body"><span class="lamp">${esc(d.verb)}</span><span>${esc(d.label)}${d.note ? `<span class="n">${esc(d.note)}</span>` : ""}</span></div>`).join("")));
+      if (c.today.length) {
+        const W = 456;
+        const X = (p) => 14 + p * (W - 28);
+        const lv = levels(c.today, 0.12);
+        const ticks = Array.from({ length: 19 }, (_, i) => i + 6).map((h) => `<line x1="${X((h - 6) / 18)}" y1="${h % 3 ? 82 : 76}" x2="${X((h - 6) / 18)}" y2="90" stroke="var(--soft)" stroke-width="1"/>${h % 3 === 0 && h > 6 ? `<text x="${X((h - 6) / 18)}" y="72" text-anchor="middle" font-size="12" fill="var(--soft)">${pad2(h)}</text>` : ""}`).join("");
+        const pins = c.today.map((e, i) => {
+          const x = X(pos(e));
+          const y = lv[i] ? 14 : 34;
+          return `<line x1="${x}" y1="${y + 6}" x2="${x}" y2="84" stroke="var(--sig)" stroke-width="1"/><circle cx="${x}" cy="84" r="4" fill="var(--sig)"/><text x="${x}" y="${y}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)">${e.t24 ? esc(e.t24) : "EOD"}</text>`;
+        }).join("");
+        const now = X((hours(ed.time24) - 6) / 18);
+        const gauge = `<div class="gauge"><svg viewBox="0 0 ${W} 96" preserveAspectRatio="none" aria-hidden="true">${ticks}<line x1="${now}" y1="8" x2="${now}" y2="92" stroke="var(--ink)" stroke-width="2"/>${pins}</svg></div>`;
+        mods.push(mod("Operating window · 06–24 local", `${c.today.length} scheduled`, gauge + c.today.map((e) => `<div class="row" data-role="body"><span class="t">${e.t24 ? esc(e.t24) : "EOD"}</span><span>${esc(e.label)}${e.note ? `<span class="n">${esc(e.note)}</span>` : ""}</span></div>`).join("")));
+      }
+      if (c.overnight.length) mods.push(mod("Overnight log · while you slept", `${c.overnight.length} entr${c.overnight.length === 1 ? "y" : "ies"}`, c.overnight.map((e) => `<div class="row" data-role="body"><span class="t">${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? `<span class="n">${esc(e.note)}</span>` : ""}</span></div>`).join("")));
+      const s = c.stats;
+      if (s) mods.push(mod("Yesterday · readout", "", `<div class="read"><div><b>${s.done}</b><span class="lbl">done</span></div>${s.you ? `<div><b>${s.you}</b><span class="lbl">by you</span></div>` : ""}${s.gaia ? `<div><b>${s.gaia}</b><span class="lbl">by GAIA</span></div>` : ""}${s.mail ? `<div><b>${s.mail}</b><span class="lbl">mail</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="lbl">focus</span></div>` : ""}</div>`));
+      return `<article class="t-instrument" style="--sig:${skin.signal.sig}; --panel:${skin.panel.panel}; --well:${skin.panel.well}; --plate:${skin.panel.plate}; --ink:${skin.panel.ink}; --soft:${skin.panel.soft}; --hair:${skin.panel.hair}; --face:${skin.face.stack}">
+<i class="brush" aria-hidden="true"></i>${grain("in-g", 0.9)}
+<div class="top"><span class="brand">GAIA</span><span class="serial lbl">GAIA RB-${ed.editionNo} · Daily briefing instrument<br>Serial ${esc(ed.weekday.slice(0, 3))} ${ed.day} ${esc(ed.monthShort)} ${ed.year} · issued ${esc(ed.time24)}</span></div>
+<p class="deck">${esc(ed.deck)}</p>
+${mods.join("")}
+<div class="foot"><span class="lbl">GAIA daily brief · edition No. ${ed.editionNo}</span><span class="lbl">Issued ${esc(ed.time24)}</span></div>
+</article>`;
+    },
+  });
+})();

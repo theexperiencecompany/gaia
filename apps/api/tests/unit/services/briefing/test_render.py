@@ -5,12 +5,18 @@ so every browser argument the module sends is captured and asserted exactly.
 """
 
 from dataclasses import FrozenInstanceError
+import io
 from typing import Any
 
+from PIL import Image, ImageDraw
 import pytest
 
 from app.services.briefing import render as render_module
-from app.services.briefing.render import ImageRenderOptions, render_html_to_image
+from app.services.briefing.render import (
+    ImageRenderOptions,
+    render_html_to_image,
+    trim_to_content,
+)
 
 IMAGE_BYTES = b"\x89PNG\r\n\x1a\nfake-image-payload"
 
@@ -137,6 +143,7 @@ class TestImageRenderOptions:
         assert options.quality is None
         assert options.timeout_ms == 15000
         assert options.clip_selector is None
+        assert options.trim_margin_px is None
 
     def test_options_are_immutable(self) -> None:
         options = ImageRenderOptions()
@@ -262,7 +269,7 @@ class TestRenderHtmlToImage:
 
 @pytest.mark.unit
 class TestClipSelector:
-    async def test_the_capture_is_cropped_to_the_padded_element_box_in_page_coordinates(
+    async def test_the_capture_is_exactly_the_element_box_in_page_coordinates(
         self, browser: Harness
     ) -> None:
         browser.page.boxes[".paper"] = {"x": 100.0, "y": 50.0, "width": 400.0, "height": 300.0}
@@ -274,25 +281,9 @@ class TestClipSelector:
             {
                 "full_page": True,
                 "type": "png",
-                "clip": {"x": 93.0, "y": 738.0, "width": 424.0, "height": 324.0},
+                "clip": {"x": 105.0, "y": 750.0, "width": 400.0, "height": 300.0},
             }
         ]
-
-    async def test_padding_never_pushes_the_clip_off_the_page_origin(
-        self, browser: Harness
-    ) -> None:
-        browser.page.boxes[".paper"] = {"x": 4.0, "y": 0.0, "width": 10.0, "height": 20.0}
-
-        await render_html_to_image(
-            "<html>hi</html>", ImageRenderOptions(image_format="jpeg", clip_selector=".paper")
-        )
-
-        assert browser.page.screenshot_calls[0]["clip"] == {
-            "x": 0.0,
-            "y": 0.0,
-            "width": 34.0,
-            "height": 44.0,
-        }
 
     async def test_a_selector_matching_nothing_fails_loud_instead_of_shipping_uncropped(
         self, browser: Harness
@@ -303,3 +294,79 @@ class TestClipSelector:
             )
 
         assert browser.page.screenshot_calls == []
+
+
+_DESK = (90, 60, 40)
+_PAPER = (250, 250, 250)
+_SHADOW = (40, 25, 15)
+
+
+def _desk_with_paper(
+    size: tuple[int, int], paper: tuple[int, int, int, int], *, shadow_below: int = 0
+) -> bytes:
+    """Draw a flat desk with a paper box and an optional shadow strip under it."""
+    image = Image.new("RGB", size, _DESK)
+    draw = ImageDraw.Draw(image)
+    left, top, right, bottom = paper
+    if shadow_below:
+        draw.rectangle((left, bottom, right - 1, bottom + shadow_below - 1), fill=_SHADOW)
+    if right > left and bottom > top:
+        draw.rectangle((left, top, right - 1, bottom - 1), fill=_PAPER)
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _opened(image: bytes) -> Image.Image:
+    return Image.open(io.BytesIO(image)).convert("RGB")
+
+
+@pytest.mark.unit
+class TestTrimToContent:
+    def test_every_side_is_cut_to_the_same_margin_of_desk(self) -> None:
+        png = _desk_with_paper((300, 400), (50, 70, 200, 330))
+
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+
+        assert trimmed.size == (150 + 20, 260 + 20)
+        assert trimmed.getpixel((9, 9)) == _DESK
+        assert trimmed.getpixel((10, 10)) == _PAPER
+        assert trimmed.getpixel((159, 269)) == _PAPER
+        assert trimmed.getpixel((160, 270)) == _DESK
+
+    def test_a_visible_shadow_counts_as_paper(self) -> None:
+        png = _desk_with_paper((300, 400), (50, 70, 200, 300), shadow_below=12)
+
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+
+        assert trimmed.size == (170, 230 + 12 + 20)
+        assert trimmed.getpixel((80, 10 + 230 + 5)) == _SHADOW
+
+    def test_a_side_already_inside_the_margin_is_left_as_captured(self) -> None:
+        png = _desk_with_paper((300, 400), (4, 70, 200, 330))
+
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+
+        assert trimmed.size == (196 + 4 + 10, 280)
+        assert trimmed.getpixel((0, 100)) == _DESK
+
+    def test_a_blank_capture_is_returned_untouched(self) -> None:
+        png = _desk_with_paper((40, 40), (0, 0, 0, 0))
+
+        assert trim_to_content(png, 10, ImageRenderOptions()) == png
+
+    def test_a_jpeg_capture_stays_a_jpeg(self) -> None:
+        png = _desk_with_paper((300, 400), (50, 70, 200, 330))
+
+        trimmed = trim_to_content(png, 10, ImageRenderOptions(image_format="jpeg", quality=80))
+
+        assert trimmed[:3] == b"\xff\xd8\xff"
+
+    async def test_the_render_trims_at_device_scale(self, browser: Harness) -> None:
+        browser.page._image = _desk_with_paper((300, 400), (50, 70, 200, 330))
+
+        image = await render_html_to_image(
+            "<html>hi</html>", ImageRenderOptions(device_scale_factor=2, trim_margin_px=5)
+        )
+
+        assert _opened(image).size == (170, 280)

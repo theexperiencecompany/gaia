@@ -1,4 +1,4 @@
-import type { WorkflowDelivery } from "@shared/api/generated";
+import type { WorkflowDelivery } from "../api/generated";
 
 /** Every delivery mode, in the order the workflow modal offers them. */
 export const WORKFLOW_DELIVERIES = [

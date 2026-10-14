@@ -2108,6 +2108,18 @@
             "title": "Mood",
             "type": "string"
           },
+          "recipient_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.",
+            "title": "Recipient Name"
+          },
           "sections": {
             "items": {
               "$ref": "#/components/schemas/BriefingSection"
@@ -2179,6 +2191,7 @@
           "hue",
           "template_family",
           "stamp_city",
+          "recipient_name",
           "generated_at",
           "calendar",
           "tallies",
@@ -11900,6 +11913,10 @@
             "title": "Id",
             "type": "string"
           },
+          "message_class": {
+            "$ref": "#/components/schemas/ProactiveMessageClass",
+            "default": "routine"
+          },
           "metadata": {
             "additionalProperties": true,
             "title": "Metadata",
@@ -13501,6 +13518,16 @@
         "title": "Priority",
         "type": "string"
       },
+      "ProactiveMessageClass": {
+        "description": "What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.",
+        "enum": [
+          "routine",
+          "user_timed",
+          "user_triggered"
+        ],
+        "title": "ProactiveMessageClass",
+        "type": "string"
+      },
       "ProjectCreate": {
         "description": "Model for creating projects",
         "properties": {
@@ -14535,7 +14562,7 @@
         "type": "object"
       },
       "QuietHours": {
-        "description": "A daily window, on the user's own clock, when GAIA holds proactive pushes.\n\nWhole local hours; the window may span midnight (start 22, end 8 is 22:00 to\n08:00). The end hour is the first hour outside the window.",
+        "description": "A daily window, on the user's own clock, when GAIA holds proactive pushes.\n\nWhole local hours; the window may span midnight (start 22, end 8 is 22:00 to\n08:00). The end hour is the first hour outside the window. What the window\nmeans for a message is app/services/delivery/quiet_hours.py's to decide.",
         "properties": {
           "end_hour": {
             "maximum": 23.0,

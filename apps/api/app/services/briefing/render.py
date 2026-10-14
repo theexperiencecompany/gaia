@@ -5,8 +5,10 @@ app.utils.browser_reaper is only the process-level backstop.
 """
 
 from dataclasses import dataclass
+import io
 from typing import Literal
 
+from PIL import Image, ImageChops
 from playwright.async_api import FloatRect, Page, async_playwright
 
 from app.constants.log_tags import LogTag
@@ -18,8 +20,10 @@ _CHROMIUM_LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"]
 # avoids capturing a frame mid-layout without polling for an arbitrary condition.
 _FONT_SETTLE_MS = 150
 
-# Breathing room kept around a clipped element so its edge shadow survives.
-CLIP_PADDING_PX = 12
+# How far (0-255, any channel) a pixel must differ from the image edge's own pixel
+# in the same row or column to count as content rather than background. Above a
+# desk's gradient drift, below the faintest visible shadow.
+TRIM_THRESHOLD = 24
 
 
 @dataclass(frozen=True)
@@ -33,7 +37,9 @@ class ImageRenderOptions:
         image_format: "png" or "jpeg" (smaller, to dodge Gmail's ~102KB clip).
         quality: JPEG quality 0-100 (ignored for PNG).
         timeout_ms: Per-navigation timeout for set_content.
-        clip_selector: Crop to this element's box plus CLIP_PADDING_PX.
+        clip_selector: Capture exactly this element's box.
+        trim_margin_px: Cut the background around the visible content (shadows and
+            tilted pieces included) down to this even margin, in CSS pixels.
     """
 
     width: int = 1180
@@ -43,6 +49,7 @@ class ImageRenderOptions:
     quality: int | None = None
     timeout_ms: int = 15000
     clip_selector: str | None = None
+    trim_margin_px: int | None = None
 
 
 async def render_html_to_image(
@@ -74,6 +81,10 @@ async def render_html_to_image(
                 )
             else:
                 image = await page.screenshot(full_page=options.full_page, type="png", clip=clip)
+            if options.trim_margin_px is not None:
+                image = trim_to_content(
+                    image, options.trim_margin_px * options.device_scale_factor, options
+                )
             log.debug(
                 f"{LogTag.TOOL} Rendered HTML to image",
                 image_format=options.image_format,
@@ -86,19 +97,70 @@ async def render_html_to_image(
 
 
 async def _clip_for(page: Page, selector: str) -> FloatRect:
-    """Return the padded page-coordinate box of the selector's element.
+    """Return the page-coordinate box of the selector's first element.
 
-    A selector that matches nothing raises rather than ship uncropped margins.
+    A selector that matches nothing raises rather than ship an uncropped page.
     """
     box: FloatRect | None = await page.locator(selector).first.bounding_box()
     if box is None:
         raise RuntimeError(f"Clip element not rendered: {selector!r}")
     scroll = await page.evaluate("() => [window.scrollX, window.scrollY]")
-    x = max(0.0, box["x"] + scroll[0] - CLIP_PADDING_PX)
-    y = max(0.0, box["y"] + scroll[1] - CLIP_PADDING_PX)
     return {
-        "x": x,
-        "y": y,
-        "width": box["width"] + 2 * CLIP_PADDING_PX,
-        "height": box["height"] + 2 * CLIP_PADDING_PX,
+        "x": box["x"] + scroll[0],
+        "y": box["y"] + scroll[1],
+        "width": box["width"],
+        "height": box["height"],
     }
+
+
+def _is_content(channel_difference: int) -> int:
+    return 255 if channel_difference > TRIM_THRESHOLD else 0
+
+
+def background_run(image: Image.Image, lines: range, *, columns: bool) -> int:
+    """Count the pixel lines, walking lines in order, that match the first one.
+
+    A line is a column when columns is true, else a row; it matches when no pixel
+    differs from the first line's pixel beside it by more than TRIM_THRESHOLD.
+    """
+    width, height = image.size
+
+    def line(index: int) -> Image.Image:
+        box = (index, 0, index + 1, height) if columns else (0, index, width, index + 1)
+        return image.crop(box)
+
+    edge = line(lines[0])
+    for count, index in enumerate(lines):
+        difference = ImageChops.difference(line(index), edge)
+        if difference.point(_is_content).getbbox() is not None:
+            return count
+    return len(lines)
+
+
+def trim_to_content(image_bytes: bytes, margin_px: int, options: ImageRenderOptions) -> bytes:
+    """Cut each side's background run down to margin_px device pixels.
+
+    Background is whatever matches the image's own edge pixels; a side whose content
+    already sits within the margin is left as captured, and a blank image is returned
+    unchanged.
+    """
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    width, height = image.size
+    left = background_run(image, range(width), columns=True)
+    if left == width:
+        return image_bytes
+    right = background_run(image, range(width - 1, -1, -1), columns=True)
+    top = background_run(image, range(height), columns=False)
+    bottom = background_run(image, range(height - 1, -1, -1), columns=False)
+    box = (
+        max(0, left - margin_px),
+        max(0, top - margin_px),
+        min(width, width - right + margin_px),
+        min(height, height - bottom + margin_px),
+    )
+    out = io.BytesIO()
+    if options.image_format == "jpeg":
+        image.crop(box).save(out, format="JPEG", quality=options.quality or 75)
+    else:
+        image.crop(box).save(out, format="PNG", optimize=True)
+    return out.getvalue()

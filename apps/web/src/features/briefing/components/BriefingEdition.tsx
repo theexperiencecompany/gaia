@@ -21,9 +21,11 @@ export interface BriefingEditionProps {
   imageUrl?: string | null;
 }
 
-// The rendered edition's intrinsic size; the image scales to the column width.
-const EDITION_WIDTH = 1180;
-const EDITION_HEIGHT = 1480;
+// The edition renders 540 CSS px wide at 3x. Its height follows the day's
+// content, so this height only reserves space while loading: with `h-auto` the
+// browser switches to the image's natural ratio, never cropping it.
+const EDITION_WIDTH = 1620;
+const EDITION_TYPICAL_HEIGHT = 4500;
 
 /**
  * The owner's copy carries todo_id and opens the in-app todo; the public copy
@@ -74,7 +76,7 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
           src={imageUrl}
           alt={payload.headline}
           width={EDITION_WIDTH}
-          height={EDITION_HEIGHT}
+          height={EDITION_TYPICAL_HEIGHT}
           sizes="(max-width: 768px) 100vw, 768px"
           className="mb-4 h-auto w-full rounded-xl"
         />

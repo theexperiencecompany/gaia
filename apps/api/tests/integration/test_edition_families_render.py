@@ -12,20 +12,28 @@ headless Chromium, with no browser fake. Two shipped failure modes are pinned:
 
 from __future__ import annotations
 
+import io
 import re
 import struct
 from typing import Any
 
+from PIL import Image, ImageChops
 from playwright.async_api import async_playwright
 import pytest
 
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
-from app.services.briefing.editions import EXPLORER_RENDERER, FAMILY_EDITION, render_edition
+from app.services.briefing.editions import (
+    EXPLORER_RENDERER,
+    FAMILY_EDITION,
+    edition_frame,
+    render_edition,
+)
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
 
-# A real daily brief is at least this tall; the blank render was 2px.
-_MIN_HEIGHT_PX = 400
+# A brief, even a quiet one on the 540px canvas, is at least this many CSS px
+# tall; the blank render was 2px.
+_MIN_HEIGHT_PX = 200
 _MIN_PNG_BYTES = 20_000
 
 _HEADLINE = "Two replies need you before your 11:00 with Sequoia."
@@ -105,6 +113,8 @@ _FIXTURE_STRINGS = (
     "hours saved",
     "02:14",
     "Sunday 18:00",
+    "Aryan",
+    "Randeriya",
 )
 # One phrase from every item and event in _DAILY: a family that drops one
 # (dayline/flightplan once hid every untimed item) fails.
@@ -136,7 +146,7 @@ async def _visible_text(html: str) -> str:
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         try:
-            page = await browser.new_page(viewport={"width": 1180, "height": 800})
+            page = await browser.new_page(viewport={"width": 540, "height": 800})
             await page.set_content(html, wait_until="networkidle")
             return str(await page.evaluate("() => document.body.innerText"))
         finally:
@@ -147,11 +157,13 @@ async def _visible_text(html: str) -> str:
 @pytest.mark.parametrize("payload", [_DAILY, _QUIET], ids=["daily", "quiet"])
 @pytest.mark.parametrize("family", _FAMILIES)
 async def test_family_renders_a_non_blank_png(family: str, payload: dict[str, Any]) -> None:
+    frame = edition_frame(family)
     png = await render_html_to_image(
-        _render_html(family, _as_rendered(family, payload)), ImageRenderOptions()
+        _render_html(family, _as_rendered(family, payload)),
+        ImageRenderOptions(width=frame.width, device_scale_factor=frame.device_scale_factor),
     )
 
-    assert _png_height(png) >= _MIN_HEIGHT_PX * ImageRenderOptions().device_scale_factor
+    assert _png_height(png) >= _MIN_HEIGHT_PX * frame.device_scale_factor
     assert len(png) >= _MIN_PNG_BYTES
 
 
@@ -193,28 +205,169 @@ def _png_width(png: bytes) -> int:
     return int(struct.unpack(">I", png[16:20])[0])
 
 
+_SPARSE = {**_DAILY, "sections": [_DAILY["sections"][0]], "calendar": [], "tallies": None}
+_BUSY = {
+    **_DAILY,
+    "sections": [
+        {
+            **_DAILY["sections"][0],
+            "items": [
+                *_DAILY["sections"][0]["items"],
+                {"text": "Decide on the podcast invite from Design Tools FM", "kind": "you"},
+            ],
+        },
+        {
+            **_DAILY["sections"][1],
+            "items": [
+                *_DAILY["sections"][1]["items"],
+                {"text": "Archived the newsletters from the weekend", "kind": "lookback"},
+                {"text": "Rescheduled the dentist after a calendar clash", "kind": "lookback"},
+            ],
+        },
+    ],
+    "calendar": [
+        {"date": "2026-10-14", "start": "09:30", "title": "Standup with the platform team"},
+        *_DAILY["calendar"],
+        {"date": "2026-10-14", "start": "17:00", "title": "Hiring sync for the design lead"},
+    ],
+}
+_DENSITIES = {"busy": _BUSY, "normal": _DAILY, "sparse": _SPARSE}
+# The design-px band each side's visible margin must fall in: nothing touches the
+# edge, and no more than the target of background is kept around a paper.
+_MARGIN_MIN_PX = 4
+_MARGIN_TARGET_PX = 24
+# Above a background's gradient drift, below the faintest visible shadow.
+_INK_THRESHOLD = 24
+
+
+def _side_margins(png: bytes, scale: int) -> dict[str, float]:
+    """Design px from each image edge to the first pixel unlike that edge's own."""
+    image = Image.open(io.BytesIO(png)).convert("RGB")
+    width, height = image.size
+
+    def run(lines: range, columns: bool) -> int:
+        def line(i: int) -> Image.Image:
+            return image.crop((i, 0, i + 1, height) if columns else (0, i, width, i + 1))
+
+        edge = line(lines[0])
+        for count, i in enumerate(lines):
+            differs = ImageChops.difference(line(i), edge).point(
+                lambda v: 255 if v > _INK_THRESHOLD else 0
+            )
+            if differs.getbbox() is not None:
+                return count
+        return len(lines)
+
+    return {
+        "left": run(range(width), True) / scale,
+        "right": run(range(width - 1, -1, -1), True) / scale,
+        "top": run(range(height), False) / scale,
+        "bottom": run(range(height - 1, -1, -1), False) / scale,
+    }
+
+
+_ON_A_DESK = sorted(f for f in EXPLORER_RENDERER if edition_frame(f).trim_margin_px is not None)
+_FULL_BLEED = sorted(set(EXPLORER_RENDERER) - set(_ON_A_DESK))
+
+
+def _shipped(family: str, payload: dict[str, Any]) -> BriefingPayload:
+    return BriefingPayload.model_validate(
+        {
+            **_as_rendered(family, payload),
+            "template_family": family,
+            "stamp_city": "tokyo" if family == "postal" else None,
+        }
+    )
+
+
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "family", ["postal", "receipt", "memo", "playbill", "librarycard", "boardingpass"]
-)
-async def test_the_chat_image_is_cropped_to_the_paper(family: str) -> None:
-    payload = BriefingPayload.model_validate({**_DAILY, "template_family": family})
+@pytest.mark.parametrize("density", sorted(_DENSITIES))
+@pytest.mark.parametrize("family", _ON_A_DESK)
+async def test_a_paper_on_a_desk_is_cropped_tight_with_an_even_margin(
+    family: str, density: str
+) -> None:
+    frame = edition_frame(family)
 
-    full = await render_edition_png(payload, crop_to_paper=False)
-    cropped = await render_edition_png(payload, crop_to_paper=True)
+    png = await render_edition_png(_shipped(family, _DENSITIES[density]))
 
-    assert _png_width(cropped) < _png_width(full)
-    assert _png_height(cropped) <= _png_height(full)
-    assert len(cropped) >= _MIN_PNG_BYTES
+    margins = _side_margins(png, frame.device_scale_factor)
+    touching = {side: m for side, m in margins.items() if m < _MARGIN_MIN_PX}
+    loose = {side: m for side, m in margins.items() if m > _MARGIN_TARGET_PX}
+    assert not touching, f"{family} paper touches the image edge: {touching}"
+    assert not loose, f"{family} keeps more than {_MARGIN_TARGET_PX}px of desk: {loose}"
 
 
 @pytest.mark.integration
-async def test_a_full_bleed_family_keeps_its_width_when_cropped() -> None:
-    payload = BriefingPayload.model_validate({**_DAILY, "template_family": "swiss"})
+@pytest.mark.parametrize("density", sorted(_DENSITIES))
+@pytest.mark.parametrize("family", _FULL_BLEED)
+async def test_a_full_bleed_family_ships_its_whole_page_and_nothing_more(
+    family: str, density: str
+) -> None:
+    frame = edition_frame(family)
+    payload = _shipped(family, _DENSITIES[density])
 
-    cropped = await render_edition_png(payload, crop_to_paper=True)
+    png = await render_edition_png(payload)
+    page = await render_html_to_image(
+        _render_html(family, payload.model_dump()),
+        ImageRenderOptions(width=frame.width, device_scale_factor=frame.device_scale_factor),
+    )
 
-    assert _png_width(cropped) == 1180 * ImageRenderOptions().device_scale_factor
+    assert _png_width(png) == frame.width * frame.device_scale_factor
+    # The page may run one CSS px past the article where its height is fractional.
+    assert 0 <= _png_height(page) - _png_height(png) <= frame.device_scale_factor
+
+
+# Item rows measured with transforms off: a half-degree tilt grows each row's box
+# into its neighbour's without moving text, and never changes layout.
+_ROWS = """() => {
+  for (const el of document.querySelectorAll("*")) el.style.transform = "none";
+  const canvas = document.querySelector("#root > article").getBoundingClientRect();
+  const rows = [...document.querySelectorAll('[data-role="body"]')].map((el) => {
+    const r = el.getBoundingClientRect();
+    return { text: el.innerText.trim().slice(0, 40), left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  }).filter((r) => r.right > r.left && r.bottom > r.top);
+  return { canvas: { left: canvas.left, right: canvas.right }, rows };
+}"""
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
+async def test_no_item_row_overprints_another_or_leaves_the_canvas(family: str) -> None:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        try:
+            page = await browser.new_page(viewport={"width": 540, "height": 800})
+            await page.set_content(_render_html(family, _as_rendered(family, _BUSY)))
+            measured = await page.evaluate(_ROWS)
+        finally:
+            await browser.close()
+
+    rows, canvas = measured["rows"], measured["canvas"]
+    assert rows, f"{family} marks no item rows"
+    outside = [
+        r["text"] for r in rows if r["left"] < canvas["left"] or r["right"] > canvas["right"]
+    ]
+    overprinted = [
+        (a["text"], b["text"])
+        for i, a in enumerate(rows)
+        for b in rows[i + 1 :]
+        if a["left"] < b["right"] - 1
+        and b["left"] < a["right"] - 1
+        and a["top"] < b["bottom"] - 1
+        and b["top"] < a["bottom"] - 1
+    ]
+    assert outside == [], f"{family} rows leave the canvas: {outside}"
+    assert overprinted == [], f"{family} rows overprint: {overprinted}"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("family", ["boardingpass", "invoice", "memo", "postal"])
+async def test_the_edition_is_addressed_to_the_user_by_name(family: str) -> None:
+    payload = {**_DAILY, "recipient_name": "Maya Okafor"}
+
+    text = await _visible_text(_render_html(family, payload))
+
+    assert "Maya" in text
 
 
 # A brief with nothing on the calendar and nothing waiting on the reader: the
@@ -251,23 +404,33 @@ async def test_an_empty_bucket_renders_no_placeholder_row(
 
 
 # Section headings each family prints only above a non-empty bucket (explorer/README.md,
-# "Empty sections"). A quiet brief has every bucket empty, so none may survive. Families
-# whose every section is a fixed slot (boardingpass, metromap, invoice) omit nothing.
+# "Empty sections"). A quiet brief has every bucket empty, so none may survive.
 _EMPTY_BUCKET_HEADINGS = {
-    "almanac": ("What Matters To-day", "Work Performed in the Night", "Needs Your Call"),
-    "band": ("While you slept", "Needs your call"),
-    "broadsheet": ("Filed Overnight", "While You Slept", "Awaiting the Editor", "Day's Figures"),
-    "dayline": ("While you slept", "What matters today", "Needs your call"),
-    "exhibition": ("Programme for the day", "while you slept", "Awaiting your decision"),
-    "flightplan": ("while you slept",),
-    "gradient": ("Handled overnight", "Needs your call"),
-    "instrument": ("While you slept", "Needs your call", "readout"),
-    "librarycard": ("Checked out", "Returned overnight", "Awaiting your signature"),
+    "almanac": (
+        "Matters for your judgement",
+        "What matters to-day",
+        "Work performed in the night",
+        "Calculations for the day",
+    ),
+    "band": ("need your call", "on today", "done while you slept"),
+    "boardingpass": (
+        "Awaiting your confirmation",
+        "Itinerary · today",
+        "Services completed in transit",
+    ),
+    "broadsheet": ("Needs your call", "What matters today", "While you slept", "day's figures"),
+    "dayline": ("while you slept", "needs your call"),
+    "exhibition": ("Programme for the day", "Awaiting your decision", "while you slept"),
+    "flightplan": ("needs your call", "Elevation · the day", "while you slept"),
+    "gradient": ("Needs your call", "Handled overnight"),
+    "instrument": ("needs your call", "Operating window", "Overnight log", "readout"),
+    "invoice": ("Approval required", "Today, billable", "Paid in advance"),
+    "librarycard": ("Awaiting your signature", "Checked out", "Returned overnight"),
     "memo": ("What matters today", "While you slept", "Needs your call", "By the numbers"),
-    "menu": ("awaiting the table",),
-    "playbill": ("Grand Programme", "Performed While You Slept", "Awaits Your Decision"),
+    "menu": ("awaiting the table", "prepared overnight"),
+    "metromap": ("Decision line", "Day line", "night line"),
     "playfair": ("The day ahead", "While you slept", "For your decision"),
-    "postal": ("While you slept", "Needs your call"),
+    "postal": ("Waiting on your reply", "Your day", "Done while you slept"),
     "receipt": ("Overnight", "Awaiting payment", "Items:"),
     "swiss": ("What matters today", "While you slept", "Needs your call"),
 }

@@ -1,8 +1,8 @@
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Clock01Icon, InformationCircleIcon } from "@icons";
+import { to12Hour, to24Hour } from "@shared/utils";
 import { useEffect, useMemo, useState } from "react";
-import { to12Hour, to24Hour } from "@/utils/date/hours";
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
 import { useCronValidation } from "../hooks/useCronValidation";
 import {

@@ -8,10 +8,12 @@ the renderer forever so the archive re-renders identically. Payloads with none
 render as the classic gaia edition.
 """
 
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
 from app.models.briefing_models import BriefingPayload
+from app.services.briefing.editions._shared import CANVAS_PX, EXPLORER_CANVAS_PX
 from app.services.briefing.editions.explorer_render import (
     explorer_family_ids,
     render_explorer_edition,
@@ -73,26 +75,42 @@ DAILY_FAMILY_WEIGHTS: dict[str, int] = {
 }
 
 
-# The "paper" of each family that draws one on a background (desk, wall,
-# envelope scene); the chat image is cropped to it. Every other family is
-# full-bleed and crops to its own root element.
-_PAPER_SELECTORS: dict[str, str] = {
-    "boardingpass": ".t-boardingpass__pass",
-    "librarycard": ".t-librarycard__card",
-    "memo": ".t-memo__sheet",
-    "playbill": ".pb-bill",
-    POSTAL_FAMILY: ".t-postal__scene",
-    "receipt": ".t-receipt__tape",
-}
-_FULL_BLEED_SELECTOR = "#root > article"
-_CLASSIC_SELECTOR = ".brief"
+@dataclass(frozen=True)
+class EditionFrame:
+    """How a family's page is rasterized: its canvas, pixel density and crop."""
+
+    width: int
+    device_scale_factor: int
+    #: The page's root element; the capture is exactly its box.
+    clip_selector: str
+    #: For paper laid on a background (desk, counter, table): the even margin of
+    #: background, in CSS px, kept around the paper and its shadow. None for a
+    #: full-bleed page, whose root element is the paper.
+    trim_margin_px: int | None
 
 
-def paper_selector(family: str | None) -> str:
-    """Return the element a cropped edition image is cut to, for the family."""
-    if family in _PAPER_SELECTORS:
-        return _PAPER_SELECTORS[family]
-    return _FULL_BLEED_SELECTOR if family in EXPLORER_RENDERER else _CLASSIC_SELECTOR
+# Families whose paper lies on a background; their image is trimmed to the paper.
+_ON_A_DESK = frozenset(
+    {"boardingpass", "invoice", "librarycard", "memo", "menu", POSTAL_FAMILY, "receipt"}
+)
+DESK_MARGIN_PX = 16
+_EXPLORER_ROOT = "#root > article"
+_CLASSIC_FRAME = EditionFrame(
+    width=CANVAS_PX, device_scale_factor=2, clip_selector=".brief", trim_margin_px=None
+)
+_EXPLORER_SCALE = 3
+
+
+def edition_frame(family: str | None) -> EditionFrame:
+    """Return how the family's page is rasterized and cropped."""
+    if family is None or family not in EXPLORER_RENDERER:
+        return _CLASSIC_FRAME
+    return EditionFrame(
+        width=EXPLORER_CANVAS_PX,
+        device_scale_factor=_EXPLORER_SCALE,
+        clip_selector=_EXPLORER_ROOT,
+        trim_margin_px=DESK_MARGIN_PX if family in _ON_A_DESK else None,
+    )
 
 
 def renderer_for(family: str | None) -> EditionRenderer | None:
@@ -114,6 +132,7 @@ __all__ = [
     "WEEKLY_FAMILY",
     "render_edition",
     "render_explorer_edition",
-    "paper_selector",
+    "EditionFrame",
+    "edition_frame",
     "renderer_for",
 ]

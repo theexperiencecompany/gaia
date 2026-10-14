@@ -10,16 +10,20 @@ the email can never approve or send on its own.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import date as date_cls
 from html import escape
 
+import cloudinary.utils
+
 from app.config.settings import settings
+from app.constants.briefing import EDITION_DELIVERY_MAX_WIDTH_PX, EditionDeliveryFormat
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
 from app.models.briefing_models import BriefingItem, BriefingPayload
-from app.services.briefing.editions import paper_selector, render_edition, renderer_for
+from app.services.briefing.editions import edition_frame, render_edition, renderer_for
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
 from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
@@ -107,48 +111,68 @@ def _action_strip(payload: BriefingPayload, brief_url: str, unsubscribe_url: str
 
     return (
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        f'style="max-width:640px;margin:0 auto;background:{_BG};">' + "".join(rows) + "</table>"
+        f'style="max-width:600px;margin:0 auto;background:{_BG};">' + "".join(rows) + "</table>"
     )
 
 
-async def render_edition_png(payload: BriefingPayload, *, crop_to_paper: bool) -> bytes:
-    """Render the edition as a PNG.
-
-    crop_to_paper cuts it to the family's paper (the chat image); the email keeps the
-    full composition.
-    """
+async def render_edition_png(payload: BriefingPayload) -> bytes:
+    """Render the edition as a PNG cropped tight to its paper (editions.edition_frame)."""
     family = payload.template_family
     # The classic edition (and every legacy payload without a family) renders
     # via render_edition.
     render = renderer_for(family) or render_edition
     edition_html = render(payload, edition_no=_edition_no(payload.date), generated_local="")
-    # The defaults are the edition canvas: 1180px at 2x. The image is hosted and
-    # referenced by URL (Gmail blocks base64 data: URIs), so its size has no ceiling.
+    frame = edition_frame(family)
+    # The image is hosted and referenced by URL (Gmail blocks base64 data: URIs),
+    # so its size has no ceiling.
     return await render_html_to_image(
         edition_html,
-        ImageRenderOptions(clip_selector=paper_selector(family) if crop_to_paper else None),
+        ImageRenderOptions(
+            width=frame.width,
+            device_scale_factor=frame.device_scale_factor,
+            clip_selector=frame.clip_selector,
+            trim_margin_px=frame.trim_margin_px,
+        ),
     )
 
 
-async def host_edition_image(
-    payload: BriefingPayload, *, render_key: str, crop_to_paper: bool
-) -> str:
-    """Render the edition and host it on the CDN under render_key; returns the image URL.
+@dataclass(frozen=True)
+class HostedEditionImage:
+    """Delivery URLs for one hosted edition; the original upload stays untouched."""
 
+    display_url: str
+    chat_url: str
+
+
+def edition_delivery_url(public_id: str, fetch_format: EditionDeliveryFormat) -> str:
+    """Build the CDN URL serving the edition at display size instead of the full original."""
+    # The SDK is untyped; it returns (url, options left after building the URL).
+    delivery: tuple[str, dict[str, object]] = cloudinary.utils.cloudinary_url(
+        public_id,
+        secure=True,
+        fetch_format=fetch_format.value,
+        quality="auto",
+        width=EDITION_DELIVERY_MAX_WIDTH_PX,
+        crop="limit",
+    )
+    return delivery[0]
+
+
+async def host_edition_image(payload: BriefingPayload, *, render_key: str) -> HostedEditionImage:
+    """Render the edition, host it on the CDN under render_key, and return its delivery URLs.
+
+    The display URL serves the in-app page and the email, the chat URL the chat post.
     The URL goes out in emails and on public brief links, so its path is the caller's
     random key alone, never the user, kind or date.
     """
-    image = await render_edition_png(payload, crop_to_paper=crop_to_paper)
-    crop = "_chat" if crop_to_paper else ""
-    public_id = f"briefing/editions/{render_key}{crop}"
-    image_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
-    log.debug(
-        "briefing.edition_image.hosted",
-        crop_to_paper=crop_to_paper,
-        image_bytes=len(image),
-        url=image_url,
+    image = await render_edition_png(payload)
+    public_id = f"briefing/editions/{render_key}"
+    original_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
+    log.debug("briefing.edition_image.hosted", image_bytes=len(image), url=original_url)
+    return HostedEditionImage(
+        display_url=edition_delivery_url(public_id, EditionDeliveryFormat.AUTO),
+        chat_url=edition_delivery_url(public_id, EditionDeliveryFormat.JPG),
     )
-    return image_url
 
 
 def render_edition_email(
@@ -175,8 +199,8 @@ def render_edition_email(
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{_BG};">'
         '<tr><td align="center" style="padding:0;">'
         f'<a href="{escape(brief_url)}" style="text-decoration:none;">'
-        f'<img src="{escape(image_url)}" alt="{alt}" width="640" '
-        'style="display:block;width:100%;max-width:640px;height:auto;border:0;" /></a>'
+        f'<img src="{escape(image_url)}" alt="{alt}" width="600" '
+        'style="display:block;width:100%;max-width:600px;height:auto;border:0;" /></a>'
         "</td></tr></table>" + _action_strip(payload, brief_url, unsubscribe_url) + "</div>"
     )
 

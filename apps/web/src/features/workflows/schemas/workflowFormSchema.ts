@@ -9,6 +9,7 @@
  * - New triggers can be added without changing this schema
  */
 
+import { WORKFLOW_DELIVERIES } from "@gaia/shared";
 import type { WorkflowDelivery } from "@shared/api/generated";
 import { z } from "zod";
 import { isValidTimezone } from "@/lib/timezone";
@@ -17,7 +18,6 @@ import type {
   Workflow,
 } from "@/types/features/workflowTypes";
 import { workflowApi } from "../api/workflowApi";
-import { WORKFLOW_DELIVERIES } from "../constants/delivery";
 
 // =============================================================================
 // TRIGGER CONFIG SCHEMAS

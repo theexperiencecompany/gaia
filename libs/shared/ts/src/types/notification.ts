@@ -85,3 +85,8 @@ export const NOTIFICATION_CHANNELS = [
 ] as const;
 
 export type ChannelPlatform = (typeof NOTIFICATION_CHANNELS)[number];
+
+// What the email switch controls: GAIA's own emails to the user (the brief, tips,
+// check-ins), not a copy of every notification.
+export const EMAIL_CHANNEL_DESCRIPTION =
+  "Your brief, tips and check-ins by email";
