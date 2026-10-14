@@ -1,4 +1,4 @@
-import { Spinner } from "@inkjs/ui";
+import { ProgressBar, Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import type { PortCheckResult } from "../../lib/prerequisites.types.js";
@@ -46,6 +46,29 @@ export const EnvSetupSpinnerStep: React.FC<{ status?: string }> = ({
     <Text bold>Environment Setup</Text>
     <Box marginTop={1}>
       <Spinner label={status || "Configuring environment..."} />
+    </Box>
+  </Box>
+);
+
+export const RepositoryProgressStep: React.FC<{
+  title: string;
+  progress?: number;
+  phase?: string;
+}> = ({ title, progress, phase }) => (
+  <Box
+    flexDirection="column"
+    borderStyle="round"
+    padding={1}
+    borderColor={THEME_COLOR}
+  >
+    <Text bold>{title}</Text>
+    <Box marginTop={1} flexDirection="column">
+      <ProgressBar value={progress || 0} />
+      {phase && (
+        <Box marginTop={1}>
+          <Text color="gray">{phase}</Text>
+        </Box>
+      )}
     </Box>
   </Box>
 );

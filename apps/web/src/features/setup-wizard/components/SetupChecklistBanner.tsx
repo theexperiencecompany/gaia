@@ -13,7 +13,7 @@ import { Button } from "@heroui/button";
 import { ArrowDown01Icon, Cancel01Icon, Wrench01Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
@@ -23,24 +23,7 @@ import {
   type SetupChecklistItem,
 } from "@/features/setup-wizard/utils/setupChecklist";
 import { cn } from "@/lib/utils";
-
-const DISMISSED_KEY = "gaia_setup_checklist_dismissed";
-
-/** Item keys pending when the checklist was last dismissed (localStorage).
- * A missing/legacy/unparsable value reads as nothing-dismissed so the banner
- * re-arms instead of staying hidden forever. */
-function readDismissedSnapshot(): string[] {
-  try {
-    const raw = window.localStorage.getItem(DISMISSED_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((key): key is string => typeof key === "string");
-  } catch {
-    // localStorage unavailable (private mode) — never treat as dismissed.
-    return [];
-  }
-}
+import { useSetupChecklistStore } from "@/stores/setupChecklistStore";
 
 function ChecklistAction({ item }: { item: SetupChecklistItem }) {
   return (
@@ -82,13 +65,9 @@ export function SetupChecklistBanner({
   const { data: catalog } = useProviderCatalog();
   // Instance setup is the admin's job; a member could not act on any item.
   const isMember = useCurrentUser().role === "member";
-  const [dismissedKeys, setDismissedKeys] = useState<string[]>([]);
+  const dismissedKeys = useSetupChecklistStore((s) => s.dismissedKeys);
+  const dismiss = useSetupChecklistStore((s) => s.dismiss);
   const [isExpanded, setIsExpanded] = useState(false);
-
-  // Read localStorage after mount so SSR and hydration agree.
-  useEffect(() => {
-    setDismissedKeys(readDismissedSnapshot());
-  }, []);
 
   const items = useMemo(
     () => (status && catalog ? buildSetupChecklist(status, catalog) : []),
@@ -102,15 +81,7 @@ export function SetupChecklistBanner({
   )
     return null;
 
-  const handleDismiss = () => {
-    const keys = items.map((item) => item.key);
-    setDismissedKeys(keys);
-    try {
-      window.localStorage.setItem(DISMISSED_KEY, JSON.stringify(keys));
-    } catch {
-      // Same as above — non-persistent dismissal is fine.
-    }
-  };
+  const handleDismiss = () => dismiss(items.map((item) => item.key));
 
   const [onlyItem] = items;
   const isSingle = items.length === 1;

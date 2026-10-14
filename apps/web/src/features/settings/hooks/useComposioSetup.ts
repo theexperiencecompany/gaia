@@ -40,11 +40,11 @@ export function useComposioSetup() {
   });
   const [edits, setEdits] = useState<Record<string, string>>({});
 
-  const rows = query.data?.integrations ?? [];
+  const rows = query.data?.integrations;
   const drafts = useMemo(
     () =>
       Object.fromEntries(
-        rows.map((row) => [
+        (rows ?? []).map((row) => [
           row.integration_id,
           edits[row.integration_id] ?? initialDraft(row),
         ]),
@@ -61,8 +61,8 @@ export function useComposioSetup() {
     [drafts],
   );
   const isDirty =
-    JSON.stringify(payload) !== JSON.stringify(storedIds(rows)) &&
-    query.data !== undefined;
+    rows !== undefined &&
+    JSON.stringify(payload) !== JSON.stringify(storedIds(rows));
 
   const mutation = useMutation({
     mutationFn: composioSetupApi.saveAuthConfigs,

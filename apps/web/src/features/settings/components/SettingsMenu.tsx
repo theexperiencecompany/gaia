@@ -286,12 +286,12 @@ export default function SettingsMenu({
   const { openShortcutsModal } = useKeyboardShortcuts();
 
   // Entries surfaced directly in this menu; Usage drops out on self-host.
-  const quickSettingsKeys = [
+  const quickSettingsKeys = new Set([
     "memory",
     "linked-accounts",
     "providers",
     ...(billingHidden ? [] : ["usage"]),
-  ];
+  ]);
 
   const openSupportModal = (type: string) => {
     setSupportModalType(type);
@@ -348,7 +348,7 @@ export default function SettingsMenu({
       items: [
         ...settingsPageItems.filter(
           (item) =>
-            quickSettingsKeys.includes(item.key) &&
+            quickSettingsKeys.has(item.key) &&
             isSettingsSectionAllowed(item.key, role),
         ),
         {

@@ -35,8 +35,18 @@ vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
 }));
 
 import { SetupChecklistBanner } from "@/features/setup-wizard/components/SetupChecklistBanner";
+import { useSetupChecklistStore } from "@/stores/setupChecklistStore";
 
-const DISMISSED_KEY = "gaia_setup_checklist_dismissed";
+const PERSIST_KEY = "gaia-setup-checklist";
+
+function dismissedBefore(keys: string[]): void {
+  useSetupChecklistStore.setState({ dismissedKeys: keys });
+}
+
+function persistedDismissedKeys(): unknown {
+  const raw = window.localStorage.getItem(PERSIST_KEY) ?? "{}";
+  return JSON.parse(raw).state?.dismissedKeys;
+}
 
 function statusWith(configured: string[], hasAdmin: boolean): SetupStatus {
   return {
@@ -57,6 +67,7 @@ function renderBanner(): void {
 
 beforeEach(() => {
   window.localStorage.clear();
+  dismissedBefore([]);
   state.role = "admin";
 });
 afterEach(() => vi.clearAllMocks());
@@ -101,13 +112,11 @@ describe("SetupChecklistBanner", () => {
     fireEvent.click(screen.getByLabelText("Dismiss setup checklist"));
 
     expect(screen.queryByText(/setup steps left/)).toBeNull();
-    expect(
-      JSON.parse(window.localStorage.getItem(DISMISSED_KEY) ?? ""),
-    ).toEqual(["search", "admin"]);
+    expect(persistedDismissedKeys()).toEqual(["search", "admin"]);
   });
 
   it("re-arms when an item returns after a dismissal", () => {
-    window.localStorage.setItem(DISMISSED_KEY, JSON.stringify(["search"]));
+    dismissedBefore(["search"]);
     state.status = statusWith([], true);
     renderBanner();
 
@@ -115,10 +124,7 @@ describe("SetupChecklistBanner", () => {
   });
 
   it("re-arms when the pending set shrinks after a dismissal", () => {
-    window.localStorage.setItem(
-      DISMISSED_KEY,
-      JSON.stringify(["search", "admin"]),
-    );
+    dismissedBefore(["search", "admin"]);
     state.status = statusWith(["openai"], true);
     renderBanner();
 
@@ -126,7 +132,7 @@ describe("SetupChecklistBanner", () => {
   });
 
   it("stays hidden while the dismissed set still matches", () => {
-    window.localStorage.setItem(DISMISSED_KEY, JSON.stringify(["search"]));
+    dismissedBefore(["search"]);
     state.status = statusWith(["openai"], true);
     renderBanner();
 

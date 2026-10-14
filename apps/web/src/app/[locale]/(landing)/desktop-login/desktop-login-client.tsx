@@ -2,7 +2,7 @@
 
 import { Spinner } from "@heroui/spinner";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { RedirectType, redirect, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, ShieldAlertIcon } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
@@ -29,7 +29,7 @@ interface DesktopLoginClientProps {
  * Located in (landing) to avoid sidebar layout.
  */
 export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
-  const { isElectron, openExternal } = useElectron();
+  const { isElectron, openExternal, signalReady } = useElectron();
   const router = useRouter();
   const [timeOfDay] = useState<TimeOfDay>(() => getTimeOfDay());
   const [status, setStatus] = useState<
@@ -49,26 +49,24 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
     return () => clearTimeout(timeout);
   }, [isElectron, router]);
 
-  // Skip login when the persisted session is still valid (checked via /user/me).
-  // Works in both auth modes — the API authenticates whichever session cookie it uses.
+  // A persisted session (either auth mode) skips the login screen. The splash
+  // stays up until something signals ready: on success that is /c's
+  // ElectronRouteGuard, on failure here — this page has no guard.
   useEffect(() => {
     if (!isElectron) return;
     let cancelled = false;
     authApi
       .fetchUserInfo()
       .then(() => {
-        if (!cancelled) {
-          setStatus("redirecting");
-          router.replace("/c");
-        }
+        if (!cancelled) setStatus("redirecting");
       })
       .catch(() => {
-        // No valid session — stay on the login screen.
+        if (!cancelled) signalReady();
       });
     return () => {
       cancelled = true;
     };
-  }, [isElectron, router]);
+  }, [isElectron, signalReady]);
 
   // Listen for the main process signalling it's about to navigate to /c
   useEffect(() => {
@@ -78,6 +76,12 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
     });
     return cleanup;
   }, []);
+
+  // Resolved during render, not an effect, so this screen never paints before
+  // navigating to the app.
+  if (status === "redirecting") {
+    redirect("/c", RedirectType.replace);
+  }
 
   const handleOpenLogin = () => {
     const apiBaseUrl =
@@ -189,18 +193,6 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
                   >
                     Try again
                   </button>
-                </div>
-              )}
-
-              {status === "redirecting" && (
-                <div className="flex flex-col items-center gap-4 py-4">
-                  <Spinner color="primary" />
-                  <div className="text-center">
-                    <p className="font-medium text-white">Signing you in…</p>
-                    <p className="mt-1 text-sm text-zinc-400">
-                      Taking you to GAIA
-                    </p>
-                  </div>
                 </div>
               )}
 

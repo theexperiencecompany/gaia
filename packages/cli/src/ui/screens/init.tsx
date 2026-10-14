@@ -18,6 +18,7 @@ import {
   EnvSetupSpinnerStep,
   ErrorStep,
   PortConflictStep,
+  RepositoryProgressStep,
   SystemChecksStep,
 } from "../components/shared-steps.js";
 import { THEME_COLOR } from "../constants.js";
@@ -322,7 +323,9 @@ export const DependencyInstallStep: React.FC<{
   isComplete: boolean;
   logs?: string[];
   title?: string;
-}> = ({ phase, progress, isComplete, logs, title }) => {
+  /** Shown under the logs while running; defaults to a generic wait note. */
+  hint?: string;
+}> = ({ phase, progress, isComplete, logs, title, hint }) => {
   return (
     <Box
       flexDirection="column"
@@ -356,7 +359,7 @@ export const DependencyInstallStep: React.FC<{
         {!isComplete && (
           <Box marginTop={1}>
             <Text color="gray" dimColor>
-              This may take a few minutes...
+              {hint || "This may take a few minutes..."}
             </Text>
           </Box>
         )}
@@ -1266,23 +1269,11 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         )}
 
       {state.step === "Repository Setup" && !state.inputRequest && (
-        <Box
-          flexDirection="column"
-          borderStyle="round"
-          padding={1}
-          borderColor={THEME_COLOR}
-        >
-          <Text bold>Cloning Repository</Text>
-          <Box marginTop={1} flexDirection="column">
-            <ProgressBar value={state.data.repoProgress || 0} />
-
-            {state.data.repoPhase && (
-              <Box marginTop={1}>
-                <Text color="gray">{state.data.repoPhase}</Text>
-              </Box>
-            )}
-          </Box>
-        </Box>
+        <RepositoryProgressStep
+          title="Cloning Repository"
+          progress={state.data.repoProgress}
+          phase={state.data.repoPhase}
+        />
       )}
 
       {state.inputRequest?.id === "setup_mode" && (

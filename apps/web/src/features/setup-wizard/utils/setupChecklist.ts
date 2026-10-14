@@ -57,9 +57,10 @@ export function isChecklistDismissed(
   items: SetupChecklistItem[],
   dismissedKeys: string[],
 ): boolean {
+  const dismissed = new Set(dismissedKeys);
   return (
     items.length > 0 &&
-    dismissedKeys.length === items.length &&
-    items.every((item) => dismissedKeys.includes(item.key))
+    dismissed.size === items.length &&
+    items.every((item) => dismissed.has(item.key))
   );
 }
