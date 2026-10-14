@@ -7,6 +7,9 @@
 #                       reason to $GITHUB_OUTPUT (stdout when unset).
 #   watchdog            Cancel this run once any job has stayed `queued` past
 #                       the limit — a box that died after `select` decided.
+#   requeue-stranded    Cancel and fully re-run any re-run attempt whose lanes
+#                       are stuck queued on the home label while no home
+#                       runner is online (scheduled: ci-requeue.yml).
 #   cancel-superseded   Cancel older queued/in-progress runs of this workflow
 #                       on this branch (per-SHA concurrency needs it).
 #   prime-archive [dir] Pre-populate the runner's action archive cache with
@@ -38,6 +41,9 @@
 #   watchdog           GITHUB_TOKEN (actions: write), GITHUB_REPOSITORY,
 #                      GITHUB_RUN_ID, WATCHDOG_JOB_NAME (required),
 #                      QUEUE_LIMIT_SECS (480), POLL_SECS (30).
+#   requeue-stranded   GITHUB_TOKEN (actions: write), GITHUB_REPOSITORY,
+#                      RUNNER_LABEL (default gaia-home), QUEUE_LIMIT_SECS
+#                      (480), CANCEL_WAIT_SECS (180), POLL_SECS (10).
 #   cancel-superseded  GITHUB_TOKEN (actions: write), GITHUB_REPOSITORY,
 #                      GITHUB_RUN_ID, GITHUB_WORKFLOW_REF, GITHUB_HEAD_REF or
 #                      GITHUB_REF_NAME, GITHUB_EVENT_NAME.
@@ -459,6 +465,65 @@ _epoch() {
 print(int(datetime.datetime.fromisoformat(sys.argv[1].replace("Z","+00:00")).timestamp()))' "$1"
 }
 
+# ── requeue-stranded ──────────────────────────────────────────────────────
+# "Re-run failed jobs" re-runs only the failed lanes. select-runner and the
+# in-run watchdog succeeded the first time, so neither re-runs: the lanes keep
+# the old runs-on, and with the home listeners offline they queue forever with
+# nothing watching them (one docker-image lane sat a whole night that way).
+# This sweep is the watchdog for re-run attempts only — attempt 1 has its own.
+# A stranded attempt is cancelled and then re-run IN FULL, which re-runs select
+# and lets it choose GitHub-hosted runners. Only when no runner carrying the
+# label is online: a busy box is real work, and an unknown probe touches nothing.
+cmd_requeue_stranded() {
+  local LIMIT LABEL WAIT POLL online_rc now ids id queued name created stranded status waited failed=0
+  LIMIT="${QUEUE_LIMIT_SECS:-480}"
+  LABEL="${RUNNER_LABEL:-gaia-home}"
+  WAIT="${CANCEL_WAIT_SECS:-180}"
+  POLL="${POLL_SECS:-10}"
+  export LABEL
+
+  _watchdog_home_online "$LABEL" && online_rc=0 || online_rc=$?
+  case "$online_rc" in
+    0) ci_ok "requeue-stranded: runners labelled '${LABEL}' are online — nothing is stranded"; return 0 ;;
+    2) ci_warn "requeue-stranded: the runners API could not be probed — not touching any run on an unknown"; return 0 ;;
+  esac
+  now="$(date -u +%s)"
+  # Assigned, not iterated from a substitution, so a failed API call fails the sweep.
+  ids="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100&status=queued" \
+           --jq '.workflow_runs[] | select(.run_attempt > 1) | .id')"
+  ids+=$'\n'"$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100&status=in_progress" \
+           --jq '.workflow_runs[] | select(.run_attempt > 1) | .id')"
+  for id in $ids; do
+    queued="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/jobs?per_page=100" \
+                --jq '.jobs[] | select(.status == "queued") | select(any(.labels[]?; . == env.LABEL))
+                      | [.name, .created_at] | @tsv')"
+    stranded=""
+    while IFS=$'\t' read -r name created; do
+      [[ -n "$name" ]] || continue
+      (( now - $(_epoch "$created") > LIMIT )) && stranded="$name"
+    done <<< "$queued"
+    [[ -n "$stranded" ]] || continue
+
+    echo "requeue-stranded: run ${id}: '${stranded}' queued on '${LABEL}' past ${LIMIT}s with no '${LABEL}' runner online — cancelling to re-run in full"
+    gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/cancel" >/dev/null
+    waited=0
+    status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${id}" --jq '.status')"
+    while [[ "$status" != "completed" ]] && (( waited < WAIT )); do
+      sleep "$POLL"
+      waited=$((waited + POLL))
+      status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${id}" --jq '.status')"
+    done
+    if [[ "$status" != "completed" ]]; then
+      echo "::error::run ${id} was cancelled but is still ${status} after ${WAIT}s — re-run it in full by hand once it completes"
+      failed=1
+      continue
+    fi
+    gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/rerun" >/dev/null
+    ci_ok "requeue-stranded: run ${id} re-run in full — select-runner decides afresh"
+  done
+  return "$failed"
+}
+
 # ── cancel-superseded ─────────────────────────────────────────────────────
 # Why not `concurrency.cancel-in-progress`: with a shared group the NEW run sits
 # in "pending" until the OLD run's cancellation completes. On the self-hosted
@@ -855,6 +920,7 @@ main() {
   case "$sub" in
     select)            cmd_select "$@" ;;
     watchdog)          cmd_watchdog "$@" ;;
+    requeue-stranded)  cmd_requeue_stranded "$@" ;;
     cancel-superseded) cmd_cancel_superseded "$@" ;;
     prime-archive)     cmd_prime_archive "$@" ;;
     parallel)          cmd_parallel "$@" ;;
