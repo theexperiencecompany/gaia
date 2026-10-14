@@ -5,10 +5,13 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.constants.notifications import DEFAULT_QUIET_HOURS_END, DEFAULT_QUIET_HOURS_START
+from app.constants.notifications import (
+    DEFAULT_QUIET_HOURS_END,
+    DEFAULT_QUIET_HOURS_START,
+    ProactiveMessageClass,
+)
 from app.db.repositories.base import UserScopedDocument
 from app.schemas.common import ResponseModel
-from app.utils.timezone import Timezone
 
 
 class NotificationType(str, Enum):
@@ -173,6 +176,8 @@ class NotificationRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     scheduled_for: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    #: Whether the user's quiet hours may hold its chat-platform copy (in-app is never held).
+    message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
 
     @field_validator("priority", mode="before")
     def validate_priority(cls, v: int) -> int:
@@ -343,7 +348,8 @@ class QuietHours(BaseModel):
     """A daily window, on the user's own clock, when GAIA holds proactive pushes.
 
     Whole local hours; the window may span midnight (start 22, end 8 is 22:00 to
-    08:00). The end hour is the first hour outside the window.
+    08:00). The end hour is the first hour outside the window. What the window
+    means for a message is app/services/delivery/quiet_hours.py's to decide.
     """
 
     start_hour: int = Field(ge=0, le=23)
@@ -355,18 +361,6 @@ class QuietHours(BaseModel):
         if self.start_hour == self.end_hour:
             raise ValueError("Quiet hours must start and end at different hours")
         return self
-
-    def contains_hour(self, local_hour: int) -> bool:
-        """Whether local_hour (0-23, on the user's clock) is inside the window.
-
-        Hours are measured from the window's start around the 24-hour clock, so
-        a window that spans midnight needs no special case.
-        """
-        return (local_hour - self.start_hour) % 24 < (self.end_hour - self.start_hour) % 24
-
-    def covers(self, instant: datetime, timezone_name: str | None) -> bool:
-        """Whether instant falls in the window on the clock of timezone_name (UTC when unset)."""
-        return self.contains_hour(Timezone.parse(timezone_name).localize(instant).hour)
 
 
 def default_quiet_hours() -> QuietHours:

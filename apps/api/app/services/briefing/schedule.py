@@ -22,6 +22,7 @@ from app.models.notification.notification_models import QuietHours
 from app.models.user_models import UserDocument
 from app.models.workflow_models import UpdateWorkflowRequest
 from app.services.briefing import context
+from app.services.delivery.quiet_hours import contains_hour
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
@@ -36,7 +37,7 @@ def daily_briefing_cron(quiet_hours: QuietHours) -> str:
     """Return the daily brief's cron: 08:00, or the end of quiet hours covering 08:00."""
     hour = (
         quiet_hours.end_hour
-        if quiet_hours.contains_hour(DAILY_BRIEFING_HOUR)
+        if contains_hour(quiet_hours, DAILY_BRIEFING_HOUR)
         else DAILY_BRIEFING_HOUR
     )
     return f"0 {hour} * * *"

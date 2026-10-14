@@ -2,6 +2,7 @@
 
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.constants.notifications import ProactiveMessageClass
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import (
@@ -99,6 +100,8 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
             user_id=reminder.user_id,
             notification_text=text,
             origin=origin,
+            # The user set this reminder for now: quiet hours do not hold it.
+            message_class=ProactiveMessageClass.USER_TIMED,
             exclude_source=delivered_source,
         )
     except Exception as e:  # side channel; the in-app badge already delivered

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { EMAIL_CHANNEL_DESCRIPTION } from "@gaia/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -97,5 +98,20 @@ describe("NotificationSettings", () => {
 
     await waitFor(() => expect(emailSwitch.checked).toBe(false));
     expect(telegramSwitch.checked).toBe(true);
+  });
+
+  it("says the email switch controls GAIA's emails, not notification delivery", async () => {
+    vi.mocked(NotificationsAPI.getChannelPreferences).mockResolvedValue({
+      telegram: true,
+      discord: true,
+      whatsapp: true,
+      slack: true,
+      imessage: true,
+      email: true,
+    });
+
+    renderSettings();
+
+    expect(await screen.findByText(EMAIL_CHANNEL_DESCRIPTION)).toBeTruthy();
   });
 });

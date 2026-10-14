@@ -1,12 +1,9 @@
 "use client";
 
+import { WORKFLOW_DELIVERIES, WORKFLOW_DELIVERY_COPY } from "@gaia/shared";
 import { Button } from "@heroui/button";
 import type { WorkflowDelivery } from "@shared/api/generated";
 import { cn } from "@/lib/utils";
-import {
-  WORKFLOW_DELIVERIES,
-  WORKFLOW_DELIVERY_COPY,
-} from "../../constants/delivery";
 import WorkflowSection from "./WorkflowSection";
 
 interface WorkflowDeliveryFieldProps {

@@ -17,12 +17,14 @@ from dataclasses import dataclass
 
 from app.agents.core.background.platform_chat import post_to_platform_chat
 from app.config.settings import settings
+from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ActionType,
     ChannelDeliveryStatus,
     NotificationRequest,
+    NotificationStatus,
 )
 from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult
@@ -37,6 +39,7 @@ class ExternalPayload:
 
     text: str
     origin: str
+    message_class: ProactiveMessageClass
 
 
 def _join_nonempty(*segments: str, sep: str = "\n") -> str:
@@ -90,7 +93,11 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
             if links:
                 text = _join_nonempty(text, " · ".join(links), sep="\n\n")
 
-        return ExternalPayload(text=text, origin=f"notification from {notification.source.value}")
+        return ExternalPayload(
+            text=text,
+            origin=f"notification from {notification.source.value}",
+            message_class=notification.message_class,
+        )
 
     async def deliver(self, content: ExternalPayload, user_id: str) -> ChannelDeliveryStatus:
         """Post the rendered text into the user's DM conversation on this platform.
@@ -116,9 +123,15 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
             channel=channel,
             text=content.text,
             origin=content.origin,
+            message_class=content.message_class,
         )
         if result is OutboundResult.PUBLISHED:
             return self._success()
+        if result is OutboundResult.DEFERRED:
+            # Held for quiet hours; a scheduled job posts it when they end.
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type, status=NotificationStatus.PENDING
+            )
         if result is OutboundResult.FAILED:
             # Broker unavailable or a publish error — a real failure, not a skip,
             # so retries/alerting that key off FAILED still fire during an outage.

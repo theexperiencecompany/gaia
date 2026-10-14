@@ -5,9 +5,11 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
 import { NotificationCard } from "@/features/notification/components/NotificationCard";
+import { NotificationModalHost } from "@/features/notification/components/NotificationModalHost";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
+  type ModalConfig,
   NotificationStatus,
   type NotificationView,
 } from "@/types/features/notificationTypes";
@@ -30,6 +32,7 @@ export default function NotificationListSection({
   title = "Notifications",
 }: NotificationListSectionProps) {
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+  const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
   const [readUpdates, setReadUpdates] = useState<Record<string, ReadUpdate>>(
     {},
   );
@@ -181,6 +184,7 @@ export default function NotificationListSection({
                     tone="inset"
                     clampBody
                     onMarkAsRead={handleMarkAsRead}
+                    onModalOpen={setModalConfig}
                   />
                 ))}
               </div>
@@ -198,6 +202,10 @@ export default function NotificationListSection({
           </div>
         </AccordionItem>
       </Accordion>
+      <NotificationModalHost
+        config={modalConfig}
+        onClose={() => setModalConfig(null)}
+      />
     </div>
   );
 }

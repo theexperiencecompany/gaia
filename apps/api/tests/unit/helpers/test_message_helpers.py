@@ -158,6 +158,23 @@ class TestFormatWorkflowExecutionMessage:
         assert WORKFLOW_DELIVERY_SECTIONS[WorkflowDelivery.SILENT] in result
 
     @pytest.mark.asyncio
+    async def test_a_legacy_silent_trigger_context_stays_silent(self) -> None:
+        """A trigger context queued before deploy carries only the old notify flag."""
+        selected = SelectedWorkflowData(id="wf1", title="Digest", description="d", steps=[])
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected,
+                user_id="u1",
+                trigger_context={"workflow_id": "wf1", "workflow_notify_on_completion": False},
+            )
+
+        assert WORKFLOW_DELIVERY_SECTIONS[WorkflowDelivery.SILENT] in result
+
+    @pytest.mark.asyncio
     async def test_manual_with_db_workflow(self) -> None:
         selected = SelectedWorkflowData(
             id="wf1",
