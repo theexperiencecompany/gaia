@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Link } from "@heroui/link";
 import { Skeleton } from "@heroui/skeleton";
 
@@ -16,12 +17,28 @@ export function BriefingArchive({
   limit = 30,
   className,
 }: BriefingArchiveProps) {
-  const { data: briefings, isLoading } = useBriefingsQuery(limit);
+  const {
+    data: briefings,
+    isLoading,
+    isError,
+    refetch,
+  } = useBriefingsQuery(limit);
 
   if (isLoading) {
     return (
       <div className={className}>
         <Skeleton className="h-[60vh] w-full rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center gap-3">
+        <p className="text-sm text-zinc-500">Couldn't load your briefings.</p>
+        <Button size="sm" variant="flat" onPress={() => refetch()}>
+          Try again
+        </Button>
       </div>
     );
   }

@@ -60,10 +60,6 @@ function ItemGroup({
   );
 }
 
-function sectionTitle(title: string): string {
-  return title.charAt(0) + title.slice(1).toLowerCase();
-}
-
 /** One brief: the day's rendered edition, then its real items as a tappable list. */
 export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
   const calendar = payload.calendar ?? [];
@@ -99,7 +95,7 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
           </ItemGroup>
         )}
         {payload.sections.map((section) => (
-          <ItemGroup key={section.title} title={sectionTitle(section.title)}>
+          <ItemGroup key={section.title} title={section.title}>
             {section.items.map((item) => (
               <ItemRow key={item.todo_id ?? item.text} item={item} />
             ))}
