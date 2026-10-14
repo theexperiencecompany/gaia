@@ -421,3 +421,52 @@ def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
 
     with pytest.raises(ValidationError, match="DEV_LLM_API"):
         Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT)
+
+
+def _clear_required_env(monkeypatch: pytest.MonkeyPatch, kind: DeploymentKind) -> None:
+    for name in required_keys(baseline_profile(kind)):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_production_boots_with_only_the_datastores_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Master warned and booted on a missing production key; refusing would take
+    # GAIA Cloud down on deploy for one unset integration id.
+    _clear_required_env(monkeypatch, DeploymentKind.PRODUCTION)
+
+    settings_obj = Settings(
+        _env_file=None,
+        ENV="production",
+        AUTH_MODE="workos",
+        MONGO_DB="mongodb://mongo:27017",
+        REDIS_URL="redis://redis:6379",
+    )
+
+    assert settings_obj.deployment.kind is DeploymentKind.PRODUCTION
+    assert settings_obj.FIGMA_MCP_CLIENT_ID is None
+
+
+def test_selfhost_refuses_to_boot_without_its_infrastructure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_required_env(monkeypatch, DeploymentKind.SELFHOST)
+
+    with pytest.raises(RuntimeError, match="POSTGRES_URL"):
+        Settings(
+            _env_file=None,
+            ENV="selfhost",
+            MONGO_DB="mongodb://mongo:27017",
+            REDIS_URL="redis://redis:6379",
+        )
+
+
+def test_an_env_with_no_deployment_kind_is_refused_by_name_at_boot() -> None:
+    # The shared settings base admits ENV=staging; the API's ENV field is the
+    # DeploymentKind enum, so it fails as a field error, never inside the profile.
+    with pytest.raises(ValidationError) as refused:
+        _prod_settings(ENV="staging")
+
+    [error] = refused.value.errors()
+    assert error["loc"] == ("ENV",)
+    assert "'production', 'development' or 'selfhost'" in error["msg"]

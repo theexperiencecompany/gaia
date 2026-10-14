@@ -281,11 +281,8 @@ class TestTavilyProvider:
                 "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
             ) as mock_thread,
             patch.object(settings, "TAVILY_API_KEY", "tvly-key"),  # pragma: allowlist secret
-            # _active_api_key reaches the resolver through importlib on the
-            # service module, so THAT is the seam — patching a name in this
-            # module would not intercept it and the real resolver runs.
             patch(
-                "app.services.providers.provider_credentials_service.resolve",
+                "app.utils.search.providers.tavily.resolve",
                 new_callable=AsyncMock,
                 return_value={"api_key": "tvly-key"},  # pragma: allowlist secret
             ),

@@ -32,6 +32,17 @@ from app.services import latency_metrics as _latency_metrics  # noqa: F401 -- si
 from app.services.storage import metrics as _fs_metrics  # noqa: F401 -- side effects
 from shared.py.wide_events import log as wide_log
 
+_metrics_bearer = HTTPBearer(auto_error=True)
+
+
+def _verify_metrics_token(
+    credentials: HTTPAuthorizationCredentials = Depends(_metrics_bearer),
+) -> None:
+    """Admit only the scraper presenting METRICS_TOKEN."""
+    token = settings.METRICS_TOKEN
+    if token is None or not secrets.compare_digest(credentials.credentials, token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+
 
 def create_app() -> FastAPI:
     """
@@ -69,14 +80,6 @@ def create_app() -> FastAPI:
         app, latency_lowr_buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10)
     )
     if settings.METRICS_TOKEN:
-        _bearer = HTTPBearer(auto_error=True)
-
-        def _verify_metrics_token(
-            credentials: HTTPAuthorizationCredentials = Depends(_bearer),
-        ) -> None:
-            if not secrets.compare_digest(credentials.credentials, settings.METRICS_TOKEN):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
-
         instrumentator.expose(
             app, include_in_schema=False, dependencies=[Depends(_verify_metrics_token)]
         )
@@ -88,7 +91,16 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix="/api/v1", responses=ERROR_RESPONSES)
     app.include_router(health_router, responses=ERROR_RESPONSES)
-    app.include_router(readiness_router, responses=ERROR_RESPONSES)
+    # Readiness pings every datastore and names them: public to an instance's
+    # operator, behind the metrics token on GAIA Cloud.
+    if settings.deployment.public_readiness:
+        app.include_router(readiness_router, responses=ERROR_RESPONSES)
+    elif settings.METRICS_TOKEN:
+        app.include_router(
+            readiness_router,
+            responses=ERROR_RESPONSES,
+            dependencies=[Depends(_verify_metrics_token)],
+        )
     # Root-mounted on purpose: these are the links a user is handed, fronted by a
     # friendly vhost that proxies here, so they carry no /api/v1 prefix. Each one
     # authenticates itself with the capability in its own URL.

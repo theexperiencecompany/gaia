@@ -53,6 +53,11 @@ async def put_composio_auth_configs(
         await save_auth_configs(body.auth_configs)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    log.audit(
+        "composio auth configs saved",
+        actor=user.user_id,
+        integrations=sorted(body.auth_configs),
+    )
     overview = await composio_setup_overview()
     set_up_count = sum(1 for row in overview.integrations if row.auth_config_id is not None)
     capture(

@@ -17,8 +17,6 @@ const INVALID_CREDENTIALS_COPY = "Invalid email or password.";
 const GENERIC_ERROR_COPY = "Could not sign you in right now. Please try again.";
 const RESET_CMD =
   "docker compose -p gaia-selfhost exec gaia-backend python -m app.scripts.reset_admin_password";
-const RESET_MONGO_CMD =
-  "docker compose -p gaia-selfhost exec mongo mongosh --eval 'db.getSiblingDB(\"gaia\").auth_credentials.deleteMany({})'";
 
 interface LoginFormProps {
   /**
@@ -135,8 +133,8 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
           <ModalHeader>Reset admin password</ModalHeader>
           <ModalBody className="gap-3 pb-6">
             <p className="text-sm text-zinc-600 dark:text-zinc-300">
-              Self-hosted GAIA has one admin account. To reset your password,
-              run this on the host that runs GAIA:
+              If you are the admin and forgot your password, run this on the
+              host that runs GAIA:
             </p>
             <div className="relative">
               <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 pr-11 text-xs text-zinc-100">
@@ -150,23 +148,10 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
               />
             </div>
             <p className="text-xs text-zinc-500">
-              Then open{" "}
-              <Link href="/signup" size="sm" color="primary">
-                /signup
-              </Link>{" "}
-              to create a new admin account. Alternative (direct Mongo):
+              It prints a new password for the admin account and signs out every
+              admin session. Sign in with it, then change it in Settings. Your
+              account and data stay as they are.
             </p>
-            <div className="relative">
-              <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 pr-11 text-xs text-zinc-100">
-                {RESET_MONGO_CMD}
-              </pre>
-              <CopyButton
-                textToCopy={RESET_MONGO_CMD}
-                variant="light"
-                size="sm"
-                className="absolute top-2 right-2 text-zinc-400"
-              />
-            </div>
           </ModalBody>
         </ModalContent>
       </Modal>

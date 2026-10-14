@@ -2,7 +2,7 @@
 
 Mounted at ``/auth`` by ``app/api/v1/routes.py``; ``signup`` and ``login`` are
 public (the coordinator lists them in the middleware's ``exclude_paths``),
-while ``password`` and ``logout`` require a live local session.
+while ``password`` requires a live local session. Logout is POST /user/logout.
 The first signup creates the instance administrator; later signups create
 members when an invite or the open registration policy admits them.
 """
@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
-from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED, InstanceRole
+from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED, BCRYPT_ROUNDS, InstanceRole
 from app.constants.error_codes import INVALID_CREDENTIALS, REGISTRATION_CLOSED
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
@@ -28,24 +28,16 @@ from app.models.auth_models import (
     SignupRequest,
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.members_service import (
-    admit_member,
-    ensure_invite_redeemable,
-    record_member_joined,
-)
+from app.services.members_service import admit_member, redeem_admission
 from app.utils.auth_utils import build_user_context, session_cookie_secure
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
     SESSION_TTL_SECONDS,
     issue_session_token,
-    resolve_session_token,
 )
 from shared.py.wide_events import log
 
 router = APIRouter()
-
-# OWASP-recommended baseline for interactive logins (~250ms per verify).
-_BCRYPT_ROUNDS = 12
 
 # Lazily-built digest used to equalize failure cost in login: an unknown email
 # would otherwise return in ~0ms while a wrong password pays a full bcrypt
@@ -57,7 +49,7 @@ def _burn_one_verification(password: str) -> None:
     """Run one real bcrypt verify against a fixed digest — pure latency."""
     global _dummy_digest
     if _dummy_digest is None:
-        _dummy_digest = bcrypt.hashpw(b"gaia-timing-equalizer", bcrypt.gensalt(_BCRYPT_ROUNDS))
+        _dummy_digest = bcrypt.hashpw(b"gaia-timing-equalizer", bcrypt.gensalt(BCRYPT_ROUNDS))
     try:
         bcrypt.checkpw(password.encode(), _dummy_digest)
     except ValueError:
@@ -83,28 +75,6 @@ def _set_session_cookie(response: JSONResponse, token: str, *, request: Request)
         max_age=SESSION_TTL_SECONDS,
         path="/",
     )
-
-
-def _clear_session_cookie(response: JSONResponse, request: Request) -> None:
-    """Delete the session cookie with the same Secure flag it was set with."""
-    response.delete_cookie(
-        key=LOCAL_SESSION_COOKIE,
-        httponly=True,
-        path="/",
-        secure=session_cookie_secure(request),
-        samesite="lax",
-    )
-
-
-async def _logout_actor(request: Request) -> str:
-    """Best-effort actor for the logout audit: the session's user id when the
-    presented cookie still verifies, else the unauthenticated marker (logout is
-    idempotent, so an absent or dead cookie is not an error)."""
-    token = request.cookies.get(LOCAL_SESSION_COOKIE)
-    if not token:
-        return AUDIT_ACTOR_UNAUTHENTICATED
-    user_id = await resolve_session_token(token)
-    return user_id or AUDIT_ACTOR_UNAUTHENTICATED
 
 
 def _user_payload(user: UserDocument) -> dict[str, object]:
@@ -139,21 +109,20 @@ def _registration_closed(email: str) -> Never:
     )
 
 
-async def _delete_user_best_effort(user_id: str) -> None:
-    """Remove the user row this request created moments ago after losing the
-    registration claim race.
+async def _discard_partial_account(user_id: str, credential_id: str | None) -> None:
+    """Remove the rows a failed signup created so its email stays free to sign up with.
 
-    Best-effort deliberately: the rejection itself is already decided by Mongo,
-    so a transient cleanup failure must not mask the correct 403 with a 500 —
-    it logs loudly instead (same posture as users.touch_last_active). The row
-    is unreachable garbage either way: its id was never returned and no session
-    was issued for it.
+    Best-effort deliberately: the signup's own failure is the response, so a
+    cleanup failure logs loudly instead of masking it. The rows are unreachable
+    either way: no session was issued for them.
     """
     try:
+        if credential_id is not None:
+            await local_credentials_repository.delete(credential_id)
         await user_repository.delete(user_id)
     except Exception as exc:
         log.warning(
-            "signup-race compensating user delete failed",
+            "signup compensating account delete failed",
             user={"id": user_id},
             error=str(exc),
             error_type=type(exc).__name__,
@@ -182,9 +151,9 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     log.set(operation="local_signup", email=email, client_ip=_client_ip(request))
 
     admin_exists = await local_credentials_repository.admin_exists()
-    if admin_exists and body.invite is not None:
-        # A spent link must read as spent, not as closed, whoever presents it.
-        await ensure_invite_redeemable(body.invite)
+    # Decided before the email check: a spent link must read as spent, not as
+    # closed, whoever presents it. Nothing is spent until the account exists.
+    admission = await admit_member(body.invite) if admin_exists else None
 
     if await user_repository.get_by_email(email) is not None:
         # Email already belongs to an existing identity. Attaching a credential
@@ -197,7 +166,7 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     # forever. This guard keeps any hash refusal a clean 422, not a 500.
     try:
         password_hash = bcrypt.hashpw(
-            body.password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
+            body.password.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
         ).decode()
     except ValueError as exc:
         raise HTTPException(
@@ -222,19 +191,28 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
         if credential is None:
             # Lost the race — another concurrent signup holds the admin slot now.
             # Remove the user row this request just created so no orphan remains.
-            await _delete_user_best_effort(user.id)
+            await _discard_partial_account(user.id, None)
             _registration_closed(email)
     else:
-        admission = await admit_member(body.invite)
         if admission is None:
             _registration_closed(email)
         user = await user_repository.create(
             UserDocument(email=email, name=name, role=InstanceRole.MEMBER)
         )
-        credential = await local_credentials_repository.create(
-            LocalCredentialDocument(user_id=user.id, password_hash=password_hash)
-        )
-        await record_member_joined(admission, user.id)
+        # The invite is spent last, so any failure before it leaves the invite live
+        # and, with these rows removed, the email free for a retry.
+        try:
+            credential = await local_credentials_repository.create(
+                LocalCredentialDocument(user_id=user.id, password_hash=password_hash)
+            )
+        except Exception:
+            await _discard_partial_account(user.id, None)
+            raise
+        try:
+            await redeem_admission(admission, user.id)
+        except Exception:
+            await _discard_partial_account(user.id, credential.id)
+            raise
 
     token = await issue_session_token(user.id, credential.token_version)
     log.audit("account created", actor=user.id, mode="local", role=user.role)
@@ -365,7 +343,7 @@ async def change_password(
     # and a failed hash must leave the old (working) credential untouched.
     try:
         password_hash = bcrypt.hashpw(
-            body.new_password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
+            body.new_password.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
         ).decode()
     except ValueError as exc:
         raise HTTPException(
@@ -392,18 +370,5 @@ async def change_password(
     new_token = await issue_session_token(user_id, new_version)
     response = JSONResponse(status_code=200, content={"status": "ok"})
     _set_session_cookie(response, new_token, request=request)
-    log.set(outcome="success")
-    return response
-
-
-@router.post("/logout")
-async def logout(request: Request) -> JSONResponse:
-    """Clear the session cookie. Idempotent — clearing an absent cookie still
-    reports local mode so clients can branch uniformly."""
-    log.set(operation="local_logout")
-    actor = await _logout_actor(request)
-    log.audit("logged out", actor=actor, mode="local")
-    response = JSONResponse(content={"mode": "local"})
-    _clear_session_cookie(response, request)
     log.set(outcome="success")
     return response

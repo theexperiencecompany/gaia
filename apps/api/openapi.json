@@ -21890,56 +21890,6 @@
         ]
       }
     },
-    "/api/v1/auth/logout": {
-      "post": {
-        "description": "Clear the session cookie. Idempotent \u2014 clearing an absent cookie still\nreports local mode so clients can branch uniformly.",
-        "operationId": "auth_logout",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Logout",
-        "tags": [
-          "Auth"
-        ]
-      }
-    },
     "/api/v1/auth/password": {
       "patch": {
         "description": "Rotate the caller's own password after re-verifying the current one.\n\nNot in the middleware's ``exclude_paths`` \u2014 a live local session is\nrequired to even reach this handler. The current-password verify runs the\nsame bcrypt path as login and fails with the same uniform\n``invalid_credentials`` shape (401): whether the credential is missing or\nthe password is wrong must stay indistinguishable. No timing equalizer is\nburned for a missing credential \u2014 unlike login, the caller already holds\nan authenticated session, so there is no account left to enumerate.\n\nDeliberately narrow failure semantics: a wrong current password is a\n401 (the client renders it inline next to that field), while an over-cap\nor too-short NEW password is rejected on the wire as a 422 before any\nverification runs.\n\nOn success the credential's ``token_version`` is bumped and a fresh JWT\n(``ver`` = new version) is returned as a ``Set-Cookie`` so the caller's\ncurrent session survives while every other previously issued JWT \u2014 whose\n``ver`` no longer matches \u2014 is revoked. Previous sessions remain valid for\nup to 30 days only if password rotation never happened; after a rotation\nthey are rejected on the next request.",

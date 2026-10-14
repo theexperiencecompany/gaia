@@ -296,6 +296,19 @@ Access to the Docker socket is equivalent to root on the host. With the local sa
 
 Each sandbox container sees only its own user's files: it mounts that user's folder of the `gaia-selfhost_workspace` volume at `/workspace` (with their installed skills and GAIA's shared system files read-only on top), never the whole volume. This uses Docker's `volume-subpath` mounts, so the local sandbox needs **Docker Engine 26 or newer**; `gaia start` refuses to start it on an older engine.
 
+Each sandbox container is also fenced in, so one user's runaway job cannot take the host down or reach anything it should not:
+
+| Limit | Value |
+| --- | --- |
+| Memory | 2 GB, no swap (`--memory 2g --memory-swap 2g`) |
+| Processes | 512 (`--pids-limit 512`) |
+| CPU | 2 cores (`--cpus 2`) |
+| Privileges | All Linux capabilities dropped, no privilege escalation (`--cap-drop ALL`, `no-new-privileges`) |
+| Network | Its own `gaia-sandbox` bridge network: internet access for `pip` and `npm` installs, but no route to GAIA's databases on the Compose network, and no traffic between users' sandboxes |
+| Command time | Each command is killed inside the container when its timeout runs out (5 minutes by default, 30 at most) |
+
+The sandbox network can still reach ports your host publishes to all interfaces, as any internet client could. Sandboxes created before these limits existed are replaced with limited ones on their next use; their files stay in the workspace volume.
+
 Sandboxes created by an older version mounted one `gaia-sandbox-workspace` volume shared by every user. The first `gaia start`, `gaia up` or `gaia update` after upgrading replaces those containers and copies each conversation's files from the old volume into its owner's workspace. Files whose owner cannot be proven (anything outside a conversation folder) stay in the old volume and are listed in the command output and in `_migrations/legacy-sandbox-workspace.json` on the workspace volume. Nothing is deleted: remove the old volume yourself with `docker volume rm gaia-sandbox-workspace` once you have checked the report.
 
 When an E2B key is saved, E2B wins even with the local sandbox on, and the next tool call switches over with no restart. Driving Compose by hand, layer the override yourself:

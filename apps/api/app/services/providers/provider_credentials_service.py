@@ -7,9 +7,8 @@ then None. Everywhere else the environment is the only source and the store is
 never read. Writes invalidate locally and publish so other pods rebuild too.
 """
 
-import importlib
+from collections.abc import Callable
 import json
-import os
 from time import monotonic
 from typing import NamedTuple, TypedDict
 
@@ -19,14 +18,10 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.providers import CREDENTIAL_PROVIDERS, CredentialSource
 from app.core.lazy_loader import providers
-from app.db.redis import redis_cache
 from app.db.repositories.provider_credentials import provider_credentials_repository
+from app.services.runtime.config_updates import PROVIDER_SCOPE_PREFIX, publish_config_update
 from app.services.runtime.secrets_store import fernet_key_from, get_instance_secret
 from shared.py.wide_events import log
-
-# Other pods subscribe to this channel to invalidate their own caches; payload:
-# {"scope": "provider:<name>"}.
-RUNTIME_CONFIG_CHANNEL = "gaia:runtime-config-updated"
 
 _CACHE_TTL_SECONDS = 60.0
 
@@ -59,6 +54,65 @@ class CredentialResolution(NamedTuple):
     source: CredentialSource
     # A stored credential is active while the environment sets a different one.
     shadows_env: bool
+
+
+class CloudinaryAccount(NamedTuple):
+    """Everything the Cloudinary SDK needs; the store carries only the API key."""
+
+    cloud_name: str
+    api_key: str
+    api_secret: str
+
+
+class GoogleOAuthClient(NamedTuple):
+    """The OAuth client pair; the store carries only the secret, as api_key."""
+
+    client_id: str
+    client_secret: str
+
+
+def cloudinary_account(config: ProviderConfig | None) -> CloudinaryAccount | None:
+    """Complete a resolved Cloudinary key with its env-only cloud name and secret; None unless all three."""
+    api_key = config["api_key"] if config else None
+    cloud_name = settings.CLOUDINARY_CLOUD_NAME
+    api_secret = settings.CLOUDINARY_API_SECRET
+    if not (cloud_name and api_key and api_secret):
+        return None
+    return CloudinaryAccount(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
+
+
+def google_oauth_client(config: ProviderConfig | None) -> GoogleOAuthClient | None:
+    """Complete a resolved Google client secret with its env-only client id; None unless both."""
+    client_secret = config["api_key"] if config else None
+    client_id = settings.GOOGLE_CLIENT_ID
+    if not (client_id and client_secret):
+        return None
+    return GoogleOAuthClient(client_id=client_id, client_secret=client_secret)
+
+
+# Providers whose consumer needs env-only fields beyond the stored credential.
+_ENV_COMPLETIONS: dict[str, Callable[[ProviderConfig | None], object | None]] = {
+    "cloudinary": cloudinary_account,
+    "google_oauth": google_oauth_client,
+}
+
+
+def is_usable(provider: str, config: ProviderConfig | None) -> bool:
+    """Whether a resolved config can serve its consumer, env-only fields included."""
+    if config is None:
+        return False
+    complete = _ENV_COMPLETIONS.get(provider)
+    return complete is None or complete(config) is not None
+
+
+# Pod-local caches built from resolved configs in modules that import this one,
+# so they register here instead of being imported back.
+_local_invalidation_hooks: list[Callable[[], None]] = []
+
+
+def on_local_invalidation(hook: Callable[[], None]) -> None:
+    """Run hook on every pod-local invalidation, local save or remote update alike."""
+    _local_invalidation_hooks.append(hook)
 
 
 # provider → (cached-at monotonic, resolved config). Entries may hold None-ish
@@ -194,32 +248,14 @@ def invalidate_locally(provider: str) -> None:
                 name=registry_key,
             )
 
-    # Function-level import breaks a real cycle: the client module consumes
-    # this module at import time, so a top-level import would close the loop.
-    client_module = importlib.import_module("app.agents.llm.client")
-    client_module.reset_aux_llm_caches()
+    for hook in _local_invalidation_hooks:
+        hook()
 
 
 async def invalidate(provider: str) -> None:
     """Drop this pod's cached config and tell every consumer (and pod) to rebuild."""
     invalidate_locally(provider)
-
-    client = redis_cache.redis
-    if client is not None:
-        try:
-            await client.publish(
-                RUNTIME_CONFIG_CHANNEL, json.dumps({"scope": f"provider:{provider}"})
-            )
-        except Exception as e:
-            # Deliberate degradation, loud: cross-pod refresh is missed but the
-            # 60s TTL bounds staleness and local state is already consistent.
-            log.error(
-                f"{LogTag.API} Failed to publish runtime-config update",
-                channel=RUNTIME_CONFIG_CHANNEL,
-                provider=provider,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+    await publish_config_update(f"{PROVIDER_SCOPE_PREFIX}{provider}")
 
 
 # ---------------------------------------------------------------------------
@@ -268,12 +304,9 @@ def _openrouter_env() -> ProviderConfig | None:
 
 
 def _ollama_env() -> ProviderConfig | None:
-    # Only when the endpoint was explicitly provided; the settings default
-    # is a docker-internal name that is unreachable from bare instances.
-    explicit = os.environ.get("OLLAMA_BASE_URL")
-    if not explicit:
+    if not settings.OLLAMA_BASE_URL:
         return None
-    return ProviderConfig(api_key=None, base_url=explicit, model=None, preset=None)
+    return ProviderConfig(api_key=None, base_url=settings.OLLAMA_BASE_URL, model=None, preset=None)
 
 
 def _custom_env() -> ProviderConfig | None:

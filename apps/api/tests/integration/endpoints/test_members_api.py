@@ -27,7 +27,7 @@ from app.models.auth_models import (
 )
 from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services import members_service
+from app.services import member_offboarding, members_service
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceInviteCreated
 
@@ -327,6 +327,39 @@ class TestRemoveMember:
         assert (await admin_client.delete(f"{API}/{member.id}")).status_code == 204
         assert offboarding.await_count == 2
         assert instance.credentials[member.id].disabled_at == disabled_at
+
+    async def test_a_removal_that_could_not_stop_everything_is_a_503_naming_what_still_runs(
+        self,
+        admin_client: AsyncClient,
+        member: UserDocument,
+        offboarding: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        workflow = MagicMock(id="wf-1")
+        for name, found in (
+            ("workflow_repository.find_activated_for_user", [workflow]),
+            ("reminder_repository.find_scheduled_for_user", []),
+            ("todo_repository.find_running_tracked_for_user", []),
+            ("PlatformLinkService.get_linked_platforms", {}),
+        ):
+            owner, attr = name.split(".")
+            monkeypatch.setattr(
+                getattr(member_offboarding, owner), attr, AsyncMock(return_value=found)
+            )
+        monkeypatch.setattr(
+            member_offboarding.WorkflowService,
+            "deactivate_workflow",
+            AsyncMock(side_effect=RuntimeError("composio down")),
+        )
+        offboarding.side_effect = member_offboarding.stop_acting_for_removed_member
+
+        resp = await admin_client.delete(f"{API}/{member.id}")
+
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["code"] == "member_offboarding_incomplete"
+        assert "workflow:wf-1" in body["why"]
+        assert "again" in body["fix"]
 
     async def test_an_unknown_member_is_404(
         self, admin_client: AsyncClient, offboarding: AsyncMock

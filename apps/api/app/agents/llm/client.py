@@ -104,6 +104,7 @@ from app.services.llm_metering import (
 )
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
+    on_local_invalidation,
     resolve,
     resolved_config,
     resolved_configs,
@@ -418,9 +419,7 @@ def init_ollama_llm() -> LanguageModelLike:
     """Initialize the local keyless Ollama LLM over its OpenAI-wire API at base_url/v1.
 
     The key is a constant placeholder the OpenAI client requires but Ollama ignores.
-    Available only with an explicitly configured endpoint: a store credential or an
-    explicitly set OLLAMA_BASE_URL env var. The settings default does not count, as
-    it names a Docker-internal DNS name that dies on connect from bare instances.
+    Available only with a configured endpoint: a store credential or OLLAMA_BASE_URL.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
@@ -946,6 +945,9 @@ def reset_aux_llm_caches() -> None:
     _build_openai_wire_one_shot.cache_clear()
     _runtime_configs.clear()
     _schedule_runtime_config_refresh()
+
+
+on_local_invalidation(reset_aux_llm_caches)
 
 
 def _stamp_fallback(result: _ResultT, model: str) -> _ResultT:

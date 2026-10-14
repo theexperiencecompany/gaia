@@ -20,7 +20,6 @@ from app.core.lazy_loader import providers as provider_registry
 from app.db.redis import redis_cache
 import app.services.providers.provider_credentials_service as service_module
 from app.services.providers.provider_credentials_service import (
-    RUNTIME_CONFIG_CHANNEL,
     CredentialResolution,
     delete,
     inspect_credential,
@@ -28,6 +27,7 @@ from app.services.providers.provider_credentials_service import (
     resolve,
     upsert,
 )
+from app.services.runtime.config_updates import RUNTIME_CONFIG_CHANNEL
 from app.services.runtime.secrets_store import fernet_key_from
 from tests.helpers import captured_wide_event
 
@@ -124,13 +124,11 @@ def clean_state(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _stub_aux_llm_reset(monkeypatch):
-    """Stub reset_aux_llm_caches so invalidation paths run the full fan-out.
+    """Drop the registered invalidation hooks so no test rebuilds real LLM clients.
 
-    invalidate() lazily imports it from client.py (A3's surface); stubbing it in
-    every test keeps those paths independent of that landing. Tests asserting on
-    the call override this with their own recorder (aux_cache_calls).
+    Tests asserting on the hook run override this with their own recorder (aux_cache_calls).
     """
-    monkeypatch.setattr("app.agents.llm.client.reset_aux_llm_caches", lambda: None, raising=False)
+    monkeypatch.setattr(service_module, "_local_invalidation_hooks", [])
 
 
 @pytest.fixture
@@ -171,12 +169,17 @@ def registry_reset_calls(monkeypatch) -> list[str]:
 
 @pytest.fixture
 def aux_cache_calls(monkeypatch) -> list[int]:
-    """Record reset_aux_llm_caches() calls on the real client module (A3 provides it)."""
+    """Record every pod-local invalidation hook run."""
     calls: list[int] = []
-    monkeypatch.setattr(
-        "app.agents.llm.client.reset_aux_llm_caches", lambda: calls.append(1), raising=False
-    )
+    monkeypatch.setattr(service_module, "_local_invalidation_hooks", [lambda: calls.append(1)])
     return calls
+
+
+def test_the_llm_client_rebuilds_its_caches_on_every_invalidation(monkeypatch) -> None:
+    from app.agents.llm import client
+
+    monkeypatch.undo()  # see the real hook list, not the autouse stub
+    assert client.reset_aux_llm_caches in service_module._local_invalidation_hooks
 
 
 @pytest.fixture
@@ -291,7 +294,7 @@ class TestResolvePrecedenceAndFallbacks:
         assert config is not None and config["api_key"] == "g-emini-key"
 
     async def test_ollama_env_fallback_returns_base_url(self, repo, monkeypatch) -> None:
-        monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        monkeypatch.setattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
         config = await resolve("ollama")
 
         assert config == {
@@ -301,9 +304,9 @@ class TestResolvePrecedenceAndFallbacks:
             "preset": None,
         }
 
-    async def test_ollama_code_default_is_not_configured(self, repo, monkeypatch) -> None:
-        """Disregard the settings default URL; bare instances would die on connect."""
-        monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    async def test_ollama_without_an_endpoint_is_not_configured(self, repo, monkeypatch) -> None:
+        """A guessed default endpoint would die on connect from a bare instance."""
+        monkeypatch.setattr(settings, "OLLAMA_BASE_URL", None)
         assert await resolve("ollama") is None
 
     async def test_tavily_env_fallback(self, repo) -> None:

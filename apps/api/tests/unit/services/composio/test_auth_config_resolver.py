@@ -1,18 +1,24 @@
 """Which Composio auth config each integration connects through on this instance."""
 
 from collections.abc import Iterator
+import json
 
 import pytest
 
 from app.config.oauth_config import get_integration_by_id
 from app.config.settings import settings
 from app.constants.integrations import ComposioAuthConfigSource
+from app.db.redis import redis_cache
 from app.models.runtime_models import InstanceSettingsDocument
 import app.services.composio.auth_config_resolver as resolver
 from app.services.composio.auth_config_resolver import (
     integration_for_auth_config,
     resolve_auth_configs,
     save_auth_configs,
+)
+from app.services.runtime.config_updates import (
+    COMPOSIO_AUTH_CONFIGS_SCOPE,
+    RUNTIME_CONFIG_CHANNEL,
 )
 
 SLACK = get_integration_by_id("slack")
@@ -108,6 +114,29 @@ async def test_saving_replaces_the_stored_set_and_takes_effect_at_once(
     resolved = await resolve_auth_configs()
     assert set(resolved) == {"slack"}
     assert resolved["slack"].auth_config_id == "ac_three"
+
+
+class _RecordingRedis:
+    def __init__(self) -> None:
+        self.published: list[tuple[str, str]] = []
+
+    async def publish(self, channel: str, message: str) -> int:
+        self.published.append((channel, message))
+        return 1
+
+
+async def test_saving_tells_every_other_pod_to_drop_its_cached_set(
+    store: FakeInstanceSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    redis = _RecordingRedis()
+    monkeypatch.setattr(redis_cache, "redis", redis)
+
+    await save_auth_configs({"gmail": "ac_one"})
+
+    assert redis.published == [
+        (RUNTIME_CONFIG_CHANNEL, json.dumps({"scope": COMPOSIO_AUTH_CONFIGS_SCOPE}))
+    ]
 
 
 @pytest.mark.parametrize(

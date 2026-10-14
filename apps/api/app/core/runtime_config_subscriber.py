@@ -16,9 +16,12 @@ from typing import TypedDict, cast
 
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.services.providers.provider_credentials_service import (
+from app.services.composio.auth_config_resolver import invalidate_auth_config_cache
+from app.services.providers.provider_credentials_service import invalidate_locally
+from app.services.runtime.config_updates import (
+    COMPOSIO_AUTH_CONFIGS_SCOPE,
+    PROVIDER_SCOPE_PREFIX,
     RUNTIME_CONFIG_CHANNEL,
-    invalidate_locally,
 )
 from shared.py.wide_events import log, log_context
 
@@ -32,7 +35,7 @@ _subscriber_task: asyncio.Task[None] | None = None
 class _InvalidationPayload(TypedDict):
     """The published invalidation message this listener reads.
 
-    Wire shape is scope provider:NAME, as published by invalidate.
+    Wire shape is one scope, as publish_config_update sends it.
     """
 
     scope: str
@@ -49,11 +52,10 @@ class _PubSubMessage(TypedDict, total=False):
     data: str | bytes
 
 
-def _parse_provider(data: str | bytes) -> str | None:
-    """Return the provider named in a published payload, or None when malformed.
+def _parse_scope(data: str | bytes) -> str | None:
+    """Return the scope named in a published payload, or None when malformed.
 
-    Payload contract is scope provider:NAME. A malformed message must never
-    take the listener down: log loud, skip.
+    A malformed message must never take the listener down: log loud, skip.
     """
     raw = data.decode("utf-8", errors="replace") if isinstance(data, bytes) else data
     try:
@@ -73,26 +75,26 @@ def _parse_provider(data: str | bytes) -> str | None:
         else None
     )
     scope = parsed.get("scope") if parsed else None
-    prefix = "provider:"
-    if not isinstance(scope, str) or not scope.startswith(prefix):
-        log.warning(
-            f"{LogTag.API} Runtime-config update with unknown scope ignored",
-            channel=RUNTIME_CONFIG_CHANNEL,
-            scope=scope,
-        )
-        return None
-    return scope[len(prefix) :]
+    return scope if isinstance(scope, str) else None
 
 
 async def _apply_update(data: str | bytes) -> None:
     """Apply one remote invalidation under its own wide-event boundary."""
-    provider = _parse_provider(data)
-    if provider is None:
-        return
-    async with log_context("runtime_config_update", provider={"name": provider}):
-        # Same fan-out a local save runs — cache drop, registry reset, aux LLM
-        # caches — so the next resolution re-reads Mongo and rebuilds clients.
-        invalidate_locally(provider)
+    scope = _parse_scope(data)
+    async with log_context("runtime_config_update", runtime_config={"scope": scope}):
+        # The same pod-local drop a save runs on the saving pod, so the next
+        # read here re-reads Mongo and rebuilds its clients.
+        if scope == COMPOSIO_AUTH_CONFIGS_SCOPE:
+            invalidate_auth_config_cache()
+        elif scope is not None and scope.startswith(PROVIDER_SCOPE_PREFIX):
+            invalidate_locally(scope.removeprefix(PROVIDER_SCOPE_PREFIX))
+        else:
+            log.warning(
+                f"{LogTag.API} Runtime-config update with unknown scope ignored",
+                channel=RUNTIME_CONFIG_CHANNEL,
+                scope=scope,
+            )
+            return
         log.info(f"{LogTag.API} Applied runtime-config update from another pod")
 
 

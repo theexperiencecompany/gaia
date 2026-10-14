@@ -18,7 +18,7 @@ from app.db.repositories.instance_settings import instance_settings_repository
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.local_invites import local_invites_repository
 from app.db.repositories.users import user_repository
-from app.models.auth_models import LocalCredentialUpdate, LocalInviteDocument, LocalInviteUpdate
+from app.models.auth_models import LocalCredentialUpdate, LocalInviteDocument
 from app.models.member_models import (
     InviteCreatedResponse,
     InviteResponse,
@@ -35,10 +35,10 @@ from shared.py.analytics.catalog.auth import InstanceInviteCreated, InstanceMemb
 
 @dataclass(frozen=True, slots=True)
 class MemberAdmission:
-    """Why a member signup was let in; invite_id is the redeemed invite, if any."""
+    """Why a member signup may proceed; invite_token is the invite it will spend, if any."""
 
     via: Literal["invite", "open"]
-    invite_id: str | None = None
+    invite_token: str | None = None
 
 
 def _hash_invite_token(token: str) -> str:
@@ -106,27 +106,27 @@ async def ensure_invite_redeemable(invite_token: str) -> None:
 async def admit_member(invite_token: str | None) -> MemberAdmission | None:
     """Decide whether a non-bootstrap signup may proceed; None means registration is closed.
 
-    A presented invite is redeemed atomically here, so it is spent even if the
-    account write that follows fails.
+    Nothing is spent here: redeem_admission spends the invite once the account exists.
     """
     if invite_token is not None:
-        invite = await local_invites_repository.redeem(
-            _hash_invite_token(invite_token), datetime.now(UTC)
-        )
-        if invite is None:
-            raise _invite_invalid()
-        return MemberAdmission(via="invite", invite_id=invite.id)
+        await ensure_invite_redeemable(invite_token)
+        return MemberAdmission(via="invite", invite_token=invite_token)
     if await get_registration_policy() is RegistrationPolicy.OPEN:
         return MemberAdmission(via="open")
     return None
 
 
-async def record_member_joined(admission: MemberAdmission, user_id: str) -> None:
-    """Attribute a redeemed invite to the account it created and emit the join event."""
-    if admission.invite_id is not None:
-        await local_invites_repository.update(
-            admission.invite_id, LocalInviteUpdate(used_by=user_id)
+async def redeem_admission(admission: MemberAdmission, user_id: str) -> None:
+    """Spend the admitting invite for the account it created and emit the join event.
+
+    Raises invite_invalid when a concurrent signup spent the invite first.
+    """
+    if admission.invite_token is not None:
+        redeemed = await local_invites_repository.redeem(
+            _hash_invite_token(admission.invite_token), datetime.now(UTC), used_by=user_id
         )
+        if redeemed is None:
+            raise _invite_invalid()
     capture(UserId(user_id), InstanceMemberJoined(via=admission.via))
 
 
