@@ -222,18 +222,8 @@ export function evaluateSetupReadiness(
   ];
 
   // Plans exist only to be bought; an instance that does not bill has none.
-  if (payload.billing_enabled) {
+  if (payload.deployment.bills) {
     items.push({ label: "plans seeded", configured: payload.plans_seeded });
-  }
-
-  // Billing never applies under local auth (backend pins it off for selfhost),
-  // so skip it there to avoid a permanent warning. Unknown auth_mode keeps
-  // the hosted behavior — warn on unconfigured billing by default.
-  if (payload.auth_mode !== "local") {
-    items.push({
-      label: "billing enabled",
-      configured: payload.billing_enabled === true,
-    });
   }
 
   return items.map((item) => ({

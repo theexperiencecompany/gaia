@@ -7388,13 +7388,7 @@
             "type": "string"
           },
           "environment": {
-            "enum": [
-              "production",
-              "development",
-              "selfhost"
-            ],
-            "title": "Environment",
-            "type": "string"
+            "$ref": "#/components/schemas/DeploymentKind"
           },
           "event_loop_lag_ms": {
             "description": "Time to round-trip one event-loop tick",

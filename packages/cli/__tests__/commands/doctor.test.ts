@@ -145,11 +145,20 @@ describe("evaluateSetupReadiness", () => {
         plans_seeded: false,
         has_admin_account: false,
         registration_policy: "invite_only",
-        local_code_sandbox: false,
-        blob_store: "local",
-        gaia_support: false,
-        billing_enabled: false,
-        providers: { openrouter: { configured: false, source: "unset" } },
+        deployment: {
+          kind: "production",
+          bills: true,
+          local_code_sandbox: false,
+          blob_store: "local",
+          gaia_support: false,
+        },
+        providers: {
+          openrouter: {
+            configured: false,
+            source: "unset",
+            env_shadowed: false,
+          },
+        },
       },
       LLM_KEYS,
       3000,
@@ -171,13 +180,16 @@ describe("evaluateSetupReadiness", () => {
         plans_seeded: true,
         has_admin_account: true,
         registration_policy: "invite_only",
-        local_code_sandbox: false,
-        blob_store: "local",
-        gaia_support: false,
-        billing_enabled: true,
+        deployment: {
+          kind: "production",
+          bills: true,
+          local_code_sandbox: false,
+          blob_store: "local",
+          gaia_support: false,
+        },
         providers: {
-          gemini: { configured: true, source: "stored" },
-          tavily: { configured: false, source: "unset" },
+          gemini: { configured: true, source: "stored", env_shadowed: false },
+          tavily: { configured: false, source: "unset", env_shadowed: false },
         },
       },
       LLM_KEYS,
@@ -194,13 +206,20 @@ describe("evaluateSetupReadiness", () => {
         plans_seeded: true,
         has_admin_account: true,
         registration_policy: "invite_only",
-        local_code_sandbox: false,
-        blob_store: "local",
-        gaia_support: false,
-        billing_enabled: false,
+        deployment: {
+          kind: "selfhost",
+          bills: false,
+          local_code_sandbox: false,
+          blob_store: "local",
+          gaia_support: false,
+        },
         providers: {
-          ollama: { configured: true, source: "stored" },
-          openrouter: { configured: false, source: "unset" },
+          ollama: { configured: true, source: "stored", env_shadowed: false },
+          openrouter: {
+            configured: false,
+            source: "unset",
+            env_shadowed: false,
+          },
         },
       },
       LLM_KEYS,
@@ -221,11 +240,16 @@ describe("evaluateSetupReadiness", () => {
         plans_seeded: true,
         has_admin_account: true,
         registration_policy: "invite_only",
-        local_code_sandbox: false,
-        blob_store: "local",
-        gaia_support: false,
-        billing_enabled: false,
-        providers: { tavily: { configured: true, source: "stored" } },
+        deployment: {
+          kind: "selfhost",
+          bills: false,
+          local_code_sandbox: false,
+          blob_store: "local",
+          gaia_support: false,
+        },
+        providers: {
+          tavily: { configured: true, source: "stored", env_shadowed: false },
+        },
       },
       LLM_KEYS,
       3000,
@@ -235,10 +259,7 @@ describe("evaluateSetupReadiness", () => {
     ).toBe(false);
   });
 
-  it("drops the billing item for self-host instances (auth_mode local)", () => {
-    // Self-host never enables billing — the backend reports billing_enabled
-    // only under ENV=production. Requiring it here warned forever on every
-    // install.
+  it("never reports billing, which follows ENV and no setup step can enable", () => {
     const items = evaluateSetupReadiness(
       {
         auth_mode: "local",
@@ -246,17 +267,56 @@ describe("evaluateSetupReadiness", () => {
         plans_seeded: true,
         has_admin_account: true,
         registration_policy: "invite_only",
-        local_code_sandbox: false,
-        blob_store: "local",
-        gaia_support: false,
-        billing_enabled: false,
-        providers: { openrouter: { configured: true, source: "stored" } },
+        deployment: {
+          kind: "selfhost",
+          bills: false,
+          local_code_sandbox: false,
+          blob_store: "local",
+          gaia_support: false,
+        },
+        providers: {
+          openrouter: {
+            configured: true,
+            source: "stored",
+            env_shadowed: false,
+          },
+        },
       },
       LLM_KEYS,
       3000,
     );
 
     expect(items.find((i) => i.label === "billing enabled")).toBeUndefined();
+    expect(items.every((i) => i.configured)).toBe(true);
+  });
+
+  it("does not warn about billing on a self-host instance that signs in with WorkOS", () => {
+    const items = evaluateSetupReadiness(
+      {
+        auth_mode: "workos",
+        needs_setup: false,
+        plans_seeded: false,
+        has_admin_account: true,
+        registration_policy: "invite_only",
+        deployment: {
+          kind: "selfhost",
+          bills: false,
+          local_code_sandbox: false,
+          blob_store: "local",
+          gaia_support: false,
+        },
+        providers: {
+          openrouter: {
+            configured: true,
+            source: "stored",
+            env_shadowed: false,
+          },
+        },
+      },
+      LLM_KEYS,
+      3000,
+    );
+
     expect(items.every((i) => i.configured)).toBe(true);
   });
 
@@ -267,21 +327,25 @@ describe("evaluateSetupReadiness", () => {
       plans_seeded: false,
       has_admin_account: true,
       registration_policy: "invite_only" as const,
-      local_code_sandbox: false,
-      blob_store: "local" as const,
-      gaia_support: false,
+      deployment: {
+        kind: "selfhost" as const,
+        bills: false,
+        local_code_sandbox: false,
+        blob_store: "local" as const,
+        gaia_support: false,
+      },
       providers: {
-        openrouter: { configured: true, source: "stored" as const },
+        openrouter: {
+          configured: true,
+          source: "stored" as const,
+          env_shadowed: false,
+        },
       },
     };
 
-    const off = evaluateSetupReadiness(
-      { ...status, billing_enabled: false },
-      LLM_KEYS,
-      3000,
-    );
+    const off = evaluateSetupReadiness(status, LLM_KEYS, 3000);
     const on = evaluateSetupReadiness(
-      { ...status, billing_enabled: true },
+      { ...status, deployment: { ...status.deployment, bills: true } },
       LLM_KEYS,
       3000,
     );
@@ -298,10 +362,13 @@ describe("evaluateSetupReadiness", () => {
         plans_seeded: true,
         has_admin_account: false,
         registration_policy: "invite_only",
-        local_code_sandbox: false,
-        blob_store: "local",
-        gaia_support: false,
-        billing_enabled: false,
+        deployment: {
+          kind: "selfhost",
+          bills: false,
+          local_code_sandbox: false,
+          blob_store: "local",
+          gaia_support: false,
+        },
         providers: {},
       },
       LLM_KEYS,
@@ -511,7 +578,13 @@ describe("checkSetupReadiness", () => {
       plans_seeded: false,
       has_admin_account: true,
       registration_policy: "invite_only",
-      billing_enabled: false,
+      deployment: {
+        kind: "selfhost",
+        bills: false,
+        local_code_sandbox: false,
+        blob_store: "local",
+        gaia_support: false,
+      },
       providers: {},
     });
 
@@ -521,7 +594,7 @@ describe("checkSetupReadiness", () => {
       webPort: 3000,
     });
 
-    expect(results).toHaveLength(2); // provider lane, billing
+    expect(results).toHaveLength(1); // provider lane
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
       "http://localhost:3000/api/v1/setup/status",
     );
@@ -539,8 +612,16 @@ describe("checkSetupReadiness", () => {
       plans_seeded: true,
       has_admin_account: true,
       registration_policy: "invite_only",
-      billing_enabled: true,
-      providers: { openrouter: { configured: true, source: "stored" } },
+      deployment: {
+        kind: "production",
+        bills: true,
+        local_code_sandbox: false,
+        blob_store: "local",
+        gaia_support: false,
+      },
+      providers: {
+        openrouter: { configured: true, source: "stored", env_shadowed: false },
+      },
     });
 
     const results = await checkSetupReadiness({
@@ -554,17 +635,24 @@ describe("checkSetupReadiness", () => {
   });
 
   it("reports ok on a self-host instance with billing disabled", async () => {
-    // The reported bug: every self-host install showed a permanent
-    // "[warn] Billing enabled is not configured" because the backend reports
-    // billing_enabled only under ENV=production.
+    // Every self-host install once showed a permanent "[warn] Billing enabled
+    // is not configured": billing follows ENV, which no setup step changes.
     stubSetupEndpoints({
       auth_mode: "local",
       needs_setup: false,
       plans_seeded: true,
       has_admin_account: true,
       registration_policy: "invite_only",
-      billing_enabled: false,
-      providers: { openrouter: { configured: true, source: "stored" } },
+      deployment: {
+        kind: "selfhost",
+        bills: false,
+        local_code_sandbox: false,
+        blob_store: "local",
+        gaia_support: false,
+      },
+      providers: {
+        openrouter: { configured: true, source: "stored", env_shadowed: false },
+      },
     });
 
     const results = await checkSetupReadiness({
@@ -585,8 +673,16 @@ describe("checkSetupReadiness", () => {
       plans_seeded: true,
       has_admin_account: true,
       registration_policy: "invite_only",
-      billing_enabled: false,
-      providers: { openai: { configured: true, source: "stored" } },
+      deployment: {
+        kind: "selfhost",
+        bills: false,
+        local_code_sandbox: false,
+        blob_store: "local",
+        gaia_support: false,
+      },
+      providers: {
+        openai: { configured: true, source: "stored", env_shadowed: false },
+      },
     });
 
     const results = await checkSetupReadiness({

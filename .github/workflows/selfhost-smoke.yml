@@ -145,8 +145,8 @@ jobs:
           s = get_settings()
           assert s.ENV == 'selfhost', s.ENV
           assert s.AUTH_MODE == 'local', s.AUTH_MODE
-          assert s.billing_enabled is False, 'billing must be off under selfhost'
-          print(f'boot OK: ENV={s.ENV} AUTH_MODE={s.AUTH_MODE} billing_enabled={s.billing_enabled}')
+          assert s.deployment.bills is False, 'billing must be off under selfhost'
+          print(f'boot OK: ENV={s.ENV} AUTH_MODE={s.AUTH_MODE} bills={s.deployment.bills}')
           "
 
       - name: Setup-API contract under ENV=selfhost

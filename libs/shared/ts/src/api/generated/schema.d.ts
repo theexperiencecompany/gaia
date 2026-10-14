@@ -9634,11 +9634,7 @@ export interface components {
         HealthResponse: {
             /** Description */
             description: string;
-            /**
-             * Environment
-             * @enum {string}
-             */
-            environment: "production" | "development" | "selfhost";
+            environment: components["schemas"]["DeploymentKind"];
             /**
              * Event Loop Lag Ms
              * @description Time to round-trip one event-loop tick

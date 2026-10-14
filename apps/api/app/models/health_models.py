@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Environment = Literal["production", "development", "selfhost"]
+from app.config.deployment import DeploymentKind
 
 
 class HealthResponse(BaseModel):
@@ -15,7 +15,7 @@ class HealthResponse(BaseModel):
     name: str
     version: str
     description: str
-    environment: Environment
+    environment: DeploymentKind
     event_loop_lag_ms: float = Field(description="Time to round-trip one event-loop tick")
 
 
