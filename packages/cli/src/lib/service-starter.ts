@@ -451,7 +451,7 @@ export async function runCommand(
 const CHECKOUT_MARKER = "apps/api/app/config/settings_validator.py";
 
 /** The API env file `gaia up` / `gaia setup` write; a checkout without it is unconfigured. */
-function apiEnvPath(repoPath: string): string {
+export function apiEnvPath(repoPath: string): string {
   return path.join(repoPath, "apps", "api", ".env");
 }
 

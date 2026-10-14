@@ -63,6 +63,15 @@ function writeFileOwnerOnly(filePath: string, contents: string): void {
   fs.chmodSync(filePath, ENV_FILE_MODE);
 }
 
+/**
+ * Copy an env file owner-only, keeping a .bak of any file it replaces: the
+ * backup and restore of apps/api/.env, which holds INSTANCE_SECRET.
+ */
+export function copyEnvFileOwnerOnly(source: string, target: string): void {
+  backupIfExists(target);
+  writeFileOwnerOnly(target, fs.readFileSync(source, "utf-8"));
+}
+
 export function writeEnvFile(repoPath: string, values: EnvValues): void {
   const envPath = path.join(repoPath, ".env");
   backupIfExists(envPath);

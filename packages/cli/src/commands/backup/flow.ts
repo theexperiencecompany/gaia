@@ -1,5 +1,7 @@
 /**
- * Backup flow — dump MongoDB and PostgreSQL via Docker Compose.
+ * Backup flow — dump MongoDB and PostgreSQL via Docker Compose, archive the
+ * storage volumes, and copy apps/api/.env: it holds INSTANCE_SECRET, the key
+ * the Mongo dump's stored credentials are encrypted under.
  *
  * Two tiers:
  *  - `getBackupCommands` returns the exact shell commands for docs / --dry-run
@@ -12,7 +14,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
 import { dockerVolumeExists, isDockerRunning } from "../../lib/docker.js";
-import { findInstallRoot } from "../../lib/service-starter.js";
+import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
+import { apiEnvPath, findInstallRoot } from "../../lib/service-starter.js";
 import { VOLUME_BACKUPS, type VolumeFile } from "../../lib/volume-backups.js";
 
 export interface BackupOptions {
@@ -23,6 +26,7 @@ export interface BackupOptions {
 export interface BackupResult {
   mongoFile: string;
   postgresFile: string;
+  apiEnvFile: string;
   commands: string[];
   volumeFiles?: VolumeFile[];
   warnings?: string[];
@@ -33,17 +37,26 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Exact shell one-liners shown in `--help` / docs. */
+/** The backup's copy of apps/api/.env; `gaia restore --from` picks the latest. */
+export const API_ENV_BACKUP_PREFIX = "api-env-";
+export const API_ENV_BACKUP_SUFFIX = ".env";
+
+/** Exact shell one-liners shown in `--help` / docs, run from infra/docker/. */
 export function getBackupCommands(
   outputDir: string,
   date = todayIso(),
 ): string[] {
   const mongoFile = path.join(outputDir, `mongo-${date}.gz`);
   const postgresFile = path.join(outputDir, `postgres-${date}.sql`);
+  const apiEnvFile = path.join(
+    outputDir,
+    `${API_ENV_BACKUP_PREFIX}${date}${API_ENV_BACKUP_SUFFIX}`,
+  );
   const base = [
     `mkdir -p ${outputDir}`,
     `docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > ${mongoFile}`,
     `docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > ${postgresFile}`,
+    `install -m 600 ../../apps/api/.env ${apiEnvFile}`,
   ];
   for (const v of VOLUME_BACKUPS) {
     const file = path.join(outputDir, `${v.fileSuffix}-${date}.tar.gz`);
@@ -52,14 +65,6 @@ export function getBackupCommands(
     );
   }
   return base;
-}
-
-/** Subset of commands for just the critical DBs (used in error hints). */
-export function getCoreBackupCommands(
-  outputDir: string,
-  date = todayIso(),
-): string[] {
-  return getBackupCommands(outputDir, date).slice(0, 3);
 }
 
 function resolveDockerDir(repoPath: string): string {
@@ -94,12 +99,17 @@ export async function runBackup(
   const date = todayIso();
   const mongoFile = path.join(outDir, `mongo-${date}.gz`);
   const postgresFile = path.join(outDir, `postgres-${date}.sql`);
+  const apiEnvFile = path.join(
+    outDir,
+    `${API_ENV_BACKUP_PREFIX}${date}${API_ENV_BACKUP_SUFFIX}`,
+  );
   const commands = getBackupCommands(outDir, date);
 
   if (options.dryRun) {
     return {
       mongoFile,
       postgresFile,
+      apiEnvFile,
       commands,
       volumeFiles: VOLUME_BACKUPS.map((v) => ({
         volume: v.volume,
@@ -128,8 +138,11 @@ export async function runBackup(
     // (e.g. on a read-only mount) must not abort the backup.
   }
 
-  // Mongo dump: stream stdout to host file (0600 — dump contains
-  // instance_secret and all provider ciphertext).
+  backupApiEnv(repoPath, apiEnvFile);
+
+  // Mongo dump: stream stdout to host file (0600 — the dump holds every
+  // stored credential's ciphertext, and the instance secret when it is
+  // Mongo-held rather than set in apps/api/.env).
   try {
     const mongoProc = execa(
       "docker",
@@ -263,5 +276,26 @@ export async function runBackup(
     }
   }
 
-  return { mongoFile, postgresFile, commands, volumeFiles, warnings };
+  return {
+    mongoFile,
+    postgresFile,
+    apiEnvFile,
+    commands,
+    volumeFiles,
+    warnings,
+  };
+}
+
+/**
+ * Copy the install's apps/api/.env into the backup. A backup without it would
+ * restore credentials no key can decrypt, so a missing file fails the backup.
+ */
+export function backupApiEnv(repoPath: string, apiEnvFile: string): void {
+  const source = apiEnvPath(repoPath);
+  if (!fs.existsSync(source)) {
+    throw new Error(
+      `${source} not found — it holds INSTANCE_SECRET, without which the backup's stored credentials cannot be decrypted. Run gaia up to configure this install.`,
+    );
+  }
+  copyEnvFileOwnerOnly(source, apiEnvFile);
 }

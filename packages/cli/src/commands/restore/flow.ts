@@ -1,5 +1,6 @@
 /**
- * Restore flow — re-load MongoDB and PostgreSQL dumps into the self-host stack.
+ * Restore flow — put back apps/api/.env (the key the stored credentials are
+ * encrypted under), then re-load the MongoDB and PostgreSQL dumps and volumes.
  *
  * Mirrors `backup/flow.ts`: validates files, runs the container commands, and
  * surfaces manual fallbacks when Docker is unreachable or a file is missing.
@@ -11,12 +12,17 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
 import { isDockerRunning } from "../../lib/docker.js";
-import { findInstallRoot } from "../../lib/service-starter.js";
+import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
+import { apiEnvPath, findInstallRoot } from "../../lib/service-starter.js";
 import {
   VOLUME_BACKUPS,
   type VolumeFile,
   volumeRestoreScript,
 } from "../../lib/volume-backups.js";
+import {
+  API_ENV_BACKUP_PREFIX,
+  API_ENV_BACKUP_SUFFIX,
+} from "../backup/flow.js";
 
 export interface RestoreOptions {
   mongoFile?: string;
@@ -28,6 +34,7 @@ export interface RestoreOptions {
 export interface ResolvedRestoreFiles {
   mongoFile?: string;
   postgresFile?: string;
+  apiEnvFile?: string;
   volumeFiles: VolumeFile[];
 }
 
@@ -49,6 +56,7 @@ export function resolveRestoreFiles(
     return {
       mongoFile: options.mongoFile ?? pickLatest("mongo-", ".gz"),
       postgresFile: options.postgresFile ?? pickLatest("postgres-", ".sql"),
+      apiEnvFile: pickLatest(API_ENV_BACKUP_PREFIX, API_ENV_BACKUP_SUFFIX),
       volumeFiles: VOLUME_BACKUPS.flatMap((v) => {
         const file = pickLatest(`${v.fileSuffix}-`, ".tar.gz");
         return file ? [{ volume: v.volume, label: v.label, file }] : [];
@@ -63,8 +71,11 @@ export function resolveRestoreFiles(
 }
 
 export function getRestoreCommands(files: ResolvedRestoreFiles): string[] {
-  const { mongoFile, postgresFile, volumeFiles } = files;
+  const { mongoFile, postgresFile, apiEnvFile, volumeFiles } = files;
   const cmds: string[] = [];
+  if (apiEnvFile) {
+    cmds.push(`install -m 600 ${apiEnvFile} ../../apps/api/.env`);
+  }
   if (mongoFile) {
     cmds.push(
       `docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < ${mongoFile}`,
@@ -101,10 +112,10 @@ export async function runRestore(
     throw new Error(`Compose file not found: ${composeFile}`);
 
   const resolved = resolveRestoreFiles(options);
-  const { mongoFile, postgresFile, volumeFiles } = resolved;
+  const { mongoFile, postgresFile, apiEnvFile, volumeFiles } = resolved;
   const commands = getRestoreCommands(resolved);
 
-  if (!mongoFile && !postgresFile && volumeFiles.length === 0) {
+  if (!mongoFile && !postgresFile && !apiEnvFile && volumeFiles.length === 0) {
     throw new Error(
       [
         "No backup files specified.",
@@ -138,6 +149,8 @@ export async function runRestore(
       ].join("\n"),
     );
   }
+
+  if (apiEnvFile) restoreApiEnv(apiEnvFile, repoPath);
 
   if (mongoFile) {
     try {
@@ -245,4 +258,12 @@ export async function runRestore(
   }
 
   return { ...resolved, commands };
+}
+
+/**
+ * Put the backup's apps/api/.env back (the replaced file is kept as .env.bak):
+ * the restored dump's credentials decrypt only under its INSTANCE_SECRET.
+ */
+export function restoreApiEnv(apiEnvFile: string, repoPath: string): void {
+  copyEnvFileOwnerOnly(apiEnvFile, apiEnvPath(repoPath));
 }

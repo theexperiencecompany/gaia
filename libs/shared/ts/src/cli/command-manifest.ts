@@ -10,8 +10,9 @@ export const CLI_COMMAND_DESCRIPTIONS = {
     "Import your browser logins into GAIA so its browser stays signed in",
   up: "One-command setup: configure, pull and start GAIA (self-host)",
   doctor: "Diagnose a GAIA install: docker, services and setup checks",
-  backup: "Back up GAIA databases (MongoDB + PostgreSQL) to a local directory",
-  restore: "Restore GAIA databases from backup files",
+  backup:
+    "Back up GAIA databases, storage volumes and apps/api/.env to a local directory",
+  restore: "Restore GAIA databases, volumes and apps/api/.env from a backup",
   update:
     "Move GAIA to the release this CLI ships, pull its images and restart (keeps .env and volumes)",
 } as const;

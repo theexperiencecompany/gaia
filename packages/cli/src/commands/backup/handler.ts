@@ -9,7 +9,7 @@ import {
   VOLUME_BACKUPS,
   volumeRestoreScript,
 } from "../../lib/volume-backups.js";
-import { getBackupCommands, runBackup } from "./flow.js";
+import { runBackup } from "./flow.js";
 
 function out(line = ""): void {
   process.stdout.write(`${line}\n`);
@@ -47,6 +47,7 @@ export async function runBackupCommand(
     const result = await runBackup({ outputDir: options.output });
     out(`MongoDB dump: ${result.mongoFile}`);
     out(`PostgreSQL dump: ${result.postgresFile}`);
+    out(`API settings (apps/api/.env): ${result.apiEnvFile}`);
     for (const { label, file } of result.volumeFiles ?? [])
       out(`${label} archive: ${file}`);
     if (result.warnings?.length) {
@@ -55,10 +56,13 @@ export async function runBackupCommand(
     out("");
     out("Backups complete. Store them off-host and access-controlled —");
     out(
-      "the Mongo archive contains the instance secret and decrypts provider credentials.",
+      `${result.apiEnvFile} holds INSTANCE_SECRET, which decrypts the stored provider credentials.`,
     );
     out("");
-    out("Restore with:");
+    out(
+      "Restore with gaia restore --from <dir>, or manually from the repo root:",
+    );
+    out(`  install -m 600 ${result.apiEnvFile} apps/api/.env`);
     out(
       `  cat ${result.postgresFile} | docker compose -f infra/docker/docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph`,
     );
@@ -74,26 +78,4 @@ export async function runBackupCommand(
     errOut((e as Error).message);
     process.exitCode = 1;
   }
-}
-
-/** Help text for `gaia backup --help` — also used when Docker is down. */
-export function printBackupHelp(): void {
-  const sample = getBackupCommands("backups");
-  out("Back up GAIA databases (MongoDB + PostgreSQL) via Docker Compose.");
-  out("");
-  out("Usage: gaia backup [--output <dir>] [--dry-run]");
-  out("");
-  out("Manual one-liner (from infra/docker/):");
-  for (const cmd of sample) out(`  ${cmd}`);
-  out("");
-  out("Restore (from infra/docker/):");
-  out(
-    "  docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-YYYY-MM-DD.gz",
-  );
-  out(
-    "  docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'",
-  );
-  out(
-    "  cat backups/postgres-YYYY-MM-DD.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph",
-  );
 }

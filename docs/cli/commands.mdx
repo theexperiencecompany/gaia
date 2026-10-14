@@ -13,8 +13,8 @@ gaia up            # Install and start GAIA (self-host), or resume a half-finish
 gaia update        # Move to the GAIA release this CLI ships (self-host)
 gaia status        # Services and every dependency, with latency
 gaia doctor        # Diagnose a GAIA install, with a fix per problem
-gaia backup        # Dump MongoDB + PostgreSQL
-gaia restore       # Restore those dumps
+gaia backup        # Dump the databases, volumes and apps/api/.env
+gaia restore       # Restore that backup
 gaia start         # Start self-host services
 gaia stop          # Stop services
 gaia logs          # Stream logs
@@ -32,8 +32,8 @@ gaia --help        # Show all commands
 | ---------------- | ---------------------------------------------------------------------------- |
 | `gaia up`        | One-command setup: configure, pull and start GAIA (self-host)                |
 | `gaia update`    | Move to the release this CLI ships: pin its images, pull them and restart    |
-| `gaia backup`    | Dump MongoDB and PostgreSQL to `./backups`                                   |
-| `gaia restore`   | Restore MongoDB and PostgreSQL dumps                                         |
+| `gaia backup`    | Dump MongoDB, PostgreSQL, the storage volumes and `apps/api/.env` to `./backups` |
+| `gaia restore`   | Restore a backup, `apps/api/.env` (the credential key) first               |
 | `gaia init`      | Developer setup wizard: clone, configure env (manual or Infisical), start   |
 | `gaia setup`     | Configure an existing repository                                             |
 | `gaia start`     | Start GAIA services in self-host mode                                        |
