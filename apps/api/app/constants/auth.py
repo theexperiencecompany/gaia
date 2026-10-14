@@ -69,6 +69,12 @@ class RegistrationPolicy(StrEnum):
 
 # Self-host invite links: 32 bytes -> 43 urlsafe chars; only the SHA-256 digest is stored.
 INVITE_TOKEN_BYTES = 32
+
+# OWASP-recommended bcrypt cost for interactive logins (~250ms per verify).
+BCRYPT_ROUNDS = 12
+
+# Random bytes in the password the admin reset script prints (24 url-safe chars).
+RESET_PASSWORD_TOKEN_BYTES = 18
 INVITE_TTL_DAYS = 7
 
 # instance_settings key holding the self-host registration policy.

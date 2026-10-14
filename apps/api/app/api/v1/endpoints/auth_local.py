@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
-from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED, InstanceRole
+from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED, BCRYPT_ROUNDS, InstanceRole
 from app.constants.error_codes import INVALID_CREDENTIALS, REGISTRATION_CLOSED
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
@@ -40,9 +40,6 @@ from shared.py.wide_events import log
 
 router = APIRouter()
 
-# OWASP-recommended baseline for interactive logins (~250ms per verify).
-_BCRYPT_ROUNDS = 12
-
 # Lazily-built digest used to equalize failure cost in login: an unknown email
 # would otherwise return in ~0ms while a wrong password pays a full bcrypt
 # verify, letting response timing reveal whether an account exists.
@@ -53,7 +50,7 @@ def _burn_one_verification(password: str) -> None:
     """Run one real bcrypt verify against a fixed digest — pure latency."""
     global _dummy_digest
     if _dummy_digest is None:
-        _dummy_digest = bcrypt.hashpw(b"gaia-timing-equalizer", bcrypt.gensalt(_BCRYPT_ROUNDS))
+        _dummy_digest = bcrypt.hashpw(b"gaia-timing-equalizer", bcrypt.gensalt(BCRYPT_ROUNDS))
     try:
         bcrypt.checkpw(password.encode(), _dummy_digest)
     except ValueError:
@@ -192,7 +189,7 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     # forever. This guard keeps any hash refusal a clean 422, not a 500.
     try:
         password_hash = bcrypt.hashpw(
-            body.password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
+            body.password.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
         ).decode()
     except ValueError as exc:
         raise HTTPException(
@@ -369,7 +366,7 @@ async def change_password(
     # and a failed hash must leave the old (working) credential untouched.
     try:
         password_hash = bcrypt.hashpw(
-            body.new_password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
+            body.new_password.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
         ).decode()
     except ValueError as exc:
         raise HTTPException(
