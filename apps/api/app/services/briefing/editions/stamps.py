@@ -14,30 +14,36 @@ from typing import TypedDict
 _STAMPS_DIR = Path(__file__).parent / "explorer" / "assets" / "stamps"
 _CITIES_JSON = _STAMPS_DIR / "cities.json"
 _COUNTRIES_JSON = _STAMPS_DIR / "countries.json"
-# The asset key the postal template reads the stamp art from.
+# The asset key the postal template reads the drawn city's stamp art from.
 STAMP_ASSET_KEY = "STAMP_CITY"
-# Engraved-frame colours of the vendored postal stamps, cycled across cities.
-_FRAME_COLORS = ("#9c3b34", "#2f5233", "#26467a", "#8c2f4a", "#2f6b46", "#7a2f2f")
-
-
-class StampExtra(TypedDict):
-    kind: str
-    code: str
-    sub: str
+# The postal template's own city axis (a legacy brief without a drawn city picks
+# from it): each option's asset key and the catalogued city whose art it shows.
+_AXIS_CITY_SLUGS: dict[str, str] = {
+    "CITY_TOKYO": "tokyo",
+    "CITY_PARIS": "paris",
+    "CITY_LONDON": "london",
+    "CITY_NEWYORK": "new_york_city",
+    "CITY_MUMBAI": "mumbai",
+    "CITY_ISTANBUL": "istanbul",
+}
+# The air-mail label's own words; a country whose phrase is one of them gets no
+# local line above the label.
+_LABEL_PHRASES = frozenset({"par avion", "by air mail"})
 
 
 class Stamp(TypedDict):
     """The postal template's skin.city shape, verbatim."""
 
     id: str
+    #: The city as the letter's dateline names it.
     label: str
-    src: str
+    #: The asset key of the stamp art.
+    key: str
+    #: The city on the postmark's arc.
     city: str
+    #: The country's own air-mail phrase, set above PAR AVION; empty when it is
+    #: the label's own words.
     air: str
-    airSub: str
-    denom: str
-    frame: str
-    extra: StampExtra
 
 
 class _City(TypedDict):
@@ -75,20 +81,21 @@ def hosted_stamp_weights() -> dict[str, int]:
 
 
 def stamp_for(slug: str) -> Stamp:
-    """Return the stamp skin for one city: its art key, name, postage and frame."""
+    """Return the stamp skin for one city: its art key, name and air-mail phrase."""
     city: _City = _cities()[slug]
-    postage: _Postage = _postage()[city["country"]]
+    air = _postage()[city["country"]]["air"]
     return {
         "id": slug,
-        "label": f"{city['name']}, {city['country']}",
-        "src": STAMP_ASSET_KEY,
+        "label": city["name"],
+        "key": STAMP_ASSET_KEY,
         "city": city["name"].upper(),
-        "air": postage["air"],
-        "airSub": postage["airSub"],
-        "denom": postage["denom"],
-        "frame": _FRAME_COLORS[sorted(_cities()).index(slug) % len(_FRAME_COLORS)],
-        "extra": {"kind": "customs", "code": "CN 22", "sub": "Customs · Douane"},
+        "air": "" if air.lower() in _LABEL_PHRASES else air,
     }
+
+
+def axis_stamp_assets() -> dict[str, str]:
+    """Return the hosted art of the postal template's own city axis, by asset key."""
+    return {key: stamp_asset_url(slug) for key, slug in _AXIS_CITY_SLUGS.items()}
 
 
 def stamp_asset_url(slug: str) -> str:

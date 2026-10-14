@@ -2108,6 +2108,18 @@
             "title": "Mood",
             "type": "string"
           },
+          "recipient_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.",
+            "title": "Recipient Name"
+          },
           "sections": {
             "items": {
               "$ref": "#/components/schemas/BriefingSection"
@@ -2179,6 +2191,7 @@
           "hue",
           "template_family",
           "stamp_city",
+          "recipient_name",
           "generated_at",
           "calendar",
           "tallies",

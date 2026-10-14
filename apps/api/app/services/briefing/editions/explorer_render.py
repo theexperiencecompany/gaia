@@ -9,6 +9,7 @@ Skin selection reimplements the explorer shell's mulberry32/strSeed RNG rather t
 importing it: the vendored files never expose it.
 """
 
+import base64
 from functools import lru_cache
 import json
 from pathlib import Path
@@ -16,35 +17,29 @@ import re
 
 from app.constants.briefing import POSTAL_FAMILY
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions._shared import CANVAS_PX
-from app.services.briefing.editions.explorer_adapter import ART_ASSET_KEY, build_ed
-from app.services.briefing.editions.stamps import STAMP_ASSET_KEY, stamp_asset_url
+from app.services.briefing.editions._shared import EXPLORER_CANVAS_PX
+from app.services.briefing.editions.artworks import artwork_for
+from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
+from app.services.briefing.editions.stamps import (
+    STAMP_ASSET_KEY,
+    axis_stamp_assets,
+    stamp_asset_url,
+)
 
 _EXPLORER_DIR = Path(__file__).parent / "explorer"
 _JS_DIR = _EXPLORER_DIR / "js"
 _ASSETS_DIR = _EXPLORER_DIR / "assets"
 _ASSETS_JSON = _ASSETS_DIR / "assets.json"
-_CREDITS_JSON = _ASSETS_DIR / "credits.json"
+_TEC_MARK_WEBP = _ASSETS_DIR / "brand" / "tec_mark_black.webp"
 
 # Matches only a top-level `EXPLORER.register({ id: "..." ...` — not an axis
 # option's `id:` further down the same object literal.
 _REGISTER_ID_PATTERN = re.compile(r'EXPLORER\.register\(\{\s*\n\s*id:\s*"([a-z0-9-]+)"')
 
-# Asset key -> MIME type, mirroring explorer-shell.html's ASSETS map.
-_ASSET_MIME: dict[str, str] = {
-    ART_ASSET_KEY: "image/jpeg",
-    "BAND": "image/webp",
-    "STAMP_TOKYO": "image/jpeg",
-    "STAMP_LONDON": "image/jpeg",
-    "STAMP_PARIS": "image/jpeg",
-    "STAMP_VENICE": "image/jpeg",
-    "STAMP_ROME": "image/jpeg",
-    "STAMP_KYOTO": "image/jpeg",
-    "STAMP_NEWYORK": "image/jpeg",
-    "STAMP_AMSTERDAM": "image/jpeg",
-    "STAMP_ISTANBUL": "image/jpeg",
-    "STAMP_AGRA": "image/jpeg",
-}
+# The band wallpaper in assets.json (WebP; the paintings there are JPEGs).
+_BAND_ASSET_KEY = "BAND"
+# The Experience Company symbol heading Air Mail's return address.
+_TEC_MARK_ASSET_KEY = "TEC_MARK"
 
 # (family, asset key, weight, style) for the two embedded webfonts the
 # templates are designed against (explorer-contract.md rule 6).
@@ -95,24 +90,37 @@ def explorer_family_ids() -> tuple[str, ...]:
 
 
 @lru_cache(maxsize=1)
-def _asset_data_uris() -> dict[str, str]:
+def _raw_assets() -> dict[str, str]:
+    """Return assets.json: asset key -> base64 file bytes."""
     raw: dict[str, str] = json.loads(_ASSETS_JSON.read_text())
+    return raw
+
+
+@lru_cache(maxsize=1)
+def _asset_data_uris() -> dict[str, str]:
+    """Return the images every family may read from ed.assets, as data URIs."""
+    tec_mark = base64.b64encode(_TEC_MARK_WEBP.read_bytes()).decode("ascii")
     return {
-        key: f"data:{_ASSET_MIME[key]};base64,{b64}"
-        for key, b64 in raw.items()
-        if key in _ASSET_MIME
+        _BAND_ASSET_KEY: f"data:image/webp;base64,{_raw_assets()[_BAND_ASSET_KEY]}",
+        _TEC_MARK_ASSET_KEY: f"data:image/webp;base64,{tec_mark}",
+    }
+
+
+def _art(edition_no: int) -> ExplorerArt:
+    """Return the painting the edition hangs, its image inlined as a data URI."""
+    artwork = artwork_for(edition_no)
+    return {
+        "src": f"data:image/jpeg;base64,{_raw_assets()[artwork.asset_key]}",
+        "title": artwork.title,
+        "artist": artwork.artist,
+        "year": artwork.year,
+        "medium": artwork.medium,
     }
 
 
 @lru_cache(maxsize=1)
-def _art_credit() -> str:
-    art_credits: dict[str, str] = json.loads(_CREDITS_JSON.read_text())
-    return art_credits.get(ART_ASSET_KEY, "")
-
-
-@lru_cache(maxsize=1)
 def _font_faces_css() -> str:
-    raw: dict[str, str] = json.loads(_ASSETS_JSON.read_text())
+    raw = _raw_assets()
     rules = [
         f"@font-face{{font-family:'{family}';font-style:{style};"
         f"font-weight:{weight};font-display:block;"
@@ -152,14 +160,19 @@ def render_explorer_edition(
         raise ValueError(f"unknown explorer family: {family!r}")
 
     assets = dict(_asset_data_uris())
-    if family == POSTAL_FAMILY and payload.stamp_city:
-        assets[STAMP_ASSET_KEY] = stamp_asset_url(payload.stamp_city)
+    if family == POSTAL_FAMILY:
+        # The drawn city's stamp; a legacy brief without one picks from the
+        # template's own city axis, so those cities' art loads too.
+        if payload.stamp_city:
+            assets[STAMP_ASSET_KEY] = stamp_asset_url(payload.stamp_city)
+        else:
+            assets.update(axis_stamp_assets())
     ed = build_ed(
         payload,
         edition_no=edition_no,
         generated_local=generated_local,
         assets=assets,
-        art_credit=_art_credit(),
+        art=_art(edition_no),
         family=family,
     )
 
@@ -174,12 +187,12 @@ def render_explorer_edition(
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width={CANVAS_PX}">
+<meta name="viewport" content="width={EXPLORER_CANVAS_PX}">
 <style>
 {_font_faces_css()}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 html {{ -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }}
-body {{ width: {CANVAS_PX}px; }}
+body {{ width: {EXPLORER_CANVAS_PX}px; }}
 </style>
 </head>
 <body>

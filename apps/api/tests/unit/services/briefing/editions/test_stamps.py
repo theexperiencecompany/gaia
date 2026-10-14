@@ -48,28 +48,24 @@ class TestCatalogue:
         assert not list(_CATALOGUE.parent.glob("*.webp"))
         assert not list(_CATALOGUE.parent.glob("*.png"))
 
-    def test_every_catalogued_country_has_postage(self) -> None:
+    def test_every_catalogued_country_has_an_air_mail_phrase(self) -> None:
         rows = json.loads(_CATALOGUE.read_text())
 
         for row in rows:
-            assert stamp_for(row["slug"])["denom"]
+            assert stamp_for(row["slug"])["label"] == row["name"]
 
     def test_a_real_city_yields_the_full_postal_skin(self) -> None:
-        assert stamp_for("paris") == {
-            "id": "paris",
-            "label": "Paris, France",
-            "src": "STAMP_CITY",
-            "city": "PARIS",
-            "air": "Par Avion",
-            "airSub": "By Air Mail",
-            "denom": "€1,96",
-            "frame": "#7a2f2f",
-            "extra": {"kind": "customs", "code": "CN 22", "sub": "Customs · Douane"},
+        assert stamp_for("tokyo") == {
+            "id": "tokyo",
+            "label": "Tokyo",
+            "key": "STAMP_CITY",
+            "city": "TOKYO",
+            "air": "Kōkūbin",
         }
 
-    def test_frame_colours_cycle_by_the_citys_alphabetical_position(self) -> None:
-        assert stamp_for("addis_ababa")["frame"] == "#9c3b34"
-        assert stamp_for("ahmedabad")["frame"] == "#2f5233"
+    @pytest.mark.parametrize("slug", ["paris", "london", "new_york_city"])
+    def test_a_phrase_the_air_mail_label_already_prints_is_not_repeated(self, slug: str) -> None:
+        assert stamp_for(slug)["air"] == ""
 
     def test_every_catalogued_city_is_hosted_and_drawable(self) -> None:
         rows = json.loads(_CATALOGUE.read_text())
@@ -94,13 +90,7 @@ class TestHostedStamps:
     def test_the_stamp_text_is_derived_from_its_city(self) -> None:
         stamp = stamp_for("paris")
 
-        assert stamp["src"] == "STAMP_CITY"
-        assert stamp["city"] == "PARIS"
-        assert stamp["denom"] == "€1,96"
-        assert stamp["air"] == "Par Avion"
-
-    def test_cities_in_one_country_share_its_postage(self) -> None:
-        assert stamp_for("tokyo")["denom"] == stamp_for("osaka")["denom"] == "¥110"
+        assert (stamp["key"], stamp["city"], stamp["label"]) == ("STAMP_CITY", "PARIS", "Paris")
 
     def test_an_unknown_city_fails_loud(self) -> None:
         with pytest.raises(KeyError):
