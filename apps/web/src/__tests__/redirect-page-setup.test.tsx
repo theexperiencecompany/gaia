@@ -46,6 +46,11 @@ const PENDING: SetupStatus = {
   },
   providers: {},
   plans_seeded: false,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
 };
 
 function signedInAs(role: "admin" | "member"): void {

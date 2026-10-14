@@ -9838,6 +9838,27 @@ export interface components {
             instructions: string | null;
         };
         /**
+         * InstanceBots
+         * @description The chat bots this instance runs, for the web Bots page; null where none is set up.
+         */
+        InstanceBots: {
+            /**
+             * Discord Client Id
+             * @description The Discord application id the bot's invite link names
+             */
+            discord_client_id: string | null;
+            /**
+             * Slack Workspace Url
+             * @description The Slack workspace the bot is installed in
+             */
+            slack_workspace_url: string | null;
+            /**
+             * Telegram Username
+             * @description The Telegram bot's @username
+             */
+            telegram_username: string | null;
+        };
+        /**
          * InstanceRole
          * @description A self-host account's role: the first account administers the instance.
          * @enum {string}
@@ -13618,6 +13639,8 @@ export interface components {
              * @enum {string}
              */
             auth_mode: "workos" | "local";
+            /** @description The chat bots this instance runs */
+            bots: components["schemas"]["InstanceBots"];
             /** @description What this deployment does */
             deployment: components["schemas"]["DeploymentStatus"];
             /**
@@ -16684,6 +16707,7 @@ export type ImportedOrigin = components['schemas']['ImportedOrigin'];
 export type ImportTokenResponse = components['schemas']['ImportTokenResponse'];
 export type InitiatePlatformConnectRequest = components['schemas']['InitiatePlatformConnectRequest'];
 export type InitiatePlatformConnectResponse = components['schemas']['InitiatePlatformConnectResponse'];
+export type InstanceBots = components['schemas']['InstanceBots'];
 export type InstanceRole = components['schemas']['InstanceRole'];
 export type InstructionsEditor = components['schemas']['InstructionsEditor'];
 export type IntegrationAccountResponse = components['schemas']['IntegrationAccountResponse'];

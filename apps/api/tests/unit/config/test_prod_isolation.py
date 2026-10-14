@@ -284,6 +284,25 @@ def test_selfhost_missing_mongo_db_raises(monkeypatch):
         Settings(_env_file=None, **kwargs)
 
 
+def test_selfhost_has_no_telegram_bot_until_one_is_added(monkeypatch):
+    """GAIA Cloud's @heygaia_bot never answers a self-hosted instance's users."""
+    monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
+    kwargs: dict[str, Any] = dict.fromkeys(_SELFHOST_INFRA_FIELDS, "x")
+    kwargs["CHROMADB_PORT"] = 0
+    kwargs["ENV"] = "selfhost"
+
+    assert Settings(_env_file=None, **kwargs).telegram_bot_username is None
+    kwargs["TELEGRAM_BOT_USERNAME"] = "my_gaia_bot"
+    assert Settings(_env_file=None, **kwargs).telegram_bot_username == "my_gaia_bot"
+
+
+def test_gaia_cloud_falls_back_to_its_own_telegram_bot(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_USERNAME", raising=False)
+    settings_obj = Settings(_env_file=None, **_required_dummies(DeploymentKind.PRODUCTION))
+
+    assert settings_obj.telegram_bot_username == "heygaia_bot"
+
+
 def test_ollama_has_no_endpoint_until_one_is_set():
     """No guessed Ollama endpoint: the setup preset suggests one, the admin saves it."""
 

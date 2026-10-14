@@ -25,6 +25,11 @@ const SETUP_STATUS = {
   },
   providers: {},
   plans_seeded: false,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
 };
 
 function stubSetupStatus(overrides: Partial<typeof SETUP_STATUS> = {}) {

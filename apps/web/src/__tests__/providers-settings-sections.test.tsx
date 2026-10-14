@@ -71,6 +71,11 @@ const BASE_STATUS = {
     ]),
   ),
   plans_seeded: false,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
 } as SetupStatus;
 
 vi.mock("@/features/settings/hooks/useProviderCatalog", () => ({

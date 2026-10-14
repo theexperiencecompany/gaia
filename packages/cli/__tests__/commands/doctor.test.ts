@@ -146,6 +146,11 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: true,
         wizard_dismissed: false,
         plans_seeded: false,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: false,
         registration_policy: "invite_only",
         deployment: {
@@ -182,6 +187,11 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: false,
         wizard_dismissed: false,
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -209,6 +219,11 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: false,
         wizard_dismissed: false,
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -244,6 +259,11 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: true,
         wizard_dismissed: false,
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -272,6 +292,11 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: false,
         wizard_dismissed: false,
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -304,6 +329,11 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: false,
         wizard_dismissed: false,
         plans_seeded: false,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -334,6 +364,11 @@ describe("evaluateSetupReadiness", () => {
       needs_setup: false,
       wizard_dismissed: false,
       plans_seeded: false,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only" as const,
       deployment: {
@@ -370,6 +405,11 @@ describe("evaluateSetupReadiness", () => {
         needs_setup: true,
         wizard_dismissed: false,
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: false,
         registration_policy: "invite_only",
         deployment: {
@@ -677,6 +717,11 @@ describe("checkSetupReadiness", () => {
       needs_setup: true,
       wizard_dismissed: false,
       plans_seeded: false,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: false,
       registration_policy: "invite_only",
       deployment: {
@@ -708,6 +753,11 @@ describe("checkSetupReadiness", () => {
       needs_setup: true,
       wizard_dismissed: false,
       plans_seeded: false,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only",
       deployment: {
@@ -743,6 +793,11 @@ describe("checkSetupReadiness", () => {
       needs_setup: false,
       wizard_dismissed: false,
       plans_seeded: true,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only",
       deployment: {
@@ -775,6 +830,11 @@ describe("checkSetupReadiness", () => {
       needs_setup: false,
       wizard_dismissed: false,
       plans_seeded: true,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only",
       deployment: {
@@ -806,6 +866,11 @@ describe("checkSetupReadiness", () => {
       needs_setup: false,
       wizard_dismissed: false,
       plans_seeded: true,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only",
       deployment: {

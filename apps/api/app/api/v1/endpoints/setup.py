@@ -124,6 +124,18 @@ class DeploymentStatus(BaseModel):
     )
 
 
+class InstanceBots(BaseModel):
+    """The chat bots this instance runs, for the web Bots page; null where none is set up."""
+
+    telegram_username: str | None = Field(description="The Telegram bot's @username")
+    discord_client_id: str | None = Field(
+        description="The Discord application id the bot's invite link names"
+    )
+    slack_workspace_url: str | None = Field(
+        description="The Slack workspace the bot is installed in"
+    )
+
+
 class SetupStatusResponse(BaseModel):
     """``GET /setup/status`` — what the first-run wizard branches on."""
 
@@ -141,6 +153,7 @@ class SetupStatusResponse(BaseModel):
         description="Readiness per credential-store provider"
     )
     plans_seeded: bool = Field(description="Whether the billing plans have been seeded")
+    bots: InstanceBots = Field(description="The chat bots this instance runs")
 
 
 class ProviderCatalogResponse(BaseModel):
@@ -245,6 +258,11 @@ async def get_setup_status() -> SetupStatusResponse:
             for p, r in resolutions.items()
         },
         plans_seeded=await is_payment_setup(),
+        bots=InstanceBots(
+            telegram_username=settings.telegram_bot_username,
+            discord_client_id=settings.DISCORD_CLIENT_ID,
+            slack_workspace_url=settings.SLACK_WORKSPACE_URL,
+        ),
     )
 
 

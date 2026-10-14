@@ -7739,6 +7739,54 @@
         "title": "InitiatePlatformConnectResponse",
         "type": "object"
       },
+      "InstanceBots": {
+        "description": "The chat bots this instance runs, for the web Bots page; null where none is set up.",
+        "properties": {
+          "discord_client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Discord application id the bot's invite link names",
+            "title": "Discord Client Id"
+          },
+          "slack_workspace_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Slack workspace the bot is installed in",
+            "title": "Slack Workspace Url"
+          },
+          "telegram_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Telegram bot's @username",
+            "title": "Telegram Username"
+          }
+        },
+        "required": [
+          "telegram_username",
+          "discord_client_id",
+          "slack_workspace_url"
+        ],
+        "title": "InstanceBots",
+        "type": "object"
+      },
       "InstanceRole": {
         "description": "A self-host account's role: the first account administers the instance.",
         "enum": [
@@ -15782,6 +15830,10 @@
             "title": "Auth Mode",
             "type": "string"
           },
+          "bots": {
+            "$ref": "#/components/schemas/InstanceBots",
+            "description": "The chat bots this instance runs"
+          },
           "deployment": {
             "$ref": "#/components/schemas/DeploymentStatus",
             "description": "What this deployment does"
@@ -15827,7 +15879,8 @@
           "wizard_dismissed",
           "deployment",
           "providers",
-          "plans_seeded"
+          "plans_seeded",
+          "bots"
         ],
         "title": "SetupStatusResponse",
         "type": "object"

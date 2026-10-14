@@ -39,6 +39,11 @@ vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
       },
       providers: {},
       plans_seeded: false,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
     },
     isLoading: false,
     isError: false,

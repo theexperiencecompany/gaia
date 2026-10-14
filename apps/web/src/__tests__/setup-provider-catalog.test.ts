@@ -90,6 +90,11 @@ const statusWith = (configured: string[]): SetupStatus => ({
   needs_setup: true,
   wizard_dismissed: false,
   plans_seeded: true,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
   providers: Object.fromEntries(
     configured.map((key) => [
       key,

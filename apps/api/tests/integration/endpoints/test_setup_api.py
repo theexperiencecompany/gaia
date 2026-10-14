@@ -120,6 +120,12 @@ class TestStatus:
             "deployment",
             "providers",
             "plans_seeded",
+            "bots",
+        }
+        assert set(body["bots"]) == {
+            "telegram_username",
+            "discord_client_id",
+            "slack_workspace_url",
         }
         assert set(body["deployment"]) == {
             "kind",
@@ -171,6 +177,38 @@ class TestStatus:
         resp = await anon_client.get(f"{API}/status")
 
         assert resp.json()["deployment"]["gaia_support"] is gaia_support
+
+    async def test_status_names_the_bots_this_instance_runs(
+        self, anon_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "TELEGRAM_BOT_USERNAME", "my_gaia_bot")
+        monkeypatch.setattr(settings, "DISCORD_CLIENT_ID", "1234567890")
+        monkeypatch.setattr(settings, "SLACK_WORKSPACE_URL", "https://acme.slack.com/")
+
+        resp = await anon_client.get(f"{API}/status")
+
+        assert resp.json()["bots"] == {
+            "telegram_username": "my_gaia_bot",
+            "discord_client_id": "1234567890",
+            "slack_workspace_url": "https://acme.slack.com/",
+        }
+
+    async def test_a_selfhost_instance_without_bots_never_points_at_gaia_clouds(
+        self, anon_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "TELEGRAM_BOT_USERNAME", None)
+        monkeypatch.setattr(settings, "DISCORD_CLIENT_ID", None)
+        monkeypatch.setattr(settings, "SLACK_WORKSPACE_URL", None)
+
+        resp = await anon_client.get(f"{API}/status")
+
+        assert resp.json()["bots"] == {
+            "telegram_username": None,
+            "discord_client_id": None,
+            "slack_workspace_url": None,
+        }
 
     async def test_status_has_no_auth_dependency(self) -> None:
         assert not _requires("/status", get_current_user)

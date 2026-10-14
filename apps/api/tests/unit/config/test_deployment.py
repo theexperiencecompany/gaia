@@ -30,6 +30,7 @@ def test_production_bills_enforces_and_reads_env_only() -> None:
     assert profile.local_workspace is False
     assert profile.blob_store is BlobStoreKind.CLOUDINARY
     assert profile.gaia_support is True
+    assert profile.hosted_bots is True
 
 
 def test_production_with_local_auth_is_refused() -> None:
@@ -64,6 +65,7 @@ def test_selfhost_has_no_plans_no_limits_and_a_credential_store() -> None:
     assert profile.local_workspace is True
     assert profile.blob_store is BlobStoreKind.LOCAL
     assert profile.gaia_support is False
+    assert profile.hosted_bots is False
 
 
 def test_selfhost_runs_the_local_code_sandbox_only_when_opted_in() -> None:

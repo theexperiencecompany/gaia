@@ -901,19 +901,29 @@ class TestStartPlatformConnect:
         assert error.status_code == 501
         assert error.message == "slack connect is not configured"
 
-    async def test_telegram_falls_back_to_the_default_bot_username(self):
+    async def test_telegram_manual_flow_names_the_instances_bot(self):
         with patch("app.services.platform_link_service.settings") as mock_settings:
-            mock_settings.TELEGRAM_BOT_USERNAME = None
+            mock_settings.telegram_bot_username = "my_gaia_bot"
 
             result = await start_platform_connect("user-1", "telegram")
 
         assert result.auth_url is None
         assert result.instructions == (
-            "Open Telegram and message @gaia_bot with /auth to link your account."
+            "Open Telegram and message @my_gaia_bot with /auth to link your account."
         )
-        assert result.action_link == "https://t.me/gaia_bot"
+        assert result.action_link == "https://t.me/my_gaia_bot"
         # auth_url is explicitly None for a manual flow, not just defaulted.
         assert result.model_fields_set == {"auth_url", "auth_type", "instructions", "action_link"}
+
+    async def test_telegram_without_a_bot_is_501_not_someone_elses_bot(self):
+        with patch("app.services.platform_link_service.settings") as mock_settings:
+            mock_settings.telegram_bot_username = None
+
+            with pytest.raises(AppError) as exc_info:
+                await start_platform_connect("user-1", "telegram")
+
+        assert exc_info.value.status_code == 501
+        assert exc_info.value.message == "telegram connect is not configured"
 
     async def test_whatsapp_manual_flow_builds_the_wa_me_link(self):
         with patch("app.services.platform_link_service.settings") as mock_settings:

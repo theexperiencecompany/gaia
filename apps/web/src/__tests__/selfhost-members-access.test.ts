@@ -21,6 +21,11 @@ const status = (
   needs_setup: false,
   wizard_dismissed: false,
   plans_seeded: true,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
   providers: {},
   ...overrides,
 });

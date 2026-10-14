@@ -42,6 +42,11 @@ const SELFHOST_STATUS: SetupStatusResponse = {
   needs_setup: false,
   wizard_dismissed: false,
   plans_seeded: false,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
   providers: {},
 };
 
