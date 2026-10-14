@@ -99,7 +99,7 @@ def _raw_assets() -> dict[str, str]:
 @lru_cache(maxsize=1)
 def _asset_data_uris() -> dict[str, str]:
     """Return the images every family may read from ed.assets, as data URIs."""
-    tec_mark = base64.b64encode(_TEC_MARK_WEBP.read_bytes()).decode("ascii")
+    tec_mark = base64.b64encode(_TEC_MARK_WEBP.read_bytes()).decode()
     return {
         _BAND_ASSET_KEY: f"data:image/webp;base64,{_raw_assets()[_BAND_ASSET_KEY]}",
         _TEC_MARK_ASSET_KEY: f"data:image/webp;base64,{tec_mark}",

@@ -88,11 +88,13 @@ class TestKeyChoosesThePipeline:
         with ExitStack() as stack:
             for patcher in pipelines.patches():
                 stack.enter_context(patcher)
+            log = stack.enter_context(patch("app.workers.tasks.workflow_tasks.log"))
             summary = await _run_briefing_workflow(workflow)
 
         pipelines.daily.assert_awaited_once_with(USER_ID)
         pipelines.weekly.assert_not_awaited()
         assert summary == BRIEFING_SUMMARY
+        log.set_ns.assert_called_once_with("workflow", briefing_outcome="sent")
 
     async def test_weekly_key_runs_the_weekly_digest_for_that_user(
         self, pipelines: _Pipelines

@@ -7,6 +7,8 @@ same edition hangs the same one.
 
 from dataclasses import dataclass
 
+_OIL_ON_CANVAS = "oil on canvas"
+
 
 @dataclass(frozen=True)
 class Artwork:
@@ -20,7 +22,7 @@ class Artwork:
 
 
 ARTWORKS: tuple[Artwork, ...] = (
-    Artwork("ART1", "Wheat Field with Cypresses", "Vincent van Gogh", "1889", "oil on canvas"),
+    Artwork("ART1", "Wheat Field with Cypresses", "Vincent van Gogh", "1889", _OIL_ON_CANVAS),
     Artwork(
         "STAMP_TOKYO",
         "Under the Wave off Kanagawa",
@@ -28,15 +30,15 @@ ARTWORKS: tuple[Artwork, ...] = (
         "ca. 1830–32",
         "woodblock print",
     ),
-    Artwork("STAMP_LONDON", "Whalers", "J. M. W. Turner", "ca. 1845", "oil on canvas"),
+    Artwork("STAMP_LONDON", "Whalers", "J. M. W. Turner", "ca. 1845", _OIL_ON_CANVAS),
     Artwork(
         "STAMP_PARIS",
         "The Boulevard Montmartre on a Winter Morning",
         "Camille Pissarro",
         "1897",
-        "oil on canvas",
+        _OIL_ON_CANVAS,
     ),
-    Artwork("STAMP_VENICE", "Piazza San Marco", "Canaletto", "late 1720s", "oil on canvas"),
+    Artwork("STAMP_VENICE", "Piazza San Marco", "Canaletto", "late 1720s", _OIL_ON_CANVAS),
 )
 
 

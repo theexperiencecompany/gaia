@@ -639,9 +639,7 @@ class WorkflowService:
                     )
                     new_trigger_config.timezone = timezone_to_use
                     if new_trigger_config.cron_expression:
-                        new_trigger_config.update_next_run(
-                            base_time=next_run_base, user_timezone=timezone_to_use
-                        )
+                        new_trigger_config.update_next_run(base_time=next_run_base)
 
                 # Check if we need to reschedule
                 old_config = current_workflow.trigger_config

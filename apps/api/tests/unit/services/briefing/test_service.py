@@ -32,6 +32,7 @@ from app.constants.briefing import (
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
+    ProactiveMessageClass,
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.brief_models import PendingBriefItemDocument
@@ -136,7 +137,7 @@ class World:
     work: context.TrackedWork = field(default_factory=context.TrackedWork)
     held: list[PendingBriefItemDocument] = field(default_factory=list)
     user: UserDocument = field(
-        default_factory=lambda: UserDocument(id=_USER, timezone=_TZ, email="a@b.c")
+        default_factory=lambda: UserDocument(id=_USER, timezone=_TZ, email="a@b.c", name="Ada")
     )
     chat: ChatChannel | None = _CHAT
 
@@ -329,7 +330,7 @@ class TestDailyBrief:
     async def test_the_edition_is_addressed_to_the_user_by_name(self, world: World) -> None:
         await service.run_daily_briefing(_USER)
 
-        assert _stored_payload(world).recipient_name == world.user.name
+        assert _stored_payload(world).recipient_name == "Ada"
 
     async def test_an_empty_day_stays_in_app_and_spends_no_draw(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -371,11 +372,14 @@ class TestDailyBrief:
             service, "hosted_stamp_weights", lambda: {"paris": 1, "tokyo": 1, "lima": 1}
         )
         self._postal_first(world)
+        seeded = world.bags["edition_family"].order
 
         await service.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
         assert payload.template_family == "postal"
+        # The stored pass was read and advanced, not reshuffled from scratch.
+        assert world.bags["edition_family"] == ShuffleBag(order=seeded, index=1)
         assert payload.stamp_city in {"paris", "tokyo", "lima"}
         assert world.bags["stamp_city"].order[0] == payload.stamp_city
 
@@ -549,6 +553,8 @@ class TestWeeklyRecap:
             "A good week\n\nThis week I finished Item 0, Item 1 and 1 more.\n\n"
             f"Full brief: https://heygaia.io/brief/{_BRIEF_ID}"
         )
+        # The recap is always pushed: it reaches the chat app, not only the in-app page.
+        assert world.post.await_args.kwargs["origin"] == "weekly brief"
         world.consume.assert_not_awaited()
 
     async def test_a_recap_already_delivered_today_is_not_sent_again(self, world: World) -> None:
@@ -814,6 +820,7 @@ class TestTheDailyRunWiring:
         post = world.post.await_args.kwargs
         assert post["user"].user_id == _USER
         assert (post["origin"], post["image"].filename) == ("daily brief", "gaia-daily-brief.jpg")
+        assert post["message_class"] is ProactiveMessageClass.ROUTINE
 
     async def test_a_sent_brief_records_its_channels_and_reports_one_event(
         self, world: World

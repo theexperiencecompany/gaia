@@ -328,7 +328,7 @@ describe("sidebar promo", () => {
   it("quotes the monthly catalogue price to a never-subscribed user", () => {
     const { container } = render(<SidebarTopButtons />);
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"GAIA is paid onlyGAIA is paid only right now. $30 a month gets you all of it.SubscribeHomeTasksIntegrationsWorkflowsChats"`,
+      `"GAIA is paid onlyGAIA is paid only right now. $30 a month gets you all of it.SubscribeHomeTasksIntegrationsWorkflowsBriefingsChats"`,
     );
   });
 
@@ -336,7 +336,7 @@ describe("sidebar promo", () => {
     paidState.hasEverSubscribed = true;
     const { container } = render(<SidebarTopButtons />);
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"Your subscription endedResubscribe for $30 a month to pick up where you left offResubscribeHomeTasksIntegrationsWorkflowsChats"`,
+      `"Your subscription endedResubscribe for $30 a month to pick up where you left offResubscribeHomeTasksIntegrationsWorkflowsBriefingsChats"`,
     );
   });
 
@@ -345,7 +345,7 @@ describe("sidebar promo", () => {
     mockPlansLoading = true;
     const { container } = render(<SidebarTopButtons />);
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsChats"`,
+      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsBriefingsChats"`,
     );
     expect(container.querySelector(SKELETON)).not.toBeNull();
   });
@@ -354,7 +354,7 @@ describe("sidebar promo", () => {
     mockPlans = [];
     const { container } = render(<SidebarTopButtons />);
     expect(visibleText(container)).toMatchInlineSnapshot(
-      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsChats"`,
+      `"GAIA is paid onlySubscribeHomeTasksIntegrationsWorkflowsBriefingsChats"`,
     );
     expect(container.querySelector(SKELETON)).toBeNull();
   });

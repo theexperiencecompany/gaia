@@ -86,7 +86,7 @@ async def _publish(
 class DeferredChatMessage(BaseModel):
     """A proactive message held for quiet hours: everything needed to post it later."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, revalidate_instances="always")
 
     user_id: str
     source: ConversationSource

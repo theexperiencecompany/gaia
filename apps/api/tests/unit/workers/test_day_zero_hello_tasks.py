@@ -18,6 +18,7 @@ import time_machine
 
 from app.constants.chat import ConversationSource
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.notifications import ProactiveMessageClass
 from app.models.user_models import DayZeroHello, UserDocument
 from app.services.briefing import service as briefing_service
 from app.services.delivery.chat_channel import ChatChannel
@@ -190,6 +191,8 @@ class TestDelivery:
         assert post["text"] == f"Hi Ada!{NEW_MESSAGE_BREAKER}Brief at 8."
         assert post["origin"] == "day-zero hello"
         assert post["user"].user_id == _USER
+        # A hello the user just asked for by linking must not wait out their quiet hours.
+        assert post["message_class"] is ProactiveMessageClass.USER_TRIGGERED
         seams.mark_sent.assert_awaited_once_with(_USER, "telegram")
         seams.capture.assert_called_once_with(
             UserId(_USER), BriefingDayZeroHelloSent(platform="telegram", has_goal=True)

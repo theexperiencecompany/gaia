@@ -13,6 +13,7 @@ import pytest
 
 from app.services.briefing import render as render_module
 from app.services.briefing.render import (
+    TRIM_THRESHOLD,
     ImageRenderOptions,
     render_html_to_image,
     trim_to_content,
@@ -370,3 +371,120 @@ class TestTrimToContent:
         )
 
         assert _opened(image).size == (170, 280)
+
+    def test_every_side_already_inside_the_margin_keeps_the_whole_capture(self) -> None:
+        png = _desk_with_paper((300, 400), (4, 3, 297, 398))
+
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+
+        assert trimmed.size == (300, 400)
+        assert trimmed.getpixel((0, 0)) == _DESK
+        assert trimmed.getpixel((4, 3)) == _PAPER
+
+    def test_content_in_the_first_row_is_seen_by_the_column_walk(self) -> None:
+        png = _desk_with_paper((300, 400), (100, 0, 101, 1))
+
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+
+        assert trimmed.size == (21, 11)
+        assert trimmed.getpixel((10, 0)) == _PAPER
+
+    def test_content_in_the_first_column_is_seen_by_the_row_walk(self) -> None:
+        png = _desk_with_paper((300, 400), (0, 100, 1, 101))
+
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+
+        assert trimmed.size == (11, 21)
+        assert trimmed.getpixel((0, 10)) == _PAPER
+
+    def test_a_difference_of_exactly_the_threshold_is_still_background(self) -> None:
+        image = Image.new("RGB", (300, 400), _DESK)
+        draw = ImageDraw.Draw(image)
+        faint = (_DESK[0] + TRIM_THRESHOLD, _DESK[1], _DESK[2])
+        visible = (_DESK[0] + TRIM_THRESHOLD + 1, _DESK[1], _DESK[2])
+        draw.rectangle((20, 20, 279, 379), fill=faint)
+        draw.rectangle((50, 70, 199, 329), fill=visible)
+
+        trimmed = _opened(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions()))
+
+        assert trimmed.size == (170, 280)
+
+    def test_background_is_measured_against_the_edge_line_not_its_neighbour(self) -> None:
+        image = Image.new("RGB", (300, 400), _DESK)
+        draw = ImageDraw.Draw(image)
+        drift = (_DESK[0] + 20, _DESK[1], _DESK[2])
+        far_drift = (_DESK[0] + 40, _DESK[1], _DESK[2])
+        draw.rectangle((1, 0, 1, 399), fill=drift)
+        draw.rectangle((2, 0, 299, 399), fill=far_drift)
+        draw.rectangle((150, 70, 199, 329), fill=_PAPER)
+
+        trimmed = _opened(trim_to_content(_saved(image, format="PNG"), 0, ImageRenderOptions()))
+
+        assert trimmed.size == (200 - 2, 260)
+        assert trimmed.getpixel((0, 0)) == far_drift
+
+    def test_a_transparent_capture_is_flattened_to_rgb(self) -> None:
+        image = Image.new("RGBA", (300, 400), (*_DESK, 255))
+        ImageDraw.Draw(image).rectangle((50, 70, 199, 329), fill=(*_PAPER, 255))
+
+        trimmed = Image.open(
+            io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions()))
+        )
+
+        assert trimmed.mode == "RGB"
+        assert trimmed.size == (170, 280)
+
+    def test_a_png_is_saved_optimized(self) -> None:
+        png = _noisy_desk_with_paper()
+        expected = _opened(png).crop((40, 60, 210, 340))
+
+        trimmed = trim_to_content(png, 10, ImageRenderOptions())
+
+        assert trimmed == _saved(expected, format="PNG", optimize=True)
+        assert trimmed != _saved(expected, format="PNG")
+
+    @pytest.mark.parametrize(("quality", "saved_quality"), [(30, 30), (None, 75)])
+    def test_a_jpeg_is_cropped_and_saved_at_the_requested_quality(
+        self, quality: int | None, saved_quality: int
+    ) -> None:
+        png = _noisy_desk_with_paper()
+        expected = _opened(png).crop((40, 60, 210, 340))
+
+        trimmed = trim_to_content(png, 10, ImageRenderOptions(image_format="jpeg", quality=quality))
+
+        assert trimmed == _saved(expected, format="JPEG", quality=saved_quality)
+        assert trimmed != _saved(expected, format="JPEG", quality=saved_quality + 1)
+
+
+def _noisy_desk_with_paper() -> bytes:
+    """Draw a flat desk around a textured paper whose bytes depend on encoder settings."""
+    image = Image.new("RGB", (300, 400), _DESK)
+    texture = bytes((i * 37) % 256 for i in range(150 * 260 * 3))
+    image.paste(Image.frombytes("RGB", (150, 260), texture), (50, 70))
+    return _saved(image, format="PNG")
+
+
+def _saved(image: Image.Image, **save_options: Any) -> bytes:
+    out = io.BytesIO()
+    image.save(out, **save_options)
+    return out.getvalue()
+
+
+@pytest.mark.unit
+class TestJpegClip:
+    async def test_a_jpeg_capture_is_clipped_to_the_element_box(self, browser: Harness) -> None:
+        browser.page.boxes[".paper"] = {"x": 10.0, "y": 20.0, "width": 30.0, "height": 40.0}
+
+        await render_html_to_image(
+            "<html>hi</html>",
+            ImageRenderOptions(image_format="jpeg", quality=70, clip_selector=".paper"),
+        )
+
+        assert browser.page.screenshot_calls == [
+            {
+                "full_page": True,
+                "type": "jpeg",
+                "quality": 70,
+                "clip": {"x": 10.0, "y": 20.0, "width": 30.0, "height": 40.0},
+            }
+        ]

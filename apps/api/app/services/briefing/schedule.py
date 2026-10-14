@@ -69,8 +69,11 @@ async def resync_briefing_schedules(user: UserDocument) -> None:
     workflows = await workflow_repository.find_system_workflows(
         user.id, tuple(_KIND_BY_WORKFLOW_KEY)
     )
-    for workflow in workflows:
-        key = workflow.system_workflow_key or ""
+    by_key = {workflow.system_workflow_key: workflow for workflow in workflows}
+    for key, kind in _KIND_BY_WORKFLOW_KEY.items():
+        workflow = by_key.get(key)
+        if workflow is None:
+            continue
         cron = _briefing_cron(key, user)
         current = workflow.trigger_config
         if current.cron_expression == cron and current.timezone == timezone:
@@ -80,7 +83,7 @@ async def resync_briefing_schedules(user: UserDocument) -> None:
             workflow.id,
             UpdateWorkflowRequest(trigger_config=trigger_config),
             user.id,
-            next_run_base=await _next_run_base(user, _KIND_BY_WORKFLOW_KEY[key]),
+            next_run_base=await _next_run_base(user, kind),
         )
         if updated is None:
             raise LookupError(f"Briefing workflow {workflow.id} vanished while it was moved")

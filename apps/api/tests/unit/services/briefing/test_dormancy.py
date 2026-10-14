@@ -75,3 +75,30 @@ class TestLatestActivitySince:
         user = UserDocument(id="u1", last_active_at=_SINCE)
 
         assert await dormancy.latest_activity_since(user, _SINCE) == _SINCE
+
+    async def test_a_newer_naive_web_stamp_wins_and_reads_as_utc(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            dormancy.conversation_repository,
+            "latest_user_message_since",
+            AsyncMock(return_value=_SINCE + timedelta(hours=1)),
+        )
+        user = UserDocument(id="u1", last_active_at=datetime(2026, 10, 13, 11))  # naive = UTC
+
+        assert await dormancy.latest_activity_since(user, _SINCE) == datetime(
+            2026, 10, 13, 11, tzinfo=UTC
+        )
+
+    async def test_a_user_never_seen_on_the_web_is_active_by_their_last_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            dormancy.conversation_repository,
+            "latest_user_message_since",
+            AsyncMock(return_value=_SINCE + timedelta(hours=1)),
+        )
+
+        user = UserDocument(id="u1", last_active_at=None)
+
+        assert await dormancy.latest_activity_since(user, _SINCE) == _SINCE + timedelta(hours=1)
