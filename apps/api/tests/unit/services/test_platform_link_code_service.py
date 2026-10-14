@@ -322,6 +322,7 @@ class TestClaimReleaseDiscard:
                 "response_style": None,
                 "other_need": None,
                 "custom_instructions": None,
+                "sent_with_gaia": None,
             },
         }
         assert [type(need) for need in value["preferences"]["needs"]] == [str, str]

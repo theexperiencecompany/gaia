@@ -23,18 +23,19 @@ export function useWeeklyCard() {
     retry: false,
     refetchOnWindowFocus: false,
   });
-  const dismissal = useMutation({ mutationFn: referralsApi.dismissWeeklyCard });
-
-  const dismiss = () => {
-    queryClient.setQueryData<ReferralWeeklyCardResponse>(
-      WEEKLY_CARD_KEY,
-      (card) => (card ? { ...card, show: false } : card),
-    );
-    dismissal.mutate();
-  };
+  // Hidden straight away and never refetched: a refetch would claim the week again.
+  const dismissal = useMutation({
+    mutationFn: referralsApi.dismissWeeklyCard,
+    onMutate: () => {
+      queryClient.setQueryData<ReferralWeeklyCardResponse>(
+        WEEKLY_CARD_KEY,
+        (card) => (card ? { ...card, show: false } : card),
+      );
+    },
+  });
 
   const card = claim.data?.show ? claim.data : undefined;
-  return { card, dismiss };
+  return { card, dismiss: () => dismissal.mutate() };
 }
 
 /** The share image for a week: the card's own numbers, drawn by /api/og/weekly. */

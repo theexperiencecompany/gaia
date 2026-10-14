@@ -84,7 +84,7 @@ function WeeklyPreview() {
           {/* biome-ignore lint/performance/noImgElement: previews a dynamic OG route, next/image would re-encode it. */}
           <img
             src={weeklyImagePath(FIXTURE_WEEKLY[state])}
-            alt={`Weekly share image, ${state}`}
+            alt={`Weekly time-saved share card, ${state}`}
             width={1200}
             height={630}
             className="h-auto w-full max-w-[1200px] rounded-2xl"
