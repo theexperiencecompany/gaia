@@ -28,6 +28,7 @@ from app.services.payments.payment_service import payment_service
 from app.services.referrals.rewards import apply_banked_months, record_friend_payment
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.referrals import ReferralConverted, ReferralRewardGranted
+from tests.factories import make_dodo_payment, make_dodo_subscription
 
 pytestmark = pytest.mark.service
 
@@ -36,35 +37,6 @@ ONE_MONTH_LATER = datetime(2026, 12, 14, 9, 30, tzinfo=UTC)
 TWO_MONTHS_LATER = datetime(2027, 1, 14, 9, 30, tzinfo=UTC)
 # How long a delivery is given to (wrongly) get past a lock someone else holds.
 LOCK_PROBE_S = 1.0
-
-
-def _dodo_subscription(sub_id: str, customer_id: str, next_billing_date: datetime) -> Subscription:
-    return Subscription.model_validate(
-        {
-            "subscription_id": sub_id,
-            "product_id": "pdt_pro_monthly",
-            "status": "active",
-            "quantity": 1,
-            "currency": "USD",
-            "recurring_pre_tax_amount": 3000,
-            "payment_frequency_count": 1,
-            "payment_frequency_interval": "Month",
-            "subscription_period_count": 1,
-            "subscription_period_interval": "Year",
-            "next_billing_date": next_billing_date,
-            "previous_billing_date": datetime(2026, 10, 14, tzinfo=UTC),
-            "created_at": datetime(2026, 10, 14, tzinfo=UTC),
-            "metadata": {},
-            "customer": {"customer_id": customer_id, "email": "x@example.com", "name": "X"},
-            "billing": {"country": "US"},
-            "addons": [],
-            "meters": [],
-            "cancel_at_next_billing_date": False,
-            "on_demand": False,
-            "tax_inclusive": False,
-            "trial_period_days": 0,
-        }
-    )
 
 
 @dataclass
@@ -128,7 +100,7 @@ async def _user(first_name: str) -> UserDocument:
 
 async def _active_subscription(dodo: FakeDodo, user: UserDocument, customer_id: str) -> str:
     sub_id = f"sub_{uuid.uuid4().hex}"
-    dodo.store[sub_id] = _dodo_subscription(sub_id, customer_id, NEXT_BILL)
+    dodo.store[sub_id] = make_dodo_subscription(sub_id, customer_id, NEXT_BILL)
     now = datetime.now(UTC)
     await subscription_repository.create(
         SubscriptionDocument.model_validate(
@@ -163,29 +135,8 @@ async def _refer(referrer: UserDocument, friend: UserDocument) -> None:
 def _payment(
     friend: UserDocument, *, amount: int = 1500, customer_id: str | None = None
 ) -> DodoPaymentData:
-    return DodoPaymentData.model_validate(
-        {
-            "payment_id": f"pay_{uuid.uuid4().hex}",
-            "subscription_id": f"sub_friend_{uuid.uuid4().hex}",
-            "business_id": "biz",
-            "brand_id": "brand",
-            "customer": {
-                "customer_id": customer_id or f"cus_{uuid.uuid4().hex}",
-                "email": friend.email,
-                "name": "Friend",
-            },
-            "billing": {"country": "US"},
-            "currency": "USD",
-            "total_amount": amount,
-            "settlement_amount": amount,
-            "settlement_currency": "USD",
-            "tax": 0,
-            "settlement_tax": 0,
-            "status": "succeeded",
-            "payment_method": "card",
-            "created_at": datetime.now(UTC).isoformat(),
-            "metadata": {"user_id": friend.id},
-        }
+    return make_dodo_payment(
+        user_id=friend.id, email=friend.email, amount=amount, customer_id=customer_id
     )
 
 

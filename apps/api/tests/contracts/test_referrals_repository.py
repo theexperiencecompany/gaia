@@ -57,6 +57,8 @@ class TestReferralsRepository:
         assert len(winners) == 1
         assert winners[0].status is ReferredFriendStatus.PAID
         assert winners[0].reward_state is ReferralRewardState.PENDING
+        assert winners[0].payment_id in {f"pay_{i}" for i in range(4)}
+        assert winners[0].paid_at.replace(tzinfo=UTC) == NOW
         assert (await repo.get("friend")).payment_id == winners[0].payment_id
 
     async def test_mark_paid_ignores_someone_never_referred(self, repo):
@@ -95,16 +97,19 @@ class TestReferralsRepository:
         ).reward_target_billing_date == later
 
     async def test_listings_are_scoped_to_the_referrer_and_ordered(self, repo):
-        await repo.attribute(_referral("old", joined_at=NOW - timedelta(days=2)))
-        await repo.attribute(_referral("new", joined_at=NOW))
+        joined = {"a": NOW - timedelta(days=1), "b": NOW - timedelta(days=2), "c": NOW}
+        paid = {"a": NOW, "b": NOW - timedelta(hours=1), "c": NOW - timedelta(hours=2)}
+        for friend in ("a", "b", "c"):
+            await repo.attribute(_referral(friend, joined_at=joined[friend]))
         await repo.attribute(_referral("other", referrer="someone-else"))
-        for friend, paid in (("old", NOW - timedelta(days=1)), ("new", NOW)):
-            await repo.mark_paid(friend, payment_id=f"pay_{friend}", paid_at=paid)
+        for friend in ("a", "b", "c"):
+            await repo.mark_paid(friend, payment_id=f"pay_{friend}", paid_at=paid[friend])
             await repo.update(friend, ReferralUpdate(reward_state=ReferralRewardState.BANKED))
 
         assert [r.friend_user_id for r in await repo.list_for_referrer("referrer")] == [
-            "new",
-            "old",
+            "c",
+            "a",
+            "b",
         ]
-        assert [r.friend_user_id for r in await repo.list_banked("referrer")] == ["old", "new"]
+        assert [r.friend_user_id for r in await repo.list_banked("referrer")] == ["c", "b", "a"]
         assert await repo.list_banked("someone-else") == []

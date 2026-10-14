@@ -91,7 +91,7 @@ async def _tally_sent_mail(user_id: str, tally: _Tally) -> None:
         for message in page.messages:
             for name, address in getaddresses([message.to, message.cc]):
                 if "@" in address:
-                    tally.add(tally.emailed, address, name or None)
+                    tally.add(tally.emailed, address, name)
         page_token = page.next_page_token
         if not page_token:
             return

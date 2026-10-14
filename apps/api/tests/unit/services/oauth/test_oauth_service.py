@@ -25,6 +25,7 @@ from app.services.oauth.oauth_service import (
     handle_oauth_connection,
     store_user_info,
 )
+from app.services.referrals.attribution import ReferralAttribution
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
@@ -279,6 +280,43 @@ class TestStoreUserInfo:
         assert created.name == "Bob"
         assert created.email == "bob@test.com"
         assert created.picture == "https://pic.example.com/bob.jpg"
+
+    async def test_a_new_account_takes_the_invite_links_attribution(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+    ):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid, name="Bob", email="bob@test.com")
+        referral = ReferralAttribution(code="aryan-k7f2")
+
+        with patch(
+            "app.services.oauth.oauth_service.attribute_signup", new_callable=AsyncMock
+        ) as attribute:
+            await store_user_info("Bob", "bob@test.com", None, auth_method=None, referral=referral)
+
+        attribute.assert_awaited_once_with(uid, referral)
+
+    async def test_an_existing_account_ignores_an_invite_link(
+        self, mock_user_repo, mock_track_login
+    ):
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=str(ObjectId()), name="Alice", email="alice@test.com"
+        )
+
+        with patch(
+            "app.services.oauth.oauth_service.attribute_signup", new_callable=AsyncMock
+        ) as attribute:
+            await store_user_info(
+                "Alice",
+                "alice@test.com",
+                None,
+                auth_method=None,
+                referral=ReferralAttribution(code="aryan-k7f2"),
+            )
+
+        attribute.assert_not_awaited()
 
     @pytest.mark.regression
     async def test_signup_reports_the_method_workos_authenticated_with(
