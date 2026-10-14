@@ -79,6 +79,15 @@ class TestQuietWindowEnd:
         now = _utc(2026, 10, 15, 5, 0)
         assert quiet_window_end(OVERNIGHT, "America/Los_Angeles", now) == _utc(2026, 10, 15, 15, 0)
 
+    def test_the_end_is_the_top_of_the_hour_whatever_the_seconds(self) -> None:
+        now = datetime(2026, 10, 15, 7, 59, 59, 999999, tzinfo=UTC)
+        assert quiet_window_end(OVERNIGHT, "UTC", now) == _utc(2026, 10, 15, 8, 0)
+
+    def test_the_end_is_returned_in_utc(self) -> None:
+        end = quiet_window_end(OVERNIGHT, "Asia/Kolkata", _utc(2026, 10, 14, 17, 30))
+        assert end is not None
+        assert end.tzinfo is UTC
+
     def test_an_unset_timezone_reads_the_window_on_utc(self) -> None:
         assert quiet_window_end(OVERNIGHT, None, _utc(2026, 10, 15, 3, 0)) == _utc(
             2026, 10, 15, 8, 0
@@ -106,6 +115,13 @@ class TestHeldUntil:
         now = _utc(2026, 10, 15, 2, 0)
         assert held_until(ProactiveMessageClass.ROUTINE, OVERNIGHT, "UTC", now) == _utc(
             2026, 10, 15, 8, 0
+        )
+
+    def test_the_hold_is_read_on_the_users_clock(self) -> None:
+        # 17:30 UTC is 23:00 in Kolkata: held until 08:00 IST; on a UTC clock, not held.
+        now = _utc(2026, 10, 14, 17, 30)
+        assert held_until(ProactiveMessageClass.ROUTINE, OVERNIGHT, "Asia/Kolkata", now) == _utc(
+            2026, 10, 15, 2, 30
         )
 
     def test_a_reminder_the_user_timed_is_never_held(self) -> None:

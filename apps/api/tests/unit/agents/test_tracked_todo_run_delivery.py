@@ -43,6 +43,7 @@ from app.agents.core.background.todo_run import (
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
@@ -94,6 +95,7 @@ class _Seams:
     enqueue: AsyncMock
     pool: MagicMock
     load_user: AsyncMock
+    find_system_workflow: AsyncMock
 
 
 @contextmanager
@@ -117,6 +119,7 @@ def _seams(
         enqueue=AsyncMock(),
         pool=MagicMock(),
         load_user=AsyncMock(return_value=JOB_USER),
+        find_system_workflow=AsyncMock(return_value=daily_brief),
     )
     stream_manager = MagicMock()
     stream_manager.is_cancelled = AsyncMock(return_value=False)
@@ -137,7 +140,7 @@ def _seams(
         patch.object(
             trd,
             "workflow_repository",
-            MagicMock(find_system_workflow=AsyncMock(return_value=daily_brief)),
+            MagicMock(find_system_workflow=seams.find_system_workflow),
         ),
         patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture", seams.capture),
@@ -538,6 +541,9 @@ class TestTheInboxDeskBriefsThroughTheMorningBrief:
         seams.narrate.assert_not_awaited()
         assert seams.capture.call_args.args[1].outcome == "held_for_brief"
         assert _activity(seams).startswith("folded into the morning brief (summary=")
+        seams.find_system_workflow.assert_awaited_once_with(
+            USER.user_id, DAILY_BRIEFING_WORKFLOW_KEY
+        )
 
     @pytest.mark.parametrize(
         "daily_brief", [None, SimpleNamespace(activated=False)], ids=["no-brief", "brief-off"]

@@ -359,7 +359,7 @@ def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats | None:
 
 def _build_recipient(name: str | None) -> ExplorerRecipient | None:
     full = " ".join((name or "").split())
-    return {"name": full, "first": full.split(" ", 1)[0]} if full else None
+    return {"name": full, "first": full.partition(" ")[0]} if full else None
 
 
 def _build_week(week: BriefingWeek | None) -> ExplorerWeek | None:

@@ -128,6 +128,29 @@ class TestResyncBriefingSchedules:
         seams.was_delivered.assert_awaited_once_with(_USER, "2026-10-14", "daily")
         assert _moves(seams.update)["wf-daily_briefing"][2] == _TOMORROW_START
 
+    async def test_a_brief_already_in_place_does_not_stop_the_other_moving(
+        self, seams: Seams
+    ) -> None:
+        seams.find.return_value = [
+            _workflow(DAILY_BRIEFING_WORKFLOW_KEY, "0 8 * * *", timezone="America/New_York"),
+            _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, WEEKLY_DIGEST_CRON),
+        ]
+
+        await schedule.resync_briefing_schedules(
+            _user(default_quiet_hours(), timezone="America/New_York")
+        )
+
+        assert list(_moves(seams.update)) == ["wf-weekly_digest"]
+
+    async def test_a_user_with_only_the_weekly_recap_has_it_moved(self, seams: Seams) -> None:
+        seams.find.return_value = [_workflow(WEEKLY_DIGEST_WORKFLOW_KEY, WEEKLY_DIGEST_CRON)]
+
+        await schedule.resync_briefing_schedules(
+            _user(default_quiet_hours(), timezone="America/New_York")
+        )
+
+        assert list(_moves(seams.update)) == ["wf-weekly_digest"]
+
     async def test_quiet_hours_that_leave_8_free_change_nothing(self, seams: Seams) -> None:
         await schedule.resync_briefing_schedules(_user(QuietHours(start_hour=23, end_hour=7)))
 
