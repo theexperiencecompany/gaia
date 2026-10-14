@@ -5,7 +5,6 @@
  * @module commands/up/screen
  */
 
-import { ProgressBar, Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -15,64 +14,16 @@ import {
   EnvSetupSpinnerStep,
   ErrorStep,
   PortConflictStep,
+  RepositoryProgressStep,
   SystemChecksStep,
 } from "../../ui/components/shared-steps.js";
 import { THEME_COLOR } from "../../ui/constants.js";
+import { DependencyInstallStep } from "../../ui/screens/init.js";
 import type { CLIStore } from "../../ui/store.js";
 import { codeSandboxSummary, upHeadline } from "./flow.js";
 
-const DependencyInstallStep: React.FC<{
-  phase: string;
-  progress: number;
-  isComplete: boolean;
-  logs?: string[];
-}> = ({ phase, progress, isComplete, logs }) => {
-  const window = logs?.slice(-8) ?? [];
-  const isBuilding = phase.toLowerCase().includes("building");
-  return (
-    <Box
-      flexDirection="column"
-      marginTop={1}
-      paddingX={1}
-      borderStyle="round"
-      borderColor={THEME_COLOR}
-    >
-      <Box marginBottom={1}>
-        <Text bold color={THEME_COLOR}>
-          Starting GAIA
-        </Text>
-      </Box>
-      <Box flexDirection="column" gap={1}>
-        <Box>
-          {!isComplete ? (
-            <Spinner label={phase || "Preparing..."} />
-          ) : (
-            <Text color="green">✓ {phase}</Text>
-          )}
-        </Box>
-        {!isComplete && isBuilding && (
-          <Box>
-            <Text color="gray" dimColor>
-              This can take 5-30 min on 4 GB RAM — please do not cancel.
-            </Text>
-          </Box>
-        )}
-        {!isComplete && progress > 0 && (
-          <Box width={50}>
-            <ProgressBar value={progress} />
-          </Box>
-        )}
-        {window.length > 0 &&
-          window.map((line, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: append-only log lines
-            <Text key={`${i}-${line}`} color="gray" wrap="truncate">
-              {line}
-            </Text>
-          ))}
-      </Box>
-    </Box>
-  );
-};
+const BUILD_WAIT_HINT =
+  "This can take 5-30 min on 4 GB RAM — please do not cancel.";
 
 const UpFinishedStep: React.FC<{
   webUrl: string;
@@ -201,6 +152,12 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
     }
   });
 
+  const dependencyPhase = state.data.dependencyPhase || "";
+  const showDependencyStep =
+    (state.step === "Project Setup" || state.step === "Finished") &&
+    !state.data.finished &&
+    dependencyPhase !== "";
+
   return (
     <Shell status={state.status} step={state.step}>
       {state.step === "Prerequisites" && state.data.checks && (
@@ -224,38 +181,31 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         )}
 
       {state.step === "Repository Setup" && !state.inputRequest && (
-        <Box
-          flexDirection="column"
-          borderStyle="round"
-          padding={1}
-          borderColor={THEME_COLOR}
-        >
-          <Text bold>Setting Up Repository</Text>
-          <Box marginTop={1} flexDirection="column">
-            <ProgressBar value={state.data.repoProgress || 0} />
-            {state.data.repoPhase && (
-              <Box marginTop={1}>
-                <Text color="gray">{state.data.repoPhase}</Text>
-              </Box>
-            )}
-          </Box>
-        </Box>
+        <RepositoryProgressStep
+          title="Setting Up Repository"
+          progress={state.data.repoProgress}
+          phase={state.data.repoPhase}
+        />
       )}
 
       {state.step === "Environment Setup" && !state.inputRequest && (
         <EnvSetupSpinnerStep status={state.status} />
       )}
 
-      {(state.step === "Project Setup" || state.step === "Finished") &&
-        !state.data.finished &&
-        state.data.dependencyPhase && (
-          <DependencyInstallStep
-            phase={state.data.dependencyPhase || ""}
-            progress={state.data.dependencyProgress || 0}
-            isComplete={state.data.dependencyComplete || false}
-            logs={state.data.dependencyLogs || []}
-          />
-        )}
+      {showDependencyStep && (
+        <DependencyInstallStep
+          title="Starting GAIA"
+          phase={dependencyPhase}
+          progress={state.data.dependencyProgress || 0}
+          isComplete={state.data.dependencyComplete || false}
+          logs={state.data.dependencyLogs}
+          hint={
+            dependencyPhase.toLowerCase().includes("building")
+              ? BUILD_WAIT_HINT
+              : undefined
+          }
+        />
+      )}
 
       {state.step === "Finished" && state.data.finished && (
         <UpFinishedStep
