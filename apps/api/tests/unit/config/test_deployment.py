@@ -166,3 +166,24 @@ def test_selfhost_may_choose_cloudinary_and_keeps_its_local_workspace() -> None:
 
     assert profile.blob_store is BlobStoreKind.CLOUDINARY
     assert profile.local_workspace is True
+
+
+@pytest.mark.parametrize("kind", [DeploymentKind.PRODUCTION, DeploymentKind.SELFHOST])
+def test_real_deployments_fail_fast(kind: DeploymentKind) -> None:
+    profile = deployment_profile(
+        kind, "workos", unlimited_usage=False, local_code_sandbox=False, blob_store=None
+    )
+
+    assert profile.fail_fast is True
+
+
+def test_development_tolerates_missing_configuration() -> None:
+    profile = deployment_profile(
+        DeploymentKind.DEVELOPMENT,
+        "workos",
+        unlimited_usage=False,
+        local_code_sandbox=False,
+        blob_store=None,
+    )
+
+    assert profile.fail_fast is False

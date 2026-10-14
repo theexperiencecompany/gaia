@@ -16,7 +16,7 @@ Add env vars
 from functools import lru_cache
 import os
 import time
-from typing import Any, Literal, Self, TypedDict, Unpack, cast
+from typing import Literal, Self, TypedDict, Unpack, cast
 
 from dotenv import load_dotenv
 from pydantic import Field, ValidationInfo, computed_field, field_validator
@@ -56,9 +56,8 @@ class _AuthModeSelection(TypedDict, total=False):
 
 
 class SettingsOverrides(TypedDict, total=False):
-    """Field values from_env forces over whatever the environment says."""
+    """Field values get_settings forces over whatever the environment says."""
 
-    SHOW_MISSING_KEY_WARNINGS: bool
     AUTH_MODE: Literal["workos", "local"]
 
 
@@ -78,32 +77,14 @@ class BaseAppSettings(BrowserHostSettings):
         validate_default=False,  # Skip validation of default values
     )
 
-    # For handling both normal env var loading and dict constructor
     @classmethod
-    def from_env(cls, **kwargs: Unpack[SettingsOverrides]) -> Self:
-        """Create settings from environment variables."""
-        try:
-            return cls(**kwargs)
-        except Exception as e:
-            log.warning(
-                f"{LogTag.STARTUP} Error creating settings",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            # Create a minimal instance with empty strings for required fields,
-            # but skip fields that already have env vars set or have defaults.
-            fields = cls.model_fields
-            defaults: dict[str, Any] = {}
-            for field_name, field_info in fields.items():
-                if field_name in kwargs:
-                    continue
-                if os.getenv(field_name) is not None:
-                    continue
-                if field_info.default is not None:
-                    continue
-                if "str" in str(field_info.annotation):
-                    defaults[field_name] = ""
-            return cls(**defaults, **kwargs)
+    def from_env(cls, **overrides: Unpack[SettingsOverrides]) -> Self:
+        """Build the settings from the environment; a missing or invalid value raises.
+
+        The constructor's signature lists required fields as arguments, but
+        pydantic-settings fills them from the environment.
+        """
+        return cls(**overrides)
 
 
 class CommonSettings(BaseAppSettings):
@@ -967,7 +948,7 @@ def _raise_if_dev_override_env() -> None:
 
     Shared by the production and selfhost branches: real deployments must refuse
     to boot with any of them rather than run misconfigured. Checked via
-    os.getenv because from_env downgrades pydantic validation errors to warnings.
+    os.getenv because the guards run before the settings object is built.
     """
     if os.getenv("DEV_AUTH_BYPASS_EMAIL"):
         raise RuntimeError(
@@ -1024,8 +1005,7 @@ def _raise_if_workos_credentials_missing_in_production() -> None:
     """Hard-block a hosted production boot without WorkOS credentials.
 
     The per-field validator cannot catch this: a defaulted AUTH_MODE never enters
-    validation, and from_env downgrades surviving errors into an empty-filled
-    instance. Without this guard the failure surfaces only later as an opaque
+    validation. Without this guard the failure surfaces only later as an opaque
     crash at WorkOS client construction.
     """
     if os.getenv("AUTH_MODE", "workos") != "workos":
@@ -1075,8 +1055,6 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
                 settings_obj = SelfHostSettings.from_env()
             log.info(f"{LogTag.STARTUP} Self-host settings initialized")
         else:
-            # Hard block, not a warning — checked via os.getenv because
-            # from_env() downgrades pydantic validation errors to warnings.
             _raise_if_dev_override_env()
             # Building the profile refuses an invalid ENV/AUTH_MODE pair
             # (production with local auth) ahead of every other guard.
@@ -1119,11 +1097,6 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
             error=str(e),
             error_type=type(e).__name__,
         )
-        # In case of error, we still need to return a settings object
-        # Use development settings with defaults as fallback
-        if env == DeploymentKind.DEVELOPMENT:
-            return DevelopmentSettings.from_env(SHOW_MISSING_KEY_WARNINGS=True)
-        log.critical(f"{LogTag.STARTUP} Critical error initializing production settings!")
         raise
 
 

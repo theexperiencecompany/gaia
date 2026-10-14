@@ -144,7 +144,7 @@ def test_dev_auth_bypass_still_blocks_production_boot(monkeypatch):
 
 
 def test_production_from_env_full_valid_env_defaults_to_workos(monkeypatch):
-    """Construct a fully provisioned production env via from_env; AUTH_MODE defaults to workos."""
+    """Construct a fully provisioned production env; AUTH_MODE defaults to workos."""
     from app.config.settings import ProductionSettings
 
     monkeypatch.setenv("ENV", "production")
@@ -157,7 +157,7 @@ def test_production_from_env_full_valid_env_defaults_to_workos(monkeypatch):
         WORKOS_COOKIE_PASSWORD="a" * 32,
     )
 
-    settings_obj = ProductionSettings.from_env(**kwargs)
+    settings_obj = ProductionSettings(**kwargs)
 
     assert isinstance(settings_obj, ProductionSettings)
     assert settings_obj.AUTH_MODE == "workos"
@@ -488,6 +488,41 @@ def test_production_boot_with_all_workos_credentials_succeeds(monkeypatch):
     assert isinstance(settings_obj, ProductionSettings)
     assert settings_obj.AUTH_MODE == "workos"
     assert settings_obj.WORKOS_API_KEY == "sk_test_fake"
+
+
+def test_production_boot_with_a_missing_required_setting_refuses(monkeypatch):
+    """A missing required key stops the hosted boot instead of booting with an empty string."""
+    from pydantic import ValidationError
+
+    from app.config.settings import ProductionSettings, get_settings
+
+    _isolate_boot_env(monkeypatch)
+    monkeypatch.setenv("WORKOS_API_KEY", "sk_test_fake")
+    monkeypatch.setenv("WORKOS_CLIENT_ID", "client_fake")
+    monkeypatch.setenv("WORKOS_COOKIE_PASSWORD", "a" * 32)
+    for name, value in _production_boot_env(ProductionSettings).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("LLAMA_INDEX_KEY")
+
+    with pytest.raises(ValidationError, match="LLAMA_INDEX_KEY"):
+        get_settings()
+
+
+def test_selfhost_boot_with_a_missing_required_setting_refuses(monkeypatch):
+    """A self-hosted instance without MONGO_DB fails at boot, not at its first query."""
+    from pydantic import ValidationError
+
+    from app.config.settings import get_settings
+
+    for var in _DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    for name, value in _SELFHOST_INFRA_ENV.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("MONGO_DB")
+    monkeypatch.setenv("ENV", "selfhost")
+
+    with pytest.raises(ValidationError, match="MONGO_DB"):
+        get_settings()
 
 
 def test_development_boot_still_dummy_ok_with_workos_mode(monkeypatch):
