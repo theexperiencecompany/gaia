@@ -544,7 +544,7 @@ Four stores hold data you cannot rebuild:
     ```bash
     mkdir -p backups
     docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
-    docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma-$(date +%F).tar.gz
+    docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma_data-$STAMP.tar.gz
     docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
     ```
 
@@ -553,7 +553,7 @@ Four stores hold data you cannot rebuild:
     ```bash
     docker volume create gaia-selfhost_chroma_data
     docker run --rm -v gaia-selfhost_chroma_data:/data -v "$PWD/backups:/backups" alpine \
-      tar xzf /backups/chroma-2026-08-24.tar.gz -C /data
+      tar xzf /backups/chroma_data-2026-08-24T09-30-00Z.tar.gz -C /data
     ```
 
     ### Back up RabbitMQ
