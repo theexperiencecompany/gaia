@@ -137,7 +137,7 @@ It walks the whole stack in order — Docker daemon, ports, containers, API heal
 gaia update
 ```
 
-Moves the install to the GAIA release this CLI version ships: pulls its images (nothing changes if that fails), checks out the matching compose files, pins `GAIA_VERSION` in `infra/docker/.env` and restarts, then prints what changed. Volumes and `.env` files are kept. For a newer GAIA, update the CLI first (`curl -fsSL https://heygaia.io/install.sh | sh`), then run `gaia update` again. `--version <tag>` pins another release; `--git` is for contributors running from source.
+Moves the install to the GAIA release this CLI version ships: pulls its images (nothing changes if that fails), checks out the matching compose files, pins `GAIA_VERSION` in `infra/docker/.env` and restarts, then prints what changed. Volumes and `.env` files are kept. For a newer GAIA, update the CLI first (`curl -fsSL https://heygaia.io/install.sh | sh`), then run `gaia update` again. `--version v<x.y.z>` moves to another release, images and compose files together (only release tags are accepted); `--git` is for contributors running from source.
 
 ## Port Conflict Handling
 

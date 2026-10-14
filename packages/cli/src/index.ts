@@ -213,7 +213,7 @@ program
   .option("--yes", "Apply updates without prompting")
   .option(
     "--version <tag>",
-    "Pin this GAIA image tag instead of the release this CLI ships",
+    "Move to this GAIA release (v<x.y.z>) instead of the one this CLI ships: its images and its compose files",
   )
   .option(
     "--git",
