@@ -15,7 +15,7 @@ from app.core.lazy_loader import (
     lazy_provider,
     providers,
 )
-from app.utils.exceptions import ConfigurationError
+from app.utils.exceptions import ConfigurationError, ProviderNotConfiguredError
 
 
 def _uid(prefix: str = "test") -> str:
@@ -1047,3 +1047,51 @@ class TestMissingKeyStrategy:
         assert MissingKeyStrategy.WARN.value == "warn"
         assert MissingKeyStrategy.WARN_ONCE.value == "warn_once"
         assert MissingKeyStrategy.SILENT.value == "silent"
+
+
+class TestAnUnconfiguredProviderIsNotAFault:
+    """A loader whose credentials do not resolve is an optional feature switched off."""
+
+    @staticmethod
+    def _unconfigured() -> None:
+        raise ProviderNotConfiguredError("no key")
+
+    def test_it_warns_once_and_never_logs_an_error(self):
+        loader = LazyLoader(
+            self._unconfigured, strategy=MissingKeyStrategy.WARN, provider_name=_uid("off")
+        )
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            assert loader.get() is None
+            assert loader.get() is None
+
+        mock_log.error.assert_not_called()
+        assert mock_log.warning.call_count == 1
+
+    async def test_aget_on_an_async_loader_is_quiet_too(self):
+        async def unconfigured() -> None:
+            raise ProviderNotConfiguredError("no key")
+
+        loader = LazyLoader(unconfigured, strategy=MissingKeyStrategy.WARN)
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            assert await loader.aget() is None
+
+        mock_log.error.assert_not_called()
+
+    def test_an_error_strategy_provider_still_refuses(self):
+        loader = LazyLoader(self._unconfigured, strategy=MissingKeyStrategy.ERROR)
+
+        with pytest.raises(ConfigurationError, match="not configured"):
+            loader.get()
+
+    def test_a_real_loader_failure_still_logs_an_error(self):
+        def broken() -> None:
+            raise RuntimeError("SDK exploded")
+
+        loader = LazyLoader(broken, strategy=MissingKeyStrategy.WARN)
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            assert loader.get() is None
+
+        mock_log.error.assert_called_once()

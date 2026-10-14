@@ -47,6 +47,7 @@ from app.utils.composio_hooks.registry import (
     master_before_execute_hook,
     master_schema_modifier,
 )
+from app.utils.exceptions import ProviderNotConfiguredError
 from app.utils.query_utils import add_query_param
 from shared.py.wide_events import log
 
@@ -527,24 +528,30 @@ class ComposioService:
     warning_message="Composio is not configured. Composio-backed integrations and tools will not work.",
 )
 def init_composio_service() -> ComposioService:
-    """Build the Composio service from a store-first resolved key.
+    """Build the Composio service from a store-first resolved key (sync: the SDK is synchronous)."""
+    return ComposioService(_composio_api_key())
 
-    Sync loader because the SDK is synchronous; raises when no key resolves so
-    missing config degrades loudly instead of handing out a broken service.
-    """
+
+def _composio_api_key() -> str:
+    """Return the store-first resolved Composio key; raise ProviderNotConfiguredError when none resolves."""
     config: ProviderConfig | None = resolved_config("composio")
     api_key = config["api_key"] if config else None
     if not api_key:
-        raise RuntimeError(
+        raise ProviderNotConfiguredError(
             "COMPOSIO_KEY is not set in settings and no composio credential is stored"
         )
-    return ComposioService(api_key)
+    return api_key
 
 
 def get_composio_service() -> ComposioService:
-    """Return the registered ComposioService; raise when it is not available."""
+    """Return the registered ComposioService.
+
+    Raises ProviderNotConfiguredError when no key resolves, RuntimeError when
+    a key resolves but the service failed to build.
+    """
     service = providers.get(COMPOSIO_SERVICE_PROVIDER)
     if service is None:
+        _composio_api_key()
         raise RuntimeError("ComposioService is not available")
     # providers.get() is typed Any | None; "composio_service" is always
     # registered via init_composio_service(), which returns ComposioService.

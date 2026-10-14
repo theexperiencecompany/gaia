@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.config.cloudinary import init_cloudinary
+from app.utils.exceptions import ProviderNotConfiguredError
 
 MOD = "app.config.cloudinary"
 
@@ -69,6 +70,6 @@ class TestInitCloudinary:
             patch(f"{MOD}.cloudinary.config", config_mock),
         ):
             _patch_env(mock_settings, **{missing: None})
-            with pytest.raises(RuntimeError, match="not fully configured"):
+            with pytest.raises(ProviderNotConfiguredError, match="not fully configured"):
                 init_cloudinary().loader_func()
         config_mock.assert_not_called()

@@ -7,6 +7,7 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.models.integration_models import UserIntegrationDocument
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import OAuthContext
 
 pytestmark = pytest.mark.unit
@@ -421,6 +422,34 @@ class TestGetAllIntegrationsStatus:
             user_id="user123",
         )
         log.set.assert_called_once_with(oauth=OAuthContext(operation="status"), result_count=1)
+
+    async def test_an_instance_without_composio_reads_not_connected_without_an_error(
+        self,
+        mock_user_integration_repo,
+        mock_token_repository,
+    ):
+        """A self-host with no Composio key is a normal state, not a failed check."""
+        integration = MagicMock()
+        integration.id = "twitter"
+        integration.available = True
+        integration.managed_by = "composio"
+        integration.provider = "twitter"
+
+        with (
+            patch(
+                "app.services.integrations.integration_status.get_composio_service",
+                side_effect=ProviderNotConfiguredError("Composio is not configured"),
+            ),
+            patch(
+                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                [integration],
+            ),
+            patch("app.services.integrations.integration_status.log") as log,
+        ):
+            result = await get_all_integrations_status("user123")
+
+        assert result == {"twitter": False}
+        log.error.assert_not_called()
 
     async def test_self_managed_integration_with_valid_token(
         self,

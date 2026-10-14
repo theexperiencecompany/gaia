@@ -32,6 +32,10 @@ class ConfigurationError(Exception):
         super().__init__(self.message)
 
 
+class ProviderNotConfiguredError(ConfigurationError):
+    """Raised by a provider loader whose credentials do not resolve: a feature switched off, not a fault."""
+
+
 class TriggerRegistrationError(Exception):
     """Raised when trigger registration fails."""
 

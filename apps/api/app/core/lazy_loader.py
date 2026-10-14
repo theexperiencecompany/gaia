@@ -31,7 +31,7 @@ from typing import (
 )
 
 from app.constants.log_tags import LogTag
-from app.utils.exceptions import ConfigurationError
+from app.utils.exceptions import ConfigurationError, ProviderNotConfiguredError
 from shared.py.wide_events import log
 
 T = TypeVar("T")
@@ -88,6 +88,7 @@ class LazyLoader(Generic[T]):
         self._lock = Lock()
         self._async_lock = asyncio.Lock() if self.is_async else None
         self._warned_indices: set[int] = set()  # Track warned value indices for WARN_ONCE
+        self._warned_not_configured = False
 
         # Check availability at registration time and log warnings
         self._check_availability_and_warn()
@@ -250,6 +251,9 @@ class LazyLoader(Generic[T]):
             )
             return self._instance
 
+        except ProviderNotConfiguredError as e:
+            self._handle_not_configured(e)
+            return None
         except Exception as e:
             error_msg = f"Failed to initialize provider '{self.provider_name}': {e!s}"
             log.error(
@@ -320,6 +324,9 @@ class LazyLoader(Generic[T]):
             )
             return self._instance
 
+        except ProviderNotConfiguredError as e:
+            self._handle_not_configured(e)
+            return None
         except Exception as e:
             error_msg = f"Failed to initialize provider '{self.provider_name}': {e!s}"
             log.error(
@@ -356,6 +363,20 @@ class LazyLoader(Generic[T]):
 
         # For non-error strategies, just return None (warning already logged at registration)
         return None
+
+    def _handle_not_configured(self, error: ProviderNotConfiguredError) -> None:
+        """Warn once for an optional provider with no credentials; raise for a required one."""
+        if self.strategy == MissingKeyStrategy.ERROR:
+            raise ConfigurationError(
+                f"Provider '{self.provider_name}' is not configured: {error.message}"
+            ) from error
+        if self.strategy != MissingKeyStrategy.SILENT and not self._warned_not_configured:
+            self._warned_not_configured = True
+            log.warning(
+                f"{LogTag.STARTUP} Provider not configured",
+                provider_name=self.provider_name,
+                reason=self.warning_message or error.message,
+            )
 
     def _handle_validation_failure_on_get(self) -> Union[T, bool] | None:
         """Handle custom validation failure when get() is called."""

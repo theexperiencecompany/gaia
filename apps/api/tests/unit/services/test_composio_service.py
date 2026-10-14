@@ -17,6 +17,7 @@ from app.constants.integrations import (
     GMAIL_INTEGRATION_ID,
 )
 from app.services.composio import auth_config_resolver
+from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
@@ -813,13 +814,29 @@ class TestGetComposioService:
         # The same name @lazy_provider registered the service under.
         mock_providers.get.assert_called_once_with(COMPOSIO_SERVICE_PROVIDER)
 
-    def test_raises_when_none(self):
-        with patch("app.services.composio.composio_service.providers") as mock_providers:
+    def test_no_key_raises_not_configured(self):
+        from app.services.composio import composio_service as mod
+
+        with (
+            patch.object(mod, "providers") as mock_providers,
+            patch.object(mod, "resolved_config", return_value=None),
+        ):
             mock_providers.get.return_value = None
-            from app.services.composio.composio_service import get_composio_service
+
+            with pytest.raises(ProviderNotConfiguredError, match="COMPOSIO_KEY"):
+                mod.get_composio_service()
+
+    def test_a_key_whose_service_failed_to_build_is_a_real_failure(self):
+        from app.services.composio import composio_service as mod
+
+        with (
+            patch.object(mod, "providers") as mock_providers,
+            patch.object(mod, "resolved_config", return_value={"api_key": "k"}),
+        ):
+            mock_providers.get.return_value = None
 
             with pytest.raises(RuntimeError, match="not available"):
-                get_composio_service()
+                mod.get_composio_service()
 
 
 class TestInitComposioService:
@@ -872,7 +889,7 @@ class TestInitComposioService:
             patch.object(mod, "settings") as mock_settings,
         ):
             mock_settings.COMPOSIO_KEY = None
-            with pytest.raises(RuntimeError, match="COMPOSIO_KEY"):
+            with pytest.raises(ProviderNotConfiguredError, match="COMPOSIO_KEY"):
                 mod.init_composio_service().loader_func()
 
 

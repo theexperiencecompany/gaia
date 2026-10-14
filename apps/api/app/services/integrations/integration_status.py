@@ -25,6 +25,7 @@ from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.user_integrations import get_custom_auth_mcp_ids
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import OAuthContext, log
 
 
@@ -150,9 +151,11 @@ async def _self_managed_connected(user_id: str, integration: OAuthIntegration) -
 async def _composio_connected(
     user_id: str, providers: list[str], id_to_provider: dict[str, str]
 ) -> dict[str, bool]:
-    """Batch-check Composio status; a failed check reads every one as not connected."""
+    """Batch-check Composio status; no Composio key or a failed check reads every one as not connected."""
     try:
         status_map = await get_composio_service().check_connection_status(providers, user_id)
+    except ProviderNotConfiguredError:
+        return dict.fromkeys(id_to_provider, False)
     except Exception as e:
         log.error(
             f"{LogTag.OAUTH} Error batch checking Composio integrations",

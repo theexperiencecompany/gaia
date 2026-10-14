@@ -15,6 +15,7 @@ from app.services.providers.provider_credentials_service import (
     resolved_config,
 )
 from app.utils.errors import AppError
+from app.utils.exceptions import ProviderNotConfiguredError
 
 # The provider registry name; the credential-store provider id is a separate key.
 CLOUDINARY_PROVIDER = "cloudinary"
@@ -32,15 +33,15 @@ def init_cloudinary() -> None:
     """Initialize and configure the Cloudinary service.
 
     The API key resolves store-first, then env; cloud name and secret are
-    env-only. Raises RuntimeError unless all three resolve; the WARN strategy
-    logs it and retries on next access.
+    env-only. Raises ProviderNotConfiguredError unless all three resolve; the
+    WARN strategy warns once and retries on next access.
     """
     config: ProviderConfig | None = resolved_config("cloudinary")
     api_key = config["api_key"] if config else None
     cloud_name = settings.CLOUDINARY_CLOUD_NAME
     api_secret = settings.CLOUDINARY_API_SECRET
     if not (cloud_name and api_key and api_secret):
-        raise RuntimeError(
+        raise ProviderNotConfiguredError(
             "Cloudinary is not fully configured: cloud name, API key, and "
             "API secret are all required (a stored credential carries only "
             "the API key today; cloud name and secret come from env)"
