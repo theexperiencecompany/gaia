@@ -8,8 +8,10 @@
 # --app adds the authenticated (main) routes and needs `mise dev --sim` running.
 # VISUAL_GREP=<regex> captures only matching surfaces, e.g. VISUAL_GREP='\bapp /' (titles are "<group> <path>").
 # Output: $VISUAL_OUT (default .context/visual-diff) — summary.md, ledger.md
-# (every class/prop swap the diff makes), composites/, report/ (Playwright HTML
-# report with side-by-side and slider views).
+# (every class/prop swap the diff makes), changes.md (element-level computed-style
+# changes matched by DOM path, immune to layout shift, with zoomed base | head
+# crops in changes/), composites/, report/ (Playwright HTML report with
+# side-by-side and slider views).
 set -euo pipefail
 
 BASE_REF="origin/master"
@@ -34,7 +36,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-rm -rf "$OUT"/{baseline,results,report,composites,logs} "$OUT"/results.json "$OUT"/summary.* "$OUT"/ledger.md
+rm -rf "$OUT"/{baseline,results,report,composites,dom,changes,logs} "$OUT"/results.json "$OUT"/summary.* "$OUT"/ledger.md "$OUT"/changes.md
 mkdir -p "$OUT/logs"
 
 BASE_SHA=$(git -C "$ROOT" rev-parse --short "$BASE_REF")
@@ -66,21 +68,24 @@ stop() {
   SERVER_PID=""
 }
 
+# Usage: capture <base|head> [playwright args]; the side names the DOM snapshots it writes.
 capture() {
-  (builtin cd "$ROOT/apps/web" && VISUAL_OUT="$OUT" VISUAL_BASE_URL="http://localhost:$PORT" VISUAL_APP="$APP" \
+  local side="$1"
+  shift
+  (builtin cd "$ROOT/apps/web" && VISUAL_OUT="$OUT" VISUAL_SIDE="$side" VISUAL_BASE_URL="http://localhost:$PORT" VISUAL_APP="$APP" \
     pnpm exec playwright test --config playwright.visual.config.ts "$@")
 }
 
 # A dev server can die under a long run; restart it once and re-run only what failed,
 # so a crash never reads as "no baseline" or a render failure.
 capture_resilient() {
-  local web_dir="$1" log="$2"
-  shift 2
-  capture "$@" || true
+  local side="$1" web_dir="$2" log="$3"
+  shift 3
+  capture "$side" "$@" || true
   if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "    dev server died mid-run (see $log); restarting and re-running the failed surfaces"
     serve "$web_dir" "$log.restart"
-    capture --last-failed "$@" || true
+    capture "$side" --last-failed "$@" || true
   fi
   stop
 }
@@ -88,7 +93,7 @@ capture_resilient() {
 echo "==> recording base"
 serve "$BASE_DIR/apps/web" "$OUT/logs/base-server.log"
 # A surface base cannot render fails here and simply has no baseline.
-capture_resilient "$BASE_DIR/apps/web" "$OUT/logs/base-server.log" \
+capture_resilient base "$BASE_DIR/apps/web" "$OUT/logs/base-server.log" \
   --update-snapshots=all --reporter=line >"$OUT/logs/base-capture.log" 2>&1
 
 echo "==> comparing head"
@@ -97,8 +102,9 @@ HEAD_LABEL="$(git -C "$ROOT" branch --show-current) @ $(git -C "$ROOT" rev-parse
 git -C "$ROOT" diff --quiet || HEAD_LABEL="$HEAD_LABEL + uncommitted"
 serve "$ROOT/apps/web" "$OUT/logs/head-server.log"
 # Differences fail the run by design; compose reads them from results.json.
-capture_resilient "$ROOT/apps/web" "$OUT/logs/head-server.log"
+capture_resilient head "$ROOT/apps/web" "$OUT/logs/head-server.log"
 
 (builtin cd "$ROOT/apps/web" && node e2e/visual/compose.ts "$OUT" "$BASE_REF @ $BASE_SHA" "$HEAD_LABEL" \
+  && node e2e/visual/styles.ts "$OUT" "$BASE_REF @ $BASE_SHA" "$HEAD_LABEL" \
   && node e2e/visual/ledger.ts "$BASE_REF" "$OUT")
-echo "==> $OUT/summary.md + ledger.md · open $OUT/report/index.html for side-by-side and slider views"
+echo "==> $OUT/summary.md + changes.md + ledger.md · open $OUT/report/index.html for side-by-side and slider views"

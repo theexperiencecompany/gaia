@@ -1,5 +1,20 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { captureDom, type Side } from "./dom";
 import { collectSurfaces, type SurfaceGroup } from "./surfaces";
+
+const SIDES: readonly Side[] = ["base", "head"];
+const SIDE = SIDES.find((side) => side === process.env.VISUAL_SIDE);
+const OUT_DIR = process.env.VISUAL_OUT;
+if (!SIDE || !OUT_DIR) {
+  throw new Error(
+    "VISUAL_SIDE (base or head) and VISUAL_OUT are required — run through `mise web:visual-diff`",
+  );
+}
+const DOM_DIR = join(OUT_DIR, "dom");
+// The screenshot hides these via stylePath; apply them before the DOM snapshot too.
+const SCREENSHOT_CSS = join(import.meta.dirname, "screenshot.css");
 
 // Pinned so relative times ("2 hours ago") and date pickers render identically on both runs.
 const FROZEN_NOW = new Date("2026-01-15T10:00:00Z");
@@ -37,7 +52,8 @@ async function settle(page: Page): Promise<void> {
 }
 
 for (const surface of collectSurfaces(process.env.VISUAL_APP === "1")) {
-  test(`${surface.group} ${surface.path}`, async ({ page }) => {
+  const title = `${surface.group} ${surface.path}`;
+  test(title, async ({ page }) => {
     // Off-site: a page navigation means the route redirects away (not our UI);
     // live data (GitHub stars, status feeds) differs between runs, so force the fallback.
     let leftSite = false;
@@ -70,6 +86,18 @@ for (const surface of collectSurfaces(process.env.VISUAL_APP === "1")) {
       400,
     );
     await settle(page);
+
+    await page.addStyleTag({ path: SCREENSHOT_CSS });
+    const snapshot = await captureDom(page, {
+      id: surface.id,
+      title,
+      side: SIDE,
+    });
+    mkdirSync(DOM_DIR, { recursive: true });
+    writeFileSync(
+      join(DOM_DIR, `${surface.id}.${SIDE}.json`),
+      JSON.stringify(snapshot),
+    );
 
     await expect(page).toHaveScreenshot(`${surface.id}.png`, {
       fullPage: FULL_PAGE[surface.group],

@@ -159,6 +159,8 @@ function summaryMarkdown(
     "",
     `${items.length} surfaces · ${count("changed")} changed · ${count("unchanged")} unchanged · ${count("new")} new · ${count("failed")} failed · ${count("skipped")} skipped (redirect off-site)`,
     "",
+    "What changed per element (borders, backgrounds, spacing, type), with zoomed crops: [changes.md](changes.md)",
+    "",
     "## Changed (largest first)",
     "",
     "| Surface | Pixels changed | Size | Composite |",

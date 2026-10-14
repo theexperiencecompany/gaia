@@ -815,7 +815,7 @@ Every rule above that a machine can check is an error, with no warning budget:
 
 An exception lives next to what it exempts: a per-component contract or a per-file override in `.oxlintrc.json`, never a disable comment.
 
-To see what a styling change does to the product, run `mise web:visual-diff [base-ref]`. It screenshots every tool card, the OpenUI samples and every landing route on the base ref and on your checkout, then writes base | head | diff composites, a ranked summary, and a ledger of every class and prop swap to `.context/visual-diff/`.
+To see what a styling change does to the product, run `mise web:visual-diff [base-ref]`. It screenshots every tool card, the OpenUI samples and every landing route on the base ref and on your checkout, then writes base | head | diff composites, a ranked summary, and a ledger of every class and prop swap to `.context/visual-diff/`. Because a layout shift paints everything below it red, read `changes.md` first: it matches elements by DOM path and lists each real computed-style change (borders and shadows first, then background, spacing, type and color) with a zoomed base | head crop.
 
 ## New Card Checklist
 
