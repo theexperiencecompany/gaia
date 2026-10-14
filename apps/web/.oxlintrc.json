@@ -24,7 +24,7 @@
         "allow": ["layout", "spacing"],
         "contracts": [
           {
-            "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Textarea|Tooltip|User)$",
+            "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Tooltip|User)$",
             "allow": [
               "layout",
               "spacing",
@@ -48,6 +48,22 @@
               "bg-blue-500/10",
               "bg-emerald-500/10",
               "bg-amber-500/10"
+            ]
+          },
+          {
+            "pattern": "^Textarea$",
+            "allow": [
+              "layout",
+              "spacing",
+              "typography",
+              "text-*",
+              "shadow-none",
+              "data-[hover=true]:bg-zinc-800",
+              "group-data-[focus-visible=true]:ring-zinc-800",
+              "group-data-[focus-visible=true]:ring-transparent",
+              "group-data-[focus-visible=true]:ring-offset-0",
+              "focus-visible:border-0!",
+              "focus-visible:border-transparent!"
             ]
           },
           {

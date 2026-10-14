@@ -12,6 +12,7 @@ import {
 import { twMerge } from "cn";
 import type React from "react";
 import { useRef, useState } from "react";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -141,7 +142,8 @@ const DummyComposer: React.FC<{
               ref={textareaRef}
               autoFocus
               classNames={{
-                inputWrapper: "px-3",
+                inputWrapper:
+                  "px-3 data-[hover=true]:bg-zinc-800 group-data-[focus-visible=true]:ring-zinc-800 group-data-[focus-visible=true]:ring-offset-0 shadow-none",
                 innerWrapper: "items-center",
                 input: "font-light",
               }}
@@ -167,10 +169,9 @@ const DummyComposer: React.FC<{
               {/* Add Context Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    isIconOnly
-                    radius="full"
-                    variant="flat"
+                  <ShadcnButton
+                    size="icon"
+                    variant="composer"
                     className="group relative h-9 w-9 p-0"
                     aria-label="Add context or attach files"
                   >
@@ -179,7 +180,7 @@ const DummyComposer: React.FC<{
                       className="absolute -top-0 -right-0 h-2 w-2 rounded-full bg-primary opacity-0 transition"
                       aria-hidden="true"
                     />
-                  </Button>
+                  </ShadcnButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"
@@ -216,12 +217,10 @@ const DummyComposer: React.FC<{
                 color="primary"
                 showArrow
               >
-                <Button
-                  isIconOnly
-                  radius="full"
-                  variant="flat"
-                  color={isSlashDropdownOpen ? "primary" : "default"}
-                  className={`group relative h-9 w-9 p-0`}
+                <ShadcnButton
+                  size="icon"
+                  variant={isSlashDropdownOpen ? "composerActive" : "composer"}
+                  className="group relative h-9 w-9 p-0"
                   onClick={handleSlashButtonClick}
                   aria-label="Browse all tools"
                 >
@@ -236,7 +235,7 @@ const DummyComposer: React.FC<{
                       aria-hidden="true"
                     />
                   )}
-                </Button>
+                </ShadcnButton>
               </Tooltip>
             </div>
 

@@ -205,14 +205,12 @@ export default function ChatsList() {
             {systemConversations.length > 0 && (
               <AccordionItem
                 value="system-conversations"
-                className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none"
+                className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none py-1"
               >
-                <AccordionTrigger className="w-full">
-                  <span className="w-full px-2 pt-0 pb-1 text-left text-xs font-normal text-zinc-600 hover:no-underline hover:text-zinc-600">
-                    Created by GAIA
-                  </span>
+                <AccordionTrigger variant="sidebarGroup" className="w-full">
+                  Created by GAIA
                 </AccordionTrigger>
-                <AccordionContent className="w-full">
+                <AccordionContent className="w-full p-0!">
                   <div className="flex w-full flex-col gap-1">
                     {systemConversations
                       .toSorted(
@@ -246,14 +244,12 @@ export default function ChatsList() {
             {starredConversations.length > 0 && (
               <AccordionItem
                 value="starred-chats"
-                className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none"
+                className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none py-1"
               >
-                <AccordionTrigger className="w-full">
-                  <span className="w-full px-2 pt-0 pb-1 text-left text-xs font-normal text-zinc-600 hover:no-underline hover:text-zinc-600">
-                    Starred Chats
-                  </span>
+                <AccordionTrigger variant="sidebarGroup" className="w-full">
+                  Starred Chats
                 </AccordionTrigger>
-                <AccordionContent className="w-full">
+                <AccordionContent className="w-full p-0!">
                   <div className="-mr-4 flex w-full flex-col">
                     {starredConversations.map((conversation: IConversation) => (
                       <ChatTab
@@ -277,14 +273,12 @@ export default function ChatsList() {
               <AccordionItem
                 key={timeFrame}
                 value={timeFrame.toLowerCase().replace(/\s+/g, "-")}
-                className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none"
+                className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none py-1"
               >
-                <AccordionTrigger className="w-full">
-                  <span className="w-full px-2 pt-0 pb-1 text-left text-xs font-normal text-zinc-600 hover:no-underline hover:text-zinc-600">
-                    {timeFrame}
-                  </span>
+                <AccordionTrigger variant="sidebarGroup" className="w-full">
+                  {timeFrame}
                 </AccordionTrigger>
-                <AccordionContent className="w-full">
+                <AccordionContent className="w-full p-0!">
                   <div className="flex w-full flex-col gap-1">
                     {conversationsGroup
                       .toSorted(

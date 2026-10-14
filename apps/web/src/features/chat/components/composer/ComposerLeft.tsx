@@ -1,8 +1,8 @@
-import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
 import { AttachmentIcon, PlusSignIcon, Tick02Icon, ToolsIcon } from "@icons";
 import React from "react";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,14 +66,13 @@ export default function ComposerLeft({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            isIconOnly
-            radius="full"
-            variant="flat"
+            size="icon"
+            variant="composer"
             className={cn(
               "group relative h-9 w-9 p-0",
               isMainResponseStreaming ? "cursor-wait!" : "",
             )}
-            isDisabled={isMainResponseStreaming}
+            disabled={isMainResponseStreaming}
           >
             <PlusSignIcon className="min-h-[23px] min-w-[23px] text-zinc-400!" />
             <span
@@ -145,15 +144,13 @@ export default function ComposerLeft({
           showArrow
         >
           <Button
-            isIconOnly
-            radius="full"
-            variant="flat"
-            color={isSlashCommandDropdownOpen ? "primary" : "default"}
+            size="icon"
+            variant={isSlashCommandDropdownOpen ? "composerActive" : "composer"}
             className={cn(
               "group relative flex h-9 w-9 items-center justify-center p-0",
               isMainResponseStreaming ? "cursor-wait!" : "",
             )}
-            isDisabled={isMainResponseStreaming}
+            disabled={isMainResponseStreaming}
             onClick={() => {
               track("chat:tools_button_clicked", {
                 is_open: isSlashCommandDropdownOpen,

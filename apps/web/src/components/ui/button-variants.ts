@@ -16,6 +16,13 @@ export const buttonVariants = cva(
         glass: "rounded-xl bg-black/60 text-white hover:bg-black/40",
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        ghostPrimary:
+          "rounded-xl hover:bg-primary/20 hover:text-primary dark:hover:bg-accent/50",
+        // Chat composer's round action buttons; composerActive is the toggled-open state.
+        composer:
+          "rounded-full border-none bg-zinc-700 fill-zinc-400 text-zinc-400 shadow-xs hover:bg-zinc-600/90",
+        composerActive:
+          "rounded-full border-none bg-primary/20 fill-zinc-400 text-primary shadow-xs hover:bg-primary/40",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
