@@ -21,7 +21,7 @@
     "shadcn/no-restyle": [
       "error",
       {
-        "allow": ["layout"],
+        "allow": ["layout", "spacing"],
         "contracts": [
           {
             "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Textarea|Tooltip|User)$",
@@ -67,6 +67,7 @@
             "pattern": "^InputOTPSlot$",
             "allow": [
               "layout",
+              "spacing",
               "shape",
               "typography",
               "color",
@@ -84,43 +85,44 @@
           },
           {
             "pattern": "^Separator$",
-            "allow": ["layout", "bg-zinc-700"]
+            "allow": ["layout", "spacing", "bg-zinc-700"]
           },
           {
             "pattern": "^GrainOverlay$",
-            "allow": ["layout", "rounded-2xl", "opacity-[0.34]"]
+            "allow": ["layout", "spacing", "rounded-2xl", "opacity-[0.34]"]
           },
           {
             "pattern": "^Skeleton$",
-            "allow": ["layout", "shape"]
+            "allow": ["layout", "spacing", "shape"]
           },
           {
             "pattern": "^MessageScrollerViewport$",
-            "allow": ["compact-chat", "no-scrollbar"]
+            "allow": ["spacing", "compact-chat", "no-scrollbar"]
           },
           {
             "pattern": "^MessageScrollerContent$",
-            "allow": ["gap-3", "p-8"]
+            "allow": ["spacing", "gap-3", "p-8"]
           },
           {
             "pattern": "^CopyButton$",
             "allow": [
               "layout",
+              "spacing",
               "text-zinc-400",
               "data-[hover=true]:text-zinc-100"
             ]
           },
           {
             "pattern": "^Calendar$",
-            "allow": ["bg-zinc-800"]
+            "allow": ["spacing", "bg-zinc-800"]
           },
           {
             "pattern": "^ProgressiveImage$",
-            "allow": ["layout", "rounded-4xl"]
+            "allow": ["layout", "spacing", "rounded-4xl"]
           },
           {
             "pattern": "^SidebarInset$",
-            "allow": ["layout", "bg-primary-bg"]
+            "allow": ["layout", "spacing", "bg-primary-bg"]
           },
           {
             "pattern": "^SidebarHeader$",
@@ -130,6 +132,7 @@
             "pattern": "^SheetContent$",
             "allow": [
               "layout",
+              "spacing",
               "border-none",
               "bg-zinc-950/50",
               "text-foreground",
@@ -137,21 +140,14 @@
             ]
           },
           {
-            "pattern": "^ModalBody$",
-            "allow": ["layout", "spacing"]
-          },
-          {
-            "pattern": "^(AccordionContent|ContextMenuContent|SidebarContent)$",
-            "allow": ["layout", "spacing"]
-          },
-          {
             "pattern": "^Progress$",
-            "allow": ["layout", "bg-zinc-700", "transition-all"]
+            "allow": ["layout", "spacing", "bg-zinc-700", "transition-all"]
           },
           {
             "pattern": "^Checkbox$",
             "allow": [
               "layout",
+              "spacing",
               "bg-zinc-900",
               "border-dashed",
               "border-1",
@@ -164,7 +160,6 @@
           }
         ],
         "message": {
-          "spacing": "Don't restyle {{component}} spacing \u2014 use its size prop or {{around}}.",
           "default": "Don't restyle {{component}} with {{className}} \u2014 use its props instead ({{variants|variant, color, radius, size}})."
         }
       }

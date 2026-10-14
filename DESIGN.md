@@ -664,7 +664,7 @@ Empty state pattern (no shared component — build inline):
 - Don't put `border-`, `ring-`, or `outline-` anywhere in the card tree. Depth comes from tonal layering only.
 - Don't use `rounded-lg` on card containers. Outer cards are `rounded-3xl`, inner surfaces `rounded-2xl` (the card contract).
 - Don't use Unicode symbols (`→`, `↗`, `•`, `✓`, `✕`) as UI, alone or mixed into copy. Use `@icons`, `<Kbd>` for key hints, and `list-disc` for bullets. `×` in copy (`1200×630`) is typography.
-- Don't restyle a HeroUI or shadcn component with `className` colors, radii or padding. Use its props (`variant`, `color`, `radius`, `size`), or add a `cva` variant when the look is reusable.
+- Don't restyle a HeroUI or shadcn component's colors, radii, borders or shadows with `className`. Use its props (`variant`, `color`, `radius`, `size`), or add a `cva` variant when the look is reusable. Layout and spacing (padding, margin, gap) are fine on components: a spacing class removed to satisfy a rule must be put back somewhere, or the layout collapses.
 - Don't use solid color backgrounds for status states. Always pair `/10` background with full color text.
 - Don't import from `framer-motion` — import from `motion/react`. `AnimatePresence` is required for exit animations.
 - Don't add another `<Toaster>` or import from `sonner` / `react-hot-toast`. Sileo is the only toast library.
@@ -800,7 +800,7 @@ Every rule above that a machine can check is an error, with no warning budget:
 
 | Check | Catches | Run |
 |---|---|---|
-| `@shadcn/lint` via Oxlint (`apps/web/.oxlintrc.json`) | Component restyles (per-component HeroUI contracts), raw palette colors, off-scale arbitrary values, unknown classes, inline styles | `nx run web:lint:shadcn` |
+| `@shadcn/lint` via Oxlint (`apps/web/.oxlintrc.json`) | Component restyles of color, radius, border and shadow (per-component HeroUI contracts; layout and spacing allowed), raw palette colors, off-scale arbitrary values, unknown classes, inline styles | `nx run web:lint:shadcn` |
 | Biome Grit rules (`config/biome-rules/`) | Card borders, outlines, shadows, `rounded-lg` cards, status tints off `/10`, raw divider divs, Unicode glyphs in JSX text | `pnpm exec biome check apps/web` |
 
 An exception lives next to what it exempts: a per-component contract or a per-file override in `.oxlintrc.json`, never a disable comment.

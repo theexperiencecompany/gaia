@@ -191,7 +191,7 @@ const DummyComposer: React.FC<{
                     color="foreground"
                     radius="sm"
                   >
-                    <DropdownMenuItem className="cursor-pointer">
+                    <DropdownMenuItem className="cursor-pointer p-0">
                       <div className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2">
                         <div className="flex flex-col">
                           <div className="flex flex-row items-center gap-2">

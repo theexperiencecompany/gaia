@@ -102,7 +102,7 @@ export default function ComposerLeft({
                     handleSelectionChange(item.id as ComposerMode);
                   else if (item.action) item.action();
                 }}
-                className="cursor-pointer"
+                className="cursor-pointer p-0"
               >
                 <div
                   className={cn(
