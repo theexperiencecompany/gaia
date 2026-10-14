@@ -68,6 +68,9 @@ REFERRAL_COOKIE_VARIANT_SEPARATOR = "."
 # Far above anything a person does by hand; it exists to protect the sending
 # domain's reputation from a script, not to ration real users.
 INVITE_DAILY_SEND_CEILING = 200
+# One counter per sender per UTC day; it outlives its day so a late release still lands on it.
+INVITE_QUOTA_KEY_TEMPLATE = "referral:invite-quota:{user_id}:{day}"
+INVITE_QUOTA_TTL_S = 2 * 24 * 60 * 60
 # Largest batch one POST /invites may carry.
 INVITE_BATCH_MAX = 50
 INVITE_FROM_ADDRESS = "invites@heygaia.io"
