@@ -9,6 +9,13 @@ entry point.
 
 from html import escape
 
+from app.models.briefing_models import (
+    BriefingItem,
+    BriefingItemKind,
+    BriefingPayload,
+    BriefingSection,
+    BriefingStat,
+)
 from app.services.briefing.editions._shared import CANVAS_PX, font_face, format_date
 
 # --- Palette (layered neutrals, one cyan accent — never red) --------------------
@@ -30,13 +37,10 @@ _DISPLAY = '"PP Editorial New", "Playfair Display", Georgia, serif'
 _CANVAS_PX = CANVAS_PX
 
 # --- Item furniture: kind -> (marker, tone) -------------------------------------
-# BriefingItemKind and the caller's "needs_you" vocabulary both resolve here. Cyan
-# markers flag what still needs the reader, dim ones work already done.
+# Cyan markers flag what still needs the reader, dim ones work already done.
 _ACCENT_TONE = "accent"
 _DIM_TONE = "dim"
-_MARKERS: dict[str, tuple[str, str]] = {
-    "proposal": ("Needs your approval", _ACCENT_TONE),
-    "needs_you": ("Your move", _ACCENT_TONE),
+_MARKERS: dict[BriefingItemKind, tuple[str, str]] = {
     "you": ("Your move", _ACCENT_TONE),
     "lookback": ("Done", _DIM_TONE),
     "gaia": ("In progress", _DIM_TONE),
@@ -55,7 +59,7 @@ _FONT_FACES = font_face("PP Editorial New", "PPEditorialNew-Ultralight.woff2", 2
 
 
 def render_edition(
-    payload: dict,
+    payload: BriefingPayload,
     *,
     edition_no: int,
     generated_local: str,
@@ -66,11 +70,11 @@ def render_edition(
     edition_no is printed in the dateline; generated_local (e.g. "6:02 AM") is followed
     by the optional tz_label. Returns a self-contained HTML document.
     """
-    kicker = escape(str(payload.get("kicker", "")))
-    headline = escape(str(payload.get("headline", "")))
-    lede = escape(str(payload.get("lede", "")))
-    caption = escape(str(payload.get("caption", "")))
-    date_human = format_date(str(payload.get("date", "")))
+    kicker = escape(payload.kicker)
+    headline = escape(payload.headline)
+    lede = escape(payload.lede)
+    caption = escape(payload.caption)
+    date_human = format_date(payload.date)
 
     generated = escape(generated_local)
     if tz_label:
@@ -86,8 +90,8 @@ def render_edition(
         if part
     )
 
-    stats = _render_stats(payload.get("stats") or [])
-    sections = "\n".join(_render_section(section) for section in payload.get("sections") or [])
+    stats = _render_stats(payload.stats)
+    sections = "\n".join(_render_section(section) for section in payload.sections)
 
     kicker_html = f'<div class="kicker">{kicker}</div>' if kicker else ""
     lede_html = f'<p class="lede">{lede}</p>' if lede else ""
@@ -131,17 +135,16 @@ def render_edition(
 </html>"""
 
 
-def _render_stats(stats: list[dict]) -> str:
+def _render_stats(stats: list[BriefingStat]) -> str:
     """Render the stat row as a flat, borderless figure strip, or nothing."""
     if not stats:
         return ""
 
     cells = []
     for stat in stats:
-        value = escape(str(stat.get("value", "")))
-        label = escape(str(stat.get("label", "")))
-        delta = stat.get("delta")
-        delta_html = f'<span class="s-delta">{escape(str(delta))}</span>' if delta else ""
+        value = escape(stat.value)
+        label = escape(stat.label)
+        delta_html = f'<span class="s-delta">{escape(stat.delta)}</span>' if stat.delta else ""
         cells.append(
             f'<div class="stat">'
             f'<span class="s-value">{value}{delta_html}</span>'
@@ -151,15 +154,14 @@ def _render_stats(stats: list[dict]) -> str:
     return f'<div class="stats">{"".join(cells)}</div>'
 
 
-def _render_section(section: dict) -> str:
+def _render_section(section: BriefingSection) -> str:
     """Render one numeraled section, or nothing when it has no items."""
-    items = section.get("items") or []
-    if not items:
+    if not section.items:
         return ""
 
-    numeral = escape(str(section.get("numeral", "")))
-    title = escape(str(section.get("title", "")))
-    body = "\n".join(_render_item(item) for item in items)
+    numeral = escape(section.numeral)
+    title = escape(section.title)
+    body = "\n".join(_render_item(item) for item in section.items)
 
     return f"""      <section class="section">
         <div class="section-head">
@@ -172,15 +174,13 @@ def _render_section(section: dict) -> str:
       </section>"""
 
 
-def _render_item(item: dict) -> str:
+def _render_item(item: BriefingItem) -> str:
     """Render a single section item with its marker and artifact hint."""
-    text = escape(str(item.get("text", "")))
-    # An unknown or absent kind renders like a note: no marker, no tone.
-    kind = str(item.get("kind"))
-    marker, tone = _MARKERS.get(kind, _MARKERS["note"])
+    text = escape(item.text)
+    marker, tone = _MARKERS[item.kind]
 
     marker_html = f'<span class="marker {tone}">{escape(marker)}</span>' if marker else ""
-    hint_html = f'<span class="open">{_ARTIFACT_HINT}</span>' if item.get("link") else ""
+    hint_html = f'<span class="open">{_ARTIFACT_HINT}</span>' if item.link else ""
 
     return (
         f'          <p class="item">{marker_html}<span class="i-text">{text}{hint_html}</span></p>'

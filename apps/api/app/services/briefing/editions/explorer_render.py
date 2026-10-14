@@ -15,8 +15,9 @@ from pathlib import Path
 import re
 
 from app.constants.briefing import POSTAL_FAMILY
+from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions._shared import CANVAS_PX
-from app.services.briefing.editions.explorer_adapter import build_ed
+from app.services.briefing.editions.explorer_adapter import ART_ASSET_KEY, build_ed
 from app.services.briefing.editions.stamps import STAMP_ASSET_KEY, stamp_asset_url
 
 _EXPLORER_DIR = Path(__file__).parent / "explorer"
@@ -29,7 +30,7 @@ _REGISTER_ID_PATTERN = re.compile(r'EXPLORER\.register\(\{\s*\n\s*id:\s*"([a-z0-
 
 # Asset key -> MIME type, mirroring explorer-shell.html's ASSETS map.
 _ASSET_MIME: dict[str, str] = {
-    "ART1": "image/jpeg",
+    ART_ASSET_KEY: "image/jpeg",
     "BAND": "image/webp",
     "STAMP_TOKYO": "image/jpeg",
     "STAMP_LONDON": "image/jpeg",
@@ -104,7 +105,7 @@ def _asset_data_uris() -> dict[str, str]:
 @lru_cache(maxsize=1)
 def _art_credit() -> str:
     art_credits: dict[str, str] = json.loads((_ASSETS_DIR / "credits.json").read_text())
-    return art_credits.get("ART1", "")
+    return art_credits.get(ART_ASSET_KEY, "")
 
 
 @lru_cache(maxsize=1)
@@ -129,7 +130,7 @@ def _json_for_script(value: object) -> str:
 
 
 def render_explorer_edition(
-    payload: dict,
+    payload: BriefingPayload,
     *,
     family: str,
     skin_seed: str,
@@ -149,9 +150,8 @@ def render_explorer_edition(
         raise ValueError(f"unknown explorer family: {family!r}")
 
     assets = dict(_asset_data_uris())
-    stamp_city = payload.get("stamp_city")
-    if family == POSTAL_FAMILY and stamp_city:
-        assets[STAMP_ASSET_KEY] = stamp_asset_url(stamp_city)
+    if family == POSTAL_FAMILY and payload.stamp_city:
+        assets[STAMP_ASSET_KEY] = stamp_asset_url(payload.stamp_city)
     ed = build_ed(
         payload,
         edition_no=edition_no,

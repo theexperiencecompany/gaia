@@ -17,6 +17,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
+from app.models.briefing_models import BriefingItem, BriefingPayload
 from app.services.briefing.editions import paper_selector, render_edition, renderer_for
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
 from app.services.upload_service import upload_file_to_cloudinary
@@ -53,23 +54,16 @@ def _public_app_url() -> str:
     return url
 
 
-def _edition_no(iso_date: str | None) -> int:
-    if not iso_date:
-        return 1
+def _edition_no(iso_date: str) -> int:
     try:
         return (date_cls.fromisoformat(iso_date) - _EDITION_EPOCH).days + 1
     except ValueError:
         return 1
 
 
-def _action_items(payload: dict) -> list[dict]:
-    """Proposal / needs-you items that carry a call to action, for the strip."""
-    out: list[dict] = []
-    for section in payload.get("sections", []):
-        for item in section.get("items", []):
-            if item.get("kind") in ("proposal", "needs_you"):
-                out.append(item)
-    return out
+def _action_items(payload: BriefingPayload) -> list[BriefingItem]:
+    """Items waiting on the user, each a call to action in the strip."""
+    return [item for section in payload.sections for item in section.items if item.kind == "you"]
 
 
 def _resolve_link(link: str | None) -> str | None:
@@ -83,7 +77,7 @@ def _resolve_link(link: str | None) -> str | None:
     return f"{base}/{link.lstrip('/')}"
 
 
-def _action_strip(payload: dict, unsubscribe_url: str) -> str:
+def _action_strip(payload: BriefingPayload, unsubscribe_url: str) -> str:
     """Build the email-safe (table + inline-styled) strip under the image.
 
     It holds the primary CTA, per-proposal review links and unsubscribe. Deep-links
@@ -107,8 +101,8 @@ def _action_strip(payload: dict, unsubscribe_url: str) -> str:
     if actions:
         links = []
         for item in actions:
-            href = _resolve_link(item.get("link")) or app_url
-            text = escape((item.get("text") or "").strip())
+            href = _resolve_link(item.link) or app_url
+            text = escape(item.text.strip())
             links.append(
                 f'<div style="margin:7px 0;font:400 13px/1.5 {sans};color:{_TEXT};">'
                 f"{text} &nbsp;"
@@ -137,28 +131,17 @@ def _action_strip(payload: dict, unsubscribe_url: str) -> str:
     )
 
 
-async def render_edition_png(
-    payload: dict,
-    *,
-    crop_to_paper: bool,
-    generated_local: str = "",
-    tz_label: str = "",
-) -> bytes:
+async def render_edition_png(payload: BriefingPayload, *, crop_to_paper: bool) -> bytes:
     """Render the edition as a PNG.
 
     crop_to_paper cuts it to the family's paper (the chat image); the email keeps the
     full composition.
     """
-    family = payload.get("template_family")
+    family = payload.template_family
     # The classic edition (and every legacy payload without a family) renders
     # via render_edition.
     render = renderer_for(family) or render_edition
-    edition_html = render(
-        payload,
-        edition_no=_edition_no(payload.get("date")),
-        generated_local=generated_local,
-        tz_label=tz_label,
-    )
+    edition_html = render(payload, edition_no=_edition_no(payload.date), generated_local="")
     return await render_html_to_image(
         edition_html,
         ImageRenderOptions(
@@ -170,24 +153,16 @@ async def render_edition_png(
 
 
 async def host_edition_image(
-    payload: dict,
-    *,
-    user_id: str,
-    kind: str,
-    crop_to_paper: bool,
-    generated_local: str = "",
-    tz_label: str = "",
+    payload: BriefingPayload, *, user_id: str, kind: str, crop_to_paper: bool
 ) -> str:
     """Render the edition and host it on the CDN; returns the image URL.
 
     One public id per user, kind, date and crop, uploaded with overwrite, so a re-run
     replaces the same asset.
     """
-    image = await render_edition_png(
-        payload, crop_to_paper=crop_to_paper, generated_local=generated_local, tz_label=tz_label
-    )
+    image = await render_edition_png(payload, crop_to_paper=crop_to_paper)
     crop = "_chat" if crop_to_paper else ""
-    public_id = f"briefing/editions/{user_id}/{kind}_{payload.get('date', 'latest')}{crop}"
+    public_id = f"briefing/editions/{user_id}/{kind}_{payload.date}{crop}"
     image_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
     log.debug(
         "briefing.edition_image.hosted",
@@ -200,12 +175,10 @@ async def host_edition_image(
 
 
 async def render_edition_email(
-    payload: dict,
+    payload: BriefingPayload,
     *,
     kind: str,
     user_id: str,
-    generated_local: str = "",
-    tz_label: str = "",
     unsubscribe_url: str,
     preheader: str = "",
 ) -> str:
@@ -214,18 +187,9 @@ async def render_edition_email(
     Raises on any render/upload failure so the caller can fall back to the plain HTML
     template.
     """
-    image_url = await host_edition_image(
-        payload,
-        user_id=user_id,
-        kind=kind,
-        crop_to_paper=False,
-        generated_local=generated_local,
-        tz_label=tz_label,
-    )
+    image_url = await host_edition_image(payload, user_id=user_id, kind=kind, crop_to_paper=False)
 
-    alt = escape(
-        f"{payload.get('headline', 'Your GAIA brief')} — {payload.get('lede', '')}".strip(" —")
-    )
+    alt = escape(f"{payload.headline} — {payload.lede}".strip(" —"))
     app_url = _public_app_url()
 
     # The inbox preview line (the skim's asks + overnight sentence), hidden in

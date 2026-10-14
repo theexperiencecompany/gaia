@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from app.models.briefing_models import BriefingPayload
 from app.utils.notification.email_templates import (
     render_daily_brief_email,
     render_plain_notification_email,
@@ -46,6 +47,32 @@ _DOC_OPEN = (
 _DOC_CLOSE = "          </table>\n        </td>\n      </tr>\n    </table>\n  </body>\n</html>"
 
 
+def _brief(fields: dict[str, Any]) -> BriefingPayload:
+    """Build a BriefingPayload with every field the test leaves out blank (hue 210)."""
+    sections = [{"numeral": "", "title": "", **s} for s in fields.get("sections", [])]
+    return BriefingPayload.model_validate(
+        {
+            "kicker": "",
+            "date": "",
+            "headline": "",
+            "lede": "",
+            "mood": "clear",
+            "caption": "",
+            "hue": 210,
+            **fields,
+            "sections": sections,
+        }
+    )
+
+
+def _daily(fields: dict[str, Any], unsubscribe_url: str) -> str:
+    return render_daily_brief_email(_brief(fields), unsubscribe_url)
+
+
+def _weekly(fields: dict[str, Any], unsubscribe_url: str) -> str:
+    return render_weekly_digest_email(_brief(fields), unsubscribe_url)
+
+
 def _rich_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "kicker": "Morning <Brief>",
@@ -54,7 +81,7 @@ def _rich_payload(**overrides: Any) -> dict[str, Any]:
         "headline": "A & B",
         "lede": "it's fine",
         "stats": [
-            {"value": 3, "label": "todos", "delta": "+2"},
+            {"value": "3", "label": "todos", "delta": "+2"},
             {"value": "0", "label": "mail"},
         ],
         "sections": [{"title": "agenda & more", "items": [{"text": "x < y"}]}],
@@ -128,14 +155,14 @@ class TestRenderPlainNotificationEmail:
 
 class TestBriefingKicker:
     def test_daily_default_kicker(self) -> None:
-        assert "\n          Daily Brief\n" in render_daily_brief_email({}, "https://u")
+        assert "\n          Daily Brief\n" in _daily({}, "https://u")
 
     def test_weekly_default_kicker(self) -> None:
-        assert "\n          Weekly Digest\n" in render_weekly_digest_email({}, "https://u")
+        assert "\n          Weekly Digest\n" in _weekly({}, "https://u")
 
     def test_payload_kicker_overrides_default_and_is_escaped(self) -> None:
-        daily = render_daily_brief_email({"kicker": "Morning <Brief>"}, "https://u")
-        weekly = render_weekly_digest_email({"kicker": "Morning <Brief>"}, "https://u")
+        daily = _daily({"kicker": "Morning <Brief>"}, "https://u")
+        weekly = _weekly({"kicker": "Morning <Brief>"}, "https://u")
 
         assert "\n          Morning &lt;Brief&gt;\n" in daily
         assert "Daily Brief" not in daily
@@ -143,20 +170,20 @@ class TestBriefingKicker:
         assert "Weekly Digest" not in weekly
 
     def test_empty_kicker_falls_back_to_default(self) -> None:
-        assert "\n          Daily Brief\n" in render_daily_brief_email({"kicker": ""}, "https://u")
+        assert "\n          Daily Brief\n" in _daily({"kicker": ""}, "https://u")
 
     def test_daily_and_weekly_differ_only_in_kicker(self) -> None:
-        payload = _rich_payload(kicker=None)
+        payload = _rich_payload(kicker="")
 
-        daily = render_daily_brief_email(payload, _UNSUB)
-        weekly = render_weekly_digest_email(payload, _UNSUB)
+        daily = _daily(payload, _UNSUB)
+        weekly = _weekly(payload, _UNSUB)
 
         assert daily.replace("Daily Brief", "Weekly Digest") == weekly
 
 
 class TestBriefingMasthead:
     def test_date_is_rendered_and_escaped(self) -> None:
-        html = render_daily_brief_email({"date": "2026-09-02 <b>"}, "https://u")
+        html = _daily({"date": "2026-09-02 <b>"}, "https://u")
 
         assert (
             '        <div style="font-size: 12px; color: #a1a1aa; margin-top: 4px;">'
@@ -164,7 +191,7 @@ class TestBriefingMasthead:
         )
 
     def test_missing_date_renders_empty_div(self) -> None:
-        html = render_daily_brief_email({}, "https://u")
+        html = _daily({}, "https://u")
 
         assert (
             '        <div style="font-size: 12px; color: #a1a1aa; margin-top: 4px;"></div>' in html
@@ -173,7 +200,7 @@ class TestBriefingMasthead:
 
 class TestBriefingGradientBand:
     def test_hue_offsets_and_lightness(self) -> None:
-        html = render_daily_brief_email({"hue": 210}, "https://u")
+        html = _daily({"hue": 210}, "https://u")
 
         assert (
             '        <div style="height: 6px; border-radius: 3px; background:'
@@ -183,7 +210,7 @@ class TestBriefingGradientBand:
         )
 
     def test_hue_wraps_around_the_colour_wheel(self) -> None:
-        html = render_daily_brief_email({"hue": 350}, "https://u")
+        html = _daily({"hue": 350}, "https://u")
 
         assert (
             "linear-gradient(90deg, hsl(310, 70%, 58%), hsl(335, 70%, 50%),"
@@ -191,13 +218,8 @@ class TestBriefingGradientBand:
             " hsl(60, 70%, 64%));" in html
         )
 
-    def test_missing_hue_defaults_to_210(self) -> None:
-        assert render_daily_brief_email({}, "https://u") == render_daily_brief_email(
-            {"hue": 210}, "https://u"
-        )
-
-    def test_hue_zero_is_red_not_the_default(self) -> None:
-        html = render_daily_brief_email({"hue": 0}, "https://u")
+    def test_hue_zero_is_red(self) -> None:
+        html = _daily({"hue": 0}, "https://u")
 
         assert (
             "linear-gradient(90deg, hsl(320, 70%, 58%), hsl(345, 70%, 50%),"
@@ -213,17 +235,12 @@ class TestBriefingGradientBand:
         )
 
         with pytest.raises(ValueError, match="zip"):
-            render_daily_brief_email({"hue": 210}, "https://u")
-
-    def test_string_hue_is_coerced_to_int(self) -> None:
-        assert render_daily_brief_email({"hue": "350"}, "https://u") == render_daily_brief_email(
-            {"hue": 350}, "https://u"
-        )
+            _daily({"hue": 210}, "https://u")
 
 
 class TestBriefingHeadlineBlock:
     def test_headline_and_lede_escaped(self) -> None:
-        html = render_daily_brief_email({"headline": "A & B", "lede": "it's fine"}, "https://u")
+        html = _daily({"headline": "A & B", "lede": "it's fine"}, "https://u")
 
         assert (
             f'        <div style="font-family: {_SERIF}; font-style: italic;'
@@ -237,7 +254,7 @@ class TestBriefingHeadlineBlock:
         )
 
     def test_missing_headline_and_lede_render_empty(self) -> None:
-        html = render_daily_brief_email({}, "https://u")
+        html = _daily({}, "https://u")
 
         assert (
             f'        <div style="font-family: {_SERIF}; font-style: italic;'
@@ -249,17 +266,13 @@ class TestBriefingHeadlineBlock:
 
 class TestBriefingStatRow:
     def test_no_stats_key_omits_the_row(self) -> None:
-        assert 'style="border-collapse: collapse;"' not in render_daily_brief_email({}, "https://u")
+        assert 'style="border-collapse: collapse;"' not in _daily({}, "https://u")
 
     def test_empty_stats_list_omits_the_row(self) -> None:
-        assert 'style="border-collapse: collapse;"' not in render_daily_brief_email(
-            {"stats": []}, "https://u"
-        )
+        assert 'style="border-collapse: collapse;"' not in _daily({"stats": []}, "https://u")
 
     def test_stat_cell_with_delta(self) -> None:
-        html = render_daily_brief_email(
-            {"stats": [{"value": 3, "label": "todos", "delta": "+2"}]}, "https://u"
-        )
+        html = _daily({"stats": [{"value": "3", "label": "todos", "delta": "+2"}]}, "https://u")
 
         assert (
             '        <td style="padding: 16px 20px; border: 1px solid #262626;'
@@ -274,7 +287,7 @@ class TestBriefingStatRow:
         )
 
     def test_stat_cell_without_delta_leaves_the_slot_blank(self) -> None:
-        html = render_daily_brief_email({"stats": [{"value": "0", "label": "mail"}]}, "https://u")
+        html = _daily({"stats": [{"value": "0", "label": "mail"}]}, "https://u")
 
         assert (
             '          <div style="font-size: 11px; text-transform: uppercase;'
@@ -285,14 +298,12 @@ class TestBriefingStatRow:
         assert "margin-top: 2px;" not in html
 
     def test_empty_string_delta_is_omitted(self) -> None:
-        html = render_daily_brief_email(
-            {"stats": [{"value": 1, "label": "l", "delta": ""}]}, "https://u"
-        )
+        html = _daily({"stats": [{"value": "1", "label": "l", "delta": ""}]}, "https://u")
 
         assert "margin-top: 2px;" not in html
 
     def test_missing_value_and_label_render_as_empty(self) -> None:
-        html = render_daily_brief_email({"stats": [{}]}, "https://u")
+        html = _daily({"stats": [{"value": "", "label": ""}]}, "https://u")
 
         assert (
             f'<div style="font-family: {_SERIF}; font-size: 22px; color: #f4f4f5;"></div>' in html
@@ -303,9 +314,7 @@ class TestBriefingStatRow:
         )
 
     def test_value_label_and_delta_are_escaped(self) -> None:
-        html = render_daily_brief_email(
-            {"stats": [{"value": "<v>", "label": "a&b", "delta": "<d>"}]}, "https://u"
-        )
+        html = _daily({"stats": [{"value": "<v>", "label": "a&b", "delta": "<d>"}]}, "https://u")
 
         assert "&lt;v&gt;" in html
         assert "a&amp;b" in html
@@ -313,8 +322,8 @@ class TestBriefingStatRow:
         assert "<v>" not in html
 
     def test_cells_sit_directly_next_to_each_other(self) -> None:
-        html = render_daily_brief_email(
-            {"stats": [{"value": 1, "label": "a"}, {"value": 2, "label": "b"}]}, "https://u"
+        html = _daily(
+            {"stats": [{"value": "1", "label": "a"}, {"value": "2", "label": "b"}]}, "https://u"
         )
 
         assert (
@@ -325,22 +334,20 @@ class TestBriefingStatRow:
         )
 
     def test_every_stat_gets_its_own_cell(self) -> None:
-        html = render_daily_brief_email(
-            {"stats": [{"value": i, "label": "l"} for i in range(4)]}, "https://u"
-        )
+        html = _daily({"stats": [{"value": str(i), "label": "l"} for i in range(4)]}, "https://u")
 
         assert html.count('<td style="padding: 16px 20px; border: 1px solid #262626;') == 4
 
 
 class TestBriefingSections:
     def test_no_sections_omits_the_block(self) -> None:
-        assert "margin-top: 28px;" not in render_daily_brief_email({}, "https://u")
+        assert "margin-top: 28px;" not in _daily({}, "https://u")
 
     def test_empty_sections_list_omits_the_block(self) -> None:
-        assert "margin-top: 28px;" not in render_daily_brief_email({"sections": []}, "https://u")
+        assert "margin-top: 28px;" not in _daily({"sections": []}, "https://u")
 
     def test_section_title_is_uppercased_and_numbered_in_roman(self) -> None:
-        html = render_daily_brief_email(
+        html = _daily(
             {"sections": [{"title": "agenda", "items": []}, {"title": "mail", "items": []}]},
             "https://u",
         )
@@ -349,7 +356,7 @@ class TestBriefingSections:
         assert "\n            II. MAIL\n" in html
 
     def test_section_blocks_sit_directly_next_to_each_other(self) -> None:
-        html = render_daily_brief_email(
+        html = _daily(
             {"sections": [{"title": "one", "items": []}, {"title": "two", "items": []}]},
             "https://u",
         )
@@ -357,20 +364,18 @@ class TestBriefingSections:
         assert '        </div>\n        \n        <div style="margin-top: 28px;">\n' in html
 
     def test_section_without_a_title_renders_the_numeral_alone(self) -> None:
-        html = render_daily_brief_email({"sections": [{"items": []}]}, "https://u")
+        html = _daily({"sections": [{"items": []}]}, "https://u")
 
         assert "\n            I. \n" in html
 
     def test_explicit_numeral_overrides_the_positional_one(self) -> None:
-        html = render_daily_brief_email(
-            {"sections": [{"numeral": "XIV", "title": "late", "items": []}]}, "https://u"
-        )
+        html = _daily({"sections": [{"numeral": "XIV", "title": "late", "items": []}]}, "https://u")
 
         assert "\n            XIV. LATE\n" in html
         assert "I. LATE" not in html
 
     def test_numerals_clamp_at_the_tenth_section(self) -> None:
-        html = render_daily_brief_email(
+        html = _daily(
             {"sections": [{"title": f"s{i}", "items": []} for i in range(12)]}, "https://u"
         )
 
@@ -380,7 +385,7 @@ class TestBriefingSections:
         assert "XI." not in html
 
     def test_items_render_as_rows(self) -> None:
-        html = render_daily_brief_email(
+        html = _daily(
             {"sections": [{"title": "t", "items": [{"text": "one"}, {"text": "two"}]}]},
             "https://u",
         )
@@ -394,20 +399,18 @@ class TestBriefingSections:
         )
 
     def test_section_without_items_renders_an_empty_row_container(self) -> None:
-        html = render_daily_brief_email({"sections": [{"title": "t"}]}, "https://u")
+        html = _daily({"sections": [{"title": "t"}]}, "https://u")
 
         assert '          <div style="margin-top: 8px;"></div>' in html
 
     def test_item_text_and_title_are_escaped(self) -> None:
-        html = render_daily_brief_email(
-            {"sections": [{"title": "a & b", "items": [{"text": "x < y"}]}]}, "https://u"
-        )
+        html = _daily({"sections": [{"title": "a & b", "items": [{"text": "x < y"}]}]}, "https://u")
 
         assert "\n            I. A &amp; B\n" in html
         assert "x &lt; y</div>" in html
 
     def test_item_without_text_renders_empty(self) -> None:
-        html = render_daily_brief_email({"sections": [{"title": "t", "items": [{}]}]}, "https://u")
+        html = _daily({"sections": [{"title": "t", "items": [{"text": ""}]}]}, "https://u")
 
         assert (
             '<div style="padding: 8px 0; border-bottom: 1px solid #262626;'
@@ -417,7 +420,7 @@ class TestBriefingSections:
 
 class TestBriefingCaption:
     def test_caption_is_rendered_and_escaped(self) -> None:
-        html = render_daily_brief_email({"caption": "the <end>"}, "https://u")
+        html = _daily({"caption": "the <end>"}, "https://u")
 
         assert (
             f'      <td style="padding: 32px 40px 0; font-family: {_SERIF};'
@@ -427,24 +430,22 @@ class TestBriefingCaption:
         )
 
     def test_missing_caption_omits_the_block(self) -> None:
-        assert 'font-size: 13px; color: #a1a1aa;">' not in render_daily_brief_email({}, "https://u")
+        assert 'font-size: 13px; color: #a1a1aa;">' not in _daily({}, "https://u")
 
     def test_empty_caption_omits_the_block(self) -> None:
-        assert 'font-size: 13px; color: #a1a1aa;">' not in render_daily_brief_email(
-            {"caption": ""}, "https://u"
-        )
+        assert 'font-size: 13px; color: #a1a1aa;">' not in _daily({"caption": ""}, "https://u")
 
 
 class TestBriefingDocumentShape:
     def test_wrapper_and_footer_bracket_every_briefing(self) -> None:
-        html = render_daily_brief_email(_rich_payload(), _UNSUB)
+        html = _daily(_rich_payload(), _UNSUB)
 
         assert html.startswith(_DOC_OPEN)
         assert html.endswith(_DOC_CLOSE)
         assert _ESCAPED_UNSUB_FOOTER in html
 
     def test_blocks_appear_in_editorial_order(self) -> None:
-        html = render_daily_brief_email(_rich_payload(), _UNSUB)
+        html = _daily(_rich_payload(), _UNSUB)
 
         order = [
             html.index("Morning &lt;Brief&gt;"),
@@ -459,7 +460,7 @@ class TestBriefingDocumentShape:
 
     def test_empty_payload_document_is_exactly_this(self) -> None:
         """An absent block contributes nothing, not even a stray character."""
-        html = render_daily_brief_email({}, "https://u")
+        html = _daily({}, "https://u")
 
         assert html == (
             _DOC_OPEN + "            \n"
@@ -507,7 +508,7 @@ class TestBriefingDocumentShape:
         )
 
     def test_rich_payload_adds_the_stat_section_and_caption_rows(self) -> None:
-        html = render_daily_brief_email(_rich_payload(), _UNSUB)
+        html = _daily(_rich_payload(), _UNSUB)
 
         # The 5 always-present rows, plus stats, sections, caption, and the
         # stat table's own inner row.

@@ -194,7 +194,7 @@ export const briefingSchema = z.object({
     z.object({
       value: z.string(),
       label: z.string(),
-      delta: z.string().optional(),
+      delta: z.string().nullish(),
     }),
   ),
   sections: z.array(
@@ -204,7 +204,7 @@ export const briefingSchema = z.object({
       items: z.array(
         z.object({
           text: z.string(),
-          todo_id: z.string().optional(),
+          todo_id: z.string().nullish(),
           kind: z.enum(["gaia", "you", "lookback", "failed", "note"]),
         }),
       ),

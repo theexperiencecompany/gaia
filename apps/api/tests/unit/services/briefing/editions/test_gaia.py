@@ -8,12 +8,13 @@ from typing import Any
 
 import pytest
 
+from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.gaia import render_edition
 
 ACCENT = "#00bbff"
 
 
-def _payload(**overrides: Any) -> dict[str, Any]:
+def _payload(**overrides: Any) -> BriefingPayload:
     payload: dict[str, Any] = {
         "kicker": "Daily brief",
         "date": "2026-07-05",
@@ -21,13 +22,14 @@ def _payload(**overrides: Any) -> dict[str, Any]:
         "lede": "Two approvals and one flight.",
         "stats": [],
         "sections": [],
+        "mood": "clear",
         "caption": "Made by GAIA",
     }
     payload.update(overrides)
-    return payload
+    return BriefingPayload.model_validate(payload)
 
 
-def _render(payload: dict[str, Any] | None = None, **overrides: Any) -> str:
+def _render(payload: BriefingPayload | None = None, **overrides: Any) -> str:
     kwargs: dict[str, Any] = {"edition_no": 12, "generated_local": "6:02 AM"}
     kwargs.update(overrides)
     return render_edition(_payload() if payload is None else payload, **kwargs)
@@ -212,8 +214,8 @@ class TestStats:
         assert '<span class="s-label">a &amp; b</span>' in html
         assert '<span class="s-delta">&lt;i&gt;</span>' in html
 
-    def test_missing_value_and_label_keys_render_empty(self) -> None:
-        html = _render(_payload(stats=[{}]))
+    def test_empty_value_and_label_render_empty(self) -> None:
+        html = _render(_payload(stats=[{"value": "", "label": ""}]))
 
         assert (
             '<div class="stat"><span class="s-value"></span><span class="s-label"></span></div>'
@@ -275,8 +277,12 @@ class TestSections:
 
         assert '      </section>\n      <section class="section">' in html
 
-    def test_section_missing_its_numeral_and_title_renders_them_empty(self) -> None:
-        html = _render(_payload(sections=[{"items": [{"text": "a", "kind": "note"}]}]))
+    def test_section_with_an_empty_numeral_and_title_renders_them_empty(self) -> None:
+        html = _render(
+            _payload(
+                sections=[{"numeral": "", "title": "", "items": [{"text": "a", "kind": "note"}]}]
+            )
+        )
 
         assert '<span class="numeral"></span>' in html
         assert '<span class="s-title"></span>' in html
@@ -308,8 +314,6 @@ class TestItemMarkers:
     @pytest.mark.parametrize(
         ("kind", "marker", "tone"),
         [
-            ("proposal", "Needs your approval", "accent"),
-            ("needs_you", "Your move", "accent"),
             ("you", "Your move", "accent"),
             ("lookback", "Done", "dim"),
             ("gaia", "In progress", "dim"),
@@ -330,12 +334,11 @@ class TestItemMarkers:
             f'<span class="i-text">a thing</span></p>'
         ) in html
 
-    @pytest.mark.parametrize("kind", ["note", "made-up-kind"])
-    def test_plain_and_unknown_kinds_carry_no_marker(self, kind: str) -> None:
+    def test_a_note_carries_no_marker(self) -> None:
         html = _render(
             _payload(
                 sections=[
-                    {"numeral": "I", "title": "T", "items": [{"text": "a thing", "kind": kind}]}
+                    {"numeral": "I", "title": "T", "items": [{"text": "a thing", "kind": "note"}]}
                 ]
             )
         )
@@ -439,27 +442,30 @@ class TestItemMarkers:
 
         assert '</p>\n          <p class="item">' in html
 
-    def test_item_missing_its_text_renders_an_empty_text_span(self) -> None:
-        html = _render(_payload(sections=[{"numeral": "I", "title": "T", "items": [{}]}]))
+    def test_item_with_empty_text_renders_an_empty_text_span(self) -> None:
+        html = _render(_payload(sections=[{"numeral": "I", "title": "T", "items": [{"text": ""}]}]))
 
         assert '<p class="item"><span class="i-text"></span></p>' in html
 
 
+_BLANK = _payload(kicker="", date="", headline="", lede="", caption="")
+
+
 @pytest.mark.unit
-class TestMissingPayloadKeys:
-    """A payload with a key absent renders the slot empty, never "None"."""
+class TestBlankPayloadFields:
+    """A payload with a field left blank renders the slot empty, never "None"."""
 
-    def test_missing_headline_renders_an_empty_headline(self) -> None:
-        assert '<h1 class="headline"></h1>' in _render({})
+    def test_blank_headline_renders_an_empty_headline(self) -> None:
+        assert '<h1 class="headline"></h1>' in _render(_BLANK)
 
-    def test_missing_kicker_lede_and_caption_render_no_element_at_all(self) -> None:
-        html = _render({})
+    def test_blank_kicker_lede_and_caption_render_no_element_at_all(self) -> None:
+        html = _render(_BLANK)
 
         assert 'class="kicker"' not in html
         assert 'class="lede"' not in html
         assert 'class="colophon"' not in html
 
-    def test_missing_date_drops_the_dateline_segment_rather_than_filling_it(self) -> None:
-        html = _render({})
+    def test_blank_date_drops_the_dateline_segment_rather_than_filling_it(self) -> None:
+        html = _render(_BLANK)
 
         assert '<div class="dateline">Edition 12 &middot; Generated 6:02 AM</div>' in html

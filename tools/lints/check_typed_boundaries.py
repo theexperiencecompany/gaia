@@ -106,6 +106,7 @@ EXTERNAL_TYPEDDICT_PATHS = frozenset(
         "langchain_core.messages.content.ReasoningContentBlock",
         "langgraph.store.base.IndexConfig",
         "composio.core.models.tools.ToolExecutionResponse",
+        "playwright.async_api.FloatRect",
         "playwright.sync_api.StorageState",
         "playwright.sync_api.StorageStateCookie",
         "cdp_use.cdp.dom.commands.ResolveNodeReturns",

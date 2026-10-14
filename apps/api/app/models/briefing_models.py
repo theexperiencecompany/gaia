@@ -197,24 +197,6 @@ class BriefingUpdate(BaseModel):
     opened_at: datetime | None = None
 
 
-class AwardDocument(UserScopedDocument):
-    """One earned badge (``awards`` collection). ``(user_id, key)`` is unique —
-    each badge is earnable once (``AwardsRepository`` in
-    ``app/db/repositories/awards.py``). ``created_at`` (base-stamped on insert)
-    IS the earned timestamp — no separate field for the same moment."""
-
-    key: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime | None = None
-
-
-class AwardUpdate(BaseModel):
-    """Awards are immutable once earned — no field is ever updated in place.
-    Exists only to satisfy the repository base's typed-update-model contract."""
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class BriefingListResponse(BaseModel):
     """Archive response shape (frontend is coded against this)."""
 

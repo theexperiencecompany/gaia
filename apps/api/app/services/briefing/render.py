@@ -90,7 +90,7 @@ async def _clip_for(page: Page, selector: str) -> FloatRect:
 
     A selector that matches nothing raises rather than ship uncropped margins.
     """
-    box = await page.locator(selector).first.bounding_box()
+    box: FloatRect | None = await page.locator(selector).first.bounding_box()
     if box is None:
         raise RuntimeError(f"Clip element not rendered: {selector!r}")
     scroll = await page.evaluate("() => [window.scrollX, window.scrollY]")

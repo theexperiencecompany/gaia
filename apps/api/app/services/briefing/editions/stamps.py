@@ -68,13 +68,14 @@ def hosted_stamp_weights() -> dict[str, int]:
 
     Every catalogued city whose art is uploaded is drawable.
     """
-    return {slug: 1 for slug, city in _cities().items() if city["url"]}
+    cities: dict[str, _City] = _cities()
+    return {slug: 1 for slug, city in cities.items() if city["url"]}
 
 
 def stamp_for(slug: str) -> Stamp:
     """Return the stamp skin for one city: its art key, name, postage and frame."""
-    city = _cities()[slug]
-    postage = _postage()[city["country"]]
+    city: _City = _cities()[slug]
+    postage: _Postage = _postage()[city["country"]]
     return {
         "id": slug,
         "label": f"{city['name']}, {city['country']}",
@@ -90,7 +91,8 @@ def stamp_for(slug: str) -> Stamp:
 
 def stamp_asset_url(slug: str) -> str:
     """Return the city's hosted stamp art, loaded by the render page as the stamp image."""
-    url = _cities()[slug]["url"] if slug in _cities() else None
+    city: _City | None = _cities().get(slug)
+    url = city["url"] if city else None
     if not url:
         raise KeyError(f"stamp city {slug!r} has no hosted art (run scripts/upload_city_stamps.py)")
     return url

@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from itsdangerous import URLSafeSerializer
+from pydantic import ValidationError
 import pytest
 
 from app.config.settings import settings
@@ -20,6 +21,7 @@ from app.constants.notifications import (
     NotificationChannel,
 )
 from app.db.repositories.users import user_repository
+from app.models.briefing_models import BriefingPayload
 from app.models.notification.notification_models import (
     ChannelConfig,
     NotificationContent,
@@ -33,7 +35,11 @@ from app.services.email.models import EmailMessage
 from app.utils.email_utils import normalize_email
 from app.utils.notification import email_templates
 from app.utils.notification.channels import email as email_module
-from app.utils.notification.channels.email import EmailChannelAdapter
+from app.utils.notification.channels.email import (
+    BriefingEmail,
+    EmailChannelAdapter,
+    EmailContent,
+)
 from app.utils.notification.unsubscribe import _SALT
 from tests.helpers import captured_wide_event
 
@@ -74,6 +80,9 @@ _BRIEF_PAYLOAD: dict[str, Any] = {
     "caption": "Onward.",
     "hue": 210,
 }
+_BRIEF = BriefingPayload.model_validate(_BRIEF_PAYLOAD)
+_DAILY = BriefingEmail(kind=NOTIFICATION_KIND_BRIEFING_DAILY, payload=_BRIEF)
+_WEEKLY = BriefingEmail(kind=NOTIFICATION_KIND_BRIEFING_WEEKLY, payload=_BRIEF)
 
 
 @pytest.fixture(autouse=True)
@@ -106,12 +115,11 @@ def failed_edition_render(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 
 def _content(
-    kind: str | None = None,
-    payload: dict[str, Any] | None = None,
-    title: str | None = "Reminder",
-    body: str | None = "Stand-up in 10 minutes",
-) -> dict[str, Any]:
-    return {"kind": kind, "payload": payload, "title": title, "body": body}
+    briefing: BriefingEmail | None = None,
+    title: str = "Reminder",
+    body: str = "Stand-up in 10 minutes",
+) -> EmailContent:
+    return EmailContent(title=title, body=body, briefing=briefing)
 
 
 _SEND = AsyncMock()
@@ -159,26 +167,38 @@ class TestEmailChannelAdapterContract:
         assert adapter.can_handle(_make_request(kind=None, rich_content=None)) is True
 
     @pytest.mark.asyncio
-    async def test_transform_projects_kind_payload_title_and_body(self) -> None:
-        notification = _make_request(
-            kind=NOTIFICATION_KIND_BRIEFING_DAILY, rich_content=_BRIEF_PAYLOAD
-        )
+    @pytest.mark.parametrize("briefing", [_DAILY, _WEEKLY], ids=["daily", "weekly"])
+    async def test_transform_validates_a_briefing_kinds_payload(
+        self, briefing: BriefingEmail
+    ) -> None:
+        notification = _make_request(kind=briefing.kind, rich_content=_BRIEF_PAYLOAD)
 
-        assert await EmailChannelAdapter().transform(notification) == {
-            "kind": NOTIFICATION_KIND_BRIEFING_DAILY,
-            "payload": _BRIEF_PAYLOAD,
-            "title": "Reminder",
-            "body": "Stand-up in 10 minutes",
-        }
+        assert await EmailChannelAdapter().transform(notification) == _content(briefing)
 
     @pytest.mark.asyncio
     async def test_transform_without_kind_or_rich_content(self) -> None:
-        assert await EmailChannelAdapter().transform(_make_request()) == {
-            "kind": None,
-            "payload": None,
-            "title": "Reminder",
-            "body": "Stand-up in 10 minutes",
-        }
+        assert await EmailChannelAdapter().transform(_make_request()) == _content()
+
+    @pytest.mark.asyncio
+    async def test_transform_leaves_another_kinds_rich_content_unread(self) -> None:
+        notification = _make_request(kind="todo_due", rich_content={"todo_id": "t-1"})
+
+        assert await EmailChannelAdapter().transform(notification) == _content()
+
+    @pytest.mark.asyncio
+    async def test_transform_of_a_briefing_kind_without_a_payload_is_plain(self) -> None:
+        notification = _make_request(kind=NOTIFICATION_KIND_BRIEFING_DAILY, rich_content=None)
+
+        assert await EmailChannelAdapter().transform(notification) == _content()
+
+    @pytest.mark.asyncio
+    async def test_transform_fails_loud_on_a_malformed_briefing_payload(self) -> None:
+        notification = _make_request(
+            kind=NOTIFICATION_KIND_BRIEFING_DAILY, rich_content={"headline": "only this"}
+        )
+
+        with pytest.raises(ValidationError):
+            await EmailChannelAdapter().transform(notification)
 
 
 def _make_request(
@@ -348,25 +368,12 @@ class TestDeliverRequestShape:
     async def test_missing_title_and_body_fall_back_to_defaults(self) -> None:
         route = _mock_send()
 
-        await EmailChannelAdapter().deliver(_content(title=None, body=None), _USER_ID)
+        await EmailChannelAdapter().deliver(_content(title="", body=""), _USER_ID)
 
         body = _sent_body(route)
         assert body["subject"] == "GAIA"
         assert body["html"] == email_templates.render_plain_notification_email(
             "GAIA", "", _UNSUB_URL
-        )
-
-    async def test_unknown_kind_uses_the_plain_template(self) -> None:
-        route = _mock_send()
-
-        await EmailChannelAdapter().deliver(
-            _content(kind="todo_due", payload=_BRIEF_PAYLOAD), _USER_ID
-        )
-
-        body = _sent_body(route)
-        assert body["subject"] == "Reminder"
-        assert body["html"] == email_templates.render_plain_notification_email(
-            "Reminder", "Stand-up in 10 minutes", _UNSUB_URL
         )
 
 
@@ -384,12 +391,10 @@ class TestDeliverBriefings:
         monkeypatch.setattr(email_module, "render_edition_email", renderer)
         route = _mock_send()
 
-        await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_DAILY, payload=_BRIEF_PAYLOAD), _USER_ID
-        )
+        await EmailChannelAdapter().deliver(_content(_DAILY), _USER_ID)
 
         renderer.assert_awaited_once_with(
-            _BRIEF_PAYLOAD,
+            _BRIEF,
             kind=NOTIFICATION_KIND_BRIEFING_DAILY,
             user_id=_USER_ID,
             unsubscribe_url=_UNSUB_URL,
@@ -406,9 +411,7 @@ class TestDeliverBriefings:
         monkeypatch.setattr(email_module, "render_edition_email", renderer)
         route = _mock_send()
 
-        await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_WEEKLY, payload=_BRIEF_PAYLOAD), _USER_ID
-        )
+        await EmailChannelAdapter().deliver(_content(_WEEKLY), _USER_ID)
 
         assert renderer.await_args.kwargs["kind"] == NOTIFICATION_KIND_BRIEFING_WEEKLY
         assert _sent_body(route)["html"] == "<html>weekly</html>"
@@ -418,12 +421,10 @@ class TestDeliverBriefings:
     ) -> None:
         route = _mock_send()
 
-        status = await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_DAILY, payload=_BRIEF_PAYLOAD), _USER_ID
-        )
+        status = await EmailChannelAdapter().deliver(_content(_DAILY), _USER_ID)
 
         body = _sent_body(route)
-        assert body["html"] == email_templates.render_daily_brief_email(_BRIEF_PAYLOAD, _UNSUB_URL)
+        assert body["html"] == email_templates.render_daily_brief_email(_BRIEF, _UNSUB_URL)
         assert body["subject"] == "Three things today"
         assert status.status == NotificationStatus.DELIVERED
 
@@ -432,14 +433,10 @@ class TestDeliverBriefings:
     ) -> None:
         route = _mock_send()
 
-        await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_WEEKLY, payload=_BRIEF_PAYLOAD), _USER_ID
-        )
+        await EmailChannelAdapter().deliver(_content(_WEEKLY), _USER_ID)
 
         body = _sent_body(route)
-        assert body["html"] == email_templates.render_weekly_digest_email(
-            _BRIEF_PAYLOAD, _UNSUB_URL
-        )
+        assert body["html"] == email_templates.render_weekly_digest_email(_BRIEF, _UNSUB_URL)
         assert body["subject"] == "Three things today"
 
     async def test_edition_render_failure_is_recorded_on_the_wide_event(
@@ -448,7 +445,7 @@ class TestDeliverBriefings:
         """The edition render failure is recorded on the wide event, message and fields."""
         async with captured_wide_event() as event:
             await EmailChannelAdapter().deliver(
-                _content(kind=NOTIFICATION_KIND_BRIEFING_WEEKLY, payload=_BRIEF_PAYLOAD),
+                _content(_WEEKLY),
                 _USER_ID,
             )
 
@@ -461,20 +458,22 @@ class TestDeliverBriefings:
             }
         ]
 
-    async def test_briefing_without_a_payload_never_calls_the_renderer(
+    async def test_briefing_without_a_payload_sends_the_plain_template(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         renderer = AsyncMock(return_value="<html>edition</html>")
         monkeypatch.setattr(email_module, "render_edition_email", renderer)
         route = _mock_send()
+        adapter = EmailChannelAdapter()
+        notification = _make_request(kind=NOTIFICATION_KIND_BRIEFING_DAILY, rich_content=None)
 
-        await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_DAILY, payload=None), _USER_ID
-        )
+        await adapter.deliver(await adapter.transform(notification), _USER_ID)
 
         renderer.assert_not_awaited()
         body = _sent_body(route)
-        assert body["html"] == email_templates.render_daily_brief_email({}, _UNSUB_URL)
+        assert body["html"] == email_templates.render_plain_notification_email(
+            "Reminder", "Stand-up in 10 minutes", _UNSUB_URL
+        )
         assert body["subject"] == "Reminder"
 
     async def test_daily_and_weekly_fallbacks_use_their_own_templates(
@@ -482,18 +481,14 @@ class TestDeliverBriefings:
     ) -> None:
         route = _mock_send()
 
-        await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_DAILY, payload=_BRIEF_PAYLOAD), _USER_ID
-        )
+        await EmailChannelAdapter().deliver(_content(_DAILY), _USER_ID)
         daily_html = _sent_body(route)["html"]
 
-        await EmailChannelAdapter().deliver(
-            _content(kind=NOTIFICATION_KIND_BRIEFING_WEEKLY, payload=_BRIEF_PAYLOAD), _USER_ID
-        )
+        await EmailChannelAdapter().deliver(_content(_WEEKLY), _USER_ID)
         weekly_html = _sent_body(route)["html"]
 
-        assert daily_html == email_templates.render_daily_brief_email(_BRIEF_PAYLOAD, _UNSUB_URL)
-        assert weekly_html == email_templates.render_weekly_digest_email(_BRIEF_PAYLOAD, _UNSUB_URL)
+        assert daily_html == email_templates.render_daily_brief_email(_BRIEF, _UNSUB_URL)
+        assert weekly_html == email_templates.render_weekly_digest_email(_BRIEF, _UNSUB_URL)
 
 
 # ========================================================================

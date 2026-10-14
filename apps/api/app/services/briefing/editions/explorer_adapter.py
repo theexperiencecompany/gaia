@@ -14,7 +14,19 @@ import re
 from typing import TypedDict
 
 from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
+from app.models.briefing_models import (
+    BriefingEvent,
+    BriefingItem,
+    BriefingItemKind,
+    BriefingPayload,
+    BriefingSection,
+    BriefingTallies,
+    BriefingWeek,
+)
 from app.services.briefing.editions.stamps import Stamp, stamp_for
+
+# The asset key of the edition's artwork, in assets.json and credits.json alike.
+ART_ASSET_KEY = "ART1"
 
 _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 _MONTHS = [
@@ -40,9 +52,9 @@ _GENERATED_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$")
 
 # GAIA-side state of an overnight row, as the short caps tag the templates set
 # beside it (the contract's sample data used "REVIEW", "SHIP", "DONE").
-_OVERNIGHT_TAGS: dict[str, str] = {"gaia": "IN PROGRESS", "lookback": "DONE"}
-_DECISION_KINDS = frozenset({"you", "needs_you", "proposal"})
-_OVERNIGHT_KINDS = frozenset({"gaia", "lookback"})
+_OVERNIGHT_TAGS: dict[BriefingItemKind, str] = {"gaia": "IN PROGRESS", "lookback": "DONE"}
+# What waits on the reader: their own asks and work that failed (offered as a retry).
+_DECISION_KINDS: frozenset[BriefingItemKind] = frozenset({"you", "failed"})
 _RETRY_VERB = "Retry"
 
 _IMPERATIVE_VERBS = {
@@ -195,7 +207,7 @@ class ExplorerEdition(TypedDict):
 
 
 def build_ed(
-    payload: dict,
+    payload: BriefingPayload,
     *,
     edition_no: int,
     generated_local: str,
@@ -203,14 +215,13 @@ def build_ed(
     art_credit: str,
     family: str = "",
 ) -> ExplorerEdition:
-    """Build the vendored templates' ed object from a briefing payload dict.
+    """Build the vendored templates' ed object from a briefing payload.
 
     generated_local (e.g. "6:02 AM"); empty uses the payload's generated_at. assets maps
     asset key to data URI. family picks the headline slot and pads fixed-slot families.
     """
-    date_parts = _date_parts(str(payload.get("date", "")))
-    sections = payload.get("sections") or []
-    today, overnight, decisions = _build_buckets(sections, payload.get("calendar") or [])
+    date_parts = _date_parts(payload.date)
+    today, overnight, decisions = _build_buckets(payload.sections, payload.calendar)
     min_today, min_overnight, min_decisions = _FIXED_SLOTS.get(family, (0, 0, 0))
     today += [{**_PLACEHOLDER_TODAY, "label": _EMPTY_SLOT_LABEL}] * (min_today - len(today))
     overnight += [{**_PLACEHOLDER_OVERNIGHT, "label": _EMPTY_SLOT_LABEL}] * (
@@ -220,9 +231,9 @@ def build_ed(
         min_decisions - len(decisions)
     )
     art_title, art_artist = _split_credit(art_credit)
-    headline = str(payload.get("headline", ""))
-    lede = str(payload.get("lede", ""))
-    generated = generated_local or str(payload.get("generated_at") or "")
+    headline = payload.headline
+    lede = payload.lede
+    generated = generated_local or payload.generated_at or ""
 
     return {
         "n": edition_no,
@@ -241,12 +252,12 @@ def build_ed(
             "today": today,
             "overnight": overnight,
             "decisions": decisions,
-            "stats": _build_stats(payload.get("tallies")),
+            "stats": _build_stats(payload.tallies),
         },
-        "week": _build_week(payload.get("week")) if family == WEEKLY_FAMILY else None,
-        "stamp": _build_stamp(payload.get("stamp_city")) if family == POSTAL_FAMILY else None,
+        "week": _build_week(payload.week) if family == WEEKLY_FAMILY else None,
+        "stamp": _build_stamp(payload.stamp_city) if family == POSTAL_FAMILY else None,
         "art": {
-            "src": assets.get("ART1", ""),
+            "src": assets.get(ART_ASSET_KEY, ""),
             "title": art_title,
             "artist": art_artist,
             "year": 1889,
@@ -333,59 +344,49 @@ def _decision_verb(text: str) -> tuple[str, str]:
     return "Review", text
 
 
-def _items(sections: list[dict]) -> list[dict]:
-    return [item for section in sections for item in section.get("items") or []]
-
-
 def _clock12(t24: str) -> str:
     """24h "13:05" -> "1:05 PM"."""
     return datetime.strptime(t24, "%H:%M").strftime("%-I:%M %p")
 
 
-def _event_row(event: dict) -> ExplorerTodayItem:
-    start = event.get("start")
+def _event_row(event: BriefingEvent) -> ExplorerTodayItem:
     return {
-        "time": _clock12(start) if start else None,
-        "t24": start or None,
-        "label": str(event.get("title", "")),
-        "note": event.get("location") or None,
+        "time": _clock12(event.start) if event.start else None,
+        "t24": event.start or None,
+        "label": event.title,
+        "note": event.location or None,
         "tag": "",
     }
 
 
-def _overnight_row(item: dict) -> ExplorerOvernightItem:
-    _, t24, label = _split_time_prefix(str(item.get("text", "")))
+def _overnight_row(item: BriefingItem) -> ExplorerOvernightItem:
+    _, t24, label = _split_time_prefix(item.text)
     return {
         "t24": t24,
         "label": label,
         "note": None,
-        "tag": _OVERNIGHT_TAGS.get(str(item.get("kind")), ""),
+        "tag": _OVERNIGHT_TAGS.get(item.kind, ""),
     }
 
 
-def _decision_row(item: dict) -> ExplorerDecisionItem:
-    text = str(item.get("text", ""))
-    if item.get("kind") == "failed":
-        return {"verb": _RETRY_VERB, "label": text, "note": None}
-    verb, label = _decision_verb(text)
+def _decision_row(item: BriefingItem) -> ExplorerDecisionItem:
+    if item.kind == "failed":
+        return {"verb": _RETRY_VERB, "label": item.text, "note": None}
+    verb, label = _decision_verb(item.text)
     return {"verb": verb, "label": label, "note": None}
 
 
 def _build_buckets(
-    sections: list[dict], calendar: list[dict]
+    sections: list[BriefingSection], calendar: list[BriefingEvent]
 ) -> tuple[list[ExplorerTodayItem], list[ExplorerOvernightItem], list[ExplorerDecisionItem]]:
     """Map items by meaning (see the module docstring).
 
     A bucket left empty gets one honest placeholder rather than an array a template might
     index into unconditionally.
     """
-    items = _items(sections)
-    decision_items = [
-        i for i in items if i.get("kind") in _DECISION_KINDS or i.get("kind") == "failed"
-    ]
-    overnight_items = [
-        i for i in items if i.get("kind") not in _DECISION_KINDS and i.get("kind") != "failed"
-    ]
+    items = [item for section in sections for item in section.items]
+    decision_items = [i for i in items if i.kind in _DECISION_KINDS]
+    overnight_items = [i for i in items if i.kind not in _DECISION_KINDS]
 
     today = [_event_row(e) for e in calendar]
     return (
@@ -399,14 +400,14 @@ def _positive(value: int) -> int | None:
     return value if value > 0 else None
 
 
-def _build_stats(tallies: dict | None) -> ExplorerStats:
+def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats:
     """Build the figures from the payload's tallies.
 
     Mail handled and focus time have no source yet, so they are always None and their
     slots render nothing.
     """
-    you = int((tallies or {}).get("done_by_you") or 0)
-    gaia = int((tallies or {}).get("done_by_gaia") or 0)
+    you = tallies.done_by_you if tallies else 0
+    gaia = tallies.done_by_gaia if tallies else 0
     return {
         "done": _positive(you + gaia),
         "you": _positive(you),
@@ -416,16 +417,15 @@ def _build_stats(tallies: dict | None) -> ExplorerStats:
     }
 
 
-def _build_week(week: dict | None) -> ExplorerWeek | None:
+def _build_week(week: BriefingWeek | None) -> ExplorerWeek | None:
     if not week:
         return None
     return {
-        "days": [{"you": int(d["you"]), "gaia": int(d["gaia"])} for d in week["days"]],
-        "shipped": list(week.get("shipped") or []),
-        "handled": list(week.get("handled") or []),
+        "days": [{"you": d.you, "gaia": d.gaia} for d in week.days],
+        "shipped": list(week.shipped),
+        "handled": list(week.handled),
         "ahead": [
-            {"day": date.fromisoformat(e["date"]).strftime("%a"), "label": str(e["title"])}
-            for e in week.get("ahead") or []
+            {"day": date.fromisoformat(e.date).strftime("%a"), "label": e.title} for e in week.ahead
         ],
     }
 

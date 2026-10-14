@@ -3,13 +3,14 @@
 Table-based layout, inline styles only, for email-client compatibility. Three
 templates, selected by the email channel adapter off metadata["kind"]: daily brief,
 weekly digest, and a plain-notification fallback. The briefing templates render from
-the BriefingPayload dict with plain, hand-escaped string composition.
+the BriefingPayload with plain, hand-escaped string composition.
 """
 
 from __future__ import annotations
 
 from html import escape
-from typing import Any
+
+from app.models.briefing_models import BriefingPayload, BriefingSection, BriefingStat
 
 _ROMAN_NUMERALS = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
 
@@ -25,9 +26,6 @@ _SANS_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 
 # hue: the hue varies per day, the template does not.
 _GRADIENT_OFFSETS = (-40, -15, 0, 20, 45, 70)
 _GRADIENT_LIGHTNESS = (58, 50, 46, 50, 58, 64)
-
-
-_DEFAULT_HUE = 210
 
 
 def _gradient_stops(hue: int) -> str:
@@ -75,17 +73,16 @@ def _headline_block(headline: str, lede: str) -> str:
     """
 
 
-def _stat_row(stats: list[dict[str, Any]]) -> str:
+def _stat_row(stats: list[BriefingStat]) -> str:
     if not stats:
         return ""
     cells = []
     for stat in stats:
-        value = escape(str(stat.get("value", "")))
-        label = escape(str(stat.get("label", "")))
-        delta = stat.get("delta")
+        value = escape(stat.value)
+        label = escape(stat.label)
         delta_html = (
-            f'<div style="font-size: 11px; color: {_MUTED}; margin-top: 2px;">{escape(str(delta))}</div>'
-            if delta
+            f'<div style="font-size: 11px; color: {_MUTED}; margin-top: 2px;">{escape(stat.delta)}</div>'
+            if stat.delta
             else ""
         )
         cells.append(
@@ -108,20 +105,17 @@ def _stat_row(stats: list[dict[str, Any]]) -> str:
     """
 
 
-def _sections_block(sections: list[dict[str, Any]]) -> str:
+def _sections_block(sections: list[BriefingSection]) -> str:
     if not sections:
         return ""
     blocks = []
     for i, section in enumerate(sections):
-        numeral = escape(
-            str(section.get("numeral") or _ROMAN_NUMERALS[min(i, len(_ROMAN_NUMERALS) - 1)])
-        )
-        title = escape(str(section.get("title", "")).upper())
-        items = section.get("items") or []
+        numeral = escape(section.numeral or _ROMAN_NUMERALS[min(i, len(_ROMAN_NUMERALS) - 1)])
+        title = escape(section.title.upper())
         item_rows = "".join(
             f'<div style="padding: 8px 0; border-bottom: 1px solid {_BORDER}; font-size: 14px; color: {_TEXT};">'
-            f"{escape(str(item.get('text', '')))}</div>"
-            for item in items
+            f"{escape(item.text)}</div>"
+            for item in section.items
         )
         blocks.append(
             f"""
@@ -182,27 +176,26 @@ def _wrap(body_rows: str) -> str:
 
 
 def _render_briefing_email(
-    payload: dict[str, Any], default_kicker: str, unsubscribe_url: str
+    payload: BriefingPayload, default_kicker: str, unsubscribe_url: str
 ) -> str:
-    hue = payload.get("hue")
     rows = (
-        _masthead(payload.get("kicker") or default_kicker, str(payload.get("date", "")))
-        + _gradient_band(int(hue) if hue is not None else _DEFAULT_HUE)
-        + _headline_block(str(payload.get("headline", "")), str(payload.get("lede", "")))
-        + _stat_row(payload.get("stats") or [])
-        + _sections_block(payload.get("sections") or [])
-        + _caption_block(str(payload.get("caption", "")))
+        _masthead(payload.kicker or default_kicker, payload.date)
+        + _gradient_band(payload.hue)
+        + _headline_block(payload.headline, payload.lede)
+        + _stat_row(payload.stats)
+        + _sections_block(payload.sections)
+        + _caption_block(payload.caption)
         + _unsubscribe_footer(unsubscribe_url)
     )
     return _wrap(rows)
 
 
-def render_daily_brief_email(payload: dict[str, Any], unsubscribe_url: str) -> str:
-    """Render the daily brief email from a validated BriefingPayload dict."""
+def render_daily_brief_email(payload: BriefingPayload, unsubscribe_url: str) -> str:
+    """Render the daily brief email from a BriefingPayload."""
     return _render_briefing_email(payload, "Daily Brief", unsubscribe_url)
 
 
-def render_weekly_digest_email(payload: dict[str, Any], unsubscribe_url: str) -> str:
+def render_weekly_digest_email(payload: BriefingPayload, unsubscribe_url: str) -> str:
     """Render the weekly digest email — same editorial shape as the daily brief."""
     return _render_briefing_email(payload, "Weekly Digest", unsubscribe_url)
 

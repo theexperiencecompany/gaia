@@ -26,6 +26,7 @@ from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.auth_utils import build_user_context
+from app.workers.task_envelope import ArqJobContext
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent
 from shared.py.wide_events import UserContext, log, wide_task
@@ -93,7 +94,7 @@ def _first_name(user: UserDocument) -> str:
     return name.split()[0] if name else "there"
 
 
-async def send_day_zero_hello(ctx: dict, user_id: str, platform: str) -> str:
+async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -> str:
     """Send GAIA's first hello to a freshly-linked chat platform, once per user.
 
     Guards (all must hold): no prior day_zero_hello flag, account created within

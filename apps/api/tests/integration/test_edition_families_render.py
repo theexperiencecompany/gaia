@@ -128,7 +128,7 @@ def _png_height(png: bytes) -> int:
 
 def _render_html(family: str, payload: dict[str, Any]) -> str:
     render = EXPLORER_RENDERER.get(family, render_edition)
-    data = BriefingPayload.model_validate(payload).model_dump()
+    data = BriefingPayload.model_validate(payload)
     return render(data, edition_no=287, generated_local="", tz_label="")
 
 
@@ -198,7 +198,7 @@ def _png_width(png: bytes) -> int:
     "family", ["postal", "receipt", "memo", "playbill", "librarycard", "boardingpass"]
 )
 async def test_the_chat_image_is_cropped_to_the_paper(family: str) -> None:
-    payload = BriefingPayload.model_validate({**_DAILY, "template_family": family}).model_dump()
+    payload = BriefingPayload.model_validate({**_DAILY, "template_family": family})
 
     full = await render_edition_png(payload, crop_to_paper=False)
     cropped = await render_edition_png(payload, crop_to_paper=True)
@@ -210,7 +210,7 @@ async def test_the_chat_image_is_cropped_to_the_paper(family: str) -> None:
 
 @pytest.mark.integration
 async def test_a_full_bleed_family_keeps_its_width_when_cropped() -> None:
-    payload = BriefingPayload.model_validate({**_DAILY, "template_family": "swiss"}).model_dump()
+    payload = BriefingPayload.model_validate({**_DAILY, "template_family": "swiss"})
 
     cropped = await render_edition_png(payload, crop_to_paper=True)
 

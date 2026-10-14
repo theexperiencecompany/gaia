@@ -6,10 +6,8 @@ import { BriefingCard } from "@/features/briefing/components/BriefingCard";
 
 import { briefingSchema } from "../promptSpecs";
 
-// The editorial rendering lives in exactly one place — `BriefingCard` in the
-// `briefing` feature module — so the dashboard and this LLM-emitted path stay
-// visually identical. This view is a thin adapter: OpenUI props are the same
-// shape as `BriefingPayload`, so they pass straight through.
+// BriefingCard is the one editorial rendering; OpenUI props share the
+// BriefingPayload shape, so they pass straight through.
 
 function BriefingView(props: z.infer<typeof briefingSchema>) {
   return <BriefingCard payload={props} defaultCollapsed={false} />;

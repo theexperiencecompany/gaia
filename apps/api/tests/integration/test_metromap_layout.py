@@ -105,7 +105,7 @@ async def _measure_each_date(texts: tuple[str, ...]) -> list[dict[str, Any]]:
             for date in _DATES:
                 data = BriefingPayload.model_validate({**_payload(texts), "date": date})
                 html = EXPLORER_RENDERER["metromap"](
-                    data.model_dump(), edition_no=287, generated_local="", tz_label=""
+                    data, edition_no=287, generated_local="", tz_label=""
                 )
                 # A fresh page per render: the document's top-level script globals persist.
                 page = await browser.new_page(viewport={"width": 1180, "height": 800})

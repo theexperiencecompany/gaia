@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.explorer_adapter import build_ed
 from app.services.briefing.editions.explorer_render import explorer_family_ids
 
@@ -19,18 +20,22 @@ def _item(text: str, kind: str = "note") -> dict[str, Any]:
     return {"text": text, "kind": kind}
 
 
-def _payload(**overrides: Any) -> dict[str, Any]:
+def _payload(**overrides: Any) -> BriefingPayload:
     payload: dict[str, Any] = {
+        "kicker": "",
         "date": "2026-07-05",
+        "headline": "",
         "lede": "Three things need you before noon.",
         "stats": [],
         "sections": [],
+        "mood": "clear",
+        "caption": "",
     }
     payload.update(overrides)
-    return payload
+    return BriefingPayload.model_validate(payload)
 
 
-def _build(payload: dict[str, Any], *, generated_local: str = "6:02 AM") -> dict[str, Any]:
+def _build(payload: BriefingPayload, *, generated_local: str = "6:02 AM") -> dict[str, Any]:
     return dict(
         build_ed(
             payload,
@@ -81,8 +86,8 @@ class TestDateline:
         assert ed["year"] == 0
         assert ed["dateLong"] == "last tuesday"
 
-    def test_missing_date_key_degrades_without_raising(self) -> None:
-        ed = _build({"lede": "x"})
+    def test_empty_date_degrades_without_raising(self) -> None:
+        ed = _build(_payload(date=""))
 
         assert ed["dateLong"] == ""
         assert ed["year"] == 0
@@ -101,13 +106,8 @@ class TestEditionScalars:
 
         assert ed["deck"] == "Quiet morning."
 
-    def test_non_string_lede_is_coerced_rather_than_raising(self) -> None:
-        ed = _build(_payload(headline=7))
-
-        assert ed["deck"] == "7"
-
-    def test_absent_lede_key_becomes_an_empty_deck(self) -> None:
-        ed = _build({"date": "2026-07-05"})
+    def test_empty_headline_becomes_an_empty_deck(self) -> None:
+        ed = _build(_payload(headline=""))
 
         assert ed["deck"] == ""
 
@@ -204,7 +204,7 @@ class TestContent:
     failed run to retry, is a decision. A status word is never a headline.
     """
 
-    def _daily(self, **overrides: Any) -> dict[str, Any]:
+    def _daily(self, **overrides: Any) -> BriefingPayload:
         return _payload(
             sections=[
                 {
@@ -345,7 +345,7 @@ class TestFixedSlots:
     A family handed fewer threw in the page script, and Chromium shipped a blank 2px PNG.
     """
 
-    def _sparse(self) -> dict[str, Any]:
+    def _sparse(self) -> BriefingPayload:
         return _payload(
             sections=[{"numeral": "I", "title": "X", "items": [_item("Pick a slot", "you")]}]
         )

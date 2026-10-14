@@ -15,6 +15,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
+from app.models.briefing_models import BriefingPayload
 from app.services.briefing import edition_email
 from app.services.briefing.edition_email import is_edition_kind, render_edition_email
 
@@ -73,19 +74,26 @@ EXPECTED_EMAIL_WITHOUT_ACTIONS = (
 )
 
 
-def make_payload(**overrides: Any) -> dict[str, Any]:
+def make_payload(**overrides: Any) -> BriefingPayload:
     payload: dict[str, Any] = {
+        "kicker": "THE MORNING BRIEF",
         "date": "2026-01-10",
         "headline": "Your Friday",
         "lede": "Three things need you.",
         "sections": [],
+        "mood": "clear",
+        "caption": "Onward.",
     }
     payload.update(overrides)
-    return payload
+    return BriefingPayload.model_validate(payload)
 
 
 def make_item(kind: str, text: str = "Send the invoice", link: str | None = None) -> dict[str, Any]:
     return {"kind": kind, "text": text, "link": link}
+
+
+def make_section(*items: dict[str, Any]) -> dict[str, Any]:
+    return {"numeral": "I", "title": "NEEDS YOU", "items": list(items)}
 
 
 class Harness:
@@ -104,7 +112,7 @@ class Harness:
 def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     h = Harness()
 
-    def fake_render_edition(payload: dict[str, Any], **kwargs: Any) -> str:
+    def fake_render_edition(payload: BriefingPayload, **kwargs: Any) -> str:
         h.render_calls.append({"renderer": "classic", "payload": payload, **kwargs})
         return "<edition>classic</edition>"
 
@@ -131,12 +139,10 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     return h
 
 
-async def render(payload: dict[str, Any], **overrides: Any) -> str:
+async def render(payload: BriefingPayload, **overrides: Any) -> str:
     kwargs: dict[str, Any] = {
         "kind": NOTIFICATION_KIND_BRIEFING_DAILY,
         "user_id": USER_ID,
-        "generated_local": "8:00 AM",
-        "tz_label": "IST",
         "unsubscribe_url": UNSUBSCRIBE_URL,
     }
     kwargs.update(overrides)
@@ -145,7 +151,7 @@ async def render(payload: dict[str, Any], **overrides: Any) -> str:
 
 @pytest.mark.unit
 class TestEditionRendering:
-    async def test_classic_renderer_receives_the_edition_number_and_locale_labels(
+    async def test_classic_renderer_receives_the_edition_number_and_no_generation_time(
         self, harness: Harness
     ) -> None:
         await render(make_payload(date="2026-01-10"))
@@ -155,8 +161,7 @@ class TestEditionRendering:
                 "renderer": "classic",
                 "payload": make_payload(date="2026-01-10"),
                 "edition_no": 10,
-                "generated_local": "8:00 AM",
-                "tz_label": "IST",
+                "generated_local": "",
             }
         ]
 
@@ -165,7 +170,7 @@ class TestEditionRendering:
     ) -> None:
         seen: list[dict[str, Any]] = []
 
-        def family(payload: dict[str, Any], **kwargs: Any) -> str:
+        def family(payload: BriefingPayload, **kwargs: Any) -> str:
             seen.append({"payload": payload, **kwargs})
             return "<edition>family</edition>"
 
@@ -177,17 +182,6 @@ class TestEditionRendering:
         assert len(seen) == 1
         assert seen[0]["edition_no"] == 10
         assert harness.image_calls[0]["html"] == "<edition>family</edition>"
-
-    async def test_locale_labels_default_to_empty_strings(self, harness: Harness) -> None:
-        await render_edition_email(
-            make_payload(),
-            kind=NOTIFICATION_KIND_BRIEFING_DAILY,
-            user_id=USER_ID,
-            unsubscribe_url=UNSUBSCRIBE_URL,
-        )
-
-        assert harness.render_calls[0]["generated_local"] == ""
-        assert harness.render_calls[0]["tz_label"] == ""
 
     async def test_edition_epoch_makes_the_first_of_january_2026_edition_one(
         self, harness: Harness
@@ -201,11 +195,8 @@ class TestEditionRendering:
 
         assert harness.render_calls[0]["edition_no"] == 1
 
-    async def test_missing_date_falls_back_to_edition_one(self, harness: Harness) -> None:
-        payload = make_payload()
-        del payload["date"]
-
-        await render(payload)
+    async def test_empty_date_falls_back_to_edition_one(self, harness: Harness) -> None:
+        await render(make_payload(date=""))
 
         assert harness.render_calls[0]["edition_no"] == 1
 
@@ -233,18 +224,6 @@ class TestImageAndUpload:
                 "file_data": b"edition-png-bytes",
             }
         ]
-
-    async def test_upload_public_id_uses_latest_when_the_payload_has_no_date(
-        self, harness: Harness
-    ) -> None:
-        payload = make_payload()
-        del payload["date"]
-
-        await render(payload)
-
-        assert harness.upload_calls[0]["public_id"] == (
-            f"briefing/editions/{USER_ID}/briefing_daily_latest"
-        )
 
     async def test_email_body_markup_is_exactly_this(self, harness: Harness) -> None:
         assert await render(make_payload()) == EXPECTED_EMAIL_WITHOUT_ACTIONS
@@ -287,22 +266,6 @@ class TestAltText:
 
         assert 'alt="Big day"' in html
 
-    async def test_alt_falls_back_when_the_payload_has_no_headline(self, harness: Harness) -> None:
-        payload = make_payload(lede="")
-        del payload["headline"]
-
-        html = await render(payload)
-
-        assert 'alt="Your GAIA brief"' in html
-
-    async def test_alt_falls_back_when_the_payload_has_no_lede_key(self, harness: Harness) -> None:
-        payload = make_payload(headline="Big day")
-        del payload["lede"]
-
-        html = await render(payload)
-
-        assert 'alt="Big day"' in html
-
     async def test_alt_trims_only_the_separator_never_the_headlines_own_letters(
         self, harness: Harness
     ) -> None:
@@ -326,8 +289,8 @@ class TestActionStrip:
     def test_strip_markup_with_actions_is_exactly_this(self, harness: Harness) -> None:
         payload = make_payload(
             sections=[
-                {"items": [make_item("proposal", "  Pay <Acme> & co  ", "todos/1")]},
-                {"items": [make_item("update", "FYI"), {"kind": "needs_you", "link": "/todos/2"}]},
+                make_section(make_item("you", "  Pay <Acme> & co  ", "todos/1")),
+                make_section(make_item("note", "FYI"), make_item("you", "", "/todos/2")),
             ]
         )
 
@@ -336,22 +299,20 @@ class TestActionStrip:
         )
 
     async def test_no_action_items_means_no_waiting_block(self, harness: Harness) -> None:
-        html = await render(make_payload(sections=[{"items": [make_item("update", "FYI only")]}]))
+        html = await render(make_payload(sections=[make_section(make_item("note", "FYI only"))]))
 
         assert "Waiting on your call" not in html
         assert "FYI only" not in html
 
-    async def test_proposal_and_needs_you_items_get_review_links(self, harness: Harness) -> None:
+    async def test_items_waiting_on_the_user_get_review_links(self, harness: Harness) -> None:
         html = await render(
             make_payload(
                 sections=[
-                    {
-                        "items": [
-                            make_item("proposal", "Send the invoice", "todos/1"),
-                            make_item("update", "Nothing to do"),
-                            make_item("needs_you", "Answer Sam", "/todos/2"),
-                        ]
-                    }
+                    make_section(
+                        make_item("you", "Send the invoice", "todos/1"),
+                        make_item("note", "Nothing to do"),
+                        make_item("you", "Answer Sam", "/todos/2"),
+                    )
                 ]
             )
         )
@@ -368,8 +329,8 @@ class TestActionStrip:
         html = await render(
             make_payload(
                 sections=[
-                    {"items": [make_item("proposal", "First", "a")]},
-                    {"items": [make_item("proposal", "Second", "b")]},
+                    make_section(make_item("you", "First", "a")),
+                    make_section(make_item("you", "Second", "b")),
                 ]
             )
         )
@@ -380,7 +341,7 @@ class TestActionStrip:
 
     async def test_item_without_a_link_falls_back_to_the_app_home(self, harness: Harness) -> None:
         html = await render(
-            make_payload(sections=[{"items": [make_item("proposal", "Approve it", None)]}])
+            make_payload(sections=[make_section(make_item("you", "Approve it", None))])
         )
 
         assert f'href="{FRONTEND_URL}" style="color:#00bbff' in html
@@ -388,22 +349,20 @@ class TestActionStrip:
     async def test_item_text_is_escaped_and_trimmed(self, harness: Harness) -> None:
         html = await render(
             make_payload(
-                sections=[{"items": [make_item("proposal", "  Pay <Acme> & co  ", "todos/9")]}]
+                sections=[make_section(make_item("you", "  Pay <Acme> & co  ", "todos/9"))]
             )
         )
 
         assert "Pay &lt;Acme&gt; &amp; co &nbsp;" in html
 
-    async def test_item_without_text_renders_an_empty_label(self, harness: Harness) -> None:
-        html = await render(
-            make_payload(sections=[{"items": [{"kind": "proposal", "link": "todos/9"}]}])
-        )
+    async def test_item_with_empty_text_renders_an_empty_label(self, harness: Harness) -> None:
+        html = await render(make_payload(sections=[make_section(make_item("you", "", "todos/9"))]))
 
         assert "Waiting on your call" in html
         assert html.count("Review</a>") == 1
 
     async def test_sections_without_items_are_tolerated(self, harness: Harness) -> None:
-        html = await render(make_payload(sections=[{"title": "Empty"}]))
+        html = await render(make_payload(sections=[make_section()]))
 
         assert "Waiting on your call" not in html
 
@@ -415,20 +374,26 @@ class TestActionStrip:
 
 @pytest.mark.unit
 class TestActionItems:
-    def test_a_payload_with_no_sections_key_yields_no_actions(self) -> None:
-        assert edition_email._action_items({}) == []
+    def test_a_payload_with_no_sections_yields_no_actions(self) -> None:
+        assert edition_email._action_items(make_payload()) == []
 
-    def test_only_proposal_and_needs_you_items_are_actions(self) -> None:
-        proposal = make_item("proposal", "Send it", "todos/1")
-        needs_you = make_item("needs_you", "Answer Sam", "todos/2")
+    def test_only_items_waiting_on_the_user_are_actions(self) -> None:
         payload = make_payload(
             sections=[
-                {"items": [proposal, make_item("update", "FYI")]},
-                {"items": [make_item("note", "Nice"), needs_you]},
+                make_section(make_item("you", "Send it", "todos/1"), make_item("gaia", "Drafting")),
+                make_section(
+                    make_item("lookback", "Shipped"),
+                    make_item("failed", "Sync broke"),
+                    make_item("note", "Nice"),
+                    make_item("you", "Answer Sam", "todos/2"),
+                ),
             ]
         )
 
-        assert edition_email._action_items(payload) == [proposal, needs_you]
+        assert [item.text for item in edition_email._action_items(payload)] == [
+            "Send it",
+            "Answer Sam",
+        ]
 
 
 @pytest.mark.unit
@@ -485,7 +450,7 @@ class TestPublicAppUrl:
         monkeypatch.setattr(edition_email, "settings", SimpleNamespace(FRONTEND_URL=frontend_url))
 
         html = await render(
-            make_payload(sections=[{"items": [make_item("proposal", "Do it", "todos/1")]}])
+            make_payload(sections=[make_section(make_item("you", "Do it", "todos/1"))])
         )
 
         assert 'href="https://heygaia.io"' in html
@@ -508,7 +473,7 @@ class TestPublicAppUrl:
         )
 
         html = await render(
-            make_payload(sections=[{"items": [make_item("proposal", "Do it", "/todos/1")]}])
+            make_payload(sections=[make_section(make_item("you", "Do it", "/todos/1"))])
         )
 
         assert 'href="https://app.example.com/todos/1"' in html

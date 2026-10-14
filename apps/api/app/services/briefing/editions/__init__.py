@@ -8,9 +8,10 @@ the renderer forever so the archive re-renders identically. Payloads with none
 render as the classic gaia edition.
 """
 
-from collections.abc import Callable
+from typing import Protocol
 
 from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
+from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.explorer_render import (
     explorer_family_ids,
     render_explorer_edition,
@@ -22,14 +23,24 @@ from app.services.briefing.editions.gaia import render_edition
 FAMILY_EDITION = "edition"
 
 
-def _make_explorer_renderer(family: str) -> Callable[..., str]:
-    """Close over one explorer family id and return a render_edition-shaped callable.
+class EditionRenderer(Protocol):
+    """The signature every edition renderer shares (render_edition's)."""
 
-    Signature: (payload, *, edition_no, generated_local, tz_label) -> str.
-    """
+    def __call__(
+        self,
+        payload: BriefingPayload,
+        *,
+        edition_no: int,
+        generated_local: str,
+        tz_label: str = "",
+    ) -> str: ...
+
+
+def _make_explorer_renderer(family: str) -> EditionRenderer:
+    """Close over one explorer family id and return a render_edition-shaped callable."""
 
     def _render(
-        payload: dict,
+        payload: BriefingPayload,
         *,
         edition_no: int,
         generated_local: str,
@@ -38,7 +49,7 @@ def _make_explorer_renderer(family: str) -> Callable[..., str]:
         return render_explorer_edition(
             payload,
             family=family,
-            skin_seed=f"{payload.get('date', '')}:{family}",
+            skin_seed=f"{payload.date}:{family}",
             edition_no=edition_no,
             generated_local=generated_local,
             tz_label=tz_label,
@@ -49,7 +60,7 @@ def _make_explorer_renderer(family: str) -> Callable[..., str]:
 
 # Every vendored explorer template family (app/services/briefing/editions/explorer/),
 # each wired to render_explorer_edition via a closure over its family id.
-EXPLORER_RENDERER: dict[str, Callable[..., str]] = {
+EXPLORER_RENDERER: dict[str, EditionRenderer] = {
     family: _make_explorer_renderer(family) for family in explorer_family_ids()
 }
 
@@ -84,7 +95,7 @@ def paper_selector(family: str | None) -> str:
     return _FULL_BLEED_SELECTOR if family in EXPLORER_RENDERER else _CLASSIC_SELECTOR
 
 
-def renderer_for(family: str | None) -> Callable[..., str] | None:
+def renderer_for(family: str | None) -> EditionRenderer | None:
     """Return the registered renderer for the family.
 
     Returns None for the classic edition, unknown names, and legacy payloads; callers

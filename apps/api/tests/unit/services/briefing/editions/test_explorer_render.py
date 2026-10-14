@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions import explorer_render
 from app.services.briefing.editions.explorer_render import (
     _art_credit,
@@ -81,7 +82,7 @@ EXPECTED_ASSET_KEYS = {
 }
 
 
-def _payload(**overrides: Any) -> dict[str, Any]:
+def _payload(**overrides: Any) -> BriefingPayload:
     payload: dict[str, Any] = {
         "kicker": "Daily brief",
         "date": "2026-07-05",
@@ -89,13 +90,14 @@ def _payload(**overrides: Any) -> dict[str, Any]:
         "lede": "Two approvals and one flight.",
         "tallies": {"done_by_you": 1, "done_by_gaia": 2},
         "calendar": [{"date": "2026-07-05", "start": "09:00", "title": "Standup"}],
+        "mood": "clear",
         "caption": "Made by GAIA",
     }
     payload.update(overrides)
-    return payload
+    return BriefingPayload.model_validate(payload)
 
 
-def _render(payload: dict[str, Any] | None = None, **overrides: Any) -> str:
+def _render(payload: BriefingPayload | None = None, **overrides: Any) -> str:
     kwargs: dict[str, Any] = {
         "family": "swiss",
         "skin_seed": "2026-07-05",

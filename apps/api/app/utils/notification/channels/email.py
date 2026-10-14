@@ -13,12 +13,13 @@ plain-notification template.
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
+
+from pydantic import BaseModel
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
     NotificationChannel,
 )
@@ -45,8 +46,38 @@ from app.utils.notification.unsubscribe import (
 )
 from shared.py.wide_events import log
 
+_DEFAULT_SUBJECT = "GAIA"
+_EDITION_DEFAULT_SUBJECT = "Your GAIA brief"
 
-class EmailChannelAdapter(ChannelAdapter):
+
+class _EmailMetadata(BaseModel):
+    """The one notification-metadata field this channel reads: the template kind."""
+
+    kind: str | None = None
+
+
+@dataclass(frozen=True)
+class BriefingEmail:
+    """A daily or weekly briefing kind with the payload it renders."""
+
+    kind: str
+    payload: BriefingPayload
+
+
+@dataclass(frozen=True)
+class EmailContent:
+    """What one email is rendered from.
+
+    briefing is set only for a briefing kind that carries its payload; everything
+    else renders the plain-notification template from title and body.
+    """
+
+    title: str
+    body: str
+    briefing: BriefingEmail | None = None
+
+
+class EmailChannelAdapter(ChannelAdapter[EmailContent]):
     """Sends notification content to the user's email address."""
 
     @property
@@ -60,15 +91,20 @@ class EmailChannelAdapter(ChannelAdapter):
         """
         return True
 
-    async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
-        return {
-            "kind": notification.metadata.get("kind"),
-            "payload": notification.content.rich_content,
-            "title": notification.content.title,
-            "body": notification.content.body,
-        }
+    async def transform(self, notification: NotificationRequest) -> EmailContent:
+        kind = _EmailMetadata.model_validate(notification.metadata).kind
+        rich_content = notification.content.rich_content
+        return EmailContent(
+            title=notification.content.title,
+            body=notification.content.body,
+            briefing=(
+                BriefingEmail(kind=kind, payload=BriefingPayload.model_validate(rich_content))
+                if kind is not None and is_edition_kind(kind) and rich_content
+                else None
+            ),
+        )
 
-    async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
+    async def deliver(self, content: EmailContent, user_id: str) -> ChannelDeliveryStatus:
         if not settings.RESEND_API_KEY or not settings.EMAIL_UNSUBSCRIBE_SECRET:
             log.info(f"{LogTag.NOTIFICATION} Email skipped: ESP not configured")
             return self._skipped("email: RESEND_API_KEY/EMAIL_UNSUBSCRIBE_SECRET not configured")
@@ -79,33 +115,13 @@ class EmailChannelAdapter(ChannelAdapter):
             return self._skipped("email: no email address on file")
 
         unsubscribe_url = build_unsubscribe_url(user_id)
-        kind = content.get("kind")
-        payload = content.get("payload") or {}
-
-        # Briefings render as a print-quality edition image inlined in the email.
-        # If that render fails, degrade to the plain HTML template rather than drop
-        # the user's brief entirely — logged loudly, not swallowed.
-        if is_edition_kind(kind) and payload:
-            skim = build_skim(BriefingPayload.model_validate(payload), full_brief_url())
-            try:
-                html = await render_edition_email(
-                    payload,
-                    kind=kind,
-                    user_id=user_id,
-                    unsubscribe_url=unsubscribe_url,
-                    preheader=skim.preheader,
-                )
-                subject = skim.headline or content.get("title") or "Your GAIA brief"
-            except Exception as exc:
-                log.warning(
-                    f"{LogTag.NOTIFICATION} Edition render failed, using plain template",
-                    user_id=user_id,
-                    kind=kind,
-                    error=str(exc),
-                )
-                subject, html = self._render(content, unsubscribe_url)
+        if content.briefing is None:
+            subject = content.title or _DEFAULT_SUBJECT
+            html = render_plain_notification_email(subject, content.body, unsubscribe_url)
         else:
-            subject, html = self._render(content, unsubscribe_url)
+            subject, html = await self._render_briefing(
+                content.briefing, content.title, user_id, unsubscribe_url
+            )
 
         await send_email(
             EmailMessage(
@@ -118,20 +134,37 @@ class EmailChannelAdapter(ChannelAdapter):
         )
         return self._success()
 
-    def _render(self, content: dict[str, Any], unsubscribe_url: str) -> tuple[str, str]:
-        """Pick the template by kind and return (subject, html)."""
-        kind = content.get("kind")
-        payload = content.get("payload") or {}
-        title = content.get("title") or "GAIA"
+    async def _render_briefing(
+        self, briefing: BriefingEmail, title: str, user_id: str, unsubscribe_url: str
+    ) -> tuple[str, str]:
+        """Render a briefing as a print-quality edition image inlined in the email.
 
-        if kind == NOTIFICATION_KIND_BRIEFING_DAILY:
-            return payload.get("headline") or title, render_daily_brief_email(
+        If that render fails, degrade to the HTML briefing template rather than drop
+        the user's brief entirely — logged loudly, not swallowed. Returns (subject, html).
+        """
+        payload = briefing.payload
+        skim = build_skim(payload, full_brief_url())
+        try:
+            html = await render_edition_email(
+                payload,
+                kind=briefing.kind,
+                user_id=user_id,
+                unsubscribe_url=unsubscribe_url,
+                preheader=skim.preheader,
+            )
+        except Exception as exc:
+            log.warning(
+                f"{LogTag.NOTIFICATION} Edition render failed, using plain template",
+                user_id=user_id,
+                kind=briefing.kind,
+                error=str(exc),
+            )
+            render_template = (
+                render_weekly_digest_email
+                if briefing.kind == NOTIFICATION_KIND_BRIEFING_WEEKLY
+                else render_daily_brief_email
+            )
+            return payload.headline or title or _DEFAULT_SUBJECT, render_template(
                 payload, unsubscribe_url
             )
-        if kind == NOTIFICATION_KIND_BRIEFING_WEEKLY:
-            return payload.get("headline") or title, render_weekly_digest_email(
-                payload, unsubscribe_url
-            )
-        return title, render_plain_notification_email(
-            title, content.get("body") or "", unsubscribe_url
-        )
+        return skim.headline or title or _EDITION_DEFAULT_SUBJECT, html

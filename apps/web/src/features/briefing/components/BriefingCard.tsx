@@ -3,16 +3,19 @@
 import { Button } from "@heroui/button";
 import { Link } from "@heroui/link";
 import { useState } from "react";
+import type { z } from "zod";
 
 import { ChevronDown, ChevronUp } from "@/components/shared/icons";
+import type { briefingSchema } from "@/config/openui/promptSpecs";
 import { cn } from "@/lib/utils";
-import type {
-  BriefingItemKind,
-  BriefingPayload,
-} from "@/types/features/briefingTypes";
+
+/** The fields the card renders, shared by the stored brief and the OpenUI component. */
+type BriefingCardPayload = z.infer<typeof briefingSchema>;
+type BriefingItemKind =
+  BriefingCardPayload["sections"][number]["items"][number]["kind"];
 
 export interface BriefingCardProps {
-  payload: BriefingPayload;
+  payload: BriefingCardPayload;
   /** Controlled collapsed state (e.g. Mission Control using this as its header). */
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
@@ -111,7 +114,7 @@ export function BriefingCard({
 }
 
 interface MastheadProps {
-  payload: BriefingPayload;
+  payload: BriefingCardPayload;
   isCollapsed: boolean;
   onToggle: () => void;
 }
@@ -154,7 +157,7 @@ function Masthead({ payload, isCollapsed, onToggle }: MastheadProps) {
   );
 }
 
-function HeroBand({ payload }: { payload: BriefingPayload }) {
+function HeroBand({ payload }: { payload: BriefingCardPayload }) {
   return (
     <div className="relative h-40 w-full overflow-hidden rounded-t-2xl sm:h-48">
       <div
@@ -179,7 +182,7 @@ function HeroBand({ payload }: { payload: BriefingPayload }) {
   );
 }
 
-function StatRow({ stats }: { stats: BriefingPayload["stats"] }) {
+function StatRow({ stats }: { stats: BriefingCardPayload["stats"] }) {
   return (
     <div className="mt-5 flex divide-x divide-zinc-800 rounded-2xl bg-zinc-800/50">
       {stats.map((stat) => (
@@ -208,7 +211,7 @@ function StatRow({ stats }: { stats: BriefingPayload["stats"] }) {
 function Section({
   section,
 }: {
-  section: BriefingPayload["sections"][number];
+  section: BriefingCardPayload["sections"][number];
 }) {
   return (
     <div className="mt-6">

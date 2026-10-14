@@ -14,6 +14,8 @@ import random
 import re
 from uuid import uuid4
 
+from pydantic import BaseModel, ValidationError
+
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.core.background.platform_chat import PlatformImage, post_to_platform_chat
 from app.agents.prompts.briefing_prompts import (
@@ -44,10 +46,14 @@ from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
     BRIEFING_ITEM_STATES,
     BriefingEvent,
+    BriefingItem,
     BriefingItemKind,
     BriefingKind,
     BriefingModel,
+    BriefingMood,
     BriefingPayload,
+    BriefingSection,
+    BriefingStat,
     BriefingTallies,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
@@ -298,9 +304,7 @@ async def _deliver(
     skim = build_skim(payload, full_brief_url())
     channel = await resolve_chat_channel(user.id)
     image_url = (
-        await host_edition_image(
-            payload.model_dump(), user_id=user.id, kind=kind, crop_to_paper=True
-        )
+        await host_edition_image(payload, user_id=user.id, kind=kind, crop_to_paper=True)
         if channel
         else None
     )
@@ -354,8 +358,8 @@ _WORK_SECTION_TITLE = "GAIA'S WORK"
 _SECTION_NUMERALS = ("I", "II", "III")
 
 
-def _work_item(doc: TodoDocument, kind: BriefingItemKind) -> dict:
-    return {"text": doc.title, "todo_id": doc.id, "kind": kind}
+def _work_item(doc: TodoDocument, kind: BriefingItemKind) -> BriefingItem:
+    return BriefingItem(text=doc.title, todo_id=doc.id, kind=kind)
 
 
 def _held_text(doc: PendingBriefItemDocument) -> str:
@@ -376,7 +380,7 @@ class _Sections:
     this brief accounts for, cleared once it has gone out.
     """
 
-    sections: list[dict]
+    sections: list[BriefingSection]
     left_out: int
     reports: dict[str, str]
     carried_ids: list[str]
@@ -395,8 +399,8 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     gaia_work = [_work_item(d, "lookback") for d in work.completed] + [
         _work_item(d, "gaia") for d in work.running
     ]
-    seen = {_same_text_key(item["text"]) for item in needs_you + gaia_work}
-    held_items: list[dict] = []
+    seen = {_same_text_key(item.text) for item in needs_you + gaia_work}
+    held_items: list[BriefingItem] = []
     held_ids: list[str] = []
     duplicate_ids: list[str] = []
     reports: dict[str, str] = {}
@@ -406,11 +410,11 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
             duplicate_ids.append(doc.id)
             continue
         seen.add(_same_text_key(text))
-        held_items.append({"text": text, "kind": "note"})
+        held_items.append(BriefingItem(text=text, kind="note"))
         held_ids.append(doc.id)
         reports[text] = doc.text
 
-    sections: list[dict] = []
+    sections: list[BriefingSection] = []
     budget = MAX_BRIEF_ITEMS
     kept_held = 0
     for title, items in (
@@ -424,7 +428,7 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
             kept_held = len(kept)
         if kept:
             sections.append(
-                {"numeral": _SECTION_NUMERALS[len(sections)], "title": title, "items": kept}
+                BriefingSection(numeral=_SECTION_NUMERALS[len(sections)], title=title, items=kept)
             )
     kept_total = MAX_BRIEF_ITEMS - budget
     return _Sections(
@@ -435,8 +439,8 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     )
 
 
-def _fact_line(item: dict, art: _ArtifactFact | None) -> str:
-    line = f"- {BRIEFING_ITEM_STATES[item['kind']]}: {item['text']}"
+def _fact_line(item: BriefingItem, art: _ArtifactFact | None) -> str:
+    line = f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
     if art:
         if art.snippet:
             line += f" | summary: {art.snippet}"
@@ -455,10 +459,20 @@ class _Facts:
     The held items are the ones the brief carries.
     """
 
-    sections: list[dict]
-    stats: list[dict]
+    sections: list[BriefingSection]
+    stats: list[BriefingStat]
     block: str
     carried_ids: list[str]
+
+
+def _work_stats(work: context.TrackedWork) -> list[BriefingStat]:
+    """Build the stat row: one figure per non-empty tracked-work state."""
+    figures = (
+        (work.completed, "done since yesterday"),
+        (work.running, "in progress"),
+        (work.blocked, "waiting on you"),
+    )
+    return [BriefingStat(value=str(len(docs)), label=label) for docs, label in figures if docs]
 
 
 def _build_facts(
@@ -476,24 +490,17 @@ def _build_facts(
     built = _work_sections(work, held)
     sections, left_out = built.sections, built.left_out
     for sec in sections:
-        for it in sec["items"]:
-            art = artifacts.get(it.get("todo_id", ""))
+        for it in sec.items:
+            art = artifacts.get(it.todo_id or "")
             if art and art.link:
-                it["link"] = art.link
-    stats: list[dict] = []
-    if work.completed:
-        stats.append({"value": str(len(work.completed)), "label": "done since yesterday"})
-    if work.running:
-        stats.append({"value": str(len(work.running)), "label": "in progress"})
-    if work.blocked:
-        stats.append({"value": str(len(work.blocked)), "label": "waiting on you"})
+                it.link = art.link
 
     fact_lines: list[str] = []
     for sec in sections:
-        fact_lines.append(f"[{sec['title']}]")
-        for it in sec["items"]:
-            fact_lines.append(_fact_line(it, artifacts.get(it.get("todo_id", ""))))
-            report = built.reports.get(it["text"])
+        fact_lines.append(f"[{sec.title}]")
+        for it in sec.items:
+            fact_lines.append(_fact_line(it, artifacts.get(it.todo_id or "")))
+            report = built.reports.get(it.text)
             if report:
                 fact_lines.append(f"  full report:\n{report}")
     if left_out:
@@ -506,13 +513,20 @@ def _build_facts(
             "ran, finished, or is pending beyond what is stated here."
         )
     fact_lines.append(user_todos_note)
-    return _Facts(sections, stats, "\n".join(fact_lines), built.carried_ids)
+    return _Facts(sections, _work_stats(work), "\n".join(fact_lines), built.carried_ids)
 
 
-_VOICE_KEYS = ("headline", "lede", "caption", "mood", "bubbles")
+class _Voice(BaseModel):
+    """The voice-only JSON the daily run's agent writes over the code-built facts."""
+
+    headline: str
+    lede: str
+    caption: str
+    mood: BriefingMood
+    bubbles: list[str]
 
 
-def _parse_voice(raw: str) -> dict:
+def _parse_voice(raw: str) -> _Voice:
     """Extract the voice-only JSON (headline/lede/caption/mood/bubbles)."""
     candidates = _JSON_FENCE.findall(raw) or [raw]
     for block in candidates:
@@ -520,15 +534,9 @@ def _parse_voice(raw: str) -> dict:
         if not block:
             continue
         try:
-            data = json.loads(block)
-        except json.JSONDecodeError:
+            return _Voice.model_validate_json(block)
+        except ValidationError:
             continue
-        if (
-            isinstance(data, dict)
-            and all(k in data for k in _VOICE_KEYS)
-            and isinstance(data["bubbles"], list)
-        ):
-            return data
     raise BriefingGenerationError(
         f"No valid voice JSON in agent output (first 300 chars): {raw[:300]!r}"
     )
@@ -616,24 +624,26 @@ def _user_todos_note(open_count: int, open_titles: list[str]) -> str:
 
 
 def _daily_payload(
-    clock: UserClock, voice: dict, sections: list[dict], stats: list[dict], is_winback: bool
+    clock: UserClock,
+    voice: _Voice,
+    sections: list[BriefingSection],
+    stats: list[BriefingStat],
+    is_winback: bool,
 ) -> BriefingPayload:
-    return BriefingPayload.model_validate(
-        {
-            "kicker": "THE MORNING BRIEF",
-            "date": clock.date_str,
-            "headline": voice["headline"],
-            "lede": voice["lede"],
-            "stats": stats,
-            "sections": sections,
-            "mood": "winback" if is_winback else voice["mood"],
-            "caption": voice["caption"],
-            "hue": hue_for_day(clock.day_of_year),
-            "generated_at": clock.now_local.strftime("%-I:%M %p"),
-            "bubbles": voice["bubbles"],
-            # Single-string rendering for the in-app body / email fallback.
-            "message": "\n\n".join(voice["bubbles"]),
-        }
+    return BriefingPayload(
+        kicker="THE MORNING BRIEF",
+        date=clock.date_str,
+        headline=voice.headline,
+        lede=voice.lede,
+        stats=stats,
+        sections=sections,
+        mood="winback" if is_winback else voice.mood,
+        caption=voice.caption,
+        hue=hue_for_day(clock.day_of_year),
+        generated_at=clock.now_local.strftime("%-I:%M %p"),
+        bubbles=voice.bubbles,
+        # Single-string rendering for the in-app body / email fallback.
+        message="\n\n".join(voice.bubbles),
     )
 
 
