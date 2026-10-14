@@ -15,11 +15,15 @@ gaia bots add discord
 gaia bots add slack
 ```
 
-None of the three bots needs a public URL. Telegram and Discord connect out to their platform. Slack uses Socket Mode, which also connects out. They work on a laptop or behind a firewall as well as on a server with a domain.
+None of the three bots needs a public URL or a domain. Telegram and Discord connect out to their platform, and Slack uses Socket Mode, which also connects out. They work on a laptop or behind a firewall as well as on a server with a domain.
 
 <Note>
   Run these commands on the machine where you ran `gaia up`. They need a working self-host install.
 </Note>
+
+<Warning>
+  Chat bots need a GAIA release that includes `gaia bots`. On an older install, run `gaia update` first. The bot images run on both amd64 and arm64 servers.
+</Warning>
 
 ## Telegram
 
@@ -55,6 +59,10 @@ Slack needs three values, all from your app's page at [api.slack.com/apps](https
 The bot answers only people who have linked their chat account to a GAIA account on your instance. In a chat with the bot, send `/auth`. The bot replies with a link to your GAIA instance. Open it, sign in with your GAIA email and password, and the link is done.
 
 Each person on your instance links their own chat account the same way.
+
+## The Bots page
+
+Your instance's **Bots** page (`/bots`) links to the bots you added: your Telegram bot's chat, your Discord bot's invite link and your Slack workspace. A platform you haven't set up shows the `gaia bots add` command to run instead.
 
 ## Check on your bots
 
