@@ -446,7 +446,7 @@ class TestSendReferralRewardEmail:
     @patch(f"{SENDERS}.build_unsubscribe_url", return_value="https://heygaia.io/unsub")
     @patch(f"{SENDERS}.send_email")
     async def test_the_real_template_tells_who_joined_and_when_the_bill_moves(
-        self, mock_send, mock_url, mock_headers
+        self, mock_send: AsyncMock, mock_url: MagicMock, mock_headers: MagicMock
     ) -> None:
         await send_referral_reward_email(
             ReferralRewardEmail(

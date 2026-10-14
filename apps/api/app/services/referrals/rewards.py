@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 
 from dodopayments import NotFoundError
 import pendulum
+from pymongo.errors import PyMongoError
 
 from app.constants.notifications import CHANNEL_TYPE_EMAIL, CHANNEL_TYPE_INAPP
 from app.constants.referrals import (
@@ -307,7 +308,21 @@ async def _email_referrer(referral: ReferralDocument, friend_name: str, reward_l
             error_type=type(e).__name__,
         )
         return
-    await record_announcement(referral.referrer_user_id, ReferralNudge.REWARD_EMAIL)
+    await _record_announced(referral.referrer_user_id, ReferralNudge.REWARD_EMAIL)
+
+
+async def _record_announced(user_id: str, nudge: ReferralNudge) -> None:
+    """Stamp a reward note that already went out; a failed stamp must not undo the delivery."""
+    try:
+        await record_announcement(user_id, nudge)
+    except PyMongoError as e:
+        log.error(
+            "Referral reward announcement was not recorded",
+            user_id=user_id,
+            nudge=nudge.value,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def _notify(referral: ReferralDocument, delivery: RewardDelivery) -> None:
@@ -339,5 +354,5 @@ async def _notify(referral: ReferralDocument, delivery: RewardDelivery) -> None:
             friend_user_id=referral.friend_user_id,
         )
     elif _reached_chat(record):
-        await record_announcement(referral.referrer_user_id, ReferralNudge.REWARD_DM)
+        await _record_announced(referral.referrer_user_id, ReferralNudge.REWARD_DM)
     await _email_referrer(referral, friend_name, reward_line)
