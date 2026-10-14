@@ -1,7 +1,8 @@
 /**
  * Wizard step 1 — pick and configure an AI provider (OpenRouter, Gemini,
  * OpenAI, Ollama, or a custom OpenAI-compatible endpoint). Every card saves and
- * tests independently; any single success unblocks continuing.
+ * tests independently; any single success unblocks continuing. An instance
+ * that already chats opens on that provider's summary instead.
  */
 
 "use client";
@@ -13,10 +14,14 @@ import type {
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
-import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
+import {
+  activeLlmProvider,
+  isProviderConfigured,
+} from "@/features/settings/hooks/useSetupStatus";
 import { MOTION_FADE_UP } from "../../constants";
 import { resolveLlmProviderCards } from "../../utils/providerCards";
 import { ProviderSetupCard } from "../ProviderSetupCard";
+import { ConnectedProviderCard } from "./ConnectedProviderCard";
 
 type ProviderMode = "hosted" | "ollama" | "skip";
 
@@ -35,21 +40,39 @@ export function ProviderStep({
   onSaved,
   onNext,
 }: ProviderStepProps) {
+  const activeKey = activeLlmProvider(status, catalog);
+  const activeSource = activeKey && status.providers[activeKey]?.source;
+  const [isChanging, setIsChanging] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [mode, setMode] = useState<ProviderMode>("hosted");
+  const [mode, setMode] = useState<ProviderMode>(
+    activeKey === "ollama" ? "ollama" : "hosted",
+  );
 
   const llmCards = resolveLlmProviderCards(catalog);
-
-  const openRouterCard =
-    llmCards.find((c) => c.key === "openrouter") ?? llmCards[0];
+  const activeCard = llmCards.find((c) => c.key === activeKey);
   const ollamaCard = llmCards.find((c) => c.key === "ollama");
 
   // Hosted lane — every LLM card except Ollama. Ollama gets its own top-level
   // tab so self-hosters without a key see a clear "free, no key needed" path.
+  // The working provider leads it; a fresh instance starts on OpenRouter.
   const hostedCards = llmCards.filter((c) => c.key !== "ollama");
   const hostedPrimary =
-    hostedCards.find((c) => c.key === openRouterCard?.key) ?? hostedCards[0];
+    hostedCards.find((c) => c.key === activeKey) ??
+    hostedCards.find((c) => c.key === "openrouter") ??
+    hostedCards[0];
   const hostedOthers = hostedCards.filter((c) => c.key !== hostedPrimary?.key);
+
+  if (activeCard && activeSource && activeSource !== "unset" && !isChanging) {
+    return (
+      <m.div className="flex w-full flex-col gap-3" {...MOTION_FADE_UP}>
+        <ConnectedProviderCard
+          card={activeCard}
+          source={activeSource}
+          onChange={() => setIsChanging(true)}
+        />
+      </m.div>
+    );
+  }
 
   const handleOllamaSaved = () => {
     // onSaved fires only after a successful save — advance once the status
