@@ -35,34 +35,21 @@ export async function getSetupStatusServer(): Promise<SetupStatusResponse | null
 }
 
 /**
- * Resolve the instance auth mode for server-rendered auth pages.
- * Prefers static AUTH_MODE, else the live `GET /setup/status` probe.
- * Invalid env values warn and defer to the probe; unreachable probes
- * resolve to "workos".
+ * Resolve the instance auth mode for server-rendered auth pages from the
+ * API's `GET /setup/status`; an unreachable probe resolves to "workos".
  */
 export async function resolveInstanceAuthMode(): Promise<
   SetupStatusResponse["auth_mode"]
 > {
-  const configured = configuredInstanceAuthMode();
-  if (configured) return configured;
   const setupStatus = await getSetupStatusServer();
   return setupStatus?.auth_mode ?? "workos";
 }
 
 /**
- * The auth mode the deployment pins through AUTH_MODE (the self-host image
- * always sets it), or null when unset or invalid. Never touches the network.
+ * Whether this web server fronts a self-hosted instance: the self-host compose
+ * and deploy templates set GAIA_SELFHOST=true, hosted GAIA never does. Never
+ * touches the network; what the instance does comes from GET /setup/status.
  */
-export function configuredInstanceAuthMode():
-  | SetupStatusResponse["auth_mode"]
-  | null {
-  const envAuthMode = process.env.AUTH_MODE;
-  if (!envAuthMode) return null;
-  if (envAuthMode === "workos" || envAuthMode === "local") {
-    return envAuthMode;
-  }
-  console.error(
-    `[auth] Ignoring invalid AUTH_MODE "${envAuthMode}" (expected "workos" or "local")`,
-  );
-  return null;
+export function isSelfhostWeb(): boolean {
+  return process.env.GAIA_SELFHOST === "true";
 }

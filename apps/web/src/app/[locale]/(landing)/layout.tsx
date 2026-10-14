@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import LandingLayoutShell from "@/components/layouts/LandingLayoutShell";
-import { configuredInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
+import { isSelfhostWeb } from "@/features/auth/api/serverSetupStatusApi";
 
 export default function LocaleLandingLayout({
   children,
@@ -8,7 +8,7 @@ export default function LocaleLandingLayout({
   children: ReactNode;
 }) {
   return (
-    <LandingLayoutShell instanceAuthMode={configuredInstanceAuthMode()}>
+    <LandingLayoutShell selfhost={isSelfhostWeb()}>
       {children}
     </LandingLayoutShell>
   );

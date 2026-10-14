@@ -1,5 +1,4 @@
 "use client";
-import type { SetupStatusResponse } from "@gaia/shared/api/generated";
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 import Navbar from "@/components/navigation/Navbar";
@@ -29,14 +28,14 @@ const BLUR_CONFIG: BlurLayer[] = [
 
 export default function LandingLayoutShell({
   children,
-  instanceAuthMode,
+  selfhost,
 }: {
   children: ReactNode;
-  /** AUTH_MODE the deployment pins; null on hosted GAIA. */
-  instanceAuthMode: SetupStatusResponse["auth_mode"] | null;
+  /** Whether this web server fronts a self-hosted instance. */
+  selfhost: boolean;
 }) {
   const pathname = usePathname();
-  const chrome = showsMarketingChrome(pathname, instanceAuthMode);
+  const chrome = showsMarketingChrome(pathname, selfhost);
 
   return (
     <LandingProvidersLayout>

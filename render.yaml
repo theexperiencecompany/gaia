@@ -70,8 +70,8 @@ services:
       url: ghcr.io/theexperiencecompany/gaia-web:latest
     plan: 0.5c-512mb
     envVars:
-      - key: AUTH_MODE
-        value: local
+      - key: GAIA_SELFHOST
+        value: "true"
       # http://<gaia-backend internal address>/api/v1/ — fill in after the
       # first deploy (Render cannot compose a URL from a private hostname).
       - key: API_BASE_URL_INTERNAL

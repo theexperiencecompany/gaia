@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selfhostHomeRedirect } from "@/features/auth/api/selfhostHomeRedirect";
+import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 
 const SETUP_STATUS = {
   auth_mode: "local",
@@ -48,7 +49,7 @@ afterEach(() => {
 
 describe("/ on a self-hosted instance", () => {
   beforeEach(() => {
-    vi.stubEnv("AUTH_MODE", "local");
+    vi.stubEnv("GAIA_SELFHOST", "true");
   });
 
   it("goes to the setup wizard while setup is needed", async () => {
@@ -76,5 +77,14 @@ describe("/ on hosted GAIA", () => {
 
     expect(await homeTarget("wos_session=abc")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("the auth mode server-rendered auth pages use", () => {
+  it("is the API's, whatever a stale AUTH_MODE in the web env says", async () => {
+    vi.stubEnv("AUTH_MODE", "local");
+    stubSetupStatus({ auth_mode: "workos" });
+
+    expect(await resolveInstanceAuthMode()).toBe("workos");
   });
 });
