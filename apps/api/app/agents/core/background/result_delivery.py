@@ -938,7 +938,7 @@ async def _build_follow_up_actions(
     notification_text: str,
     user_msg_content: str,
     user_id: str,
-    conversation_id: str | None,
+    conversation_id: str,
 ) -> list[str]:
     """Generate follow-up suggestions on the executor's final answer.
 
@@ -960,6 +960,7 @@ async def _build_follow_up_actions(
         # key (measured: 0% cache hit on executor-final follow-ups). aux suffix is
         # applied inside ainvoke_structured, matching the node-path calls.
         {"configurable": {"user_id": user_id, "session_id": conversation_id}},
+        conversation_id=conversation_id,
     )
 
 
