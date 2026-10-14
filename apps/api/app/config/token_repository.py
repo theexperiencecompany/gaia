@@ -24,13 +24,14 @@ from app.constants.log_tags import LogTag
 from app.db.postgresql import get_db_session
 from app.models.db_oauth import OAuthToken
 from app.services.providers.provider_credentials_service import (
-    ProviderConfig,
+    GoogleOAuthClient,
+    google_oauth_client,
     resolve as resolve_provider_config,
 )
 from shared.py.wide_events import log
 
 
-async def resolve_google_oauth_credentials() -> tuple[str, str] | None:
+async def resolve_google_oauth_credentials() -> GoogleOAuthClient | None:
     """Return the Google OAuth client id and secret, store credential first.
 
     The stored google_oauth credential carries the client secret as its api_key
@@ -38,12 +39,7 @@ async def resolve_google_oauth_credentials() -> tuple[str, str] | None:
     environment. Returns None unless both halves resolve: a half-configured
     Google must never reach an OAuth endpoint.
     """
-    config: ProviderConfig | None = await resolve_provider_config("google_oauth")
-    client_id = settings.GOOGLE_CLIENT_ID
-    client_secret = config["api_key"] if config else None
-    if not (client_id and client_secret):
-        return None
-    return client_id, client_secret
+    return google_oauth_client(await resolve_provider_config("google_oauth"))
 
 
 class GoogleTokenData(TypedDict, total=False):

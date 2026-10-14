@@ -7,6 +7,7 @@ then None. Everywhere else the environment is the only source and the store is
 never read. Writes invalidate locally and publish so other pods rebuild too.
 """
 
+from collections.abc import Callable
 import importlib
 import json
 import os
@@ -59,6 +60,55 @@ class CredentialResolution(NamedTuple):
     source: CredentialSource
     # A stored credential is active while the environment sets a different one.
     shadows_env: bool
+
+
+class CloudinaryAccount(NamedTuple):
+    """Everything the Cloudinary SDK needs; the store carries only the API key."""
+
+    cloud_name: str
+    api_key: str
+    api_secret: str
+
+
+class GoogleOAuthClient(NamedTuple):
+    """The OAuth client pair; the store carries only the secret, as api_key."""
+
+    client_id: str
+    client_secret: str
+
+
+def cloudinary_account(config: ProviderConfig | None) -> CloudinaryAccount | None:
+    """Complete a resolved Cloudinary key with its env-only cloud name and secret; None unless all three."""
+    api_key = config["api_key"] if config else None
+    cloud_name = settings.CLOUDINARY_CLOUD_NAME
+    api_secret = settings.CLOUDINARY_API_SECRET
+    if not (cloud_name and api_key and api_secret):
+        return None
+    return CloudinaryAccount(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
+
+
+def google_oauth_client(config: ProviderConfig | None) -> GoogleOAuthClient | None:
+    """Complete a resolved Google client secret with its env-only client id; None unless both."""
+    client_secret = config["api_key"] if config else None
+    client_id = settings.GOOGLE_CLIENT_ID
+    if not (client_id and client_secret):
+        return None
+    return GoogleOAuthClient(client_id=client_id, client_secret=client_secret)
+
+
+# Providers whose consumer needs env-only fields beyond the stored credential.
+_ENV_COMPLETIONS: dict[str, Callable[[ProviderConfig | None], object | None]] = {
+    "cloudinary": cloudinary_account,
+    "google_oauth": google_oauth_client,
+}
+
+
+def is_usable(provider: str, config: ProviderConfig | None) -> bool:
+    """Whether a resolved config can serve its consumer, env-only fields included."""
+    if config is None:
+        return False
+    complete = _ENV_COMPLETIONS.get(provider)
+    return complete is None or complete(config) is not None
 
 
 # provider → (cached-at monotonic, resolved config). Entries may hold None-ish

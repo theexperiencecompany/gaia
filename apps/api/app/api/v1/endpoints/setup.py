@@ -47,6 +47,7 @@ from app.services.providers.provider_credentials_service import (
     delete as delete_provider_config,
     inspect_credential,
     invalidate as invalidate_provider_cache,
+    is_usable,
     resolve as resolve_provider_config,
     upsert as upsert_provider_config,
 )
@@ -212,7 +213,7 @@ async def get_setup_status() -> SetupStatusResponse:
     log.set(operation="setup_status", auth_mode=settings.AUTH_MODE)
     has_admin_account = await local_credentials_repository.admin_exists()
     resolutions = {p: await inspect_credential(p) for p in CREDENTIAL_PROVIDERS}
-    configured = {p: r.source is not CredentialSource.UNSET for p, r in resolutions.items()}
+    configured = {p: is_usable(p, r.config) for p, r in resolutions.items()}
     return SetupStatusResponse(
         auth_mode=settings.AUTH_MODE,
         has_admin_account=has_admin_account,
@@ -285,7 +286,7 @@ async def list_providers(
         api_key = config.get("api_key") if config else None
         masked[provider] = MaskedProvider(
             provider=provider,
-            configured=config is not None,
+            configured=is_usable(provider, config),
             base_url=config.get("base_url") if config else None,
             model=config.get("model") if config else None,
             api_key_hint=f"...{api_key[-4:]}" if api_key else None,

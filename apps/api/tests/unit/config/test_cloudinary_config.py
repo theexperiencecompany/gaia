@@ -14,6 +14,7 @@ from app.config.cloudinary import init_cloudinary
 from app.utils.exceptions import ProviderNotConfiguredError
 
 MOD = "app.config.cloudinary"
+SERVICE_MOD = "app.services.providers.provider_credentials_service"
 
 
 def _stored(api_key: str | None) -> dict[str, str | None]:
@@ -52,7 +53,7 @@ class TestInitCloudinary:
         config_mock = MagicMock()
         with (
             patch(f"{MOD}.resolved_config", return_value=_stored("stored-key")),
-            patch(f"{MOD}.settings") as mock_settings,
+            patch(f"{SERVICE_MOD}.settings") as mock_settings,
             patch(f"{MOD}.cloudinary.config", config_mock),
         ):
             _patch_env(mock_settings)
@@ -66,7 +67,7 @@ class TestInitCloudinary:
         config_mock = MagicMock()
         with (
             patch(f"{MOD}.resolved_config", return_value=_stored("stored-key")),
-            patch(f"{MOD}.settings") as mock_settings,
+            patch(f"{SERVICE_MOD}.settings") as mock_settings,
             patch(f"{MOD}.cloudinary.config", config_mock),
         ):
             _patch_env(mock_settings, **{missing: None})

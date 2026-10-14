@@ -288,6 +288,54 @@ class TestStatus:
             "env_shadowed": True,
         }
 
+    @pytest.mark.parametrize(
+        ("provider", "missing_env"),
+        [
+            ("cloudinary", "CLOUDINARY_CLOUD_NAME"),
+            ("cloudinary", "CLOUDINARY_API_SECRET"),
+            ("google_oauth", "GOOGLE_CLIENT_ID"),
+        ],
+    )
+    async def test_a_saved_key_missing_its_env_half_is_not_configured(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        provider: str,
+        missing_env: str,
+    ) -> None:
+        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET", "GOOGLE_CLIENT_ID"):
+            monkeypatch.setattr(settings, name, "env-value")
+        for name in ("CLOUDINARY_API_KEY", "GOOGLE_CLIENT_SECRET", missing_env):
+            monkeypatch.setattr(settings, name, None)
+        provider_service.configs[provider] = {
+            "api_key": STORED_KEY,
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
+
+        status = (await client.get(f"{API}/status")).json()["providers"][provider]
+        listed = (await client.get(f"{API}/providers")).json()["providers"][provider]
+
+        assert status == {"configured": False, "source": "stored", "env_shadowed": False}
+        assert listed["configured"] is False
+
+    @pytest.mark.parametrize("provider", ["cloudinary", "google_oauth"])
+    async def test_a_saved_key_with_its_env_half_is_configured(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch, provider: str
+    ) -> None:
+        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET", "GOOGLE_CLIENT_ID"):
+            monkeypatch.setattr(settings, name, "env-value")
+        provider_service.configs[provider] = {
+            "api_key": STORED_KEY,
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
+
+        body = (await client.get(f"{API}/status")).json()
+        assert body["providers"][provider]["configured"] is True
+
     async def test_an_unconfigured_provider_reports_unset(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:

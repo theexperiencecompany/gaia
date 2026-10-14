@@ -90,7 +90,7 @@ class TestTokenRepositoryInit:
     """Tests for __init__ + the lazy Google client registration."""
 
     @patch("app.config.token_repository.get_db_session")
-    @patch("app.config.token_repository.settings")
+    @patch("app.services.providers.provider_credentials_service.settings")
     @patch("app.config.token_repository.OAuth")
     async def test_lazy_client_registers_from_stored_credential(
         self, mock_oauth_cls: MagicMock, mock_settings: MagicMock, _mock_db: MagicMock
@@ -131,7 +131,7 @@ class TestTokenRepositoryInit:
         )
 
     @patch("app.config.token_repository.get_db_session")
-    @patch("app.config.token_repository.settings")
+    @patch("app.services.providers.provider_credentials_service.settings")
     @patch("app.config.token_repository.OAuth")
     async def test_lazy_client_uses_the_env_secret_the_resolver_serves(
         self, mock_oauth_cls: MagicMock, mock_settings: MagicMock, _mock_db: MagicMock
@@ -163,7 +163,7 @@ class TestTokenRepositoryInit:
         )
 
     @patch("app.config.token_repository.get_db_session")
-    @patch("app.config.token_repository.settings")
+    @patch("app.services.providers.provider_credentials_service.settings")
     @patch("app.config.token_repository.OAuth")
     async def test_lazy_client_skips_google_when_unconfigurable(
         self, mock_oauth_cls: MagicMock, mock_settings: MagicMock, _mock_db: MagicMock
@@ -184,7 +184,7 @@ class TestTokenRepositoryInit:
         mock_oauth_instance.register.assert_not_called()
 
     @patch("app.config.token_repository.get_db_session")
-    @patch("app.config.token_repository.settings")
+    @patch("app.services.providers.provider_credentials_service.settings")
     @patch("app.config.token_repository.OAuth")
     async def test_lazy_client_reuses_the_registered_client(
         self, mock_oauth_cls: MagicMock, mock_settings: MagicMock, _mock_db: MagicMock
@@ -212,7 +212,7 @@ class TestTokenRepositoryInit:
 class TestResolveGoogleOauthCredentials:
     """Tests for the shared store-first Google credential resolver."""
 
-    @patch("app.config.token_repository.settings")
+    @patch("app.services.providers.provider_credentials_service.settings")
     async def test_store_secret_wins_over_env(self, mock_settings: MagicMock) -> None:
         from app.config.token_repository import resolve_google_oauth_credentials
 
@@ -234,7 +234,7 @@ class TestResolveGoogleOauthCredentials:
 
         assert result == ("cid", "stored_secret")
 
-    @patch("app.config.token_repository.settings")
+    @patch("app.services.providers.provider_credentials_service.settings")
     async def test_returns_none_when_half_configured(self, mock_settings: MagicMock) -> None:
         from app.config.token_repository import resolve_google_oauth_credentials
 
