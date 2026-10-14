@@ -231,7 +231,7 @@ export async function runUpFlow(
   if (options.noStart) {
     store.setStep("Finished");
     store.setStatus(
-      "Environment ready. Start services later with 'gaia start'.",
+      "Environment configured. Start services later with 'gaia start'.",
     );
     finishUp(store, targetPath, webUrl, {
       noStart: true,
@@ -338,6 +338,16 @@ async function startSelfhostServices(
   }
   store.updateData("dependencyProgress", 100);
   store.updateData("dependencyComplete", true);
+}
+
+/** What a finished `gaia up` reached: configured only, started but not answering, or running. */
+export function upHeadline(outcome: {
+  noStart: boolean;
+  stillStarting: boolean;
+}): string {
+  if (outcome.noStart) return "GAIA is configured. Nothing was started.";
+  if (outcome.stillStarting) return "GAIA is still starting...";
+  return "GAIA is ready!";
 }
 
 /** One line on the finished screen saying how agent code runs on this instance. */

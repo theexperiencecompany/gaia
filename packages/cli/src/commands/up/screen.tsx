@@ -19,7 +19,7 @@ import {
 } from "../../ui/components/shared-steps.js";
 import { THEME_COLOR } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
-import { codeSandboxSummary } from "./flow.js";
+import { codeSandboxSummary, upHeadline } from "./flow.js";
 
 const DependencyInstallStep: React.FC<{
   phase: string;
@@ -99,11 +99,7 @@ const UpFinishedStep: React.FC<{
       padding={1}
     >
       <Text bold color={success ? "green" : THEME_COLOR}>
-        {noStart
-          ? "Environment Ready"
-          : stillStarting
-            ? "GAIA is Still Starting"
-            : "GAIA is Running!"}
+        {upHeadline({ noStart, stillStarting })}
       </Text>
 
       {success && (

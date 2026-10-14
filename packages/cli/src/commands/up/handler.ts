@@ -6,21 +6,23 @@
 import type { LlmProvider } from "../../lib/answers.js";
 import { runCommandUI } from "../../lib/command-runner.js";
 import type { CLIStore } from "../../ui/store.js";
-import { codeSandboxSummary, runUpFlow } from "./flow.js";
+import { codeSandboxSummary, runUpFlow, upHeadline } from "./flow.js";
 
-function printPlainSummary(store: CLIStore): void {
+export function printUpSummary(store: CLIStore): void {
   const data = store.currentState.data;
   if (data.error || !data.finished) return;
   const webUrl = data.upWebUrl as string;
   const apiUrl = data.upApiUrl as string;
-  if (data.upNoStart !== true && data.upStillStarting === true) {
-    console.info("\nGAIA is still starting...");
-    console.info("  Containers are up but not answering yet.");
-    console.info("  Run 'gaia status' to check progress.");
+  const noStart = data.upNoStart === true;
+  const stillStarting = !noStart && data.upStillStarting === true;
+  console.info(`\n${upHeadline({ noStart, stillStarting })}`);
+  if (noStart) {
+    console.info("  Start it with 'gaia start'.");
   } else {
-    console.info("\nGAIA is ready!");
-  }
-  if (data.upNoStart !== true) {
+    if (stillStarting) {
+      console.info("  Containers are up but not answering yet.");
+      console.info("  Run 'gaia status' to check progress.");
+    }
     console.info(`  Web: ${webUrl}`);
     console.info(`  API: ${apiUrl}`);
   }
@@ -49,6 +51,6 @@ export async function runUp(
     whenNonInteractive: "plain",
     autoResolve: [["exit", "exit"]],
     runFlow: (store) => runUpFlow(store, options),
-    onPlainComplete: printPlainSummary,
+    onPlainComplete: printUpSummary,
   });
 }
