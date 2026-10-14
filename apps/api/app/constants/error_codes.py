@@ -15,3 +15,6 @@ BOT_ACCOUNT_NOT_LINKED = "BOT_ACCOUNT_NOT_LINKED"
 
 # 409 — a user-facing feature flag is killed for everyone; the choice cannot be changed now.
 FEATURE_KILLED = "FEATURE_KILLED"
+
+# 404 — the conversation does not exist or belongs to another user (never told apart).
+CONVERSATION_NOT_FOUND = "CONVERSATION_NOT_FOUND"

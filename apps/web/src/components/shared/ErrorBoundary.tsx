@@ -1,11 +1,19 @@
 "use client";
 
 import { ArrowLeft01Icon, Home01Icon } from "@icons";
+import * as Sentry from "@sentry/nextjs";
 import React from "react";
 import { track } from "@/lib/analytics";
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
+  /** Replaces the full-screen page, for a boundary that guards one item. */
+  fallback?: React.ReactNode;
+  /** A new value clears the error and retries the render. */
+  resetKey?: unknown;
+  /** Tags the error report with what this boundary guards. */
+  scope?: string;
+  onError?: (error: Error) => void;
 }
 
 interface ErrorBoundaryState {
@@ -27,17 +35,29 @@ class ErrorBoundary extends React.Component<
     return { hasError: true, error };
   }
 
-  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error details for debugging or reporting
-    console.error("Error caught in Error Boundary:", error, errorInfo);
+  override componentDidUpdate(prevProps: ErrorBoundaryProps) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
 
-    // Full diagnostics stay in the console (and Sentry); error.message/stack
-    // can carry user content, so analytics only gets the stable error type.
+  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    const { scope, onError } = this.props;
+    console.error("Error caught in Error Boundary:", error, errorInfo);
+    onError?.(error);
+
+    // Full diagnostics go to the console and Sentry; error.message/stack can
+    // carry user content, so analytics only gets the stable error type.
+    Sentry.captureException(error, {
+      tags: scope ? { error_boundary: scope } : undefined,
+      extra: { componentStack: errorInfo.componentStack },
+    });
     track("error:occurred", { error_type: "react_error_boundary" });
   }
 
   override render() {
     if (this.state.hasError) {
+      if (this.props.fallback !== undefined) return this.props.fallback;
       return (
         <div className="fixed top-0 left-0 flex h-screen max-h-screen w-screen flex-col items-center justify-center bg-linear-to-b from-[#00bbff] to-black">
           <h1 className="text-3xl font-bold text-white">
