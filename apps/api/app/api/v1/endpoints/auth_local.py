@@ -2,7 +2,7 @@
 
 Mounted at ``/auth`` by ``app/api/v1/routes.py``; ``signup`` and ``login`` are
 public (the coordinator lists them in the middleware's ``exclude_paths``),
-while ``password`` and ``logout`` require a live local session.
+while ``password`` requires a live local session. Logout is POST /user/logout.
 The first signup creates the instance administrator; later signups create
 members when an invite or the open registration policy admits them.
 """
@@ -34,7 +34,6 @@ from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
     SESSION_TTL_SECONDS,
     issue_session_token,
-    resolve_session_token,
 )
 from shared.py.wide_events import log
 
@@ -76,28 +75,6 @@ def _set_session_cookie(response: JSONResponse, token: str, *, request: Request)
         max_age=SESSION_TTL_SECONDS,
         path="/",
     )
-
-
-def _clear_session_cookie(response: JSONResponse, request: Request) -> None:
-    """Delete the session cookie with the same Secure flag it was set with."""
-    response.delete_cookie(
-        key=LOCAL_SESSION_COOKIE,
-        httponly=True,
-        path="/",
-        secure=session_cookie_secure(request),
-        samesite="lax",
-    )
-
-
-async def _logout_actor(request: Request) -> str:
-    """Best-effort actor for the logout audit: the session's user id when the
-    presented cookie still verifies, else the unauthenticated marker (logout is
-    idempotent, so an absent or dead cookie is not an error)."""
-    token = request.cookies.get(LOCAL_SESSION_COOKIE)
-    if not token:
-        return AUDIT_ACTOR_UNAUTHENTICATED
-    user_id = await resolve_session_token(token)
-    return user_id or AUDIT_ACTOR_UNAUTHENTICATED
 
 
 def _user_payload(user: UserDocument) -> dict[str, object]:
@@ -393,18 +370,5 @@ async def change_password(
     new_token = await issue_session_token(user_id, new_version)
     response = JSONResponse(status_code=200, content={"status": "ok"})
     _set_session_cookie(response, new_token, request=request)
-    log.set(outcome="success")
-    return response
-
-
-@router.post("/logout")
-async def logout(request: Request) -> JSONResponse:
-    """Clear the session cookie. Idempotent — clearing an absent cookie still
-    reports local mode so clients can branch uniformly."""
-    log.set(operation="local_logout")
-    actor = await _logout_actor(request)
-    log.audit("logged out", actor=actor, mode="local")
-    response = JSONResponse(content={"mode": "local"})
-    _clear_session_cookie(response, request)
     log.set(outcome="success")
     return response

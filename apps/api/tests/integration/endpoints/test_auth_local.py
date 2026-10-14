@@ -1140,26 +1140,6 @@ class TestChangePassword:
         assert update_arg.token_version == 1  # bumped from 0 → 1
 
 
-# ---------------------------------------------------------------------------
-# Logout
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestLogout:
-    async def test_logout_clears_cookie_and_reports_local_mode(self, _instance_secret):
-        app = _build_router_app()
-        client = await _client(app)
-        async with client:
-            response = await client.post("/api/v1/auth/logout")
-
-        assert response.status_code == 200
-        assert response.json() == {"mode": "local"}
-        cleared = response.headers["set-cookie"]
-        assert "gaia_session=" in cleared
-        assert "Max-Age=0" in cleared or "Expires=Thu, 01 Jan 1970" in cleared
-
-
 def _build_user_route_app() -> FastAPI:
     """Build an app carrying the real user router behind the real middleware.
 
@@ -1172,6 +1152,12 @@ def _build_user_route_app() -> FastAPI:
     app.include_router(user_router, prefix="/api/v1/user", tags=["User"])
     app.add_middleware(WorkOSAuthMiddleware, workos_client=MagicMock())
     return app
+
+
+def test_local_auth_has_no_second_logout_route():
+    from app.api.v1.endpoints.auth_local import router as auth_router
+
+    assert "/logout" not in {getattr(route, "path", None) for route in auth_router.routes}
 
 
 @pytest.mark.integration
@@ -1265,14 +1251,17 @@ class TestSessionCookies:
         assert "Secure" in tls.headers.get("set-cookie", "")
 
     async def test_cleared_cookie_keeps_flags_in_non_production(
-        self, _instance_secret, monkeypatch
+        self, patched_repos, credential_store, _instance_secret, monkeypatch
     ):
         """Mirror the set-cookie attributes on the deletion cookie, minus Secure on LAN http."""
         monkeypatch.setattr(settings, "ENV", "selfhost")
-        app = _build_router_app()
-        client = await _client(app)
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        admin = seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+        token = await issue_session_token(admin.id)
+        client = await _client(_build_user_route_app())
         async with client:
-            response = await client.post("/api/v1/auth/logout")
+            client.cookies.set("gaia_session", token)
+            response = await client.post("/api/v1/user/logout")
 
         cleared = response.headers["set-cookie"]
         assert "HttpOnly" in cleared
