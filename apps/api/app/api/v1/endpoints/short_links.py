@@ -4,18 +4,16 @@ The slug is the capability: high-entropy and globally unique, it grants
 read-only access to one artifact's public view with no session, because links
 must open from Telegram/WhatsApp/email where the viewer is never signed in.
 Unknown, revoked and deleted-target slugs are indistinguishable (404), so
-probing leaks nothing; the rate limit makes enumeration of a 62¹¹ namespace
-hopeless. A slug is never logged: every route here records the route template as
+probing leaks nothing, and the 62¹¹ namespace makes enumeration hopeless. A slug is never logged: every route here records the route template as
 the request path and a keyed hash of the slug as ``short_link.slug_hash``.
 """
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import FileResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.api.v1.middleware.rate_limiter import limiter, short_link_viewer_key
 from app.models.short_link_models import (
     PublicShortLinkView,
     ShortLinkResponse,
@@ -72,11 +70,7 @@ async def create_short_link_route(
 
 
 @router.get("/{slug}", response_model=PublicShortLinkView)
-@limiter.limit("60/minute", key_func=short_link_viewer_key)
-@limiter.limit("600/hour", key_func=short_link_viewer_key)
-async def resolve_short_link_route(
-    request: Request, response: Response, slug: str
-) -> PublicShortLinkView:
+async def resolve_short_link_route(response: Response, slug: str) -> PublicShortLinkView:
     """Resolve a capability slug to its target's public view. No auth."""
     log.set(short_link={"operation": "resolve", "slug_hash": hash_short_link_slug(slug)})
     response.headers["Cache-Control"] = _NO_STORE  # pragma: no mutate — case-insensitive name
@@ -95,9 +89,7 @@ async def resolve_short_link_route(
     response_class=FileResponse,
     responses=error_responses({404: _NOT_FOUND, 503: _STORAGE_OFFLINE}),
 )
-@limiter.limit("60/minute", key_func=short_link_viewer_key)
-@limiter.limit("600/hour", key_func=short_link_viewer_key)
-async def get_short_link_file_route(request: Request, slug: str) -> FileResponse:
+async def get_short_link_file_route(slug: str) -> FileResponse:
     """Stream the file behind a session-artifact slug (images, PDFs, downloads).
     No auth; sandboxed exactly like the owner's own session-file route."""
     log.set(short_link={"operation": "file", "slug_hash": hash_short_link_slug(slug)})

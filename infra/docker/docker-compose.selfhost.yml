@@ -113,9 +113,6 @@ services:
       # are configured (R2_*/JUICEFS_META_URL_TEMPLATE in .env) — otherwise
       # workspace v2 features soft-fail with JuiceFSUnavailable.
       JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
-      # Shared with gaia-web: lets the API trust the viewer IP it forwards for
-      # heygaia.link pages (per-viewer rate limit). Same value on both services.
-      SHORTLINK_VIEWER_IP_SECRET: ${SHORTLINK_VIEWER_IP_SECRET:-}
       # JuiceFS is a FUSE mount; E2B's inotify watcher cannot watch a FUSE
       # filesystem, so artifact detection must tail the JuiceFS .accesslog.
       ARTIFACT_DETECTION_MODE: accesslog
@@ -172,7 +169,6 @@ services:
       # (or has an untrusted TLS cert) from inside this container, which would
       # otherwise turn every server-rendered page into a "not found".
       API_BASE_URL_INTERNAL: ${API_BASE_URL_INTERNAL:-http://gaia-backend:8000/api/v1/}
-      SHORTLINK_VIEWER_IP_SECRET: ${SHORTLINK_VIEWER_IP_SECRET:-}
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
     restart: on-failure

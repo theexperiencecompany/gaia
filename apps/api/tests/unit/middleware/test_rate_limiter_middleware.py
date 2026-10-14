@@ -12,15 +12,11 @@ import pytest
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from starlette.requests import Request
 
 from app.api.v1.middleware.rate_limiter import (
     RouterAwareSlowAPIMiddleware,
     find_route_handler,
-    short_link_viewer_key,
 )
-from app.config.settings import settings
-from app.constants.http import VIEWER_IP_HEADER, VIEWER_IP_PROOF_HEADER
 from app.core.middleware import rate_limit_handler
 
 pytestmark = pytest.mark.unit
@@ -125,48 +121,3 @@ async def test_an_unrouted_path_is_exempt_rather_than_counted() -> None:
         for _ in range(3):
             assert (await client.get("/nope")).status_code == 404
         assert (await client.get("/included/thing")).status_code == 200
-
-
-def _request(client_ip: str, headers: dict[str, str]) -> Request:
-    return Request(
-        {
-            "type": "http",
-            "method": "GET",
-            "path": "/api/v1/l/abc",
-            "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
-            "client": (client_ip, 1234),
-        }
-    )
-
-
-class TestShortLinkViewerKey:
-    """The short-link limit keys on the viewer only when the web server vouches for it."""
-
-    SECRET = "s" * 40
-
-    @pytest.fixture(autouse=True)
-    def secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(settings, "SHORTLINK_VIEWER_IP_SECRET", self.SECRET)
-
-    def test_the_web_server_names_the_viewer(self) -> None:
-        req = _request(
-            "10.0.0.5", {VIEWER_IP_HEADER: "203.0.113.7", VIEWER_IP_PROOF_HEADER: self.SECRET}
-        )
-        assert short_link_viewer_key(req) == "203.0.113.7"
-
-    def test_a_spoofed_viewer_header_without_the_secret_keys_on_the_caller(self) -> None:
-        req = _request("198.51.100.9", {VIEWER_IP_HEADER: "203.0.113.7"})
-        assert short_link_viewer_key(req) == "198.51.100.9"
-
-    def test_a_wrong_secret_keys_on_the_caller(self) -> None:
-        req = _request(
-            "198.51.100.9", {VIEWER_IP_HEADER: "203.0.113.7", VIEWER_IP_PROOF_HEADER: "guess"}
-        )
-        assert short_link_viewer_key(req) == "198.51.100.9"
-
-    def test_with_no_secret_configured_the_header_is_never_trusted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(settings, "SHORTLINK_VIEWER_IP_SECRET", None)
-        req = _request("198.51.100.9", {VIEWER_IP_HEADER: "203.0.113.7"})
-        assert short_link_viewer_key(req) == "198.51.100.9"

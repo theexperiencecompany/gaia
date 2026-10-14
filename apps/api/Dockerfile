@@ -259,11 +259,6 @@ EXPOSE 8000
 # A browser-host container (python -m app.browser_host) serves the internal
 # network; its port is never published. Natively the host binds loopback.
 ENV BROWSER_HOST_BIND_ADDRESS=0.0.0.0
-# X-Forwarded-For is honoured only from these peers (uvicorn reads the variable when
-# --forwarded-allow-ips is absent). Anything wider lets a caller pick its own client
-# address — and with it a fresh rate-limit budget. A deployment behind a reverse
-# proxy sets this to that proxy's address or CIDR; the default trusts no proxy.
-ENV FORWARDED_ALLOW_IPS=127.0.0.1
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--proxy-headers"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "*"]

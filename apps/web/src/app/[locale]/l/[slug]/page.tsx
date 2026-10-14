@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
-import {
-  VIEWER_IP_HEADER,
-  VIEWER_IP_PROOF_HEADER,
-} from "@/features/short-links/constants";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 import type {
   PublicShortLinkView,
@@ -44,26 +39,6 @@ const PREVIEW_COPY: Record<
 };
 
 /**
- * Names the viewer to the API, whose resolver limit is per client IP. Without
- * it every server render arrives from this server's own address, so all
- * viewers share one budget and a burst of opens turns into 429 errors. The API
- * trusts the name only beside the shared secret, so without one configured
- * nothing is sent. `cf-connecting-ip` is set by Cloudflare; self-hosted
- * proxies set the first `x-forwarded-for` hop.
- */
-async function viewerForwardingHeaders(): Promise<Record<string, string>> {
-  const secret = process.env.SHORTLINK_VIEWER_IP_SECRET?.trim();
-  if (!secret) return {};
-  const incoming = await headers();
-  const viewerIp =
-    incoming.get("cf-connecting-ip") ??
-    incoming.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return viewerIp
-    ? { [VIEWER_IP_HEADER]: viewerIp, [VIEWER_IP_PROOF_HEADER]: secret }
-    : {};
-}
-
-/**
  * The public view behind a slug, fetched on the server with no caching —
  * the owner can revoke a link at any moment. `null` means unknown, revoked or
  * deleted (the API answers 404 for all three); any other failure throws.
@@ -77,7 +52,7 @@ const fetchPublicView = cache(
     }
     const response = await fetch(
       `${apiBaseUrl}/l/${encodeURIComponent(slug)}`,
-      { cache: "no-store", headers: await viewerForwardingHeaders() },
+      { cache: "no-store" },
     );
     if (response.status === 404) return null;
     if (!response.ok) {

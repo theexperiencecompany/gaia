@@ -128,10 +128,6 @@ class CommonSettings(BaseAppSettings):
     # Short-link display domain (heygaia.link/<slug>). The dedicated domain
     # rewrites to the app's /l route, which resolves the slug. No trailing slash.
     SHORTLINK_BASE_URL: str = "https://heygaia.link"
-    # Shared with the web server, which sends it beside the viewer's IP when it
-    # resolves a short link (app/constants/http.py VIEWER_IP_HEADER). Unset: the
-    # viewer header is never trusted and the limit keys on the connecting peer.
-    SHORTLINK_VIEWER_IP_SECRET: str | None = None
     # Sender address for outbound briefing email; the same in every environment.
     EMAIL_FROM: str = "brief@heygaia.io"
     DUMMY_IP: str = "8.8.8.8"
