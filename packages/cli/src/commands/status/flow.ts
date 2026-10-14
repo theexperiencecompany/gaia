@@ -30,9 +30,7 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
 
   if (!repoPath || !mode) {
     store.updateData("services", []);
-    store.setStep("Results");
-    store.setStatus(`Nothing to check: ${install}`);
-    store.updateData("refreshable", true);
+    showResults(store, `Nothing to check: ${install}`);
     return;
   }
 
@@ -50,18 +48,25 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
   store.updateData("docker", docker);
   store.updateData("readiness", readiness);
 
-  store.setStep("Results");
   if (mode === "selfhost") {
     const running = docker.containers.filter(
       (c) => c.status === "running",
     ).length;
-    store.setStatus(
+    showResults(
+      store,
       `${running}/${docker.containers.length} containers running`,
     );
   } else {
     const up = services.filter((s) => s.status === "up").length;
-    store.setStatus(`${up}/${services.length} services running`);
+    showResults(store, `${up}/${services.length} services running`);
   }
+}
+
+/** Publish a finished check: the summary, when it ran, and that r may refresh it. */
+function showResults(store: CLIStore, summary: string): void {
+  store.updateData("checkedAt", new Date().toLocaleTimeString());
+  store.setStep("Results");
+  store.setStatus(summary);
   store.updateData("refreshable", true);
 }
 

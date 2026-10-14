@@ -57,6 +57,8 @@ describe("gaia status on a self-host install", () => {
     expect(store.currentState.data.services).toEqual([]);
     expect(store.currentState.data.docker.containers).toHaveLength(4);
     expect(store.currentState.status).toBe("4/4 containers running");
+    expect(store.currentState.data.checkedAt).toEqual(expect.any(String));
+    expect(store.currentState.data.refreshable).toBe(true);
   });
 
   it("probes nothing when the install is not configured", async () => {
@@ -71,5 +73,6 @@ describe("gaia status on a self-host install", () => {
     expect(store.currentState.status).toBe(
       "Nothing to check: /no/such/install (not configured: no apps/api/.env)",
     );
+    expect(store.currentState.data.checkedAt).toEqual(expect.any(String));
   });
 });

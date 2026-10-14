@@ -1,7 +1,6 @@
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useEffect, useState } from "react";
 import type {
   DependencyCheck,
   DependencyReadiness,
@@ -15,26 +14,14 @@ import { useCLIState } from "../use-cli-state.js";
 
 export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastChecked, setLastChecked] = useState<string | null>(null);
   const readiness = state.data.readiness as DependencyReadiness | undefined;
-
-  useEffect(() => {
-    setIsRefreshing(false);
-    setLastChecked(new Date().toLocaleTimeString());
-  }, [state.data.services]);
+  const lastChecked = state.data.checkedAt as string | undefined;
 
   useInput((_input, key) => {
     if ((key.return || key.escape) && state.step === "Results") {
       store.submitInput("exit");
     }
-    if (
-      _input === "r" &&
-      state.step === "Results" &&
-      state.data.refreshable &&
-      !isRefreshing
-    ) {
-      setIsRefreshing(true);
+    if (_input === "r" && state.step === "Results" && state.data.refreshable) {
       store.submitInput("refresh");
     }
   });

@@ -115,3 +115,55 @@ describe("ProviderStep on a fresh instance", () => {
     expect(screen.queryByText(/is connected/)).toBeNull();
   });
 });
+
+describe("ProviderStep lanes on a fresh instance", () => {
+  it("keeps the other hosted providers behind More providers, OpenRouter first", () => {
+    renderStep(statusWith());
+
+    expect(screen.queryByText("Google Gemini")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More providers" }));
+
+    const labels = ["OpenRouter", "Google Gemini", "OpenAI", "Custom"];
+    const positions = labels.map((label) =>
+      document.body.innerHTML.indexOf(`>${label}<`),
+    );
+    expect(positions.every((p) => p >= 0)).toBe(true);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    expect(screen.queryByText("Ollama")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show fewer providers" }),
+    );
+    expect(screen.queryByText("Google Gemini")).toBeNull();
+  });
+
+  it("shows only the Ollama card on the local tab", () => {
+    renderStep(statusWith());
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Local Ollama · free" }),
+    );
+
+    expect(screen.getByText("Ollama")).toBeTruthy();
+    expect(screen.queryByText("OpenRouter")).toBeNull();
+  });
+
+  it("continues without a provider from the skip tab", () => {
+    const onNext = vi.fn();
+    render(
+      <ProviderStep
+        status={statusWith()}
+        catalog={CATALOG}
+        onSaved={vi.fn()}
+        onNext={onNext}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue without a provider" }),
+    );
+
+    expect(onNext).toHaveBeenCalledOnce();
+  });
+});

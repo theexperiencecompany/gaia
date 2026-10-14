@@ -41,7 +41,6 @@ check_command() {
 }
 
 install_node() {
-  info "Installing Node.js via nvm..."
   if [ "$(detect_os)" = "windows" ]; then
     error "Please install Node.js manually on Windows: https://nodejs.org"
   fi
@@ -102,7 +101,7 @@ main() {
     success "Bun is already installed ($(bun --version))"
     PKG_MGR="bun"
   else
-    warn "No supported package manager found (npm, pnpm, or bun)"
+    info "No Node.js package manager yet (npm, pnpm, or bun), so installing Node.js via nvm..."
     install_node
     NODE_INSTALLED_VIA_NVM="1"
     PKG_MGR="npm"
