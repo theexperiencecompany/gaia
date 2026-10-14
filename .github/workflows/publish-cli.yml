@@ -43,6 +43,8 @@ jobs:
       id-token: write
       # pin-selfhost-release tags the gaia / gaia-web images in GHCR.
       packages: write
+      # ...after reading main.yml's quality gate on the release commit.
+      actions: read
     steps:
       # The release tag, not master HEAD: package.json, the build and the
       # image pin must all be the released commit.
@@ -119,6 +121,7 @@ jobs:
         env:
           VERSION: ${{ steps.release.outputs.version }}
           SHA: ${{ github.event.inputs.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/release.sh pin-selfhost-release
 
       # Authenticated by OIDC via npm trusted publishing (configured on the
