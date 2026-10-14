@@ -172,8 +172,11 @@ SELF_NAME_MIN_WORD_LENGTH = 3
 
 # One referrer's billing date is moved by one reward at a time.
 REWARD_LOCK_KEY_TEMPLATE = "referral:reward-lock:{user_id}"
-REWARD_LOCK_TIMEOUT_S = 60
+REWARD_LOCK_LEASE_S = 60
+REWARD_LOCK_RENEW_S = 20
 REWARD_LOCK_WAIT_S = 30
+# A banked batch makes two Dodo calls per month; ten minutes covers far more months than anyone banks.
+REWARD_LOCK_MAX_HOLD_S = 600
 
 # ---- Worker ------------------------------------------------------------------
 
