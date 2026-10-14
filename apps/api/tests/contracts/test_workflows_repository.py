@@ -17,6 +17,7 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.cache import CachePolicy
 from app.db.repositories.workflows import WorkflowsRepository
 from app.models.scheduler_models import (
     DeactivationReason,
@@ -663,6 +664,24 @@ class TestWorkflowsPublishAndWrites:
         assert not await repo.store_delivery(modern.id, WorkflowDelivery.NOW)
         assert (await raw_collection.find_one({"_id": modern.id}))["delivery"] == "brief"
         assert [wf.id for wf in await repo.find_without_stored_delivery()] == [legacy_default_id]
+
+    async def test_store_delivery_evicts_a_cached_workflow(self, raw_collection):
+        """Switching a cache policy on must need no call-site change: the migration evicts get()."""
+
+        class _CachedWorkflowsRepository(WorkflowsRepository):
+            cache_policy = CachePolicy(prefix="contract:workflows")
+
+        cached_repo = _CachedWorkflowsRepository()
+        legacy_id = _uid("wf")
+        base = _workflow().model_dump(by_alias=True, exclude={"delivery"})
+        await raw_collection.insert_one({**base, "_id": legacy_id, "notify_on_completion": False})
+        warmed = await cached_repo.get(legacy_id)
+        assert warmed is not None and warmed.delivery == WorkflowDelivery.SILENT
+
+        assert await cached_repo.store_delivery(legacy_id, WorkflowDelivery.BRIEF)
+
+        fetched = await cached_repo.get(legacy_id)
+        assert fetched is not None and fetched.delivery == WorkflowDelivery.BRIEF
 
     async def test_backfill_public_slug_races(self, repo):
         wf = await repo.create(_workflow(is_public=True, slug=None))

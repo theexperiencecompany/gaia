@@ -584,9 +584,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 },
                 {"$unwind": "$messages"},
                 {"$match": {"messages.type": "user", "messages.date": {"$gte": since_iso}}},
-                {"$sort": {"messages.date": -1}},
-                {"$limit": 1},
-                {"$project": {"_id": False, "date": "$messages.date"}},
+                {"$group": {"_id": None, "date": {"$max": "$messages.date"}}},
             ],
             UserMessageDateRow,
         )

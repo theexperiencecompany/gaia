@@ -17,7 +17,7 @@ from app.constants.http import CLIENT_CLOSED_REQUEST_STATUS
 from app.core.unhandled_errors import capture_unhandled_exception, internal_error_response
 from app.schemas.errors import ErrorEnvelope, ValidationIssue, error_response
 from app.utils.errors import AppError
-from app.utils.log_identifiers import loggable_request_path
+from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
 

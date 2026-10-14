@@ -18,6 +18,7 @@ import pytest
 
 from app.api.v1.endpoints.dev import _BRIEFING_RUNS, run_briefing_now
 from app.constants.auth import DEV_USER_MISSING_HINT
+from app.constants.briefing import BriefingRunOutcome
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
 from tests.helpers import captured_wide_event
@@ -864,7 +865,8 @@ class TestDevAttachments:
 
 class TestDevBriefingRun:
     async def test_runs_the_kinds_pipeline_for_the_users_id(self):
-        run_daily, run_weekly = AsyncMock(), AsyncMock()
+        run_daily = AsyncMock(return_value=BriefingRunOutcome.SENT)
+        run_weekly = AsyncMock()
         user = SimpleNamespace(id="u-brief")
         with (
             patch.dict(_BRIEFING_RUNS, {"daily": run_daily, "weekly": run_weekly}),
@@ -884,12 +886,14 @@ class TestDevBriefingRun:
             "user_id": "u-brief",
             "kind": "daily",
             "status": "completed",
+            "outcome": "sent",
         }
         assert event["dev"] == {
             "operation": "run_briefing",
             "kind": "daily",
             "email": DEV_EMAIL,
             "user_id": "u-brief",
+            "outcome": "sent",
         }
 
     async def test_an_unknown_kind_is_a_400_through_the_mounted_route(self, monkeypatch):

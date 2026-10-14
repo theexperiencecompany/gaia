@@ -38,12 +38,10 @@ async def record_platform_delivery(conversation_id: str, text: str) -> None:
         return
     try:
         recorded = await try_record_platform_delivery(conversation_id, text)
-    except Exception as e:  # the message is already sent: the retrying job below takes over
+    except Exception:  # the message is already sent: the retrying job below takes over
         log.warning(
             f"{LogTag.AGENT} Recording a delivered message failed; retrying in a job",
             conversation_id=conversation_id,
-            error=str(e),
-            error_type=type(e).__name__,
         )
         recorded = False
     if not recorded:
@@ -111,9 +109,8 @@ async def _append_to_thread(conversation_id: str, messages: list[BaseMessage]) -
             f"{LogTag.AGENT} Recorded messages in conversation thread",
             conversation_id=conversation_id,
         )
-    except Exception as e:  # what it records already reached the user; never break the caller
+    except Exception:  # what it records already reached the user; never break the caller
         log.error(
             f"{LogTag.AGENT} Failed to record messages in conversation thread",
             conversation_id=conversation_id,
-            error=str(e),
         )

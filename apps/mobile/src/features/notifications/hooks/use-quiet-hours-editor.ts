@@ -76,18 +76,17 @@ export function useQuietHoursEditor(enabled: boolean): QuietHoursEditor {
     setEditingEdge(null);
   };
 
-  const commit = (onSameEdges: () => void) => {
+  /** Saves the draft and closes the editor; false (editor left open) when its edges match. */
+  const commit = (): boolean => {
     if (!draft || !saved) {
       closeEditor();
-      return;
+      return true;
     }
     const result = resolveQuietHoursCommit(saved, draft);
-    if (result.kind === "same-edges") {
-      onSameEdges();
-      return;
-    }
+    if (result.kind === "same-edges") return false;
     if (result.kind === "save") mutation.mutate(result.next);
     closeEditor();
+    return true;
   };
 
   return {
@@ -105,17 +104,17 @@ export function useQuietHoursEditor(enabled: boolean): QuietHoursEditor {
       if (!base) return;
       setDraft({ ...base, [editingEdge]: hour });
     },
-    done: () =>
-      commit(() =>
-        Alert.alert("Quiet hours", "Start and end must be different hours."),
-      ),
-    dismiss: () =>
-      commit(() => {
-        Alert.alert(
-          "Quiet hours not saved",
-          "Start and end must be different hours.",
-        );
-        closeEditor();
-      }),
+    done: () => {
+      if (commit()) return;
+      Alert.alert("Quiet hours", "Start and end must be different hours.");
+    },
+    dismiss: () => {
+      if (commit()) return;
+      Alert.alert(
+        "Quiet hours not saved",
+        "Start and end must be different hours.",
+      );
+      closeEditor();
+    },
   };
 }

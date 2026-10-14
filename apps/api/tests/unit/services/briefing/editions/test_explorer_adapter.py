@@ -284,6 +284,11 @@ class TestRecipient:
 
         assert ed["recipient"] == {"name": "Aryan Randeriya", "first": "Aryan"}
 
+    def test_the_first_name_is_only_the_first_of_several_words(self) -> None:
+        ed = _build(_payload(recipient_name="Mary Jane Watson"))
+
+        assert ed["recipient"] == {"name": "Mary Jane Watson", "first": "Mary"}
+
     @pytest.mark.parametrize("name", [None, "", "   "])
     def test_no_name_leaves_no_recipient(self, name: str | None) -> None:
         assert _build(_payload(recipient_name=name))["recipient"] is None
@@ -369,6 +374,11 @@ class TestStats:
         stats = _build(_payload(tallies={"done_by_you": 1, "done_by_gaia": 0}))["content"]["stats"]
 
         assert (stats["done"], stats["you"], stats["gaia"]) == (1, 1, None)
+
+    def test_work_done_only_by_gaia_still_draws_the_figures(self) -> None:
+        stats = _build(_payload(tallies={"done_by_you": 0, "done_by_gaia": 2}))["content"]["stats"]
+
+        assert (stats["done"], stats["you"], stats["gaia"]) == (2, None, 2)
 
     def test_no_tallies_leaves_no_stats_block(self) -> None:
         assert _build(_payload())["content"]["stats"] is None

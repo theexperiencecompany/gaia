@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import io
 from typing import Literal
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageStat
 from playwright.async_api import FloatRect, Page, async_playwright
 
 from app.constants.log_tags import LogTag
@@ -113,28 +113,23 @@ async def _clip_for(page: Page, selector: str) -> FloatRect:
     }
 
 
-def _is_content(channel_difference: int) -> int:
-    return 255 if channel_difference > TRIM_THRESHOLD else 0
+def background_run(image: Image.Image) -> int:
+    """Count the pixel columns, walking left to right, that match the first one.
 
-
-def background_run(image: Image.Image, lines: range, *, columns: bool) -> int:
-    """Count the pixel lines, walking lines in order, that match the first one.
-
-    A line is a column when columns is true, else a row; it matches when no pixel
-    differs from the first line's pixel beside it by more than TRIM_THRESHOLD.
+    A column matches when no pixel differs from the first column's pixel beside it by
+    more than TRIM_THRESHOLD in any channel. Other sides are walked by transposing.
     """
     width, height = image.size
 
-    def line(index: int) -> Image.Image:
-        box = (index, 0, index + 1, height) if columns else (0, index, width, index + 1)
-        return image.crop(box)
+    def column(x: int) -> Image.Image:
+        return image.crop((x, 0, x + 1, height))
 
-    edge = line(lines[0])
-    for count, index in enumerate(lines):
-        difference = ImageChops.difference(line(index), edge)
-        if difference.point(_is_content).getbbox() is not None:
-            return count
-    return len(lines)
+    edge = column(0)
+    for x in range(width):
+        extrema = ImageStat.Stat(ImageChops.difference(column(x), edge)).extrema
+        if max(high for _, high in extrema) > TRIM_THRESHOLD:
+            return x
+    return width
 
 
 def trim_to_content(image_bytes: bytes, margin_px: int, options: ImageRenderOptions) -> bytes:
@@ -146,21 +141,21 @@ def trim_to_content(image_bytes: bytes, margin_px: int, options: ImageRenderOpti
     """
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     width, height = image.size
-    left = background_run(image, range(width), columns=True)
+    left = background_run(image)
     if left == width:
         return image_bytes
-    right = background_run(image, range(width - 1, -1, -1), columns=True)
-    top = background_run(image, range(height), columns=False)
-    bottom = background_run(image, range(height - 1, -1, -1), columns=False)
+    right = background_run(image.transpose(Image.Transpose.FLIP_LEFT_RIGHT))
+    top = background_run(image.transpose(Image.Transpose.TRANSPOSE))
+    bottom = background_run(image.transpose(Image.Transpose.TRANSVERSE))
     box = (
         max(0, left - margin_px),
         max(0, top - margin_px),
         min(width, width - right + margin_px),
         min(height, height - bottom + margin_px),
     )
+    save_options: dict[str, int | bool] = (
+        {"quality": options.quality or 75} if options.image_format == "jpeg" else {"optimize": True}
+    )
     out = io.BytesIO()
-    if options.image_format == "jpeg":
-        image.crop(box).save(out, format="JPEG", quality=options.quality or 75)
-    else:
-        image.crop(box).save(out, format="PNG", optimize=True)
+    image.crop(box).save(out, format=options.image_format, **save_options)
     return out.getvalue()
