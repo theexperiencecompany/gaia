@@ -145,10 +145,11 @@ def _make_llm_provider(name: str) -> LLMProvider:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("stored_credentials")
 class TestGetAvailableProviders:
-    # Availability now follows the runtime config snapshot (credential store →
-    # env fallback); these tests pin the REGISTRY half of the lookup, so they
-    # seed configs for every provider whose availability isn't under test.
+    # Availability follows the resolved config; these tests pin the REGISTRY
+    # half of the lookup, so they seed stored configs for every provider whose
+    # availability isn't under test.
     _CONFIGURED: ClassVar[dict[str, dict[str, str | None]]] = {
         "gemini": {"api_key": "g-key", "base_url": None, "model": None, "preset": None},
         "openrouter": {"api_key": "sk-or", "base_url": None, "model": None, "preset": None},
@@ -229,6 +230,7 @@ class TestGetAvailableProviders:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("stored_credentials")
 class TestChatRoute:
     """What a caller retries onto after a provider failure; the graph selects its lane via configurable["provider"] and never fails over itself."""
 
@@ -497,6 +499,7 @@ class TestInitLlm:
             "is_free": False,
         }
 
+    @pytest.mark.usefixtures("stored_credentials")
     @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
     @patch("app.agents.llm.client._get_ordered_providers")
@@ -630,9 +633,6 @@ class TestOpenRouterAppAttribution:
         _build_default_llm.cache_clear()
         yield
         _build_default_llm.cache_clear()
-        # Tests below seed the runtime-config snapshot directly; drop it so a
-        # seeded key can't leak into other tests.
-        client_module._runtime_configs.pop("openrouter", None)
 
     @staticmethod
     def _attribution_of(mock_chat_openrouter: MagicMock) -> dict[str, object]:
@@ -685,7 +685,10 @@ class TestOpenRouterAppAttribution:
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
     def test_the_graph_lane_attributes_itself(
-        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+        self,
+        mock_settings: MagicMock,
+        mock_chat_openrouter: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # ENV drives which app identity is attributed; GAIA_SIM_MODE would
         # short-circuit the loader to the scripted stub before attribution.
@@ -693,14 +696,9 @@ class TestOpenRouterAppAttribution:
         mock_settings.deployment = baseline_profile(DeploymentKind.PRODUCTION)
         mock_settings.FRONTEND_URL = "https://heygaia.io"
         mock_settings.GAIA_SIM_MODE = False
-        # The loader reads its credential from the resolved runtime snapshot
-        # (store first, env fallback), not from settings — so seed the snapshot.
-        client_module._runtime_configs["openrouter"] = {
-            "api_key": "or-key",  # pragma: allowlist secret
-            "base_url": None,
-            "model": None,
-            "preset": None,
-        }
+        # Production resolves provider keys from env alone, through the
+        # credential service's settings rather than the client's mock.
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")  # pragma: allowlist secret
 
         # lazy_provider swaps the imported symbol for a registration hook; the
         # real factory lives on the LazyLoader it returns. Running it is the
@@ -1176,24 +1174,19 @@ class TestMemoryLaneProviderSelection:
 
     @patch("app.agents.llm.client.settings")
     def test_the_aux_lane_predicate_reads_the_openrouter_key(
-        self, mock_settings: MagicMock
+        self, mock_settings: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The real predicate body, not a patch of it — the lane choice hangs off this one boolean, so its truth table is contract."""
         from app.agents.llm.client import aux_lane_available
 
         mock_settings.GAIA_SIM_MODE = False
-        # aux_lane_available reads the RESOLVED config, so the truth table is
-        # driven by the snapshot: a served key, then a snapshot with none.
-        client_module._runtime_configs["openrouter"] = {
-            "api_key": "or-key",  # pragma: allowlist secret
-            "base_url": None,
-            "model": None,
-            "preset": None,
-        }
+        mock_settings.deployment = baseline_profile(DeploymentKind.PRODUCTION)
+        # Production resolves the key from env alone: a served key, then none.
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")  # pragma: allowlist secret
         with patch(f"{_CLIENT}.custom_lane_forced", return_value=False):
             assert aux_lane_available() is True
 
-            client_module._runtime_configs.pop("openrouter")
+            monkeypatch.setattr(settings, "OPENROUTER_API_KEY", None)
             assert aux_lane_available() is False
 
         with patch(f"{_CLIENT}.custom_lane_forced", return_value=True):

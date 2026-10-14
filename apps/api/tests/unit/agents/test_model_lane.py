@@ -515,6 +515,7 @@ class TestDevOverride:
         assert resolved.provider_pin == option.provider_pin
         assert resolved.max_input_tokens == DEFAULT_MAX_TOKENS
 
+    @pytest.mark.usefixtures("stored_credentials")
     async def test_the_custom_endpoint_resolves_the_model_the_client_would_serve(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -532,6 +533,7 @@ class TestDevOverride:
         assert resolved.provider == LLMProviderName.CUSTOM
         assert resolved.model == "nous/deepseek-v4-flash-cheap"
 
+    @pytest.mark.usefixtures("stored_credentials")
     async def test_the_custom_endpoint_pins_no_model_when_none_is_configured(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
