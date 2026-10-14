@@ -1071,21 +1071,21 @@
     width: 100%;
   }
 
-  .sidebar div::-webkit-scrollbar {
+  [data-sidebar="sidebar"] div::-webkit-scrollbar {
     opacity: 0;
   }
 
-  .sidebar div::-webkit-scrollbar {
+  [data-sidebar="sidebar"] div::-webkit-scrollbar {
     border-radius: 100px;
     width: 4px;
   }
 
-  .sidebar div::-webkit-scrollbar-thumb {
+  [data-sidebar="sidebar"] div::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 100px;
   }
 
-  .sidebar:hover div::-webkit-scrollbar-thumb {
+  [data-sidebar="sidebar"]:hover div::-webkit-scrollbar-thumb {
     background: #5e5e5e;
   }
 

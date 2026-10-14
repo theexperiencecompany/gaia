@@ -81,29 +81,25 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
         className={cn("pb-0", isElectron && isMac && "pt-10 electron-drag")}
       >
         {!isElectron && (
-          <div className="flex items-center justify-between pb-0">
-            <LogoWithContextMenu className="group ml-2 flex items-center" />
+          <div className="flex items-center justify-between">
+            <LogoWithContextMenu className="group ml-2 flex items-center gap-2 px-1" />
           </div>
         )}
       </SidebarHeader>
 
       <SidebarContent className="flex-1 px-1">
         <SidebarGroup>
-          <SidebarGroupContent className="overflow-hidden">
-            <div className="space-y-1 overflow-hidden">
-              <SidebarTopButtons />
-              {children}
-            </div>
+          <SidebarGroupContent className="space-y-1 overflow-hidden">
+            <SidebarTopButtons />
+            {children}
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="relative z-4">
-        <div className="flex flex-col gap-2 p-2 px-3 pb-3">
-          <WhatsNewCard />
-          <UserContainer />
-          <ContactSupport />
-        </div>
+      <SidebarFooter className="relative z-4 p-2 px-3 pb-3">
+        <WhatsNewCard />
+        <UserContainer />
+        <ContactSupport />
       </SidebarFooter>
     </Sidebar>
   );
