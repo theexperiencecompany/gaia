@@ -81,7 +81,7 @@ from app.services.briefing.edition_email import host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.shuffle_bag import draw
-from app.services.briefing.skim import Skim, brief_path, build_skim
+from app.services.briefing.skim import brief_path, build_skim
 from app.services.briefing.voice_check import voice_contradictions
 from app.services.canvas_markdown import deliverable_size
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
@@ -288,7 +288,7 @@ def _wants_email(user: UserDocument) -> bool:
 
 
 async def _post_to_chat(
-    user: UserDocument, channel: ChatChannel, skim: Skim, image_url: str, kind: BriefingKind
+    user: UserDocument, channel: ChatChannel, caption: str, image_url: str, kind: BriefingKind
 ) -> OutboundResult:
     """Post the edition image with the skim as its caption into the user's DM.
 
@@ -297,7 +297,7 @@ async def _post_to_chat(
     return await post_to_platform_chat(
         user=build_user_context(user, auth_provider=None),
         channel=channel,
-        text=skim.text,
+        text=caption,
         origin=f"{kind} brief",
         image=PlatformImage(url=image_url, filename=f"gaia-{kind}-brief.png"),
     )
@@ -319,7 +319,7 @@ async def _deliver(
     kind: BriefingKind = briefing.kind
     brief_url = await get_or_create_short_link(user.id, ShortLinkTargetType.BRIEFING, briefing.id)
     await briefing_repository.set_short_url(user.id, briefing.id, brief_url)
-    skim = build_skim(payload, brief_url)
+    skim_text = build_skim(payload).text(brief_url)
     channel = await resolve_chat_channel(user.id)
     chat_post = (
         (channel, await host_edition_image(payload, render_key=render_key, crop_to_paper=True))
@@ -337,7 +337,7 @@ async def _deliver(
             channels=[ChannelConfig(channel_type=c) for c in channels],
             content=NotificationContent(
                 title=payload.headline,
-                body=skim.text,
+                body=skim_text,
                 rich_content=payload.model_dump(),
                 actions=[
                     NotificationAction(
@@ -366,7 +366,7 @@ async def _deliver(
     delivered = [c.channel_type for c in record.channels]
     if chat_post:
         chat_channel, image_url = chat_post
-        result = await _post_to_chat(user, chat_channel, skim, image_url, kind)
+        result = await _post_to_chat(user, chat_channel, skim_text, image_url, kind)
         if result is OutboundResult.PUBLISHED:
             delivered.append(chat_channel.source.value)
     return delivered
@@ -389,8 +389,7 @@ def _held_text(doc: PendingBriefItemDocument) -> str:
 
 
 def _same_text_key(text: str) -> str:
-    # pragma: no mutate below — any separator keeps the key injective, so equality holds.
-    return " ".join(text.split()).casefold()  # pragma: no mutate
+    return " ".join(text.split()).casefold()  # pragma: no mutate — spaced joins stay injective
 
 
 @dataclass
@@ -650,8 +649,7 @@ async def _voice_checked_against_items(
     A contradiction is sent back to the model once with the problems named; a second
     one fails the run before anything is stored or sent.
     """
-    # pragma: no mutate below — [] and None are both falsy, and the first attempt overwrites it.
-    problems: list[str] = []  # pragma: no mutate
+    problems: list[str] = []  # pragma: no mutate — any falsy init; the first pass reassigns it
     for _ in range(MAX_VOICE_ATTEMPTS):
         attempt_prompt = f"{prompt}\n\n{voice_correction_note(problems)}" if problems else prompt
         payload = build(
