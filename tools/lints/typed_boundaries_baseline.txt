@@ -59,7 +59,7 @@ apps/api/app/api/v1/endpoints/platform_auth.py	TB001
 apps/api/app/api/v1/endpoints/platform_auth.py	TB002
 apps/api/app/constants/outbound.py	TB001
 apps/api/app/constants/profession_bios.py	TB002
-apps/api/app/core/lazy_loader.py	TB001
+apps/api/app/core/lazy_loader.py	TB001	deferred-until=2026-12-31; ProviderRegistry.get/aget return Any because the registry is keyed by name, not type; typing it means a typed key per provider across all 51 call sites, out of scope for a change that only taught the loader a not-configured state (decided 2026-10-14)
 apps/api/app/core/websocket_broadcast_listener.py	TB002
 apps/api/app/core/websocket_manager.py	TB001
 apps/api/app/core/websocket_manager.py	TB002
