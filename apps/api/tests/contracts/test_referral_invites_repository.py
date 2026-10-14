@@ -37,6 +37,7 @@ class TestReferralInvitesRepository:
         assert await repo.claim(_invite("a", "friend@x.com")) is not None
         assert await repo.claim(_invite("a", "friend@x.com")) is None
         assert await repo.claim(_invite("b", "friend@x.com")) is not None
+        assert await repo.claim(_invite("b", "other@x.com")) is not None
         assert await repo.invited_by("a") == {"friend@x.com"}
 
     async def test_a_released_claim_can_be_retried(self, repo):

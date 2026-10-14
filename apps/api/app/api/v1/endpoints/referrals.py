@@ -75,7 +75,6 @@ async def resolve_code(
             max_age=int(ATTRIBUTION_WINDOW.total_seconds()),
             httponly=True,
             secure=settings.ENV == "production",
-            samesite="lax",
         )
     log.set_ns("referral", valid=result.valid, cookie_set=cookie is not None)
     return result

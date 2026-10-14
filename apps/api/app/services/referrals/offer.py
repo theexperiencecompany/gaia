@@ -27,7 +27,6 @@ class ProPlans:
             raise AppError(
                 message=PRO_PLAN_MISSING_MESSAGE,
                 why=PRO_PLAN_MISSING_WHY,
-                status_code=500,
                 meta={"monthly": self.monthly.amount, "yearly": self.yearly.amount},
             )
 
@@ -72,7 +71,6 @@ def build_offer(plans: ProPlans) -> ReferralOffer:
         raise AppError(
             message=PRO_PLAN_MISSING_MESSAGE,
             why="the monthly and yearly Pro plans are priced in different currencies",
-            status_code=500,
             meta={"monthly": plans.monthly.currency, "yearly": plans.yearly.currency},
         )
     monthly = plans.monthly.amount

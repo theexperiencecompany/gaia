@@ -53,18 +53,18 @@ class ReferralsRepository(MongoRepository[ReferralDocument, ReferralUpdate]):
         self, friend_user_id: str, *, payment_id: str, paid_at: datetime
     ) -> ReferralDocument | None:
         """Move a joined friend to paid with a pending reward; None when they were not joined."""
-        return await self._apply_raw_update(
-            {"friend_user_id": friend_user_id, "status": ReferredFriendStatus.JOINED.value},
-            {
-                "$set": {
-                    "status": ReferredFriendStatus.PAID.value,
-                    "paid_at": paid_at,
-                    "payment_id": payment_id,
-                    "reward_state": ReferralRewardState.PENDING.value,
-                }
-            },
-            scope=REPO_GLOBAL_SCOPE,
-        )
+        joined = {"friend_user_id": friend_user_id, "status": ReferredFriendStatus.JOINED.value}
+        paid = {
+            "$set": {
+                "status": ReferredFriendStatus.PAID.value,
+                "paid_at": paid_at,
+                "payment_id": payment_id,
+                "reward_state": ReferralRewardState.PENDING.value,
+            }
+        }
+        # pragma: no mutate start — cache_policy is None, so scope keys nothing
+        return await self._apply_raw_update(joined, paid, scope=REPO_GLOBAL_SCOPE)
+        # pragma: no mutate end
 
     async def set_gift_code(
         self, friend_user_id: str, duration: PlanDuration, code: str
@@ -75,22 +75,22 @@ class ReferralsRepository(MongoRepository[ReferralDocument, ReferralUpdate]):
         when the friend has no referral at all.
         """
         field = f"gift_codes.{duration.value}"
-        stored = await self._apply_raw_update(
-            {"friend_user_id": friend_user_id, field: {"$exists": False}},
-            {"$set": {field: code}},
-            scope=REPO_GLOBAL_SCOPE,
-        )
+        unset = {"friend_user_id": friend_user_id, field: {"$exists": False}}
+        store = {"$set": {field: code}}
+        # pragma: no mutate start — cache_policy is None, so scope keys nothing
+        stored = await self._apply_raw_update(unset, store, scope=REPO_GLOBAL_SCOPE)
+        # pragma: no mutate end
         return stored if stored is not None else await self.get(friend_user_id)
 
     async def set_reward_target_if_unset(
         self, friend_user_id: str, target: datetime
     ) -> ReferralDocument | None:
         """Pin the billing date this reward moves the referrer to, once; a retry reads the pinned one."""
-        stored = await self._apply_raw_update(
-            {"friend_user_id": friend_user_id, "reward_target_billing_date": None},
-            {"$set": {"reward_target_billing_date": target}},
-            scope=REPO_GLOBAL_SCOPE,
-        )
+        unpinned = {"friend_user_id": friend_user_id, "reward_target_billing_date": None}
+        pin = {"$set": {"reward_target_billing_date": target}}
+        # pragma: no mutate start — cache_policy is None, so scope keys nothing
+        stored = await self._apply_raw_update(unpinned, pin, scope=REPO_GLOBAL_SCOPE)
+        # pragma: no mutate end
         return stored if stored is not None else await self.get(friend_user_id)
 
 

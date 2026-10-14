@@ -64,6 +64,8 @@ class TestDeriveNameFromEmail:
         ("a.r.y.a.n@googlemail.com", "aryan@gmail.com"),
         ("first.last+x@company.io", "first.last@company.io"),
         ("  Someone@Example.COM ", "someone@example.com"),
+        # The domain is what follows the last @; a quoted local part may hold one.
+        ('"a.b@c"@gmail.com', '"ab@c"@gmail.com'),
     ],
 )
 def test_email_identity_folds_every_spelling_of_one_mailbox(email: str, identity: str) -> None:
