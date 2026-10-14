@@ -80,6 +80,7 @@
           {
             "group": "Self-Hosting",
             "pages": [
+              "self-hosting/walkthrough",
               "self-hosting/overview",
               "self-hosting/one-click-deploy",
               "self-hosting/composio-integrations"
@@ -113,6 +114,7 @@
           {
             "group": "Self-Hosting",
             "pages": [
+              "self-hosting/walkthrough",
               "self-hosting/overview",
               "self-hosting/cli-setup",
               "self-hosting/docker-setup",

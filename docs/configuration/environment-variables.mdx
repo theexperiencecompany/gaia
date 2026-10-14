@@ -165,7 +165,7 @@ In production and self-host, these are also required:
 ### AI & Machine Learning
 
 <Tip>
-  Self-host: configure these in the app under **Settings → AI Providers** —
+  Self-host: configure these in the app under **Settings → Providers & Tools** —
   no env vars needed. The keys below are fallbacks and apply to hosted
   deployments.
 </Tip>
@@ -177,7 +177,7 @@ In production and self-host, these are also required:
 | `GOOGLE_API_KEY`     | Google AI API key for Gemini           |
 | `OLLAMA_BASE_URL`    | Ollama endpoint (see [Instance & Auth Mode](#instance-auth-mode)) |
 
-OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are also configured through **Settings → AI Providers**.
+OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are also configured through **Settings → Providers & Tools**.
 
 ---
 
@@ -327,7 +327,7 @@ AUTH_MODE=local
 GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-xxxx
 
-# AI (add what you need — or configure in Settings → AI Providers)
+# AI (add what you need — or configure in Settings → Providers & Tools)
 
 OPENAI_API_KEY=sk-xxxx
 GOOGLE_API_KEY=AIza-xxxx
@@ -372,7 +372,7 @@ EMAIL_UNSUBSCRIBE_SECRET=<generated>
 ```
 
 Everything else is optional. AI provider keys are added at runtime in
-**Settings → AI Providers**; Infisical is never contacted.
+**Settings → Providers & Tools**; Infisical is never contacted.
 </Accordion>
 
 ---
