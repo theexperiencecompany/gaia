@@ -438,7 +438,7 @@ class TestProviderCatalog:
     ) -> None:
         body = (await anon_client.get(f"{API}/catalog")).json()
         assert list(body["features"]) == [f.value for f in ProviderFeature]
-        assert body["features"]["web_search"]["built_in"]["id"] == "duckduckgo"
+        assert body["features"]["web_search"]["built_in"]["engine"] == "duckduckgo"
         assert body["features"]["web_search"]["providers"] == ["tavily", "exa", "brave", "searxng"]
         assert body["features"]["email"]["built_in"] is None
         grouped = [p for spec in body["features"].values() for p in spec["providers"]]

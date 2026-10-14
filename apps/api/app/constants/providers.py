@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TypedDict
 
+from pydantic import BaseModel, ConfigDict
+
 from app.constants.llm import (
     AUX_MODEL_NAME,
     COMMS_MODEL_NAME,
@@ -348,83 +350,94 @@ class BuiltInEngine(StrEnum):
     LOCAL_DISK = "local_disk"
 
 
-class BuiltInOption(TypedDict):
-    id: BuiltInEngine
+class BuiltInOption(BaseModel):
+    """What a feature runs on with no key, as the UI names it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    engine: BuiltInEngine
     label: str
     description: str
 
 
-class FeatureSpec(TypedDict):
+class FeatureSpec(BaseModel):
+    """One feature: what it does, its keyless engine if any, and the providers that upgrade it."""
+
+    model_config = ConfigDict(frozen=True)
+
     label: str
     description: str
     built_in: BuiltInOption | None  # None ⇒ the feature is off until a provider is added
-    providers: list[CredentialProviderName]  # the optional upgrades, in display order
+    providers: tuple[CredentialProviderName, ...]  # the optional upgrades, in display order
 
 
 PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {
-    ProviderFeature.AI_MODELS: {
-        "label": "AI models",
-        "description": "The models GAIA chats and reasons with. It needs at least one.",
-        "built_in": None,
-        "providers": [CredentialProviderName(p.value) for p in LLM_PROVIDER_PRIORITY],
-    },
-    ProviderFeature.WEB_SEARCH: {
-        "label": "Web search",
-        "description": "Looks things up on the web while answering.",
-        "built_in": {
-            "id": BuiltInEngine.DUCKDUCKGO,
-            "label": "DuckDuckGo",
-            "description": "Free, no key needed.",
-        },
-        "providers": [
+    ProviderFeature.AI_MODELS: FeatureSpec(
+        label="AI models",
+        description="The models GAIA chats and reasons with. It needs at least one.",
+        built_in=None,
+        providers=tuple(CredentialProviderName(p.value) for p in LLM_PROVIDER_PRIORITY),
+    ),
+    ProviderFeature.WEB_SEARCH: FeatureSpec(
+        label="Web search",
+        description="Looks things up on the web while answering.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.DUCKDUCKGO,
+            label="DuckDuckGo",
+            description="Free, no key needed.",
+        ),
+        providers=(
             CredentialProviderName.TAVILY,
             CredentialProviderName.EXA,
             CredentialProviderName.BRAVE,
             CredentialProviderName.SEARXNG,
-        ],
-    },
-    ProviderFeature.PAGE_READING: {
-        "label": "Reading web pages",
-        "description": "Opens a link and reads the page.",
-        "built_in": {
-            "id": BuiltInEngine.PAGE_READER,
-            "label": "Built-in reader",
-            "description": "A headless browser on this server, no key needed.",
-        },
-        "providers": [CredentialProviderName.FIRECRAWL],
-    },
-    ProviderFeature.CODE_RUNNING: {
-        "label": "Running code",
-        "description": "Lets GAIA write and run code in a sandbox.",
-        "built_in": {
-            "id": BuiltInEngine.LOCAL_SANDBOX,
-            "label": "Local sandbox",
-            "description": "Runs code in Docker on this server, when LOCAL_CODE_SANDBOX is on.",
-        },
-        "providers": [CredentialProviderName.E2B],
-    },
-    ProviderFeature.FILE_STORAGE: {
-        "label": "File storage",
-        "description": "Where uploaded and generated files are kept.",
-        "built_in": {
-            "id": BuiltInEngine.LOCAL_DISK,
-            "label": "This server's disk",
-            "description": "Files stay on your own machine.",
-        },
-        "providers": [CredentialProviderName.CLOUDINARY],
-    },
-    ProviderFeature.EMAIL: {
-        "label": "Email",
-        "description": "Sends notifications and reminders by email.",
-        "built_in": None,
-        "providers": [CredentialProviderName.RESEND],
-    },
-    ProviderFeature.INTEGRATIONS: {
-        "label": "Integrations",
-        "description": "Connects your accounts, like Gmail, Calendar and Slack.",
-        "built_in": None,
-        "providers": [CredentialProviderName.COMPOSIO, CredentialProviderName.GOOGLE_OAUTH],
-    },
+        ),
+    ),
+    ProviderFeature.PAGE_READING: FeatureSpec(
+        label="Reading web pages",
+        description="Opens a link and reads the page.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.PAGE_READER,
+            label="Built-in reader",
+            description="A headless browser on this server, no key needed.",
+        ),
+        providers=(CredentialProviderName.FIRECRAWL,),
+    ),
+    ProviderFeature.CODE_RUNNING: FeatureSpec(
+        label="Running code",
+        description="Lets GAIA write and run code in a sandbox.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.LOCAL_SANDBOX,
+            label="Local sandbox",
+            description="Runs code in Docker on this server, when LOCAL_CODE_SANDBOX is on.",
+        ),
+        providers=(CredentialProviderName.E2B,),
+    ),
+    ProviderFeature.FILE_STORAGE: FeatureSpec(
+        label="File storage",
+        description="Where uploaded and generated files are kept.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.LOCAL_DISK,
+            label="This server's disk",
+            description="Files stay on your own machine.",
+        ),
+        providers=(CredentialProviderName.CLOUDINARY,),
+    ),
+    ProviderFeature.EMAIL: FeatureSpec(
+        label="Email",
+        description="Sends notifications and reminders by email.",
+        built_in=None,
+        providers=(CredentialProviderName.RESEND,),
+    ),
+    ProviderFeature.INTEGRATIONS: FeatureSpec(
+        label="Integrations",
+        description="Connects your accounts, like Gmail, Calendar and Slack.",
+        built_in=None,
+        providers=(
+            CredentialProviderName.COMPOSIO,
+            CredentialProviderName.GOOGLE_OAUTH,
+        ),
+    ),
 }
 
 FAVICON_URL_TEMPLATE = "https://www.google.com/s2/favicons?domain={domain}&sz=128"

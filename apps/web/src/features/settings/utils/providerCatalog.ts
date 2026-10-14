@@ -36,7 +36,7 @@ export function featureEngineLabel(
   spec: FeatureSpec,
   catalog: ProviderCatalog,
 ): string {
-  if (spec.built_in?.id === engine) return spec.built_in.label;
+  if (spec.built_in?.engine === engine) return spec.built_in.label;
   const provider = catalog.providers[engine];
   if (!provider) {
     throw new Error(`Provider catalog has no entry for "${engine}"`);

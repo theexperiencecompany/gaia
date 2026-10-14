@@ -428,7 +428,7 @@ async def test_provider(
     _ensure_known_provider(provider)
     if provider not in _LLM_PROVIDER_KEYS:
         raise HTTPException(
-            status_code=422, detail=f"{PRESETS[provider]['label']} cannot be connection-tested"
+            status_code=422, detail=f"Only chat providers can be connection-tested, not {provider}"
         )
 
     stored: ProviderConfig | None = await resolve_provider_config(provider)

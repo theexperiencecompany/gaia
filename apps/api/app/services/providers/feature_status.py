@@ -72,7 +72,7 @@ def _usable_providers(feature: ProviderFeature) -> list[str]:
     """Return the feature's providers whose resolved credential can serve it."""
     return [
         provider
-        for provider in PROVIDER_FEATURES[feature]["providers"]
+        for provider in PROVIDER_FEATURES[feature].providers
         if is_usable(provider, resolved_config(provider))
     ]
 
@@ -88,9 +88,8 @@ def _status(spec: FeatureSpec, chain: list[str]) -> FeatureStatus:
 
 def _catalog_engine(spec: FeatureSpec, engine: str) -> FeatureEngine:
     """Map a runtime engine name to its credential provider, or a keyless one to the built-in."""
-    if engine in spec["providers"]:
+    if engine in spec.providers:
         return CredentialProviderName(engine)
-    built_in = spec["built_in"]
-    if built_in is None:
-        raise ValueError(f"{spec['label']} has no built-in engine, yet '{engine}' needs no key")
-    return built_in["id"]
+    if spec.built_in is None:
+        raise ValueError(f"{spec.label} has no built-in engine, yet '{engine}' needs no key")
+    return spec.built_in.engine

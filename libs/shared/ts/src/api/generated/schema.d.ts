@@ -7082,11 +7082,14 @@ export interface components {
          * @enum {string}
          */
         BuiltInEngine: "duckduckgo" | "page_reader" | "local_sandbox" | "local_disk";
-        /** BuiltInOption */
+        /**
+         * BuiltInOption
+         * @description What a feature runs on with no key, as the UI names it.
+         */
         BuiltInOption: {
             /** Description */
             description: string;
-            id: components["schemas"]["BuiltInEngine"];
+            engine: components["schemas"]["BuiltInEngine"];
             /** Label */
             label: string;
         };
@@ -8978,7 +8981,10 @@ export interface components {
             /** Used */
             used: number;
         };
-        /** FeatureSpec */
+        /**
+         * FeatureSpec
+         * @description One feature: what it does, its keyless engine if any, and the providers that upgrade it.
+         */
         FeatureSpec: {
             built_in: components["schemas"]["BuiltInOption"] | null;
             /** Description */

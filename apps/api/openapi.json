@@ -2121,12 +2121,13 @@
         "type": "string"
       },
       "BuiltInOption": {
+        "description": "What a feature runs on with no key, as the UI names it.",
         "properties": {
           "description": {
             "title": "Description",
             "type": "string"
           },
-          "id": {
+          "engine": {
             "$ref": "#/components/schemas/BuiltInEngine"
           },
           "label": {
@@ -2135,7 +2136,7 @@
           }
         },
         "required": [
-          "id",
+          "engine",
           "label",
           "description"
         ],
@@ -6138,6 +6139,7 @@
         "type": "object"
       },
       "FeatureSpec": {
+        "description": "One feature: what it does, its keyless engine if any, and the providers that upgrade it.",
         "properties": {
           "built_in": {
             "anyOf": [

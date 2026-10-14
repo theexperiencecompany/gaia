@@ -47,17 +47,17 @@ const catalog: ProviderCatalog = {
   features: {
     ai_models: feature("AI models", ["openrouter", "openai"]),
     web_search: feature("Web search", ["tavily", "exa", "searxng"], {
-      id: "duckduckgo",
+      engine: "duckduckgo",
       label: "DuckDuckGo",
       description: "Free, no key needed.",
     }),
     page_reading: feature("Reading web pages", ["firecrawl"], {
-      id: "page_reader",
+      engine: "page_reader",
       label: "Built-in reader",
       description: "No key needed.",
     }),
     file_storage: feature("File storage", ["cloudinary"], {
-      id: "local_disk",
+      engine: "local_disk",
       label: "This server's disk",
       description: "Files stay on your machine.",
     }),
