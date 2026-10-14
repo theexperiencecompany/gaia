@@ -39,17 +39,13 @@ const BOT_ENV_FROM_API_ENV = {
 /** HMAC key the bots hash platform user ids with before logging them. */
 const BOT_LOG_HASH_SECRET_KEY = "BOT_LOG_HASH_SECRET";
 
-export function isSelfhostBot(value: string): value is SelfhostBot {
-  return (SELFHOST_BOTS as readonly string[]).includes(value);
-}
-
 /** The compose service a bot runs as. */
 export function botService(bot: SelfhostBot): string {
   return `bot-${bot}`;
 }
 
 /** Where a bot's container stands: serving, still connecting, or broken / absent. */
-export type BotHealth = "healthy" | "starting" | "failing";
+type BotHealth = "healthy" | "starting" | "failing";
 
 export interface BotContainerState {
   health: BotHealth;
