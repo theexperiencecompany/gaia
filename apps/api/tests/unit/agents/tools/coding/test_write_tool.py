@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.agents.tools.coding._artifacts import artifact_links_note
 from app.agents.tools.coding.write_tool import (
     MAX_CONTENT_BYTES,
     _maybe_write_task_file,
@@ -46,6 +47,7 @@ CONFIG: dict[str, Any] = {
 }
 
 SCRATCH_PATH = "/workspace/sessions/conv-1/scratch/notes.md"
+SHORT_URL = "https://heygaia.link/abcdefghijk"
 
 
 @pytest.fixture(autouse=True)
@@ -91,7 +93,7 @@ async def test_writes_session_scratch_file_with_exact_payloads(content: str, n_b
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=mtime)) as mock_atomic,
         patch(f"{MODULE}.add_fs_bytes") as mock_bytes,
         patch(f"{MODULE}.safe_emit") as mock_emit,
-        patch(f"{MODULE}.publish_artifact_write", AsyncMock()) as mock_publish,
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=None)) as mock_publish,
     ):
         result = await write.ainvoke(
             {"path": "scratch/notes.md", "content": content}, config=CONFIG
@@ -125,7 +127,7 @@ async def test_writes_absolute_path_without_session_conv() -> None:
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=mtime)),
         patch(f"{MODULE}.add_fs_bytes"),
         patch(f"{MODULE}.safe_emit"),
-        patch(f"{MODULE}.publish_artifact_write", AsyncMock()) as mock_publish,
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=None)) as mock_publish,
     ):
         result = await write.ainvoke({"path": abs_path, "content": "hi"}, config=CONFIG)
 
@@ -135,6 +137,25 @@ async def test_writes_absolute_path_without_session_conv() -> None:
     )
 
 
+async def test_an_artifact_write_hands_the_agent_its_public_link() -> None:
+    artifact_path = "/workspace/sessions/conv-1/artifacts/report.html"
+    with (
+        patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(AsyncMock())),
+        patch(f"{MODULE}.atomic_write", AsyncMock(return_value=1.0)),
+        patch(f"{MODULE}.add_fs_bytes"),
+        patch(f"{MODULE}.safe_emit"),
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=SHORT_URL)),
+    ):
+        result = await write.ainvoke(
+            {"path": "artifacts/report.html", "content": "<p>"}, config=CONFIG
+        )
+
+    assert result == (
+        f"Wrote 3 bytes to {artifact_path}" + artifact_links_note({"report.html": SHORT_URL})
+    )
+    assert result.endswith(f"- report.html: {SHORT_URL}")
+
+
 async def test_content_at_max_bytes_boundary_is_written() -> None:
     at_limit = "a" * MAX_CONTENT_BYTES
     with (
@@ -142,7 +163,7 @@ async def test_content_at_max_bytes_boundary_is_written() -> None:
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=1.0)),
         patch(f"{MODULE}.add_fs_bytes") as mock_bytes,
         patch(f"{MODULE}.safe_emit"),
-        patch(f"{MODULE}.publish_artifact_write", AsyncMock()),
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=None)),
     ):
         result = await write.ainvoke(
             {"path": "scratch/big.txt", "content": at_limit}, config=CONFIG
@@ -319,7 +340,7 @@ async def test_write_forwards_exact_args_to_task_file_router() -> None:
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=1.0)),
         patch(f"{MODULE}.add_fs_bytes"),
         patch(f"{MODULE}.safe_emit"),
-        patch(f"{MODULE}.publish_artifact_write", AsyncMock()),
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=None)),
     ):
         await write.ainvoke({"path": "scratch/notes.md", "content": content}, config=CONFIG)
 

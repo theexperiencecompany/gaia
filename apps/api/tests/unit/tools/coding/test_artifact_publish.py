@@ -188,8 +188,13 @@ async def test_a_non_artifact_write_returns_no_link() -> None:
 
 
 def test_the_links_note_names_each_file_and_its_link() -> None:
-    note = artifact_links_note({"report.html": SHORT_URL})
-    assert "report.html" in note and SHORT_URL in note
+    note = artifact_links_note({"report.html": SHORT_URL, "data.csv": "https://heygaia.link/x"})
+    assert note == (
+        "\n\nPublic link (anyone with it can open; give it to the user when "
+        "you hand the file over):\n"
+        f"- report.html: {SHORT_URL}\n"
+        "- data.csv: https://heygaia.link/x"
+    )
 
 
 def test_no_links_means_no_note() -> None:
