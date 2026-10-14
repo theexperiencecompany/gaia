@@ -5,12 +5,12 @@ import NumberFlow from "@number-flow/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Github, StarFilledIcon } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Button } from "@/components/ui/button";
 import { appConfig } from "@/config/appConfig";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useIsSignedIn } from "@/features/auth/hooks/useIsSignedIn";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
 import { useGitHubStars } from "@/hooks/useGitHubStars";
 import { usePathname } from "@/i18n/navigation";
@@ -29,12 +29,6 @@ const NAVBAR_ITEMS = [
   { type: "link", label: "Docs", href: "https://docs.heygaia.io" },
   { type: "dropdown", label: "Resources", menu: "resources" },
 ] as const;
-
-const emptySubscribe = () => () => {
-  /* no-op unsubscribe for server snapshot */
-};
-const getClientSnapshot = () => true;
-const getServerSnapshot = () => false;
 
 // Function to control backdrop blur
 function toggleBackdrop(show: boolean) {
@@ -87,19 +81,7 @@ export default function Navbar() {
     };
   }, [repoData?.stargazers_count]);
 
-  const user = useUser();
-  // Gate auth-dependent rendering to client-only to prevent SSR/client hydration
-  // mismatch. useUser() reads a persisted (localStorage) store that rehydrates
-  // synchronously on the client, so a returning logged-in user would otherwise
-  // render a different CTA on the first client render than the server sent.
-  // `useSyncExternalStore` keeps the server/hydration snapshot false and flips
-  // to true on the client without an effect-driven extra render.
-  const mounted = useSyncExternalStore(
-    emptySubscribe,
-    getClientSnapshot,
-    getServerSnapshot,
-  );
-  const isAuthenticated = mounted ? !!user.email : false;
+  const isAuthenticated = useIsSignedIn();
 
   // Handle scroll to change navbar appearance
   useEffect(() => {

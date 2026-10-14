@@ -72,7 +72,10 @@ async def resolve_short_link_route(
     """Resolve a capability slug to its target's public view. No auth."""
     log.set(short_link={"operation": "resolve", "slug": slug})
     response.headers["Cache-Control"] = _NO_STORE
-    view = await get_public_view(slug)
+    try:
+        view = await get_public_view(slug)
+    except JuiceFSUnavailable as e:
+        raise HTTPException(status_code=503, detail=_STORAGE_OFFLINE) from e
     if view is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
     log.set(short_link={"target_type": view.target_type.value})

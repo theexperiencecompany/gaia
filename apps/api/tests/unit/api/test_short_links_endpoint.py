@@ -6,6 +6,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.models.short_link_models import PublicTodoDeliverable, ShortLinkTargetType
+from app.services.storage import JuiceFSUnavailable
 
 # routes.py mounts the short-links router at its own "/l" prefix.
 BASE = "/api/v1/l"
@@ -40,6 +41,20 @@ class TestResolveShortLink:
             response = await client.get(f"{BASE}/abcdefghijk")
 
         assert response.status_code == 404
+
+
+class TestResolveStorageOutage:
+    @pytest.mark.asyncio
+    async def test_workspace_storage_offline_is_503_not_500(self, client: AsyncClient) -> None:
+        """A session-artifact link while workspace storage is down is an outage
+        the viewer can retry, not a crash."""
+        with patch(
+            f"{_ENDPOINT}.get_public_view",
+            AsyncMock(side_effect=JuiceFSUnavailable("mount missing")),
+        ):
+            response = await client.get(f"{BASE}/abcdefghijk")
+
+        assert response.status_code == 503
 
 
 class TestShortLinkFile:
