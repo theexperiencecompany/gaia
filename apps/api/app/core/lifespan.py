@@ -44,10 +44,10 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
                     if not settings.POSTHOG_PROJECT_TOKEN
                     else "POSTHOG_HOST"
                 )
-                # Never block boot: token-less environments (local dev, schemathesis)
-                # legitimately run without analytics — the SILENT loader no-ops
-                # captures. Log the gap loudly instead of taking the API down.
-                log.error(
+                # Never block boot: the SILENT loader no-ops captures. Analytics off
+                # is only a fault where GAIA Cloud's product analytics are expected.
+                log_missing = log.error if settings.deployment.product_analytics else log.info
+                log_missing(
                     f"{LogTag.STARTUP} PostHog not configured — analytics captures will no-op",
                     missing_var=missing_var,
                 )

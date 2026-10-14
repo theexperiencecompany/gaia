@@ -70,6 +70,8 @@ class DeploymentProfile:
     blob_store: BlobStoreKind
     # In-app support requests go to GAIA's support team.
     gaia_support: bool
+    # GAIA Cloud's own PostHog project receives this instance's product analytics.
+    product_analytics: bool
     # Unreachable infrastructure stops the boot; off only in development.
     fail_fast: bool
     trusted_origins: OriginPolicy
@@ -142,6 +144,7 @@ def deployment_profile(
         blob_store=blob_store
         or (BlobStoreKind.LOCAL if kind is DeploymentKind.SELFHOST else BlobStoreKind.CLOUDINARY),
         gaia_support=kind is not DeploymentKind.SELFHOST,
+        product_analytics=kind is DeploymentKind.PRODUCTION,
         fail_fast=kind is not DeploymentKind.DEVELOPMENT,
         trusted_origins=_TRUSTED_ORIGINS[kind],
         https_only=kind is DeploymentKind.PRODUCTION,

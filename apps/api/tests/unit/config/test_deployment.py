@@ -20,6 +20,7 @@ def test_production_bills_enforces_and_reads_env_only() -> None:
     )
 
     assert profile.bills is True
+    assert profile.product_analytics is True
     assert profile.enforces_plans is True
     assert profile.enforces_usage_limits is True
     assert profile.runtime_credentials is False
@@ -52,6 +53,7 @@ def test_selfhost_has_no_plans_no_limits_and_a_credential_store() -> None:
     )
 
     assert profile.bills is False
+    assert profile.product_analytics is False
     assert profile.enforces_plans is False
     assert profile.enforces_usage_limits is False
     assert profile.runtime_credentials is True
@@ -108,6 +110,7 @@ def test_development_mirrors_production_enforcement_without_billing() -> None:
     )
 
     assert profile.bills is False
+    assert profile.product_analytics is False
     assert profile.enforces_plans is True
     assert profile.enforces_usage_limits is True
     assert profile.runtime_credentials is False
