@@ -83,7 +83,7 @@ gaia backup   # dump MongoDB + PostgreSQL
 gaia stop     # stop everything; gaia start brings it back
 ```
 
-No terminal? Deploy with [cloud-init on any VPS, Render, Railway, Dokploy or DigitalOcean](https://docs.heygaia.io/self-hosting/one-click-deploy). Code execution and file uploads are opt-in on self-host; the guide says what each needs.
+No terminal? Deploy with [cloud-init on any VPS, Render, Railway, Coolify or DigitalOcean](https://docs.heygaia.io/self-hosting/one-click-deploy). Code execution and file uploads are opt-in on self-host; the guide says what each needs.
 
 Contributing? See [Development Setup](https://docs.heygaia.io/developers/development-setup) for hot-reload local dev.
 
@@ -100,7 +100,7 @@ gaia up
 
 Then open the address it prints, create your admin account, and paste your AI key. That is the whole setup. Later, `gaia update` upgrades GAIA and `gaia backup` saves your data.
 
-No terminal? Use [cloud-init, Render, Railway, Dokploy or DigitalOcean](https://docs.heygaia.io/self-hosting/one-click-deploy). The full guide is [here](https://docs.heygaia.io/self-hosting/walkthrough).
+No terminal? Use [cloud-init, Render, Railway, Coolify or DigitalOcean](https://docs.heygaia.io/self-hosting/one-click-deploy). The full guide is [here](https://docs.heygaia.io/self-hosting/walkthrough).
 
 ## Workflows
 

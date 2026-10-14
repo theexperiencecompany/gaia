@@ -272,7 +272,7 @@ The workspace is a plain volume. Hosted GAIA keeps workspaces in JuiceFS on obje
 
 | `BLOB_STORE` | Files live in | Use it when |
 | --- | --- | --- |
-| `local` (the self-host default) | The `gaia-selfhost_files` volume at `LOCAL_FILE_STORAGE_PATH` | The backend and the worker run on one host and share the volume: `gaia up`, a VPS, Dokploy |
+| `local` (the self-host default) | The `gaia-selfhost_files` volume at `LOCAL_FILE_STORAGE_PATH` | The backend and the worker run on one host and share the volume: `gaia up`, a VPS, Coolify |
 | `cloudinary` | Your Cloudinary account (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`) | The platform attaches a disk to one service only, as on Render and Railway |
 
 With `local`, the backend and the worker refuse to start when `LOCAL_FILE_STORAGE_PATH` is not a mounted, writable volume, and the error names the fix, rather than saving files into a container that a restart would wipe. Cloudinary URLs are public to anyone who has the link; local files are served only to the users allowed to see them.
@@ -443,7 +443,7 @@ HTTPS_HOST_PORT=443
 
 ### Using your own reverse proxy
 
-Platforms that bring their own proxy (Dokploy, Traefik, …) don't need the bundled one. Leave the `proxy` profile off and route on the shared network:
+Platforms that bring their own proxy (Coolify, Traefik, …) don't need the bundled one. Leave the `proxy` profile off and route on the shared network:
 
 | Path        | Target              |
 | ----------- | ------------------- |
