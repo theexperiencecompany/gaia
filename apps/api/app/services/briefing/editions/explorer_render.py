@@ -23,6 +23,8 @@ from app.services.briefing.editions.stamps import STAMP_ASSET_KEY, stamp_asset_u
 _EXPLORER_DIR = Path(__file__).parent / "explorer"
 _JS_DIR = _EXPLORER_DIR / "js"
 _ASSETS_DIR = _EXPLORER_DIR / "assets"
+_ASSETS_JSON = _ASSETS_DIR / "assets.json"
+_CREDITS_JSON = _ASSETS_DIR / "credits.json"
 
 # Matches only a top-level `EXPLORER.register({ id: "..." ...` — not an axis
 # option's `id:` further down the same object literal.
@@ -94,7 +96,7 @@ def explorer_family_ids() -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def _asset_data_uris() -> dict[str, str]:
-    raw: dict[str, str] = json.loads((_ASSETS_DIR / "assets.json").read_text())
+    raw: dict[str, str] = json.loads(_ASSETS_JSON.read_text())
     return {
         key: f"data:{_ASSET_MIME[key]};base64,{b64}"
         for key, b64 in raw.items()
@@ -104,13 +106,13 @@ def _asset_data_uris() -> dict[str, str]:
 
 @lru_cache(maxsize=1)
 def _art_credit() -> str:
-    art_credits: dict[str, str] = json.loads((_ASSETS_DIR / "credits.json").read_text())
+    art_credits: dict[str, str] = json.loads(_CREDITS_JSON.read_text())
     return art_credits.get(ART_ASSET_KEY, "")
 
 
 @lru_cache(maxsize=1)
 def _font_faces_css() -> str:
-    raw: dict[str, str] = json.loads((_ASSETS_DIR / "assets.json").read_text())
+    raw: dict[str, str] = json.loads(_ASSETS_JSON.read_text())
     rules = [
         f"@font-face{{font-family:'{family}';font-style:{style};"
         f"font-weight:{weight};font-display:block;"

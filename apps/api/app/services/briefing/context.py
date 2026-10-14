@@ -132,11 +132,7 @@ def has_meaningful_focus(focus: str | None) -> bool:
 async def format_goal_block(user_id: str, user: UserDocument) -> tuple[str, bool]:
     """Return (formatted goal block, has_goal); has_goal gates cold-start."""
     focus = (user.onboarding.focus if user.onboarding else "").strip()
-    if not has_meaningful_focus(focus):
-        focus = ""
-    lines: list[str] = []
-    if focus:
-        lines.append(f"Stated goal: {focus}")
+    lines = [f"Stated goal: {focus}"] if has_meaningful_focus(focus) else []
 
     try:
         result = await memory_engine.recall(

@@ -227,6 +227,16 @@ class TestImageAndUpload:
         assert options.device_scale_factor == 2
         assert options.image_format == "png"
 
+    async def test_the_chat_image_is_cropped_to_the_familys_paper(self, harness: Harness) -> None:
+        await host(make_payload(template_family="memo"), crop_to_paper=True)
+
+        assert harness.image_calls[0]["options"].clip_selector == ".t-memo__sheet"
+
+    async def test_the_email_image_keeps_the_full_composition(self, harness: Harness) -> None:
+        await host(make_payload(template_family="memo"))
+
+        assert harness.image_calls[0]["options"].clip_selector is None
+
     async def test_the_hosted_path_is_the_opaque_render_key_alone(self, harness: Harness) -> None:
         """The URL goes out in emails and on public brief links: no user id, kind or date."""
         await host(make_payload(date="2026-02-03"))

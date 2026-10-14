@@ -220,7 +220,7 @@ def build_ed(
     generated_local: str,
     assets: dict[str, str],
     art_credit: str,
-    family: str = "",
+    family: str,
 ) -> ExplorerEdition:
     """Build the vendored templates' ed object from a briefing payload.
 
@@ -309,17 +309,16 @@ def _time24(generated_local: str) -> str:
     return f"{hour:02d}:{minute}"
 
 
-def _split_time_prefix(text: str) -> tuple[str | None, str | None, str]:
-    """Split item text into (time, t24, label).
+def _split_time_prefix(text: str) -> tuple[str | None, str]:
+    """Split item text into (t24, label).
 
-    time/t24 are None when the text carries no leading clock prefix (the common case for
-    our payload's item text).
+    t24 is None when the text carries no leading clock prefix (the common case for our
+    payload's item text).
     """
     match = _ITEM_TIME_PREFIX_RE.match(text.strip())
     if not match:
-        return None, None, text
-    time_str, label = match.group(1), match.group(2)
-    return time_str, _time24(time_str), label
+        return None, text
+    return _time24(match.group(1)), match.group(2)
 
 
 def _split_credit(credit: str) -> tuple[str, str]:
@@ -363,7 +362,7 @@ def _event_row(event: BriefingEvent) -> ExplorerTodayItem:
 
 
 def _overnight_row(item: BriefingItem) -> ExplorerOvernightItem:
-    _, t24, label = _split_time_prefix(item.text)
+    t24, label = _split_time_prefix(item.text)
     return {
         "t24": t24,
         "label": label,

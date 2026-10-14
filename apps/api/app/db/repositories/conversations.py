@@ -596,7 +596,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 {"$match": {"messages.type": "user", "messages.date": {"$gt": since_iso}}},
                 {"$sort": {"messages.date": -1}},
                 {"$limit": limit},
-                {"$project": {"_id": 0, "source": 1, "text": "$messages.response"}},
+                {"$project": {"source": True, "text": "$messages.response"}},
             ],
             BotReplyRow,
         )

@@ -144,7 +144,7 @@ class TestProvisionSystemWorkflows:
             await provision_system_workflows("user-1", "gmail", "Gmail")
 
         mock_workflow_svc.create_workflow.assert_awaited_once_with(req, "user-1")
-        mock_notify.assert_awaited_once()
+        mock_notify.assert_awaited_once_with("user-1", "Gmail", [req])
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
@@ -182,6 +182,7 @@ class TestProvisionSystemWorkflows:
         mock_repo: MagicMock,
         mock_workflow_svc: MagicMock,
         mock_notify: AsyncMock,
+        _patch_log: MagicMock,
     ) -> None:
         mock_repo.find_system_workflow = AsyncMock(return_value=None)
         mock_workflow_svc.create_workflow = AsyncMock(side_effect=RuntimeError("unexpected"))
@@ -199,6 +200,9 @@ class TestProvisionSystemWorkflows:
             await provision_system_workflows("user-1", "gmail", "Gmail")
 
         mock_notify.assert_not_awaited()
+        _patch_log.error.assert_called_once()
+        assert _patch_log.error.call_args.kwargs["system_workflow_key"] == "gmail_digest"
+        assert _patch_log.error.call_args.kwargs["integration_display_name"] == "Gmail"
 
 
 @pytest.mark.parametrize(
@@ -1275,6 +1279,7 @@ class TestTheDailyBriefFollowsQuietHours:
         mock_users: MagicMock,
         mock_timezone: AsyncMock,
         _activate: AsyncMock,
+        _patch_log: MagicMock,
         quiet_hours: QuietHours,
         cron: str,
     ) -> None:
@@ -1287,6 +1292,16 @@ class TestTheDailyBriefFollowsQuietHours:
 
         await provision_briefing_workflows("user-1")
 
+        _patch_log.set.assert_called_once_with(
+            component="system_workflow_provisioner",
+            operation="provision_briefing_workflows",
+            user_id="user-1",
+        )
+        assert [call.args for call in mock_repo.find_system_workflow.await_args_list] == [
+            ("user-1", DAILY_BRIEFING_WORKFLOW_KEY),
+            ("user-1", WEEKLY_DIGEST_WORKFLOW_KEY),
+        ]
+        mock_users.get.assert_awaited_once_with("user-1")
         created = {
             call.args[0].system_workflow_key: call.args[0].trigger_config
             for call in mock_service.create_workflow.await_args_list
@@ -1324,3 +1339,20 @@ class TestTheDailyBriefFollowsQuietHours:
 
         definition = mock_repo.reset_system_workflow.await_args.args[1]
         assert definition.trigger_config.cron_expression == "0 10 * * *"
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.get_profile_timezone", new_callable=AsyncMock)
+    @patch(f"{MODULE}.user_repository")
+    async def test_scheduling_the_brief_for_an_unknown_user_names_that_user(
+        self, mock_users: MagicMock, mock_timezone: AsyncMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _stamp_user_schedule
+
+        mock_users.get = AsyncMock(return_value=None)
+        mock_timezone.return_value = MagicMock(value="UTC")
+        trigger = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 8 * * *")
+
+        with pytest.raises(LookupError, match="unknown user user-404"):
+            await _stamp_user_schedule(DAILY_BRIEFING_WORKFLOW_KEY, trigger, "user-404")
+
+        mock_users.get.assert_awaited_once_with("user-404")

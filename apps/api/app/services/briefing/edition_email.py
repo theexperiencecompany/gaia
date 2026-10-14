@@ -25,14 +25,9 @@ from app.services.briefing.skim import brief_path
 from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
 
-# The edition is hosted (Cloudinary) and referenced by URL, so it renders in
-# Gmail (which blocks base64 data: URIs) with no size ceiling — full-res 2x PNG.
-_EMAIL_IMAGE_SCALE = 2
-
 # Edition numbering is cosmetic furniture; anchor it to a fixed epoch so the
 # number is stable and monotonic across days without any stored counter.
 _EDITION_EPOCH = date_cls(2026, 1, 1)
-_EDITION_WIDTH = 1180
 _PUBLIC_APP_URL = "https://heygaia.io"
 
 # GAIA email palette: dark-first, single cyan accent (matches DESIGN.md).
@@ -144,13 +139,11 @@ async def render_edition_png(payload: BriefingPayload, *, crop_to_paper: bool) -
     # via render_edition.
     render = renderer_for(family) or render_edition
     edition_html = render(payload, edition_no=_edition_no(payload.date), generated_local="")
+    # The defaults are the edition canvas: 1180px at 2x. The image is hosted and
+    # referenced by URL (Gmail blocks base64 data: URIs), so its size has no ceiling.
     return await render_html_to_image(
         edition_html,
-        ImageRenderOptions(
-            width=_EDITION_WIDTH,
-            device_scale_factor=_EMAIL_IMAGE_SCALE,
-            clip_selector=paper_selector(family) if crop_to_paper else None,
-        ),
+        ImageRenderOptions(clip_selector=paper_selector(family) if crop_to_paper else None),
     )
 
 

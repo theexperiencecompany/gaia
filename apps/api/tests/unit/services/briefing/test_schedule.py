@@ -94,7 +94,7 @@ class TestResyncDailyBriefingSchedule:
             schedule.WorkflowService, "update_workflow", AsyncMock(return_value=None)
         )
 
-        with pytest.raises(LookupError):
+        with pytest.raises(LookupError, match="wf-brief vanished while it was moved"):
             await schedule.resync_daily_briefing_schedule(
                 _USER, QuietHours(start_hour=0, end_hour=10)
             )

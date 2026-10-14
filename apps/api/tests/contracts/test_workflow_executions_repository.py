@@ -169,3 +169,21 @@ class TestWorkflowExecutionsRepository:
         assert total == 2 and [e.execution_id for e in first] == [newer.execution_id]
         second, _ = await repo.list_for_workflow(wf, owner, limit=1, offset=1)
         assert [e.execution_id for e in second] == [older.execution_id]
+
+
+class TestListSince:
+    async def test_returns_the_users_executions_started_at_or_after_the_cutoff(self, repo):
+        user_id, since = _uid("u"), datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        at_cutoff = await repo.create(_execution(user_id=user_id, started_at=since))
+        later = await repo.create(
+            _execution(user_id=user_id, started_at=since + timedelta(hours=1))
+        )
+        await repo.create(_execution(user_id=user_id, started_at=since - timedelta(seconds=1)))
+        await repo.create(_execution(started_at=since + timedelta(hours=1)))
+
+        found = await repo.list_since(user_id, since, limit=10)
+
+        assert sorted(e.execution_id for e in found) == sorted(
+            [at_cutoff.execution_id, later.execution_id]
+        )
+        assert len(await repo.list_since(user_id, since, limit=1)) == 1

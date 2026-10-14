@@ -23,14 +23,27 @@ class FakePage:
         self.screenshot_calls: list[dict[str, Any]] = []
         self.set_content_error: Exception | None = None
         self.handlers: dict[str, list[Any]] = {}
+        self.script_errors: list[Exception] = []
+        self.boxes: dict[str, dict[str, float] | None] = {}
+        self.scroll: list[float] = [0.0, 0.0]
 
     def on(self, event: str, handler: Any) -> None:
         self.handlers.setdefault(event, []).append(handler)
 
     async def set_content(self, html: str, **kwargs: Any) -> None:
         self.set_content_calls.append({"html": html, **kwargs})
+        for error in self.script_errors:
+            for handler in self.handlers.get("pageerror", []):
+                handler(error)
         if self.set_content_error is not None:
             raise self.set_content_error
+
+    def locator(self, selector: str) -> "FakeLocator":
+        return FakeLocator(self.boxes.get(selector))
+
+    async def evaluate(self, expression: str) -> list[float]:
+        assert expression == "() => [window.scrollX, window.scrollY]"
+        return self.scroll
 
     async def wait_for_timeout(self, milliseconds: int) -> None:
         self.wait_for_timeout_calls.append(milliseconds)
@@ -38,6 +51,18 @@ class FakePage:
     async def screenshot(self, **kwargs: Any) -> bytes:
         self.screenshot_calls.append(kwargs)
         return self._image
+
+
+class FakeLocator:
+    def __init__(self, box: dict[str, float] | None) -> None:
+        self._box = box
+
+    @property
+    def first(self) -> "FakeLocator":
+        return self
+
+    async def bounding_box(self) -> dict[str, float] | None:
+        return self._box
 
 
 class FakeContext:
@@ -111,6 +136,7 @@ class TestImageRenderOptions:
         assert options.image_format == "png"
         assert options.quality is None
         assert options.timeout_ms == 15000
+        assert options.clip_selector is None
 
     def test_options_are_immutable(self) -> None:
         options = ImageRenderOptions()
@@ -218,4 +244,62 @@ class TestRenderHtmlToImage:
             await render_html_to_image("<html>hi</html>")
 
         assert browser.browser.close_count == 1
+        assert browser.page.screenshot_calls == []
+
+    async def test_a_page_script_error_fails_the_render_before_any_capture(
+        self, browser: Harness
+    ) -> None:
+        browser.page.script_errors = [ValueError("ed is undefined"), ValueError("second")]
+
+        with pytest.raises(
+            RuntimeError, match=r"^Page script failed while rendering: ed is undefined$"
+        ):
+            await render_html_to_image("<html>hi</html>")
+
+        assert browser.page.screenshot_calls == []
+        assert browser.browser.close_count == 1
+
+
+@pytest.mark.unit
+class TestClipSelector:
+    async def test_the_capture_is_cropped_to_the_padded_element_box_in_page_coordinates(
+        self, browser: Harness
+    ) -> None:
+        browser.page.boxes[".paper"] = {"x": 100.0, "y": 50.0, "width": 400.0, "height": 300.0}
+        browser.page.scroll = [5.0, 700.0]
+
+        await render_html_to_image("<html>hi</html>", ImageRenderOptions(clip_selector=".paper"))
+
+        assert browser.page.screenshot_calls == [
+            {
+                "full_page": True,
+                "type": "png",
+                "clip": {"x": 93.0, "y": 738.0, "width": 424.0, "height": 324.0},
+            }
+        ]
+
+    async def test_padding_never_pushes_the_clip_off_the_page_origin(
+        self, browser: Harness
+    ) -> None:
+        browser.page.boxes[".paper"] = {"x": 4.0, "y": 0.0, "width": 10.0, "height": 20.0}
+
+        await render_html_to_image(
+            "<html>hi</html>", ImageRenderOptions(image_format="jpeg", clip_selector=".paper")
+        )
+
+        assert browser.page.screenshot_calls[0]["clip"] == {
+            "x": 0.0,
+            "y": 0.0,
+            "width": 34.0,
+            "height": 44.0,
+        }
+
+    async def test_a_selector_matching_nothing_fails_loud_instead_of_shipping_uncropped(
+        self, browser: Harness
+    ) -> None:
+        with pytest.raises(RuntimeError, match=r"^Clip element not rendered: '\.missing'$"):
+            await render_html_to_image(
+                "<html>hi</html>", ImageRenderOptions(clip_selector=".missing")
+            )
+
         assert browser.page.screenshot_calls == []

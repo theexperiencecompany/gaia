@@ -68,7 +68,6 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
-    NotificationType,
     RedirectConfig,
 )
 from app.models.todo_models import TodoDocument
@@ -95,6 +94,11 @@ from shared.py.wide_events import log
 _JSON_FENCE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 
 
+def json_blocks(raw: str) -> list[str]:
+    """Return the non-empty JSON candidates in an agent's reply: its fenced blocks, else the reply."""
+    return [block.strip() for block in _JSON_FENCE.findall(raw) or [raw] if block.strip()]
+
+
 class BriefingGenerationError(Exception):
     """The agent did not produce a valid BriefingPayload — the run failed."""
 
@@ -105,11 +109,7 @@ def _parse_payload(raw: str) -> BriefingPayload:
     call_agent_silent swallows its errors into a plain string, which fails validation
     here, so no partial briefing is stored.
     """
-    candidates = _JSON_FENCE.findall(raw) or [raw]
-    for block in candidates:
-        block = block.strip()
-        if not block:
-            continue
+    for block in json_blocks(raw):
         try:
             data = json.loads(block)
         except json.JSONDecodeError:
@@ -128,36 +128,40 @@ def _parse_payload(raw: str) -> BriefingPayload:
     )
 
 
-async def _run_silent(
-    user: AuthenticatedUser, clock: UserClock, prompt: str, conversation_key: str
+async def run_silent_turn(
+    user: AuthenticatedUser, prompt: str, *, conversation_id: str, source: str
 ) -> str:
-    """One silent agent turn on a fresh per-day thread; returns the final text."""
+    """Run one silent background agent turn on the given thread; return its final text."""
     # construct_langchain_messages reads the human turn from `messages`
     # (`message` alone is not consulted when no workflow/tool is selected).
     request = MessageRequestWithHistory(
         message=prompt,
         messages=[MessageDict(role="user", content=prompt)],
-        fileIds=[],
-        fileData=[],
-        selectedTool=None,
-        selectedWorkflow=None,
-    )
-    # Fresh thread per RUN, not per day: a same-day retry (or rerun) on a shared
-    # thread would resume the failed attempt's polluted state via the
-    # checkpointer, and stale turns would masquerade as today's context.
-    conversation_id = (
-        f"briefing-{conversation_key}-{user.user_id}-{clock.date_str}-{uuid4().hex[:6]}"
     )
     run = await call_agent_silent(
         request=request,
         conversation_id=conversation_id,
-        user=user.with_timezone(clock.tz.key),
-        options=AgentRunOptions(
-            trigger_context={"execution_mode": "background"},
-            source="briefing",
-        ),
+        user=user,
+        options=AgentRunOptions(trigger_context={"execution_mode": "background"}, source=source),
     )
     return run.message
+
+
+async def _run_silent(
+    user: AuthenticatedUser, clock: UserClock, prompt: str, conversation_key: str
+) -> str:
+    """One silent agent turn on a fresh per-run thread, in the user's timezone."""
+    # Fresh thread per RUN, not per day: a same-day retry (or rerun) on a shared
+    # thread would resume the failed attempt's polluted state via the
+    # checkpointer, and stale turns would masquerade as today's context.
+    return await run_silent_turn(
+        user.with_timezone(clock.tz.key),
+        prompt,
+        conversation_id=(
+            f"briefing-{conversation_key}-{user.user_id}-{clock.date_str}-{uuid4().hex[:6]}"
+        ),
+        source="briefing",
+    )
 
 
 async def _generate_payload(
@@ -194,7 +198,7 @@ def _format_week(completed: context.CompletedWork) -> str:
 _ARTIFACT_PREVIEW_CHARS = 240
 # Bookkeeping sections excluded when sizing the DELIVERABLE: a one-line decision
 # behind a long research trail must not read as "massive", so these log/scratch
-# sections don't count toward link-worthiness.
+# sections don't count toward its size.
 _BOILERPLATE_SECTIONS = ("activity log", "timeline", "learnings", "context", "system log")
 
 
@@ -202,14 +206,12 @@ _BOILERPLATE_SECTIONS = ("activity log", "timeline", "learnings", "context", "sy
 class _ArtifactFact:
     """What the voice pass balances per item.
 
-    A concrete summary it always voices, an always-available link, the deliverable size
-    as a HINT (not a verdict — a long research trail behind a one-line decision is not a
-    thing to open), and whether it is waiting on the user. The pass summarises everything
-    and links only what's genuinely a deliverable-to-open or waiting on the user.
+    A concrete summary it always voices, the deliverable size as a HINT (not a verdict —
+    a long research trail behind a one-line decision is not a thing to open), and
+    whether it is waiting on the user.
     """
 
     snippet: str
-    link: str
     chars: int
     action: bool
 
@@ -250,8 +252,6 @@ def _gather_artifacts(work: context.TrackedWork) -> dict[str, _ArtifactFact]:
     """Build, per tracked item, a concrete summary and the two signals the voice pass uses.
 
     The signals are whether the deliverable is big and whether it is waiting on the user.
-    The pass always summarises; it appends the link only for big or waiting items, never
-    a bare link and never one for a small stated result.
     """
     out: dict[str, _ArtifactFact] = {}
     blocked_ids = {d.id for d in work.blocked}
@@ -262,7 +262,6 @@ def _gather_artifacts(work: context.TrackedWork) -> dict[str, _ArtifactFact]:
         canvas = doc.canvas_content or ""
         out[todo_id] = _ArtifactFact(
             snippet=_canvas_snippet(canvas),
-            link="",
             chars=_deliverable_size(canvas),
             action=todo_id in blocked_ids,
         )
@@ -272,7 +271,7 @@ def _gather_artifacts(work: context.TrackedWork) -> dict[str, _ArtifactFact]:
 def _wants_email(user: UserDocument) -> bool:
     """Email goes out when the user left it on and has an address on file."""
     prefs = normalize_channel_preferences(user.notification_channel_prefs)
-    return prefs.get(NotificationChannel.EMAIL, True) and bool((user.email or "").strip())
+    return prefs[NotificationChannel.EMAIL] and bool((user.email or "").strip())
 
 
 async def _post_to_chat(
@@ -307,8 +306,8 @@ async def _deliver(
     kind: BriefingKind = briefing.kind
     skim = build_skim(payload, full_brief_url(briefing.id))
     channel = await resolve_chat_channel(user.id)
-    image_url = (
-        await host_edition_image(payload, render_key=render_key, crop_to_paper=True)
+    chat_post = (
+        (channel, await host_edition_image(payload, render_key=render_key, crop_to_paper=True))
         if channel
         else None
     )
@@ -319,7 +318,6 @@ async def _deliver(
         NotificationRequest(
             user_id=user.id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
-            type=NotificationType.INFO,
             priority=2,
             channels=[ChannelConfig(channel_type=c) for c in channels],
             content=NotificationContent(
@@ -350,10 +348,11 @@ async def _deliver(
         )
     )
     delivered = [c.channel_type for c in record.channels]
-    if channel and image_url:
-        result = await _post_to_chat(user, channel, skim, image_url, kind)
+    if chat_post:
+        chat_channel, image_url = chat_post
+        result = await _post_to_chat(user, chat_channel, skim, image_url, kind)
         if result is OutboundResult.PUBLISHED:
-            delivered.append(channel.source.value)
+            delivered.append(chat_channel.source.value)
     return delivered
 
 
@@ -374,7 +373,8 @@ def _held_text(doc: PendingBriefItemDocument) -> str:
 
 
 def _same_text_key(text: str) -> str:
-    return " ".join(text.split()).casefold()
+    # pragma: no mutate below — any separator keeps the key injective, so equality holds.
+    return " ".join(text.split()).casefold()  # pragma: no mutate
 
 
 @dataclass
@@ -412,30 +412,29 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
             duplicate_ids.append(doc.id)
             continue
         seen.add(_same_text_key(text))
-        held_items.append(BriefingItem(text=text, kind="note"))
+        held_items.append(BriefingItem(text=text))
         held_ids.append(doc.id)
 
-    sections: list[BriefingSection] = []
-    budget = MAX_BRIEF_ITEMS
-    kept_held = 0
-    for title, items in (
-        (_NEEDS_YOU_SECTION_TITLE, needs_you),
-        (_HELD_SECTION_TITLE, held_items),
-        (_WORK_SECTION_TITLE, gaia_work),
-    ):
-        kept = items[:budget]
-        budget -= len(kept)
-        if title == _HELD_SECTION_TITLE:
-            kept_held = len(kept)
-        if kept:
-            sections.append(
-                BriefingSection(numeral=_SECTION_NUMERALS[len(sections)], title=title, items=kept)
-            )
-    kept_total = MAX_BRIEF_ITEMS - budget
+    kept_needs_you = needs_you[:MAX_BRIEF_ITEMS]
+    kept_held = held_items[: MAX_BRIEF_ITEMS - len(kept_needs_you)]
+    kept_work = gaia_work[: MAX_BRIEF_ITEMS - len(kept_needs_you) - len(kept_held)]
+    filled = [
+        (title, items)
+        for title, items in (
+            (_NEEDS_YOU_SECTION_TITLE, kept_needs_you),
+            (_HELD_SECTION_TITLE, kept_held),
+            (_WORK_SECTION_TITLE, kept_work),
+        )
+        if items
+    ]
+    kept_total = len(kept_needs_you) + len(kept_held) + len(kept_work)
     return _Sections(
-        sections=sections,
+        sections=[
+            BriefingSection(numeral=_SECTION_NUMERALS[i], title=title, items=items)
+            for i, (title, items) in enumerate(filled)
+        ],
         left_out=len(needs_you) + len(held_items) + len(gaia_work) - kept_total,
-        carried_ids=held_ids[:kept_held] + duplicate_ids,
+        carried_ids=held_ids[: len(kept_held)] + duplicate_ids,
     )
 
 
@@ -447,8 +446,6 @@ def _fact_line(item: BriefingItem, art: _ArtifactFact | None) -> str:
         line += f" | artifact holds ~{art.chars} chars"
         if art.action:
             line += " | waiting on you"
-        if art.link:
-            line += f" | link: {art.link}"
     return line
 
 
@@ -484,17 +481,10 @@ def _build_facts(
     """Assemble sections + stats deterministically from tracked-work state and held results.
 
     The rendered sections come from here so the brief cannot lie. Each fact gives the
-    model a summary, whether it is big or waiting on the user, and the link; the link is
-    appended only for big/waiting ones.
+    model a summary and whether it is big or waiting on the user.
     """
     built = _work_sections(work, held)
     sections, left_out = built.sections, built.left_out
-    for sec in sections:
-        for it in sec.items:
-            art = artifacts.get(it.todo_id or "")
-            if art and art.link:
-                it.link = art.link
-
     items = [it for sec in sections for it in sec.items]
     fact_lines: list[str] = [
         "[COUNTS] "
@@ -506,7 +496,8 @@ def _build_facts(
     for sec in sections:
         fact_lines.append(f"[{sec.title}]")
         for it in sec.items:
-            fact_lines.append(_fact_line(it, artifacts.get(it.todo_id or "")))
+            art = artifacts.get(it.todo_id) if it.todo_id else None
+            fact_lines.append(_fact_line(it, art))
     if left_out:
         fact_lines.append(
             f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
@@ -532,11 +523,7 @@ class _Voice(BaseModel):
 
 def _parse_voice(raw: str) -> _Voice:
     """Extract the voice-only JSON (headline/lede/caption/mood/bubbles)."""
-    candidates = _JSON_FENCE.findall(raw) or [raw]
-    for block in candidates:
-        block = block.strip()
-        if not block:
-            continue
+    for block in json_blocks(raw):
         try:
             return _Voice.model_validate_json(block)
         except ValidationError:
@@ -638,7 +625,8 @@ async def _voice_checked_against_items(
     A contradiction is sent back to the model once with the problems named; a second
     one fails the run before anything is stored or sent.
     """
-    problems: list[str] = []
+    # pragma: no mutate below — [] and None are both falsy, and the first attempt overwrites it.
+    problems: list[str] = []  # pragma: no mutate
     for _ in range(MAX_VOICE_ATTEMPTS):
         attempt_prompt = f"{prompt}\n\n{voice_correction_note(problems)}" if problems else prompt
         payload = build(
@@ -685,12 +673,14 @@ async def _publish(
     kind: BriefingKind,
     payload: BriefingPayload,
     notification_kind: str,
+    family: str,
 ) -> BriefingModel:
-    """Render and store the brief, deliver it, record where it went and report it.
+    """Draw the edition, render and store the brief, deliver it and report where it went.
 
     The full edition is rendered and hosted first, so a render failure stores and sends
     nothing; the stored brief keeps its URL for the in-app page and the email.
     """
+    await _assign_edition(user.id, payload, family)
     # A fresh random key per render: the hosted URL reaches emails and public links.
     render_key = uuid4().hex
     edition_image_url = await host_edition_image(
@@ -705,7 +695,7 @@ async def _publish(
         UserId(user.id),
         BriefingSent(
             kind=kind,
-            family=payload.template_family or "edition",
+            family=family,
             mood=payload.mood,
             item_count=sum(len(s.items) for s in payload.sections),
             channel_count=len(channels),
@@ -786,12 +776,14 @@ async def run_daily_briefing(user_id: str) -> None:
             clock, voice, facts.sections, facts.stats, winback.is_winback
         ).model_copy(update={"calendar": calendar, "tallies": tallies}),
     )
-    await _assign_edition(
-        user_id,
+    await _publish(
+        user,
+        clock,
+        BRIEFING_KIND_DAILY,
         payload,
+        NOTIFICATION_KIND_BRIEFING_DAILY,
         await _draw_from_bag(user_id, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS),
     )
-    await _publish(user, clock, BRIEFING_KIND_DAILY, payload, NOTIFICATION_KIND_BRIEFING_DAILY)
     if facts.carried_ids:
         await pending_brief_items_repository.consume(user_id, facts.carried_ids)
     await _clear_bootstrap(user)
@@ -839,6 +831,6 @@ async def run_weekly_digest(user_id: str) -> None:
     payload.tallies = BriefingTallies(
         done_by_you=sum(d.you for d in week.days), done_by_gaia=sum(d.gaia for d in week.days)
     )
-    await _assign_edition(user_id, payload, WEEKLY_FAMILY)
-
-    await _publish(user, clock, BRIEFING_KIND_WEEKLY, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY)
+    await _publish(
+        user, clock, BRIEFING_KIND_WEEKLY, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY, WEEKLY_FAMILY
+    )

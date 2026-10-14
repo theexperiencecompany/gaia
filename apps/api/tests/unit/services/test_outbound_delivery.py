@@ -399,6 +399,29 @@ class TestPublishOutboundPhoto:
         assert ok is od.OutboundResult.SKIPPED
         linked.assert_not_awaited()
 
+    async def test_a_destination_override_sends_the_photo_there_without_the_dm_lookup(
+        self,
+    ) -> None:
+        publisher = AsyncMock()
+        resolve = AsyncMock()
+        with (
+            patch.object(od.PlatformLinkService, "get_linked_platforms", resolve),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            ok = await od.publish_outbound_photo(
+                ConversationSource.TELEGRAM,
+                "u1",
+                "https://cdn.test/1.png",
+                "1.png",
+                destination_override="556677",
+            )
+        assert ok is od.OutboundResult.PUBLISHED
+        resolve.assert_not_awaited()
+        _queue, body = publisher.publish_outbound.await_args.args
+        assert json.loads(body)["destination_id"] == "556677"
+
     async def test_an_unlinked_account_is_skipped(self) -> None:
         with patch.object(
             od.PlatformLinkService,
