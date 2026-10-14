@@ -26,7 +26,13 @@ def _make_state(messages=None):
 
 
 def _make_config(user_id="user-123"):
-    return {"configurable": {"user_id": user_id, "thread_id": "thread-abc"}}
+    return {
+        "configurable": {
+            "user_id": user_id,
+            "thread_id": "thread-abc",
+            "conversation_id": "conv-abc",
+        }
+    }
 
 
 def _make_store():
@@ -466,7 +472,9 @@ class TestGenerateFollowUpActionsNeverRaises:
             patch(f"{NODE}.ainvoke_structured", new=llm),
         ):
             async with captured_wide_event() as event:
-                actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+                actions = await generate_follow_up_actions(
+                    "ctx", "user-123", _make_config(), conversation_id=None
+                )
 
         assert actions == []
         llm.assert_not_awaited()
@@ -479,7 +487,10 @@ class TestGenerateFollowUpActionsNeverRaises:
         with patch(
             f"{NODE}.get_tool_registry", new=AsyncMock(side_effect=RuntimeError("no registry"))
         ):
-            assert await generate_follow_up_actions("ctx", None, _make_config()) == []
+            assert (
+                await generate_follow_up_actions("ctx", None, _make_config(), conversation_id=None)
+                == []
+            )
 
     async def test_an_llm_failure_is_logged_as_an_error(self) -> None:
         with (
@@ -490,7 +501,9 @@ class TestGenerateFollowUpActionsNeverRaises:
             patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
         ):
             async with captured_wide_event() as event:
-                actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+                actions = await generate_follow_up_actions(
+                    "ctx", "user-123", _make_config(), conversation_id=None
+                )
 
         assert actions == []
         assert [e["error_type"] for e in event["errors"]] == ["ValueError"]
@@ -504,7 +517,9 @@ class TestGenerateFollowUpActionsNeverRaises:
             patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
         ):
             async with captured_wide_event() as event:
-                await generate_follow_up_actions("ctx", "user-123", _make_config())
+                await generate_follow_up_actions(
+                    "ctx", "user-123", _make_config(), conversation_id=None
+                )
 
         (error,) = event["errors"]
         assert error["msg"] == f"{LogTag.AGENT} Follow-up action generation failed"
@@ -520,7 +535,9 @@ class TestGenerateFollowUpActionsNeverRaises:
             patch(f"{NODE}.get_user_integration_capabilities", new=capabilities),
             patch(f"{NODE}.ainvoke_structured", new=llm),
         ):
-            actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+            actions = await generate_follow_up_actions(
+                "ctx", "user-123", _make_config(), conversation_id=None
+            )
 
         assert actions == ["Do it"]
         capabilities.assert_awaited_once_with("user-123")
@@ -634,10 +651,10 @@ class TestPreviousActionsContext:
         ):
             await follow_up_actions_node(state, _make_config(user_id="user-123"), _make_store())
 
-        # Keyed on the run's user and its thread_id, over a trailing window the
-        # repository slices on.
+        # Keyed on the run's user and its TRUE conversation id (never the
+        # checkpoint thread_id), over a trailing window the repository slices on.
         assert _PREVIOUS_ACTIONS_MESSAGE_WINDOW == 10
-        previous_actions_lookup.assert_awaited_once_with("user-123", "thread-abc", window=10)
+        previous_actions_lookup.assert_awaited_once_with("user-123", "conv-abc", window=10)
         dynamic_context = llm.await_args.args[1][1].content
         assert dynamic_context.startswith(
             "Available tools: ['mail_tool']\n"
@@ -647,7 +664,7 @@ class TestPreviousActionsContext:
         )
 
     @pytest.mark.parametrize(
-        ("user_id", "conversation_id"), [("user-123", None), (None, "thread-abc")]
+        ("user_id", "conversation_id"), [("user-123", None), (None, "conv-abc")]
     )
     async def test_the_lookup_needs_both_a_user_and_a_conversation(
         self, previous_actions_lookup: AsyncMock, user_id: str | None, conversation_id: str | None
@@ -662,7 +679,7 @@ class TestPreviousActionsContext:
             patch(f"{NODE}.ainvoke_structured", new=llm),
         ):
             actions = await generate_follow_up_actions(
-                "CONTEXT", user_id, {"configurable": {}}, conversation_id
+                "CONTEXT", user_id, {"configurable": {}}, conversation_id=conversation_id
             )
 
         assert actions == ["Draft the reply"]
@@ -686,7 +703,7 @@ class TestPreviousActionsContext:
         ):
             async with captured_wide_event() as event:
                 actions = await generate_follow_up_actions(
-                    "CONTEXT", "user-123", _make_config(), "thread-abc"
+                    "CONTEXT", "user-123", _make_config(), conversation_id="conv-abc"
                 )
 
         assert actions == []

@@ -48,7 +48,8 @@ async def generate_follow_up_actions(
     context_text: str,
     user_id: str | None,
     config: RunnableConfig,
-    conversation_id: str | None = None,
+    *,
+    conversation_id: str | None,
 ) -> list[str]:
     """Generate 2-4 contextual follow-up suggestions from conversation context.
 
@@ -179,7 +180,10 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
     )
 
     actions = await generate_follow_up_actions(
-        _pretty_print_messages(recent_messages), user_id, config, configurable.thread_id
+        _pretty_print_messages(recent_messages),
+        user_id,
+        config,
+        conversation_id=configurable.conversation_id,
     )
     _safe_write_actions(writer, actions)
     return state

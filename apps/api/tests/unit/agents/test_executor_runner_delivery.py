@@ -651,6 +651,22 @@ class TestDeliverResultToolDataOwnership:
 
         follow_ups.assert_not_awaited()
 
+    async def test_final_result_follow_ups_dedupe_against_the_conversation(self) -> None:
+        """The executor path keys the already-shown-suggestions read on the conversation."""
+        with patch.object(
+            rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=["Next"]
+        ) as follow_ups:
+            actions = await rd._build_follow_up_actions(
+                msg_type="final",
+                notification_text="done",
+                user_msg_content="do it",
+                user_id=USER_ID,
+                conversation_id="conv-1",
+            )
+
+        assert actions == ["Next"]
+        assert follow_ups.await_args.kwargs["conversation_id"] == "conv-1"
+
 
 # ---------------------------------------------------------------------------
 # run_executor_background lifecycle analytics
