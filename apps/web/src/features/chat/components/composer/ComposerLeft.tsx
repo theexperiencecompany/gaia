@@ -82,7 +82,11 @@ export default function ComposerLeft({
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="top" className="w-fit">
+        <DropdownMenuContent
+          align="end"
+          side="top"
+          className="w-fit border-none"
+        >
           {dropdownItems.map((item) => (
             <Tooltip
               content={<div className="max-w-[270px]">{item.description}</div>}

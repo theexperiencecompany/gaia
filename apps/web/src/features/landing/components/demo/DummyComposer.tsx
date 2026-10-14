@@ -181,7 +181,11 @@ const DummyComposer: React.FC<{
                     />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" side="top" className="w-fit">
+                <DropdownMenuContent
+                  align="end"
+                  side="top"
+                  className="w-fit border-none"
+                >
                   <Tooltip
                     content={
                       <div className="max-w-[270px]">

@@ -72,7 +72,7 @@ function AiOptionDropdown({
             </div>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent>
+        <DropdownMenuContent className="border-none">
           {options.map((option) => (
             <DropdownMenuItem
               key={option.id}

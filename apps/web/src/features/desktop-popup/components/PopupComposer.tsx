@@ -110,10 +110,9 @@ export default function PopupComposer({
           </Button>
         }
         classNames={{
-          // The window's liquid glass IS the field's background — the flat
-          // variant's default tint is trusted instead of a transparent
-          // override so the field stays theme-consistent.
-          inputWrapper: "py-0 pl-0.5 pr-2",
+          // The window's liquid glass IS the field's background: no tint, shadow or focus ring.
+          inputWrapper:
+            "bg-transparent py-0 pl-0.5 pr-2 shadow-none data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0",
           input: "px-1.5 text-sm text-zinc-100 placeholder:text-zinc-400",
         }}
       />

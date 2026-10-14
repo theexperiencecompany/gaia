@@ -270,9 +270,10 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
         hideCloseButton
         aria-label="A letter from Aryan Randeriya"
         backdrop="blur"
+        shadow="none"
         classNames={{
           wrapper: "items-center justify-center",
-          base: "m-3 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain sm:m-6",
+          base: "m-3 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain bg-transparent sm:m-6",
         }}
         motionProps={LETTER_MOTION[reduceMotion ? "reduced" : "full"]}
       >

@@ -37,6 +37,12 @@
               "duration-200",
               "duration-300",
               "hover:bg-transparent",
+              "data-[hover=true]:bg-transparent",
+              "group-data-[focus=true]:bg-transparent",
+              "group-data-[focus-visible=true]:ring-0",
+              "bg-transparent",
+              "shadow-none",
+              "border-none",
               "bg-red-500/10",
               "bg-yellow-500/10",
               "bg-blue-500/10",
@@ -127,6 +133,10 @@
           {
             "pattern": "^SidebarHeader$",
             "allow": ["spacing", "electron-drag"]
+          },
+          {
+            "pattern": "^DropdownMenuContent$",
+            "allow": ["layout", "spacing", "border-none"]
           },
           {
             "pattern": "^SheetContent$",

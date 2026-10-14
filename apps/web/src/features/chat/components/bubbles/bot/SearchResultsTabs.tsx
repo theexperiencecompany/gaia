@@ -216,7 +216,13 @@ interface SourcesButtonProps {
 function SourcesButton({ web }: SourcesButtonProps) {
   return (
     <div className="flex justify-start">
-      <Popover placement="top" showArrow disableAnimation backdrop="opaque">
+      <Popover
+        placement="top"
+        showArrow
+        disableAnimation
+        backdrop="opaque"
+        shadow="none"
+      >
         <PopoverTrigger>
           <Button variant="flat" radius="full" size="sm">
             <div className="flex -space-x-3">
@@ -247,7 +253,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
             <span className="font-medium text-zinc-300">Search Results</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="p-0!">
+        <PopoverContent className="bg-transparent p-0!">
           <WebResults web={web} />
         </PopoverContent>
       </Popover>

@@ -84,6 +84,7 @@ export function NotificationCenter({
               isInvisible={unreadCount === 0}
               // pointer-events-none lets the bell underneath capture hover/press;
               // select-none keeps the count from being text-selected.
+              showOutline={false}
               classNames={{ badge: "pointer-events-none select-none" }}
             >
               <SidebarHeaderButton
@@ -112,6 +113,7 @@ export function NotificationCenter({
                   placement="top-right"
                   content={unreadCount > 99 ? "99+" : unreadCount}
                   isInvisible={unreadCount === 0}
+                  showOutline={false}
                   classNames={{ badge: "select-none" }}
                 >
                   {/* right padding gives the corner-anchored count room so it
