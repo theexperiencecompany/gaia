@@ -799,6 +799,7 @@ exclude = [
   # basename patterns when it scopes a PR scan.
   "**/todo_tool.py",
   "**/webpage_tool.py",
+  "**/memory_tools.py",
   "**/tests",
   "**/tests/**",
   "**/conftest.py",

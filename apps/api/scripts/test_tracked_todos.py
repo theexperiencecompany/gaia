@@ -26,7 +26,6 @@ import os
 from pathlib import Path
 import sys
 import time
-import uuid
 
 from dotenv import load_dotenv
 import httpx
@@ -336,7 +335,7 @@ async def send_chat_message(
     client: httpx.AsyncClient,
     token: str,
     message: str,
-    conversation_id: str,
+    conversation_id: str | None,
     history: list[dict],
 ) -> ChatResult:
     """Send a message and collect the full SSE stream."""
@@ -560,7 +559,8 @@ async def run_scenario(
         todos_before = await get_tracked_todos()
         before_ids = {t["id"] for t in todos_before}
 
-        conversation_id = str(uuid.uuid4())
+        # The first send opens the conversation; its init frame names the id later sends reuse.
+        conversation_id: str | None = None
         history: list[dict] = []
         chat_results: list[ChatResult] = []
 
@@ -568,6 +568,9 @@ async def run_scenario(
             print(f"  Chat {i + 1}: {message[:80]}{'...' if len(message) > 80 else ''}")
             result = await send_chat_message(client, token, message, conversation_id, history)
             chat_results.append(result)
+            conversation_id = conversation_id or next(
+                (e["conversation_id"] for e in result.raw_events if e.get("conversation_id")), None
+            )
 
             if result.error:
                 print(f"    ERROR: {result.error}")

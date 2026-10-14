@@ -96,12 +96,12 @@ async def create_reminder_endpoint(
         # — and the same default as workflows, regardless of current location.
         reminder_data.timezone = user_timezone
 
-        reminder_id = await reminder_scheduler.create_reminder(
+        creation = await reminder_scheduler.create_reminder(
             reminder_data=reminder_data, user_id=user_id
         )
 
-        # Retrieve and return created reminder
-        reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
+        # Retrieve and return the reminder: the new one, or the identical one already active
+        reminder = await reminder_scheduler.get_reminder(creation.reminder_id, user_id=user_id)
         if not reminder:
             raise HTTPException(
                 status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -111,7 +111,8 @@ async def create_reminder_endpoint(
         log.set(reminder=_reminder_context("create", reminder))
         log.set(outcome="success")
 
-        capture(UserId(user_id), ReminderCreated(is_recurring=bool(reminder.repeat)))
+        if creation.created:
+            capture(UserId(user_id), ReminderCreated(is_recurring=bool(reminder.repeat)))
         return ReminderResponse.model_validate(reminder)
 
     except HTTPException:
