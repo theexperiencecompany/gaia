@@ -20,7 +20,6 @@ from app.core.lazy_loader import providers as provider_registry
 from app.db.redis import redis_cache
 import app.services.providers.provider_credentials_service as service_module
 from app.services.providers.provider_credentials_service import (
-    RUNTIME_CONFIG_CHANNEL,
     CredentialResolution,
     delete,
     inspect_credential,
@@ -28,6 +27,7 @@ from app.services.providers.provider_credentials_service import (
     resolve,
     upsert,
 )
+from app.services.runtime.config_updates import RUNTIME_CONFIG_CHANNEL
 from app.services.runtime.secrets_store import fernet_key_from
 from tests.helpers import captured_wide_event
 

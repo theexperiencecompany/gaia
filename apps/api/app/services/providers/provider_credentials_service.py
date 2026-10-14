@@ -18,14 +18,10 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.providers import CREDENTIAL_PROVIDERS, CredentialSource
 from app.core.lazy_loader import providers
-from app.db.redis import redis_cache
 from app.db.repositories.provider_credentials import provider_credentials_repository
+from app.services.runtime.config_updates import PROVIDER_SCOPE_PREFIX, publish_config_update
 from app.services.runtime.secrets_store import fernet_key_from, get_instance_secret
 from shared.py.wide_events import log
-
-# Other pods subscribe to this channel to invalidate their own caches; payload:
-# {"scope": "provider:<name>"}.
-RUNTIME_CONFIG_CHANNEL = "gaia:runtime-config-updated"
 
 _CACHE_TTL_SECONDS = 60.0
 
@@ -259,23 +255,7 @@ def invalidate_locally(provider: str) -> None:
 async def invalidate(provider: str) -> None:
     """Drop this pod's cached config and tell every consumer (and pod) to rebuild."""
     invalidate_locally(provider)
-
-    client = redis_cache.redis
-    if client is not None:
-        try:
-            await client.publish(
-                RUNTIME_CONFIG_CHANNEL, json.dumps({"scope": f"provider:{provider}"})
-            )
-        except Exception as e:
-            # Deliberate degradation, loud: cross-pod refresh is missed but the
-            # 60s TTL bounds staleness and local state is already consistent.
-            log.error(
-                f"{LogTag.API} Failed to publish runtime-config update",
-                channel=RUNTIME_CONFIG_CHANNEL,
-                provider=provider,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+    await publish_config_update(f"{PROVIDER_SCOPE_PREFIX}{provider}")
 
 
 # ---------------------------------------------------------------------------
