@@ -1,0 +1,223 @@
+"""A CLI release pins the gaia + gaia-web images built from its own release commit.
+
+`gaia update` pins GAIA_VERSION=v<CLI version>; tagging that from :latest pinned
+whatever master last deployed, not the code the CLI was released with. The pin
+now waits for build.yml's per-commit :<sha> pair and fails loud when it never
+appears, and build.yml must publish that pair for every CLI release commit.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import subprocess
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+RELEASE_SH = REPO_ROOT / "scripts" / "ci" / "release.sh"
+NAMESPACE = "ghcr.io/theexperiencecompany"
+
+# `imagetools inspect <ref>` succeeds when <ref> is in $PRESENT, or when it is
+# listed in $LATE as "<ref> <n>" and has been inspected more than n times.
+# `imagetools create -t <dst> <src>` records "<dst> <src>" in $CREATED.
+DOCKER_STUB = """#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1 $2" == "buildx imagetools" ]] || { echo "docker stub: unexpected $*" >&2; exit 1; }
+case "$3" in
+  inspect)
+    ref="$4"
+    grep -qxF "$ref" "$PRESENT" && exit 0
+    late=$(awk -v r="$ref" '$1 == r {print $2}' "$LATE")
+    [[ -n "$late" ]] || exit 1
+    echo "$ref" >> "$INSPECTED"
+    seen=$(grep -cxF "$ref" "$INSPECTED")
+    (( seen > late )) && exit 0
+    exit 1
+    ;;
+  create) echo "$5 $6" >> "$CREATED" ;;
+  *) echo "docker stub: unexpected $*" >&2; exit 1 ;;
+esac
+"""
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+@pytest.fixture
+def workspace(tmp_path: Path) -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "docker"
+    stub.write_text(DOCKER_STUB)
+    stub.chmod(0o755)
+    for name in ("present.txt", "late.txt", "inspected.txt", "created.txt"):
+        (tmp_path / name).write_text("")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "ci@example.com")
+    _git(repo, "config", "user.name", "ci")
+    (repo / "packages" / "cli").mkdir(parents=True)
+    (repo / "packages" / "cli" / "package.json").write_text(
+        '{\n  "name": "@heygaia/cli",\n  "version": "0.6.0"\n}\n'
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "initial")
+    return tmp_path
+
+
+def _head(workspace: Path) -> str:
+    return _git(workspace / "repo", "rev-parse", "HEAD")
+
+
+def _run(
+    workspace: Path,
+    subcommand: str,
+    *,
+    present: list[str] | None = None,
+    late: dict[str, int] | None = None,
+    env_extra: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    (workspace / "present.txt").write_text("".join(f"{r}\n" for r in present or []))
+    (workspace / "late.txt").write_text("".join(f"{r} {n}\n" for r, n in (late or {}).items()))
+    env = dict(os.environ)
+    env.update(
+        PATH=f"{workspace / 'bin'}{os.pathsep}{env['PATH']}",
+        PRESENT=str(workspace / "present.txt"),
+        LATE=str(workspace / "late.txt"),
+        INSPECTED=str(workspace / "inspected.txt"),
+        CREATED=str(workspace / "created.txt"),
+        PIN_POLL_SECONDS="0",
+        GITHUB_OUTPUT=str(workspace / "github-output.txt"),
+    )
+    env.pop("GITHUB_STEP_SUMMARY", None)
+    env.update(env_extra or {})
+    return subprocess.run(
+        ["bash", str(RELEASE_SH), subcommand],
+        cwd=workspace / "repo",
+        check=False,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _pin(
+    workspace: Path,
+    *,
+    present: list[str],
+    late: dict[str, int] | None = None,
+    env_extra: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = {"VERSION": "0.6.0", "SHA": _head(workspace), **(env_extra or {})}
+    return _run(workspace, "pin-selfhost-release", present=present, late=late, env_extra=env)
+
+
+def _created(workspace: Path) -> list[str]:
+    return (workspace / "created.txt").read_text().splitlines()
+
+
+def test_the_release_pins_the_images_of_its_own_commit(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=[f"{NAMESPACE}/gaia:{sha}", f"{NAMESPACE}/gaia-web:{sha}"],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _created(workspace) == [
+        f"{NAMESPACE}/gaia:v0.6.0 {NAMESPACE}/gaia:{sha}",
+        f"{NAMESPACE}/gaia-web:v0.6.0 {NAMESPACE}/gaia-web:{sha}",
+    ]
+
+
+def test_the_pin_waits_for_a_build_still_in_flight(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=[f"{NAMESPACE}/gaia:{sha}"],
+        late={f"{NAMESPACE}/gaia-web:{sha}": 2},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert f"{NAMESPACE}/gaia-web:v0.6.0 {NAMESPACE}/gaia-web:{sha}" in _created(workspace)
+
+
+def test_a_missing_image_times_out_loud_and_tags_nothing(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=[f"{NAMESPACE}/gaia:{sha}"],
+        env_extra={"PIN_WAIT_SECONDS": "0"},
+    )
+
+    assert result.returncode != 0
+    assert f"gaia-web:{sha}" in result.stderr
+    assert _created(workspace) == []
+
+
+def test_an_existing_release_tag_is_never_moved(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=[
+            f"{NAMESPACE}/gaia:v0.6.0",
+            f"{NAMESPACE}/gaia:{sha}",
+            f"{NAMESPACE}/gaia-web:{sha}",
+        ],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _created(workspace) == [f"{NAMESPACE}/gaia-web:v0.6.0 {NAMESPACE}/gaia-web:{sha}"]
+
+
+def test_a_sha_other_than_the_checked_out_release_is_refused(workspace: Path) -> None:
+    other = "0" * 40
+    result = _pin(
+        workspace,
+        present=[f"{NAMESPACE}/gaia:{other}", f"{NAMESPACE}/gaia-web:{other}"],
+        env_extra={"SHA": other},
+    )
+
+    assert result.returncode != 0
+    assert _created(workspace) == []
+
+
+def _commit(workspace: Path, path: str, body: str) -> None:
+    repo = workspace / "repo"
+    (repo / path).parent.mkdir(parents=True, exist_ok=True)
+    (repo / path).write_text(body)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "change")
+
+
+def _cli_release_images(workspace: Path) -> str:
+    result = _run(workspace, "cli-release-images")
+    assert result.returncode == 0, result.stderr
+    return (workspace / "github-output.txt").read_text().strip()
+
+
+def test_a_commit_that_bumps_the_cli_version_requires_its_images(
+    workspace: Path,
+) -> None:
+    _commit(
+        workspace,
+        "packages/cli/package.json",
+        '{\n  "name": "@heygaia/cli",\n  "version": "0.7.0"\n}\n',
+    )
+
+    assert _cli_release_images(workspace) == "required=true"
+
+
+def test_any_other_commit_leaves_the_image_build_to_affected(workspace: Path) -> None:
+    _commit(
+        workspace,
+        "packages/cli/package.json",
+        '{\n  "name": "@heygaia/cli",\n  "version": "0.6.0",\n  "private": false\n}\n',
+    )
+
+    assert _cli_release_images(workspace) == "required=false"

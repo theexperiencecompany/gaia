@@ -114,6 +114,11 @@ jobs:
       api: ${{ steps.affected.outputs.api }}
       bots: ${{ steps.affected.outputs.bots }}
       web: ${{ steps.affected.outputs.web }}
+      # Build + publish the gaia / gaia-web images: affected, or a CLI release
+      # commit (its publish pins this commit's :<sha> pair). Deploys still key
+      # on api/web alone, so a CLI-only release never redeploys the backend.
+      api_image: ${{ steps.affected.outputs.api_image }}
+      web_image: ${{ steps.affected.outputs.web_image }}
     steps:
       # Full history: nx-set-shas resolves NX_BASE to the pre-push master SHA,
       # which a shallow clone does not contain ("fatal: bad object").
@@ -147,10 +152,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Does this commit release the CLI?
+        id: cli-release
+        if: github.ref == 'refs/heads/master'
+        run: bash scripts/ci/release.sh cli-release-images
+
       # Map affected project list to the image scopes: api (api + voice-agent),
       # bots, and web.
       - name: Check affected projects
         id: affected
+        env:
+          CLI_RELEASE: ${{ steps.cli-release.outputs.required }}
         run: |
           # Fail loud: a broken nx invocation must fail this job, not silently
           # yield an empty list (which would skip image builds and deploys).
@@ -203,9 +215,19 @@ jobs:
             fi
           fi
 
+          api_image=$api
+          web_image=$web
+          if [ "${CLI_RELEASE:-false}" = "true" ]; then
+            echo "CLI release commit: publishing the gaia + gaia-web images it pins"
+            api_image=true
+            web_image=true
+          fi
+
           echo "api=$api" >> "$GITHUB_OUTPUT"
           echo "bots=$bots" >> "$GITHUB_OUTPUT"
           echo "web=$web" >> "$GITHUB_OUTPUT"
+          echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
+          echo "web_image=$web_image" >> "$GITHUB_OUTPUT"
 
   docker-release:
     needs: [affected]
@@ -278,7 +300,7 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Determine version scheme
-        if: needs.affected.outputs.api == 'true' || needs.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots == 'true'
         id: version
         run: |
           if [ "${{ github.ref }}" = "refs/heads/master" ]; then
@@ -290,7 +312,7 @@ jobs:
       # Publish API image tags when API-related scope changed.
       - name: Release apps Docker images
         id: release-apps
-        if: needs.affected.outputs.api == 'true'
+        if: needs.affected.outputs.api_image == 'true'
         run: pnpm exec nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Publish bot image tags when bot scope changed.
@@ -329,7 +351,7 @@ jobs:
       # rather than as a silent "nothing published".
       - name: Resolve immutable image tags
         id: image-tags
-        if: needs.affected.outputs.api == 'true' || needs.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots == 'true'
         env:
           VERSION_SCHEME: ${{ steps.version.outputs.scheme }}
           APPS_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
@@ -346,7 +368,7 @@ jobs:
         run: pnpm deploy-commands
 
       - name: Skip notification
-        if: needs.affected.outputs.api != 'true' && needs.affected.outputs.bots != 'true'
+        if: needs.affected.outputs.api_image != 'true' && needs.affected.outputs.bots != 'true'
         run: echo "No affected API/bot Docker projects, skipping build"
 
   # Self-hosters run the API image (gaia, also the ARQ worker) on arm64 too.
@@ -357,7 +379,7 @@ jobs:
   # multi-arch :<sha> a self-host end-to-end run pins with GAIA_VERSION.
   docker-api-arm64:
     needs: [affected]
-    if: needs.affected.outputs.api == 'true'
+    if: needs.affected.outputs.api_image == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
@@ -445,7 +467,7 @@ jobs:
   # the hosted frontend deploys itself via Cloudflare Workers Builds.
   docker-web-build:
     needs: [affected]
-    if: needs.affected.outputs.web == 'true'
+    if: needs.affected.outputs.web_image == 'true'
     strategy:
       fail-fast: true
       matrix:
