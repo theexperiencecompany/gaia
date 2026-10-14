@@ -12,7 +12,7 @@ import RightSidebarSlot, {
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
-import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
@@ -76,7 +76,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
-  const billingEnabled = useBillingEnabled();
+  const billingEnabled = useDeployment().bills;
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync();

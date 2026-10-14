@@ -6,7 +6,7 @@ import type { Plan } from "@/features/pricing/api/pricingApi";
 
 let billingEnabled = true;
 vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
-  useBillingEnabled: () => billingEnabled,
+  useDeployment: () => ({ bills: billingEnabled }),
 }));
 
 vi.mock("@/lib/analytics", () => ({

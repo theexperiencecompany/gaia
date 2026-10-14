@@ -4815,6 +4815,53 @@
         "title": "DependencyStatus",
         "type": "object"
       },
+      "DeploymentKind": {
+        "description": "Which kind of instance this is; the value is the ENV it boots under.",
+        "enum": [
+          "production",
+          "development",
+          "selfhost"
+        ],
+        "title": "DeploymentKind",
+        "type": "string"
+      },
+      "DeploymentStatus": {
+        "description": "The deployment profile's capabilities a client branches on.",
+        "properties": {
+          "bills": {
+            "description": "Whether payments are live for this instance",
+            "title": "Bills",
+            "type": "boolean"
+          },
+          "blob_store": {
+            "$ref": "#/components/schemas/BlobStoreKind",
+            "description": "Where uploaded and generated files live (BLOB_STORE)"
+          },
+          "gaia_support": {
+            "description": "Whether in-app support requests reach GAIA's support team",
+            "title": "Gaia Support",
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DeploymentKind",
+            "description": "Which kind of instance this is (ENV)"
+          },
+          "local_code_sandbox": {
+            "description": "Whether code runs in the opt-in local Docker sandbox when no E2B key is saved",
+            "title": "Local Code Sandbox",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "bills",
+          "local_code_sandbox",
+          "blob_store",
+          "gaia_support"
+        ],
+        "title": "DeploymentStatus",
+        "type": "object"
+      },
       "DeregisterServerResponse": {
         "description": "Result of the daemon deregistering one of its MCP servers.",
         "properties": {
@@ -15701,28 +15748,13 @@
             "title": "Auth Mode",
             "type": "string"
           },
-          "billing_enabled": {
-            "description": "Whether payments are live for this instance",
-            "title": "Billing Enabled",
-            "type": "boolean"
-          },
-          "blob_store": {
-            "$ref": "#/components/schemas/BlobStoreKind",
-            "description": "Where uploaded and generated files live (BLOB_STORE)"
-          },
-          "gaia_support": {
-            "description": "Whether in-app support requests reach GAIA's support team",
-            "title": "Gaia Support",
-            "type": "boolean"
+          "deployment": {
+            "$ref": "#/components/schemas/DeploymentStatus",
+            "description": "What this deployment does"
           },
           "has_admin_account": {
             "description": "Whether the instance administrator exists",
             "title": "Has Admin Account",
-            "type": "boolean"
-          },
-          "local_code_sandbox": {
-            "description": "Whether code runs in the opt-in local Docker sandbox when no E2B key is saved",
-            "title": "Local Code Sandbox",
             "type": "boolean"
           },
           "needs_setup": {
@@ -15753,12 +15785,9 @@
           "has_admin_account",
           "registration_policy",
           "needs_setup",
-          "billing_enabled",
+          "deployment",
           "providers",
-          "plans_seeded",
-          "local_code_sandbox",
-          "blob_store",
-          "gaia_support"
+          "plans_seeded"
         ],
         "title": "SetupStatusResponse",
         "type": "object"

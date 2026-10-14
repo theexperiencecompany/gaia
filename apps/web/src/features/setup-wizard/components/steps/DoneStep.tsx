@@ -60,7 +60,7 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
   const capabilityReady = (requires: StarterPrompt["requires"]): boolean => {
     if (!requires) return true;
     if (requires === "sandbox")
-      return toolConfigured("e2b") || status.local_code_sandbox === true;
+      return toolConfigured("e2b") || status.deployment.local_code_sandbox;
     if (requires === "inbox") return toolConfigured("composio");
     return isProviderConfigured(status, requires);
   };

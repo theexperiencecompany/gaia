@@ -13,7 +13,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { Cancel01Icon, Upload01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { useGaiaSupportAvailable } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { toast } from "@/lib/toast";
 
 import {
@@ -96,7 +96,7 @@ interface ContactSupportModalProps {
 }
 
 export default function ContactSupportModal(props: ContactSupportModalProps) {
-  return useGaiaSupportAvailable() ? (
+  return useDeployment().gaia_support ? (
     <SupportRequestModal {...props} />
   ) : (
     <SelfHostedSupportModal

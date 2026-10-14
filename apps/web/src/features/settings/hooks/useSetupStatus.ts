@@ -1,5 +1,6 @@
 "use client";
 
+import type { DeploymentStatus } from "@gaia/shared/api/generated";
 import { useQuery } from "@tanstack/react-query";
 import {
   type CredentialProvider,
@@ -23,31 +24,22 @@ export function useSetupStatus() {
   });
 }
 
-/**
- * Whether this instance bills. Hosted production never serves /setup/status,
- * so anything but an explicit `billing_enabled: false` counts as billing.
- */
-export function useBillingEnabled(): boolean {
-  const { data } = useSetupStatus();
-  return data?.billing_enabled !== false;
-}
+/** GAIA Cloud's profile: hosted production never serves /setup/status. */
+const HOSTED_DEPLOYMENT: DeploymentStatus = {
+  kind: "production",
+  bills: true,
+  local_code_sandbox: false,
+  blob_store: "cloudinary",
+  gaia_support: true,
+};
 
 /**
- * Whether support requests reach GAIA's support team. Hosted production never
- * serves /setup/status, so anything but an explicit `gaia_support: false` counts.
+ * What this deployment does, from GET /setup/status; a missing status (hosted
+ * production, or the probe still loading) is GAIA Cloud.
  */
-export function useGaiaSupportAvailable(): boolean {
+export function useDeployment(): DeploymentStatus {
   const { data } = useSetupStatus();
-  return data?.gaia_support !== false;
-}
-
-/**
- * Whether this is a self-hosted (local-auth) instance. Hosted production never
- * serves /setup/status, so a missing status counts as hosted.
- */
-export function useIsSelfHosted(): boolean {
-  const { data } = useSetupStatus();
-  return data?.auth_mode === "local";
+  return data?.deployment ?? HOSTED_DEPLOYMENT;
 }
 
 export function isProviderConfigured(
@@ -65,7 +57,7 @@ export function isProviderOffered(
   status: SetupStatus | undefined,
   key: CredentialProvider,
 ): boolean {
-  return key !== "cloudinary" || status?.blob_store === "cloudinary";
+  return key !== "cloudinary" || status?.deployment.blob_store === "cloudinary";
 }
 
 /** Whether any chat-capable provider (per the catalog) can serve a request. */

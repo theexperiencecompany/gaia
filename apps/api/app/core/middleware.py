@@ -23,6 +23,7 @@ from app.api.v1.middleware.rate_limiter import RouterAwareSlowAPIMiddleware, lim
 from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
 from app.api.v1.middleware.unhandled_exception import UnhandledExceptionMiddleware
 from app.api.v1.middleware.websocket_wide_event import WebSocketWideEventMiddleware
+from app.config.deployment import OriginPolicy
 from app.config.settings import settings
 from app.config.workos import get_async_workos_client
 from app.constants.http import RETRY_AFTER_HEADER
@@ -148,21 +149,17 @@ def configure_middleware(app: FastAPI) -> None:
 
 
 def get_allowed_origins() -> list[str]:
-    """
-    Get allowed origins for CORS based on environment.
-
-    Returns:
-        list[str]: List of allowed origins
-    """
-    # Always include configured frontend URL
+    """Return the exact origins CORS allows under the deployment's origin policy."""
     allowed_origins = [settings.FRONTEND_URL]
+    policy = settings.deployment.trusted_origins
+    if policy is OriginPolicy.INSTANCE:
+        return allowed_origins
 
     # Desktop app embedded Next.js server ports (5174 is preferred; 5175-5180
     # are fallbacks when the preferred port is already in use)
     desktop_origins = [f"http://localhost:{port}" for port in range(5174, 5181)]
 
-    # Add additional origins based on environment
-    if settings.ENV == "production":
+    if policy is OriginPolicy.GAIA_CLOUD:
         # Only allow trusted HTTPS origins in production
         allowed_origins.extend(
             [
@@ -189,12 +186,12 @@ def get_allowed_origins() -> list[str]:
 
 
 def get_allowed_origin_regex() -> str | None:
-    """Regex of additional allowed origins (dev-only).
+    """Regex of additional allowed origins (local development only).
 
     Matches any localhost origin on any port over http or https, with or
     without a subdomain — covers dev servers on arbitrary ports (e.g. worktree
     ports) and *.localhost tunnels alike.
     """
-    if settings.ENV == "production":
+    if settings.deployment.trusted_origins is not OriginPolicy.LOCAL_DEVELOPMENT:
         return None
     return r"^https?://([a-z0-9-]+\.)?localhost(?::\d+)?$"

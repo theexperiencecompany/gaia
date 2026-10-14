@@ -1,7 +1,7 @@
 import type { RateLimitData } from "@shared/chat";
 import { formatFeatureName, formatPlanName } from "@shared/utils";
 
-import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 function getResetInfo(
@@ -45,7 +45,7 @@ function getSubtitle(
 export function useRateLimitCard(data: RateLimitData) {
   const { feature, plan_required, reset_time, message, current_plan } = data;
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
-  const billingEnabled = useBillingEnabled();
+  const billingEnabled = useDeployment().bills;
   const isUpgradeRequired = !!plan_required;
   // Nothing to upgrade to on the top tier, nor where nothing is sold.
   const showUpgradeNudge = billingEnabled && current_plan !== "pro";

@@ -12,6 +12,7 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.loguru import LoguruIntegration
 from sentry_sdk.types import Event, Hint
 
+from app.config.deployment import DeploymentKind
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -176,8 +177,8 @@ def init_sentry() -> None:
         # the loguru sink already forwards the pseudonymous ids needed to
         # correlate an issue back to its wide event in Loki.
         send_default_pii=False,
-        traces_sample_rate=0.1 if settings.ENV == "production" else 1.0,
-        profiles_sample_rate=0.1 if settings.ENV == "production" else 1.0,
+        traces_sample_rate=0.1 if settings.deployment.kind is DeploymentKind.PRODUCTION else 1.0,
+        profiles_sample_rate=0.1 if settings.deployment.kind is DeploymentKind.PRODUCTION else 1.0,
         profile_lifecycle="trace",
         # Both re-send every log record the sink below already forwards, unfiltered and unscrubbed.
         disabled_integrations=[LoguruIntegration(), LoggingIntegration()],

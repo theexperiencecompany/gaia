@@ -43,7 +43,7 @@ def create_app() -> FastAPI:
     # OpenAPI docs are developer-only: selfhost and production hide the schema
     # and interactive docs so endpoint listings don't leak. Only development
     # gets an unauthenticated /metrics; elsewhere METRICS_TOKEN is required.
-    is_dev = settings.ENV == "development"
+    is_dev = settings.deployment.dev_tools
     app = FastAPI(
         lifespan=lifespan,
         title="GAIA API",
@@ -96,7 +96,7 @@ def create_app() -> FastAPI:
 
     # Dev-only identity + seeding router. Mounted only when the auth bypass is
     # active in development, so it never exists in production (every route 404s).
-    if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
+    if settings.deployment.dev_tools and settings.DEV_AUTH_BYPASS_EMAIL:
         app.include_router(dev_router, prefix="/api/v1", responses=ERROR_RESPONSES)
         wide_log.warning(
             f"{LogTag.STARTUP} Dev identity router mounted at /api/v1/dev "

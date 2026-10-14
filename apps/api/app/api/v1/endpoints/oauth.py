@@ -2,7 +2,7 @@ import secrets
 from typing import cast
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import RedirectResponse
 import httpx
 
@@ -35,6 +35,7 @@ from app.services.oauth.oauth_state_service import (
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
 )
+from app.utils.auth_utils import session_cookie_secure
 from shared.py.wide_events import OAuthContext, log
 
 router = APIRouter()
@@ -391,6 +392,7 @@ async def workos_desktop_callback(
 
 @router.get("/workos/callback", response_class=RedirectResponse)
 async def workos_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
 ) -> RedirectResponse:
@@ -477,7 +479,7 @@ async def workos_callback(
             key=WOS_SESSION_COOKIE,
             value=auth_response.sealed_session or auth_response.access_token,
             httponly=True,
-            secure=settings.ENV == "production",
+            secure=session_cookie_secure(request),
             samesite="lax",
         )
 

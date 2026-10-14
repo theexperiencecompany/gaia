@@ -47,7 +47,7 @@ from app.services.payments.subscription_events import (
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import SubscriptionActivated
 from shared.py.wide_events import log
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, profile_of
 from tests.unit.services.conftest import (
     FAKE_EMAIL,
     FAKE_USER_ID,
@@ -2360,6 +2360,7 @@ class TestDodoPaymentServiceInit:
     def test_production_env_uses_live_mode(self):
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "production"
+            mock_settings.deployment = profile_of("production")
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_live_test"
             mock_settings.DODO_PAYMENTS_BASE_URL = None
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
@@ -2372,6 +2373,7 @@ class TestDodoPaymentServiceInit:
     def test_development_env_uses_test_mode(self):
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
+            mock_settings.deployment = profile_of("development")
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"
             mock_settings.DODO_PAYMENTS_BASE_URL = None
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
@@ -2385,6 +2387,7 @@ class TestDodoPaymentServiceInit:
         """When DODO_PAYMENTS_BASE_URL is set, it points the SDK at that URL instead of the real environment endpoint."""
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
+            mock_settings.deployment = profile_of("development")
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"
             mock_settings.DODO_PAYMENTS_BASE_URL = "http://localhost:8899"
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
@@ -2398,6 +2401,7 @@ class TestDodoPaymentServiceInit:
         """If DodoPayments raises, the error is logged but not propagated."""
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
+            mock_settings.deployment = profile_of("development")
             mock_settings.DODO_PAYMENTS_API_KEY = "bad_key"
             with patch(
                 "app.services.payments.payment_service.DodoPayments",

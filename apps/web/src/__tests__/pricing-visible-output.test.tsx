@@ -24,7 +24,7 @@ import type {
 } from "@/features/pricing/api/pricingApi";
 
 vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
-  useBillingEnabled: () => true,
+  useDeployment: () => ({ bills: true }),
 }));
 
 vi.mock("@/lib/analytics", () => ({

@@ -39,6 +39,7 @@ from app.services.delivery.chat_channel import (
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
+from app.utils.auth_utils import session_cookie_secure
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics import UserId
@@ -386,7 +387,7 @@ async def logout(
             LOCAL_SESSION_COOKIE,
             httponly=True,
             path="/",
-            secure=settings.ENV == "production",
+            secure=session_cookie_secure(request),
             samesite="lax",
         )
         log.set(outcome="success")
@@ -426,7 +427,7 @@ async def logout(
             WOS_SESSION_COOKIE,
             httponly=True,
             path="/",
-            secure=settings.ENV == "production",
+            secure=session_cookie_secure(request),
             samesite="lax",
         )
 

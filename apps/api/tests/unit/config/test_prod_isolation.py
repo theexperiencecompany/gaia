@@ -688,3 +688,81 @@ async def test_production_stores_blobs_in_cloudinary_never_on_local_disk(
 
     assert url == "https://res.cloudinary.com/x/file.pdf"
     assert list(tmp_path.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------
+# Case 11 — CORS origins and the session cookie's Secure flag per deployment
+# ---------------------------------------------------------------------------
+
+_DESKTOP_ORIGINS = [f"http://localhost:{port}" for port in range(5174, 5181)]
+
+
+def _http_request(headers: dict[str, str] | None = None) -> Any:
+    from starlette.requests import Request
+
+    raw_headers = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
+    return Request(
+        {"type": "http", "scheme": "http", "path": "/", "headers": raw_headers, "server": ("h", 80)}
+    )
+
+
+def test_production_cors_trusts_exactly_gaias_origins(production_profile: None) -> None:
+    from app.config.settings import settings
+    from app.core.middleware import get_allowed_origin_regex, get_allowed_origins
+
+    assert get_allowed_origins() == [
+        settings.FRONTEND_URL,
+        "https://heygaia.io",
+        "https://www.heygaia.io",
+        "https://heygaia.app",
+        "https://cf.heygaia.io",
+        *_DESKTOP_ORIGINS,
+    ]
+    assert get_allowed_origin_regex() is None
+
+
+def test_selfhost_cors_trusts_only_its_own_frontend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A self-hosted instance never trusts *.localhost or GAIA's dev LAN addresses."""
+    from app.config.settings import settings
+    from app.core.middleware import get_allowed_origin_regex, get_allowed_origins
+
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://gaia.example.com")
+
+    assert get_allowed_origins() == ["https://gaia.example.com"]
+    assert get_allowed_origin_regex() is None
+
+
+def test_production_session_cookie_is_secure_even_on_a_plain_http_hop(
+    production_profile: None,
+) -> None:
+    """TLS ends at the edge in production, so the cookie is Secure whatever the last hop says."""
+    from app.utils.auth_utils import session_cookie_secure
+
+    assert session_cookie_secure(_http_request()) is True
+
+
+@pytest.mark.parametrize(
+    ("headers", "secure"),
+    [({}, False), ({"X-Forwarded-Proto": "https"}, True), ({"X-Forwarded-Proto": "http"}, False)],
+)
+def test_selfhost_session_cookie_follows_the_request_transport(
+    monkeypatch: pytest.MonkeyPatch, headers: dict[str, str], secure: bool
+) -> None:
+    from app.config.settings import settings
+    from app.utils.auth_utils import session_cookie_secure
+
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+    assert session_cookie_secure(_http_request(headers)) is secure
+
+
+def test_production_exposes_no_developer_tooling(production_profile: None) -> None:
+    from app.config.settings import settings
+
+    profile = settings.deployment
+    assert profile.dev_tools is False
+    assert profile.private_network_endpoints is False
+    assert profile.https_only is True

@@ -14,7 +14,7 @@ let hasEverSubscribed: boolean | undefined;
 
 let pathname = "/c";
 vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
-  useBillingEnabled: () => true,
+  useDeployment: () => ({ bills: true }),
 }));
 
 vi.mock("@/i18n/navigation", () => ({

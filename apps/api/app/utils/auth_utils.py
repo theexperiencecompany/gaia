@@ -18,6 +18,18 @@ from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 
+def session_cookie_secure(connection: HTTPConnection) -> bool:
+    """Whether a session cookie is set or cleared Secure for this request.
+
+    Always on an https-only deployment; elsewhere it follows the request's real
+    transport, since browsers drop Secure cookies over plain http.
+    """
+    if settings.deployment.https_only:
+        return True
+    forwarded = (connection.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    return forwarded == "https" or connection.url.scheme == "https"
+
+
 class OwnerNotFoundError(AppError):
     """Raised (403) when a record or background run names an owner that is not a user."""
 

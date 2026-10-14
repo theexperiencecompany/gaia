@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies.instance_admin import require_instance_admin
 from app.api.v1.middleware.rate_limiter import limiter
-from app.config.deployment import BlobStoreKind
+from app.config.deployment import BlobStoreKind, DeploymentKind
 from app.config.settings import settings
 from app.constants.auth import RegistrationPolicy
 from app.constants.llm import OPENROUTER_MODELS_URL
@@ -103,20 +103,11 @@ class ProviderConfiguredState(BaseModel):
     )
 
 
-class SetupStatusResponse(BaseModel):
-    """``GET /setup/status`` — what the first-run wizard branches on."""
+class DeploymentStatus(BaseModel):
+    """The deployment profile's capabilities a client branches on."""
 
-    auth_mode: Literal["workos", "local"] = Field(description="Active auth stack")
-    has_admin_account: bool = Field(description="Whether the instance administrator exists")
-    registration_policy: RegistrationPolicy = Field(
-        description="Who may sign up once the administrator exists"
-    )
-    needs_setup: bool = Field(description="Whether an LLM lane still has to be configured")
-    billing_enabled: bool = Field(description="Whether payments are live for this instance")
-    providers: dict[str, ProviderConfiguredState] = Field(
-        description="Readiness per credential-store provider"
-    )
-    plans_seeded: bool = Field(description="Whether the billing plans have been seeded")
+    kind: DeploymentKind = Field(description="Which kind of instance this is (ENV)")
+    bills: bool = Field(description="Whether payments are live for this instance")
     local_code_sandbox: bool = Field(
         description="Whether code runs in the opt-in local Docker sandbox when no E2B key is saved"
     )
@@ -126,6 +117,22 @@ class SetupStatusResponse(BaseModel):
     gaia_support: bool = Field(
         description="Whether in-app support requests reach GAIA's support team"
     )
+
+
+class SetupStatusResponse(BaseModel):
+    """``GET /setup/status`` — what the first-run wizard branches on."""
+
+    auth_mode: Literal["workos", "local"] = Field(description="Active auth stack")
+    has_admin_account: bool = Field(description="Whether the instance administrator exists")
+    registration_policy: RegistrationPolicy = Field(
+        description="Who may sign up once the administrator exists"
+    )
+    needs_setup: bool = Field(description="Whether an LLM lane still has to be configured")
+    deployment: DeploymentStatus = Field(description="What this deployment does")
+    providers: dict[str, ProviderConfiguredState] = Field(
+        description="Readiness per credential-store provider"
+    )
+    plans_seeded: bool = Field(description="Whether the billing plans have been seeded")
 
 
 class ProviderCatalogResponse(BaseModel):
@@ -209,15 +216,18 @@ async def get_setup_status() -> SetupStatusResponse:
         has_admin_account=has_admin_account,
         registration_policy=await get_registration_policy(),
         needs_setup=_needs_setup(has_admin_account, configured),
-        billing_enabled=settings.deployment.bills,
+        deployment=DeploymentStatus(
+            kind=settings.deployment.kind,
+            bills=settings.deployment.bills,
+            local_code_sandbox=settings.deployment.local_code_sandbox,
+            blob_store=settings.deployment.blob_store,
+            gaia_support=settings.deployment.gaia_support,
+        ),
         providers={
             p: ProviderConfiguredState(configured=configured[p], source=source)
             for p, source in sources.items()
         },
         plans_seeded=await is_payment_setup(),
-        local_code_sandbox=settings.deployment.local_code_sandbox,
-        blob_store=settings.deployment.blob_store,
-        gaia_support=settings.deployment.gaia_support,
     )
 
 
@@ -411,11 +421,10 @@ async def test_provider(
 def _allows_private_endpoint(provider: str) -> bool:
     """Whether a provider's base_url may be a private address.
 
-    Ollama always may; outside production any admin-configured endpoint may too,
-    so a LAN vLLM or LM Studio server works. Production keeps every custom
-    endpoint public.
+    Ollama always may; where the deployment allows private-network endpoints any
+    admin-configured one may too, so a LAN vLLM or LM Studio server works.
     """
-    return provider == "ollama" or settings.ENV != "production"
+    return provider == "ollama" or settings.deployment.private_network_endpoints
 
 
 def _is_link_local(hostname: str) -> bool:

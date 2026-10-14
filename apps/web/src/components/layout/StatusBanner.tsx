@@ -4,7 +4,7 @@ import { Alert01Icon, Cancel01Icon } from "@icons";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 
 const PING_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}ping`;
 const STATUS_URL = "https://status.heygaia.io";
@@ -14,11 +14,7 @@ export default function StatusBanner() {
   const [isDown, setIsDown] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Client bundles never see AUTH_MODE (not a NEXT_PUBLIC_* var — it would be
-  // undefined in every prod build), so read the mode from the shared
-  // setup/status query like SetupWizard and PasswordChangeSection do.
-  const { data: setupStatus } = useSetupStatus();
-  const isSelfHost = setupStatus?.auth_mode === "local";
+  const isSelfHost = useDeployment().kind === "selfhost";
 
   const checkStatus = useCallback(async () => {
     try {

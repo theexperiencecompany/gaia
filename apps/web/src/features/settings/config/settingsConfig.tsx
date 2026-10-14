@@ -166,7 +166,7 @@ export const DESKTOP_ONLY_SETTINGS_KEYS = new Set(["desktop"]);
 
 /**
  * Settings sections that only make sense when the instance bills — hidden
- * from navigation and redirected away on self-host (billing_enabled=false).
+ * from navigation and redirected away on self-host (deployment.bills=false).
  */
 export const BILLING_ONLY_SETTINGS_KEYS = new Set(["subscription", "usage"]);
 

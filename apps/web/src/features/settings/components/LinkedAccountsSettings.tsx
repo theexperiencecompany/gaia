@@ -17,7 +17,7 @@ import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -96,7 +96,7 @@ export default function LinkedAccountsSettings() {
   // previous attempt's number into the session the user is now in.
   const connectAttemptRef = useRef(0);
   const { isPaid, isUnknown } = useIsPaid();
-  const billingEnabled = useBillingEnabled();
+  const billingEnabled = useDeployment().bills;
   // Unknown status stays permissive: the backend enforces the gate, and
   // blocking a paying customer is worse than a brief open window.
   const isLockedBehindPro = (platform: PlatformConfig) =>

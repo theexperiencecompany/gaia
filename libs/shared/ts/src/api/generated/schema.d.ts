@@ -8367,6 +8367,37 @@ export interface components {
             ok: boolean;
         };
         /**
+         * DeploymentKind
+         * @description Which kind of instance this is; the value is the ENV it boots under.
+         * @enum {string}
+         */
+        DeploymentKind: "production" | "development" | "selfhost";
+        /**
+         * DeploymentStatus
+         * @description The deployment profile's capabilities a client branches on.
+         */
+        DeploymentStatus: {
+            /**
+             * Bills
+             * @description Whether payments are live for this instance
+             */
+            bills: boolean;
+            /** @description Where uploaded and generated files live (BLOB_STORE) */
+            blob_store: components["schemas"]["BlobStoreKind"];
+            /**
+             * Gaia Support
+             * @description Whether in-app support requests reach GAIA's support team
+             */
+            gaia_support: boolean;
+            /** @description Which kind of instance this is (ENV) */
+            kind: components["schemas"]["DeploymentKind"];
+            /**
+             * Local Code Sandbox
+             * @description Whether code runs in the opt-in local Docker sandbox when no E2B key is saved
+             */
+            local_code_sandbox: boolean;
+        };
+        /**
          * DeregisterServerResponse
          * @description Result of the daemon deregistering one of its MCP servers.
          */
@@ -13575,28 +13606,13 @@ export interface components {
              * @enum {string}
              */
             auth_mode: "workos" | "local";
-            /**
-             * Billing Enabled
-             * @description Whether payments are live for this instance
-             */
-            billing_enabled: boolean;
-            /** @description Where uploaded and generated files live (BLOB_STORE) */
-            blob_store: components["schemas"]["BlobStoreKind"];
-            /**
-             * Gaia Support
-             * @description Whether in-app support requests reach GAIA's support team
-             */
-            gaia_support: boolean;
+            /** @description What this deployment does */
+            deployment: components["schemas"]["DeploymentStatus"];
             /**
              * Has Admin Account
              * @description Whether the instance administrator exists
              */
             has_admin_account: boolean;
-            /**
-             * Local Code Sandbox
-             * @description Whether code runs in the opt-in local Docker sandbox when no E2B key is saved
-             */
-            local_code_sandbox: boolean;
             /**
              * Needs Setup
              * @description Whether an LLM lane still has to be configured
@@ -16549,6 +16565,8 @@ export type DegradedHealthResponse = components['schemas']['DegradedHealthRespon
 export type DeleteAllConversationsResponse = components['schemas']['DeleteAllConversationsResponse'];
 export type DeleteMemoryResponse = components['schemas']['DeleteMemoryResponse'];
 export type DependencyStatus = components['schemas']['DependencyStatus'];
+export type DeploymentKind = components['schemas']['DeploymentKind'];
+export type DeploymentStatus = components['schemas']['DeploymentStatus'];
 export type DeregisterServerResponse = components['schemas']['DeregisterServerResponse'];
 export type DesktopReleaseAsset = components['schemas']['DesktopReleaseAsset'];
 export type DesktopReleaseResponse = components['schemas']['DesktopReleaseResponse'];

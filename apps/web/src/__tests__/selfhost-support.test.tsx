@@ -24,14 +24,17 @@ import { GAIA_GITHUB_ISSUES_URL } from "@/features/support/constants/supportCons
 
 const status = (gaia_support: boolean): SetupStatusResponse => ({
   auth_mode: "local",
-  billing_enabled: false,
+  deployment: {
+    kind: "selfhost",
+    bills: false,
+    local_code_sandbox: false,
+    blob_store: "local",
+    gaia_support: gaia_support,
+  },
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
   plans_seeded: true,
-  local_code_sandbox: false,
-  blob_store: "local",
-  gaia_support,
   providers: {},
 });
 

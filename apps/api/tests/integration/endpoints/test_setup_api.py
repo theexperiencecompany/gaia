@@ -116,9 +116,13 @@ class TestStatus:
             "has_admin_account",
             "registration_policy",
             "needs_setup",
-            "billing_enabled",
+            "deployment",
             "providers",
             "plans_seeded",
+        }
+        assert set(body["deployment"]) == {
+            "kind",
+            "bills",
             "local_code_sandbox",
             "blob_store",
             "gaia_support",
@@ -149,7 +153,7 @@ class TestStatus:
 
         resp = await anon_client.get(f"{API}/status")
 
-        assert resp.json()["blob_store"] == blob_store.value
+        assert resp.json()["deployment"]["blob_store"] == blob_store.value
 
     @pytest.mark.parametrize(("env", "gaia_support"), [("selfhost", False), ("development", True)])
     async def test_status_says_whether_support_requests_reach_gaia(
@@ -163,7 +167,7 @@ class TestStatus:
 
         resp = await anon_client.get(f"{API}/status")
 
-        assert resp.json()["gaia_support"] is gaia_support
+        assert resp.json()["deployment"]["gaia_support"] is gaia_support
 
     async def test_status_has_no_auth_dependency(self) -> None:
         assert not _requires("/status", get_current_user)
@@ -188,7 +192,7 @@ class TestStatus:
     ) -> None:
         monkeypatch.setattr(settings, "ENV", "selfhost")
         resp = await client.get(f"{API}/status")
-        assert resp.json()["billing_enabled"] is False
+        assert resp.json()["deployment"]["bills"] is False
 
     async def test_billing_enabled_outside_selfhost(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -196,7 +200,7 @@ class TestStatus:
         monkeypatch.setattr(settings, "ENV", "production")
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
         resp = await client.get(f"{API}/status")
-        assert resp.json()["billing_enabled"] is True
+        assert resp.json()["deployment"]["bills"] is True
 
     @pytest.mark.parametrize(
         ("auth_mode", "admin_exists", "llm_configured", "expected"),

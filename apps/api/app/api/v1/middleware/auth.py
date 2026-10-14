@@ -31,6 +31,7 @@ from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
     resolve_dev_bypass_user,
+    session_cookie_secure,
 )
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, resolve_session_token
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -215,7 +216,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         self.agent_only_path_prefixes: tuple[str, ...] = ()
         self.user_cache_expiry = 3600
         self.dev_bypass_email = (
-            settings.DEV_AUTH_BYPASS_EMAIL if settings.ENV == "development" else None
+            settings.DEV_AUTH_BYPASS_EMAIL if settings.deployment.dev_tools else None
         )
         if self.dev_bypass_email:
             log.warning(
@@ -270,7 +271,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 key="wos_session",
                 value=request.state.new_session,
                 httponly=True,
-                secure=settings.ENV == "production",
+                secure=session_cookie_secure(request),
                 samesite="lax",
                 max_age=60 * 60 * 24 * 7,
             )

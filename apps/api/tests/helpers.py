@@ -28,6 +28,7 @@ from starlette.requests import Request
 from starlette.types import ASGIApp
 import uvicorn
 
+from app.config.deployment import DeploymentKind, DeploymentProfile, deployment_profile
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
@@ -529,4 +530,16 @@ async def drain_at_most_once_sends() -> None:
     """Wait for the gated sends capture spawned, so their outcome is observable."""
     await asyncio.gather(
         *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
+    )
+
+
+def profile_of(env: str) -> DeploymentProfile:
+    """Return the profile an ENV boots with under its default auth mode, for a mocked settings.deployment."""
+    kind = DeploymentKind(env)
+    return deployment_profile(
+        kind,
+        "local" if kind is DeploymentKind.SELFHOST else "workos",
+        unlimited_usage=False,
+        local_code_sandbox=False,
+        blob_store=None,
     )

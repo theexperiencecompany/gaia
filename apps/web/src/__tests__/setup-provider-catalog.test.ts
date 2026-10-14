@@ -70,14 +70,17 @@ const CATALOG: ProviderCatalog = {
 
 const statusWith = (configured: string[]): SetupStatus => ({
   auth_mode: "local",
-  billing_enabled: false,
+  deployment: {
+    kind: "selfhost",
+    bills: false,
+    local_code_sandbox: false,
+    blob_store: "local",
+    gaia_support: false,
+  },
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: true,
   plans_seeded: true,
-  local_code_sandbox: false,
-  blob_store: "local",
-  gaia_support: false,
   providers: Object.fromEntries(
     configured.map((key) => [
       key,
@@ -200,7 +203,13 @@ describe("isProviderOffered", () => {
   it("offers Cloudinary only when the instance stores files there", () => {
     expect(
       isProviderOffered(
-        { ...statusWith([]), blob_store: "cloudinary" },
+        {
+          ...statusWith([]),
+          deployment: {
+            ...statusWith([]).deployment,
+            blob_store: "cloudinary",
+          },
+        },
         "cloudinary",
       ),
     ).toBe(true);

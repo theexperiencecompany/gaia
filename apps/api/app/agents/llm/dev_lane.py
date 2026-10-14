@@ -62,7 +62,7 @@ def custom_endpoint() -> CustomEndpoint:
 def dev_default_model_id() -> str | None:
     """Return the dev-menu key DEV_DEFAULT_MODEL names; None outside development, when unset, or unknown."""
     model_id = settings.DEV_DEFAULT_MODEL
-    if settings.ENV != "development" or not model_id:
+    if not settings.deployment.dev_tools or not model_id:
         return None
     if model_id not in DEV_MODEL_OPTIONS:
         log.warning(

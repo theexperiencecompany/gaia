@@ -13,7 +13,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
-  useBillingEnabled: () => true,
+  useDeployment: () => ({ bills: true }),
 }));
 
 vi.mock("@/lib/analytics", () => ({

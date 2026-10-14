@@ -9,14 +9,17 @@ const status = (
   overrides: Partial<SetupStatusResponse>,
 ): SetupStatusResponse => ({
   auth_mode: "local",
-  billing_enabled: false,
+  deployment: {
+    kind: "selfhost",
+    bills: false,
+    local_code_sandbox: false,
+    blob_store: "local",
+    gaia_support: false,
+  },
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
   plans_seeded: true,
-  local_code_sandbox: false,
-  blob_store: "local",
-  gaia_support: false,
   providers: {},
   ...overrides,
 });

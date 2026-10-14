@@ -20,7 +20,7 @@ import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useProMonthlyPlan } from "@/features/pricing/hooks/useProMonthlyPlan";
 import { toMajorUnits } from "@/features/pricing/utils/money";
-import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { usePathname } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -68,7 +68,7 @@ export default function SidebarTopButtons() {
   const { plan: monthlyPlan, isLoading: isPriceLoading } = useProMonthlyPlan();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   // Self-host instances have no billing — the promo makes no sense there.
-  const billingHidden = !useBillingEnabled();
+  const billingHidden = !useDeployment().bills;
 
   const price = monthlyPlan
     ? toMajorUnits(monthlyPlan.amount, monthlyPlan.currency)

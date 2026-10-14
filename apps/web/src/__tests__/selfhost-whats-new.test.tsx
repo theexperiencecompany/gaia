@@ -30,14 +30,17 @@ const RELEASE = {
 
 const SELFHOST_STATUS: SetupStatusResponse = {
   auth_mode: "local",
-  billing_enabled: false,
+  deployment: {
+    kind: "selfhost",
+    bills: false,
+    local_code_sandbox: false,
+    blob_store: "local",
+    gaia_support: false,
+  },
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
   plans_seeded: false,
-  local_code_sandbox: false,
-  blob_store: "local",
-  gaia_support: false,
   providers: {},
 };
 
@@ -71,6 +74,20 @@ describe("useReleases", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.releases).toEqual([]);
     expect(result.current.latest).toBeNull();
+  });
+
+  it("is self-hosted by its deployment, not its auth mode", async () => {
+    fetchSetupStatus.mockResolvedValue({
+      ...SELFHOST_STATUS,
+      auth_mode: "workos",
+    });
+    stubReleaseFeed();
+
+    const { result } = renderHook(() => useReleases(), { wrapper });
+
+    await waitFor(() => expect(fetchSetupStatus).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.releases).toEqual([]);
   });
 
   it("serves the release notes on hosted GAIA, which has no setup status", async () => {

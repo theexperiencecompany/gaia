@@ -103,7 +103,7 @@ from app.services.llm_metering import LLMCallContext
 from app.services.providers.provider_credentials_service import ProviderConfig
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
-from tests.helpers import create_fake_llm
+from tests.helpers import create_fake_llm, profile_of
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -645,6 +645,7 @@ class TestOpenRouterAppAttribution:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.ENV = "production"
+        mock_settings.deployment = profile_of("production")
         mock_settings.FRONTEND_URL = "https://heygaia.io"
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_settings.OPENROUTER_PROVIDER_ORDER = ""
@@ -665,6 +666,7 @@ class TestOpenRouterAppAttribution:
     ) -> None:
         """A localhost referer is unattributable; dev must send the fixed dev identity so its spend is legible on the dashboard."""
         mock_settings.ENV = "development"
+        mock_settings.deployment = profile_of("development")
         mock_settings.FRONTEND_URL = "http://localhost:3000"
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_settings.OPENROUTER_PROVIDER_ORDER = ""
@@ -687,6 +689,7 @@ class TestOpenRouterAppAttribution:
         # ENV drives which app identity is attributed; GAIA_SIM_MODE would
         # short-circuit the loader to the scripted stub before attribution.
         mock_settings.ENV = "production"
+        mock_settings.deployment = profile_of("production")
         mock_settings.FRONTEND_URL = "https://heygaia.io"
         mock_settings.GAIA_SIM_MODE = False
         # The loader reads its credential from the resolved runtime snapshot
@@ -1387,6 +1390,7 @@ class TestRegisterLlmProviders:
     ) -> None:
         with patch("app.agents.llm.client.settings") as mock_settings:
             mock_settings.ENV = "production"
+            mock_settings.deployment = profile_of("production")
             register_llm_providers()
 
         mock_gemini.assert_called_once()

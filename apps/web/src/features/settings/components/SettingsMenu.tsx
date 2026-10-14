@@ -36,10 +36,7 @@ import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import {
-  useBillingEnabled,
-  useIsSelfHosted,
-} from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
 import { useReleases } from "@/features/whats-new/hooks/useReleases";
@@ -264,8 +261,9 @@ export default function SettingsMenu({
   const { isPaid, isUnknown } = useIsPaid();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   // Self-host instances have no billing — the entries make no sense there.
-  const billingHidden = !useBillingEnabled();
-  const selfHosted = useIsSelfHosted();
+  const deployment = useDeployment();
+  const billingHidden = !deployment.bills;
+  const selfHosted = deployment.kind === "selfhost";
   const { role } = useCurrentUser();
   const { unseen: unseenReleases } = useReleases();
 

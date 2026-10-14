@@ -20,7 +20,7 @@ vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
 
 let billingEnabled = true;
 vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
-  useBillingEnabled: () => billingEnabled,
+  useDeployment: () => ({ bills: billingEnabled }),
 }));
 
 const openUpgradeModal = vi.fn();

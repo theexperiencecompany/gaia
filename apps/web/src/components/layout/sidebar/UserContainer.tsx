@@ -7,7 +7,7 @@ import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
-import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
@@ -15,7 +15,7 @@ export default function UserContainer() {
   const user = useCurrentUser();
   const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
   // Self-host instances have no billing — the plan chip makes no sense there.
-  const billingHidden = !useBillingEnabled();
+  const billingHidden = !useDeployment().bills;
   const [isOpen, setIsOpen] = React.useState(false);
 
   return (

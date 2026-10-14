@@ -83,7 +83,7 @@ class DodoPaymentService:
     def __init__(self) -> None:
         try:
             environment: Literal["live_mode", "test_mode"] = (
-                "live_mode" if settings.ENV == "production" else "test_mode"
+                "live_mode" if settings.deployment.bills else "test_mode"
             )
 
             # DODO_PAYMENTS_BASE_URL points the SDK at a non-default endpoint
@@ -217,7 +217,7 @@ class DodoPaymentService:
             if discount_code:
                 # Pre-apply a known discount (customer can still edit it on the page)
                 params["discount_code"] = discount_code
-            if settings.ENV == "development":
+            if settings.deployment.dev_tools:
                 # Local dev only: prefills everything but the card, and a card
                 # used once is offered back as a saved method, so a developer
                 # pays in one click after the first run.

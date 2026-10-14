@@ -248,7 +248,7 @@ def _ollama_env() -> ProviderConfig | None:
 
 def _custom_env() -> ProviderConfig | None:
     # The dev-only OpenAI-compatible lane; all three fields ship together.
-    if settings.ENV != "development":
+    if not settings.deployment.dev_tools:
         return None
     if not (settings.DEV_LLM_BASE_URL and settings.DEV_LLM_API_KEY and settings.DEV_LLM_MODEL):
         return None

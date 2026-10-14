@@ -14,7 +14,7 @@ import {
   BILLING_ONLY_SETTINGS_KEYS,
   isSettingsSectionAllowed,
 } from "@/features/settings/config/settingsConfig";
-import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 
 interface SettingsSectionClientProps {
   readonly section: SettingsSection;
@@ -27,7 +27,7 @@ export default function SettingsSectionClient({
 
   // Self-host instances have no billing — deep links to billing-only
   // sections redirect out instead of rendering.
-  const billingHidden = !useBillingEnabled();
+  const billingHidden = !useDeployment().bills;
   // Render a role-gated section only once the role allows it; redirect once
   // the account is known (an empty userId means not yet) and it does not.
   const { userId, role } = useCurrentUser();

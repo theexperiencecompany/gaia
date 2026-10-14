@@ -11,7 +11,7 @@ import {
   isSettingsSectionAllowed,
   settingsPageItems,
 } from "@/features/settings/config/settingsConfig";
-import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useElectron } from "@/hooks/useElectron";
 
 export default function SettingsSidebar() {
@@ -20,7 +20,7 @@ export default function SettingsSidebar() {
   const { isElectron } = useElectron();
 
   // Self-host instances have no billing — the entries make no sense there.
-  const billingHidden = !useBillingEnabled();
+  const billingHidden = !useDeployment().bills;
   const { role } = useCurrentUser();
 
   const visibleItems = settingsPageItems.filter(

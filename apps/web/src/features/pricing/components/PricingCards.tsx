@@ -2,7 +2,7 @@
 
 import { Skeleton } from "@heroui/skeleton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 
 import type { CheckoutSource, Plan } from "../api/pricingApi";
 import { MONTHS_PER_YEAR } from "../constants";
@@ -72,7 +72,7 @@ export function PricingCards({
   // cache / rehydrating). While true, isCurrentPlan/hasActiveSubscription are
   // unresolvable — never infer "on free plan" and duplicate-checkout a payer.
   const isSubscriptionStatusUnknown = useIsSubscriptionStatusUnknown();
-  const billingEnabled = useBillingEnabled();
+  const billingEnabled = useDeployment().bills;
 
   // An instance that sells nothing has no plans to show or check out.
   if (!billingEnabled) return null;

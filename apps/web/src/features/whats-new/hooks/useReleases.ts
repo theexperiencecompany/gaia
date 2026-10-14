@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useIsSelfHosted } from "@/features/settings/hooks/useSetupStatus";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useWhatsNewStore } from "@/stores/whatsNewStore";
 import type { Release, ReleasesResponse } from "../types";
 
@@ -23,7 +23,7 @@ export function useReleases(): {
   isLoading: boolean;
   error: Error | null;
 } {
-  const selfHosted = useIsSelfHosted();
+  const selfHosted = useDeployment().kind === "selfhost";
   const [feed, setReleases] = useState<Release[]>(cachedData?.releases ?? []);
   const releases = selfHosted ? NO_RELEASES : feed;
   const [isLoading, setIsLoading] = useState(cachedData === null);

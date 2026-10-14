@@ -339,12 +339,11 @@ class _AppAttribution(TypedDict):
 def _app_attribution() -> _AppAttribution:
     """OpenRouter app-attribution params, for EVERY real OpenRouter client.
 
-    Development sends a synthetic referer — a localhost FRONTEND_URL would land
-    traffic in the dashboard's "unknown app" bucket. Shared by the graph and aux
-    lanes; the aux lane once shipped without attribution, so memory extraction,
-    follow-ups and onboarding all reported as "unknown".
+    Only GAIA Cloud is attributed to GAIA's app; elsewhere a synthetic referer
+    stands in, since a localhost FRONTEND_URL lands in "unknown app". Shared by
+    the graph and aux lanes, which once reported as "unknown" without it.
     """
-    if settings.ENV == "production":
+    if settings.deployment.hosted_models:
         return {
             "app_url": settings.FRONTEND_URL,
             "app_title": OPENROUTER_APP_TITLE,

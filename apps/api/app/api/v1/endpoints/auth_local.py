@@ -15,7 +15,6 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
-from app.config.settings import settings
 from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED, InstanceRole
 from app.constants.error_codes import INVALID_CREDENTIALS, REGISTRATION_CLOSED
 from app.db.repositories.local_credentials import local_credentials_repository
@@ -30,7 +29,7 @@ from app.models.auth_models import (
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.members_service import admit_member, record_member_joined
-from app.utils.auth_utils import build_user_context
+from app.utils.auth_utils import build_user_context, session_cookie_secure
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
     SESSION_TTL_SECONDS,
@@ -69,51 +68,26 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-def _set_session_cookie(
-    response: JSONResponse, token: str, *, request: Request | None = None
-) -> None:
-    """Cookie options mirror the WorkOS session cookie in middleware/auth.py.
-
-    ``Secure`` follows the request's actual transport (X-Forwarded-Proto /
-    scheme), not ENV: a self-host instance behind a TLS proxy must mark the
-    cookie Secure, while a plain-HTTP LAN instance must not (browsers drop
-    Secure cookies over http, which would break login entirely).
-    """
-    secure = False
-    if request is not None:
-        forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
-        secure = forwarded == "https" or request.url.scheme == "https"
+def _set_session_cookie(response: JSONResponse, token: str, *, request: Request) -> None:
+    """Cookie options mirror the WorkOS session cookie in middleware/auth.py."""
     response.set_cookie(
         key=LOCAL_SESSION_COOKIE,
         value=token,
         httponly=True,
-        secure=secure,
+        secure=session_cookie_secure(request),
         samesite="lax",
         max_age=SESSION_TTL_SECONDS,
         path="/",
     )
 
 
-def _clear_session_cookie(response: JSONResponse, request: Request | None = None) -> None:
-    """Delete the session cookie with the same ``Secure`` logic as ``_set``.
-
-    Mirrors ``_set_session_cookie``: when a ``Request`` is available the
-    ``Secure`` flag follows the request's actual transport
-    (``X-Forwarded-Proto`` / ``scheme``) so a self-host instance behind a TLS
-    proxy deletes the same cookie it set. Without a request the fallback is
-    ``ENV == "production"`` (LAN default ``Secure=False``).
-    """
-    secure = False
-    if request is not None:
-        forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
-        secure = forwarded == "https" or request.url.scheme == "https"
-    else:
-        secure = settings.ENV == "production"
+def _clear_session_cookie(response: JSONResponse, request: Request) -> None:
+    """Delete the session cookie with the same Secure flag it was set with."""
     response.delete_cookie(
         key=LOCAL_SESSION_COOKIE,
         httponly=True,
         path="/",
-        secure=secure,
+        secure=session_cookie_secure(request),
         samesite="lax",
     )
 

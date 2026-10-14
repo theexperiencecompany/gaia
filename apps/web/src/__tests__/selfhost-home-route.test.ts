@@ -9,12 +9,15 @@ const SETUP_STATUS = {
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
-  billing_enabled: false,
+  deployment: {
+    kind: "selfhost",
+    bills: false,
+    local_code_sandbox: false,
+    blob_store: "local",
+    gaia_support: false,
+  },
   providers: {},
   plans_seeded: false,
-  local_code_sandbox: false,
-  blob_store: "local",
-  gaia_support: false,
 };
 
 function stubSetupStatus(overrides: Partial<typeof SETUP_STATUS> = {}) {

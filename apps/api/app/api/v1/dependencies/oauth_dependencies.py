@@ -159,7 +159,7 @@ async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
     # WebSockets skip WorkOSAuthMiddleware (HTTP only), so the dev bypass —
     # including X-Dev-User impersonation — is mirrored here. get_settings()
     # hard-fails if this is set in production.
-    if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
+    if settings.deployment.dev_tools and settings.DEV_AUTH_BYPASS_EMAIL:
         target_email, user_data = await resolve_dev_bypass_user(websocket)
         if user_data is not None:
             return _require_ws_user_id(

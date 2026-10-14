@@ -15,7 +15,7 @@ let isPaid = false;
 let isUnknown = false;
 
 vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
-  useBillingEnabled: () => true,
+  useDeployment: () => ({ bills: true }),
 }));
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({

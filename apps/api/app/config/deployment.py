@@ -29,6 +29,17 @@ class BlobStoreKind(StrEnum):
     CLOUDINARY = "cloudinary"
 
 
+class OriginPolicy(StrEnum):
+    """Which browser origins may call the API cross-origin."""
+
+    # FRONTEND_URL, GAIA's own domains and the desktop app's embedded server.
+    GAIA_CLOUD = "gaia_cloud"
+    # FRONTEND_URL plus any localhost origin, for dev servers on arbitrary ports.
+    LOCAL_DEVELOPMENT = "local_development"
+    # FRONTEND_URL only: a self-hosted instance's own domain.
+    INSTANCE = "instance"
+
+
 class InvalidDeploymentError(RuntimeError):
     """Raised for an ENV/AUTH_MODE/BLOB_STORE combination no deployment may run as."""
 
@@ -61,6 +72,21 @@ class DeploymentProfile:
     gaia_support: bool
     # Unreachable infrastructure stops the boot; off only in development.
     fail_fast: bool
+    trusted_origins: OriginPolicy
+    # Every client reaches it over https: session cookies are always Secure and
+    # share links refuse a plain-http HOST.
+    https_only: bool
+    # A provider endpoint the admin configures may be a private-network address.
+    private_network_endpoints: bool
+    # The auth bypass, dev router, open API docs, model selector and custom lane.
+    dev_tools: bool
+
+
+_TRUSTED_ORIGINS = {
+    DeploymentKind.PRODUCTION: OriginPolicy.GAIA_CLOUD,
+    DeploymentKind.DEVELOPMENT: OriginPolicy.LOCAL_DEVELOPMENT,
+    DeploymentKind.SELFHOST: OriginPolicy.INSTANCE,
+}
 
 
 @cache
@@ -106,4 +132,8 @@ def deployment_profile(
         or (BlobStoreKind.LOCAL if kind is DeploymentKind.SELFHOST else BlobStoreKind.CLOUDINARY),
         gaia_support=kind is not DeploymentKind.SELFHOST,
         fail_fast=kind is not DeploymentKind.DEVELOPMENT,
+        trusted_origins=_TRUSTED_ORIGINS[kind],
+        https_only=kind is DeploymentKind.PRODUCTION,
+        private_network_endpoints=kind is not DeploymentKind.PRODUCTION,
+        dev_tools=kind is DeploymentKind.DEVELOPMENT,
     )
