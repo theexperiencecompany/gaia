@@ -16,6 +16,8 @@ import sys
 
 from app.db.repositories.users import user_repository
 from app.services.briefing.rollout import provision_existing_user
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import analytics_context, worker_context
 
 
 async def rollout(dry_run: bool) -> None:
@@ -29,7 +31,9 @@ async def rollout(dry_run: bool) -> None:
     processed = 0
     for user_id in user_ids:
         try:
-            path = await provision_existing_user(user_id)
+            # A script is an entry point: each user's rollout reports through capture().
+            with analytics_context(worker_context(Trigger.SYSTEM)):
+                path = await provision_existing_user(user_id)
         except Exception as e:  # one bad user must not abort the whole rollout
             print(f"  user {user_id}: FAILED ({e})")
             paths["failed"] = paths.get("failed", 0) + 1
