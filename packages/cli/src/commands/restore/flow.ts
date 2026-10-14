@@ -13,8 +13,15 @@ import * as path from "node:path";
 import { execa } from "execa";
 import { backupFileSet, latestBackupStamp } from "../../lib/backup-files.js";
 import { isDockerRunning } from "../../lib/docker.js";
-import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
-import { apiEnvPath, findInstallRoot } from "../../lib/service-starter.js";
+import {
+  copyEnvFileOwnerOnly,
+  readDockerComposePortOverrides,
+} from "../../lib/env-writer.js";
+import {
+  apiEnvPath,
+  findInstallRoot,
+  startServices,
+} from "../../lib/service-starter.js";
 import {
   type VolumeFile,
   volumeRestoreScript,
@@ -88,7 +95,8 @@ export function getRestoreCommands(files: ResolvedRestoreFiles): string[] {
 }
 
 export async function runRestore(
-  options: RestoreOptions = {},
+  options: RestoreOptions,
+  onStatus: (message: string) => void,
 ): Promise<ResolvedRestoreFiles & { commands: string[] }> {
   const repoPath = findInstallRoot();
   if (!repoPath) {
@@ -246,6 +254,18 @@ export async function runRestore(
       throw new Error(`${label} restore failed: ${(e as Error).message}`);
     }
   }
+
+  // The `gaia start` path: the same compose files (the code sandbox included),
+  // and compose recreates every container whose env files changed.
+  onStatus(
+    "Restarting services so they load the restored data and settings...",
+  );
+  await startServices(
+    repoPath,
+    "selfhost",
+    onStatus,
+    readDockerComposePortOverrides(repoPath),
+  );
 
   return { ...resolved, commands };
 }

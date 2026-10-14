@@ -43,11 +43,14 @@ export async function runRestoreCommand(
 
   try {
     out("Starting GAIA restore...");
-    const result = await runRestore({
-      mongoFile: options.mongo,
-      postgresFile: options.postgres,
-      fromDir: options.from,
-    });
+    const result = await runRestore(
+      {
+        mongoFile: options.mongo,
+        postgresFile: options.postgres,
+        fromDir: options.from,
+      },
+      (message) => out(`  ${message}`),
+    );
     if (result.apiEnvFile)
       out(`Restored apps/api/.env from ${result.apiEnvFile}`);
     if (result.mongoFile) out(`Restored MongoDB from ${result.mongoFile}`);
@@ -56,7 +59,7 @@ export async function runRestoreCommand(
     for (const { label, file } of result.volumeFiles)
       out(`Restored ${label} from ${file}`);
     out(
-      "Restore complete. Recreate the app containers so they load the restored settings: docker compose -f infra/docker/docker-compose.selfhost.yml up -d --force-recreate gaia-backend arq_worker",
+      "Restore complete. Run 'gaia doctor' to confirm every dependency is ready.",
     );
   } catch (e) {
     errOut((e as Error).message);
