@@ -70,6 +70,7 @@ export function generateBlogMetadata(blog: BlogContentPost): Metadata {
       ],
       type: "article",
       publishedTime: blog.date,
+      modifiedTime: blog.updated ?? blog.date,
       authors: blog.authors.map((author) => author.name),
       section: blog.category,
     },

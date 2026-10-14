@@ -78,7 +78,11 @@ export default function BlogPostClient({
             {blog.title}
           </h1>
 
-          <BlogMetadata authors={blog.authors} date={blog.date} />
+          <BlogMetadata
+            authors={blog.authors}
+            date={blog.date}
+            updated={blog.updated}
+          />
         </div>
 
         {/* Content + TOC: flex layout so sticky works in normal flow */}
@@ -88,6 +92,7 @@ export default function BlogPostClient({
             <BlogMetadata
               authors={blog.authors}
               date={blog.date}
+              updated={blog.updated}
               className="my-10 border-t border-zinc-800 pt-10"
             />
           </article>
