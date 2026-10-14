@@ -37,7 +37,7 @@ const WALLPAPER_STYLE = {
   backgroundImage: "url('/images/wallpapers/bands_gradient_black.png')",
 } as const;
 
-// One-line reason shown under the footer while Continue is disabled.
+// One-line reason shown under the footer once Continue is pressed too early.
 const CONTINUE_REASONS: Record<string, string> = {
   account: "Create the admin account above to continue.",
   provider: "Chat requires a provider — add one to start chatting.",
@@ -56,6 +56,8 @@ export function SetupWizard() {
   const catalog = catalogQuery.data;
   const { suppressModal, unsuppressModal } = useLoginModalActions();
   const [stepIndex, setStepIndex] = useState(0);
+  // The step whose Continue was pressed before its objective was met.
+  const [blockedStepId, setBlockedStepId] = useState<string | null>(null);
 
   // Whether the wizard leads with account creation — captured from the FIRST
   // status load so the step list can't shift underneath the stepper once the
@@ -130,7 +132,7 @@ export function SetupWizard() {
   const step = steps[stepIndex];
   const isLastStep = stepIndex === lastStepIndex;
 
-  // Each step's objective — Continue unlocks once met; Skip always escapes.
+  // Each step's objective — Continue advances once met; Skip always escapes.
   const stepObjectiveMet =
     step.id === "account"
       ? status.has_admin_account
@@ -144,9 +146,16 @@ export function SetupWizard() {
   const goBack = () => setStepIndex((i) => Math.max(i - 1, 0));
   const refreshStatus = () => void refetch();
 
-  // One-line reason shown under the footer while Continue is disabled —
-  // derived from the same objective check above.
-  const continueReason = continueReasonFor(step.id, stepObjectiveMet);
+  // Derived from the same objective check above, and only after an attempt:
+  // a warning before the user has done anything reads as an error.
+  const continueReason =
+    blockedStepId === step.id
+      ? continueReasonFor(step.id, stepObjectiveMet)
+      : null;
+  const tryContinue = () => {
+    if (stepObjectiveMet) goNext();
+    else setBlockedStepId(step.id);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-primary-bg backdrop-blur-2xl">
@@ -245,8 +254,7 @@ export function SetupWizard() {
                 <Button
                   color="primary"
                   endContent={<ArrowRight02Icon className="size-4" />}
-                  isDisabled={!stepObjectiveMet}
-                  onPress={goNext}
+                  onPress={tryContinue}
                 >
                   Continue
                 </Button>
