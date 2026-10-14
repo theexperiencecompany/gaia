@@ -371,8 +371,10 @@ served_commit() {
   curl -fsS --connect-timeout 5 --max-time 10 "$1" | jq -r '.commit // empty'
 }
 
-# await_commit <url> <full sha> — passes once VERIFY_CONSECUTIVE reads in a row
-# serve the sha's short form, so every replica behind the load balancer is sampled.
+# await_commit <url> <full sha> — passes once VERIFY_CONSECUTIVE spaced reads in a
+# row serve the sha's short form. Replica coverage is convergence's job (every
+# running task on the new spec, so one image); this proves that image serves the
+# commit, through the public route a user hits.
 await_commit() {
   local url="$1" want="${2:0:8}" got streak=0
   local deadline=$(( $(date +%s) + ${VERIFY_TIMEOUT_SECS:-180} ))
@@ -381,11 +383,11 @@ await_commit() {
     if [[ "$got" == "$want" ]]; then
       streak=$((streak + 1))
       (( streak >= ${VERIFY_CONSECUTIVE:-5} )) && break
-      continue
-    fi
-    streak=0
-    if (( $(date +%s) >= deadline )); then
-      ci_die "$url serves commit '${got:-<none>}', expected $want — prod is not running the deployed image"
+    else
+      streak=0
+      if (( $(date +%s) >= deadline )); then
+        ci_die "$url serves commit '${got:-<none>}', expected $want — prod is not running the deployed image"
+      fi
     fi
     sleep "${VERIFY_POLL_SECS:-5}"
   done

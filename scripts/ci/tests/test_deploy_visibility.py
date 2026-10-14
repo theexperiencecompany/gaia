@@ -17,6 +17,7 @@ from pathlib import Path
 import subprocess
 import textwrap
 import threading
+from typing import Any
 
 import pytest
 
@@ -31,9 +32,10 @@ class Sink:
     """Serves canned GET bodies by path and records every POST."""
 
     url: str
-    bodies: dict[str, dict] = field(default_factory=dict)
+    bodies: dict[str, dict[str, object]] = field(default_factory=dict)
     status: dict[str, int] = field(default_factory=dict)
-    posts: list[tuple[str, dict]] = field(default_factory=list)
+    # Decoded webhook JSON: its shape is what the tests assert, not something to pre-declare.
+    posts: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
 
 @pytest.fixture
@@ -44,7 +46,7 @@ def sink() -> Iterator[Sink]:
         def log_message(self, *_: object) -> None:
             pass
 
-        def _reply(self, path: str, default: dict) -> None:
+        def _reply(self, path: str, default: dict[str, object]) -> None:
             body = json.dumps(state.bodies.get(path, default)).encode()
             self.send_response(state.status.get(path, 200))
             self.send_header("Content-Type", "application/json")
@@ -88,7 +90,9 @@ def fake_docker(tmp_path: Path, envs: dict[str, list[str]]) -> Path:
     return bin_dir
 
 
-def run(tmp_path: Path, sub: str, extra: dict[str, str], bin_dir: Path | None = None):
+def run(
+    tmp_path: Path, sub: str, extra: dict[str, str], bin_dir: Path | None = None
+) -> tuple[subprocess.CompletedProcess[str], str]:
     output = tmp_path / "github_output"
     output.touch()
     path = os.environ["PATH"] if bin_dir is None else f"{bin_dir}:{os.environ['PATH']}"
