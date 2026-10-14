@@ -1138,11 +1138,12 @@ jobs:
         run: bash scripts/ci/deploy.sh unwedge
       # !cancelled(): a reap done before a later request failed still alerts.
       # continue-on-error on the send only, as in build.yml's orphan alert.
-      - name: Notify Discord — wedged deploy cancelled
+      - name: Notify — wedged deploy cancelled
         if: ${{ !cancelled() && steps.unwedge.outputs.reaped != '' }}
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           COLOR: "#ffa94d"
           MESSAGE: |
             ⚠️ **Wedged Backend Deploy Cancelled**
