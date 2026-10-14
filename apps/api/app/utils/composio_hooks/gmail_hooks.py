@@ -370,7 +370,7 @@ def _append_sent_with_gaia(tool: str, user_id: str, arguments: dict[str, object]
         return
     if link is None:
         return
-    line = SENT_WITH_GAIA_HTML.format(link=escape(link, quote=True))
+    line = SENT_WITH_GAIA_HTML.format(link=escape(link))
     signed = False
     for body_key in _GMAIL_BODY_KEYS:
         body = arguments.get(body_key)
