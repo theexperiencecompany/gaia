@@ -89,6 +89,19 @@ Contributing? See [Development Setup](https://docs.heygaia.io/developers/develop
 
 Your ongoing cost is model API usage plus an 8 GB server — the [one-click deploy guide](https://docs.heygaia.io/self-hosting/one-click-deploy) compares what that costs on each provider.
 
+### Self-host in three steps
+
+New to servers? You need a Linux server or Mac with about 8 GB of RAM and one AI key (OpenAI, OpenRouter or Gemini).
+
+```bash
+curl -fsSL https://heygaia.io/install.sh | sh
+gaia up
+```
+
+Then open the address it prints, create your admin account, and paste your AI key. That is the whole setup. Later, `gaia update` upgrades GAIA and `gaia backup` saves your data.
+
+No terminal? Use [cloud-init, Render, Railway, Dokploy or DigitalOcean](https://docs.heygaia.io/self-hosting/one-click-deploy). The full guide is [here](https://docs.heygaia.io/self-hosting/walkthrough).
+
 ## Workflows
 
 A few things switch on by themselves the moment you connect a tool:

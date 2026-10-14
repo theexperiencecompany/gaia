@@ -170,7 +170,24 @@ This service map mirrors the compose stack but has not yet been deployed end to 
 
 Once the deployment is green, publish it as a Railway template from the project so others get the same wiring in one click.
 
-## After deploying
+## After you deploy
+
+Whichever route you took, the next steps are the same.
+
+<Steps>
+  <Step title="Open your address">
+    Open `http://<server IP>/setup`, or the `onrender.com` / Railway URL (or your own domain) followed by `/setup`.
+  </Step>
+  <Step title="Create the admin account">
+    The first account you create is the admin. Pick a name, an email and a password of at least 8 characters.
+  </Step>
+  <Step title="Paste your AI key">
+    Choose a provider (OpenAI, OpenRouter, Gemini or a local Ollama) and paste its key. Skip this if you already set it in the deploy.
+  </Step>
+  <Step title="Add extras, or skip them">
+    Web search, bots and integrations are optional. Add them later in **Settings → Providers & Tools**. See [the walkthrough](/self-hosting/walkthrough#finish-setup-in-the-browser).
+  </Step>
+</Steps>
 
 - **Check it**: on a VPS or Droplet, `gaia doctor`. On any platform, `GET /health/ready` on your URL lists every dependency and whether it answers.
 - **Update**: on a VPS, `gaia update`. On Render and Railway, change the image tag and redeploy.
