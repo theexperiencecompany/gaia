@@ -5,7 +5,8 @@ the once-only guarantees against real Mongo and Redis; this file pins what each
 branch decides and records: who converts, where a month lands, and what is told.
 """
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -18,7 +19,9 @@ from app.constants.referrals import (
     REWARD_APPLIED_TITLE,
     REWARD_BANKED_BODY,
     REWARD_LOCK_KEY_TEMPLATE,
-    REWARD_LOCK_TIMEOUT_S,
+    REWARD_LOCK_LEASE_S,
+    REWARD_LOCK_MAX_HOLD_S,
+    REWARD_LOCK_RENEW_S,
     REWARD_LOCK_WAIT_S,
     ReferralCopyVariant,
     ReferralNudge,
@@ -140,6 +143,11 @@ class Seams:
         return request.model_dump(exclude={"id", "created_at"})
 
 
+@asynccontextmanager
+async def _lease(*, held: bool) -> AsyncIterator[bool]:
+    yield held
+
+
 @pytest.fixture
 def seams() -> Iterator[Seams]:
     users = {REFERRER.id: REFERRER, FRIEND.id: FRIEND}
@@ -152,7 +160,8 @@ def seams() -> Iterator[Seams]:
             sid, "cus_referrer", next_billing_date
         )
     )
-    redis = MagicMock()
+    lock = MagicMock()
+    lock.return_value.hold.side_effect = lambda: _lease(held=True)
     with (
         time_machine.travel(NOW, tick=False),
         patch(f"{REWARDS}.user_repository.get", AsyncMock(side_effect=users.get)),
@@ -175,7 +184,7 @@ def seams() -> Iterator[Seams]:
             AsyncMock(side_effect=lambda _, target: _referral(reward_target_billing_date=target)),
         ) as pin_target,
         patch.object(payment_service, "client", dodo, create=True),
-        patch(f"{REWARDS}.redis_cache", redis),
+        patch(f"{REWARDS}.DistributedLock", lock),
         patch(f"{REWARDS}.capture") as capture,
         patch(
             f"{REWARDS}.notification_service.create_notification",
@@ -196,7 +205,7 @@ def seams() -> Iterator[Seams]:
             banked,
             pin_target,
             dodo,
-            redis.client.lock,
+            lock,
             capture,
             notify,
             apply_event,
@@ -307,8 +316,10 @@ class TestTheMonthMovesTheBill:
 
         seams.lock.assert_called_once_with(
             REWARD_LOCK_KEY_TEMPLATE.format(user_id=REFERRER.id),
-            timeout=REWARD_LOCK_TIMEOUT_S,
-            blocking_timeout=REWARD_LOCK_WAIT_S,
+            lease_seconds=REWARD_LOCK_LEASE_S,
+            acquire_timeout_seconds=REWARD_LOCK_WAIT_S,
+            renew_seconds=REWARD_LOCK_RENEW_S,
+            max_hold_seconds=REWARD_LOCK_MAX_HOLD_S,
         )
         seams.get_active.assert_awaited_once_with(REFERRER.id)
         seams.dodo.subscriptions.retrieve.assert_called_once_with(SUB_ID)
@@ -400,6 +411,17 @@ class TestTheMonthMovesTheBill:
             await record_friend_payment(_payment())
 
         seams.dodo.subscriptions.update.assert_not_called()
+
+    async def test_a_reward_whose_lease_cannot_be_taken_fails_without_touching_the_bill(
+        self, seams: Seams
+    ) -> None:
+        seams.lock.return_value.hold.side_effect = lambda: _lease(held=False)
+
+        with pytest.raises(RuntimeError, match="referral reward lease"):
+            await record_friend_payment(_payment())
+
+        seams.dodo.subscriptions.update.assert_not_called()
+        seams.update.assert_not_awaited()
 
 
 class TestSelfReferral:

@@ -15,7 +15,7 @@ interface InviteOgImageProps {
 export default async function InviteOgImage({ params }: InviteOgImageProps) {
   const { code } = await params;
   const invite = await resolveInviteServer(code);
-  if (!invite.valid) return createFallbackResponse(siteConfig.name);
+  if (!invite?.valid) return createFallbackResponse(siteConfig.name);
   return renderInviteOgImage({
     invite,
     code,

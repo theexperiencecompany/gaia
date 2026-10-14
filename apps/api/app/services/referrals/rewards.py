@@ -24,12 +24,13 @@ from app.constants.referrals import (
     REWARD_BANKED_BODY,
     REWARD_DATE_FORMAT,
     REWARD_LOCK_KEY_TEMPLATE,
-    REWARD_LOCK_TIMEOUT_S,
+    REWARD_LOCK_LEASE_S,
+    REWARD_LOCK_MAX_HOLD_S,
+    REWARD_LOCK_RENEW_S,
     REWARD_LOCK_WAIT_S,
     REWARD_MONTHS_PER_FRIEND,
     ReferralNudge,
 )
-from app.db.redis import redis_cache
 from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
@@ -56,6 +57,7 @@ from app.services.referrals.codes import first_name_of
 from app.services.referrals.nudges import record_announcement
 from app.utils.email_utils import email_identity
 from app.utils.notification.channel_preferences import normalize_channel_preferences
+from app.utils.redis_lock import DistributedLock
 from app.utils.timezone import as_utc
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.referrals import ReferralConverted, ReferralRewardGranted
@@ -159,12 +161,18 @@ async def deliver_rewards(
     referrer_user_id: str, referrals: list[ReferralDocument]
 ) -> list[RewardDelivery]:
     """Apply each reward to the referrer's active subscription, or bank it, one referrer at a time."""
-    lock = redis_cache.client.lock(
+    lease = DistributedLock(
         REWARD_LOCK_KEY_TEMPLATE.format(user_id=referrer_user_id),
-        timeout=REWARD_LOCK_TIMEOUT_S,
-        blocking_timeout=REWARD_LOCK_WAIT_S,
+        lease_seconds=REWARD_LOCK_LEASE_S,
+        acquire_timeout_seconds=REWARD_LOCK_WAIT_S,
+        renew_seconds=REWARD_LOCK_RENEW_S,
+        max_hold_seconds=REWARD_LOCK_MAX_HOLD_S,
     )
-    async with lock:
+    async with lease.hold() as held:
+        if not held:
+            raise RuntimeError(
+                "could not take the referral reward lease (Redis unavailable or contended)"
+            )
         return [await _deliver(referral) for referral in referrals]
 
 

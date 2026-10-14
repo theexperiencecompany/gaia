@@ -738,7 +738,6 @@ async def create_referral_indexes() -> None:
             referrals.create_index([("referrer_user_id", 1), ("joined_at", -1)]),
             referrals.create_index([("referrer_user_id", 1), ("reward_state", 1), ("paid_at", 1)]),
             invites.create_index([("sender_user_id", 1), ("recipient_email", 1)], unique=True),
-            invites.create_index([("sender_user_id", 1), ("sent_at", -1)]),
             suppressions.create_index("email", unique=True),
             nudges.create_index("user_id", unique=True),
         )

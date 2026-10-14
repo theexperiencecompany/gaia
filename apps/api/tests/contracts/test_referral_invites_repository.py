@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
@@ -44,12 +44,3 @@ class TestReferralInvitesRepository:
         claim = await repo.claim(_invite("a", "friend@x.com"))
         await repo.release(claim.id)
         assert await repo.claim(_invite("a", "friend@x.com")) is not None
-
-    async def test_count_sent_since_counts_only_the_sender_inside_the_window(self, repo):
-        await repo.claim(_invite("a", "one@x.com", NOW - timedelta(days=1)))
-        await repo.claim(_invite("a", "two@x.com", NOW))
-        await repo.claim(_invite("a", "three@x.com", NOW + timedelta(hours=1)))
-        await repo.claim(_invite("b", "four@x.com", NOW))
-
-        assert await repo.count_sent_since("a", NOW) == 2
-        assert await repo.count_sent_since("b", NOW) == 1

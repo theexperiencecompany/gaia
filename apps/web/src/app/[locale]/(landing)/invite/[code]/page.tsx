@@ -19,10 +19,12 @@ export async function generateMetadata({
   const invite = await resolveInviteServer(code);
   const { og } = REFERRAL_COPY[INVITE_OG_VARIANT];
   const title =
-    invite.valid && invite.referrer_first_name
+    invite?.valid && invite.referrer_first_name
       ? og.title(invite.referrer_first_name)
       : siteConfig.name;
-  const description = og.subtitle(offerPrices(invite.offer));
+  const description = invite
+    ? og.subtitle(offerPrices(invite.offer))
+    : siteConfig.description;
   // One page per referrer: shareable previews, never search results.
   return {
     title,

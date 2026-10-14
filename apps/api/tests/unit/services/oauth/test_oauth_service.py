@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
+from pymongo.errors import PyMongoError
 import pytest
 from tests.factories import make_integration_config
 from tests.helpers import captured_wide_event
@@ -297,6 +298,42 @@ class TestStoreUserInfo:
             await store_user_info("Bob", "bob@test.com", None, auth_method=None, referral=referral)
 
         attribute.assert_awaited_once_with(uid, referral)
+
+    async def test_a_failed_referral_attribution_still_completes_the_signup(
+        self, mock_user_repo, mock_track_signup, mock_redis_pool_manager
+    ):
+        """The account already exists, so a raise here would make the next login a returning user's."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid, name="Bob", email="bob@test.com")
+
+        with (
+            patch(
+                "app.services.oauth.oauth_service.attribute_signup",
+                AsyncMock(side_effect=PyMongoError("referrals primary stepped down")),
+            ),
+            patch("app.services.oauth.oauth_service.schedule_user_provision") as provision,
+        ):
+            async with captured_wide_event() as event:
+                result = await store_user_info(
+                    "Bob",
+                    "bob@test.com",
+                    None,
+                    auth_method=None,
+                    referral=ReferralAttribution(code="aryan-k7f2"),
+                )
+
+        assert result == (uid, True)
+        mock_track_signup.assert_called_once()
+        provision.assert_called_once_with(uid)
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.OAUTH} Referral attribution failed; signup continues without it",
+                "user": {"id": uid},
+                "error": "referrals primary stepped down",
+                "error_type": "PyMongoError",
+            }
+        ]
 
     async def test_an_existing_account_ignores_an_invite_link(
         self, mock_user_repo, mock_track_login
