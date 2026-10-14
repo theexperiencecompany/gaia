@@ -39,6 +39,9 @@ class AnalyticsEvents(StrEnum):
     SUBSCRIPTION_CANCELLATION_REQUESTED = "subscription:cancellation_requested"
     FEEDBACK_MESSAGE_SUBMITTED = "feedback:message_submitted"
     SESSION_ARTIFACT_PINNED = "session:artifact_pinned"
+    SHORT_LINK_CREATED = "short_link:created"
+    SHORT_LINK_OPENED = "short_link:opened"
+    SHORT_LINK_REVOKED = "short_link:revoked"
     PROFILE_UPDATED = "profile:updated"
 
     # Lifecycle email

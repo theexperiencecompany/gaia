@@ -519,6 +519,10 @@ class ProductionSettings(CommonSettings):
 class DevelopmentSettings(CommonSettings):
     """Looser settings for development environment with defaults."""
 
+    # No heygaia.link alias exists locally, so minted links point straight at
+    # the local web app's /l route.
+    SHORTLINK_BASE_URL: str = "http://localhost:3000/l"
+
     # ----------------------------------------------
     # Database & Message Queue Connections
     # ----------------------------------------------

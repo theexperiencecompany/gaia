@@ -6,7 +6,6 @@ identity, no cache policy — a bespoke suite, not the inherited
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
 import uuid
 
 from pymongo.errors import DuplicateKeyError
@@ -14,7 +13,7 @@ import pytest
 
 from app.db.mongodb.indexes import create_short_link_indexes
 from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX, ShortLinksRepository
-from app.models.short_link_models import ShortLink, ShortLinkUpdate
+from app.models.short_link_models import ShortLink, ShortLinkTargetType, ShortLinkUpdate
 
 
 def _slug() -> str:
@@ -32,7 +31,7 @@ def make_doc() -> Callable[..., ShortLink]:
         data: dict[str, object] = {
             "slug": _slug(),
             "user_id": "user-1",
-            "target_type": "todo_canvas",
+            "target_type": ShortLinkTargetType.TODO_DELIVERABLE,
             "target_id": "todo-1",
         }
         data.update(overrides)
@@ -52,7 +51,7 @@ async def indexed_repo(
 
 
 class TestShortLinksLiveTargetUniqueness:
-    """One live link per (user, target) is enforced by Mongo, not by the mint's
+    """One live link per target is enforced by Mongo, not by the mint's
     read-then-write — two overlapping mints must collide on the index, or the
     loser's link outlives the winner's revocation."""
 
@@ -112,36 +111,29 @@ class TestShortLinksResolution:
 
 
 class TestShortLinksMintingIdempotency:
-    async def test_refresh_for_target_pushes_expiry_when_live_link_exists(self, repo, make_doc):
-        original_expiry = datetime.now(UTC) + timedelta(days=1)
-        created = await repo.create(
-            make_doc(
-                user_id="u", target_type="todo_canvas", target_id="t1", expires_at=original_expiry
-            )
-        )
-        new_expiry = datetime.now(UTC) + timedelta(days=30)
-        refreshed = await repo.refresh_for_target("u", "todo_canvas", "t1", expires_at=new_expiry)
-        assert refreshed is not None
-        assert refreshed.slug == created.slug  # same link reused, not a new mint
-        assert refreshed.expires_at is not None
-        assert abs((refreshed.expires_at - new_expiry).total_seconds()) < 1
+    async def test_get_live_for_target_returns_the_live_link(self, indexed_repo, make_doc):
+        created = await indexed_repo.create(make_doc(target_id="t1"))
+        found = await indexed_repo.get_live_for_target(ShortLinkTargetType.TODO_DELIVERABLE, "t1")
+        assert found is not None and found.slug == created.slug
 
-    async def test_refresh_for_target_none_when_no_existing_link(self, repo):
+    async def test_get_live_for_target_none_when_no_link(self, indexed_repo):
         assert (
-            await repo.refresh_for_target(
-                "u", "todo_canvas", "missing", expires_at=datetime.now(UTC)
-            )
+            await indexed_repo.get_live_for_target(ShortLinkTargetType.TODO_DELIVERABLE, "missing")
             is None
         )
 
-    async def test_refresh_for_target_skips_revoked_link(self, repo, make_doc):
-        await repo.create(
-            make_doc(user_id="u", target_type="todo_canvas", target_id="t1", revoked=True)
-        )
-        result = await repo.refresh_for_target(
-            "u", "todo_canvas", "t1", expires_at=datetime.now(UTC) + timedelta(days=30)
-        )
+    async def test_get_live_for_target_skips_revoked_link(self, indexed_repo, make_doc):
+        await indexed_repo.create(make_doc(target_id="t1", revoked=True))
+        result = await indexed_repo.get_live_for_target(ShortLinkTargetType.TODO_DELIVERABLE, "t1")
         assert result is None  # revoked link is dead — caller mints a fresh one
+
+    async def test_target_types_do_not_share_a_live_link(self, indexed_repo, make_doc):
+        await indexed_repo.create(make_doc(target_id="same-id"))
+        other = await indexed_repo.create(
+            make_doc(target_type=ShortLinkTargetType.BRIEFING, target_id="same-id")
+        )
+        found = await indexed_repo.get_live_for_target(ShortLinkTargetType.BRIEFING, "same-id")
+        assert found is not None and found.slug == other.slug
 
 
 class TestShortLinksRevoke:

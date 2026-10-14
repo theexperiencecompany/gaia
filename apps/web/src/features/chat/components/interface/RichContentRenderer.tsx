@@ -22,7 +22,7 @@ interface RichContentRendererProps {
   className?: string;
   /**
    * Override how a prose segment renders. Chat wraps prose in iMessage bubbles;
-   * omit it to render prose as a plain document (the artifact reader default).
+   * omit it to render prose as a plain document (the heygaia.link page default).
    */
   renderMarkdown?: (
     segment: ContentSegment,
@@ -34,7 +34,7 @@ interface RichContentRendererProps {
 /**
  * Splits `content` into prose and `:::openui` segments, rendering prose via
  * MarkdownRenderer and fenced blocks via OpenUIRenderer — the single place that
- * turns markdown + OpenUI into React, shared by chat and the artifact reader.
+ * turns markdown + OpenUI into React, shared by chat and the heygaia.link pages.
  */
 export default function RichContentRenderer({
   content,

@@ -409,7 +409,7 @@ class TestCreateShortLinkIndexes:
         await create_short_link_indexes()
 
         collection.create_index.assert_any_await(
-            [("user_id", 1), ("target_type", 1), ("target_id", 1)],
+            [("target_type", 1), ("target_id", 1)],
             unique=True,
             partialFilterExpression={"revoked": False},
             name=LIVE_TARGET_UNIQUE_INDEX,

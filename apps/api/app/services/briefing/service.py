@@ -51,6 +51,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.briefing import chat_sync, context, delivery_channels, dormancy
@@ -238,7 +239,9 @@ async def _artifact_link(user_id: str, todo_id: str) -> str:
     The failure is still surfaced loudly in the run's events.
     """
     try:
-        return await get_or_create_short_link(user_id, "todo_canvas", todo_id)
+        return await get_or_create_short_link(
+            user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id
+        )
     except (PyMongoError, ShortLinkExhaustedError) as exc:
         log.warning(
             "briefing.short_link_mint_failed",

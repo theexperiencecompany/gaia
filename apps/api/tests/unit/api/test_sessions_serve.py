@@ -1,4 +1,4 @@
-"""Content-type handling in the session artifact/upload server (``_serve``).
+"""Content-type handling in the session artifact/upload server (``sandboxed_file_response``).
 
 Regression fence for the stored-XSS fix: script-capable artifact types must be
 served with a sandbox CSP *and* forced to download, while known-safe media may
@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi.responses import FileResponse
 import pytest
 
-from app.api.v1.endpoints.sessions import _serve
+from app.utils.sandboxed_file_response import sandboxed_file_response
 
 
 def _cd(response: FileResponse) -> str:
@@ -48,7 +48,9 @@ INLINE_CASES = [
 def test_active_types_are_sandboxed_and_downloaded(
     artifact_file: Callable[[str], Path], name: str, content_type: str
 ) -> None:
-    response = _serve(artifact_file(name), is_artifact=True, filename=name)
+    response = sandboxed_file_response(
+        artifact_file(name), cache_control="private, max-age=60", filename=name
+    )
 
     assert response.media_type == content_type
     assert response.headers.get("content-security-policy") == "sandbox"
@@ -60,7 +62,9 @@ def test_active_types_are_sandboxed_and_downloaded(
 def test_safe_media_renders_inline(
     artifact_file: Callable[[str], Path], name: str, content_type: str
 ) -> None:
-    response = _serve(artifact_file(name), is_artifact=True, filename=name)
+    response = sandboxed_file_response(
+        artifact_file(name), cache_control="private, max-age=60", filename=name
+    )
 
     assert response.media_type == content_type
     assert "content-security-policy" not in response.headers
@@ -72,7 +76,9 @@ def test_safe_media_renders_inline(
 def test_unknown_type_is_forced_to_download(artifact_file: Callable[[str], Path]) -> None:
     # Anything not on the safe-inline allowlist (here: octet-stream) is
     # downloaded, never rendered.
-    response = _serve(artifact_file("mystery.bin"), is_artifact=True, filename="mystery.bin")
+    response = sandboxed_file_response(
+        artifact_file("mystery.bin"), cache_control="private, max-age=60", filename="mystery.bin"
+    )
 
     assert response.media_type == "application/octet-stream"
     assert _cd(response).split(";")[0].strip() == "attachment"
@@ -80,7 +86,9 @@ def test_unknown_type_is_forced_to_download(artifact_file: Callable[[str], Path]
 
 def test_plain_text_is_downloaded_not_inlined(artifact_file: Callable[[str], Path]) -> None:
     # text/plain is not on the safe-inline allowlist, so it must download.
-    response = _serve(artifact_file("notes.txt"), is_artifact=True, filename="notes.txt")
+    response = sandboxed_file_response(
+        artifact_file("notes.txt"), cache_control="private, max-age=60", filename="notes.txt"
+    )
 
     assert response.media_type == "text/plain"
     assert _cd(response).split(";")[0].strip() == "attachment"
@@ -92,7 +100,9 @@ def test_malicious_filename_cannot_break_the_attachment_header(
     # An agent-chosen name with a quote must not close the quoted-string and
     # neuter the attachment disposition — FileResponse RFC-encodes it.
     evil = 'a".svg'
-    response = _serve(artifact_file("real.svg"), is_artifact=True, filename=evil)
+    response = sandboxed_file_response(
+        artifact_file("real.svg"), cache_control="private, max-age=60", filename=evil
+    )
 
     cd = _cd(response)
     assert cd.split(";")[0].strip() == "attachment"

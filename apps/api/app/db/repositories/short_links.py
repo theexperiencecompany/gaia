@@ -4,22 +4,21 @@ Short links are capability URLs (heygaia.link/<slug>): the slug alone grants
 read-only access to one artifact with no session, so resolution
 (``get_by_slug``) is a deliberately global, unscoped read — the one operation
 in this user-scoped repository with no ``user_id`` in its filter, exactly like
-a cross-user maintenance scan on any other ``UserScopedRepository``. Minting,
-refreshing and revoking a link are all owner-scoped.
+a cross-user maintenance scan on any other ``UserScopedRepository``. Finding a
+target's live link is keyed by the target alone, because a target id names one
+artifact of one owner; revoking is owner-scoped.
 
 No ``CachePolicy``: resolution is a public, low-volume read keyed by slug, not
 by the entity id an id-keyed cache would serve.
 """
 
-from datetime import datetime
-
 from app.db.repositories.base import UserScopedRepository
-from app.models.short_link_models import ShortLink, ShortLinkTarget, ShortLinkUpdate
+from app.models.short_link_models import ShortLink, ShortLinkTargetType, ShortLinkUpdate
 
 # Index names, shared with the index builder and the mint loop, which tells the
 # two unique-key violations apart by the index Mongo names in the error.
 SLUG_UNIQUE_INDEX = "slug_unique"
-LIVE_TARGET_UNIQUE_INDEX = "user_target_live_unique"
+LIVE_TARGET_UNIQUE_INDEX = "target_live_unique"
 
 
 class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
@@ -35,22 +34,13 @@ class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
         user in context."""
         return await self._find_one({"slug": slug})
 
-    async def refresh_for_target(
-        self, user_id: str, target_type: ShortLinkTarget, target_id: str, *, expires_at: datetime
+    async def get_live_for_target(
+        self, target_type: ShortLinkTargetType, target_id: str
     ) -> ShortLink | None:
-        """Push a live (non-revoked) link's expiry forward on reuse — the
-        idempotency path so a re-minted artifact reuses its slug. ``None`` when
-        no link exists yet for this target (the caller mints a fresh one) or the
-        existing one was revoked."""
-        return await self._apply_raw_update(
-            {
-                "user_id": user_id,
-                "target_type": target_type,
-                "target_id": target_id,
-                "revoked": {"$ne": True},
-            },
-            {"$set": {"expires_at": expires_at}},
-            scope=user_id,
+        """The target's one live (non-revoked) link, served by the partial
+        ``LIVE_TARGET_UNIQUE_INDEX`` because the filter matches its predicate."""
+        return await self._find_one(
+            {"target_type": target_type, "target_id": target_id, "revoked": False}
         )
 
     async def revoke(self, user_id: str, slug: str) -> bool:

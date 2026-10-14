@@ -14,6 +14,8 @@ from enum import Enum
 from typing import Any
 from urllib.parse import quote
 
+from redis.exceptions import RedisError
+
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
 from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL
@@ -44,15 +46,27 @@ from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
+# One hello per user ever, so one job id per user: ARQ enqueues nothing for an
+# id that is already queued, running or holding its result, which collapses two
+# links landing together (Telegram and WhatsApp in the same minute) into one job.
+# Without it both workers pass the task's not-yet-sent guard and greet twice.
+DAY_ZERO_HELLO_JOB_ID = "day_zero_hello:{user_id}"
+
 
 async def _enqueue_day_zero_hello(user_id: str, platform: str) -> None:
     """Best-effort: enqueue GAIA's first-hello job for a freshly linked chat
-    platform. The task guards itself to fire once per user, so a duplicate enqueue
-    is harmless; a Redis hiccup must not fail the link."""
+    platform, at most once at a time per user. A Redis outage must not fail the
+    link, so it is logged and the link proceeds."""
     try:
         pool = await RedisPoolManager.get_pool()
-        await enqueue_worker_job(pool, "send_day_zero_hello", user_id, platform)
-    except Exception as e:
+        await enqueue_worker_job(
+            pool,
+            "send_day_zero_hello",
+            user_id,
+            platform,
+            _job_id=DAY_ZERO_HELLO_JOB_ID.format(user_id=user_id),
+        )
+    except RedisError as e:
         log.warning(
             "platform_link.day_zero_enqueue_failed",
             user_id=user_id,

@@ -14,7 +14,7 @@ import asyncio
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection
-from pymongo.errors import DuplicateKeyError, OperationFailure
+from pymongo.errors import OperationFailure
 
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import get_async_collection
@@ -1208,51 +1208,21 @@ async def create_short_link_indexes() -> None:
     Slugs are capability URLs: globally unique, so one index enforces the whole
     namespace and the mint retry loop races against it. A second unique index
     holds the invariant the mint depends on but cannot enforce: at most one
-    live (non-revoked) link per (user, target).
-
-    Pre-capability rows were per-user and 3 chars, so two users could hold the
-    same slug and the unique index cannot build over them. Removing them is a
-    destructive migration and lives in ``scripts/migrate_short_link_slugs.py``,
-    not here — a process should not delete rows because it started, and this
-    runs on every deploy and every dev restart. If those rows are still present
-    the index build fails, and this says so rather than quietly fixing it.
+    live (non-revoked) link per target. It is partial on ``revoked: False``, so
+    a revoked link never blocks the next mint and the idempotency read (which
+    filters on that same predicate) is served by it.
     """
     short_links_collection = get_async_collection("short_links")
     try:
-        await short_links_collection.create_index(
-            [("slug", 1)],
-            unique=True,
-            name=SLUG_UNIQUE_INDEX,
+        await asyncio.gather(
+            short_links_collection.create_index([("slug", 1)], unique=True, name=SLUG_UNIQUE_INDEX),
+            short_links_collection.create_index(
+                [("target_type", 1), ("target_id", 1)],
+                unique=True,
+                partialFilterExpression={"revoked": False},
+                name=LIVE_TARGET_UNIQUE_INDEX,
+            ),
         )
-        # One LIVE link per (user, target): the mint's read-then-write cannot
-        # enforce this on its own, so two overlapping mints would each get a
-        # slug and revoking the one the user was shown would leave the other
-        # live. Revoked links fall out of the partial filter, so the next mint
-        # after a revocation is free to draw a fresh slug.
-        await short_links_collection.create_index(
-            [("user_id", 1), ("target_type", 1), ("target_id", 1)],
-            unique=True,
-            partialFilterExpression={"revoked": False},
-            name=LIVE_TARGET_UNIQUE_INDEX,
-        )
-        # The same keys again without the partial filter: the idempotency read
-        # matches on `revoked: {$ne: True}`, which a partial index cannot serve.
-        await short_links_collection.create_index(
-            [("user_id", 1), ("target_type", 1), ("target_id", 1)],
-            name="user_target",
-        )
-    except DuplicateKeyError as e:
-        log.error(
-            f"{LogTag.MONGO} a unique short_links index cannot be built over the "
-            "duplicates already in the collection. Duplicate slugs are pre-capability "
-            "per-user links: run `uv run python -m scripts.migrate_short_link_slugs "
-            "--dry-run`, review, then re-run without the flag. Duplicate live links "
-            "for one target can only predate the live-target index",
-            collection_name="short_links",
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating short link indexes",

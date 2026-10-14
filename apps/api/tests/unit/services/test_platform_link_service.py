@@ -7,11 +7,13 @@ conflict detection, profile assembly, the legacy dict it returns to bot consumer
 and the get_linked_platforms filtering.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, call, patch
 
 from bson import ObjectId
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL
 from app.models.payment_models import PlanType
@@ -63,11 +65,17 @@ class _FakeArqPool:
         self.job_kwargs: list[dict] = []
 
     async def enqueue_job(self, *args, **kwargs):
+        # ARQ's dedup contract: a job id that is already queued, running or
+        # holding a result enqueues nothing and returns None.
+        job_id = kwargs.get("_job_id")
+        if job_id is not None and any(k.get("_job_id") == job_id for k in self.job_kwargs):
+            return None
         self.jobs.append(args)
         self.job_kwargs.append(kwargs)
+        return object()
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def day_zero_pool():
     pool = _FakeArqPool()
     with patch(
@@ -292,6 +300,22 @@ class TestLinkSideEffects:
 
         assert day_zero_pool.jobs == [("send_day_zero_hello", sample_user_id, "discord")]
 
+    async def test_concurrent_new_links_enqueue_one_hello(
+        self, mock_repo, sample_user_id, day_zero_pool
+    ):
+        """Two links landing together both see no prior link; the hello must
+        still be queued once, or two workers each pass the not-yet-sent guard
+        and the user is greeted twice."""
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        await asyncio.gather(
+            PlatformLinkService.link_account(sample_user_id, "discord", "discord456"),
+            PlatformLinkService.link_account(sample_user_id, "telegram", "tg-1"),
+        )
+
+        assert len(day_zero_pool.jobs) == 1
+
     async def test_a_same_id_relink_never_re_greets(self, mock_repo, sample_user_id, day_zero_pool):
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"discord": {"id": "discord123"}}
@@ -313,7 +337,7 @@ class TestLinkSideEffects:
             trace_id = get_trace_id()
 
         assert trace_id
-        assert day_zero_pool.job_kwargs == [{TRACE_ID_KWARG: trace_id}]
+        assert day_zero_pool.job_kwargs[0][TRACE_ID_KWARG] == trace_id
 
     async def test_a_redis_outage_still_links_and_names_the_cause(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
@@ -321,7 +345,7 @@ class TestLinkSideEffects:
 
         with patch(
             "app.services.platform_link_service.RedisPoolManager.get_pool",
-            AsyncMock(side_effect=RuntimeError("redis is down")),
+            AsyncMock(side_effect=RedisConnectionError("redis is down")),
         ):
             async with log_context("platform_link_test"):
                 result = await PlatformLinkService.link_account(sample_user_id, "slack", "slack-1")
