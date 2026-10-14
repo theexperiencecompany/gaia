@@ -21,7 +21,8 @@ interface PostPaymentShareCardProps {
   url: string;
   prices: OfferPrices;
   copyVariant: ReferralCopyVariant;
-  onDismiss: () => void;
+  /** Omitted where the surrounding flow owns moving on, so the card has no close button. */
+  onDismiss?: () => void;
 }
 
 /** Chained after a confirmed payment; renders nothing until the new subscriber's link exists. */
@@ -35,6 +36,19 @@ export function PostPaymentReferral() {
       prices={offerPrices(state.me.offer)}
       copyVariant={state.me.copy_variant}
       onDismiss={() => setDismissed(true)}
+    />
+  );
+}
+
+/** The onboarding step right after the first payment; the flow's own button moves on. */
+export function OnboardingReferral() {
+  const state = useReferralMe();
+  if (state.status !== "ready") return null;
+  return (
+    <PostPaymentShareCard
+      url={state.me.share_link}
+      prices={offerPrices(state.me.offer)}
+      copyVariant={state.me.copy_variant}
     />
   );
 }
@@ -55,13 +69,15 @@ function PostPaymentShareCard({
     emailSubject: share.emailSubject,
   });
 
-  const dismiss = () => {
-    track("referral:card_dismissed", {
-      surface: "post_payment",
-      copy_variant: copyVariant,
-    });
-    onDismiss();
-  };
+  const dismiss = onDismiss
+    ? () => {
+        track("referral:card_dismissed", {
+          surface: "post_payment",
+          copy_variant: copyVariant,
+        });
+        onDismiss();
+      }
+    : null;
 
   const shareIcon = canShareNatively ? (
     <Share08Icon width={16} height={16} />
@@ -77,17 +93,19 @@ function PostPaymentShareCard({
         <h2 className="text-sm font-medium text-zinc-200">
           {postPayment.title}
         </h2>
-        <Button
-          isIconOnly
-          aria-label={REFERRAL_UI_COPY.maybeLater}
-          variant="light"
-          size="sm"
-          radius="full"
-          className="-mr-1.5 text-zinc-500"
-          onPress={dismiss}
-        >
-          <CancelIcon width={14} height={14} />
-        </Button>
+        {dismiss && (
+          <Button
+            isIconOnly
+            aria-label={REFERRAL_UI_COPY.maybeLater}
+            variant="light"
+            size="sm"
+            radius="full"
+            className="-mr-1.5 text-zinc-500"
+            onPress={dismiss}
+          >
+            <CancelIcon width={14} height={14} />
+          </Button>
+        )}
       </div>
       <div className="flex items-center gap-3 rounded-2xl bg-zinc-800/70 p-4">
         <GiftIcon width={20} height={20} className="shrink-0 text-zinc-400" />
