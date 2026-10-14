@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 interface Hunk {
   file: string;
+  line: number;
   removed: string[];
   added: string[];
 }
@@ -88,7 +89,8 @@ function parseHunks(diff: string): Hunk[] {
   for (const line of diff.split("\n")) {
     if (line.startsWith("+++ ")) file = line.slice(6);
     else if (line.startsWith("@@")) {
-      current = { file, removed: [], added: [] };
+      const start = Number(line.match(/\+(\d+)/)?.[1] ?? 0);
+      current = { file, line: start, removed: [], added: [] };
       hunks.push(current);
     } else if (current && line.startsWith("-") && !line.startsWith("---")) {
       current.removed.push(...tokensOf(line));
@@ -97,6 +99,23 @@ function parseHunks(diff: string): Hunk[] {
     }
   }
   return hunks;
+}
+
+const SPACING_FAMILIES = new Set(["padding", "margin", "gap", "space"]);
+
+/**
+ * Hunks that drop spacing with nothing spacing-shaped added back: the way a
+ * restyle fix silently collapses a layout (a header loses its padding).
+ */
+function droppedSpacing(hunks: Hunk[]): { at: string; tokens: string[] }[] {
+  return hunks.flatMap((hunk) => {
+    const isSpacing = (token: string) => SPACING_FAMILIES.has(familyOf(token));
+    const dropped = subtract(hunk.removed, hunk.added).filter(isSpacing);
+    const restored = subtract(hunk.added, hunk.removed).some(isSpacing);
+    return dropped.length > 0 && !restored
+      ? [{ at: `${hunk.file}:${hunk.line}`, tokens: dropped }]
+      : [];
+  });
 }
 
 function record(
@@ -162,12 +181,21 @@ function render(
   ledger: Map<string, Map<string, Transform>>,
   baseRef: string,
   fileCount: number,
+  dropped: { at: string; tokens: string[] }[],
 ): string {
   const families = [...ledger].sort(([, a], [, b]) => sum(b) - sum(a));
   const lines = [
     `# Class-change ledger vs ${baseRef}`,
     "",
     `${fileCount} styled files changed. Each row is one before → after swap inside a diff hunk; "files" is how many files make it.`,
+    "",
+    `## Spacing dropped with no replacement (${dropped.length}) — check each`,
+    "",
+    ...dropped.map(
+      ({ at, tokens }) => `- \`${at}\` lost \`${tokens.join(" ")}\``,
+    ),
+    "",
+    "## Families",
     "",
     "| Family | Swaps | Distinct transforms |",
     "| --- | --- | --- |",
@@ -222,7 +250,7 @@ const styledFiles = new Set(
 );
 writeFileSync(
   join(outDir, "ledger.md"),
-  render(ledger, baseRef, styledFiles.size),
+  render(ledger, baseRef, styledFiles.size, droppedSpacing(hunks)),
 );
 console.info(
   `ledger: ${styledFiles.size} styled files, ${ledger.size} families → ${join(outDir, "ledger.md")}`,
