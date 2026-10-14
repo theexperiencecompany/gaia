@@ -266,6 +266,7 @@
         "allow": [
           "ph-no-capture",
           "slash-command-dropdown",
+          "chatbubblebot_parent",
           "compact-chat",
           "mermaid",
           "colored",
@@ -399,17 +400,6 @@
       }
     },
     {
-      "files": ["src/features/landing/components/shared/TextSoftBlurIn.tsx"],
-      "rules": {
-        "shadcn/no-inline-styles": [
-          "error",
-          {
-            "allow": ["display"]
-          }
-        ]
-      }
-    },
-    {
       "files": ["src/components/ui/holo-card/**"],
       "rules": {
         "shadcn/no-inline-styles": [
@@ -430,7 +420,6 @@
               "pointerEvents",
               "opacity",
               "overflow",
-              "animation",
               "background"
             ]
           }

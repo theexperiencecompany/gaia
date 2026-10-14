@@ -781,6 +781,15 @@ const cardVariants = cva("rounded-3xl p-4", {
 });
 ```
 
+### Where component styles live
+
+A component's styling lives on its elements, never in a per-component class in `globals.css` and never in a CSS module.
+
+- **Static values** are Tailwind utilities on the element: `tracking-display`, `rotate-8 z-1`.
+- **Runtime values** (user colors, measured geometry, stagger delays) go through `style` as custom properties only, read by the variable shorthand: `style={{ "--swatch-bg": color }}` with `bg-(--swatch-bg)`, `pb-(--pad)`, `rotate-(--angle)`.
+- **Effects and animations** are named tokens in the `@theme` block of `globals.css`, with any `@keyframes` beside them: `animate-wave-diag`, `ease-out-quint`. Shadows and background images are read through the variable shorthand, `shadow-(--shadow-paper)` and `bg-(image:--background-image-shine-sweep)`, because `cn` and `@shadcn/lint` take an unknown `shadow-x` or `bg-x` for a color.
+- Only selectors for markup we cannot put classes on (rendered markdown, third-party DOM) belong in `globals.css`.
+
 ## Dark / Light Mode
 
 Class-based: `.dark` on `<html>`. Tailwind `dark:` modifier works everywhere.

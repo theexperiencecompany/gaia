@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/context-menu";
 import { toast } from "@/lib/toast";
 
+const MENU_ITEM_STAGGER_MS = 50;
+
 const menuItemsConfig = [
   {
     id: "copy-logo-svg",
@@ -209,11 +211,12 @@ export function LogoWithContextMenu({
       {isOpen && (
         <ContextMenuContent className="p-1.5">
           {menuItemsConfig.map((item, index) => {
-            // --menu-index drives .menu-stagger-item's delay; it must sit on the
-            // animated node, since animation-delay is not inherited.
-            const itemAnimationClass =
-              "animate-in fade-in slide-in-from-left-2 duration-100 menu-stagger-item";
-            const style = { "--menu-index": index } as CSSProperties;
+            // --stagger-delay must sit on the animated node: animation-delay is
+            // not inherited.
+            const itemAnimationClass = "animate-stagger-in-left";
+            const style = {
+              "--stagger-delay": `${index * MENU_ITEM_STAGGER_MS}ms`,
+            } as CSSProperties;
 
             if (item.type === "link") {
               return (

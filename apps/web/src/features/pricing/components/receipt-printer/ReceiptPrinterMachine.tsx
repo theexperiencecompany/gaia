@@ -4,12 +4,10 @@ import type { ReceiptPrinterMachineProps } from "@/features/pricing/components/r
 import { cn } from "@/lib/utils";
 
 /* The machine is always the dark charcoal unit with the black LCD, in both
-   themes — only its backdrop changes. Tailwind scans source text and cannot
-   see template-literal interpolation inside arbitrary values, so the hex
-   tones are inlined below rather than referenced via constants. */
+   themes — only its backdrop changes. */
 
 const machineClassName =
-  "relative isolate w-full overflow-hidden bg-zinc-900 pb-8 printer-machine [--printer-inner-radius:calc(var(--printer-radius)_-_var(--printer-inset))] [--printer-inset:0.75rem] [--printer-radius:1.5rem]";
+  "relative isolate w-full overflow-hidden rounded-(--printer-radius) bg-zinc-900 p-(--printer-inset) pb-8 shadow-(--shadow-device-body) [--printer-inner-radius:calc(var(--printer-radius)_-_var(--printer-inset))] [--printer-inset:0.75rem] [--printer-radius:1.5rem]";
 
 export function ReceiptPrinterMachine({
   children,
@@ -21,7 +19,7 @@ export function ReceiptPrinterMachine({
     <div className={cn(machineClassName, className)} style={style} {...props}>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 bg-repeat opacity-30 mix-blend-multiply printer-noise"
+        className="pointer-events-none absolute inset-0 z-0 bg-repeat opacity-30 mix-blend-multiply rounded-inherit bg-(image:--background-image-plastic-noise)"
       />
       {children}
       <div

@@ -150,12 +150,12 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
         transition={{ duration: 1.4, ease: EASE_OUT_QUART }}
       />
 
-      <div className="relative z-10 px-8 text-center font-serif font-bold text-white leading-[1.05] onboarding-intro-title">
+      <div className="relative z-10 px-8 text-center font-serif font-bold text-white leading-[1.05] tracking-display">
         <AnimatePresence mode="wait">
           {scene === 1 && (
             <m.h1
               key="scene-1"
-              className="m-0 flex flex-wrap items-center justify-center onboarding-scene-1-title"
+              className="m-0 flex flex-wrap items-center justify-center gap-x-word"
               style={{
                 fontSize: "clamp(48px, 9vw, 120px)",
               }}
@@ -195,7 +195,7 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
           {scene === 2 && (
             <m.h1
               key="scene-2"
-              className="m-0 flex flex-wrap items-center justify-center gap-x-1 font-medium onboarding-scene-2-title"
+              className="m-0 flex flex-wrap items-center justify-center gap-x-1 font-medium tracking-snug"
               style={{
                 fontSize: "clamp(22px, 3.2vw, 44px)",
               }}

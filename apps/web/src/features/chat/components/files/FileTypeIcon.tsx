@@ -116,7 +116,7 @@ export function FileTypeIcon({
           </g>
         </svg>
         <div
-          className="filetype-pad pointer-events-none absolute flex flex-col items-center"
+          className="pointer-events-none p-(--ft-pad) absolute flex flex-col items-center"
           style={
             {
               left: `${DOC_LEFT}%`,
@@ -131,7 +131,7 @@ export function FileTypeIcon({
             <Glyph size={Math.round(size * 0.34)} color="#FFFFFF" />
           </div>
           <div
-            className="filetype-label font-semibold uppercase tracking-wider text-white leading-none"
+            className="text-(length:--ft-font-size) font-semibold uppercase tracking-wider text-white leading-none"
             style={
               {
                 "--ft-font-size": `${Math.max(7, Math.round(size * 0.15))}px`,

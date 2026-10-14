@@ -221,7 +221,7 @@ export function PostPaymentReceipt({
               >
                 {bars.map((bar) => (
                   <span
-                    className="bg-zinc-950 receipt-bar"
+                    className="w-(--bar-w) bg-zinc-950"
                     key={bar.barKey}
                     style={{ "--bar-w": `${bar.width}px` } as CSSProperties}
                   />

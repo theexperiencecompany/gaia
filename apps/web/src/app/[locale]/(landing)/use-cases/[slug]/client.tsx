@@ -87,7 +87,7 @@ function renderHeroIcon(
   const color = iconColor ?? DEFAULT_WORKFLOW_ICON_COLOR;
   return (
     <div
-      className="wf-hero-icon flex size-12 shrink-0 items-center justify-center rounded-xl"
+      className="flex size-12 bg-(--wf-icon-bg) shrink-0 items-center justify-center rounded-xl"
       style={
         {
           "--wf-icon-bg": `${color}${WORKFLOW_ICON_BG_ALPHA}`,
@@ -95,7 +95,7 @@ function renderHeroIcon(
         } as CSSProperties
       }
     >
-      <def.Icon size={26} className="wf-hero-icon-fg" />
+      <def.Icon size={26} className="text-(--wf-icon-fg)" />
     </div>
   );
 }

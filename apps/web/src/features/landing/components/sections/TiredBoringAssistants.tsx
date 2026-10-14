@@ -390,11 +390,12 @@ export default function Tired() {
             width={120}
             height={120}
             loading="lazy"
-            className="rounded-[31px]"
+            className={
+              hasAnimated
+                ? "rounded-[31px] animate-logo-pulse"
+                : "rounded-[31px]"
+            }
             style={{
-              animation: hasAnimated
-                ? "logo-pulse 4s ease-in-out infinite"
-                : "none",
               boxShadow: "0px 0px 120px 50px rgba(0, 187, 255, 0.2)",
             }}
           />
@@ -417,30 +418,38 @@ export default function Tired() {
           return (
             <div
               key={icon.alt}
-              className="absolute"
+              className={
+                isLeaving
+                  ? "absolute animate-tool-gather"
+                  : hasAnimated
+                    ? "absolute animate-tool-scatter-float"
+                    : "absolute"
+              }
               style={
                 isLeaving
                   ? ({
                       "--end-top": icon.top,
                       "--end-left": icon.left,
                       "--end-opacity": String(icon.opacity),
+                      "--gather-delay": `${gatherDelay}s`,
                       top: "50%",
                       left: "50%",
                       opacity: 0,
                       transform: "translate(-50%, -50%) scale(0.3)",
-                      animation: `tool-gather 0.6s cubic-bezier(0.55, 0, 1, 0.45) ${gatherDelay}s both`,
                     } as React.CSSProperties)
                   : hasAnimated
                     ? ({
                         "--end-top": icon.top,
                         "--end-left": icon.left,
                         "--end-opacity": String(icon.opacity),
+                        "--scatter-duration": `${scatterDuration}s`,
+                        "--scatter-delay": `${scatterDelay}s`,
+                        "--float-delay": `${floatDelay}s`,
                         top: icon.top,
                         left: icon.left,
                         opacity: icon.opacity,
                         filter:
                           icon.blur > 0 ? `blur(${icon.blur}px)` : undefined,
-                        animation: `tool-scatter ${scatterDuration}s cubic-bezier(0.34, 1.56, 0.64, 1) ${scatterDelay}s backwards, tool-float 5s ease-in-out ${floatDelay}s infinite`,
                       } as React.CSSProperties)
                     : {
                         top: "50%",
@@ -459,7 +468,7 @@ export default function Tired() {
                   content: "text-white text-xs px-2.5 py-1",
                 }}
               >
-                <div className="tool-icon-btn">
+                <div className="cursor-pointer transition-transform duration-150 ease-out-back hover:scale-112 active:scale-88">
                   <Image
                     src={icon.src}
                     alt={icon.alt}

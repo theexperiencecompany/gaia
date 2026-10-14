@@ -578,7 +578,7 @@ function PhoneFrame({
     <div className="relative isolate sm:pb-20">
       <div
         aria-hidden
-        className="-z-10 pointer-events-none absolute -inset-x-[28rem] -inset-y-[20rem] bots-showcase-glow"
+        className="-z-10 pointer-events-none absolute -inset-x-[28rem] -inset-y-[20rem] bg-(image:--background-image-primary-glow) blur-glow-lg"
       />
       <IPhoneMockup
         screenBackground={platform.phone.screenBackground}

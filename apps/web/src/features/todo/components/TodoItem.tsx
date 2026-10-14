@@ -107,7 +107,7 @@ export default memo(function TodoItem({
   return (
     <div
       className={cn(
-        "pointer-events-auto relative w-full rounded-xl p-2 pl-3 mb-0 group todo-item-cv",
+        "pointer-events-auto relative w-full rounded-xl p-2 pl-3 mb-0 group [content-visibility:auto] [contain-intrinsic-size:0_80px]",
         isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50",
         todo.completed && "opacity-30",
         className,

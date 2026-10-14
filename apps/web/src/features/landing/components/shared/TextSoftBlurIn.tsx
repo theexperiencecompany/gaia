@@ -30,8 +30,19 @@ interface TextSoftBlurInProps {
   threshold?: number;
 }
 
-/** Custom properties consumed by the `.sbi-*` classes in globals.css. */
+/** Custom properties read by the timing and reveal utilities below. */
 type AnimStyle = CSSProperties & Record<`--${string}`, string>;
+
+// `sbi-anim` is the reduced-motion hook in globals.css that pins the end state.
+const IMMEDIATE_CLASS = "sbi-anim animate-soft-blur-in";
+const ON_SCROLL_CLASS =
+  "sbi-anim opacity-(--sbi-opacity) filter-(--sbi-filter) transform-(--sbi-transform) will-change-(--sbi-will-change) transition-reveal duration-(--sbi-duration) delay-(--sbi-delay) ease-out-quint";
+const GLYPH_CLASS =
+  "inline-block whitespace-pre py-glyph-bleed-y -my-glyph-bleed-y px-glyph-bleed-x -mx-glyph-bleed-x";
+const GRADIENT_TEXT_CLASS =
+  "bg-(image:--sbi-gradient) bg-clip-text text-transparent";
+// Glyphs repaint the inherited --sbi-gradient; the transparent fill inherits.
+const GRADIENT_GLYPH_CLASS = "bg-(image:--sbi-gradient) bg-clip-text";
 
 function splitText(text: string, splitBy: "char" | "word"): string[] {
   if (splitBy === "word") {
@@ -87,8 +98,7 @@ interface CharReveal {
 
 /**
  * One animated character/word. The `style` holds only `--sbi-*` custom
- * properties (the CSS-var bridge); the `.sbi-*` classes in globals.css turn
- * them into animation/transition/opacity/filter/transform.
+ * properties; the variant's utilities turn them into motion.
  */
 function CharSpan({
   index,
@@ -158,7 +168,7 @@ function TextInner({
   innerRef?: React.RefObject<HTMLSpanElement | null>;
   baseId?: string;
 }>) {
-  const charGradientClass = gradient ? "sbi-gradient-inherit" : undefined;
+  const charGradientClass = gradient ? GRADIENT_GLYPH_CLASS : undefined;
   // The per-character spans are decorative (aria-hidden); a visually-hidden
   // copy of the full string is the real accessible text — ARIA prohibits
   // `aria-label` on generic <span>/<div> elements with no role.
@@ -169,7 +179,7 @@ function TextInner({
         <span
           ref={innerRef}
           aria-hidden="true"
-          className={gradient ? "sbi-gradient" : undefined}
+          className={gradient ? GRADIENT_TEXT_CLASS : undefined}
           style={
             gradient ? ({ "--sbi-gradient": gradient } as AnimStyle) : undefined
           }
@@ -206,7 +216,7 @@ function TextInner({
       <span
         ref={innerRef}
         aria-hidden="true"
-        className={cn("inline-block", gradient && "sbi-gradient")}
+        className={cn("inline-block", gradient && GRADIENT_TEXT_CLASS)}
         style={
           gradient ? ({ "--sbi-gradient": gradient } as AnimStyle) : undefined
         }
@@ -263,7 +273,7 @@ function TextSoftBlurInImmediate({
       parts={parts}
       splitBy={splitBy}
       gradient={gradient}
-      charClassName="sbi-char sbi-anim sbi-immediate"
+      charClassName={cn(GLYPH_CLASS, IMMEDIATE_CLASS)}
       timing={timing}
     />,
   );
@@ -347,7 +357,7 @@ function TextSoftBlurInOnScroll({
       parts={parts}
       splitBy={splitBy}
       gradient={gradient}
-      charClassName="sbi-char sbi-anim sbi-on-scroll"
+      charClassName={cn(GLYPH_CLASS, ON_SCROLL_CLASS)}
       timing={timing}
       reveal={reveal}
       innerRef={ref}
@@ -393,7 +403,7 @@ function SoftBlurInBlockImmediate({
   };
   return createElement(
     as,
-    { className: cn(className, "sbi-anim", "sbi-immediate"), style },
+    { className: cn(className, IMMEDIATE_CLASS), style },
     children,
   );
 }
@@ -432,7 +442,7 @@ function SoftBlurInBlockOnScroll({
 
   return createElement(
     as,
-    { ref, className: cn(className, "sbi-anim", "sbi-on-scroll"), style },
+    { ref, className: cn(className, ON_SCROLL_CLASS), style },
     children,
   );
 }

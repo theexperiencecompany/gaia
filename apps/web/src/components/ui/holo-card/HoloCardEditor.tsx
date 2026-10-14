@@ -168,10 +168,9 @@ const ColorSwatch = ({ color }: { color: string }) => {
 
   return (
     // The picked color/gradient is user data, so it rides on --swatch-bg;
-    // the linear-gradient angle is parsed out of it for --swatch-rotate
-    // (see .color-swatch in globals.css). Static geometry stays in classes.
+    // the linear-gradient angle is parsed out of it for --swatch-rotate.
     <span
-      className="border-1 border-zinc-300 inline-block size-6 rounded-full color-swatch"
+      className="border-1 border-zinc-300 inline-block size-6 rounded-full [background:var(--swatch-bg)] rotate-(--swatch-rotate)"
       style={
         {
           "--swatch-bg": color,

@@ -12,7 +12,7 @@ export function ReceiptPrinterScreen({
   return (
     <div
       className={cn(
-        "relative z-10 isolate overflow-hidden bg-zinc-800 p-4 text-zinc-50 shadow-inner shadow-zinc-950/30 printer-screen",
+        "relative z-10 isolate overflow-hidden bg-zinc-800 p-4 text-zinc-50 shadow-inner shadow-zinc-950/30 rounded-(--printer-inner-radius)",
         className,
       )}
       style={style}
@@ -20,7 +20,7 @@ export function ReceiptPrinterScreen({
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-20 printer-screen-glow"
+        className="pointer-events-none absolute inset-0 z-20 rounded-inherit shadow-(--shadow-screen-glow)"
       />
       <div className="relative z-10">{children}</div>
     </div>

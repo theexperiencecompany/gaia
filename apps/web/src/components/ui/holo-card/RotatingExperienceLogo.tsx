@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useId } from "react";
+import { type CSSProperties, useId } from "react";
 
 import { CARD_IMAGES } from "./constants";
 
@@ -12,11 +12,6 @@ interface RotatingExperienceLogoProps {
 }
 
 const DEFAULT_TEXT = "The Experience Company  •   ";
-
-// Shared spin keyframes live in globals.css (`holoRotatingLogoSpin`); the
-// <svg> below only sets its own duration, which stays inline under the
-// holo-card no-inline-styles override (animation is an allowed property).
-const SPIN_KEYFRAMES_NAME = "holoRotatingLogoSpin";
 
 export function RotatingExperienceLogo({
   size = 88,
@@ -51,12 +46,14 @@ export function RotatingExperienceLogo({
         viewBox={`0 0 ${size} ${size}`}
         width={size}
         height={size}
-        className="absolute inset-0"
-        style={{
-          animation: `${SPIN_KEYFRAMES_NAME} ${durationSec}s linear infinite`,
-          transformOrigin: "center center",
-          overflow: "visible",
-        }}
+        className="absolute inset-0 animate-ring-spin"
+        style={
+          {
+            "--spin-duration": `${durationSec}s`,
+            transformOrigin: "center center",
+            overflow: "visible",
+          } as CSSProperties
+        }
       >
         <title>The Experience Company</title>
         <defs>

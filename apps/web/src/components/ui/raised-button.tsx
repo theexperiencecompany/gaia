@@ -49,11 +49,13 @@ const getFlatMode = (color: string | undefined): FlatMode => {
   return null;
 };
 
-// Flat black/white modes are unlayered classes in globals.css: they beat the
-// layered glossy utilities without fighting cva specificity.
+// Important so the flat treatment beats the cva base and caller classes, as the
+// inline flat styles did; box-shadow is set whole so no focus ring composes in.
 const FLAT_CLASS: Record<Exclude<FlatMode, null>, string> = {
-  black: "raised-flat-black",
-  white: "raised-flat-white",
+  black:
+    "bg-(image:--background-image-raised-flat-black)! border-raised-flat-black-border! text-white! [box-shadow:none]!",
+  white:
+    "bg-(image:--background-image-raised-flat-white)! border-transparent! text-zinc-900! [box-shadow:var(--shadow-raised-flat-white)]!",
 };
 
 // A function, not an inline template: no-inline-styles reads a literal rgba(

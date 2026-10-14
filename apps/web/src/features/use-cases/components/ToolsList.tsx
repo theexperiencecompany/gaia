@@ -54,12 +54,12 @@ export default function ToolsList({ tools }: ToolsListProps) {
                     key={t.name}
                     className={
                       displayIcons.length <= 1
-                        ? "relative flex min-w-8 items-center justify-center tools-fan-flat"
+                        ? "relative flex min-w-8 items-center justify-center rotate-0"
                         : i === 0
-                          ? "relative flex min-w-8 items-center justify-center tools-fan-0"
+                          ? "relative flex min-w-8 items-center justify-center rotate-8 z-0"
                           : i === 1
-                            ? "relative flex min-w-8 items-center justify-center tools-fan-1"
-                            : "relative flex min-w-8 items-center justify-center tools-fan-2"
+                            ? "relative flex min-w-8 items-center justify-center -rotate-8 z-1"
+                            : "relative flex min-w-8 items-center justify-center rotate-8 z-2"
                     }
                   >
                     {Icon}

@@ -122,7 +122,7 @@ export function OnboardingShell({
       >
         <div
           ref={contentRef}
-          className="relative mx-auto w-full max-w-3xl onboarding-shell-content"
+          className="relative mx-auto w-full max-w-3xl pb-(--onboarding-pad-b)"
           style={
             {
               "--onboarding-pad-b": `${Math.max(composer ? composerHeight : 0, BOTTOM_BLUR_PX) + COMPOSER_GUTTER_PX}px`,

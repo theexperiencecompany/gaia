@@ -88,7 +88,7 @@ export function LoadingIndicator({
           animate="animate"
           exit="exit"
           transition={transition}
-          className="animate-shine loading-shine-text bg-size-[200%_100%] bg-clip-text text-transparent w-fit"
+          className="animate-shine bg-(image:--background-image-shine-sweep) bg-size-[200%_100%] bg-clip-text text-transparent w-fit"
         >
           {prefix}
           {loadingText || "GAIA is thinking..."}
