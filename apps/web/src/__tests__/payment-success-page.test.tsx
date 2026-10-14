@@ -65,6 +65,10 @@ vi.mock("@/features/pricing/components/PostPaymentReceipt", () => ({
   PostPaymentReceipt: () => <div>Receipt printed</div>,
 }));
 
+vi.mock("@/features/referrals/components/PostPaymentShareCard", () => ({
+  PostPaymentReferral: () => <div>Share your link</div>,
+}));
+
 vi.mock("@/lib/analytics", () => ({
   track: vi.fn(),
 }));
@@ -195,6 +199,20 @@ describe("PaymentSuccessPage", () => {
     retry.click();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/onboarding"));
     expect(createSubscriptionAndRedirect).not.toHaveBeenCalled();
+  });
+
+  it("asks a user who has used GAIA to share their link", async () => {
+    render(<PaymentSuccessPage />);
+
+    expect(await screen.findByText("Share your link")).toBeDefined();
+  });
+
+  it("asks nobody to share before they have finished onboarding", async () => {
+    onboarding = { completed: false };
+    render(<PaymentSuccessPage />);
+
+    await screen.findByText("Receipt printed");
+    expect(screen.queryByText("Share your link")).toBeNull();
   });
 
   it("sends a finished user to chat", async () => {

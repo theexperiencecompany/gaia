@@ -1,19 +1,25 @@
 """Suggestions rank real people from recent meetings and sent mail, skipping robots, lists and existing users."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
+import time_machine
 
+from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary
 from app.models.referral_models import ReferralSuggestionReason
 from app.models.user_models import UserDocument
+from app.services.mail.mail_service import MessageFetchOptions
 from app.services.referrals.suggestions import is_automated, suggest_invitees
 
 MODULE = "app.services.referrals.suggestions"
 ME = UserDocument(id="64abc123def4567890abcdef", email="me@example.com", first_name="Me")
+NOW = datetime(2026, 10, 14, 9, 30, tzinfo=UTC)
+METADATA_ONLY = MessageFetchOptions(output_format="metadata", include_payload=False, verbose=False)
 
 
 def _meeting(*emails: str) -> GoogleCalendarEventResource:
@@ -27,6 +33,10 @@ def _meeting(*emails: str) -> GoogleCalendarEventResource:
 
 def _sent(to: str, cc: str = "") -> GmailMessageSummary:
     return GmailMessageSummary.model_validate({"id": "m", "to": to, "cc": cc})
+
+
+def _ranked(response) -> list[tuple[str, ReferralSuggestionReason, int]]:
+    return [(s.email, s.reason, s.count) for s in response.suggestions]
 
 
 @pytest.fixture
@@ -46,7 +56,7 @@ def sources() -> Iterator[SimpleNamespace]:
         _sent("invited@example.com"),
     ]
     with (
-        patch(f"{MODULE}.load_user", AsyncMock(return_value=ME)),
+        patch(f"{MODULE}.load_user", AsyncMock(return_value=ME)) as load_user,
         patch(
             f"{MODULE}.check_multiple_integrations_status",
             AsyncMock(return_value={"gmail": True, "googlecalendar": True}),
@@ -54,7 +64,7 @@ def sources() -> Iterator[SimpleNamespace]:
         patch(
             f"{MODULE}.get_calendar_events",
             AsyncMock(return_value=SimpleNamespace(events=meetings)),
-        ),
+        ) as calendar,
         patch(
             f"{MODULE}.search_messages",
             AsyncMock(return_value=GmailMessagesResponse(messages=sent)),
@@ -62,28 +72,153 @@ def sources() -> Iterator[SimpleNamespace]:
         patch(
             f"{MODULE}.referral_invite_repository.invited_by",
             AsyncMock(return_value={"invited@example.com"}),
-        ),
+        ) as invited,
         patch(
             f"{MODULE}.email_suppression_repository.suppressed_among", AsyncMock(return_value=set())
-        ),
+        ) as suppressed,
         patch(
             f"{MODULE}.user_repository.registered_emails",
             AsyncMock(return_value={"existing@example.com"}),
-        ),
+        ) as registered,
     ):
-        yield SimpleNamespace(connected=connected, mail=mail)
+        yield SimpleNamespace(
+            load_user=load_user,
+            connected=connected,
+            calendar=calendar,
+            mail=mail,
+            invited=invited,
+            suppressed=suppressed,
+            registered=registered,
+        )
 
 
 async def test_people_are_ranked_by_how_often_with_the_stronger_reason(sources) -> None:
     response = await suggest_invitees(ME.id)
 
-    ranked = [(s.email, s.reason, s.count) for s in response.suggestions]
-    assert ranked == [
+    assert _ranked(response) == [
         ("sam@example.com", ReferralSuggestionReason.EMAILED, 3),
         ("priya@example.com", ReferralSuggestionReason.MET, 3),
         ("lee@example.com", ReferralSuggestionReason.EMAILED, 1),
     ]
-    assert response.suggestions[1].name == "Priya"
+    assert [s.name for s in response.suggestions] == ["Sam", "Priya", "Lee"]
+
+
+@time_machine.travel(NOW, tick=False)
+async def test_the_last_90_days_of_the_users_own_calendar_and_sent_mail_are_read(
+    sources,
+) -> None:
+    await suggest_invitees(ME.id)
+
+    sources.load_user.assert_awaited_once_with(ME.id)
+    sources.connected.assert_awaited_once_with(
+        [GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID], ME.id
+    )
+    sources.calendar.assert_awaited_once_with(
+        ME.id,
+        time_min=(NOW - timedelta(days=90)).isoformat(),
+        time_max=NOW.isoformat(),
+        fetch_all=True,
+    )
+    sources.mail.assert_awaited_once_with(
+        ME.id,
+        query="in:sent newer_than:90d",
+        max_results=100,
+        page_token=None,
+        options=METADATA_ONLY,
+    )
+
+
+async def test_sent_mail_is_read_page_after_page_until_none_is_left(sources) -> None:
+    sources.connected.return_value = {"gmail": True}
+    sources.mail.side_effect = [
+        GmailMessagesResponse(messages=[_sent("lee@example.com")], next_page_token="p2"),
+        GmailMessagesResponse(messages=[_sent("kim@example.com")]),
+    ]
+
+    response = await suggest_invitees(ME.id)
+
+    assert [c.kwargs["page_token"] for c in sources.mail.await_args_list] == [None, "p2"]
+    assert {s.email for s in response.suggestions} == {"lee@example.com", "kim@example.com"}
+
+
+async def test_sent_mail_stops_after_five_pages(sources) -> None:
+    sources.connected.return_value = {"gmail": True}
+    sources.mail.return_value = GmailMessagesResponse(
+        messages=[_sent("lee@example.com")], next_page_token="more"
+    )
+
+    await suggest_invitees(ME.id)
+
+    assert sources.mail.await_count == 5
+
+
+async def test_the_exclusion_lookups_cover_every_candidate(sources) -> None:
+    sources.connected.return_value = {"gmail": True}
+    sources.mail.return_value = GmailMessagesResponse(
+        messages=[_sent("Lee <Lee@Example.com>, a.ryan+x@gmail.com")]
+    )
+
+    await suggest_invitees(ME.id)
+
+    sources.invited.assert_awaited_once_with(ME.id)
+    sources.suppressed.assert_awaited_once_with(["lee@example.com", "aryan@gmail.com"])
+    sources.registered.assert_awaited_once_with(["lee@example.com", "a.ryan+x@gmail.com"])
+
+
+async def test_an_opted_out_address_is_never_suggested(sources) -> None:
+    sources.connected.return_value = {"gmail": True}
+    sources.mail.return_value = GmailMessagesResponse(
+        messages=[_sent("lee@example.com, kim@example.com")]
+    )
+    sources.suppressed.return_value = {"kim@example.com"}
+
+    assert _ranked(await suggest_invitees(ME.id)) == [
+        ("lee@example.com", ReferralSuggestionReason.EMAILED, 1)
+    ]
+
+
+async def test_meetings_up_to_ten_people_count_and_bigger_ones_are_skipped(sources) -> None:
+    sources.connected.return_value = {"googlecalendar": True}
+    sources.calendar.return_value = SimpleNamespace(
+        events=[
+            _meeting(*[f"big{i}@example.com" for i in range(11)]),
+            _meeting(*[f"ten{i}@example.com" for i in range(10)]),
+            _meeting("after@example.com"),
+        ]
+    )
+
+    emails = {s.email for s in (await suggest_invitees(ME.id)).suggestions}
+
+    assert "ten0@example.com" in emails and "after@example.com" in emails
+    assert not any(email.startswith("big") for email in emails)
+
+
+async def test_someone_met_as_often_as_emailed_is_suggested_as_met(sources) -> None:
+    sources.calendar.return_value = SimpleNamespace(events=[_meeting("lee@example.com")])
+    sources.mail.return_value = GmailMessagesResponse(messages=[_sent("lee@example.com")])
+
+    assert _ranked(await suggest_invitees(ME.id)) == [
+        ("lee@example.com", ReferralSuggestionReason.MET, 1)
+    ]
+
+
+async def test_the_wide_event_records_sources_candidates_and_suggestions(sources) -> None:
+    sources.connected.return_value = {"gmail": True, "googlecalendar": False}
+    sources.mail.return_value = GmailMessagesResponse(
+        messages=[_sent("lee@example.com, existing@example.com")]
+    )
+
+    with patch(f"{MODULE}.log") as log:
+        await suggest_invitees(ME.id)
+
+    assert log.set_ns.call_args_list == [
+        call(
+            "referral",
+            suggestion_sources=["gmail"],
+            suggestion_candidates=2,
+            suggestions=1,
+        )
+    ]
 
 
 async def test_nothing_connected_suggests_nobody(sources) -> None:
@@ -91,6 +226,7 @@ async def test_nothing_connected_suggests_nobody(sources) -> None:
 
     assert (await suggest_invitees(ME.id)).suggestions == []
     sources.mail.assert_not_called()
+    sources.calendar.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -101,6 +237,8 @@ async def test_nothing_connected_suggests_nobody(sources) -> None:
         ("team@googlegroups.com", True),
         ("priya@example.com", False),
         ("ann.support.lead@corp.com", True),
+        # The domain is what follows the last @; a quoted local part may hold one.
+        ('"team@no-reply"@example.com', True),
     ],
 )
 def test_robots_and_lists_are_recognised(address: str, automated: bool) -> None:

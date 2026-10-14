@@ -794,9 +794,12 @@ class TestVariantFlags:
     ) -> None:
         mock_client.get_feature_flag.return_value = "time_back"
 
-        assert await get_variant(REFERRAL_COPY_FLAG, USER_ID) is ReferralCopyVariant.TIME_BACK
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert await get_variant(REFERRAL_COPY_FLAG, USER_ID) is ReferralCopyVariant.TIME_BACK
         mock_client.get_feature_flag.assert_called_once_with("REFERRAL_COPY_VARIANT", USER_ID)
         evaluated.assert_not_called()
+        mock_log.set.assert_called_once_with(flags={"REFERRAL_COPY_VARIANT": "time_back"})
+        mock_log.warning.assert_not_called()
 
     @pytest.mark.parametrize("answer", [None, True, False, "control", "TICKET", 3])
     async def test_no_answer_or_an_unknown_one_serves_the_default_and_counts_it(
@@ -804,21 +807,38 @@ class TestVariantFlags:
     ) -> None:
         mock_client.get_feature_flag.return_value = answer
 
-        assert await get_variant(REFERRAL_LAYOUT_FLAG, USER_ID) is ReferralLayoutVariant.TICKET
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert await get_variant(REFERRAL_LAYOUT_FLAG, USER_ID) is ReferralLayoutVariant.TICKET
         assert evaluated.call_args.args == (
             UserId(USER_ID),
             FeatureFlagEvaluated(
                 flag="REFERRAL_LAYOUT_VARIANT", variant="ticket", fallback_reason="flag_unevaluated"
             ),
         )
+        mock_log.set.assert_called_once_with(flags={"REFERRAL_LAYOUT_VARIANT": "ticket"})
+        if answer is None:
+            mock_log.warning.assert_not_called()
+        else:
+            mock_log.warning.assert_called_once_with(
+                "Variant flag answered a value outside its variants; serving the default",
+                flag="REFERRAL_LAYOUT_VARIANT",
+                answer_type=type(answer).__name__,
+            )
 
     async def test_a_failing_posthog_serves_the_default(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
 
-        assert await get_variant(REFERRAL_COPY_FLAG, USER_ID) is ReferralCopyVariant.GIFT
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert await get_variant(REFERRAL_COPY_FLAG, USER_ID) is ReferralCopyVariant.GIFT
         assert evaluated.call_args.args[1].fallback_reason == "evaluation_error"
+        mock_log.warning.assert_called_once_with(
+            "Variant flag evaluation failed, serving the default",
+            flag="REFERRAL_COPY_VARIANT",
+            error="posthog down",
+            error_type="TimeoutError",
+        )
 
     async def test_unconfigured_posthog_serves_the_default(
         self, no_client: None, evaluated: MagicMock
