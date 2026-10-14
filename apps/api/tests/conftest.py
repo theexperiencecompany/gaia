@@ -12,7 +12,6 @@ import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterator
 import contextlib
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 import importlib
 import os
 import re
@@ -59,7 +58,6 @@ from app.config.posthog import init_posthog
 from app.config.settings import settings as app_settings
 from app.core.lazy_loader import MissingKeyStrategy, providers
 from app.db.redis import redis_cache
-from app.models.notification.notification_models import QuietHours
 from app.models.payment_models import (
     PlanType,
     SubscriptionStatus,
@@ -69,6 +67,7 @@ from app.models.user_models import AuthenticatedUser, UserDocument
 from app.utils.concurrency import reset_captured_loop
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context
+from tests.helpers import quiet_hours_excluding_now
 
 # Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
 # via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
@@ -356,9 +355,8 @@ def outside_quiet_hours() -> Iterator[AsyncMock]:
     The window starts two hours from now on a UTC clock, so a test that sends a
     proactive message reaches the publish path whatever time the suite runs.
     """
-    hour = datetime.now(UTC).hour
-    window = QuietHours(start_hour=(hour + 2) % 24, end_hour=(hour + 3) % 24)
-    read = AsyncMock(return_value=UserDocument(timezone="UTC", quiet_hours=window))
+    user = UserDocument(timezone="UTC", quiet_hours=quiet_hours_excluding_now())
+    read = AsyncMock(return_value=user)
     with patch("app.agents.core.background.platform_chat.user_repository", MagicMock(get=read)):
         yield read
 

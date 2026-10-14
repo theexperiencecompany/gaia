@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
@@ -28,6 +29,7 @@ TEXT = f"Invoice overdue.{NEW_MESSAGE_BREAKER}Chase them?"
 NOON_UTC = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
 NIGHT_UTC = datetime(2026, 10, 14, 23, 30, tzinfo=UTC)
 AWAKE_USER = UserDocument(timezone="UTC")
+POOL = MagicMock(name="arq-pool")
 
 
 @dataclass
@@ -145,13 +147,15 @@ class TestQuietHours:
         now: datetime,
         message_class: ProactiveMessageClass,
         user: UserDocument | None = AWAKE_USER,
+        text: str = TEXT,
     ) -> tuple[OutboundResult, AsyncMock, AsyncMock]:
         enqueue = AsyncMock()
         publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
+        get_user = AsyncMock(return_value=user)
         with (
-            patch.object(platform_chat.user_repository, "get", AsyncMock(return_value=user)),
+            patch.object(platform_chat.user_repository, "get", get_user),
             patch.object(platform_chat, "enqueue_worker_job", enqueue),
-            patch.object(platform_chat.RedisPoolManager, "get_pool", AsyncMock()),
+            patch.object(platform_chat.RedisPoolManager, "get_pool", AsyncMock(return_value=POOL)),
             patch.object(
                 platform_chat.BotService, "get_or_create_session", AsyncMock(return_value="dm")
             ),
@@ -161,8 +165,9 @@ class TestQuietHours:
             time_machine.travel(now, tick=False),
         ):
             result = await platform_chat.post_to_platform_chat(
-                user=USER, channel=CHANNEL, text=TEXT, origin="origin", message_class=message_class
+                user=USER, channel=CHANNEL, text=text, origin="origin", message_class=message_class
             )
+        get_user.assert_awaited_once_with("user-1")
         return result, enqueue, publish
 
     async def test_a_routine_message_in_the_window_is_scheduled_for_its_end(self) -> None:
@@ -170,7 +175,8 @@ class TestQuietHours:
 
         assert result is OutboundResult.DEFERRED
         publish.assert_not_awaited()
-        (_pool, task, message) = enqueue.await_args.args
+        (pool, task, message) = enqueue.await_args.args
+        assert pool is POOL
         assert task == DEFERRED_CHAT_MESSAGE_TASK
         assert message == platform_chat.DeferredChatMessage(
             user_id="user-1",
@@ -181,7 +187,10 @@ class TestQuietHours:
             message_class=ProactiveMessageClass.ROUTINE,
         )
         assert enqueue.await_args.kwargs["_defer_until"] == datetime(2026, 10, 15, 8, tzinfo=UTC)
-        assert enqueue.await_args.kwargs["_job_id"].startswith(DEFERRED_CHAT_MESSAGE_JOB_PREFIX)
+        assert re.fullmatch(
+            f"{DEFERRED_CHAT_MESSAGE_JOB_PREFIX}[0-9a-f]{{32}}",
+            enqueue.await_args.kwargs["_job_id"],
+        )
 
     async def test_the_users_own_window_and_clock_decide(self) -> None:
         # 12:00 UTC is 17:30 in Kolkata, inside a 17-19 window that ends 13:30 UTC.
@@ -217,6 +226,23 @@ class TestQuietHours:
 
         assert first.await_args.kwargs["_job_id"] == second.await_args.kwargs["_job_id"]
 
+    async def test_another_message_or_release_time_is_another_job(self) -> None:
+        _, first, _ = await self._post_at(NIGHT_UTC, ProactiveMessageClass.ROUTINE)
+        _, other_text, _ = await self._post_at(
+            NIGHT_UTC, ProactiveMessageClass.ROUTINE, text="Rent is due."
+        )
+        moved_window = UserDocument(
+            timezone="UTC", quiet_hours=QuietHours(start_hour=22, end_hour=9)
+        )
+        _, other_release, _ = await self._post_at(
+            NIGHT_UTC, ProactiveMessageClass.ROUTINE, moved_window
+        )
+
+        job_ids = {
+            enqueue.await_args.kwargs["_job_id"] for enqueue in (first, other_text, other_release)
+        }
+        assert len(job_ids) == 3
+
     async def test_an_unknown_user_fails_loudly(self) -> None:
-        with pytest.raises(LookupError):
+        with pytest.raises(LookupError, match="^proactive message for unknown user user-1$"):
             await self._post_at(NIGHT_UTC, ProactiveMessageClass.ROUTINE, user=None)

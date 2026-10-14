@@ -143,7 +143,9 @@ async def _quiet_hours_end(user_id: str, message_class: ProactiveMessageClass) -
     user_doc = await user_repository.get(user_id)
     if user_doc is None:
         raise LookupError(f"proactive message for unknown user {user_id}")
-    return held_until(message_class, user_doc.quiet_hours, user_doc.timezone, datetime.now(UTC))
+    # astimezone reads a naive now() as the same instant, so dropping UTC is equivalent.
+    now = datetime.now(UTC)  # pragma: no mutate
+    return held_until(message_class, user_doc.quiet_hours, user_doc.timezone, now)
 
 
 async def _schedule(message: DeferredChatMessage, deliver_at: datetime) -> None:

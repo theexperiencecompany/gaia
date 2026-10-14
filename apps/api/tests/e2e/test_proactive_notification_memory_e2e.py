@@ -20,6 +20,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.agents.core.graph_manager import GraphManager
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.models.notification.notification_models import (
@@ -34,6 +35,7 @@ from app.services.bot_service import BotService
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.notification.channels.telegram import TelegramChannelAdapter
 from tests.e2e._harness.graph_run import comms_graph, run_graph
+from tests.helpers import quiet_hours_excluding_now
 
 pytestmark = pytest.mark.e2e
 
@@ -45,7 +47,12 @@ NUDGE = "Acme's invoice is three days overdue. Want me to chase them?"
 @pytest.mark.regression
 async def test_a_proactive_notification_is_in_the_next_bot_turns_memory() -> None:
     thread_id = f"conv-{uuid4()}"
-    user = UserDocument(id=USER_ID, platform_links={"telegram": {"id": TELEGRAM_ID}})
+    user = UserDocument(
+        id=USER_ID,
+        platform_links={"telegram": {"id": TELEGRAM_ID}},
+        timezone="UTC",
+        quiet_hours=quiet_hours_excluding_now(),
+    )
     publisher = MagicMock(publish_outbound=AsyncMock())
     request = NotificationRequest(
         user_id=USER_ID,
@@ -56,10 +63,7 @@ async def test_a_proactive_notification_is_in_the_next_bot_turns_memory() -> Non
 
     async with comms_graph(["On it, I'll chase Acme now."]) as graph:
         with (
-            patch(
-                "app.agents.core.background.thread_record.GraphManager.get_graph",
-                new=AsyncMock(return_value=graph),
-            ),
+            patch.object(GraphManager, "get_graph", new=AsyncMock(return_value=graph)),
             patch.object(user_repository, "get", new=AsyncMock(return_value=user)),
             patch.object(
                 PlatformLinkService,
