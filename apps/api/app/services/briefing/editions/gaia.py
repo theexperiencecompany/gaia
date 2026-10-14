@@ -301,7 +301,6 @@ body {{
 .s-title {{
   font-size: 24px;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: -0.01em;
   color: {_TEXT};
 }}
