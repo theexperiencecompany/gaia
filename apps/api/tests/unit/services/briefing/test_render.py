@@ -1,8 +1,7 @@
-"""Unit tests for the briefing HTML→image rasterizer.
+"""Unit tests for the briefing HTML-to-image rasterizer.
 
-The real Chromium is never launched: ``async_playwright`` is faked at the
-boundary ``render.py`` actually uses, so every browser argument the module
-sends is captured and asserted exactly.
+Chromium is never launched: async_playwright is faked at the boundary render.py uses,
+so every browser argument the module sends is captured and asserted exactly.
 """
 
 from dataclasses import FrozenInstanceError

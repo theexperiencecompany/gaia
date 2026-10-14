@@ -100,7 +100,7 @@ export function WorkflowListScreen() {
         catSet.add(c);
       }
     }
-    return Array.from(catSet).sort();
+    return Array.from(catSet).sort((a, b) => a.localeCompare(b));
   }, [communityWorkflows, exploreWorkflows]);
 
   const filteredExploreWorkflows = useMemo(() => {

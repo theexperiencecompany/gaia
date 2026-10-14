@@ -18,6 +18,7 @@ from app.constants.todos import BLOCKING_LABEL, FAILED_LABEL, GAIA_TRACKED_LABEL
 from app.models.briefing_models import BriefingModel, BriefingPayload
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.todo_models import TodoDocument
+from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.briefing import context
 
 _USER = "user-1"
@@ -70,6 +71,10 @@ class TestClock:
         )
 
 
+def _user_with_focus(focus: str) -> UserDocument:
+    return UserDocument(onboarding=OnboardingSubdocument(focus=focus))
+
+
 class TestGoalBlock:
     @pytest.fixture
     def recall(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
@@ -82,7 +87,7 @@ class TestGoalBlock:
     async def test_junk_focus_and_no_memories_is_no_goal(
         self, recall: AsyncMock, focus: str
     ) -> None:
-        block, has_goal = await context.format_goal_block(_USER, {"onboarding": {"focus": focus}})
+        block, has_goal = await context.format_goal_block(_USER, _user_with_focus(focus))
 
         assert has_goal is False
         assert "No stated goal" in block
@@ -95,7 +100,7 @@ class TestGoalBlock:
         )
 
         block, has_goal = await context.format_goal_block(
-            _USER, {"onboarding": {"focus": "Close 10 customers"}}
+            _USER, _user_with_focus("Close 10 customers")
         )
 
         assert has_goal is True
@@ -106,9 +111,7 @@ class TestGoalBlock:
     ) -> None:
         recall.side_effect = RuntimeError("vector store down")
 
-        block, has_goal = await context.format_goal_block(
-            _USER, {"onboarding": {"focus": "Ship v2"}}
-        )
+        block, has_goal = await context.format_goal_block(_USER, _user_with_focus("Ship v2"))
 
         assert (block, has_goal) == ("Stated goal: Ship v2", True)
 

@@ -69,10 +69,9 @@ interface CalendarActions {
 
 type CalendarStore = CalendarState & CalendarActions;
 
-// Time-dependent defaults (today's date, current month/year) are computed
-// inside this factory instead of at module evaluation, so the values reflect
-// the moment the store is created rather than being frozen for the whole
-// process lifetime and reused across every SSR request.
+// Time-dependent defaults (today's date, current month/year) are computed inside this factory,
+// not at module evaluation, so each store instance gets a fresh value instead of one frozen
+// value reused across every SSR request.
 const createInitialState = (): CalendarState => {
   const now = new Date();
   return {

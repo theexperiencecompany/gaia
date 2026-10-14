@@ -1,6 +1,7 @@
-"""Contract tests for BriefingsRepository (user-scoped, business-key ``id``
-persisted as ``_id``, no cache policy — a bespoke suite, not the inherited
-``UserScopedRepositoryContract``, matching ``test_conversations_repository.py``).
+"""Contract tests for BriefingsRepository.
+
+User-scoped, business-key id persisted as _id, no cache policy: a bespoke suite, not
+the inherited UserScopedRepositoryContract (same as test_conversations_repository.py).
 """
 
 from __future__ import annotations

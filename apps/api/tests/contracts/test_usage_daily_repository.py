@@ -1,11 +1,11 @@
 """Contract tests for UsageDailyRepository — the durable per-day usage rollup.
 
 This is billing data: it is the ONLY per-day history of what a user's spend and
-tokens were, because the Redis budget windows expire in ~26h. A ``$inc`` that
+tokens were, because the Redis budget windows expire in ~26h. A $inc that
 lands in the wrong field books charged work as free background COGS (or the
 reverse), and a pruned field that should have been written loses the raw usage a
-mispriced call has to be re-derived from. Real Mongo, so the ``$inc``-upsert and
-the ``$gte`` date window under test are the real ones.
+mispriced call has to be re-derived from. Real Mongo, so the $inc-upsert and
+the $gte date window under test are the real ones.
 """
 
 from __future__ import annotations

@@ -1,0 +1,204 @@
+"""The browser run's two chat models: the agent's model and Jev's tiny text model.
+
+Both are Browser-Use chat models (OpenAI wire, which OpenRouter and the dev
+endpoint both speak), and every call either makes is recorded into the run's
+ledger.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from time import perf_counter
+from typing import TypeVar, overload
+
+from browser_use import ChatOpenAI
+from browser_use.llm.base import BaseChatModel
+from browser_use.llm.messages import BaseMessage
+from browser_use.llm.views import ChatInvokeCompletion, ChatInvokeUsage
+from pydantic import BaseModel
+from pydantic_core import CoreSchema, core_schema
+
+from app.agents.llm.dev_lane import custom_endpoint, custom_lane_forced
+from app.config.settings import settings
+from app.constants.browser import (
+    BROWSER_AGENT_HEDGE_SECONDS,
+    BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
+    BROWSER_AGENT_OPENROUTER_KEY_MISSING,
+    JEV_TEXT_HEDGE_SECONDS,
+    JEV_TEXT_OPENROUTER_KEY_MISSING,
+    BrowserAgentEffort,
+)
+from app.constants.llm import (
+    DEV_LLM_BROWSER_HEADERS,
+    OPENAI_REASONING_EFFORT,
+    OPENROUTER_REASONING_EFFORT,
+    ReasoningLevel,
+)
+from app.services.browser.exceptions import BrowserUnavailableError
+from app.services.browser.hedge import first_answer
+from app.services.browser.ledger import CallComponent, ModelCall, RunLedger
+
+T = TypeVar("T", bound=BaseModel)
+
+# OpenRouter is OpenAI-wire-compatible; Browser-Use talks to it via ChatOpenAI.
+_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# The cap counts reasoning tokens too, so it sits far above any value or page extract it writes.
+_TEXT_MAX_COMPLETION_TOKENS = 4096
+# The lightest effort each lane accepts: the text model writes values and extracts, it does not plan.
+_TEXT_REASONING = ReasoningLevel.LIGHT
+# An agent step writes a whole action list plus its memory under flash mode.
+_AGENT_MAX_COMPLETION_TOKENS = 8192
+
+
+class MeteredChatModel:
+    """A Browser-Use chat model that hedges its slow tail and records each call into the run ledger.
+
+    A call not answered within hedge_after seconds gets an identical second
+    request, and the first answer wins: a provider's occasional multi-minute
+    stall costs hedge_after plus a normal call instead of a step timeout. The
+    losing request is billed too, so it is recorded once it lands.
+    """
+
+    _verified_api_keys = True
+
+    def __init__(
+        self, inner: BaseChatModel, ledger: RunLedger, component: CallComponent, hedge_after: float
+    ) -> None:
+        self._inner = inner
+        self._ledger = ledger
+        self._component = component
+        self._hedge_after = hedge_after
+        self.model = inner.model
+
+    @property
+    def provider(self) -> str:
+        return self._inner.provider
+
+    @property
+    def name(self) -> str:
+        return self._inner.name
+
+    @property
+    def model_name(self) -> str:
+        return self._inner.model
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: type, handler: object) -> CoreSchema:
+        del source_type, handler
+        return core_schema.any_schema()
+
+    @overload
+    async def ainvoke(
+        self, messages: list[BaseMessage], output_format: None = None, **kwargs: object
+    ) -> ChatInvokeCompletion[str]: ...
+
+    @overload
+    async def ainvoke(
+        self, messages: list[BaseMessage], output_format: type[T], **kwargs: object
+    ) -> ChatInvokeCompletion[T]: ...
+
+    async def ainvoke(
+        self, messages: list[BaseMessage], output_format: type[T] | None = None, **kwargs: object
+    ) -> ChatInvokeCompletion[T] | ChatInvokeCompletion[str]:
+        started = perf_counter()
+        result = await first_answer(
+            lambda: self._inner.ainvoke(messages, output_format, **kwargs),
+            hedge_after=self._hedge_after,
+            deadline=BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
+            on_late=lambda late: self._record(started, late.usage),
+        )
+        self._record(started, result.usage)
+        return result
+
+    def _record(self, started: float, usage: ChatInvokeUsage | None) -> None:
+        self._ledger.add(
+            ModelCall(
+                component=self._component,
+                provider=self._inner.provider,
+                model=self._inner.model,
+                latency_ms=round((perf_counter() - started) * 1000),
+                input_tokens=usage.prompt_tokens if usage else 0,
+                output_tokens=usage.completion_tokens if usage else 0,
+                cached_tokens=(usage.prompt_cached_tokens or 0) if usage else 0,
+            )
+        )
+
+
+def _openai_wire_model(
+    *,
+    model: str,
+    api_key: str,
+    base_url: str,
+    default_headers: Mapping[str, str] | None,
+    max_completion_tokens: int,
+    reasoning_effort: BrowserAgentEffort,
+) -> BaseChatModel:
+    """Build the one kind of chat model a browser run uses, sending reasoning_effort to model.
+
+    Every argument is required: Browser-Use's own defaults for the cap and the
+    effort are real values, and one silently standing in for ours is a bug.
+    """
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        default_headers=default_headers,
+        max_completion_tokens=max_completion_tokens,
+        reasoning_models=[model],
+        reasoning_effort=reasoning_effort,
+    )
+
+
+def build_agent_llm(ledger: RunLedger) -> MeteredChatModel:
+    """Return the Browser-Use agent's model: BROWSER_AGENT_MODEL over OpenRouter, or the forced dev lane's endpoint.
+
+    One setting for every user: the agent's model is not the user's chat lane.
+    """
+    if custom_lane_forced():
+        endpoint = custom_endpoint()
+        model = _openai_wire_model(
+            model=endpoint.model,
+            api_key=endpoint.api_key,
+            base_url=endpoint.base_url,
+            default_headers=DEV_LLM_BROWSER_HEADERS,
+            max_completion_tokens=_AGENT_MAX_COMPLETION_TOKENS,
+            reasoning_effort=settings.BROWSER_AGENT_REASONING_EFFORT,
+        )
+    else:
+        if not settings.OPENROUTER_API_KEY:
+            raise BrowserUnavailableError(BROWSER_AGENT_OPENROUTER_KEY_MISSING)
+        model = _openai_wire_model(
+            model=settings.BROWSER_AGENT_MODEL,
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url=_OPENROUTER_BASE_URL,
+            default_headers=None,
+            max_completion_tokens=_AGENT_MAX_COMPLETION_TOKENS,
+            reasoning_effort=settings.BROWSER_AGENT_REASONING_EFFORT,
+        )
+    return MeteredChatModel(model, ledger, CallComponent.AGENT, BROWSER_AGENT_HEDGE_SECONDS)
+
+
+def build_text_model(ledger: RunLedger) -> MeteredChatModel:
+    """Return Jev's text helper: the forced dev lane's endpoint, else BROWSER_USE_JEV_TEXT_MODEL over OpenRouter."""
+    if custom_lane_forced():
+        endpoint = custom_endpoint()
+        model = _openai_wire_model(
+            model=endpoint.model,
+            api_key=endpoint.api_key,
+            base_url=endpoint.base_url,
+            default_headers=DEV_LLM_BROWSER_HEADERS,
+            max_completion_tokens=_TEXT_MAX_COMPLETION_TOKENS,
+            reasoning_effort=OPENAI_REASONING_EFFORT[_TEXT_REASONING],
+        )
+    else:
+        if not settings.OPENROUTER_API_KEY:
+            raise BrowserUnavailableError(JEV_TEXT_OPENROUTER_KEY_MISSING)
+        model = _openai_wire_model(
+            model=settings.BROWSER_USE_JEV_TEXT_MODEL,
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url=_OPENROUTER_BASE_URL,
+            default_headers=None,
+            max_completion_tokens=_TEXT_MAX_COMPLETION_TOKENS,
+            reasoning_effort=OPENROUTER_REASONING_EFFORT[_TEXT_REASONING],
+        )
+    return MeteredChatModel(model, ledger, CallComponent.TEXT, JEV_TEXT_HEDGE_SECONDS)

@@ -20,7 +20,8 @@ import { Text } from "@/components/ui/text";
 
 import { ApprovalRequestCard } from "../components/chat/approval-request-card";
 import { EmailComposeCard } from "../components/chat/email-compose-card";
-import { ToolCardHeader, ToolCardShell } from "./primitives";
+import { ToolCardHeader } from "./primitives/tool-card-header";
+import { ToolCardShell } from "./primitives/tool-card-shell";
 import type { EmailComposeData, ToolDataEntry } from "./registry";
 import {
   ArtifactCard,
@@ -152,6 +153,9 @@ const TOOL_RENDERERS: Record<
     return <EmailFetchCard key={baseKey} data={emails as EmailFetchItem[]} />;
   },
 
+  // Legacy conversations restore this key (creation is now immediate); render
+  // the card so old cards still show event details. Without onAdd handlers its
+  // Confirm buttons are inert — display only, as before the renderer was dropped.
   calendar_options: (data, baseKey) => {
     const events = Array.isArray(data) ? data : [data];
     return (
@@ -183,14 +187,14 @@ const TOOL_RENDERERS: Record<
     );
   },
 
+  // Restored-history only: old conversations still carry this key, and a null
+  // renderer left them blank. Read-only list, no draft or add flows (those
+  // moved to HIL approvals by design).
   calendar_list_fetch_data: (data, baseKey) => {
-    const calendars = Array.isArray(data) ? data : [data];
-    return (
-      <CalendarListFetchCard
-        key={baseKey}
-        data={calendars as CalendarListFetchItem[]}
-      />
-    );
+    const lists = (
+      Array.isArray(data) ? data : [data]
+    ) as CalendarListFetchItem[];
+    return <CalendarListFetchCard key={baseKey} data={lists} />;
   },
 
   weather_data: (data, baseKey) => (

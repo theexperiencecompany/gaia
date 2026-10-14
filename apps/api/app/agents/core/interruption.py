@@ -3,15 +3,15 @@
 When a user cancels a stream, the graph run stops between supersteps and the
 checkpoint is left as if the turn simply ended: any tool calls the model had
 emitted sit unanswered, and nothing tells the model — on the next turn — that
-it was cut off. ``filter_messages_node`` then strips the unanswered calls, so
+it was cut off. filter_messages_node then strips the unanswered calls, so
 the evidence of the interruption is erased entirely.
 
-``record_interruption`` closes that gap after the run has stopped:
+record_interruption closes that gap after the run has stopped:
 
 1. Every dangling tool call in the latest checkpoint gets a synthetic
-   ``ToolMessage`` marking it as interrupted (which also keeps the transcript
+   ToolMessage marking it as interrupted (which also keeps the transcript
    well-formed for providers that reject unanswered tool calls).
-2. A ``[Request interrupted by user]`` human message is appended so the model
+2. A [Request interrupted by user] human message is appended so the model
    sees the turn boundary for what it was.
 """
 
@@ -39,7 +39,7 @@ INTERRUPTION_SOURCE = "interruption"
 def build_interruption_messages(messages: list[AnyMessage]) -> list[AnyMessage]:
     """Build the synthetic messages that record an interruption, or [] to no-op.
 
-    Returns one error ``ToolMessage`` per dangling tool call plus the
+    Returns one error ToolMessage per dangling tool call plus the
     interruption marker. Returns [] when the last committed message is a
     completed assistant reply with nothing dangling — a cancel that landed
     after the run effectively finished needs no marker.

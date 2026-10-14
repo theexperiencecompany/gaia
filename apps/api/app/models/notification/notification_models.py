@@ -5,7 +5,10 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.constants.notifications import DEFAULT_QUIET_HOURS_END, DEFAULT_QUIET_HOURS_START
 from app.db.repositories.base import UserScopedDocument
+from app.schemas.common import ResponseModel
+from app.utils.timezone import Timezone
 
 
 class NotificationType(str, Enum):
@@ -331,7 +334,42 @@ class BulkActions(str, Enum):
     ARCHIVE = "archive"
 
 
-class ChannelPreferences(BaseModel):
+class QuietHours(BaseModel):
+    """A daily window, on the user's own clock, when GAIA holds proactive pushes.
+
+    Whole local hours; the window may span midnight (start 22, end 8 is 22:00 to
+    08:00). The end hour is the first hour outside the window.
+    """
+
+    start_hour: int = Field(ge=0, le=23)
+    end_hour: int = Field(ge=0, le=23)
+
+    @model_validator(mode="after")
+    def _spans_some_hours(self) -> "QuietHours":
+        """Reject an empty window: equal hours cannot say whether they mean none or all day."""
+        if self.start_hour == self.end_hour:
+            raise ValueError("Quiet hours must start and end at different hours")
+        return self
+
+    def contains_hour(self, local_hour: int) -> bool:
+        """Whether local_hour (0-23, on the user's clock) is inside the window.
+
+        Hours are measured from the window's start around the 24-hour clock, so
+        a window that spans midnight needs no special case.
+        """
+        return (local_hour - self.start_hour) % 24 < (self.end_hour - self.start_hour) % 24
+
+    def covers(self, instant: datetime, timezone_name: str | None) -> bool:
+        """Whether instant falls in the window on the clock of timezone_name (UTC when unset)."""
+        return self.contains_hour(Timezone.parse(timezone_name).localize(instant).hour)
+
+
+def default_quiet_hours() -> QuietHours:
+    """The quiet hours of a user who never set their own."""
+    return QuietHours(start_hour=DEFAULT_QUIET_HOURS_START, end_hour=DEFAULT_QUIET_HOURS_END)
+
+
+class ChannelPreferences(ResponseModel):
     """User notification channel preferences.
 
     One field per ``USER_CONFIGURABLE_CHANNELS`` member; the fields are spelled out
@@ -356,3 +394,19 @@ class ChannelPreferencesUpdate(BaseModel):
     slack: bool | None = None
     imessage: bool | None = None
     email: bool | None = None
+
+
+class NotificationListFilters(BaseModel):
+    """Query filters for listing a user's notifications.
+
+    Bundled because this exact parameter set threads unchanged through the
+    repository, storage, orchestrator, and service layers — a shared shape,
+    not a per-layer convention.
+    """
+
+    status: NotificationStatus | None = None
+    channel_type: str | None = None
+    notification_type: NotificationType | None = None
+    source: NotificationSourceEnum | None = None
+    limit: int = 50
+    offset: int = 0

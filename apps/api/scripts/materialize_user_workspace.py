@@ -47,7 +47,7 @@ from app.services.storage import (
 
 
 async def _connected_for(user_id: str) -> set[str]:
-    """Connected integration ids from Mongo (status == "connected")."""
+    """Return connected integration ids from Mongo (status == "connected")."""
     from app.services.integrations.user_integrations import get_connected_integration_ids
 
     return await get_connected_integration_ids(user_id)

@@ -212,10 +212,11 @@ const IntegrationsSidebarContent = memo(function IntegrationsSidebarContent({
       </p>
       <div className="flex flex-col gap-0.5">
         {INTEGRATIONS.map((integration) => (
-          <div
+          <button
+            type="button"
             key={integration.id}
             onClick={() => onIntegrationSelect?.(integration.id)}
-            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+            className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm cursor-pointer transition-colors ${
               selectedIntegrationId === integration.id
                 ? "bg-zinc-800 text-zinc-300"
                 : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
@@ -238,7 +239,7 @@ const IntegrationsSidebarContent = memo(function IntegrationsSidebarContent({
                 <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
               )}
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>

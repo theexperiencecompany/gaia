@@ -1,11 +1,15 @@
 "use client";
 
-import { ThemeProvider } from "@openuidev/react-ui";
+// Subpath, not the package barrel: the barrel drags recharts + react-markdown +
+// react-syntax-highlighter + react-day-picker onto every route (RootProviders is
+// global). The heavy OpenUI components load separately in chat. See theme.ts.
+import { ThemeProvider } from "@openuidev/react-ui/ThemeProvider";
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 
 import { gaiaOpenUITheme } from "@/config/openui/theme";
 import { HeroUIProvider } from "@/layouts/HeroUIProvider";
+import QueryProvider from "@/layouts/QueryProvider";
 
 const LoginModal = dynamic(
   () => import("@/features/auth/components/LoginModal"),
@@ -14,26 +18,24 @@ const LoginModal = dynamic(
 
 /**
  * Root-level client providers shared by every route under [locale].
- *
- * HeroUIProvider lives here so HeroUI components work in any route group
- * without each subtree re-mounting it. LoginModal also lives here — it's
- * a singleton driven by a Zustand store, so one mount is enough for the
- * whole app; lazy-loaded so it stays out of the initial bundle.
- *
- * The modal must sit OUTSIDE any LazyMotionProvider (HeroUI's Modal
- * imports the full `motion` API and throws under LazyMotion strict).
- * Root layout has no LazyMotionProvider, so this is naturally safe.
+ * HeroUIProvider avoids remounting per subtree; QueryProvider sits here
+ * because the query cache is app-global (`useCurrentUser` reads it above the
+ * route-group layouts); LoginModal is a lazy-loaded Zustand-driven singleton.
+ * The modal must stay outside any LazyMotionProvider (HeroUI's Modal throws
+ * under LazyMotion strict) — root layout has none, so this is safe.
  */
 export default function RootProviders({ children }: { children: ReactNode }) {
   return (
     <HeroUIProvider>
-      {/* OpenUI (`@openuidev/react-ui`) components render inside chat and the
-          dev playground; ThemeProvider injects the GAIA-mapped `--openui-*`
-          tokens and provides the theme context they require. */}
-      <ThemeProvider mode="dark" darkTheme={gaiaOpenUITheme}>
-        {children}
-      </ThemeProvider>
-      <LoginModal />
+      <QueryProvider>
+        {/* OpenUI (`@openuidev/react-ui`) components render inside chat and the
+            dev playground; ThemeProvider injects the GAIA-mapped `--openui-*`
+            tokens and provides the theme context they require. */}
+        <ThemeProvider mode="dark" darkTheme={gaiaOpenUITheme}>
+          {children}
+        </ThemeProvider>
+        <LoginModal />
+      </QueryProvider>
     </HeroUIProvider>
   );
 }

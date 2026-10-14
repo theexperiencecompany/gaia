@@ -1,9 +1,9 @@
-"""Tests for app/api/v1/endpoints/webhook_composio.py
+"""Tests for app/api/v1/endpoints/webhook_composio.py.
 
 The endpoint module is resolved at test time, never imported at module scope: on
 the base revision, importing it standalone trips a circular import
 (triggers -> workflow -> trigger_service -> triggers) that this branch removes by
-emptying the dead `app/services/workflow/__init__.py` barrel. The regression lane
+emptying the dead app/services/workflow/__init__.py barrel. The regression lane
 replays the marked test below against that revision, where a module-scope import
 would fail at collection and prove nothing.
 """
@@ -14,17 +14,19 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+from pydantic import AliasChoices, AliasPath, ValidationError
 import pytest
 
+from app.models.integration_models import IntegrationAccount
 from app.models.webhook_models import ComposioWebhookEvent
-from app.services.integrations.integration_expiry import ExpiryOptions
+from app.services.integrations.integration_expiry import AccountExpired
 
 ENDPOINT = "/api/v1/webhook/composio"
 MODULE = "app.api.v1.endpoints.webhook_composio"
 
 
 def _endpoint():
-    """The endpoint module, resolved on use — see the module docstring."""
+    """Resolve the endpoint module on use — see the module docstring."""
     return importlib.import_module(MODULE)
 
 
@@ -38,10 +40,7 @@ def _expired_connection_event(
     status: str = "EXPIRED",
     auth_config_id: str = "ac_test_config",
 ) -> dict:
-    """A `composio.connected_account.expired` delivery, as the SDK's
-    ``ConnectionExpiredEvent`` shapes it. It carries none of the trigger
-    identifiers ``ComposioWebhookEvent`` requires — which is why the endpoint
-    has to branch on the raw body before building that model."""
+    """Build a composio.connected_account.expired delivery, shaped like the SDK's ConnectionExpiredEvent, carrying none of the trigger identifiers ComposioWebhookEvent requires."""
     return {
         "id": "msg_847cdfcd",
         "type": "composio.connected_account.expired",
@@ -83,10 +82,7 @@ def _accepted_delivery():
 
 @pytest.mark.usefixtures("_accepted_delivery")
 class TestMalformedBody:
-    """Composio redelivers anything that is not a 2xx, and the dedupe key is
-    claimed before the body is read — so a 500 on a body Composio can never
-    re-send correctly becomes an infinite redelivery loop whose retries are
-    then swallowed as duplicates."""
+    """The dedupe key is claimed before the body is read, so a 500 on an unfixable body becomes an infinite redelivery loop swallowed as duplicates."""
 
     @pytest.mark.regression
     @pytest.mark.parametrize(
@@ -108,8 +104,7 @@ class TestMalformedBody:
     async def test_the_drop_is_logged_with_the_type_that_arrived(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """Composio publishes no schema for this, so the logged type is the only
-        evidence of what it actually sent."""
+        """Composio publishes no schema for this, so the logged type is the only evidence of what it actually sent."""
         with patch(f"{MODULE}.log") as mock_log:
             await unauthed_client.post(
                 ENDPOINT,
@@ -124,9 +119,7 @@ class TestMalformedBody:
 
 @pytest.mark.usefixtures("_accepted_delivery")
 class TestConnectionEventRouting:
-    """A connection-lifecycle event carries none of the trigger identifiers the
-    trigger model requires, so routing it on the RAW body — before any model is
-    built — is what keeps it from raising instead of being handled."""
+    """A connection-lifecycle event carries none of the trigger identifiers the trigger model requires, so routing runs on the raw body before any model is built."""
 
     async def test_an_expired_connection_event_is_routed_to_the_connection_handler(
         self, unauthed_client: AsyncClient
@@ -169,7 +162,7 @@ async def _post_event(client: AsyncClient, body: dict, webhook_id: str):
 
 
 def _ns_fields(log_mock) -> dict:
-    """Every field folded onto the ``composio_connection`` wide-event namespace."""
+    """Every field folded onto the composio_connection wide-event namespace."""
     fields: dict = {}
     for c in log_mock.set_ns.call_args_list:
         assert c.args[0] == "composio_connection", f"wrong namespace: {c.args[0]}"
@@ -186,15 +179,12 @@ def _set_fields(log_mock) -> dict:
 
 @pytest.mark.usefixtures("_accepted_delivery")
 class TestConnectionEventOutcomes:
-    """Every branch acknowledges — a non-2xx makes Composio redeliver an event it
-    can never send differently — so the ack MESSAGE is the only thing that says
-    which branch ran, both to a reader and to this suite."""
+    """Every branch acknowledges, since a non-2xx makes Composio redeliver an unfixable event, so the ack message is the only signal of which branch ran."""
 
     async def test_a_status_that_is_not_terminal_is_acked_without_expiring(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """INITIALIZING/ACTIVE arrive on the same event; expiring on them would
-        kill a connection that is merely mid-handshake."""
+        """INITIALIZING/ACTIVE arrive on the same event; expiring on them would kill a connection that is merely mid-handshake."""
         body = _expired_connection_event(status="INITIALIZING")
 
         with patch(f"{MODULE}.spawn_logged_task") as spawn:
@@ -225,8 +215,7 @@ class TestConnectionEventOutcomes:
     async def test_an_unrecognised_toolkit_is_logged_with_what_arrived(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """Composio can add a toolkit before GAIA maps it — the warning is the
-        only signal that a real user's connection died unhandled."""
+        """Composio can add a toolkit before GAIA maps it; the warning is the only signal that a real user's connection died unhandled."""
         body = _expired_connection_event(toolkit="NOT_A_REAL_TOOLKIT")
 
         with patch(f"{MODULE}.log") as mock_log:
@@ -243,9 +232,7 @@ class TestConnectionEventOutcomes:
     async def test_the_auth_config_identifies_the_integration_when_the_toolkit_does_not(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """Composio identifies the connection by auth config; the toolkit slug is a
-        fallback. Dropping the auth-config lookup strands every event whose slug
-        GAIA does not map."""
+        """The toolkit slug is a fallback; dropping the auth-config lookup strands every event whose slug GAIA does not map."""
         body = _expired_connection_event(
             toolkit="NOT_A_REAL_TOOLKIT", auth_config_id=CALENDAR_AUTH_CONFIG_ID
         )
@@ -262,9 +249,7 @@ class TestTheExpiryIsHandedOffCorrectly:
     async def test_the_background_task_carries_this_account_user_and_reason(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """These four values are what the expiry transition acts on: the wrong user
-        expires a stranger's integration, the wrong account id fails to invalidate
-        the dead one."""
+        """The wrong user here expires a stranger's integration; the wrong account id fails to invalidate the dead one."""
         body = _expired_connection_event()
 
         # A plain MagicMock, not the auto-specced AsyncMock: the handler passes the
@@ -289,11 +274,27 @@ class TestTheExpiryIsHandedOffCorrectly:
             },
         }
 
+    async def test_the_wide_event_names_the_keys_a_delivery_carried_beyond_the_schema(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """Report the delivered shape, so an undeclared field Composio added is visible."""
+        body = {
+            **_expired_connection_event(),
+            "sdk_version": "3.9.1",
+            "data": {**_expired_connection_event()["data"], "sdk_hint": "new-field"},
+        }
+
+        with patch(f"{MODULE}.spawn_logged_task"), patch(f"{MODULE}.log") as mock_log:
+            await _post_event(unauthed_client, body, "conn-extra-keys")
+
+        fields = _ns_fields(mock_log)
+        assert "sdk_version" in fields["envelope_keys"]
+        assert "sdk_hint" in fields["data_keys"]
+
     async def test_the_wide_event_records_the_connection_it_acted_on(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """The webhook runs with no user watching, so this event is the only record
-        — and it must never carry `state`, which holds the account's tokens."""
+        """The webhook runs with no user watching, so this event is the only record, and must never carry state, which holds the account's tokens."""
         body = _expired_connection_event()
 
         with patch(f"{MODULE}.spawn_logged_task"), patch(f"{MODULE}.log") as mock_log:
@@ -317,49 +318,88 @@ class TestTheExpiryIsHandedOffCorrectly:
 
 
 class TestTheBackgroundExpiry:
-    """Runs detached from the request, so nothing is watching it: a stall that
-    logged nothing would leave a user's integration reading as connected forever
-    with no trace of why."""
+    """Runs detached from the request, so a stall that logs nothing would leave a user's integration reading as connected forever."""
 
-    async def test_it_pauses_the_dependent_workflows_before_expiring_them(self) -> None:
-        """The paused titles become the notification copy ("2 workflows are
-        paused"), so the pause has to complete first and hand them over."""
+    @staticmethod
+    def _expired(*, stops_workflows: bool) -> AccountExpired:
+        account = IntegrationAccount(
+            id="acct_1", connected_account_id="ca_1", label="a@b.c", status="expired"
+        )
+        return AccountExpired(
+            account=account,
+            account_count=2,
+            was_primary=stops_workflows,
+            integration_expired=False,
+        )
+
+    async def test_a_dead_account_that_halts_workflows_pauses_them_and_names_them(self) -> None:
+        """The paused titles become the notification copy, so the pause completes first and hands them over."""
+        expired = self._expired(stops_workflows=True)
         with (
+            patch(f"{MODULE}.expire_account", AsyncMock(return_value=expired)) as expire,
             patch(
                 f"{MODULE}.pause_workflows_for_expired_integration",
                 AsyncMock(return_value=["Morning digest"]),
             ) as pause,
-            patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
+            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
+            patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _endpoint()._expire_connection("user-1", "gmail", "refresh_token_revoked", "ca_1")
 
-        pause.assert_awaited_once_with("user-1", "gmail")
         expire.assert_awaited_once_with(
-            "user-1",
-            "gmail",
-            ExpiryOptions(
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=True,
-                connected_account_id="ca_1",
-                paused_workflows=["Morning digest"],
-            ),
+            "user-1", "gmail", "ca_1", trigger="webhook", reason="refresh_token_revoked"
+        )
+        pause.assert_awaited_once_with("user-1", "gmail")
+        pause_watches.assert_awaited_once_with(
+            "user-1", "gmail", "acct_1", integration_expired=False
+        )
+        announce.assert_awaited_once_with(
+            "user-1", "gmail", expired, ["Morning digest"], "refresh_token_revoked"
         )
 
+    async def test_a_secondary_account_dying_pauses_only_its_own_watches(self) -> None:
+        """Workflows run as the primary, so they keep going; the dead account's watches stop."""
+        expired = self._expired(stops_workflows=False)
+        with (
+            patch(f"{MODULE}.expire_account", AsyncMock(return_value=expired)),
+            patch(f"{MODULE}.pause_workflows_for_expired_integration", AsyncMock()) as pause,
+            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
+            patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
+        ):
+            await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_1")
+
+        pause.assert_not_awaited()
+        pause_watches.assert_awaited_once_with(
+            "user-1", "gmail", "acct_1", integration_expired=False
+        )
+        announce.assert_awaited_once_with("user-1", "gmail", expired, [], "revoked")
+
+    async def test_an_account_that_changed_nothing_is_not_announced(self) -> None:
+        with (
+            patch(f"{MODULE}.expire_account", AsyncMock(return_value=None)),
+            patch(f"{MODULE}.pause_workflows_for_expired_integration", AsyncMock()) as pause,
+            patch(f"{MODULE}.pause_watches_for_expired_account", AsyncMock()) as pause_watches,
+            patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
+        ):
+            await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_gone")
+
+        pause.assert_not_awaited()
+        pause_watches.assert_not_awaited()
+        announce.assert_not_awaited()
+
     async def test_a_stall_is_logged_rather_than_disappearing_with_the_task(self) -> None:
-        async def _never_finishes(*_a: object, **_k: object) -> list[str]:
+        async def _never_finishes(*_a: object, **_k: object) -> None:
             await asyncio.sleep(10)
-            return []
 
         with (
             patch(f"{MODULE}.WEBHOOK_TASK_TIMEOUT", 0.01),
-            patch(f"{MODULE}.pause_workflows_for_expired_integration", _never_finishes),
-            patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
+            patch(f"{MODULE}.expire_account", _never_finishes),
+            patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
             patch(f"{MODULE}.log") as mock_log,
         ):
             await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_1")
 
-        expire.assert_not_awaited()
+        announce.assert_not_awaited()
         mock_log.error.assert_called_once()
         assert "timed out" in mock_log.error.call_args.args[0].lower()
         assert mock_log.error.call_args.kwargs == {
@@ -370,7 +410,7 @@ class TestTheBackgroundExpiry:
 
 
 def _trigger_event(event_type: str = "gmail_new_gmail_message") -> dict:
-    """A Composio *trigger* delivery — the other branch of this endpoint."""
+    """Build a Composio trigger delivery — the other branch of this endpoint."""
     return {
         "type": event_type,
         "timestamp": "2026-08-10T05:44:33Z",
@@ -385,9 +425,68 @@ def _trigger_event(event_type: str = "gmail_new_gmail_message") -> dict:
     }
 
 
+class TestStampedDeliveryIds:
+    """Composio stamps the trigger ids inside data, not beside it.
+
+    The alias reads the wire path first and the plain name second, so a delivery
+    carrying both keeps the one Composio actually stamped, and a missing id is
+    reported at data.<name> — where Composio put it — rather than at the top level.
+    """
+
+    @pytest.mark.regression
+    def test_the_wire_path_is_read_before_the_plain_name(self) -> None:
+        # Function scope: the helper is absent on base, where a module import
+        # would fail collection instead of failing this test.
+        from app.models.webhook_models import _stamped_in_data
+
+        assert _stamped_in_data("connection_id") == AliasChoices(
+            AliasPath("data", "connection_id"), "connection_id"
+        )
+
+    @pytest.mark.regression
+    def test_ids_stamped_inside_data_validate(self) -> None:
+        event = ComposioWebhookEvent.model_validate(_trigger_event())
+
+        assert event.connection_id == "conn-1"
+        assert event.trigger_id == "trig-1"
+        assert event.user_id == "507f1f77bcf86cd799439011"
+
+    def test_ids_given_directly_validate_too(self) -> None:
+        body = {
+            "type": "gmail_new_gmail_message",
+            "timestamp": "2026-08-10T05:44:33Z",
+            "data": {"payload": {"subject": "hi"}},
+            "connection_id": "conn-direct",
+            "connection_nano_id": "nano-direct",
+            "trigger_nano_id": "trig-nano-direct",
+            "trigger_id": "trig-direct",
+            "user_id": "507f1f77bcf86cd799439011",
+        }
+
+        event = ComposioWebhookEvent.model_validate(body)
+
+        assert event.connection_id == "conn-direct"
+        assert event.trigger_id == "trig-direct"
+
+    @pytest.mark.regression
+    def test_a_missing_id_is_reported_where_composio_put_it(self) -> None:
+        body = _trigger_event()
+        del body["data"]["trigger_id"]
+
+        with pytest.raises(ValidationError) as caught:
+            ComposioWebhookEvent.model_validate(body)
+
+        assert caught.value.errors(include_url=False, include_input=False) == [
+            {
+                "type": "missing",
+                "loc": ("data", "trigger_id"),
+                "msg": "Field required",
+            }
+        ]
+
+
 class TestDeliveryGuards:
-    """Signature and replay run before anything reads the body — Composio retries
-    aggressively, so a delivery processed twice is a workflow fired twice."""
+    """Signature and replay checks run before anything reads the body, since Composio retries aggressively and a delivery processed twice fires a workflow twice."""
 
     async def test_every_delivery_is_signature_checked_against_its_own_request(
         self, unauthed_client: AsyncClient
@@ -442,8 +541,7 @@ class TestTriggerEventRouting:
     async def test_the_event_is_built_from_this_delivery_and_routed_by_its_type(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """Every identifier the handler acts on comes off this body — a dropped
-        trigger_id or user_id routes someone else's automation."""
+        """Every identifier the handler acts on comes off this body; a dropped trigger_id or user_id routes someone else's automation."""
         with patch(f"{MODULE}.get_handler_by_event") as get_handler:
             get_handler.return_value = None  # unhandled: stops before dispatch
             response = await _post_event(unauthed_client, _trigger_event(), "trigger-1")
@@ -491,14 +589,88 @@ class TestTriggerEventRouting:
         spawn.assert_called_once()
 
 
+def _without(body: dict, *path: str) -> dict:
+    """Drop the key at path from a copy of body."""
+    copied = json.loads(json.dumps(body))
+    *parents, last = path
+    target = copied
+    for key in parents:
+        target = target[key]
+    del target[last]
+    return copied
+
+
+@pytest.mark.usefixtures("_accepted_delivery")
+class TestAMalformedTriggerDeliveryIsRefused:
+    """Regression: a delivery missing timestamp or connection_id was a 500; it is a 422 naming the field."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("path", "loc"),
+        [(("timestamp",), ["timestamp"]), (("data", "connection_id"), ["data", "connection_id"])],
+        ids=["timestamp", "connection_id"],
+    )
+    async def test_a_missing_field_is_a_422_that_names_it(
+        self, unauthed_client: AsyncClient, path: tuple[str, ...], loc: list[str]
+    ) -> None:
+        with patch(f"{MODULE}.get_handler_by_event") as get_handler:
+            response = await _post_event(
+                unauthed_client, _without(_trigger_event(), *path), f"bad-{path[-1]}"
+            )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["code"] == "validation_error"
+        assert [issue["loc"] for issue in body["errors"]] == [loc]
+        assert body["errors"][0]["type"] == "missing"
+        get_handler.assert_not_called()
+
+    @pytest.mark.regression
+    async def test_data_that_is_not_an_object_is_a_422(self, unauthed_client: AsyncClient) -> None:
+        body = {**_trigger_event(), "data": "not-an-object"}
+
+        response = await _post_event(unauthed_client, body, "bad-data")
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "validation_error"
+
+    @pytest.mark.regression
+    async def test_the_422_reports_the_field_that_was_wrong_and_echoes_no_input(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """The refusal names the field, says what was wrong with it, and quotes nothing back."""
+        secret = "sk-live-should-not-be-echoed"
+        body = {**_trigger_event(), "data": "not-an-object", "token": secret}
+
+        response = await _post_event(unauthed_client, body, "bad-quoting")
+
+        assert response.status_code == 422
+        issue = response.json()["errors"][0]
+        assert issue["loc"] == ["data"]
+        assert issue["type"]
+        assert "input" not in issue
+        assert secret not in response.text
+
+    @pytest.mark.regression
+    async def test_the_422_carries_no_url_into_the_schema(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """include_url is off: a link into GAIA's own schema tells the caller nothing."""
+        body = {**_trigger_event(), "data": "not-an-object"}
+
+        response = await _post_event(unauthed_client, body, "bad-url")
+
+        issue = response.json()["errors"][0]
+        assert issue["loc"] == ["data"]
+        assert "url" not in issue
+
+
 @pytest.mark.usefixtures("_accepted_delivery")
 class TestDeliveryWithoutAnId:
     async def test_a_delivery_with_no_id_header_is_processed_without_claiming_a_key(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """Composio always sends `webhook-id`, but a missing one must not invent a
-        dedupe key — one bogus key would swallow every later delivery that reused
-        it as a duplicate."""
+        """A missing webhook-id must not invent a dedupe key; one bogus key would swallow every later delivery that reused it as a duplicate."""
         redis = MagicMock()
         redis.client.set = AsyncMock(return_value=True)
         with (
@@ -518,10 +690,40 @@ class TestDeliveryWithoutAnId:
 
 
 class TestBackgroundTriggerProcessing:
+    @pytest.fixture(autouse=True)
+    def account_name(self):
+        with patch(f"{MODULE}.event_account", AsyncMock(return_value=None)) as name:
+            yield name
+
+    async def test_an_event_carries_the_account_that_received_it(
+        self, account_name: AsyncMock
+    ) -> None:
+        """The run must act on, and a watch match, the inbox that received the email."""
+        account_name.return_value = {"gaia_account_id": "acct_home", "gaia_account": "me@gmail.com"}
+        handler = MagicMock()
+        handler.process_event = AsyncMock()
+        event = ComposioWebhookEvent(
+            connection_id="conn-1",
+            connection_nano_id="ca_personal",
+            trigger_nano_id="ti_nano",
+            trigger_id="uuid-1",
+            user_id="user-1",
+            data={"payload": 1},
+            timestamp="2026-08-10T05:44:33Z",
+            type="gmail_new_gmail_message",
+        )
+
+        await _endpoint()._process_webhook_event(handler, event)
+
+        account_name.assert_awaited_once_with("user-1", "GMAIL_NEW_GMAIL_MESSAGE", "ca_personal")
+        assert handler.process_event.await_args.kwargs["data"] == {
+            "payload": 1,
+            "gaia_account_id": "acct_home",
+            "gaia_account": "me@gmail.com",
+        }
+
     async def test_the_handler_gets_the_nano_id_it_actually_matches_on(self) -> None:
-        """Handlers match `trigger_config.composio_trigger_ids`, which stores the
-        NANO id from triggers.create(). Forwarding the internal UUID instead never
-        matches, so the workflow silently never fires."""
+        """Handlers match trigger_config.composio_trigger_ids, which stores the nano id from triggers.create(); the internal UUID never matches."""
         handler = MagicMock()
         handler.process_event = AsyncMock()
         event = ComposioWebhookEvent(

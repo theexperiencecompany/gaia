@@ -1,3 +1,13 @@
+export type { ApprovalSettlement } from "./approvalSettle";
+export {
+  isKnownApprovalStatus,
+  parseApprovalDecidedEvent,
+  settleApprovalToolData,
+  statusAfterDecision,
+  TERMINAL_APPROVAL_STATUSES,
+} from "./approvalSettle";
+export type { ArgsPreviewRow, FlattenedArgs } from "./argsPreview";
+export { flattenArgsPreview } from "./argsPreview";
 export type { JwtPayload, TokenStorage } from "./auth";
 export { isTokenExpired, parseJwt, shouldRefreshToken } from "./auth";
 export type { DueChipTone } from "./dateUtils";
@@ -29,12 +39,17 @@ export {
   getCompleteTimeBasedGreeting,
   getSimpleTimeGreeting,
 } from "./greetingUtils";
-export type { IntegrationConnectionState } from "./integrationStatus";
+export type {
+  ConnectionPromptState,
+  IntegrationConnectionState,
+} from "./integrationStatus";
 export {
   CONNECT_ACTION_LABEL,
   connectionPromptState,
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
+  PROMPT_ACTION_LABEL,
+  reconcileIntegrationStatus,
 } from "./integrationStatus";
 export {
   NEW_MESSAGE_BREAK_TOKEN,
@@ -65,10 +80,14 @@ export type {
   QuickAddResult,
 } from "./quickAdd";
 export { parseQuickAdd } from "./quickAdd";
+export type { ReactionBadge, ReactionFoldable } from "./reactions";
+export { foldReactionAcks, groupReactions, isReactionAck } from "./reactions";
 export type { SimilarityConfig } from "./similarity";
 export {
   DEFAULT_SIMILARITY_CONFIG,
   getRelevantLoadingMessage,
 } from "./similarity";
+export type { OwnToolDataFold } from "./streamFold";
+export { createOwnToolDataFold, foldOwnToolData } from "./streamFold";
 export type { ParsedContent } from "./thinkingParser";
 export { parseThinkingFromText } from "./thinkingParser";

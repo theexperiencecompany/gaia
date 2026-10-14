@@ -1,14 +1,9 @@
 """Hand-designed HTML email templates for GAIA notification emails.
 
-Table-based layout, inline styles only — required for email-client
-compatibility (most clients strip <style> blocks and all JavaScript). Three
-templates, selected by the email channel adapter off a notification's
-``metadata["kind"]``: daily brief, weekly digest, and a plain-notification
-fallback. The briefing templates render straight from the same
-``BriefingPayload`` dict the OpenUI dashboard card renders — no LLM
-reformatting, no Jinja: the payload is already a validated dict of
-primitives, so plain string composition (with everything hand-escaped) is
-enough.
+Table-based layout, inline styles only, for email-client compatibility. Three
+templates, selected by the email channel adapter off metadata["kind"]: daily brief,
+weekly digest, and a plain-notification fallback. The briefing templates render from
+the BriefingPayload dict with plain, hand-escaped string composition.
 """
 
 from __future__ import annotations
@@ -26,10 +21,8 @@ _MUTED = "#a1a1aa"
 _SERIF_STACK = "'Playfair Display', Georgia, 'Times New Roman', serif"
 _SANS_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 
-# Degree offsets and lightness for the 6 gradient stops, relative to the
-# payload's hue — gives every day's masthead band a distinct identity while
-# keeping the same editorial layout (per the "hue varies, template doesn't"
-# design requirement).
+# Degree offsets and lightness for the 6 gradient stops, relative to the payload's
+# hue: the hue varies per day, the template does not.
 _GRADIENT_OFFSETS = (-40, -15, 0, 20, 45, 70)
 _GRADIENT_LIGHTNESS = (58, 50, 46, 50, 58, 64)
 
@@ -205,17 +198,17 @@ def _render_briefing_email(
 
 
 def render_daily_brief_email(payload: dict[str, Any], unsubscribe_url: str) -> str:
-    """Renders the daily brief email from a validated BriefingPayload dict."""
+    """Render the daily brief email from a validated BriefingPayload dict."""
     return _render_briefing_email(payload, "Daily Brief", unsubscribe_url)
 
 
 def render_weekly_digest_email(payload: dict[str, Any], unsubscribe_url: str) -> str:
-    """Renders the weekly digest email — same editorial shape as the daily brief."""
+    """Render the weekly digest email — same editorial shape as the daily brief."""
     return _render_briefing_email(payload, "Weekly Digest", unsubscribe_url)
 
 
 def render_plain_notification_email(title: str, body: str, unsubscribe_url: str) -> str:
-    """Renders a plain (non-briefing) notification email: title + body."""
+    """Render a plain (non-briefing) notification email: title + body."""
     rows = f"""
     <tr>
       <td style="padding: 40px 40px 0; font-family: {_SANS_STACK};">

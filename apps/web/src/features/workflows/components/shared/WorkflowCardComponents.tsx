@@ -26,8 +26,8 @@ import {
   resolveCreatorName,
 } from "@/features/workflows/utils/creator";
 import { cn } from "@/lib/utils";
-
 import type { IntegrationRef } from "@/types/features/workflowTypes";
+import type { ContentCreator } from "@/types/shared/contentTypes";
 
 import { missingIntegrationsMessage } from "./workflowCardHelpers";
 
@@ -173,11 +173,7 @@ export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
 
 // Reusable Creator Avatar
 interface CreatorAvatarProps {
-  creator: {
-    id: string;
-    name: string;
-    avatar?: string;
-  };
+  creator: ContentCreator;
   size?: number;
   showTooltip?: boolean;
   /** Render the creator's name beside the avatar (verified when it's ours) */

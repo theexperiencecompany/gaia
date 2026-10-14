@@ -48,9 +48,8 @@ export function useHilPreferences() {
   });
 
   // The per-tool endpoint takes one tool at a time and answers with the whole
-  // preferences document, so the writes are serialised: fired in parallel, the
-  // last response to land would overwrite the cache with a snapshot taken
-  // before its siblings were applied.
+  // preferences document, so writes are serialised — fired in parallel, the
+  // last response would overwrite the cache with a stale pre-sibling snapshot.
   const bulkMutation = useMutation({
     mutationFn: async ([first, ...rest]: ToolApprovalUpdate[]) => {
       const save = (update: ToolApprovalUpdate) =>

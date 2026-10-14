@@ -2,17 +2,18 @@
 
 Each integration tool registration is verified end-to-end:
 1. Tools are registered under the expected names.
-2. The tool body invokes `proxy_request_sync` with the right toolkit + endpoint.
+2. The tool body invokes proxy_request_sync with the right toolkit + endpoint.
 
 Detailed per-function behavior tests live in the per-tool unit modules
-(e.g. `test_composio_gmail_tools.py`). This file provides a regression net
+(e.g. test_composio_gmail_tools.py). This file provides a regression net
 that fails fast if a tool stops routing through the proxy.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.models.common_models import GatherContextInput
@@ -27,6 +28,16 @@ from app.models.twitter_models import BatchFollowInput, CreateThreadInput
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
 EXECUTE_REQUEST = MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def scoped_account() -> Iterator[MagicMock]:
+    """Pin the account the call is scoped to; resolving it reads Mongo, not the subject here."""
+    with patch(
+        "app.agents.tools.integrations.notion_tool.scoped_connected_account_id",
+        MagicMock(return_value="ca_scoped"),
+    ) as resolve:
+        yield resolve
 
 
 def _capture_tools(register_fn: Callable[..., Any]) -> dict[str, Any]:
@@ -98,15 +109,16 @@ def test_gather_context_tools_use_proxy(
     register = getattr(module, register_name)
 
     with patch(f"{module_path}.proxy_request_sync") as proxy:
-        proxy.return_value = {}
+        # Instagram's /me always answers with the account id; the others tolerate {}.
+        proxy.return_value = {"id": "ig-1"} if toolkit == "INSTAGRAM" else {}
         tools = _capture_tools(register)
         fn = tools[tool_name]
         fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
 
     assert proxy.called
-    first_call_kwargs = proxy.call_args_list[0].kwargs
-    assert first_call_kwargs["toolkit"] == toolkit
-    assert first_call_kwargs["user_id"] == AUTH_CREDS["user_id"]
+    first_request = proxy.call_args_list[0].args[0]
+    assert first_request.toolkit == toolkit
+    assert first_request.user_id == AUTH_CREDS["user_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -115,11 +127,7 @@ def test_gather_context_tools_use_proxy(
 
 
 def test_google_meet_gather_context_swallows_calendar_failures() -> None:
-    """If the GOOGLEMEET account lacks calendar scope, the events fetch raises.
-
-    The tool must catch that and return an empty `upcoming_meets` list rather
-    than failing the whole gather_context call.
-    """
+    """If the GOOGLEMEET account lacks calendar scope, the events fetch raises and the tool must catch it, returning an empty upcoming_meets list rather than failing the whole gather_context call."""
     from app.agents.tools.integrations.google_meet_tool import (
         register_google_meet_custom_tools,
     )
@@ -156,10 +164,10 @@ def test_google_docs_share_doc_routes_through_proxy() -> None:
             AUTH_CREDS,
         )
 
-    kwargs = proxy.call_args.kwargs
-    assert kwargs["toolkit"] == "GOOGLEDOCS"
-    assert kwargs["method"] == "POST"
-    assert "/permissions" in kwargs["endpoint"]
+    request = proxy.call_args.args[0]
+    assert request.toolkit == "GOOGLEDOCS"
+    assert request.method == "POST"
+    assert "/permissions" in request.endpoint
     assert result["document_id"] == "doc-1"
 
 
@@ -178,9 +186,9 @@ def test_google_docs_delete_doc_routes_through_proxy() -> None:
         )
 
     assert result["successful"] is True
-    kwargs = proxy.call_args.kwargs
-    assert kwargs["method"] == "DELETE"
-    assert kwargs["endpoint"].endswith("/files/doc-1")
+    request = proxy.call_args.args[0]
+    assert request.method == "DELETE"
+    assert request.endpoint.endswith("/files/doc-1")
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +214,7 @@ def test_google_sheets_share_routes_through_proxy() -> None:
         )
 
     assert result["total_shared"] == 1
-    assert proxy.call_args.kwargs["toolkit"] == "GOOGLESHEETS"
+    assert proxy.call_args.args[0].toolkit == "GOOGLESHEETS"
 
 
 # ---------------------------------------------------------------------------
@@ -214,20 +222,25 @@ def test_google_sheets_share_routes_through_proxy() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_notion_move_page_uses_execute_request_proxy() -> None:
+def test_notion_move_page_runs_through_the_scoped_proxy() -> None:
+    # Composio's own execute_request carries no account, so a second Notion
+    # workspace's page would be moved as whichever account Composio picked.
     from app.agents.tools.integrations.notion_tool import (
         register_notion_custom_tools,
     )
 
-    tools = _capture_tools(register_notion_custom_tools)
-    proxy_mock = MagicMock()
-    proxy_mock.return_value.data = {"id": "page-1", "url": "https://notion.so/x"}
-    result = tools["MOVE_PAGE"](
-        MovePageInput(page_id="page-1", parent_id="parent-1", parent_type="page_id"),
-        proxy_mock,
-        AUTH_CREDS,
-    )
-    proxy_mock.assert_called_once()
+    execute_request = MagicMock()
+    with patch("app.agents.tools.integrations.notion_tool.proxy_request_sync") as proxy:
+        proxy.return_value = {"id": "page-1", "url": "https://notion.so/x"}
+        tools = _capture_tools(register_notion_custom_tools)
+        result = tools["MOVE_PAGE"](
+            MovePageInput(page_id="page-1", parent_id="parent-1", parent_type="page_id"),
+            execute_request,
+            AUTH_CREDS,
+        )
+
+    execute_request.assert_not_called()
+    proxy.assert_called_once()
     assert result["page_id"] == "page-1"
 
 
@@ -246,9 +259,9 @@ def test_notion_fetch_data_routes_through_proxy() -> None:
         )
 
     assert result == {"values": [], "count": 0, "has_more": False}
-    kwargs = proxy.call_args.kwargs
-    assert kwargs["toolkit"] == "NOTION"
-    assert kwargs["endpoint"].endswith("/search")
+    request = proxy.call_args.args[0]
+    assert request.toolkit == "NOTION"
+    assert request.endpoint.endswith("/search")
 
 
 def _register_notion_with_blocks(markdown_blocks: list[Any], title_response: dict[str, Any]) -> Any:
@@ -317,20 +330,6 @@ def test_notion_markdown_survives_a_missing_results_key() -> None:
     assert result["title"] == ""
 
 
-def test_notion_markdown_survives_non_dict_title_data() -> None:
-    """Real Notion payloads are not guaranteed to be dicts — the defensive
-    isinstance branch must fall back to no title."""
-    captured = _register_notion_with_blocks([], {"successful": True, "data": ["unexpected"]})
-
-    result = captured["FETCH_PAGE_AS_MARKDOWN"](
-        FetchPageAsMarkdownInput(page_id="page-1"),
-        EXECUTE_REQUEST,
-        AUTH_CREDS,
-    )
-
-    assert result["markdown"] == ""
-
-
 def test_notion_markdown_first_title_block_wins() -> None:
     """Scanning stops at the first title block — later titles must not win."""
     captured = _register_notion_with_blocks(
@@ -356,72 +355,19 @@ def test_notion_markdown_first_title_block_wins() -> None:
     assert "Second Title" not in result["markdown"]
 
 
-def test_notion_markdown_title_block_without_plain_text_stops_scan() -> None:
-    """A title-shaped block without plain_text yields an empty title and ends
-    the scan (break fires on the shape match, not on extracting text)."""
-    captured = _register_notion_with_blocks(
-        [],
-        {
-            "successful": True,
-            "data": {
-                "results": [
-                    {"type": "title", "title": {"id": 1}},
-                    {"type": "title", "title": {"plain_text": "Never Reached"}},
-                ]
-            },
-        },
-    )
-
-    result = captured["FETCH_PAGE_AS_MARKDOWN"](
-        FetchPageAsMarkdownInput(page_id="page-1"),
-        EXECUTE_REQUEST,
-        AUTH_CREDS,
-    )
-
-    assert result["title"] == ""
-    assert "Never Reached" not in result["markdown"]
-
-
-def test_notion_markdown_skips_items_without_type_key() -> None:
-    """Items lacking a type key are skipped; the scan continues to the real title."""
-    captured = _register_notion_with_blocks(
-        [],
-        {
-            "successful": True,
-            "data": {
-                "results": [
-                    {"title": {"plain_text": "No Type"}},
-                    {"type": "title", "title": {"plain_text": "Real Title"}},
-                ]
-            },
-        },
-    )
-
-    result = captured["FETCH_PAGE_AS_MARKDOWN"](
-        FetchPageAsMarkdownInput(page_id="page-1"),
-        EXECUTE_REQUEST,
-        AUTH_CREDS,
-    )
-
-    assert "# Real Title" in result["markdown"]
-    assert "No Type" not in result["markdown"]
-
-
-def test_notion_markdown_survives_non_list_results_value() -> None:
-    """A dict payload whose results value is not a list yields no title, not a crash."""
+def test_notion_markdown_non_list_results_fails_loudly() -> None:
+    """A property response whose results is not a list is a provider fault, not an empty title."""
     captured = _register_notion_with_blocks(
         [],
         {"successful": True, "data": {"results": "unexpected-string"}},
     )
 
-    result = captured["FETCH_PAGE_AS_MARKDOWN"](
-        FetchPageAsMarkdownInput(page_id="page-1"),
-        EXECUTE_REQUEST,
-        AUTH_CREDS,
-    )
-
-    assert result["markdown"] == ""
-    assert result["title"] == ""
+    with pytest.raises(ValidationError):
+        captured["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            AUTH_CREDS,
+        )
 
 
 def test_twitter_batch_follow_uses_proxy_via_utils() -> None:
@@ -430,16 +376,12 @@ def test_twitter_batch_follow_uses_proxy_via_utils() -> None:
     )
 
     with (
-        patch(
-            "app.agents.tools.integrations.twitter_tool.get_stream_writer",
-            return_value=None,
-        ),
         patch("app.utils.twitter_utils.proxy_request_sync") as proxy,
     ):
         # First call: get_my_user_id; second: lookup_user_by_username; third: follow
         proxy.side_effect = [
-            {"data": {"id": "me"}},
-            {"data": {"id": "u1", "username": "elon"}},
+            {"data": {"id": "me", "name": "Me", "username": "me"}},
+            {"data": {"id": "u1", "username": "elon", "name": "Elon"}},
             {"data": {"following": True}},
         ]
         tools = _capture_tools(register_twitter_custom_tools)
@@ -458,18 +400,14 @@ def test_twitter_create_thread_uses_proxy() -> None:
     )
 
     with (
-        patch(
-            "app.agents.tools.integrations.twitter_tool.get_stream_writer",
-            return_value=None,
-        ),
         patch("app.utils.twitter_utils.proxy_request_sync") as utils_proxy,
         patch("app.agents.tools.integrations.twitter_tool.proxy_request_sync") as tool_proxy,
     ):
         utils_proxy.side_effect = [
-            {"data": {"id": "tw1"}},
-            {"data": {"id": "tw2"}},
+            {"data": {"id": "tw1", "text": "a"}},
+            {"data": {"id": "tw2", "text": "b"}},
         ]
-        tool_proxy.return_value = {"data": {"username": "me"}}
+        tool_proxy.return_value = {"data": {"id": "me", "name": "Me", "username": "me"}}
         tools = _capture_tools(register_twitter_custom_tools)
         result = tools["CUSTOM_CREATE_THREAD"](
             CreateThreadInput(tweets=["a", "b"]),
@@ -506,9 +444,9 @@ def test_linkedin_react_to_post_uses_proxy() -> None:
         )
 
     assert result["post_urn"] == "urn:li:share:1"
-    kwargs = proxy.call_args.kwargs
-    assert kwargs["toolkit"] == "LINKEDIN"
-    assert kwargs["method"] == "POST"
+    request = proxy.call_args.args[0]
+    assert request.toolkit == "LINKEDIN"
+    assert request.method == "POST"
 
 
 def test_linkedin_add_comment_uses_proxy_full() -> None:
@@ -524,6 +462,7 @@ def test_linkedin_add_comment_uses_proxy_full() -> None:
         ),
     ):
         proxy_full.return_value = {
+            "status": 201,
             "data": {"id": "comment-1"},
             "headers": {},
         }

@@ -1,4 +1,4 @@
-"""``DistributedLock`` against real Redis.
+"""DistributedLock against real Redis.
 
 Only real Redis proves this: the lock is a SET NX lease with a token-checked Lua
 release, and the properties under test are what happens to that lease *over
@@ -6,7 +6,7 @@ time* — two processes must never hold it at once, a holder still working withi
 its budget must keep it via the watchdog, and a holder wedged past the max-hold
 cap must be forcibly evicted so it can't freeze the system forever.
 
-These are the guarantees ``run_idempotent`` leans on to stop a cold-start replica
+These are the guarantees run_idempotent leans on to stop a cold-start replica
 herd from each re-embedding the whole tool catalog: the herd serializes on the
 lease, and a follower that acquires after the leader finishes re-runs the
 now-empty diff instead of racing it.
@@ -55,11 +55,7 @@ class TestDistributedLock:
         assert order == ["A:enter", "A:exit", "B:enter", "B:exit"]
 
     async def test_holder_keeps_lease_past_ttl(self, real_redis) -> None:
-        """A holder still working within its budget keeps the lease via renewal.
-
-        Lease is 1s but max-hold is generous, so the watchdog renews and the
-        waiter must not enter while the holder is still inside.
-        """
+        """Lease is 1s but max-hold is generous, so the watchdog renews and the waiter must not enter while the holder is still inside."""
         overlap = False
         holder_inside = False
 
@@ -87,13 +83,7 @@ class TestDistributedLock:
         assert overlap is False
 
     async def test_wedged_holder_is_evicted_after_max_hold(self, real_redis) -> None:
-        """A holder that runs past max-hold loses the lease so it can't block forever.
-
-        The watchdog stops renewing at the cap and the lease lapses within one
-        more lease window; a waiter then acquires WHILE the wedged holder is still
-        inside its critical section — the forced eviction that keeps a corrupted
-        run from freezing the system.
-        """
+        """The watchdog stops renewing at the max-hold cap, so a waiter acquires while the wedged holder is still inside its critical section."""
         evicted_while_holder_inside = False
         holder_inside = False
 

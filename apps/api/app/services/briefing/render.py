@@ -1,13 +1,7 @@
 """Rasterize briefing HTML into PNG bytes with headless Chromium.
 
-The briefing engine composes each summary as an HTML document; delivery
-channels (notifications, image attachments) need a pixel-perfect PNG. Playwright
-+ Chromium are already vendored via crawl4ai, so we drive a throwaway headless
-browser here rather than pulling in a separate rasterizer.
-
-Each call owns a fresh browser that is always torn down in a ``finally`` block —
-``app.utils.browser_reaper`` is the process-level backstop for anything this
-path still manages to orphan, but the happy path must never leak.
+Each call owns a fresh browser that is always torn down in a finally block;
+app.utils.browser_reaper is only the process-level backstop.
 """
 
 from dataclasses import dataclass
@@ -36,13 +30,10 @@ class ImageRenderOptions:
         width: Viewport width in CSS pixels.
         device_scale_factor: Pixel density multiplier (2 = retina-sharp output).
         full_page: Capture the entire scrollable page, not just the viewport.
-        image_format: ``"png"`` (lossless) or ``"jpeg"`` (smaller — used when the
-            output is inlined into an email that must dodge Gmail's ~102KB clip).
+        image_format: "png" or "jpeg" (smaller, to dodge Gmail's ~102KB clip).
         quality: JPEG quality 0-100 (ignored for PNG).
-        timeout_ms: Per-navigation timeout for ``set_content``.
-        clip_selector: Crop the capture to this element's bounding box (plus
-            ``CLIP_PADDING_PX``) instead of the whole page — measured in the
-            rendered page, so it follows the content, never a fixed crop.
+        timeout_ms: Per-navigation timeout for set_content.
+        clip_selector: Crop to this element's box plus CLIP_PADDING_PX.
     """
 
     width: int = 1180
@@ -59,17 +50,8 @@ async def render_html_to_image(
 ) -> bytes:
     """Render an HTML string to image bytes via headless Chromium.
 
-    Args:
-        html: Full HTML document to rasterize.
-        options: Viewport, output format and timeout settings.
-
-    Returns:
-        Encoded image bytes in the requested format.
-
     Raises:
-        RuntimeError: A script on the page threw. The document is then partly
-            or wholly unrendered (an empty root screenshots as a blank strip),
-            so it must never reach a reader as if it were the brief.
+        RuntimeError: A script on the page threw, leaving the document unrendered.
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=_CHROMIUM_LAUNCH_ARGS)
@@ -104,9 +86,10 @@ async def render_html_to_image(
 
 
 async def _clip_for(page: Page, selector: str) -> FloatRect:
-    """The page-coordinate box of ``selector``'s element, padded and kept on the
-    page. A selector that matches nothing raises: an uncropped image would ship
-    the background margins the caller asked to remove."""
+    """Return the padded page-coordinate box of the selector's element.
+
+    A selector that matches nothing raises rather than ship uncropped margins.
+    """
     box = await page.locator(selector).first.bounding_box()
     if box is None:
         raise RuntimeError(f"Clip element not rendered: {selector!r}")

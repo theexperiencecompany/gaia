@@ -1,9 +1,4 @@
-export interface PinCardProps {
-  message: {
-    message_id: string;
-    response: string;
-    date: string | Date;
-    type: string;
-  };
-  conversation_id: string;
-}
+import type { ConversationMessageHit } from "@shared/api/generated";
+
+/** One pinned message with the conversation it lives in. */
+export type PinCardProps = ConversationMessageHit;

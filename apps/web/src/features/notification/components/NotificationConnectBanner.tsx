@@ -1,11 +1,13 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { apiService } from "@/lib/api/service";
-import type { PlatformLink } from "@/types/platform";
+import { api } from "@/lib/api/typed";
+import { useNotificationBannerStore } from "@/stores/notificationBannerStore";
+import type { PlatformLinks } from "@/types/platform";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
@@ -37,17 +39,14 @@ export function NotificationConnectBanner({
   variant = "compact",
 }: NotificationConnectBannerProps) {
   const router = useRouter();
-  const [platformLinks, setPlatformLinks] = useState<
-    Record<string, PlatformLink | null>
-  >({});
+  const isDismissed = useNotificationBannerStore((s) => s.isDismissed);
+  const dismiss = useNotificationBannerStore((s) => s.dismiss);
+  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    apiService
-      .get<{ platform_links: Record<string, PlatformLink | null> }>(
-        "/platform-links",
-        { silent: true },
-      )
+    api
+      .get("/api/v1/platform-links", { silent: true })
       .then((data) => {
         setPlatformLinks(data.platform_links || {});
       })
@@ -59,7 +58,7 @@ export function NotificationConnectBanner({
       });
   }, []);
 
-  if (isLoading) return null;
+  if (isLoading || isDismissed) return null;
 
   const unconnectedPlatforms = NOTIFICATION_PLATFORMS.filter(
     (p) => !platformLinks[p]?.platformUserId,
@@ -77,15 +76,28 @@ export function NotificationConnectBanner({
               Get notified in the apps you already use
             </span>
           </div>
-          <Button
-            size="sm"
-            variant="flat"
-            color="primary"
-            className="shrink-0 rounded-xl text-xs"
-            onPress={() => router.push("/settings/linked-accounts")}
-          >
-            Connect
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              size="sm"
+              variant="flat"
+              color="primary"
+              className="rounded-xl text-xs"
+              onPress={() => router.push("/settings/linked-accounts")}
+            >
+              Connect
+            </Button>
+            <Button
+              isIconOnly
+              variant="light"
+              radius="full"
+              size="sm"
+              onPress={dismiss}
+              aria-label="Dismiss"
+              className="h-6 w-6 min-w-6 text-zinc-500 hover:text-white"
+            >
+              <Cancel01Icon className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -105,15 +117,28 @@ export function NotificationConnectBanner({
           </p>
         </div>
       </div>
-      <Button
-        size="sm"
-        variant="flat"
-        color="primary"
-        className="shrink-0 rounded-xl text-xs"
-        onPress={() => router.push("/settings/linked-accounts")}
-      >
-        Connect
-      </Button>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button
+          size="sm"
+          variant="flat"
+          color="primary"
+          className="rounded-xl text-xs"
+          onPress={() => router.push("/settings/linked-accounts")}
+        >
+          Connect
+        </Button>
+        <Button
+          isIconOnly
+          variant="light"
+          radius="full"
+          size="sm"
+          onPress={dismiss}
+          aria-label="Dismiss"
+          className="h-6 w-6 min-w-6 text-zinc-500 hover:text-white"
+        >
+          <Cancel01Icon className="h-3 w-3" />
+        </Button>
+      </div>
     </div>
   );
 }

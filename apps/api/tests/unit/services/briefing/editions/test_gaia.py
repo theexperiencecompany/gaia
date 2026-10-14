@@ -1,9 +1,7 @@
 """Unit tests for the GAIA-design-language edition renderer.
 
-``render_edition`` is pure and returns a self-contained HTML document, so
-every test asserts on the exact markup fragment the renderer emits — the
-dateline, the stat strip, section numerals, item markers, and the branches
-that omit a block entirely.
+render_edition is pure, so every test asserts on the exact markup fragment it emits,
+including the branches that omit a block entirely.
 """
 
 from typing import Any
@@ -449,7 +447,7 @@ class TestItemMarkers:
 
 @pytest.mark.unit
 class TestMissingPayloadKeys:
-    """A payload with a key absent renders the slot empty — never ``"None"``."""
+    """A payload with a key absent renders the slot empty, never "None"."""
 
     def test_missing_headline_renders_an_empty_headline(self) -> None:
         assert '<h1 class="headline"></h1>' in _render({})

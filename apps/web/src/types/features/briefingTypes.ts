@@ -5,7 +5,7 @@
 export interface BriefingStat {
   value: string;
   label: string;
-  delta?: string;
+  delta?: string | null;
 }
 
 /** The item's state; `text` is only its title. Mirrors `BriefingItemKind`. */
@@ -13,7 +13,7 @@ export type BriefingItemKind = "gaia" | "you" | "lookback" | "failed" | "note";
 
 export interface BriefingSectionItem {
   text: string;
-  todo_id?: string;
+  todo_id?: string | null;
   kind: BriefingItemKind;
 }
 
@@ -33,14 +33,4 @@ export interface BriefingPayload {
   mood: string;
   caption: string;
   hue: number;
-}
-
-/** The stored envelope returned by `GET /briefings/latest` and `GET /briefings`. */
-export interface Briefing {
-  id: string;
-  user_id: string;
-  date: string;
-  kind: "daily" | "weekly";
-  payload: BriefingPayload;
-  created_at: string;
 }

@@ -107,7 +107,7 @@
       tool_calls:
         - {name: create_tracked_todo, args: {title: "sell the campervan"}}
         - {name: create_tracked_todo, args: {title: "rebuild the garden fence"}}
-        - {name: update_tracked_todo_canvas, args: {content: "MOT runs out in November"}}
+        - {name: edit, args: {new_string: "MOT runs out in November"}}
       end_state:
         tracked_todos:
           - {count: 2}
@@ -120,7 +120,7 @@
     communicate: ["november"]
     tool_calls:
       - {tool: create_tracked_todo, min_calls: 2}
-      - {tool: update_tracked_todo_canvas, min_calls: 1}
+      - {tool: [edit, write], min_calls: 1}
     end_state:
       tracked_todos:
         - {count: 2}

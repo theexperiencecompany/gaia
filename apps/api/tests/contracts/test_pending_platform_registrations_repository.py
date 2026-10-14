@@ -1,7 +1,7 @@
 """Contract tests for PendingPlatformRegistrationsRepository.
 
 The registry of Photon numbers registered but not yet linked. The unique index
-on ``(platform, platform_user_id)`` is what stops two accounts from claiming the
+on (platform, platform_user_id) is what stops two accounts from claiming the
 same number, so the fixture creates it to mirror production.
 """
 

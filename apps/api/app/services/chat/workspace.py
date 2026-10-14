@@ -1,14 +1,14 @@
 """Per-turn workspace upkeep.
 
-:func:`schedule_last_active_touch` is the only workspace work a chat turn does —
-a fire-and-forget bump of the session's ``last_active`` so the daily idle-prune
+:func:schedule_last_active_touch is the only workspace work a chat turn does —
+a fire-and-forget bump of the session's last_active so the daily idle-prune
 doesn't reap an actively-used conversation. The heavy per-user materialization
 (system files, skill/instruction catalog, integration tree) is event-driven
 elsewhere: registration, integration connect/disconnect, and startup. Session
 dirs are created on demand by the write/bash tool paths, not at conversation
 creation — keeping JuiceFS off the first-message critical path.
 
-Artifact-event forwarding lives in :mod:`app.services.chat.artifact_forwarder`.
+Artifact-event forwarding lives in :mod:app.services.chat.artifact_forwarder.
 """
 
 import asyncio
@@ -20,7 +20,7 @@ from shared.py.wide_events import log
 
 
 def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
-    """Fire-and-forget bump of the session's ``last_active`` for idle-prune.
+    """Fire-and-forget bump of the session's last_active for idle-prune.
 
     Non-blocking; soft-fails when JuiceFS is unmounted (dev).
     """

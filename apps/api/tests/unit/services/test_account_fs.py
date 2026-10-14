@@ -12,6 +12,7 @@ the test stays green — which is exactly what the mutation lane caught here. Th
 body IS the contract: the agent reads these files.
 """
 
+from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -19,7 +20,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_LINKED_ACCOUNTS_DIRNAME
-from app.models.payment_models import PlanType
+from app.models.payment_models import PlanDuration, PlanResponse, PlanType, SubscriptionDocument
+from app.models.user_models import UserDocument
 from app.schemas.usage import FeatureUsageSummary, UsageBudget
 from app.services import account_fs
 from app.services.platform_link_service import Platform
@@ -58,23 +60,72 @@ _FEATURES = {
 }
 
 
+def _user(timezone: str | None = "UTC", **onboarding: object) -> UserDocument:
+    """Build a user exactly as user_repository.get yields one.
+
+    Built through UserDocument rather than a namespace so the typed
+    onboarding subdocument (and its lenient blob handling) is the same thing
+    the projection reads in production — a hand-rolled stand-in would let the
+    validation the real read performs go untested.
+    """
+    return UserDocument.model_validate(
+        {
+            "email": "a@b.com",
+            "name": "A",
+            "timezone": timezone,
+            "onboarding": onboarding or None,
+        }
+    )
+
+
 def _voice(voice_id: str = "v-1", name: str = "Rachel", starred: bool = False):
     return SimpleNamespace(voice_id=voice_id, name=name, starred=starred)
 
 
+_NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _plan(overrides: dict[str, object] | None) -> PlanResponse | None:
+    """Build a Pro plan with the given fields overridden; {} means no plan at all."""
+    if overrides == {}:
+        return None
+    fields: dict[str, object] = {
+        "id": "plan_pro",
+        "dodo_product_id": "pdt_pro",
+        "name": "Pro",
+        "plan_type": "pro",
+        "amount": 15,
+        "currency": "$",
+        "duration": PlanDuration.MONTHLY,
+        "is_active": True,
+        "created_at": _NOW,
+        "updated_at": _NOW,
+    }
+    fields.update(overrides or {})
+    return PlanResponse(**fields)
+
+
+def _subscription(overrides: dict[str, object] | None) -> SubscriptionDocument | None:
+    if overrides == {}:
+        return None
+    fields: dict[str, object] = {
+        "dodo_subscription_id": "sub_1",
+        "user_id": "user-42",
+        "status": "active",
+    }
+    fields.update(overrides or {})
+    return SubscriptionDocument(**fields)
+
+
 def _subscription_status(
     plan_type: PlanType | None = PlanType.PRO,
-    current_plan: dict | None = None,
-    subscription: dict | None = None,
+    current_plan: dict[str, object] | None = None,
+    subscription: dict[str, object] | None = None,
 ):
     return SimpleNamespace(
         plan_type=plan_type,
-        current_plan=(
-            {"name": "Pro", "amount": 15, "currency": "$", "duration": "month"}
-            if current_plan is None
-            else current_plan
-        ),
-        subscription={"status": "active"} if subscription is None else subscription,
+        current_plan=_plan(current_plan),
+        subscription=_subscription(subscription),
     )
 
 
@@ -95,14 +146,8 @@ def sources():
     channel_preferences = AsyncMock(return_value={"email": True})
     users = SimpleNamespace(
         get=AsyncMock(
-            return_value=SimpleNamespace(
-                timezone="UTC",
-                onboarding={
-                    "preferences": {
-                        "response_style": "brief",
-                        "custom_instructions": "Be terse.",
-                    }
-                },
+            return_value=_user(
+                preferences={"response_style": "brief", "custom_instructions": "Be terse."}
             )
         )
     )
@@ -135,18 +180,18 @@ def _ids(files: list[dict]) -> set[str]:
 
 
 async def _raw(group: str, user_id: str = USER_ID) -> str:
-    """The serialized body of one projected group, exactly as it hits disk."""
+    """Return the serialized body of one projected group, exactly as it hits disk."""
     files, _ = await _build(user_id)
     return next(f for f in files if f["id"] == group)["body"]
 
 
 async def _body(group: str, user_id: str = USER_ID) -> dict:
-    """The parsed JSON body of one projected group."""
+    """Return the parsed JSON body of one projected group."""
     return json.loads(await _raw(group, user_id))
 
 
 def _serialized(payload: dict) -> str:
-    """The exact on-disk form: 2-space indent, one trailing newline.
+    """Build the exact on-disk form: 2-space indent, one trailing newline.
 
     Built with stdlib json rather than the projection model, so this asserts the
     format independently instead of re-running the code under test.
@@ -179,11 +224,7 @@ class TestBuildAccountProjections:
             assert file["body"].endswith("\n")
 
     async def test_each_group_lands_at_its_own_path_under_account(self, sources) -> None:
-        """The id -> path mapping, pinned per group.
-
-        Asserting only the shared ``account/`` prefix lets any two groups swap
-        paths, or every group collapse onto one file, without a test noticing.
-        """
+        """Asserting only the shared account/ prefix would let any two groups swap paths."""
         files, _ = await _build()
         paths = {f["id"]: f["path"] for f in files}
 
@@ -203,11 +244,7 @@ class TestBuildAccountProjections:
             )
 
     async def test_bodies_are_indented_json_with_a_trailing_newline(self, sources) -> None:
-        """The on-disk format itself: 2-space indent, one trailing newline.
-
-        These files are read by a human and diffed by the materializer's
-        content check, so the serialization is part of the contract.
-        """
+        """These files are read by a human and diffed by the materializer, so the format is contract."""
         files, _ = await _build()
         subscription = next(f for f in files if f["id"] == "subscription")
 
@@ -218,14 +255,7 @@ class TestBuildAccountProjections:
 @pytest.mark.unit
 class TestSourceIdentity:
     async def test_every_source_is_queried_for_the_requested_user(self, sources) -> None:
-        """Each builder must pass the user id through to its source.
-
-        Nothing else in this file can catch a builder that queries the wrong
-        user (or None): the mocked sources answer identically whatever they are
-        asked, so the body comes out right while the data belongs to someone
-        else. In production that is one user's plan, usage and linked accounts
-        projected into another user's workspace.
-        """
+        """Mocked sources answer identically for any user, so only this test catches a cross-user query."""
         await _build("user-42")
 
         sources.subscription_status.assert_awaited_once_with("user-42")
@@ -267,22 +297,14 @@ class TestProjectionBodies:
     async def test_subscription_without_an_amount_has_no_price(self, sources) -> None:
         with patch(
             f"{MODULE}.payment_service.get_user_subscription_status",
-            new=AsyncMock(return_value=_subscription_status(current_plan={"name": "Trial"})),
+            new=AsyncMock(
+                return_value=_subscription_status(current_plan={"name": "Trial", "amount": 0})
+            ),
         ):
             body = await _body("subscription")
 
         assert body["price"] is None
         assert body["plan_name"] == "Trial"
-
-    async def test_subscription_price_omits_a_missing_currency_and_duration(self, sources) -> None:
-        """The price string is assembled from three optional plan fields."""
-        with patch(
-            f"{MODULE}.payment_service.get_user_subscription_status",
-            new=AsyncMock(return_value=_subscription_status(current_plan={"amount": 9})),
-        ):
-            body = await _body("subscription")
-
-        assert body["price"] == "9 / period"
 
     async def test_subscription_falls_back_to_free_when_the_provider_has_no_plan(
         self, sources
@@ -354,33 +376,82 @@ class TestProjectionBodies:
 
     async def test_preferences_body(self, sources) -> None:
         assert await _raw("preferences") == _serialized(
-            {"response_style": "brief", "timezone": "UTC"}
+            {
+                "response_style": "brief",
+                "timezone": "UTC",
+                "profession": None,
+                "needs": None,
+            }
         )
 
-    async def test_preferences_without_a_user_has_no_timezone(self, sources) -> None:
-        with patch(f"{MODULE}.user_repository", get=AsyncMock(return_value=None)):
-            assert await _body("preferences") == {"response_style": None, "timezone": None}
-
-    async def test_preferences_ignore_a_non_dict_preferences_blob(self, sources) -> None:
-        """Mongo's ``onboarding.preferences`` is an untyped blob.
-
-        A string or a list there must read as "no preferences", not blow up the
-        whole projection pass.
-        """
+    async def test_preferences_carry_the_onboarding_persona(self, sources) -> None:
+        """Profession and needs are what the agent reads; onboarding answers used to stop at Mongo."""
         with patch(
             f"{MODULE}.user_repository",
             get=AsyncMock(
-                return_value=SimpleNamespace(timezone="UTC", onboarding={"preferences": "brief"})
+                return_value=_user(
+                    timezone="Asia/Kolkata",
+                    preferences={
+                        "response_style": "brief",
+                        "profession": "Founder",
+                        "needs": ["inbox", "calendar"],
+                    },
+                )
             ),
         ):
-            assert await _body("preferences") == {"response_style": None, "timezone": "UTC"}
+            assert await _body("preferences") == {
+                "response_style": "brief",
+                "timezone": "Asia/Kolkata",
+                "profession": "Founder",
+                "needs": ["inbox", "calendar"],
+            }
+
+    async def test_preferences_drop_a_need_outside_the_allowed_keys(self, sources) -> None:
+        """The typed onboarding subdocument drops an unknown need at the user read, not at the group."""
+        with patch(
+            f"{MODULE}.user_repository",
+            get=AsyncMock(return_value=_user(preferences={"needs": ["telepathy"]})),
+        ):
+            files, failed = await _build()
+            body = await _body("preferences")
+
+        assert f"{ACCOUNT_DIR}/preferences.json" not in failed
+        assert "preferences" in _ids(files)
+        assert body["needs"] == []
+
+    async def test_preferences_without_a_user_has_no_timezone(self, sources) -> None:
+        with patch(f"{MODULE}.user_repository", get=AsyncMock(return_value=None)):
+            assert await _body("preferences") == {
+                "response_style": None,
+                "timezone": None,
+                "profession": None,
+                "needs": None,
+            }
+
+    async def test_preferences_ignore_a_non_dict_preferences_blob(self, sources) -> None:
+        """Mongo's onboarding.preferences is an untyped blob; a string or list must read as "no preferences"."""
+        with patch(
+            f"{MODULE}.user_repository",
+            get=AsyncMock(return_value=_user(preferences="brief")),
+        ):
+            assert await _body("preferences") == {
+                "response_style": None,
+                "timezone": "UTC",
+                "profession": None,
+                "needs": None,
+            }
 
     async def test_preferences_survive_a_missing_onboarding_document(self, sources) -> None:
         with patch(
             f"{MODULE}.user_repository",
-            get=AsyncMock(return_value=SimpleNamespace(timezone="UTC", onboarding=None)),
+            get=AsyncMock(return_value=_user()),
         ):
-            assert await _body("preferences") == {"response_style": None, "timezone": "UTC"}
+            assert await _body("preferences") == {
+                "response_style": None,
+                "timezone": "UTC",
+                "profession": None,
+                "needs": None,
+            }
 
     async def test_custom_instructions_body(self, sources) -> None:
         assert await _raw("custom-instructions") == _serialized({"instructions": "Be terse."})
@@ -388,11 +459,7 @@ class TestProjectionBodies:
     async def test_custom_instructions_are_null_when_unset(self, sources) -> None:
         with patch(
             f"{MODULE}.user_repository",
-            get=AsyncMock(
-                return_value=SimpleNamespace(
-                    timezone="UTC", onboarding={"preferences": {"response_style": "brief"}}
-                )
-            ),
+            get=AsyncMock(return_value=_user(preferences={"response_style": "brief"})),
         ):
             assert await _body("custom-instructions") == {"instructions": None}
 
@@ -509,11 +576,7 @@ class TestSourceFailureIsolation:
         }
 
     async def test_a_failing_source_logs_the_group_and_the_error_type(self, sources) -> None:
-        """The swallow is only defensible if the failure is observable.
-
-        ``_safe_body`` returns None so the pass continues; the error event is
-        the ONLY record that a provider broke, so its fields are the contract.
-        """
+        """The error event is the ONLY record a provider broke, since _safe_body swallows and continues."""
         async with captured_wide_event() as event:
             with patch(
                 f"{MODULE}.build_usage_summary",
@@ -605,12 +668,7 @@ class TestSyncAccountFiles:
         assert all(f["path"].startswith(f"{ACCOUNT_DIR}/") for f in args[1])
 
     async def test_sync_forwards_the_failed_paths_so_they_are_not_pruned(self, sources) -> None:
-        """The preserve set has to reach the materializer to do anything.
-
-        Dropping it here is invisible from the projection tests — they assert
-        ``build_account_projections`` returns it — and would silently restore
-        the bug where a provider outage deletes a valid account view.
-        """
+        """Dropping the preserve set here is invisible to the projection tests and would delete a valid view."""
         with (
             patch(f"{MODULE}._is_mounted", return_value=True),
             patch(f"{MODULE}.user_workspace_path", return_value="/mnt/jfs/users/user-1"),

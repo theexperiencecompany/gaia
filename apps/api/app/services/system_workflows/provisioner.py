@@ -1,5 +1,5 @@
 """
-SystemWorkflowProvisioner
+SystemWorkflowProvisioner.
 
 Auto-creates GAIA-managed workflows when users connect integrations.
 Called from handle_oauth_connection() as a background task.
@@ -13,8 +13,11 @@ from collections.abc import Callable
 
 from pymongo.errors import DuplicateKeyError
 
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY
 from app.constants.log_tags import LogTag
-from app.db.repositories.workflows import SystemWorkflowDefinition, workflow_repository
+from app.db.repositories.users import user_repository
+from app.db.repositories.workflows import workflow_repository
+from app.decorators.entitlements import is_paid
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -26,12 +29,18 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
+from app.models.workflow_models import (
+    CreateWorkflowRequest,
+    SystemWorkflowDefinition,
+    TriggerConfig,
+    TriggerType,
+    WorkflowDocument,
+)
+from app.services.briefing.schedule import daily_briefing_cron
 from app.services.notification_service import NotificationService
+from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
 from app.services.system_workflows.definitions.briefing import BRIEFING_SYSTEM_WORKFLOWS
-from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
-from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
-from app.services.user_service import get_user_by_id
+from app.services.user_service import get_profile_timezone
 from app.services.workflow.scheduler import workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.trigger_service import TriggerService
@@ -40,12 +49,6 @@ from shared.py.wide_events import log
 
 WorkflowEntries = list[tuple[str, Callable[[], CreateWorkflowRequest]]]
 
-# Maps integration_id -> list of (system_workflow_key, factory)
-SYSTEM_WORKFLOWS_BY_INTEGRATION: dict[str, WorkflowEntries] = {
-    "gmail": GMAIL_SYSTEM_WORKFLOWS,
-    "googlecalendar": CALENDAR_SYSTEM_WORKFLOWS,
-}
-
 # Flat registry: system_workflow_key -> factory (for reset-to-default). Includes
 # the integration-triggered workflows plus the always-provisioned briefings.
 SYSTEM_WORKFLOW_REGISTRY: dict[str, Callable[[], CreateWorkflowRequest]] = {
@@ -53,66 +56,6 @@ SYSTEM_WORKFLOW_REGISTRY: dict[str, Callable[[], CreateWorkflowRequest]] = {
     for entries in (*SYSTEM_WORKFLOWS_BY_INTEGRATION.values(), BRIEFING_SYSTEM_WORKFLOWS)
     for key, factory in entries
 }
-
-
-async def _provision_entries(
-    user_id: str,
-    entries: WorkflowEntries,
-    integration_display_name: str | None = None,
-) -> list[CreateWorkflowRequest]:
-    """Create each (key, factory) workflow for the user, idempotent by key.
-
-    Stamps the user's timezone onto scheduled definitions (factories can't know
-    it) and skips keys that already exist. Returns the requests actually created.
-    """
-    created: list[CreateWorkflowRequest] = []
-    user_timezone: str | None = None
-
-    for key, factory in entries:
-        existing = await workflow_repository.find_system_workflow(user_id, key)
-        if existing:
-            log.info(
-                f"{LogTag.WORKFLOW} System workflow already exists, skipping",
-                system_workflow_key=key,
-                user_id=user_id,
-            )
-            continue
-
-        try:
-            request = factory()
-            trigger_config = ensure_trigger_config_object(request.trigger_config)
-            if trigger_config.type == TriggerType.SCHEDULE and not trigger_config.timezone:
-                if user_timezone is None:
-                    user = await get_user_by_id(user_id) or {}
-                    user_timezone = (user.get("timezone") or "").strip() or "UTC"
-                trigger_config.timezone = user_timezone
-                request.trigger_config = trigger_config
-            await WorkflowService.create_workflow(request, user_id)
-            created.append(request)
-            log.info(
-                f"{LogTag.WORKFLOW} Provisioned system workflow",
-                system_workflow_key=key,
-                user_id=user_id,
-            )
-        except DuplicateKeyError:
-            log.info(
-                f"{LogTag.WORKFLOW} System workflow already exists (concurrent creation), skipping",
-                system_workflow_key=key,
-                user_id=user_id,
-            )
-        except Exception as e:
-            log.error(
-                "system_workflow_provision_failed",
-                system_workflow_key=key,
-                user_id=user_id,
-                integration_display_name=integration_display_name,
-                error_type=type(e).__name__,
-                error=str(e)[:500],
-                outcome="failed",
-                exc_info=True,
-            )
-
-    return created
 
 
 async def provision_system_workflows(
@@ -125,7 +68,7 @@ async def provision_system_workflows(
 
     Called as a background task from handle_oauth_connection().
     Idempotent: checks system_workflow_key to avoid duplicates on reconnect.
-    ``notify`` is set False during onboarding so provisioning is silent (the
+    notify is set False during onboarding so provisioning is silent (the
     onboarding UI surfaces the workflows itself).
     """
     log.set(
@@ -156,14 +99,100 @@ async def provision_system_workflows(
         await _notify_workflows_provisioned(user_id, integration_display_name, created)
 
 
+async def _provision_entries(
+    user_id: str, entries: WorkflowEntries, integration_display_name: str | None = None
+) -> list[CreateWorkflowRequest]:
+    """Create each (key, factory) workflow for the user, idempotent by key.
+
+    Fits scheduled definitions to the user (factories can't know them), skips
+    keys that already exist, and switches each new one on for a paying user.
+    Returns the requests actually created.
+    """
+    created: list[CreateWorkflowRequest] = []
+
+    for key, factory in entries:
+        # Idempotency: skip if this key already exists for this user
+        existing = await workflow_repository.find_system_workflow(user_id, key)
+        if existing:
+            log.info(
+                f"{LogTag.WORKFLOW} System workflow already exists, skipping",
+                key=key,
+                user_id=user_id,
+            )
+            continue
+
+        try:
+            request = factory()
+            trigger_config = ensure_trigger_config_object(request.trigger_config)
+            await _stamp_user_schedule(key, trigger_config, user_id)
+            request.trigger_config = trigger_config
+            workflow = await WorkflowService.create_workflow(request, user_id)
+            created.append(request)
+            log.info(
+                f"{LogTag.WORKFLOW} Provisioned system workflow for user", key=key, user_id=user_id
+            )
+            await _activate_for_paying_user(workflow.id, user_id, key)
+        except DuplicateKeyError:
+            log.info(
+                f"{LogTag.WORKFLOW} System workflow already exists for user (concurrent creation), skipping",
+                key=key,
+                user_id=user_id,
+            )
+        except Exception as e:
+            log.error(
+                "system_workflow_provision_failed",
+                system_workflow_key=key,
+                user_id=user_id,
+                integration_display_name=integration_display_name,
+                error_type=type(e).__name__,
+                error=str(e)[:500],
+                outcome="failed",
+                exc_info=True,
+            )
+
+    return created
+
+
+async def _activate_for_paying_user(workflow_id: str, user_id: str, key: str) -> None:
+    """Switch a freshly provisioned system workflow on for a Pro user.
+
+    Free users keep it dormant instead (the paid-only gate would refuse to
+    run it anyway); an activation failure is logged but never blocks the
+    rest of provisioning.
+    """
+    if not await is_paid(user_id):
+        log.info(
+            f"{LogTag.WORKFLOW} System workflow left dormant for user without a plan",
+            key=key,
+            user_id=user_id,
+        )
+        return
+    try:
+        await WorkflowService.activate_workflow(workflow_id, user_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKFLOW} Could not activate provisioned system workflow",
+            key=key,
+            workflow_id=workflow_id,
+            user_id=user_id,
+            error=str(e)[:500],
+            error_type=type(e).__name__,
+        )
+        return
+    log.info(
+        f"{LogTag.WORKFLOW} Activated provisioned system workflow for paying user",
+        key=key,
+        workflow_id=workflow_id,
+        user_id=user_id,
+    )
+
+
 async def provision_briefing_workflows(user_id: str) -> list[CreateWorkflowRequest]:
-    """Provision the daily-briefing and weekly-digest system workflows for a user.
+    """Provision the daily-brief and weekly-recap system workflows for a user.
 
     Called at onboarding completion and by the existing-user backfill. Idempotent
-    by ``system_workflow_key`` — safe to re-run. Returns the requests created (empty
-    when both already exist). The announcement / bootstrap interview is the caller's
-    responsibility (see ``app/services/briefing/rollout.py``); this only wires the
-    schedules.
+    by system_workflow_key. The announcement is the caller's responsibility
+    (app/services/briefing/rollout.py); this only wires the schedules.
     """
     log.set(
         component="system_workflow_provisioner",
@@ -186,7 +215,7 @@ async def _notify_workflows_provisioned(
     else:
         title = f"I set up {len(created)} workflows for your {integration_name}"
 
-    workflow_lines = "\n".join(f"• {r.title} — {r.description}" for r in created)
+    workflow_lines = "\n".join(f"• {r.title}: {r.description}" for r in created)
     body = f"Here's what I've got running for you:\n\n{workflow_lines}\n\nYou can adjust or turn them off anytime."
 
     try:
@@ -233,16 +262,35 @@ async def _notify_workflows_provisioned(
         )
 
 
-async def _reregister_integration_triggers(
-    user_id: str, workflow_id: str, trigger_config: TriggerConfig
-) -> list[str] | None:
-    """Register a reset's fresh integration triggers, or None to abort the reset.
+async def _stamp_user_schedule(key: str, trigger_config: TriggerConfig, user_id: str) -> None:
+    """Fit a schedule definition to its user, then recompute next_run.
 
-    Non-integration definitions register nothing and return ``[]``. A failed or
-    empty registration returns ``None`` so the caller aborts rather than leaving
-    the workflow without triggers.
+    Factories can't know the user, so scheduled definitions carry no timezone:
+    the profile timezone is stamped so the cron fires on the user's clock. The
+    daily brief also takes the hour the user's quiet hours leave it.
     """
-    if not (trigger_config.type == TriggerType.INTEGRATION and trigger_config.trigger_name):
+    if trigger_config.type != TriggerType.SCHEDULE:
+        return
+    if not trigger_config.timezone:
+        trigger_config.timezone = (await get_profile_timezone(user_id)).value
+    if key == DAILY_BRIEFING_WORKFLOW_KEY:
+        user = await user_repository.get(user_id)
+        if user is None:
+            raise LookupError(f"Cannot schedule the daily brief for unknown user {user_id}")
+        trigger_config.cron_expression = daily_briefing_cron(user.quiet_hours)
+    if trigger_config.cron_expression:
+        trigger_config.update_next_run(user_timezone=trigger_config.timezone)
+
+
+async def _reregister_triggers_for_reset(
+    trigger_config: TriggerConfig, workflow_id: str, user_id: str
+) -> list[str] | None:
+    """Register fresh triggers for a reset. Registers old still active if this fails.
+
+    Returns the new trigger ids, [] when no re-registration is needed, or None
+    when registration failed and the caller must abort the reset.
+    """
+    if trigger_config.type != TriggerType.INTEGRATION or not trigger_config.trigger_name:
         return []
     try:
         new_trigger_ids = await TriggerService.register_triggers(
@@ -261,6 +309,7 @@ async def _reregister_integration_triggers(
             user_id=user_id,
         )
         return None
+
     if not new_trigger_ids:
         log.error(
             f"{LogTag.WORKFLOW} New trigger registration returned an empty result, aborting reset to avoid leaving the workflow without triggers",
@@ -271,10 +320,10 @@ async def _reregister_integration_triggers(
     return new_trigger_ids
 
 
-async def _unregister_old_triggers(
-    user_id: str, workflow_id: str, trigger_name: str | None, old_trigger_ids: list[str]
+async def _unregister_old_triggers_for_reset(
+    old_trigger_ids: list[str], trigger_name: str | None, workflow_id: str, user_id: str
 ) -> None:
-    """Best-effort teardown of the pre-reset triggers; a failure here is non-fatal."""
+    """Unregister the pre-reset triggers. Non-fatal: only called after new ones are confirmed."""
     if not (old_trigger_ids and trigger_name):
         return
     try:
@@ -294,14 +343,38 @@ async def _unregister_old_triggers(
         )
 
 
+async def _rearm_reset_schedule(
+    existing: WorkflowDocument, trigger_config: TriggerConfig, workflow_id: str, user_id: str
+) -> bool:
+    """Re-arm the schedule after a reset; return False only if arming was required and failed."""
+    if not (
+        existing.activated
+        and trigger_config.type == TriggerType.SCHEDULE
+        and trigger_config.next_run
+    ):
+        return True
+    armed = await workflow_scheduler.schedule_workflow_execution(
+        workflow_id,
+        trigger_config.next_run,
+        repeat=trigger_config.cron_expression,
+    )
+    if not armed:
+        log.error(
+            f"{LogTag.WORKFLOW} Reset applied but re-arming the schedule failed",
+            workflow_id=workflow_id,
+            user_id=user_id,
+        )
+        return False
+    return True
+
+
 async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bool:
     """Re-apply the original definition to a system workflow document.
 
-    Restores: title, description, prompt, steps, trigger_config. Schedule
-    triggers get the profile timezone stamped and next_run recomputed (same as
-    provisioning), and an activated workflow is re-armed with a queued fire.
-    Preserves: _id, user_id, activated state, execution stats, created_at.
-    Returns False if the workflow is not found or not resettable.
+    Restores title, description, prompt, steps, trigger_config; preserves
+    _id, user_id, activated state, execution stats, created_at. Schedule
+    triggers get the profile timezone stamped and next_run recomputed, and
+    an activated workflow is re-armed with a queued fire.
     """
     log.set(
         component="system_workflow_provisioner",
@@ -327,26 +400,18 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     request = factory()
     trigger_config = ensure_trigger_config_object(request.trigger_config)
 
-    # Factories can't know the user, so scheduled definitions carry no timezone —
-    # stamp the profile timezone and recompute next_run from the cron, exactly as
-    # the provisioning and activation paths do.
-    if trigger_config.type == TriggerType.SCHEDULE:
-        if not trigger_config.timezone:
-            user = await get_user_by_id(user_id) or {}
-            trigger_config.timezone = (user.get("timezone") or "").strip() or "UTC"
-        if trigger_config.cron_expression:
-            trigger_config.update_next_run(user_timezone=trigger_config.timezone)
+    await _stamp_user_schedule(key, trigger_config, user_id)
 
     old_trigger_ids: list[str] = existing.trigger_config.composio_trigger_ids or []
     trigger_name: str | None = existing.trigger_config.trigger_name
 
-    # Register fresh triggers FIRST (old still active if this fails); None aborts.
-    new_trigger_ids = await _reregister_integration_triggers(user_id, workflow_id, trigger_config)
+    # Register fresh triggers FIRST (old still active if this fails)
+    new_trigger_ids = await _reregister_triggers_for_reset(trigger_config, workflow_id, user_id)
     if new_trigger_ids is None:
         return False
 
-    # Only unregister old triggers AFTER new ones are confirmed registered.
-    await _unregister_old_triggers(user_id, workflow_id, trigger_name, old_trigger_ids)
+    # Only unregister old triggers AFTER new ones are confirmed registered
+    await _unregister_old_triggers_for_reset(old_trigger_ids, trigger_name, workflow_id, user_id)
 
     await workflow_repository.reset_system_workflow(
         workflow_id,
@@ -360,27 +425,10 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
         ),
     )
 
-    # Reset preserves liveness — an activated schedule workflow needs a queued
-    # fire for the recomputed next_run or it never runs again. A failed re-arm
-    # must fail the reset: reporting success here would leave a workflow that
-    # looks reset but never fires (retrying the reset re-arms it).
-    if (
-        existing.activated
-        and trigger_config.type == TriggerType.SCHEDULE
-        and trigger_config.next_run
-    ):
-        armed = await workflow_scheduler.schedule_workflow_execution(
-            workflow_id,
-            trigger_config.next_run,
-            repeat=trigger_config.cron_expression,
-        )
-        if not armed:
-            log.error(
-                f"{LogTag.WORKFLOW} Reset applied but re-arming the schedule failed",
-                workflow_id=workflow_id,
-                user_id=user_id,
-            )
-            return False
+    # A failed re-arm must fail the reset: reporting success would leave a
+    # workflow that looks reset but never fires (retrying re-arms it).
+    if not await _rearm_reset_schedule(existing, trigger_config, workflow_id, user_id):
+        return False
 
     log.info(
         f"{LogTag.WORKFLOW} Reset system workflow to default for user",

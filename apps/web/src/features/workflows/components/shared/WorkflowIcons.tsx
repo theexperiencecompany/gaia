@@ -39,11 +39,9 @@ export default function WorkflowIcons({
   const categories = [...new Set(steps.map((step) => step.category))];
   const displayIcons = categories.slice(0, maxIcons);
 
-  // An explicitly chosen icon always wins over step-category icons. Gating it
-  // on "no integrations" made rendering depend on the auth-gated integrations
-  // catalog: icons flipped to tool icons (or blank, for internal categories)
-  // the moment /integrations/me resolved, and public pages behaved differently
-  // from the slug page, which renders the icon unconditionally.
+  // An explicit icon always wins over step-category icons: gating it on "no
+  // integrations" made rendering depend on the auth-gated catalog, flipping icons
+  // the moment /integrations/me resolved and behaving differently from the slug page.
   const customIcon = icon ? WORKFLOW_ICON_MAP.get(icon) : undefined;
   if (customIcon) {
     const CustomIcon = customIcon.Icon;

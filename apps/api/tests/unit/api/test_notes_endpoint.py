@@ -4,7 +4,7 @@ Tests the notes CRUD endpoints with mocked service layer
 to verify routing, status codes, response bodies, and validation.
 
 Note: The notes endpoints do NOT have try/except blocks — exceptions
-propagate to the global handler. With ``ASGITransport(raise_app_exceptions=True)``
+propagate to the global handler. With ASGITransport(raise_app_exceptions=True)
 (the default), these surface as raised exceptions in the test client rather than
 500 responses. Tests for service errors therefore assert that the exception is raised.
 """
@@ -14,18 +14,21 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.services.analytics_service import AnalyticsEvents
+from app.models.notes_models import NoteModel
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.memory import NotesCreated, NotesDeleted, NotesUpdated
+from tests.conftest import FAKE_USER
 
 NOTES_BASE = "/api/v1/notes"
-ANALYTICS_PATCH = "app.api.v1.endpoints.notes.capture_context_event"
+ANALYTICS_PATCH = "app.api.v1.endpoints.notes.capture"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -45,7 +48,7 @@ FAKE_NOTE_RESPONSE = {
 
 
 class TestCreateNote:
-    """POST /api/v1/notes"""
+    """POST /api/v1/notes."""
 
     @patch(
         "app.api.v1.endpoints.notes.create_note_service",
@@ -75,6 +78,7 @@ class TestCreateNote:
             json={"content": "<p>Hello</p>", "plaintext": "Hello"},
         )
         args, _ = mock_create.call_args
+        assert args[0] == NoteModel(content="<p>Hello</p>", plaintext="Hello")
         assert args[1] == "507f1f77bcf86cd799439011"
 
     async def test_create_note_missing_content_returns_422(self, client: AsyncClient):
@@ -105,7 +109,7 @@ class TestCreateNote:
 
 
 class TestGetNote:
-    """GET /api/v1/notes/{note_id}"""
+    """GET /api/v1/notes/{note_id}."""
 
     @patch(
         "app.api.v1.endpoints.notes.get_note",
@@ -132,7 +136,7 @@ class TestGetNote:
 
 
 class TestGetAllNotes:
-    """GET /api/v1/notes"""
+    """GET /api/v1/notes."""
 
     @patch(
         "app.api.v1.endpoints.notes.get_all_notes",
@@ -146,6 +150,7 @@ class TestGetAllNotes:
         assert isinstance(data, list)
         assert len(data) == 1
         assert data[0]["id"] == "note-001"
+        mock_get_all.assert_awaited_once_with("507f1f77bcf86cd799439011")
 
     @patch(
         "app.api.v1.endpoints.notes.get_all_notes",
@@ -170,7 +175,7 @@ class TestGetAllNotes:
 
 
 class TestUpdateNote:
-    """PUT /api/v1/notes/{note_id}"""
+    """PUT /api/v1/notes/{note_id}."""
 
     @patch(
         "app.api.v1.endpoints.notes.update_note",
@@ -206,6 +211,7 @@ class TestUpdateNote:
         )
         args, _ = mock_update.call_args
         assert args[0] == "note-001"
+        assert args[1] == NoteModel(content="<p>Updated</p>", plaintext="Updated")
         assert args[2] == "507f1f77bcf86cd799439011"
 
     async def test_update_note_missing_fields_returns_422(self, client: AsyncClient):
@@ -228,7 +234,7 @@ class TestUpdateNote:
 
 
 class TestDeleteNote:
-    """DELETE /api/v1/notes/{note_id}"""
+    """DELETE /api/v1/notes/{note_id}."""
 
     @patch(
         "app.api.v1.endpoints.notes.delete_note",
@@ -267,7 +273,7 @@ class TestNoteAnalytics:
                 json={"content": "<p>Test note</p>", "plaintext": "Test note"},
             )
         assert response.status_code == 201
-        mock_capture.assert_called_once_with(AnalyticsEvents.NOTE_CREATED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), NotesCreated())
 
     @patch(
         "app.api.v1.endpoints.notes.update_note",
@@ -281,7 +287,7 @@ class TestNoteAnalytics:
                 json={"content": "<p>Updated</p>", "plaintext": "Updated"},
             )
         assert response.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.NOTE_UPDATED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), NotesUpdated())
 
     @patch(
         "app.api.v1.endpoints.notes.delete_note",
@@ -292,4 +298,4 @@ class TestNoteAnalytics:
         with patch(ANALYTICS_PATCH) as mock_capture:
             response = await client.delete(f"{NOTES_BASE}/note-001")
         assert response.status_code == 204
-        mock_capture.assert_called_once_with(AnalyticsEvents.NOTE_DELETED)
+        mock_capture.assert_called_once_with(UserId(FAKE_USER.user_id), NotesDeleted())

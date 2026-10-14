@@ -22,11 +22,9 @@ export type {
 const GITHUB_RELEASES_BASE =
   "https://github.com/theexperiencecompany/gaia/releases";
 
-// Expected asset filename per (OS, arch). Mirrors apps/desktop/electron-builder.yml
-// `artifactName: "${productName}-${arch}.${ext}"`. Linux x64 ships as the x86_64
-// AppImage. Download URLs are resolved by matching these names against the real
-// published assets, so a missing binary (e.g. Windows arm64, not yet built)
-// resolves to null and is simply not offered — never a 404.
+// Expected asset filename per (OS, arch), mirroring apps/desktop/electron-builder.yml's
+// `artifactName`. Download URLs match these against real published assets, so
+// a missing binary (e.g. Windows arm64, not yet built) resolves to null, never a 404.
 const DESKTOP_ASSET_NAMES: Record<DesktopOS, Record<DesktopArch, string>> = {
   mac: { x64: "GAIA-x64.dmg", arm64: "GAIA-arm64.dmg" },
   windows: { x64: "GAIA-x64.exe", arm64: "GAIA-arm64.exe" },

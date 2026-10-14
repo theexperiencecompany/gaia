@@ -9,7 +9,7 @@
  * `getDisplayInfo` output changes, update the corresponding entry here.
  */
 
-import type { TriggerConfig } from "./types";
+import type { TriggerConfigDraft } from "./types";
 
 export interface TriggerDisplayInfo {
   label: string;
@@ -18,7 +18,7 @@ export interface TriggerDisplayInfo {
 
 interface TriggerDisplayEntry {
   triggerSlugs: string[];
-  getDisplayInfo: (config: TriggerConfig) => TriggerDisplayInfo;
+  getDisplayInfo: (config: TriggerConfigDraft) => TriggerDisplayInfo;
 }
 
 // =============================================================================
@@ -70,9 +70,17 @@ const displayEntries: TriggerDisplayEntry[] = [
     },
   },
   {
-    triggerSlugs: ["gmail_new_message", "email", "gmail_poll_inbox"],
-    getDisplayInfo: () => ({
-      label: "on new emails",
+    triggerSlugs: [
+      "gmail_new_message",
+      "email",
+      "gmail_poll_inbox",
+      "gmail_email_sent",
+    ],
+    getDisplayInfo: (config) => ({
+      label:
+        config.trigger_name === "gmail_email_sent"
+          ? "on sent emails"
+          : "on new emails",
       integrationId: "gmail",
     }),
   },
@@ -199,7 +207,7 @@ for (const entry of displayEntries) {
 
 export function getTriggerDisplayInfoBySlug(
   slug: string,
-  config: TriggerConfig,
+  config: TriggerConfigDraft,
 ): TriggerDisplayInfo | undefined {
   const entry = slugToDisplayEntry.get(slug);
   if (!entry) return undefined;

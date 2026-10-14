@@ -13,8 +13,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from shared.py.wide_events import log
-from tests.helpers import captured_wide_event
+from app.constants.briefing import (
+    DAILY_BRIEFING_WORKFLOW_KEY,
+    WEEKLY_DIGEST_CRON,
+    WEEKLY_DIGEST_WORKFLOW_KEY,
+)
+from app.constants.log_tags import LogTag
+from app.models.notification.notification_models import QuietHours
+from app.models.payment_models import PlanType
+from app.models.user_models import UserDocument
+from app.models.workflow_models import TriggerConfig, TriggerType
 
 MODULE = "app.services.system_workflows.provisioner"
 
@@ -29,7 +37,7 @@ def _make_workflow_request(
     req.description = description
     req.prompt = "do something"
     req.steps = []
-    req.trigger_config = MagicMock()
+    req.trigger_config = TriggerConfig(type=TriggerType.MANUAL)
     return req
 
 
@@ -45,7 +53,7 @@ def _existing_wf(
     composio_trigger_ids: list[str] | None = None,
     trigger_name: str | None = "gmail_new_email",
 ) -> MagicMock:
-    """A stand-in WorkflowDocument as get_system_workflow_for_user returns it."""
+    """Build a stand-in WorkflowDocument as get_system_workflow_for_user returns it."""
     wf = MagicMock()
     wf.system_workflow_key = key
     wf.trigger_config = MagicMock()
@@ -56,14 +64,7 @@ def _existing_wf(
 
 @pytest.fixture(autouse=True)
 def _patch_log():
-    """Spy on the module's logger instead of silencing it.
-
-    ``wraps`` keeps every call reaching the real wide-event logger, so the
-    fields ``log.set`` stamps still land on the event a test can read back
-    through ``captured_wide_event``. A plain stub makes the whole wide event
-    unobservable while still satisfying ``assert_called_once_with``.
-    """
-    with patch(f"{MODULE}.log", wraps=log) as mock_log:
+    with patch(f"{MODULE}.log") as mock_log:
         yield mock_log
 
 
@@ -75,6 +76,23 @@ class TestProvisionSystemWorkflows:
 
         # Should return without error
         await provision_system_workflows("user-1", "slack", "Slack")
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.WorkflowService")
+    async def test_connecting_gmail_provisions_no_workflow(
+        self, mock_workflow_svc: MagicMock, mock_repo: MagicMock
+    ) -> None:
+        """The Inbox desk tracked todo replaced the Inbox Triage workflow."""
+        from app.services.system_workflows.provisioner import provision_system_workflows
+
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        mock_workflow_svc.create_workflow = AsyncMock()
+
+        await provision_system_workflows("user-1", "gmail", "Gmail")
+
+        mock_repo.find_system_workflow.assert_not_awaited()
+        mock_workflow_svc.create_workflow.assert_not_awaited()
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.workflow_repository")
@@ -132,74 +150,6 @@ class TestProvisionSystemWorkflows:
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
     @patch(f"{MODULE}.WorkflowService")
     @patch(f"{MODULE}.workflow_repository")
-    async def test_the_run_is_attributed_on_the_wide_event(
-        self,
-        mock_repo: MagicMock,
-        mock_workflow_svc: MagicMock,
-        mock_notify: AsyncMock,
-    ) -> None:
-        """Provisioning stamps who it ran for and which integration triggered it.
-
-        This runs as a detached background task off the OAuth callback, so the
-        wide event is the only place a failed or duplicated provisioning can be
-        traced back to a user and an integration.
-        """
-        mock_repo.find_system_workflow = AsyncMock(return_value=None)
-        mock_workflow_svc.create_workflow = AsyncMock()
-
-        with patch.dict(
-            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
-            {"gmail": [("gmail_digest", _make_factory())]},
-        ):
-            from app.services.system_workflows.provisioner import (
-                provision_system_workflows,
-            )
-
-            async with captured_wide_event() as event:
-                await provision_system_workflows("user-1", "gmail", "Gmail")
-
-        assert event["component"] == "system_workflow_provisioner"
-        assert event["operation"] == "provision_system_workflows"
-        assert event["user_id"] == "user-1"
-        assert event["integration_id"] == "gmail"
-        assert event["integration_display_name"] == "Gmail"
-
-    @pytest.mark.asyncio
-    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
-    @patch(f"{MODULE}.WorkflowService")
-    @patch(f"{MODULE}.workflow_repository")
-    async def test_a_failed_workflow_is_recorded_with_its_integration(
-        self,
-        mock_repo: MagicMock,
-        mock_workflow_svc: MagicMock,
-        mock_notify: AsyncMock,
-    ) -> None:
-        # The failure is swallowed so the remaining entries still provision, so
-        # the errors[] entry is the only record of it -- and it has to say which
-        # integration and which key failed to be worth anything.
-        mock_repo.find_system_workflow = AsyncMock(return_value=None)
-        mock_workflow_svc.create_workflow = AsyncMock(side_effect=RuntimeError("unexpected"))
-
-        with patch.dict(
-            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
-            {"gmail": [("gmail_digest", _make_factory())]},
-        ):
-            from app.services.system_workflows.provisioner import (
-                provision_system_workflows,
-            )
-
-            async with captured_wide_event() as event:
-                await provision_system_workflows("user-1", "gmail", "Gmail")
-
-        (error,) = event["errors"]
-        assert error["integration_display_name"] == "Gmail"
-        assert error["system_workflow_key"] == "gmail_digest"
-        assert error["error_type"] == "RuntimeError"
-
-    @pytest.mark.asyncio
-    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
-    @patch(f"{MODULE}.WorkflowService")
-    @patch(f"{MODULE}.workflow_repository")
     async def test_duplicate_key_error_skipped(
         self,
         mock_repo: MagicMock,
@@ -251,6 +201,52 @@ class TestProvisionSystemWorkflows:
         mock_notify.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    ("profile", "expected_timezone"),
+    [
+        (UserDocument(timezone="Asia/Kolkata"), "Asia/Kolkata"),
+        (UserDocument(), "UTC"),
+        (UserDocument(timezone="   "), "UTC"),
+        (None, "UTC"),
+    ],
+    ids=["profile-timezone", "unset", "blank", "no-user"],
+)
+@patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
+@patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
+@patch(f"{MODULE}.ensure_trigger_config_object")
+@patch("app.services.user_service.get_user_by_id", new_callable=AsyncMock)
+@patch(f"{MODULE}.WorkflowService")
+@patch(f"{MODULE}.workflow_repository")
+async def test_provisioning_stamps_the_profile_timezone_on_schedule_workflows(
+    mock_repo: MagicMock,
+    mock_service: MagicMock,
+    mock_get_user: AsyncMock,
+    mock_ensure: MagicMock,
+    _activate: AsyncMock,
+    _notify: AsyncMock,
+    profile: UserDocument | None,
+    expected_timezone: str,
+) -> None:
+    from app.services.system_workflows.provisioner import provision_system_workflows
+
+    mock_repo.find_system_workflow = AsyncMock(return_value=None)
+    mock_service.create_workflow = AsyncMock(return_value=MagicMock(id="wf-created"))
+    mock_get_user.return_value = profile
+    trigger_config = MagicMock(type=TriggerType.SCHEDULE, timezone=None)
+    mock_ensure.return_value = trigger_config
+    request = _make_workflow_request()
+    with patch.dict(
+        f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
+        {"gmail": [("gmail_digest", _make_factory(request))]},
+    ):
+        await provision_system_workflows("user-1", "gmail", "Gmail", notify=False)
+
+    mock_get_user.assert_awaited_once_with("user-1")
+    assert request.trigger_config is trigger_config
+    assert trigger_config.timezone == expected_timezone
+    mock_service.create_workflow.assert_awaited_once_with(request, "user-1")
+
+
 class TestNotifyWorkflowsProvisioned:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.NotificationService")
@@ -287,6 +283,31 @@ class TestNotifyWorkflowsProvisioned:
 
         notification = mock_svc.create_notification.call_args[0][0]
         assert "2 workflows" in notification.content.title
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.NotificationService")
+    async def test_the_body_lists_every_workflow_one_per_line_with_its_description(
+        self, mock_notif_cls: MagicMock
+    ) -> None:
+        """The user only learns what was switched on from this body, so each workflow needs its own bulleted line."""
+        mock_svc = AsyncMock()
+        mock_notif_cls.return_value = mock_svc
+
+        from app.services.system_workflows.provisioner import (
+            _notify_workflows_provisioned,
+        )
+
+        req1 = _make_workflow_request("Digest", "Daily digest")
+        req2 = _make_workflow_request("Sorter", "Files your mail")
+        await _notify_workflows_provisioned("user-1", "Gmail", [req1, req2])
+
+        notification = mock_svc.create_notification.call_args[0][0]
+        assert notification.content.body == (
+            "Here's what I've got running for you:\n\n"
+            "\u2022 Digest: Daily digest\n"
+            "\u2022 Sorter: Files your mail\n\n"
+            "You can adjust or turn them off anytime."
+        )
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.NotificationService")
@@ -588,6 +609,130 @@ class TestResetSystemWorkflowToDefault:
         definition = mock_repo.reset_system_workflow.await_args.args[1]
         assert definition.prompt == "the factory prompt"
 
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_writes_the_factorys_title_description_steps_and_triggers(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """Every field SystemWorkflowDefinition is built from must be the factory's actual value, not a None or stale fallback."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.MANUAL
+        trigger_config.trigger_name = None
+        trigger_config.model_dump.return_value = {"type": "manual"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request(title="Refreshed Title", description="Refreshed description")
+        req.steps = [{"action": "noop"}]
+        factory = MagicMock(return_value=req)
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"manual_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.title == "Refreshed Title"
+        assert definition.description == "Refreshed description"
+        assert definition.steps == [{"action": "noop"}]
+        assert definition.trigger_config is trigger_config
+        # No integration trigger to re-register (MANUAL type) -> [], not None.
+        assert definition.composio_trigger_ids == []
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_preserves_a_genuinely_blank_description(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """request.description or "" only turns None into "" — a blank-but-not-None description must reach the definition unchanged."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.MANUAL
+        trigger_config.trigger_name = None
+        trigger_config.model_dump.return_value = {"type": "manual"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request(title="Title", description="")
+        req.steps = []
+        factory = MagicMock(return_value=req)
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"manual_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.description == ""
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reregister_and_unregister_receive_this_workflow_and_user(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """The orchestrator's calls into the two trigger helpers must carry THIS reset's workflow_id and user_id, never None for either."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(
+                composio_trigger_ids=["old-t1"], trigger_name="gmail_new_email"
+            )
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.INTEGRATION
+        trigger_config.trigger_name = "gmail_new_email"
+        trigger_config.model_dump.return_value = {"type": "integration"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request()
+        req.steps = []
+        factory = MagicMock(return_value=req)
+
+        reregister = AsyncMock(return_value=["new-t1"])
+        unregister = AsyncMock()
+        with (
+            patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}),
+            patch(f"{MODULE}._reregister_triggers_for_reset", reregister),
+            patch(f"{MODULE}._unregister_old_triggers_for_reset", unregister),
+        ):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        reregister.assert_awaited_once_with(trigger_config, "wf-1", "user-1")
+        unregister.assert_awaited_once_with(["old-t1"], "gmail_new_email", "wf-1", "user-1")
+
     def _schedule_trigger_config(self) -> MagicMock:
         from datetime import datetime
 
@@ -603,7 +748,7 @@ class TestResetSystemWorkflowToDefault:
         return trigger_config
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_by_id")
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -614,13 +759,12 @@ class TestResetSystemWorkflowToDefault:
         mock_scheduler: MagicMock,
         mock_get_user: MagicMock,
     ) -> None:
-        """Schedule definitions carry no timezone; reset must stamp the profile
-        timezone (as provisioning does) and recompute next_run from the cron."""
+        """Schedule definitions carry no timezone; reset must stamp the profile timezone and recompute next_run from the cron."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
         existing.activated = False
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = {"timezone": "Asia/Kolkata"}
+        mock_get_user.return_value = UserDocument(timezone="Asia/Kolkata")
         mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
 
         trigger_config = self._schedule_trigger_config()
@@ -641,8 +785,8 @@ class TestResetSystemWorkflowToDefault:
         trigger_config.update_next_run.assert_called_once_with(user_timezone="Asia/Kolkata")
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("profile", [{}, {"timezone": "   "}])
-    @patch(f"{MODULE}.get_user_by_id")
+    @pytest.mark.parametrize("profile", [UserDocument(), UserDocument(timezone="   ")])
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -652,7 +796,7 @@ class TestResetSystemWorkflowToDefault:
         mock_repo: MagicMock,
         mock_scheduler: MagicMock,
         mock_get_user: MagicMock,
-        profile: dict[str, str],
+        profile: UserDocument,
     ) -> None:
         """A profile with a blank/missing timezone falls back to exactly UTC."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
@@ -679,7 +823,7 @@ class TestResetSystemWorkflowToDefault:
         trigger_config.update_next_run.assert_called_once_with(user_timezone="UTC")
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_by_id")
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -690,13 +834,12 @@ class TestResetSystemWorkflowToDefault:
         mock_scheduler: MagicMock,
         mock_get_user: MagicMock,
     ) -> None:
-        """An activated workflow whose reset yields a schedule trigger must get a
-        queued fire, or it sits with a cron and no future run."""
+        """An activated workflow whose reset yields a schedule trigger must get a queued fire, or it sits with no future run."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
         existing.activated = True
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = {"timezone": "UTC"}
+        mock_get_user.return_value = UserDocument(timezone="UTC")
         mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
 
         trigger_config = self._schedule_trigger_config()
@@ -719,7 +862,7 @@ class TestResetSystemWorkflowToDefault:
         )
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_by_id")
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -731,13 +874,12 @@ class TestResetSystemWorkflowToDefault:
         mock_get_user: MagicMock,
         _patch_log: MagicMock,
     ) -> None:
-        """A reset whose re-arm could not queue a fire must not report success —
-        the workflow would look reset but never run again."""
+        """A reset whose re-arm could not queue a fire must not report success — the workflow would look reset but never run."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
         existing.activated = True
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = {"timezone": "UTC"}
+        mock_get_user.return_value = UserDocument(timezone="UTC")
         mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=False)
 
         trigger_config = self._schedule_trigger_config()
@@ -761,7 +903,7 @@ class TestResetSystemWorkflowToDefault:
         )
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_user_by_id")
+    @patch("app.services.user_service.get_user_by_id")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -777,7 +919,7 @@ class TestResetSystemWorkflowToDefault:
         existing.activated = False
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = {"timezone": "UTC"}
+        mock_get_user.return_value = UserDocument(timezone="UTC")
         mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
 
         trigger_config = self._schedule_trigger_config()
@@ -815,10 +957,10 @@ class TestReregisterIntegrationTriggers:
         cfg = self._integration_config()
 
         from app.services.system_workflows.provisioner import (
-            _reregister_integration_triggers,
+            _reregister_triggers_for_reset,
         )
 
-        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+        result = await _reregister_triggers_for_reset(cfg, "wf-1", "user-1")
 
         assert result == ["new-t1"]
         mock_trigger_svc.register_triggers.assert_awaited_once_with(
@@ -840,10 +982,10 @@ class TestReregisterIntegrationTriggers:
         cfg = self._integration_config(trigger_name=None)
 
         from app.services.system_workflows.provisioner import (
-            _reregister_integration_triggers,
+            _reregister_triggers_for_reset,
         )
 
-        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+        result = await _reregister_triggers_for_reset(cfg, "wf-1", "user-1")
 
         assert result == []
         mock_trigger_svc.register_triggers.assert_not_awaited()
@@ -857,10 +999,10 @@ class TestReregisterIntegrationTriggers:
         cfg = self._integration_config()
 
         from app.services.system_workflows.provisioner import (
-            _reregister_integration_triggers,
+            _reregister_triggers_for_reset,
         )
 
-        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+        result = await _reregister_triggers_for_reset(cfg, "wf-1", "user-1")
 
         assert result is None
         _patch_log.error.assert_called_once_with(
@@ -880,10 +1022,10 @@ class TestReregisterIntegrationTriggers:
         cfg = self._integration_config()
 
         from app.services.system_workflows.provisioner import (
-            _reregister_integration_triggers,
+            _reregister_triggers_for_reset,
         )
 
-        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+        result = await _reregister_triggers_for_reset(cfg, "wf-1", "user-1")
 
         assert result is None
         _patch_log.error.assert_called_once_with(
@@ -902,9 +1044,11 @@ class TestUnregisterOldTriggers:
     async def test_unregisters_with_exact_arguments(self, mock_trigger_svc: MagicMock) -> None:
         mock_trigger_svc.unregister_triggers = AsyncMock()
 
-        from app.services.system_workflows.provisioner import _unregister_old_triggers
+        from app.services.system_workflows.provisioner import (
+            _unregister_old_triggers_for_reset,
+        )
 
-        await _unregister_old_triggers("user-1", "wf-1", "gmail_new_email", ["old-1"])
+        await _unregister_old_triggers_for_reset(["old-1"], "gmail_new_email", "wf-1", "user-1")
 
         mock_trigger_svc.unregister_triggers.assert_awaited_once_with(
             user_id="user-1",
@@ -918,10 +1062,12 @@ class TestUnregisterOldTriggers:
     async def test_skips_when_no_old_triggers(self, mock_trigger_svc: MagicMock) -> None:
         mock_trigger_svc.unregister_triggers = AsyncMock()
 
-        from app.services.system_workflows.provisioner import _unregister_old_triggers
+        from app.services.system_workflows.provisioner import (
+            _unregister_old_triggers_for_reset,
+        )
 
         # No old ids but a trigger_name — the `and` guard means nothing to tear down.
-        await _unregister_old_triggers("user-1", "wf-1", "gmail_new_email", [])
+        await _unregister_old_triggers_for_reset([], "gmail_new_email", "wf-1", "user-1")
 
         mock_trigger_svc.unregister_triggers.assert_not_awaited()
 
@@ -932,10 +1078,12 @@ class TestUnregisterOldTriggers:
     ) -> None:
         mock_trigger_svc.unregister_triggers = AsyncMock(side_effect=RuntimeError("nope"))
 
-        from app.services.system_workflows.provisioner import _unregister_old_triggers
+        from app.services.system_workflows.provisioner import (
+            _unregister_old_triggers_for_reset,
+        )
 
         # Must NOT raise — teardown failure is best-effort.
-        await _unregister_old_triggers("user-1", "wf-1", "gmail_new_email", ["old-1"])
+        await _unregister_old_triggers_for_reset(["old-1"], "gmail_new_email", "wf-1", "user-1")
 
         _patch_log.warning.assert_called_once_with(
             "[WORKFLOW] Failed to unregister old triggers during reset of (non-fatal)",
@@ -989,3 +1137,190 @@ class TestResetDefinitionAssembly:
         definition = mock_repo.reset_system_workflow.await_args.args[1]
         assert definition.description == ""
         assert definition.steps == []
+
+
+class TestActivationForPayingUsers:
+    """A Pro user's freshly provisioned system workflow is switched on at once; anyone else keeps it dormant."""
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(
+        "app.decorators.entitlements.payment_service.get_user_subscription_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.decorators.entitlements.payment_service.get_cached_plan_type",
+        new_callable=AsyncMock,
+    )
+    async def test_a_user_who_just_paid_is_activated_off_the_row_not_the_stale_cache(
+        self, cached_plan: AsyncMock, fresh_status: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        """Provisioning runs minutes after payment, exactly when the five-minute plan cache still says FREE; reading only the cache left the workflow dormant forever."""
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        cached_plan.return_value = PlanType.FREE
+        fresh_status.return_value = MagicMock(plan_type=PlanType.PRO)
+        mock_service.activate_workflow = AsyncMock()
+
+        with patch("app.decorators.entitlements.invalidate_plan_cache", new_callable=AsyncMock):
+            await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
+
+        mock_service.activate_workflow.assert_awaited_once_with("wf-9", "user-1")
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_paid", new_callable=AsyncMock)
+    async def test_a_pro_user_gets_the_workflow_activated(
+        self, is_active: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        is_active.return_value = True
+        mock_service.activate_workflow = AsyncMock()
+
+        await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
+
+        is_active.assert_awaited_once_with("user-1")
+        mock_service.activate_workflow.assert_awaited_once_with("wf-9", "user-1")
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_paid", new_callable=AsyncMock)
+    async def test_a_user_without_a_plan_keeps_it_dormant(
+        self, is_active: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        is_active.return_value = False
+        mock_service.activate_workflow = AsyncMock()
+
+        await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
+
+        mock_service.activate_workflow.assert_not_awaited()
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_paid", new_callable=AsyncMock)
+    async def test_an_activation_failure_is_logged_with_its_cause_and_swallowed(
+        self, is_active: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        is_active.return_value = True
+        cause = "composio down " * 60  # 780 chars: the wide event keeps the first 500
+        mock_service.activate_workflow = AsyncMock(side_effect=RuntimeError(cause))
+
+        with patch(f"{MODULE}.log") as mock_log:
+            await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
+
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args == (
+            f"{LogTag.WORKFLOW} Could not activate provisioned system workflow",
+        )
+        assert mock_log.warning.call_args.kwargs == {
+            "key": "calendar:meeting_prep",
+            "workflow_id": "wf-9",
+            "user_id": "user-1",
+            "error": cause[:500],
+            "error_type": "RuntimeError",
+        }
+
+    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
+    @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_provisioning_activates_each_created_workflow(
+        self,
+        mock_repo: MagicMock,
+        mock_service: MagicMock,
+        activate: AsyncMock,
+        _notify: AsyncMock,
+    ) -> None:
+        from app.services.system_workflows.provisioner import provision_system_workflows
+
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        created = MagicMock()
+        created.id = "wf-created"
+        mock_service.create_workflow = AsyncMock(return_value=created)
+        request = MagicMock()
+        request.trigger_config = TriggerConfig(type=TriggerType.MANUAL, timezone="UTC")
+        with patch(
+            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
+            {"googlecalendar": [("calendar:meeting_prep", lambda: request)]},
+        ):
+            await provision_system_workflows(
+                "user-1", "googlecalendar", "Google Calendar", notify=False
+            )
+
+        activate.assert_awaited_once_with("wf-created", "user-1", "calendar:meeting_prep")
+
+
+class TestTheDailyBriefFollowsQuietHours:
+    """The brief is provisioned (or reset) at 08:00 local, or when quiet hours end."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("quiet_hours", "cron"),
+        [
+            (QuietHours(start_hour=22, end_hour=8), "0 8 * * *"),
+            (QuietHours(start_hour=0, end_hour=10), "0 10 * * *"),
+        ],
+        ids=["default", "quiet-until-10"],
+    )
+    @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
+    @patch(f"{MODULE}.get_profile_timezone", new_callable=AsyncMock)
+    @patch(f"{MODULE}.user_repository")
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_provisioning_stamps_the_brief_hour_from_quiet_hours(
+        self,
+        mock_repo: MagicMock,
+        mock_service: MagicMock,
+        mock_users: MagicMock,
+        mock_timezone: AsyncMock,
+        _activate: AsyncMock,
+        quiet_hours: QuietHours,
+        cron: str,
+    ) -> None:
+        from app.services.system_workflows.provisioner import provision_briefing_workflows
+
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        mock_service.create_workflow = AsyncMock(return_value=MagicMock(id="wf-created"))
+        mock_users.get = AsyncMock(return_value=UserDocument(quiet_hours=quiet_hours))
+        mock_timezone.return_value = MagicMock(value="Asia/Kolkata")
+
+        await provision_briefing_workflows("user-1")
+
+        created = {
+            call.args[0].system_workflow_key: call.args[0].trigger_config
+            for call in mock_service.create_workflow.await_args_list
+        }
+        assert created[DAILY_BRIEFING_WORKFLOW_KEY].cron_expression == cron
+        assert created[DAILY_BRIEFING_WORKFLOW_KEY].timezone == "Asia/Kolkata"
+        assert created[WEEKLY_DIGEST_WORKFLOW_KEY].cron_expression == WEEKLY_DIGEST_CRON
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.get_profile_timezone", new_callable=AsyncMock)
+    @patch(f"{MODULE}.user_repository")
+    @patch(f"{MODULE}.workflow_scheduler")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_a_reset_brief_keeps_the_quiet_hours_slot(
+        self,
+        mock_repo: MagicMock,
+        mock_scheduler: MagicMock,
+        mock_users: MagicMock,
+        mock_timezone: AsyncMock,
+    ) -> None:
+        from app.services.system_workflows.provisioner import reset_system_workflow_to_default
+
+        existing = _existing_wf(
+            key=DAILY_BRIEFING_WORKFLOW_KEY, composio_trigger_ids=None, trigger_name=None
+        )
+        existing.activated = False
+        mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
+        mock_repo.reset_system_workflow = AsyncMock()
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(quiet_hours=QuietHours(start_hour=0, end_hour=10))
+        )
+        mock_timezone.return_value = MagicMock(value="UTC")
+
+        assert await reset_system_workflow_to_default("wf-1", "user-1") is True
+
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.trigger_config.cron_expression == "0 10 * * *"

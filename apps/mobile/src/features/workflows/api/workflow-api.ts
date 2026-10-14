@@ -3,14 +3,13 @@ import { apiService } from "@/lib/api";
 import type { TriggerSchema } from "../types/trigger-types";
 import type {
   CommunityWorkflowsResponse,
-  CreateWorkflowPayload,
+  CreateWorkflowRequest,
   UpdateWorkflowPayload,
   Workflow,
   WorkflowExecutionResponse,
   WorkflowExecutionsListResponse,
   WorkflowListResponse,
   WorkflowResponse,
-  WorkflowStatusResponse,
 } from "../types/workflow-types";
 
 interface ListWorkflowsParams
@@ -47,7 +46,7 @@ export const workflowApi = {
   },
 
   createWorkflow: async (
-    payload: CreateWorkflowPayload,
+    payload: CreateWorkflowRequest,
   ): Promise<WorkflowResponse> => {
     return apiService.post<WorkflowResponse>("/workflows", payload);
   },
@@ -132,10 +131,6 @@ export const workflowApi = {
 
   unpublishWorkflow: async (id: string): Promise<{ message: string }> => {
     return apiService.post<{ message: string }>(`/workflows/${id}/unpublish`);
-  },
-
-  getWorkflowStatus: async (id: string): Promise<WorkflowStatusResponse> => {
-    return apiService.get<WorkflowStatusResponse>(`/workflows/${id}/status`);
   },
 
   getTriggerSchemas: async (): Promise<TriggerSchema[]> => {

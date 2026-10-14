@@ -31,6 +31,7 @@ from app.models.briefing_models import (
 )
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.todo_models import TodoDocument
+from app.models.user_models import UserDocument
 from app.services.briefing import dormancy
 from app.services.calendar_service import get_calendar_events
 from app.services.integrations.user_integrations import get_connected_integration_ids
@@ -107,10 +108,9 @@ def day_start_utc(clock: UserClock, days_ago: int = 0) -> datetime:
 async def get_yesterday_payload(
     user_id: str, before_date: str, kind: BriefingKind = BRIEFING_KIND_DAILY
 ) -> BriefingPayload | None:
-    """Latest daily briefing payload strictly before ``before_date`` (today).
+    """Latest daily briefing payload strictly before before_date (today).
 
-    Excludes today so a same-day re-run compares against the real prior brief,
-    not itself.
+    Excludes today so a same-day re-run compares against the real prior brief.
     """
     briefing = await briefing_repository.get_before_date(
         user_id, kind=kind, before_date=before_date
@@ -128,9 +128,9 @@ def has_meaningful_focus(focus: str | None) -> bool:
     return bool(cleaned) and cleaned.lower() not in _JUNK_FOCUS_VALUES
 
 
-async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
-    """Return (formatted goal block, has_goal). ``has_goal`` gates cold-start."""
-    focus = ((user.get("onboarding") or {}).get("focus") or "").strip()
+async def format_goal_block(user_id: str, user: UserDocument) -> tuple[str, bool]:
+    """Return (formatted goal block, has_goal); has_goal gates cold-start."""
+    focus = (user.onboarding.focus if user.onboarding else "").strip()
     if not has_meaningful_focus(focus):
         focus = ""
     lines: list[str] = []
@@ -158,7 +158,7 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
 
 
 async def gather_tracked_work(user_id: str, since: datetime) -> TrackedWork:
-    """GAIA's tracked todos: completed since ``since``, plus every open one by state."""
+    """GAIA's tracked todos: completed since the cutoff, plus every open one by state."""
     work = TrackedWork()
     for doc in await todo_repository.list_completed_since(user_id, since=since):
         if is_gaia_tracked(doc):
@@ -229,14 +229,9 @@ async def format_lookback_block(
 async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
     """Count consecutive most-recent daily briefings the user never acknowledged.
 
-    Acknowledgement is honest and channel-agnostic: the briefing was opened, OR the
-    user was active since it went out (a reactivation signal — session active, or
-    any message). A todo completing is deliberately NOT an ack: GAIA completes its
-    own tracked todos autonomously, so counting completions would let GAIA
-    acknowledge its own briefings and winback would never fire.
-
-    The loop breaks at the first acknowledged briefing, so the reactivation-signal
-    lookup runs only for the unacknowledged tail (at most one extra call past it).
+    Acknowledged means opened, or the user was active since it went out. A todo
+    completing is NOT an ack: GAIA completes its own todos, so winback would never fire.
+    The loop breaks at the first acknowledged briefing.
     """
     briefings = await briefing_repository.list_recent(
         user_id, limit=recent, kind=BRIEFING_KIND_DAILY
@@ -281,9 +276,11 @@ def _to_event(event: GoogleCalendarEventResource, tz: ZoneInfo) -> BriefingEvent
 async def gather_calendar(
     user_id: str, clock: UserClock, *, days: int, days_ahead: int = 0
 ) -> list[BriefingEvent]:
-    """The user's calendar events over ``days`` local days starting ``days_ahead``
-    days from today, in start order (all-day events first). Empty when no
-    calendar is connected; a connected calendar that fails to answer raises."""
+    """Return the user's calendar events over days local days from days_ahead.
+
+    Ordered by start (all-day first). Empty when no calendar is connected; a connected
+    calendar that fails to answer raises.
+    """
     if GOOGLE_CALENDAR_INTEGRATION_ID not in await get_connected_integration_ids(user_id):
         return []
     start = day_start_utc(clock, days_ago=-days_ahead)
@@ -298,8 +295,10 @@ async def gather_calendar(
 
 
 async def gather_week(user_id: str, clock: UserClock) -> BriefingWeek:
-    """Monday-to-Sunday completions of the week containing today, by owner and
-    day, plus the calendar for the seven days ahead."""
+    """Collect this week's Monday-to-Sunday completions, by owner and day.
+
+    Also includes the calendar for the seven days ahead.
+    """
     monday = clock.now_local.date() - timedelta(days=clock.now_local.weekday())
     since = datetime.combine(monday, time.min, tzinfo=clock.tz).astimezone(UTC)
     days = [BriefingWeekDay(you=0, gaia=0) for _ in range(7)]

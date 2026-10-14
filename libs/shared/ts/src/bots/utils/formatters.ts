@@ -5,39 +5,28 @@
  * They are used by the shared command handlers in commands.ts
  * and can also be called directly when assembling custom responses.
  *
- * formatBotError is the single error formatter for all bots.
- * It checks for GaiaApiError (preserves HTTP status), then
- * falls back to axios-style errors, then generic Error messages.
+ * formatBotError is the single error formatter for all bots: it words the
+ * reason classifyBotFailure gives, then falls back to generic Error messages.
  */
 import { slackifyMarkdown } from "slackify-markdown";
-import { GaiaApiError } from "../api";
-import type {
-  BotConversation,
-  BotTodo,
-  BotWorkflow,
-  PlatformName,
-} from "../types";
-import { getHttpStatus } from "./logger";
-import { isTableRow, isTableSeparator } from "./text";
-import { wideLog } from "./wide-events";
+import type { WorkflowWithIntegrations as Workflow } from "../../api/generated";
+import type { BotConversation, BotTodo, PlatformName } from "../types";
+import { BOT_FAILURE_REASON, classifyBotFailure } from "./failure-reasons";
+import { getErrorReason } from "./logger";
+import { isTableRow, isTableSeparator, PLATFORM_DISPLAY_NAMES } from "./text";
 
 /**
  * Formats a workflow for display in a bot message.
  */
-export function formatWorkflow(workflow: BotWorkflow): string {
-  const status =
-    workflow.status === "active"
-      ? "✅"
-      : workflow.status === "draft"
-        ? "📝"
-        : "⏸️";
-  return `${status} **${workflow.name}**\nID: \`${workflow.id}\`\n${workflow.description || "No description"}`;
+export function formatWorkflow(workflow: Workflow): string {
+  const status = workflow.activated ? "✅" : "⏸️";
+  return `${status} **${workflow.title}**\nID: \`${workflow.id}\`\n${workflow.description || "No description"}`;
 }
 
 /**
  * Formats a list of workflows for display.
  */
-export function formatWorkflowList(workflows: BotWorkflow[]): string {
+export function formatWorkflowList(workflows: Workflow[]): string {
   if (workflows.length === 0) {
     return "No workflows found. Create one with `/workflow create`";
   }
@@ -123,14 +112,10 @@ function applyOutsideCodeBlocks(
 }
 
 /**
- * Escapes the three characters that are special in Telegram HTML body text:
- * `&`, `<`, `>`. Everything else (`_`, `*`, `(`, `)`, `.`, `-`, …) is literal
- * in HTML mode — which is exactly why HTML is immune to the legacy-Markdown
- * breakage where an underscore in a URL or a snake_case token gets parsed as
- * an emphasis marker.
- *
- * Slack's mrkdwn control-character escaping happens to require the same three
- * entities, so {@link convertToSlackMrkdwn} reuses this helper.
+ * Escapes the three characters special in Telegram HTML body text: `&`, `<`, `>`. Everything
+ * else is literal in HTML mode, which is why it's immune to legacy-Markdown's underscore/URL
+ * breakage. Slack's mrkdwn control-character escaping needs the same three entities, so
+ * {@link convertToSlackMrkdwn} reuses this helper.
  */
 export function escapeHtml(text: string): string {
   return text
@@ -262,21 +247,13 @@ function wrapTelegramBlockquotes(text: string): string {
 }
 
 /**
- * Converts the CommonMark the agent emits for Telegram into Telegram's **HTML**
- * parse mode (https://core.telegram.org/bots/api#html-style).
+ * Converts the CommonMark the agent emits for Telegram into Telegram's **HTML** parse mode
+ * (https://core.telegram.org/bots/api#html-style), chosen because its only special characters
+ * are `&`, `<`, `>` — legacy Markdown italicized `..._x_...` inside auth-token URLs and
+ * silently dropped the underscores (see the formatter tests).
  *
- * HTML is used instead of legacy `Markdown`/`MarkdownV2` because it is the only
- * mode where URLs and prose never collide with formatting markers: the sole
- * special characters are `&`, `<`, `>`, so underscores in tokens/URLs,
- * snake_case identifiers and stray `*` can never trigger a parse error or eat
- * characters. (Legacy Markdown italicized `..._x_...` inside auth-token URLs and
- * silently dropped the underscores — see the formatter tests.)
- *
- * Strategy: pull code spans, code blocks and links out into placeholders so
- * their contents are never treated as markup, HTML-escape the remaining
- * narrative, translate the markdown that survives into Telegram tags, then
- * splice the placeholders back in. Telegram HTML has no heading or list tags,
- * so headings become bold and bullets become `•`.
+ * Strategy: stash code spans/blocks/links as placeholders, HTML-escape the rest, translate
+ * surviving markdown to Telegram tags (no heading/list tags, so headings→bold, bullets→•), then splice placeholders back.
  */
 export function convertToTelegramHtml(text: string): string {
   const stash: string[] = [];
@@ -328,11 +305,9 @@ export function convertToTelegramHtml(text: string): string {
     .replaceAll(/(?<!\w)_([^_\n]+?)_(?!\w)/g, "<i>$1</i>") // _x_ (skips snake_case)
     .replaceAll(/~~([^~\n]+?)~~/g, "<s>$1</s>"); // ~~x~~
 
-  // Resolve placeholders, looping so a stashed table that contains a stashed
-  // link (a nested placeholder) is fully spliced back in. Loop only while a
-  // real placeholder token remains AND each pass makes progress, so a stray
-  // U+E000 in the source text (not a valid \uE000<index>\uE000 token) can never
-  // spin the loop forever and wedge the bot's event loop.
+  // Loop resolving placeholders so a stashed table containing a stashed link (nested) is fully
+  // spliced back in; loop only while a real placeholder remains AND each pass makes progress,
+  // so a stray U+E000 in source text (not a valid token) can never spin forever and wedge the event loop.
   let result = out;
   let previous = "";
   while (result !== previous && /\uE000\d+\uE000/.test(result)) {
@@ -346,15 +321,11 @@ export function convertToTelegramHtml(text: string): string {
 }
 
 /**
- * Converts standard CommonMark Markdown to Slack mrkdwn via the maintained
- * `slackify-markdown` library (Unified/Remark based).
- *
- * Replaces the previous hand-rolled regex converter: the library correctly
- * handles `**bold**` -> `*bold*`, `~~strike~~` -> `~strike~`,
- * `[label](url)` -> `<url|label>`, headings, lists, blockquotes, fenced code,
- * tables, and escaping of Slack control characters -- including the edge cases
- * (escaped backticks, nested emphasis, pipes in prose) the regex version got
- * wrong. An empty string is passed through untouched so incremental streaming
+ * Converts standard CommonMark Markdown to Slack mrkdwn via the maintained `slackify-markdown`
+ * library (Unified/Remark based), replacing the previous hand-rolled regex converter — it
+ * correctly handles bold/strike/links/headings/lists/blockquotes/code/tables and Slack
+ * control-character escaping, including edge cases (escaped backticks, nested emphasis, pipes
+ * in prose) the regex version got wrong. An empty string passes through untouched so streaming
  * chunks never throw.
  */
 export function convertToSlackMrkdwn(text: string): string {
@@ -377,17 +348,13 @@ export function convertToWhatsAppMarkdown(text: string): string {
     text,
     (segment) =>
       segment
-        // Headings FIRST so the content gets wrapped in ``*`` before the
-        // bold rule sees it. Otherwise the model's ``### **Heading**`` would
-        // become ``### *Heading*`` (after bold) and then ``**Heading**`` once
-        // the heading rule wraps the already-emphasised content in ``*`` —
-        // re-introducing the double asterisks we tried to remove.
+        // Headings FIRST so content is wrapped in `*` before the bold rule sees it — otherwise
+        // `### **Heading**` becomes `### *Heading*` after bold, then `**Heading**` once heading
+        // wraps the already-emphasised content, re-introducing the double asterisks we removed.
         .replaceAll(/^#{1,6}[ \t]+(\S[^\n]*)$/gm, "*$1*") // # Heading → *Heading*
-        // Horizontal-rule remover MUST run before the bold rule. Otherwise
-        // ``***`` on its own line followed by ``**Heading**`` lets the bold
-        // regex's ``[^*]`` greedy-match the inter-line newlines and pair
-        // chars across the ``***`` boundary into ``**X**``, splitting the
-        // ``**Heading**`` and leaving stray ``**`` glyphs in the output.
+        // Horizontal-rule remover MUST run before the bold rule — otherwise `***` on its own
+        // line followed by `**Heading**` lets the bold regex's `[^*]` greedy-match across the
+        // `***` boundary into `**X**`, splitting the heading and leaving stray `**` glyphs.
         .replaceAll(/^[-_*]{3,}$/gm, "") // --- / ___ / *** → remove
         // Bold rules: keep ``[^*\n]`` (no newlines) so a single ``**`` opener
         // cannot reach across blank lines and accidentally pair with the
@@ -468,28 +435,18 @@ export function renderForPlatform(
 }
 
 /**
- * The single canonical "link your account" prompt.
+ * The single canonical "link your account" prompt, used by both `/auth` and every adapter's
+ * streaming `onAuthError` path on all four platforms, replacing each adapter's previously
+ * divergent copy.
  *
- * Used BOTH by the `/auth` command and by every adapter's streaming
- * `onAuthError` path, on all four platforms — so an unlinked user sees the
- * exact same message whether they type `/auth` or just send "hi". Previously
- * each adapter hardcoded its own divergent copy, which is the inconsistency
- * this removes.
- *
- * The URL is shown **bare** (not a masked link) on purpose: a bare URL stays
- * visible and copy-pasteable, and every platform auto-links it once it points
- * at a real public domain (the production `GAIA_FRONTEND_URL`). A masked
- * `[label](url)` would hide the URL, and Telegram refuses to linkify or accept
- * `<a href>` entities for non-public hosts like `localhost`, so in dev it would
- * render as dead plain text with no URL at all.
- *
- * Callers still send it through `renderForPlatform` (and `parse_mode: HTML` on
- * Telegram) so the `**bold**` heading renders consistently.
+ * Shown as a **bare** URL on purpose — copy-pasteable and auto-linked on a real public domain,
+ * whereas Telegram won't linkify `<a href>` for non-public hosts like `localhost`, so a masked
+ * link would render as dead text in dev. Send it through `renderForPlatform` for the heading bold.
  */
 export function buildAuthLinkMessage(authUrl: string): string {
   return (
     "**Link your account to GAIA**\n\n" +
-    "Tap below to sign in — once you're connected, you can use everything right here.\n" +
+    "Tap below to sign in. Once you're connected, you can use everything right here.\n" +
     `${authUrl}`
   );
 }
@@ -548,48 +505,55 @@ Type /help <command> for details.`,
 /**
  * The user-facing message the API sent with an error response, if it sent one.
  *
- * FastAPI puts it under `detail`: a bare string for a plain `HTTPException`
- * (the bots' flat anti-spam limiter), or an object carrying `message` for the
- * rate-limit family — `RateLimitExceededException` composes copy naming the
- * wall that was hit ("You've used today's AI usage allowance. Upgrade to Pro
- * for higher limits."), which is the only place that distinction exists.
+ * Every non-2xx body is the flat error envelope, and its `message` is the
+ * copy to show: `RateLimitExceededException` composes copy naming the wall
+ * that was hit ("You've used today's AI usage allowance. Upgrade to Pro for
+ * higher limits."), which is the only place that distinction exists.
  */
 function serverMessage(error: unknown): string | null {
-  const data = (error as { response?: { data?: unknown } } | null)?.response
-    ?.data;
-  if (typeof data !== "object" || data === null) return null;
-  const { detail, message } = data as { detail?: unknown; message?: unknown };
-  const candidate =
-    typeof detail === "string"
-      ? detail
-      : ((detail as { message?: unknown } | null | undefined)?.message ??
-        message);
+  const candidate = getErrorReason(error).message;
   return typeof candidate === "string" && candidate.trim()
     ? candidate.trim()
     : null;
 }
 
-/**
- * Formats an error message for user display.
- */
-export function formatBotError(error: unknown): string {
-  const status =
-    error instanceof GaiaApiError ? error.status : getHttpStatus(error);
+/** The actionable reply when the platform account has no GAIA user behind it. */
+function buildAccountNotLinkedMessage(platform?: PlatformName): string {
+  const account = platform
+    ? `Your ${PLATFORM_DISPLAY_NAMES[platform]} account`
+    : "Your account";
+  return `🔗 ${account} isn't linked to GAIA yet. Send /auth to link it.`;
+}
 
-  if (status === 401) {
+/**
+ * Formats an error message for user display. Pure: the caller records the
+ * failure (recordBotFailure) before showing this.
+ */
+export function formatBotError(
+  error: unknown,
+  platform?: PlatformName,
+): string {
+  const reason = classifyBotFailure(error);
+
+  if (reason === BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED) {
+    return buildAccountNotLinkedMessage(platform);
+  }
+
+  if (reason === BOT_FAILURE_REASON.BOT_API_KEY_INVALID) {
+    return "❌ This bot can't reach GAIA right now. We've been alerted; please try again later.";
+  }
+
+  if (reason === BOT_FAILURE_REASON.UNAUTHORIZED) {
     return "❌ Authentication required. Use `/auth` to link your account.";
   }
 
-  if (status === 404) {
+  if (reason === BOT_FAILURE_REASON.NOT_FOUND) {
     return "❌ Not found. Please check the ID and try again.";
   }
 
-  if (status === 429) {
-    // Three different walls return 429 — flat anti-spam, the plan's message
-    // quota, and the daily AI-usage budget — and only the body says which.
-    // Collapsing them all to "you're sending messages too fast" told a user who
-    // is out of allowance to slow down, which is not what happened and not
-    // something waiting fixes.
+  if (reason === BOT_FAILURE_REASON.RATE_LIMITED) {
+    // Three different walls return 429 (flat anti-spam, plan message quota, daily AI-usage
+    // budget) and only the body says which; waiting never fixes an exhausted allowance.
     const fromServer = serverMessage(error);
     return fromServer
       ? `⏳ ${fromServer}`
@@ -599,7 +563,7 @@ export function formatBotError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
 
   if (message.includes("timed out") || message.includes("timeout")) {
-    return "⏳ The request timed out. The server may be busy — please try again in a moment.";
+    return "⏳ The request timed out. The server may be busy. Please try again in a moment.";
   }
 
   if (
@@ -625,8 +589,7 @@ export function formatBotError(error: unknown): string {
     message.includes("ECONNRESET") ||
     message.includes("socket hang up") ||
     // Node's premature-close error, raised verbatim as `aborted` when a proxy
-    // hangs up mid-response. Without this it lands in the unhandled bucket
-    // below and shows up as a spurious `unhandled_bot_error`.
+    // hangs up mid-response.
     message === "aborted"
   ) {
     return "🔌 Connection interrupted. Please try again.";
@@ -636,6 +599,5 @@ export function formatBotError(error: unknown): string {
     return "⚠️ Response was incomplete. Please try again.";
   }
 
-  wideLog.error("unhandled_bot_error", undefined, error);
   return "❌ Something went wrong. Please try again later.";
 }

@@ -2,7 +2,7 @@
 
 These are the invariants the rest of the engine leans on: exactly one live
 head per chain, a stable root anchor, soft-forget hiding the whole chain
-from recall, and ``delete_all`` leaving zero residue in any of the six
+from recall, and delete_all leaving zero residue in any of the six
 Postgres tables or either Chroma collection.
 """
 

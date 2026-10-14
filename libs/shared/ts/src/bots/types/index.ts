@@ -9,7 +9,7 @@
  * - ChatRequest / ChatResponse: chat API payloads
  * - CommandContext: user identity passed to all shared command handlers
  * - BotConfig: environment config loaded by config/index.ts
- * - Domain types: BotWorkflow, BotTodo, BotConversation (match backend API schemas)
+ * - Domain types: BotTodo, BotConversation (workflows use the generated API types)
  */
 
 /**
@@ -55,6 +55,13 @@ export interface ChatRequest {
    */
   fileIds?: string[];
   /**
+   * Platform-native id of the user's inbound message (WhatsApp wamid, Telegram
+   * message_id, Discord id, Slack ts, iMessage id). Persisted server-side so a
+   * later background reaction can anchor to the exact platform message.
+   * Absent when the trigger has no message id (slash-command interactions).
+   */
+  platformMessageId?: string;
+  /**
    * Full file metadata for the attached files. Sent alongside `fileIds` so
    * the agent can resolve URLs/filenames without an extra DB lookup, matching
    * the web app's chat payload shape.
@@ -73,10 +80,11 @@ export interface BotConfig {
   /** The base URL of the GAIA frontend app. */
   gaiaFrontendUrl: string;
   /**
-   * PostHog API key for bot analytics. Optional — analytics is silently
-   * disabled when absent (safe for local development).
+   * PostHog project token for bot analytics, the same POSTHOG_PROJECT_TOKEN the
+   * API and voice agent read. Optional — a missing token is logged at boot and
+   * disables analytics (safe for local development).
    */
-  posthogApiKey?: string;
+  posthogProjectToken?: string;
   /**
    * RabbitMQ connection URL for consuming backend-originated outbound
    * messages. Optional — the outbound consumer is disabled when absent (safe
@@ -91,7 +99,6 @@ export interface BotConfig {
 export interface AuthStatus {
   /** Whether the user is authenticated/linked. */
   authenticated: boolean;
-  /** The platform name. */
   platform: string;
   /**
    * The user ID on the platform.
@@ -111,19 +118,20 @@ export interface AuthStatus {
   user_id?: string;
 }
 
-export interface BotWorkflow {
-  id: string;
-  name: string;
-  description: string;
-  status: "active" | "inactive" | "draft";
-  triggers?: Record<string, unknown>[];
-  steps?: Record<string, unknown>[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface BotWorkflowListResponse {
-  workflows: BotWorkflow[];
+/**
+ * What `POST /bot/redeem-link-code` answers (`RedeemLinkCodeResponse` in
+ * `apps/api/app/models/bot_models.py`, which must change with this).
+ */
+export interface RedeemedLinkCode {
+  /** Whether the platform account is now linked. */
+  linked: boolean;
+  /**
+   * Whether GAIA's first contact is on its way on the outbound queue. When
+   * false the bot owes the user `firstContact` — nothing retries that publish.
+   */
+  delivered: boolean;
+  /** Ordered bubbles to send when `delivered` is false; empty otherwise. */
+  firstContact: string[];
 }
 
 export interface BotWorkflowExecutionRequest {
@@ -191,7 +199,7 @@ export type CommandContext = BotUserContext & {
 /**
  * Integration information for settings.
  */
-export interface IntegrationInfo {
+export interface BotIntegrationInfo {
   name: string;
   logoUrl: string | null;
   status: "created" | "connected";
@@ -212,7 +220,7 @@ export interface AuthenticatedSettingsResponse {
   userName: string | null;
   accountCreatedAt: string | null;
   profileImageUrl: string | null;
-  connectedIntegrations: IntegrationInfo[];
+  connectedIntegrations: BotIntegrationInfo[];
 }
 
 /**

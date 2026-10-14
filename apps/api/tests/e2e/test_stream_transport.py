@@ -1,26 +1,18 @@
 """The SSE transport itself: ownership, replay, turn dedup, client disconnect.
 
-Everything here rides the real endpoint functions over a real ``StreamManager``
-backed by ``fakeredis`` — Redis Streams semantics (``XADD``/``XREAD``, cursors,
-entry ids) are the thing under test, so mocking them away would leave nothing.
-Only the turn itself (``run_chat_stream_background``) is doubled, because what
-the agent produces is covered elsewhere; what is covered here is what the
-transport does with it.
+Everything rides the real endpoint functions over a real StreamManager backed by fakeredis --
+Redis Streams semantics (XADD/XREAD, cursors, entry ids) are the subject, so mocking them away
+would leave nothing. Only the turn itself (run_chat_stream_background) is doubled; what the agent
+produces is covered elsewhere.
 
-Four seams, none of which had a test before:
-
-* ``GET /api/v1/stream/{id}`` — 400/404/403 and the already-complete
-  short-circuit. The 403 is the only thing stopping one user from reading
-  another user's stream.
-* ``Last-Event-ID`` — a reconnect must resume *after* the cursor. Replay goes
-  through the same ``subscribe_stream`` as the live attach and differs only in
-  its start cursor, so "attach, drop, re-attach, diff the bytes" is an exact
-  assertion. If the header stopped reaching ``subscribe_stream``, every
-  reconnect would replay from ``0-0`` and duplicate the whole turn.
-* The ``turn_id`` SETNX claim — the only guard against a retried POST
-  persisting the same user+bot message pair twice.
-* Client disconnect — the headline claim in ``apps/api/CLAUDE.md``: the turn is
-  decoupled from the HTTP request and still runs to completion and persists.
+Four seams, none of which had a test before: GET /api/v1/stream/{id}, its 400/404/403 and the
+already-complete short-circuit, where the 403 is the only thing stopping one user from reading
+another user's stream; Last-Event-ID, where a reconnect must resume AFTER the cursor (replay and
+live attach share subscribe_stream and differ only in start cursor, so attach/drop/re-attach and
+diff the bytes is exact -- lose the header and every reconnect replays from 0-0); the turn_id
+SETNX claim, the only guard against a retried POST persisting the same user+bot message pair
+twice; and client disconnect, the apps/api/CLAUDE.md claim that the turn is decoupled from the
+HTTP request and still runs to completion and persists.
 """
 
 from __future__ import annotations
@@ -29,6 +21,7 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator
 import json
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import fakeredis.aioredis
@@ -42,14 +35,16 @@ from app.api.v1.endpoints import chat as chat_endpoint
 from app.constants.cache import STREAM_EVENTS_PREFIX, STREAM_TURN_DEDUP_PREFIX
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
+from app.models.payment_models import PlanType
+from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import format_sse_data
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.transcript import DONE, Transcript
 
 pytestmark = pytest.mark.e2e
 
-OWNER_ID: str = FAKE_USER["user_id"]
-INTRUDER_ID: str = FAKE_USER_2["user_id"]
+OWNER_ID: str = FAKE_USER.user_id
+INTRUDER_ID: str = FAKE_USER_2.user_id
 
 #: A turn's worth of frames, distinct enough that a duplicated replay is visible.
 TURN_FRAMES = [
@@ -65,6 +60,19 @@ _ASGI_SPEC_VERSION = "2.3"  # what uvicorn advertises (uvicorn/protocols/http/h1
 
 
 @pytest.fixture(autouse=True)
+def _pro_subscription() -> Iterator[None]:
+    """Bypass the entitlement gate so POST /chat-stream doesn't 402 before the transport under test runs (same pattern as test_chat_endpoints.py)."""
+    subscription = MagicMock()
+    subscription.plan_type = PlanType.PRO
+    with patch(
+        "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+        new_callable=AsyncMock,
+        return_value=subscription,
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
     """Point the module singleton at an in-process Redis with real Streams."""
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
@@ -77,11 +85,11 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 
 @pytest.fixture
-def as_user(test_app: FastAPI) -> Iterator[Callable[[dict[str, Any]], None]]:
+def as_user(test_app: FastAPI) -> Iterator[Callable[[AuthenticatedUser], None]]:
     """Swap the authenticated principal for one test, restoring the app after."""
     original = test_app.dependency_overrides.get(get_current_user)
 
-    def _set(user: dict[str, Any]) -> None:
+    def _set(user: AuthenticatedUser) -> None:
         test_app.dependency_overrides[get_current_user] = lambda: user
 
     yield _set
@@ -98,14 +106,7 @@ def as_user(test_app: FastAPI) -> Iterator[Callable[[dict[str, Any]], None]]:
 
 
 async def seed_cancelled_turn(user_id: str, frames: list[str]) -> str:
-    """A subscribable stream whose event log is already terminated.
-
-    Cancellation is the terminator used here on purpose: it leaves progress
-    present and ``is_complete`` false, so ``GET /stream/{id}`` still goes
-    through ``_stream_from_redis`` instead of taking the already-complete
-    short-circuit (which is exercised separately). On the wire a cancelled
-    turn ends with a bare ``data: [DONE]`` carrying no ``id:`` line.
-    """
+    """Build a subscribable, already-cancelled stream: progress present, is_complete false, ending in a bare data: [DONE] with no id: line."""
     stream_id = str(uuid4())
     await stream_manager.start_stream(
         stream_id=stream_id,
@@ -137,6 +138,7 @@ def stub_turn(monkeypatch: pytest.MonkeyPatch, runs: list[dict[str, Any]]) -> No
         user: dict[str, Any],
         conversation_id: str,
         source: str | None = None,
+        t0_perf: float | None = None,
     ) -> None:
         runs.append({"stream_id": stream_id, "conversation_id": conversation_id})
         await stream_manager.publish_chunk(stream_id, TURN_FRAMES[0])
@@ -152,7 +154,7 @@ def stub_turn(monkeypatch: pytest.MonkeyPatch, runs: list[dict[str, Any]]) -> No
 
 class TestSubscribeAuthorization:
     async def test_owner_receives_the_whole_turn(
-        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+        self, client: AsyncClient, as_user: Callable[[AuthenticatedUser], None]
     ) -> None:
         """Positive control: without this, the 403/404 tests prove nothing."""
         as_user(FAKE_USER)
@@ -165,7 +167,7 @@ class TestSubscribeAuthorization:
         assert transcript.final_text() == "Hello there, friend!"
 
     async def test_another_users_stream_is_refused_and_leaks_nothing(
-        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+        self, client: AsyncClient, as_user: Callable[[AuthenticatedUser], None]
     ) -> None:
         as_user(FAKE_USER_2)
         stream_id = await seed_cancelled_turn(OWNER_ID, TURN_FRAMES)
@@ -176,7 +178,7 @@ class TestSubscribeAuthorization:
         assert "Hello" not in response.text
 
     async def test_unknown_stream_is_404(
-        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+        self, client: AsyncClient, as_user: Callable[[AuthenticatedUser], None]
     ) -> None:
         as_user(FAKE_USER)
 
@@ -185,9 +187,9 @@ class TestSubscribeAuthorization:
         assert response.status_code == 404
 
     async def test_principal_without_user_id_is_400(
-        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+        self, client: AsyncClient, as_user: Callable[[AuthenticatedUser], None]
     ) -> None:
-        as_user({**FAKE_USER, "user_id": None})
+        as_user(FAKE_USER.model_copy(update={"user_id": ""}))
         stream_id = await seed_cancelled_turn(OWNER_ID, TURN_FRAMES)
 
         response = await client.get(f"/api/v1/stream/{stream_id}")
@@ -196,16 +198,7 @@ class TestSubscribeAuthorization:
 
 
 async def seed_completed_turn(user_id: str, frames: list[str]) -> str:
-    """A stream terminated the way a real turn terminates, log intact.
-
-    The producer publishes ``data: [DONE]`` into the log as an ordinary chunk
-    and only then calls ``complete_stream`` (``services/chat/stream.py``,
-    ``background/executor_runner.py``). The control entry that
-    ``complete_stream`` writes is consumed by ``subscribe_stream`` and never
-    reaches the wire, so seeding without the chunk would build a log no
-    producer can actually create — and a replay of it would look like a client
-    that never closes.
-    """
+    """Build a stream the way a real turn terminates: data: [DONE] published as an ordinary chunk before complete_stream, whose own control entry never reaches the wire."""
     stream_id = str(uuid4())
     await stream_manager.start_stream(
         stream_id=stream_id,
@@ -219,23 +212,21 @@ async def seed_completed_turn(user_id: str, frames: list[str]) -> str:
 
 
 class TestAlreadyCompleteShortCircuit:
-    """``is_complete`` alone is not a reason to hang up.
+    """is_complete alone is not a reason to hang up.
 
-    A HIL resume publishes its frames and closes inside ~100ms — quicker than
-    the client's websocket-to-fetch round trip — so a short-circuit keyed on
-    ``is_complete`` threw away nearly every resumed run: the next approval card
-    never arrived and the turn sat on "Waiting for your approval" forever. The
-    log outliving the turn is what makes the late attach recoverable, so the
-    short-circuit is keyed on the log being *gone*, not on the turn being over.
+    A HIL resume publishes its frames and closes inside ~100ms, quicker than the client's
+    websocket-to-fetch round trip, so a short-circuit keyed on is_complete threw away nearly every
+    resumed run: the next approval card never arrived and the turn sat on "Waiting for your
+    approval" forever. The log outliving the turn is what makes the late attach recoverable, so
+    the short-circuit is keyed on the log being GONE, not on the turn being over.
 
-    The unit tier (``unit/api/test_chat_stream_endpoint.py``) pins the same two
-    branches with ``has_events`` and ``subscribe_stream`` mocked — which is
-    precisely the code the fix leans on. This is the tier that runs them for
-    real, over a real event log.
+    unit/api/test_chat_stream_endpoint.py pins the same two branches with has_events and
+    subscribe_stream mocked -- precisely the code the fix leans on. This is the tier that runs
+    them for real, over a real event log.
     """
 
     async def test_a_completed_turn_replays_its_whole_log_then_closes_once(
-        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+        self, client: AsyncClient, as_user: Callable[[AuthenticatedUser], None]
     ) -> None:
         as_user(FAKE_USER)
         stream_id = await seed_completed_turn(OWNER_ID, TURN_FRAMES)
@@ -249,10 +240,9 @@ class TestAlreadyCompleteShortCircuit:
         assert transcript.kinds()[-1] == DONE
 
     async def test_an_expired_log_still_short_circuits_to_a_bare_done(
-        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+        self, client: AsyncClient, as_user: Callable[[AuthenticatedUser], None]
     ) -> None:
-        """With nothing left to replay there is nothing to wait for either —
-        without this branch the attach idles on keepalives until it times out."""
+        """With nothing left to replay, the attach must not idle on keepalives until it times out."""
         as_user(FAKE_USER)
         stream_id = await seed_completed_turn(OWNER_ID, TURN_FRAMES)
         await redis_cache.redis.delete(f"{STREAM_EVENTS_PREFIX}{stream_id}")
@@ -270,14 +260,9 @@ class TestAlreadyCompleteShortCircuit:
 
 class TestLastEventIdReplay:
     async def test_reconnect_resumes_after_the_cursor_byte_for_byte(
-        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+        self, client: AsyncClient, as_user: Callable[[AuthenticatedUser], None]
     ) -> None:
-        """The reconnect body is the exact tail of the first attach's body.
-
-        Live and replay share ``subscribe_stream`` and differ only in the start
-        cursor, so equality of the raw bytes is the honest assertion — not just
-        "the right number of frames came back".
-        """
+        """Live and replay share subscribe_stream and differ only in the start cursor, so the reconnect body must equal the exact byte tail of the first attach."""
         as_user(FAKE_USER)
         stream_id = await seed_cancelled_turn(OWNER_ID, TURN_FRAMES)
 
@@ -299,7 +284,7 @@ class TestLastEventIdReplay:
         assert tail.final_text() == ", friend!"
 
     async def test_reconnect_without_the_header_replays_the_whole_turn(
-        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+        self, client: AsyncClient, as_user: Callable[[AuthenticatedUser], None]
     ) -> None:
         """The control for the test above: absent cursor means replay from 0-0."""
         as_user(FAKE_USER)
@@ -312,7 +297,7 @@ class TestLastEventIdReplay:
         assert Transcript.from_sse(again.text).final_text() == "Hello there, friend!"
 
     async def test_resuming_from_the_last_frame_yields_no_duplicates(
-        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+        self, client: AsyncClient, as_user: Callable[[AuthenticatedUser], None]
     ) -> None:
         as_user(FAKE_USER)
         stream_id = await seed_cancelled_turn(OWNER_ID, TURN_FRAMES)
@@ -338,7 +323,7 @@ class TestTurnDedup:
     async def test_retried_send_is_rejected_and_runs_the_turn_once(
         self,
         client: AsyncClient,
-        as_user: Callable[[dict[str, Any]], None],
+        as_user: Callable[[AuthenticatedUser], None],
         monkeypatch: pytest.MonkeyPatch,
         fake_redis: fakeredis.aioredis.FakeRedis,
     ) -> None:
@@ -352,7 +337,7 @@ class TestTurnDedup:
 
         assert first.status_code == 200
         assert second.status_code == 409
-        assert second.json()["detail"] == "duplicate turn_id: this send was already accepted"
+        assert second.json()["message"] == "duplicate turn_id: this send was already accepted"
         assert len(runs) == 1
         # The claim holds the winning stream id, so a client can find its turn.
         claimed = await fake_redis.get(f"{STREAM_TURN_DEDUP_PREFIX}{OWNER_ID}:turn-abc")
@@ -361,7 +346,7 @@ class TestTurnDedup:
     async def test_a_different_turn_id_is_accepted(
         self,
         client: AsyncClient,
-        as_user: Callable[[dict[str, Any]], None],
+        as_user: Callable[[AuthenticatedUser], None],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         as_user(FAKE_USER)
@@ -377,7 +362,7 @@ class TestTurnDedup:
     async def test_the_claim_is_namespaced_per_user(
         self,
         client: AsyncClient,
-        as_user: Callable[[dict[str, Any]], None],
+        as_user: Callable[[AuthenticatedUser], None],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Two users can collide on a turn_id — it is client-generated."""
@@ -396,7 +381,7 @@ class TestTurnDedup:
     async def test_sends_without_a_turn_id_are_never_deduped(
         self,
         client: AsyncClient,
-        as_user: Callable[[dict[str, Any]], None],
+        as_user: Callable[[AuthenticatedUser], None],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         as_user(FAKE_USER)
@@ -416,7 +401,7 @@ class TestTurnDedup:
 
 
 def request_that_disconnects(disconnected: asyncio.Event) -> Request:
-    """A real Starlette Request whose receive channel drops when told to."""
+    """Build a real Starlette Request whose receive channel drops when told to."""
 
     async def receive() -> dict[str, Any]:
         await disconnected.wait()
@@ -436,12 +421,7 @@ def request_that_disconnects(disconnected: asyncio.Event) -> Request:
 
 class TestClientDisconnect:
     async def test_forwarding_stops_at_the_disconnect_but_the_turn_runs_on(self) -> None:
-        """``_stream_from_redis`` stops forwarding; the turn keeps publishing.
-
-        Asserted on the generator directly because the disconnect check lives
-        there — the frames published after the client is gone must reach Redis
-        (and therefore a later re-attach) but must not reach this client.
-        """
+        """_stream_from_redis stops forwarding but the turn keeps publishing — frames after disconnect must reach Redis for a later re-attach, not this client."""
         stream_id = str(uuid4())
         await stream_manager.start_stream(
             stream_id=stream_id, conversation_id=str(uuid4()), user_id=OWNER_ID
@@ -478,20 +458,7 @@ class TestClientDisconnect:
     async def test_the_generator_stops_reading_redis_at_the_disconnect(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The disconnect must END the generator, not merely mute it.
-
-        Its sibling above proves no further frame reaches the client, which a
-        ``continue`` in place of the ``break`` satisfies just as well: the
-        generator goes on consuming Redis for a client that is gone, holding the
-        response open until the turn's own DONE — up to ``EXECUTOR_WAIT_TIMEOUT``
-        later. One leaked generator per abandoned connection.
-
-        Asserted on how much it *reads*, not on how long it takes. A drained
-        generator does still stop once the log ends, so waiting on
-        ``StopAsyncIteration`` passes either way (it just takes ten times as
-        long); and a timing bound would be flaky by construction. Counting the
-        reads is the difference itself.
-        """
+        """The disconnect must end the generator, not just mute it — a continue in place of break would leak one generator per connection until EXECUTOR_WAIT_TIMEOUT, so this counts reads rather than timing, which would pass either way."""
         stream_id = str(uuid4())
         await stream_manager.start_stream(
             stream_id=stream_id, conversation_id=str(uuid4()), user_id=OWNER_ID
@@ -505,7 +472,9 @@ class TestClientDisconnect:
                 reads += 1
                 yield chunk
 
-        monkeypatch.setattr(stream_manager, "subscribe_stream", counting_subscribe)
+        monkeypatch.setattr(
+            type(stream_manager), "subscribe_stream", staticmethod(counting_subscribe)
+        )
 
         disconnected = asyncio.Event()
         await stream_manager.publish_chunk(stream_id, TURN_FRAMES[0])
@@ -532,26 +501,10 @@ class TestClientDisconnect:
     async def test_turn_completes_and_persists_after_the_client_is_gone(
         self,
         test_app: FastAPI,
-        as_user: Callable[[dict[str, Any]], None],
+        as_user: Callable[[AuthenticatedUser], None],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """The turn outlives the connection — the claim in ``apps/api/CLAUDE.md``.
-
-        What it defends is the *detachment*: replacing the
-        ``asyncio.create_task(run_chat_stream_background(...))`` with a bare
-        ``await`` deadlocks this test and nothing else. It does not defend
-        GAIA's own ``is_disconnected()`` handling, which can be deleted outright
-        with this test still green — Starlette's ``StreamingResponse`` installs
-        its own disconnect listener and tears the response down on
-        ``http.disconnect`` regardless. That handling is pinned by
-        ``TestClientDisconnect`` above instead.
-
-        Driven over raw ASGI rather than ``ASGITransport`` because httpx never
-        emits ``http.disconnect`` — without a real disconnect message there is
-        no disconnect to test. The scope advertises spec version 2.3, the same
-        as uvicorn, so Starlette installs its disconnect listener exactly as it
-        does in production.
-        """
+        """The turn outlives the connection (the apps/api/CLAUDE.md claim): swapping asyncio.create_task(run_chat_stream_background(...)) for a bare await deadlocks this test. Runs over raw ASGI, not ASGITransport, since httpx never emits http.disconnect; scope spec_version 2.3 matches uvicorn so Starlette's own disconnect handling fires as in production. GAIA's own is_disconnected() is pinned separately by TestClientDisconnect above and could be deleted without failing this test."""
         as_user(FAKE_USER)
         client_gone = asyncio.Event()
         finished = asyncio.Event()
@@ -564,6 +517,7 @@ class TestClientDisconnect:
             user: dict[str, Any],
             conversation_id: str,
             source: str | None = None,
+            t0_perf: float | None = None,
         ) -> None:
             await stream_manager.publish_chunk(stream_id, TURN_FRAMES[0])
             await client_gone.wait()

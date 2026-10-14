@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.5.0...cli-v0.6.0) (2026-09-13)
+
+
+### Features
+
+* **ci:** run CI on the home server with GitHub fallback; move sensitive infra to a private repo ([#1131](https://github.com/theexperiencecompany/gaia/issues/1131)) ([f38a9e6](https://github.com/theexperiencecompany/gaia/commit/f38a9e6c06b3f5e1cd6555c4bea82531f5d2ddca))
+* expose custom and device-hosted MCP servers to the agent from chat ([#1208](https://github.com/theexperiencecompany/gaia/issues/1208)) ([9e97335](https://github.com/theexperiencecompany/gaia/commit/9e973359c2da0ec143f23d35daefd65fbb6aa334))
+
 ## [0.5.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.4.0...cli-v0.5.0) (2026-08-25)
 
 

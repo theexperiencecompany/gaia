@@ -8,14 +8,11 @@ workflow-execution branch so nothing hardcodes these values.
 from enum import StrEnum
 from typing import Final, Literal
 
-# System-workflow keys. The workflow ARQ path special-cases these to route into
-# the briefing service instead of the generic chat execution.
-# Hard ceiling on the weekly digest's payload-generation agent run. The weekly
-# run is cron-fired and unsupervised; without a bound a stalled agent run hangs
-# the worker slot forever (observed live 2026-08-07). Expiry raises — a missed
-# digest fails loud and retries next week rather than half-delivering.
+# Hard ceiling on the unsupervised weekly agent run; expiry raises so a stalled
+# run fails loud and retries next week instead of hanging the worker slot.
 WEEKLY_GENERATION_TIMEOUT_SECONDS: Final[int] = 420
 
+# System-workflow keys; the workflow ARQ path routes these into the briefing service.
 DAILY_BRIEFING_WORKFLOW_KEY: Final[str] = "daily_briefing"
 WEEKLY_DIGEST_WORKFLOW_KEY: Final[str] = "weekly_digest"
 
@@ -27,7 +24,8 @@ BRIEFING_RHYTHM_WORKFLOW_KEYS: Final[tuple[str, ...]] = (
 )
 
 # Schedules (user-local timezone; the provisioner stamps the tz onto the trigger).
-DAILY_BRIEFING_CRON: Final[str] = "0 8 * * *"  # every day 08:00
+# The daily brief's local hour, unless quiet hours cover it (briefing.schedule).
+DAILY_BRIEFING_HOUR: Final[int] = 8
 WEEKLY_DIGEST_CRON: Final[str] = "0 17 * * 0"  # Sunday 17:00
 
 # Briefing kinds — key the payload variant and the unique-per-day constraint.
@@ -38,10 +36,6 @@ BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
 # in under a minute. The daily brief keeps the highest-priority items (needs-you
 # first); a weekly payload over the cap fails generation.
 MAX_BRIEF_ITEMS: Final[int] = 8
-
-# Telegram's (and WhatsApp's) caption limit: the skim splits into follow-up
-# messages past it.
-CHAT_CAPTION_MAX_CHARS: Final[int] = 1024
 
 # Rows per list in the weekly edition (shipped, handled, the week ahead).
 WEEK_LIST_LIMIT: Final[int] = 5
@@ -79,7 +73,7 @@ POSTAL_FAMILY: Final[str] = "postal"
 
 
 class BriefingBag(StrEnum):
-    """The per-user shuffle bags kept on the user doc (``briefing_shuffle_bags``)."""
+    """The per-user shuffle bags kept on the user doc (briefing_shuffle_bags)."""
 
     EDITION_FAMILY = "edition_family"
     STAMP_CITY = "stamp_city"

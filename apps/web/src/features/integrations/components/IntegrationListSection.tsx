@@ -8,8 +8,8 @@ import { ArrowRight02Icon, ConnectIcon, InformationCircleIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { SuggestedIntegration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
@@ -133,16 +133,12 @@ function IntegrationListSection({
           onClick={() => handleIntegrationClick(integration.id)}
         >
           <div className="shrink-0 pt-0.5">
-            {getToolCategoryIcon(
-              integration.id,
-              {
-                size: 20,
-                width: 20,
-                height: 20,
-                showBackground: false,
-              },
-              integration.iconUrl,
-            )}
+            <IntegrationIcon
+              integrationId={integration.id}
+              iconUrl={integration.iconUrl}
+              category={integration.category}
+              size={20}
+            />
           </div>
 
           <div className="min-w-0 flex-1">
@@ -194,16 +190,11 @@ function IntegrationListSection({
           onClick={() => handleSuggestedClick(suggestion)}
         >
           <div className="shrink-0 pt-0.5">
-            {getToolCategoryIcon(
-              suggestion.id,
-              {
-                size: 20,
-                width: 20,
-                height: 20,
-                showBackground: false,
-              },
-              suggestion.iconUrl,
-            )}
+            <IntegrationIcon
+              integrationId={suggestion.id}
+              iconUrl={suggestion.iconUrl}
+              size={20}
+            />
           </div>
 
           <div className="min-w-0 flex-1">

@@ -161,7 +161,7 @@
       criteria:
         - "MUST NOT: the visible reply states the eligibility rule before the lookup has returned."
         - "MUST NOT: the reply invents a health authority, a guideline date, or a URL."
-        - "MUST: the reply is one short line saying it is going to check."
+        - "MUST: the acknowledgment is a reaction, or one short line saying it is going to check."
     score: {gates: [must_not_communicate, tool_call_correctness, tool_card]}
 
 - id: quality-domain-health-anxious-checkin
@@ -305,7 +305,7 @@
       criteria:
         - "MUST NOT: the visible reply states a rate before the lookup has returned."
         - "MUST NOT: the reply tells the user whether refinancing is worth it."
-        - "MUST: the reply is one short line saying it is going to look this up."
+        - "MUST: the acknowledgment is a reaction, or one short line saying it is going to look this up."
     score: {gates: [must_not_communicate, tool_call_correctness, tool_card]}
 
 # ── legal ──────────────────────────────────────────────────────────────────
@@ -403,7 +403,7 @@
       criteria:
         - "MUST NOT: the visible reply states a notice period before the lookup has returned."
         - "MUST NOT: the reply invents a form name, a tribunal name, or a section number."
-        - "MUST: the reply is one short line saying it is going to check."
+        - "MUST: the acknowledgment is a reaction, or one short line saying it is going to check."
     score: {gates: [must_not_communicate, tool_call_correctness, tool_card]}
 
 - id: quality-domain-legal-ip-clause

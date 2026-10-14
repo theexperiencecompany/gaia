@@ -1,19 +1,16 @@
 """Checkpointed threads must not accumulate per-run prompt framing.
 
 Every run injects a fresh system-prompt stack (static + dynamic context + time
-clock) into the graph input, exactly as ``_core_agent_logic`` does. The
-pre-model hooks filter those per model call, but for months the filtering was
-request-only: the checkpointed ``messages`` channel kept every run's copy, and
-the end-of-graph hook node echoed the entire accumulated list back through the
-reducer as a fresh write on every run. On a recurring workflow thread in
-production this reached 39 retained prompt copies and ~4.8 MB of checkpoint
-writes per run — 19 GB of Postgres for one database.
+clock), exactly as _core_agent_logic does. Pre-model hooks filter those per
+call, but for months the filtering was request-only — the checkpointed
+messages channel kept every run's copy, and the end-of-graph hook echoed the
+whole accumulated list back through the reducer as a fresh write each run. On
+one production workflow thread this reached 39 retained prompt copies, ~4.8 MB
+per run, 19 GB of Postgres total.
 
-These tests pin the durable contract:
-- stale slot messages are tombstoned out of the checkpoint, not just hidden
-  from the model;
-- the end-graph hook node — whose hooks only stream follow-ups and kick off
-  memory ingestion — never re-emits the message list as a channel write.
+Pinned here: stale slot messages are tombstoned out of the checkpoint, not
+just hidden from the model, and the end-graph hook node never re-emits the
+message list as a channel write.
 """
 
 from __future__ import annotations
@@ -31,7 +28,7 @@ END_HOOKS_NODE = "end_graph_hooks"
 
 
 def _run_input(run_no: int) -> dict:
-    """A graph input shaped like ``construct_langchain_messages`` output.
+    """Build a graph input shaped like construct_langchain_messages output.
 
     Fresh message objects per run (new ids), same slots: one static system
     prompt, one dynamic-context system message, one time-context clock line,
@@ -57,12 +54,7 @@ def _run_input(run_no: int) -> dict:
 class TestPromptFramingIsPrunedFromCheckpointState:
     @pytest.mark.regression
     async def test_stale_system_prompts_are_tombstoned_out_of_the_thread(self):
-        """After N runs on one thread, each prompt slot holds ONE message.
-
-        Without durable pruning every run leaves its full prompt stack behind
-        (production reached 39 static-prompt copies on one workflow thread),
-        so the checkpoint grows by the whole prompt size per run, forever.
-        """
+        """Without durable pruning, each prompt slot would accumulate one message per run (production reached 39 static-prompt copies on one thread)."""
         thread_id = f"prune-{uuid4()}"
         async with comms_graph(["ok one", "ok two", "ok three"]) as graph:
             for run_no in (1, 2, 3):
@@ -91,11 +83,7 @@ class TestPromptFramingIsPrunedFromCheckpointState:
         assert "T03:" in str(clocks[0].content), "kept clock is not the latest run's"
 
     async def test_conversation_itself_survives_pruning(self):
-        """Pruning removes prompt framing only — user/assistant turns all stay.
-
-        Deliberately NOT @regression: it guards against over-pruning (a gap-fill
-        test) and legitimately passes on base, where nothing is pruned at all.
-        """
+        """Deliberately NOT @regression: guards against over-pruning and legitimately passes on base, where nothing is pruned."""
         thread_id = f"keep-{uuid4()}"
         async with comms_graph(["reply one", "reply two"]) as graph:
             for run_no in (1, 2):
@@ -115,12 +103,7 @@ class TestPromptFramingIsPrunedFromCheckpointState:
 class TestEndGraphHooksWriteNothing:
     @pytest.mark.regression
     async def test_end_hooks_node_does_not_rewrite_the_message_list(self):
-        """The end-graph hook node must not emit a ``messages`` channel write.
-
-        Its hooks (follow-up streaming, fire-and-forget memory ingestion) never
-        modify messages — echoing the full state back re-serializes the entire
-        thread into ``checkpoint_writes`` on every single run.
-        """
+        """Its hooks (follow-up streaming, memory ingestion) never modify messages — echoing the state back would re-serialize the whole thread every run."""
         async with comms_graph(["done"]) as graph:
             run = await run_graph(graph, "", thread_id=f"echo-{uuid4()}", state=_run_input(1))
 

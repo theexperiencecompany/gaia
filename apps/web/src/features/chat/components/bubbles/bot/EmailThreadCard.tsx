@@ -1,10 +1,10 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import DOMPurify from "dompurify";
 import { useCallback } from "react";
 
 import { Gmail } from "@/components/shared/icons";
+import { sanitizeEmailHtml } from "@/features/mail/utils/sanitizeEmailHtml";
 import type { EmailThreadData } from "@/types/features/mailTypes";
 
 import { parseEmail } from "../../../../mail/utils/mailUtils";
@@ -42,16 +42,11 @@ function EmailBodyRenderer({
 }) {
   const htmlContent = content?.html || content?.text || body;
 
-  const sanitizedHtml = DOMPurify.sanitize(htmlContent, {
-    ADD_ATTR: ["target"],
-    ADD_TAGS: ["iframe"],
-  });
+  const sanitizedHtml = sanitizeEmailHtml(htmlContent);
 
-  // Injects the sanitized email into a shadow root directly from a ref
-  // callback. React re-runs the callback synchronously at commit whenever its
-  // identity changes (i.e. when sanitizedHtml changes), so content updates
-  // never go through a render → effect → setState round-trip and there is no
-  // intermediate "loading" paint to flash.
+  // Injects sanitized email into a shadow root via a ref callback — React
+  // re-runs it synchronously at commit when its identity changes
+  // (sanitizedHtml changes), skipping a render/effect/setState flash.
   const attachShadowContent = useCallback(
     (host: HTMLDivElement | null) => {
       if (!host) return;

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useUserStore } from "@/stores/userStore";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 
 import type { Integration } from "../types";
 
@@ -10,7 +10,7 @@ import type { Integration } from "../types";
  * - forked: a custom integration created by someone else (added from the marketplace)
  */
 export function useIntegrationOwnership(integration: Integration) {
-  const currentUserId = useUserStore((state) => state.userId);
+  const currentUserId = useCurrentUser().userId;
 
   const isOwnIntegration = useMemo(
     () =>

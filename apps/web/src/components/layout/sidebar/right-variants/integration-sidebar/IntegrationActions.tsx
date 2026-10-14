@@ -26,10 +26,9 @@ interface DialogCopy {
   confirmText: string;
 }
 
-// Confirmation copy for the disconnect/remove action. Custom integrations are
-// removed (permanently deleted when own); native integrations are disconnected
-// (revoke access) or removed when not yet connected. The confirm text doubles
-// as the action button label shown before the dialog opens.
+// Custom integrations are removed (permanently deleted if owned); native
+// integrations are disconnected (revoke access) or removed if not yet
+// connected. The confirm text doubles as the action button label.
 function getDisconnectDialogCopy(
   name: string,
   isCustom: boolean,
@@ -187,7 +186,8 @@ export function IntegrationActions({
   const [isPublishing, setIsPublishing] = useState(false);
 
   const bearer = useBearerTokenModal({
-    connect: (id, token) => integrationsApi.connectIntegration(id, token),
+    connect: (id, token) =>
+      integrationsApi.connectIntegration(id, { bearerToken: token }),
     onConnected: () => {
       toast.success(`Connected to ${integration.name}`);
       // Refresh data in the background so the sidebar reflects the new tools.

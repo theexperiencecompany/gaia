@@ -1,6 +1,7 @@
 """Tests for TriggerHandler.unregister in app.services.triggers.base."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,9 +9,10 @@ from composio_client import APIStatusError, InternalServerError, PermissionDenie
 import httpx
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
-from app.services.triggers.base import TriggerHandler
+from app.services.triggers.base import TriggerHandler, _log_event_timing
 from tests.helpers import captured_wide_event
 
 
@@ -41,9 +43,9 @@ def _api_status_error(
 ) -> APIStatusError:
     """Build the exception the Composio client raises for a non-2xx delete.
 
-    `error_cls` mirrors the SDK's own status→class mapping: 410 has no dedicated
+    error_cls mirrors the SDK's own status→class mapping: 410 has no dedicated
     subclass and arrives as a bare APIStatusError. The message mirrors the SDK's
-    format (`Error code: N - <body>`) — what reaches Sentry, and all a
+    format (Error code: N - <body>) — what reaches Sentry, and all a
     substring-based check would ever see.
     """
     response = httpx.Response(
@@ -94,11 +96,7 @@ class TestUnregister:
     async def test_non_410_error_whose_body_mentions_410_is_a_failure(
         self, composio_delete: MagicMock
     ) -> None:
-        """A real failure must not be swallowed just because "410" appears in its text.
-
-        Composio echoes the trigger id back in the error body, so any id containing
-        the digits 410 made a substring check report a live trigger as deleted.
-        """
+        """A substring check on "410" is wrong: Composio echoes the trigger id in the error body, and an id containing 410 isn't a delete."""
         composio_delete.side_effect = _api_status_error(
             500, '{"error":{"message":"upstream failed for ti_410abc"}}', InternalServerError
         )
@@ -119,12 +117,12 @@ class TestUnregister:
 
 
 class TestQueueOneWorkflowDispatch:
-    """The coalescing decision in _queue_one_workflow — the seam every
-    integration webhook passes through, so no entry point can route around it."""
+    """The coalescing decision in _queue_one_workflow — the seam every integration webhook passes through."""
 
     @staticmethod
     def _workflow(trigger_name: str, trigger_data: object) -> Workflow:
         return Workflow(
+            delivery=WorkflowDelivery.NOW,
             id="wf_disp",
             user_id="user_disp",
             title="Dispatch",
@@ -227,8 +225,7 @@ class TestQueueOneWorkflowDispatch:
         )
 
     async def test_any_positive_window_batches_even_one_second(self) -> None:
-        """The boundary is zero, exactly: any positive window means the trigger
-        declared a cadence and its events belong to a batch."""
+        """The boundary is zero, exactly: any positive window means the trigger declared a cadence and belongs in a batch."""
         workflow = self._workflow("stub_trigger", None)
         buffer = AsyncMock(return_value=True)
         queue = AsyncMock()
@@ -256,7 +253,7 @@ class TestQueueOneWorkflowDispatch:
 class TestTodoDispatchHandoff:
     """The tap that makes a todo-only event survive.
 
-    ``process_event`` returns early when no workflow matches, and that return is
+    process_event returns early when no workflow matches, and that return is
     what drops the reply a todo has been waiting for. The hand-off has to happen
     before it.
     """
@@ -268,6 +265,7 @@ class TestTodoDispatchHandoff:
     @staticmethod
     def _workflow() -> Workflow:
         return Workflow(
+            delivery=WorkflowDelivery.NOW,
             id="wf_todo_tap",
             user_id="user-1",
             title="Tap",
@@ -396,3 +394,40 @@ class TestTodoDispatchHandoff:
 
         (error,) = event["errors"]
         assert error["event_type"] == "TEST_EVENT"
+
+
+@pytest.mark.unit
+class TestEventTimingInstrumentation:
+    """The webhook-lag fields a calendar payload puts on the wide event."""
+
+    _NOW = datetime(2026, 1, 1, 9, 50, 30, tzinfo=UTC)
+    _START = "2026-01-01T10:00:00+00:00"
+
+    async def test_a_countdown_event_records_its_start_and_webhook_lag(self) -> None:
+        payload = {"start_time": self._START, "countdown_window_minutes": 10}
+
+        async with captured_wide_event() as event:
+            _log_event_timing(payload, self._NOW)
+
+        assert event["event_start_time_utc"] == self._START
+        assert event["event_start_time_raw"] == self._START
+        assert event["seconds_until_event"] == 570
+        assert event["countdown_window_minutes"] == 10
+        assert event["webhook_lag_seconds"] == 30
+
+    async def test_a_camel_case_naive_start_is_read_as_utc_without_a_lag(self) -> None:
+        async with captured_wide_event() as event:
+            _log_event_timing({"startTime": "2026-01-01T10:00:00"}, self._NOW)
+
+        assert event["event_start_time_utc"] == self._START
+        assert event["event_start_time_raw"] == "2026-01-01T10:00:00"
+        assert "webhook_lag_seconds" not in event
+
+    async def test_a_non_integer_countdown_records_nothing(self) -> None:
+        payload = {"start_time": self._START, "countdown_window_minutes": "10"}
+
+        async with captured_wide_event() as event:
+            _log_event_timing(payload, self._NOW)
+
+        assert "event_start_time_utc" not in event
+        assert "webhook_lag_seconds" not in event

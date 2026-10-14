@@ -17,14 +17,7 @@ type MailItem = {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 };
 
-const mailItems: MailItem[] = [
-  { label: "Inbox", icon: InboxIcon },
-  // { label: "Important", icon: LabelImportantIcon },
-  // { label: "Sent", icon: Sent02Icon },
-  // { label: "Drafts", icon: LicenseDraftIcon },
-  // { label: "Scheduled", icon: TimeScheduleIcon },
-  //   { label: "Trash", icon: LicenseDraftIcon },
-];
+const mailItems: MailItem[] = [{ label: "Inbox", icon: InboxIcon }];
 
 type MailButtonProps = {
   label: string;

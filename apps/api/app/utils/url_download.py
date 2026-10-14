@@ -1,8 +1,8 @@
 """Stream a public URL to bytes, under an SSRF guard and a hard size cap.
 
-The download counterpart to ``webpage_fetch``: that renders an HTML page to text,
-this pulls a file (image, PDF, dataset) down so the agent can ``read`` it back
-from the workspace. Both walk redirects through ``url_safety`` so a public URL
+The download counterpart to webpage_fetch: that renders an HTML page to text,
+this pulls a file (image, PDF, dataset) down so the agent can read it back
+from the workspace. Both walk redirects through url_safety so a public URL
 can't bounce to an internal address mid-chain — the difference is this path
 streams to a byte budget instead of buffering a body to convert.
 """
@@ -40,11 +40,11 @@ def _content_type(response: httpx.Response) -> str | None:
 
 
 async def download_public_url(url: str, *, max_bytes: int = MAX_DOWNLOAD_BYTES) -> DownloadedFile:
-    """Fetch ``url`` to bytes. Raises ``DownloadError`` on any refusal or failure.
+    """Fetch url to bytes. Raises DownloadError on any refusal or failure.
 
-    The body streams under ``max_bytes`` and the server's ``Content-Length`` is
+    The body streams under max_bytes and the server's Content-Length is
     never trusted — a lying or chunked response is cut off the moment it crosses
-    the cap. Redirects are walked by ``open_public_http_url``, which re-checks the
+    the cap. Redirects are walked by open_public_http_url, which re-checks the
     SSRF policy before every hop.
     """
     headers = {"User-Agent": DOWNLOAD_USER_AGENT}
@@ -83,7 +83,7 @@ async def _read_capped(response: httpx.Response, max_bytes: int, url: str) -> by
 
 
 def download_filename(url: str, ext: str) -> str:
-    """A stable, collision-resistant on-disk name for a URL's download.
+    """Return a stable, collision-resistant on-disk name for a URL's download.
 
     Keyed on the URL so re-downloading is idempotent (same name, last-writer-wins)
     and the path stays constant across turns. The hash also strips any hostile
@@ -94,7 +94,7 @@ def download_filename(url: str, ext: str) -> str:
 
 
 def extension_from_url(url: str) -> str:
-    """A real file extension named in the URL path, or ``""`` if there isn't one."""
+    """Return a real file extension named in the URL path, or "" if there isn't one."""
     suffix = PurePosixPath(urlparse(url).path).suffix.lower()
     # A short alnum suffix is a real file extension (.png, .pdf, .tar); a long or
     # symbol-laden one is almost certainly a path segment that merely contains a
@@ -103,7 +103,7 @@ def extension_from_url(url: str) -> str:
 
 
 def extension_from_content_type(content_type: str | None) -> str:
-    """A file extension for a response's content type, or ``""`` if unknown."""
+    """Return a file extension for a response's content type, or "" if unknown."""
     if not content_type:
         return ""
     return mimetypes.guess_extension(content_type) or ""

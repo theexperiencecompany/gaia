@@ -54,23 +54,20 @@ from app.memory import pg_store
 from app.memory.consolidation import consolidate, render_agenda_document
 from app.memory.management import forget_memory
 from app.models.memory_db_models import MemoryRecord
+from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.context import analytics_context, worker_context
 
-# Phrases that mark a sentence as a snapshot rather than a standing truth.
-# Word-bounded so "concurrency" is not read as "currently". Applied ONLY to
-# rows old enough that a snapshot is certainly stale, and only when the row
-# predates the shelf_life column.
+# Phrases marking a sentence as a snapshot, not a standing truth. Word-bounded
+# so "concurrency" isn't read as "currently"; applied only to rows old enough
+# to be certainly stale and predating the shelf_life column.
 _STATE_PHRASES = re.compile(
     r"\b(as of|currently|is failing|are failing|disconnected|not connected|pending)\b",
     re.IGNORECASE,
 )
 
-# The old reconciler wrote an EXTENDS link for "more detail on a related claim",
-# so a link only means "topically adjacent", not "same fact restated". Retiring
-# every linked parent deleted preferences whose child was vaguer than they were:
-# "avoid em dashes" lost to "fluff-free marketing copy". A parent is only retired
-# when the child actually covers it. Measured on the production store: of 216
-# linked parents, 26 pass at 0.8, and the 190 spared are plainly different facts
-# ("uses nasal spray" vs "dislikes its taste").
+# EXTENDS meant "related", not "same fact restated" — retiring every linked
+# parent lost real distinctions ("avoid em dashes" -> vaguer child). Measured:
+# of 216 linked parents, 26 pass at 0.8 containment; the 190 spared differ.
 _DEFAULT_EXTENDS_CONTAINMENT = 0.8
 
 # Filler that carries no subject, so it never counts toward coverage. Negation
@@ -154,7 +151,7 @@ def looks_like_state(content: str) -> bool:
 
 
 def _subject_tokens(content: str) -> set[str]:
-    """The words that carry the claim, lowercased, filler removed."""
+    """Return the words that carry the claim, lowercased, filler removed."""
     return {
         word
         for word in re.findall(r"[a-z0-9']+", content.lower())
@@ -163,7 +160,7 @@ def _subject_tokens(content: str) -> set[str]:
 
 
 def containment_share(raw: str) -> float:
-    """argparse type for --extends-containment: a share, so 0.0 to 1.0 inclusive."""
+    """Argparse type for --extends-containment: a share, so 0.0 to 1.0 inclusive."""
     value = float(raw)
     if math.isnan(value) or not 0.0 <= value <= 1.0:
         raise argparse.ArgumentTypeError(f"{raw!r} is not a share between 0.0 and 1.0")
@@ -184,7 +181,7 @@ def extends_parents_to_retire(
     *,
     containment: float = _DEFAULT_EXTENDS_CONTAINMENT,
 ) -> list[tuple[MemoryRecord, MemoryRecord]]:
-    """``(parent, newest child)`` for every live parent its child truly covers.
+    """(parent, newest child) for every live parent its child truly covers.
 
     Only EXTENDS pairs qualify: an UPDATES child already flipped its parent out
     of the live set when it was written. A pair whose child does not cover the
@@ -213,7 +210,7 @@ def state_rows_to_forget(
 ) -> list[MemoryRecord]:
     """Live rows old enough that their snapshot value is certainly stale.
 
-    A row that already carries ``shelf_life='state'`` qualifies on age alone.
+    A row that already carries shelf_life='state' qualifies on age alone.
     Everything older than the column reads as 'durable', so those qualify only
     when the text itself reads as a snapshot.
     """
@@ -277,12 +274,10 @@ async def _repair_user(user_id: str, args: argparse.Namespace) -> int:
 async def _run(args: argparse.Namespace) -> int:
     """Bootstrap the providers a script has no lifespan to build, then repair.
 
-    Mongo self-initialises on first collection access, but the memory store's
-    Postgres engine is a lazy provider, and outside the API process nobody has
-    registered it: every query raised ``Provider 'postgresql_engine' not found in
-    registry``. Registration is bookkeeping only (no I/O); the engine itself is
-    built on first use and disposed here so the script exits without a warning
-    about an open pool.
+    Outside the API process nobody registers the memory store's lazy Postgres
+    engine, so queries fail with "Provider 'postgresql_engine' not found".
+    Registration is bookkeeping only; the engine builds on first use and is
+    disposed here so the script exits without an open-pool warning.
     """
     register_lazy_providers("main_app")
     try:
@@ -317,7 +312,9 @@ def main() -> None:
         help="Age past which a state-like row is retired.",
     )
     args = parser.parse_args()
-    raise SystemExit(asyncio.run(_run(args)))
+    # An operator's maintenance run: the model calls it makes are system work.
+    with analytics_context(worker_context(Trigger.SYSTEM)):
+        raise SystemExit(asyncio.run(_run(args)))
 
 
 if __name__ == "__main__":

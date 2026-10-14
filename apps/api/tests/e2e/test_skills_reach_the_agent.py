@@ -1,19 +1,4 @@
-"""Whether a skill actually reaches the prompt an agent sees.
-
-Shipping a skill is three things agreeing: it loads, it is listed to the right
-agent, and the location it is listed with is a file that exists. Nothing in the
-repo asserted the middle one — every skills test patches ``load_builtin_skills``
-or ``get_skills_for_agent``, so "the executor is told about plan-my-day" was
-never checked against the real library.
-
-The failure is silent by construction. ``get_available_skills_text`` swallows a
-Mongo error and returns builtins anyway, and returns ``""`` when there is
-nothing — so a skill that stops being listed produces no error, no log the user
-sees, and an agent that just does the generic thing instead.
-
-Only Mongo and Redis are doubled here; the builtin library and the location
-helper are real.
-"""
+"""Prove a skill that loads is actually listed to its agent at a location that resolves to a real file — every other skills test doubles that path away, and the failure here is silent."""
 
 from __future__ import annotations
 
@@ -35,9 +20,9 @@ EXECUTOR = "executor"
 
 @pytest.fixture(autouse=True)
 def _no_mongo_no_cache():
-    """The two stores this function touches. Everything else stays real.
+    """Double the two stores this function touches; everything else stays real.
 
-    ``Cacheable`` wraps the function, so without stubbing the cache the first
+    Cacheable wraps the function, so without stubbing the cache the first
     test's result is served to the rest and per-agent differences vanish.
     """
     with (
@@ -54,13 +39,11 @@ async def _text(agent_name: str = EXECUTOR) -> str:
 
 class TestTheExecutorIsToldAboutItsSkills:
     async def test_the_executor_is_given_a_non_empty_skill_listing(self):
-        """The deletion test, from the prompt side: with the builtin library
-        gone this returns "" and the executor is told about nothing."""
+        """The deletion test, from the prompt side: with the builtin library gone this returns "" and the executor is told about nothing."""
         assert await _text()
 
     async def test_every_executor_skill_is_listed_by_name(self):
-        """A skill missing from the listing is shipped code the agent is never
-        told about — it exists on disk and is never used."""
+        """A skill missing from the listing is shipped code the agent is never told about — it exists on disk and is never used."""
         expected = {s.name for s in load_builtin_skills() if s.subagent_id == EXECUTOR}
         listing = await _text()
 
@@ -70,8 +53,7 @@ class TestTheExecutorIsToldAboutItsSkills:
         assert missing == [], f"shipped but never listed to the executor: {missing}"
 
     async def test_each_listed_skill_carries_a_description(self):
-        """The description is the only thing the model selects on. A blank one
-        makes the skill invisible in practice even though it is listed."""
+        """The description is the only thing the model selects on — a blank one makes the skill invisible in practice even though it is listed."""
         blank = [
             s.name
             for s in load_builtin_skills()
@@ -81,9 +63,7 @@ class TestTheExecutorIsToldAboutItsSkills:
         assert blank == []
 
     async def test_an_integration_agent_is_not_given_the_executors_skills(self):
-        """Integration subagents receive their builtins through
-        ``integration_skills_block`` instead. Merging them here too would list
-        every skill twice in their prompt."""
+        """Integration subagents receive their builtins through integration_skills_block instead — merging them here too would list every skill twice in their prompt."""
         listing = await _text("gmail_agent")
         executor_only = {s.name for s in load_builtin_skills() if s.subagent_id == EXECUTOR}
 
@@ -91,10 +71,7 @@ class TestTheExecutorIsToldAboutItsSkills:
 
 
 class TestTheListedLocationIsReadable:
-    """The listing tells the agent a path and the agent calls ``read`` on it.
-    The path is built by the same helper the materializer uses — these assert
-    that stays true, because a drift produces a read of a file that is not there
-    and the agent silently continues without the skill."""
+    """The listing tells the agent a path it calls read on; that path must resolve to a real file, or the agent silently continues without the skill."""
 
     async def test_every_listed_location_points_inside_the_workspace(self):
         listing = await _text()
@@ -110,10 +87,7 @@ class TestTheListedLocationIsReadable:
     async def test_an_integration_skills_location_resolves_to_a_materialized_file(
         self, tmp_path: Path
     ):
-        """End to end for the path contract: materialize into a real directory,
-        then confirm the location the agent would be told matches a file that
-        exists. Asserted on an integration skill because those are the ones
-        ``materialize_skills`` writes."""
+        """End to end for the path contract: materialize into a real directory, then confirm the location matches a file that exists, asserted on an integration skill since those are what materialize_skills writes."""
         from app.agents.workspace.system_files import builtin_skill_rel_path
 
         materialize_skills(tmp_path, {"gmail"})
@@ -126,9 +100,7 @@ class TestTheListedLocationIsReadable:
 
 class TestDegradation:
     async def test_a_mongo_failure_still_leaves_the_builtins_listed(self):
-        """Builtins are fetched first precisely so a Mongo hiccup cannot hide
-        them. If this regressed, a database blip would silently strip every
-        shipped skill from the prompt while the turn otherwise succeeded."""
+        """Builtins are fetched first precisely so a Mongo hiccup cannot hide them — a regression here would silently strip every shipped skill from the prompt while the turn otherwise succeeded."""
         with patch.object(
             discovery,
             "get_skills_for_agent",
@@ -141,6 +113,5 @@ class TestDegradation:
         assert any(name in listing for name in expected)
 
     async def test_an_agent_with_no_skills_at_all_gets_an_empty_string(self):
-        """Not a stub sentence. The caller injects this verbatim, so anything
-        non-empty becomes a prompt line claiming skills that do not exist."""
+        """Not a stub sentence: the caller injects this verbatim, so anything non-empty becomes a prompt line claiming skills that do not exist."""
         assert await _text("nonexistent_agent") == ""

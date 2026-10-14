@@ -1,10 +1,10 @@
 """Session lifecycle — user provisioning, deletion, idle scan.
 
 Session dirs themselves are created on demand by the write/bash tool paths.
-``provision_user_workspace`` / ``materialize_user_integrations`` do the
+provision_user_workspace / materialize_user_integrations do the
 user-level materialization, driven by registration, integration changes,
 and startup — not by the chat turn. The rest is admin (idle prune, hard delete,
-stale scan) reached from workers and the ``/sessions`` admin endpoints.
+stale scan) reached from workers and the /sessions admin endpoints.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ def _materialize_if_stale(
 
     Gated on three signatures: the global skill-library hash, the connected-set,
     and the per-user instructions hash. A change in any one triggers a rewrite;
-    the per-file ``matches_text`` checks inside the materializers keep untouched
+    the per-file matches_text checks inside the materializers keep untouched
     files at zero I/O.
     """
     current = read_skills_marker(u_root)
@@ -97,13 +97,11 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
 
 
 async def provision_user_workspace(user_id: str, connected_ids: set[str] | None = None) -> None:
-    """User-level workspace provisioning: system-file symlinks (INDEX/GUIDE +
-    builtin skills) + the SKILL.md / instructions catalog.
+    """User-level workspace provisioning: system-file symlinks + the SKILL.md/instructions catalog.
 
-    Run on the events that actually change it — registration, integration
-    connect/disconnect, and startup — instead of every chat turn. Idempotent and
-    hash-gated, so repeat calls are near-zero I/O. Soft-fails when JuiceFS is
-    unmounted (native dev).
+    Run on events that change it — registration, integration
+    connect/disconnect, startup — not every chat turn. Idempotent and
+    hash-gated; soft-fails when JuiceFS is unmounted (native dev).
     """
     # Late-bound: ``app.services.storage`` re-exports this module, so importing
     # ``system_workspace`` (which imports ``storage.juicefs``) at top level would
@@ -141,7 +139,7 @@ async def delete_session_dir(user_id: str, conv_id: str) -> None:
 
 
 async def touch_session_last_active(user_id: str, conv_id: str) -> None:
-    """Bump ``.meta.json.last_active``. Raises ``JuiceFSUnavailable`` if unmounted."""
+    """Bump .meta.json.last_active. Raises JuiceFSUnavailable if unmounted."""
 
     def _touch() -> None:
         base = session_base(user_id, conv_id)
@@ -159,7 +157,7 @@ async def touch_session_last_active(user_id: str, conv_id: str) -> None:
 
 
 async def chmod_path(host_path: Path, mode: int) -> None:
-    """Off-loop ``os.chmod``."""
+    """Off-loop os.chmod."""
     await asyncio.to_thread(os.chmod, host_path, mode)
 
 
@@ -182,7 +180,7 @@ async def list_session_ids(user_id: str) -> list[str]:
 
 
 async def sessions_root_inode(user_id: str) -> int | None:
-    """Inode of the user's ``sessions/`` dir, or None if unmounted/missing.
+    """Inode of the user's sessions/ dir, or None if unmounted/missing.
 
     The watcher treats a mutating op on this inode (a session dir created or
     removed) as "rescan to discover new/gone conversations".
@@ -230,9 +228,9 @@ def _scan_stale_sessions(cutoff_days: int, limit: int | None) -> list[tuple[str,
 
 
 async def list_stale_sessions(cutoff_days: int, limit: int | None = None) -> list[tuple[str, str]]:
-    """Return (user_id, conv_id) for sessions inactive past ``cutoff_days``.
+    """Return (user_id, conv_id) for sessions inactive past cutoff_days.
 
-    Sessions whose ``last_active`` cannot be parsed are skipped, never pruned.
+    Sessions whose last_active cannot be parsed are skipped, never pruned.
     """
     async with fs_timer(FsOps.LIST_STALE_SESSIONS):
         return await asyncio.to_thread(_scan_stale_sessions, cutoff_days, limit)

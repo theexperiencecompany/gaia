@@ -1,9 +1,9 @@
 """Tests for the merge_dicts model_name idempotency patch.
 
-``AIMessageChunk.__add__`` merges chunk ``response_metadata`` via
-``langchain_core.utils._merge.merge_dicts``, which concatenates equal string
+AIMessageChunk.__add__ merges chunk response_metadata via
+langchain_core.utils._merge.merge_dicts, which concatenates equal string
 values for any key outside its small idempotent set (id/output_version/
-model_provider). ChatOpenRouter can stamp ``model_name`` on more than one
+model_provider). ChatOpenRouter can stamp model_name on more than one
 chunk of the same stream, so two equal model names get concatenated into a
 name matching no pricing entry ("modelmodel"). The patch adds "model_name" to
 the idempotent set.
@@ -23,9 +23,9 @@ import app.patches.langchain_merge_dicts_model_name_patch as patch_module
 
 
 def _load_pristine_upstream() -> Any:
-    """Load ``langchain_core.utils._merge`` straight off disk, unpatched.
+    """Load langchain_core.utils._merge straight off disk, unpatched.
 
-    ``apply()`` has already rebound the installed module's ``merge_dicts``, so
+    apply() has already rebound the installed module's merge_dicts, so
     the only way to reach the original is to execute the source file into a
     fresh module object. This is what makes the parity suite below a real
     differential test rather than a re-statement of our own copy.
@@ -166,9 +166,7 @@ class TestApply:
 
 
 class TestUpstreamParity:
-    """The patch is a verbatim copy of upstream plus one entry in the idempotent
-    set. Anything else that diverges is drift — either an editing slip in the
-    copy, or an upstream change the copy has not tracked."""
+    """The patch is a verbatim copy of upstream plus one idempotent-set entry; anything else that diverges is drift."""
 
     @pytest.mark.parametrize(
         ("left", "right"),

@@ -35,6 +35,7 @@ Unit tests (parser + turn-counting + wire shapes), no repo project needed:
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 import sys
@@ -46,6 +47,7 @@ from directives import (
     DirectiveError,
     _last_user_index,
     _script_message_index,
+    _strip_echoed_payloads,
     message_text,
     parse_directives,
     parse_request,
@@ -54,9 +56,17 @@ from directives import (
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
-from wire import build_chat_completion, sse_lines
+from wire import build_chat_completion, prompt_tokens, sse_lines
 
 DEFAULT_PORT = 9797
+
+# A per-response think-delay lets a sim test keep an agent genuinely busy across
+# its scripted steps — the wide, deterministic window the live-steer / inbox-drain
+# path needs to be exercised (a mid-run message must arrive while the executor is
+# still reasoning). Seeded from the environment, adjustable at runtime via /control
+# so a browser-driven campaign can widen or reset the window without a reboot.
+# Default 0 keeps every existing sim run instantaneous and unchanged.
+_state: dict[str, int] = {"response_delay_ms": int(os.getenv("LLM_STUB_DELAY_MS", "0"))}
 
 app = FastAPI(title="GAIA scripted LLM stub", docs_url=None, redoc_url=None)
 
@@ -66,9 +76,23 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "service": "llm-stub"}
 
 
+# evlog-map-disable-next-line wide-event -- standalone dev stub with no wide-event pipeline; nothing emits an event to add to
+@app.get("/control")
+async def get_control() -> dict[str, int]:
+    return dict(_state)
+
+
+# evlog-map-disable-next-line wide-event -- standalone dev stub with no wide-event pipeline; nothing emits an event to add to
+@app.post("/control")
+async def set_control(request: Request) -> dict[str, int]:
+    body = await request.json()
+    if "response_delay_ms" in body:
+        _state["response_delay_ms"] = max(0, int(body["response_delay_ms"]))
+    return dict(_state)
+
+
 def _log_request(parsed: ChatRequest) -> None:
-    """One line per request so a sim run is debuggable from the stub's stdout:
-    role sequence, the resolved latest-user text, and the directives found."""
+    """Log one line per request: role sequence, latest-user text, and directives found."""
     roles = ",".join(m.get("role", "?") for m in parsed.messages)
     try:
         script_idx = _script_message_index(parsed.messages)
@@ -77,7 +101,7 @@ def _log_request(parsed: ChatRequest) -> None:
         return
     idx = script_idx if script_idx is not None else _last_user_index(parsed.messages)
     text = message_text(parsed.messages[idx]) if idx is not None else ""
-    directives = parse_directives(text) if script_idx is not None else []
+    directives = parse_directives(_strip_echoed_payloads(text)) if script_idx is not None else []
     print(
         f"[llm-stub] roles=[{roles}] tools={len(parsed.available_tools)} "
         f"directives={len(directives)} script_msg={text[:160]!r}",
@@ -90,6 +114,9 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     body = await request.json()
     parsed = parse_request(body)
     _log_request(parsed)
+    delay_ms = _state["response_delay_ms"]
+    if delay_ms:
+        await asyncio.sleep(delay_ms / 1000)
     try:
         response = resolve_response(parsed.messages, parsed.available_tools)
     except DirectiveError as exc:
@@ -99,12 +126,13 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
             content={"error": {"message": str(exc), "type": "directive_error"}},
         )
 
+    request_tokens = prompt_tokens(parsed.messages)
     if parsed.stream:
         return StreamingResponse(
-            sse_lines(parsed.model, response),
+            sse_lines(parsed.model, response, request_tokens),
             media_type="text/event-stream",
         )
-    return JSONResponse(content=build_chat_completion(parsed.model, response))
+    return JSONResponse(content=build_chat_completion(parsed.model, response, request_tokens))
 
 
 app.add_api_route("/chat/completions", _complete, methods=["POST"], response_model=None)

@@ -3,7 +3,7 @@
 The node now keeps exactly ONE static main prompt and ONE dynamic-context
 prompt. Stacking every turn's timestamped dynamic-context message would
 shatter the implicit-cache prefix, so older ones are dropped. The legacy
-``memory_message=True`` marker is still recognised as a dynamic-context flag
+memory_message=True marker is still recognised as a dynamic-context flag
 for back-compat with older persisted state.
 """
 
@@ -18,9 +18,17 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
+from prometheus_client import REGISTRY
 
-from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
+from app.agents.context.slots import PromptSlot
+from app.agents.core.nodes.manage_system_prompts import (
+    _keep_latest_per_slot,
+    _KeptPrompts,
+    manage_system_prompts_node,
+)
+from app.constants.llm import LLMProviderName
 from app.override.langgraph_bigtool.utils import State
+from tests._harness.context_chain import bound_for
 
 
 def _static(content: str) -> SystemMessage:
@@ -34,8 +42,15 @@ def _dynamic(content: str, marker: str = "dynamic_context") -> SystemMessage:
 def _config(provider: str | None = None) -> RunnableConfig:
     cfg: dict[str, Any] = {"user_id": "u1", "thread_id": "t1"}
     if provider is not None:
-        cfg["provider"] = provider
+        cfg.update(bound_for(LLMProviderName(provider)))
     return cast(RunnableConfig, {"configurable": cfg})
+
+
+def _agent_config(agent_name: str) -> RunnableConfig:
+    return cast(
+        RunnableConfig,
+        {"configurable": {"user_id": "u1", "thread_id": "t1", "agent_name": agent_name}},
+    )
 
 
 def _store() -> MagicMock:
@@ -98,17 +113,7 @@ class TestManageSystemPrompts:
         assert types.count("system") == 1
 
     def test_system_messages_moved_to_front(self) -> None:
-        """Kept system messages must appear BEFORE any human/ai message for
-        providers that only promote a leading system run (Gemini).
-
-        On 4.2.0 ``langchain-google-genai``'s ``_parse_chat_history`` collects
-        every ``SystemMessage`` into ``system_instruction`` whatever its
-        position, so this is no longer about content loss (an older comment
-        here claimed it was). It is about keeping ONE canonical order: the node
-        rewrites the list as ``[static, dynamic, ...non_system...]`` so the
-        cached prefix is the same bytes every turn rather than depending on
-        where a hook happened to append.
-        """
+        """Kept system messages move before any human/ai message, for providers that only promote a leading system run (Gemini)."""
         msgs = [
             _static("old prompt"),
             _dynamic("ctx1"),
@@ -124,12 +129,7 @@ class TestManageSystemPrompts:
         assert actual == ["latest prompt", "ctx2", "hello", "reply"]
 
     def test_volatile_slots_move_to_tail_for_openai_wire(self) -> None:
-        """OpenAI-wire providers (OpenRouter / custom — the production default
-        route) accept system messages anywhere, so the per-turn slots move AFTER
-        the conversation: ``[static, dynamic, ...conversation, todo,
-        memory_recall, time]``. The conversation then joins the provider's
-        implicit-cache prefix instead of re-sending uncached every turn.
-        """
+        """OpenAI-wire providers move per-turn slots after the conversation so it joins the implicit-cache prefix."""
         msgs = [
             _static("prompt"),
             _dynamic("ctx"),
@@ -153,11 +153,46 @@ class TestManageSystemPrompts:
             ("human", "time"),
         ]
 
+    def test_nothing_trails_the_conversation_for_openai(self) -> None:
+        """OpenAI reuses only a whole earlier request, so the clock and per-turn slots lead the conversation."""
+        msgs = [
+            _static("prompt"),
+            _dynamic("ctx"),
+            SystemMessage(content="todo", additional_kwargs={"todo_context": True}),
+            SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
+            HumanMessage(content="hello"),
+            AIMessage(content="reply"),
+            HumanMessage(content="time", additional_kwargs={"time_context": True}),
+        ]
+        result = manage_system_prompts_node(
+            cast(State, {"messages": msgs}), _config("openai"), _store()
+        )
+        actual = [(m.type, m.content) for m in result["messages"]]
+        assert actual == [
+            ("system", "prompt"),
+            ("system", "ctx"),
+            ("system", "todo"),
+            ("system", "mem"),
+            ("human", "time"),
+            ("human", "hello"),
+            ("ai", "reply"),
+        ]
+
+    def test_the_order_follows_the_lane_not_langchains_binding_key(self) -> None:
+        """The lane is the one model key GAIA reads; provider is LangChain's binding copy."""
+        msgs = [_static("prompt"), HumanMessage(content="hello"), AIMessage(content="reply")]
+        msgs.append(HumanMessage(content="time", additional_kwargs={"time_context": True}))
+        lane_only = cast(
+            RunnableConfig,
+            {"configurable": {"user_id": "u1", "lane": bound_for(LLMProviderName.OPENAI)["lane"]}},
+        )
+
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), lane_only, _store())
+
+        assert [m.content for m in result["messages"]] == ["prompt", "time", "hello", "reply"]
+
     def test_leading_layout_preserved_for_gemini(self) -> None:
-        """Gemini only promotes a leading contiguous run of SystemMessages to
-        ``system_instruction`` and silently drops the rest — so on that lane the
-        volatile slots must stay in the leading block even though it costs the
-        conversation its place in the cached prefix."""
+        """Gemini only promotes a leading contiguous run of SystemMessages, so volatile slots must stay in that leading block."""
         msgs = [
             _static("prompt"),
             _dynamic("ctx"),
@@ -180,8 +215,7 @@ class TestManageSystemPrompts:
         ]
 
     def test_missing_provider_defaults_to_leading_layout(self) -> None:
-        """No provider in the config (defensive) must not change today's
-        behavior — the leading layout is the safe default everywhere."""
+        """No provider in the config defaults to the safe leading layout."""
         msgs = [
             _static("prompt"),
             _dynamic("ctx"),
@@ -193,9 +227,7 @@ class TestManageSystemPrompts:
         assert types == ["system", "system", "system", "human"]
 
     def test_exception_is_logged_and_state_returned_unmodified(self) -> None:
-        """The node runs on every agent turn, so an unexpected failure degrades
-        to the untouched input state instead of crashing the graph — but it must
-        never disappear silently: the cause has to reach the logs."""
+        """An unexpected failure degrades to the untouched input state instead of crashing the graph, and the cause is logged."""
         msgs = [HumanMessage(content="hello"), _static("latest prompt")]
         state = cast(State, {"messages": msgs})
         with (
@@ -217,11 +249,28 @@ class TestManageSystemPrompts:
             f"The swallowed exception must be named in the log, got: {kwargs}"
         )
 
+    def test_node_records_the_exact_elapsed_seconds(self) -> None:
+        """Two pinned clock reads land exactly 0.5, pinning the direction of the subtraction."""
+        labels = {"node": "manage_system_prompts", "agent": "span-test-agent"}
+        before = REGISTRY.get_sample_value("graph_node_seconds_sum", labels) or 0.0
+
+        with patch(
+            "app.agents.core.nodes.manage_system_prompts.time.perf_counter",
+            side_effect=[5.0, 5.5],
+        ):
+            manage_system_prompts_node(
+                cast(State, {"messages": [HumanMessage(content="hello")]}),
+                _agent_config("span-test-agent"),
+                _store(),
+            )
+
+        assert REGISTRY.get_sample_value("graph_node_seconds_sum", labels) == before + 0.5
+
 
 class _PromptPruning(TypedDict):
-    """The ``prompt_pruning`` wide-event payload these tests assert on.
+    """The prompt_pruning wide-event payload these tests assert on.
 
-    Named rather than ``dict[str, Any]`` so a renamed or dropped field breaks
+    Named rather than dict[str, Any] so a renamed or dropped field breaks
     type-check here instead of silently making every assertion below vacuous —
     the failure mode of a diagnostic nobody notices has stopped working.
     """
@@ -236,8 +285,7 @@ class _PromptPruning(TypedDict):
 
 
 class TestPromptPruningWideEvent:
-    """``tail_layout`` is the field a cache-hit-rate drop is diagnosed with, so
-    both its name and its polarity are part of the node's contract."""
+    """tail_layout's name and polarity are part of the node's contract: a cache-hit-rate drop is diagnosed with it."""
 
     def _pruning_for(
         self, msgs: list[AnyMessage], provider: str | None = "openrouter"
@@ -257,10 +305,11 @@ class TestPromptPruningWideEvent:
     def test_gemini_request_is_reported_as_the_leading_layout(self) -> None:
         assert self._prompt_pruning("gemini")["tail_layout"] is False
 
+    def test_openai_request_is_not_reported_as_the_tail_layout(self) -> None:
+        assert self._prompt_pruning("openai")["tail_layout"] is False
+
     def test_slot_sizes_report_each_slot_s_real_length(self) -> None:
-        """``slot_chars`` exists to rank slots by how many bytes they cost on
-        every call, so a size that is not the slot's real length ranks them
-        wrongly and points the next investigation at the wrong slot."""
+        """slot_chars ranks slots by how many bytes they cost on every call, so it must be the slot's real length."""
         pruning = self._pruning_for(
             [_static("x" * 300), _dynamic("y" * 40), HumanMessage(content="hello")]
         )
@@ -269,26 +318,31 @@ class TestPromptPruningWideEvent:
         assert pruning["slot_chars"]["dynamic_stable"] == 40
 
     def test_a_slot_that_did_not_change_keeps_its_digest(self) -> None:
-        """The whole point: identical bytes must fingerprint identically, or the
-        field cannot tell a stable slot from a churning one."""
+        """Identical bytes must fingerprint identically, or the field cannot tell a stable slot from a churning one."""
         first = self._pruning_for([_static("prompt"), _dynamic("ctx")])
         again = self._pruning_for([_static("prompt"), _dynamic("ctx")])
 
         assert first["slot_digests"] == again["slot_digests"]
 
     def test_a_slot_whose_content_moved_gets_a_new_digest(self) -> None:
-        """And the converse — otherwise a churning slot reads as stable and the
-        cache loss it causes stays invisible."""
+        """Content that moves must get a new digest, or the cache loss it causes stays invisible."""
         before = self._pruning_for([_static("prompt"), _dynamic("ctx")])
         after = self._pruning_for([_static("prompt"), _dynamic("ctx CHANGED")])
 
         assert before["slot_digests"]["static"] == after["slot_digests"]["static"]
         assert before["slot_digests"]["dynamic_stable"] != after["slot_digests"]["dynamic_stable"]
 
+    def test_a_kept_slot_is_reported_kept_and_an_absent_one_not(self) -> None:
+        """One field per slot says what actually survived, keyed by the slot held."""
+        pruning = self._pruning_for([_static("prompt"), _dynamic("ctx")])
+
+        assert pruning["kept_static"] is True
+        assert pruning["kept_dynamic"] is True
+        assert pruning["kept_onboarding"] is False
+        assert pruning["kept_time"] is False
+
     def test_a_slot_holding_several_messages_reports_their_combined_size(self) -> None:
-        """The conversation is the one slot that accumulates, and it is the one
-        whose size actually grows, so the size has to account for every message
-        in it plus the separator between them — not just the first."""
+        """The conversation slot's size must account for every message plus the separator between them, not just the first."""
         pruning = self._pruning_for(
             [_static("p"), HumanMessage(content="hello"), AIMessage(content="reply")]
         )
@@ -297,8 +351,7 @@ class TestPromptPruningWideEvent:
         assert pruning["slot_chars"]["conversation"] == len("hello") + 1 + len("reply")
 
     def test_every_digest_is_a_fixed_width_fingerprint(self) -> None:
-        """Digests are compared across two requests by eye and by script. A
-        variable width means two runs of the same slot are not comparable."""
+        """Digests are compared across two requests, so a variable width would make two runs of the same slot incomparable."""
         pruning = self._pruning_for([_static("prompt"), _dynamic("ctx")])
 
         assert pruning["slot_digests"]
@@ -307,14 +360,7 @@ class TestPromptPruningWideEvent:
         )
 
     def test_a_pruned_stale_message_does_not_move_the_digest(self) -> None:
-        """The digest must fingerprint what is SENT, not what arrives.
-
-        A singleton slot keeps only its last message; the rest are pruned and
-        never reach the model. Hashing the whole group makes the digest move
-        when a stale copy differs even though the sent bytes are identical —
-        a false "this slot churned" in exactly the case the field exists to
-        diagnose, since a stacked slot IS the pruning case.
-        """
+        """The digest fingerprints what is sent (the slot's last message), not stale copies pruned before reaching the model."""
         fresh = _dynamic("the context that is actually sent")
         first = self._pruning_for([_static("p"), _dynamic("stale one"), fresh])
         again = self._pruning_for([_static("p"), _dynamic("stale TWO, different"), fresh])
@@ -323,8 +369,75 @@ class TestPromptPruningWideEvent:
         assert first["slot_chars"]["dynamic_stable"] == len("the context that is actually sent")
 
     def test_the_digests_never_carry_the_content_itself(self) -> None:
-        """These fields ship to the log pipeline on every model call, and slot
-        text is user data."""
+        """Digests ship to the log pipeline on every model call, and slot text is user data."""
         pruning = self._pruning_for([_static("prompt"), _dynamic("hunter2 is the secret")])
 
         assert "hunter2" not in str(pruning["slot_digests"])
+
+    def test_reports_the_exact_message_and_prune_counts(self) -> None:
+        """messages_in, messages_out and the two drop counters are contract in both name and value."""
+        msgs = [
+            _static("p"),
+            _dynamic("stale"),
+            _dynamic("fresh"),
+            HumanMessage(content="hello"),
+            HumanMessage(content="t1", additional_kwargs={"time_context": True}),
+            HumanMessage(content="t2", additional_kwargs={"time_context": True}),
+        ]
+
+        pruning = self._pruning_for(msgs)
+
+        assert pruning["messages_in"] == 6
+        assert pruning["messages_out"] == 4
+        assert pruning["dropped_system_prompts"] == 1
+        assert pruning["dropped_time_context"] == 1
+
+
+def _with_id(message: AnyMessage, mid: str) -> AnyMessage:
+    message.id = mid
+    return message
+
+
+def _time_message(content: str, mid: str) -> AnyMessage:
+    return _with_id(HumanMessage(content=content, additional_kwargs={"time_context": True}), mid)
+
+
+class TestKeepLatestPerSlot:
+    """The prune step, driven directly.
+
+    manage_system_prompts_node only ever hands the helper one message per slot,
+    so the drop accounting and the returned pruned_ids are unobservable through
+    it. These feed it stacked slots and assert every _KeptPrompts field exactly.
+    """
+
+    def test_singleton_slots_keep_the_last_message_and_count_their_drops(self) -> None:
+        statics = [_with_id(_static(f"static {i}"), f"s{i}") for i in range(3)]
+        times = [_time_message(f"time {i}", f"t{i}") for i in range(4)]
+        conversation = [
+            _with_id(HumanMessage(content="hello"), "c0"),
+            _with_id(AIMessage(content="reply"), "c1"),
+        ]
+        by_slot: dict[PromptSlot, list[AnyMessage]] = {
+            PromptSlot.STATIC: statics,
+            PromptSlot.CONVERSATION: conversation,
+            PromptSlot.TIME: times,
+        }
+
+        kept: _KeptPrompts = _keep_latest_per_slot(
+            by_slot, (PromptSlot.STATIC, PromptSlot.CONVERSATION, PromptSlot.TIME)
+        )
+
+        assert kept.messages == [statics[-1], *conversation, times[-1]]
+        assert kept.by_slot == {
+            PromptSlot.STATIC: [statics[-1]],
+            PromptSlot.CONVERSATION: conversation,
+            PromptSlot.TIME: [times[-1]],
+        }
+        assert kept.pruned_ids == ["s0", "s1", "t0", "t1", "t2"]
+        assert kept.dropped_system == 2
+        assert kept.dropped_time == 3
+
+    def test_slots_absent_from_the_input_produce_an_empty_result(self) -> None:
+        kept = _keep_latest_per_slot({}, (PromptSlot.STATIC, PromptSlot.TIME))
+
+        assert kept == _KeptPrompts([], {}, [], 0, 0)

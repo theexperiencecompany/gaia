@@ -1,6 +1,5 @@
+import type { BriefingModel } from "@shared/api/generated";
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
-
-import type { Briefing } from "@/types/features/briefingTypes";
 
 import { briefingApi } from "../api/briefingApi";
 
@@ -9,11 +8,11 @@ import { briefingApi } from "../api/briefingApi";
  */
 export const useBriefingsQuery = (
   limit = 30,
-  options?: Partial<UseQueryOptions<Briefing[], Error>>,
+  options?: Partial<UseQueryOptions<BriefingModel[], Error>>,
 ) => {
   return useQuery({
     queryKey: ["briefings", limit],
-    queryFn: async (): Promise<Briefing[]> => {
+    queryFn: async (): Promise<BriefingModel[]> => {
       return await briefingApi.fetchBriefings(limit);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes

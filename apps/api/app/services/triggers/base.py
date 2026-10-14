@@ -6,17 +6,20 @@ All provider-specific trigger handlers must extend this class.
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any, Literal, TypedDict
 
 from composio_client import APIStatusError
+from pydantic import BaseModel, Field, StrictInt, ValidationError
 
+from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.log_tags import LogTag
-from app.models.trigger_config import TriggerOption, TriggerOptionGroup
+from app.models.trigger_config import TriggerOption, TriggerOptionGroup, TriggerOptionsQuery
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
+from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.services.todos.signal_context import get_signal_matching_context
 from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -29,9 +32,9 @@ from shared.py.wide_events import TriggerContext, log
 class TriggerEventResult(TypedDict):
     """What dispatching one webhook event reported.
 
-    ``status`` is ``Literal["success"]`` because the dispatch genuinely has no
+    status is Literal["success"] because the dispatch genuinely has no
     failure return: a workflow that cannot be queued is logged and counted out of
-    ``message``, never surfaced here. The webhook endpoint discards this value
+    message, never surfaced here. The webhook endpoint discards this value
     (the call is fire-and-forget), so it is an in-process contract, not a wire one.
     """
 
@@ -39,15 +42,28 @@ class TriggerEventResult(TypedDict):
     message: str
 
 
-def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
+class _EventTiming(BaseModel):
+    """The event-start fields a calendar payload carries, read only for webhook-lag instrumentation."""
+
+    start_time: str | None = None
+    start_time_camel: str | None = Field(default=None, alias="startTime")
+    countdown_window_minutes: StrictInt | None = None
+
+    @property
+    def raw_start(self) -> str | None:
+        """Return the start time as the payload spelled it, snake_case first."""
+        return self.start_time or self.start_time_camel
+
+
+def _parse_event_start_utc(timing: _EventTiming) -> datetime | None:
     """Best-effort extraction of an event's start time as a UTC datetime.
 
-    Handles Composio/Google payloads that may ship `start_time` as an ISO-8601
+    Handles Composio/Google payloads that may ship start_time as an ISO-8601
     string with or without offset. Returns None when the field is absent or
     unparseable — callers should skip lag instrumentation in that case.
     """
-    raw = data.get("start_time") or data.get("startTime")
-    if not isinstance(raw, str) or not raw:
+    raw = timing.raw_start
+    if not raw:
         return None
     try:
         parsed = datetime.fromisoformat(raw)
@@ -58,19 +74,27 @@ def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _log_event_timing(data: dict[str, Any], now_utc: datetime) -> None:
+def _log_event_timing(data: Mapping[str, object], now_utc: datetime) -> None:
     """Attach event-start and webhook-lag instrumentation to the log context."""
-    event_start_utc = _parse_event_start_utc(data)
+    try:
+        timing = _EventTiming.model_validate(data)
+    except ValidationError as e:
+        log.debug(
+            f"{LogTag.TRIGGER} event timing fields unparseable — no lag instrumentation",
+            error=str(e),
+        )
+        return
+    event_start_utc = _parse_event_start_utc(timing)
     if event_start_utc is None:
         return
     seconds_until_event = int((event_start_utc - now_utc).total_seconds())
     log.set(
         event_start_time_utc=event_start_utc.isoformat(),
-        event_start_time_raw=data.get("start_time") or data.get("startTime"),
+        event_start_time_raw=timing.raw_start,
         seconds_until_event=seconds_until_event,
     )
-    countdown = data.get("countdown_window_minutes")
-    if not isinstance(countdown, int):
+    countdown = timing.countdown_window_minutes
+    if countdown is None:
         return
     expected_fire = event_start_utc.timestamp() - countdown * 60
     webhook_lag = int(now_utc.timestamp() - expected_fire)
@@ -83,6 +107,20 @@ def _log_event_timing(data: dict[str, Any], now_utc: datetime) -> None:
             f"{LogTag.TRIGGER} webhook fired far from expected time — lag=s (positive = late, negative = early)",
             webhook_lag=webhook_lag,
         )
+
+
+async def primary_account_for_trigger(user_id: str, composio_slug: str) -> str:
+    """Return the account a workflow trigger registers on: its integration's primary.
+
+    Named explicitly because Composio, given only a user, picks the newest account
+    of any status — an abandoned or expired one as readily as a live one.
+    """
+    integration = get_integration_by_tool_slug(composio_slug)
+    if integration is None or integration.composio_config is None:
+        raise TriggerRegistrationError(
+            f"No integration owns trigger {composio_slug}", composio_slug
+        )
+    return await primary_connected_account_id(user_id, integration.composio_config.toolkit)
 
 
 class TriggerHandler(ABC):
@@ -108,15 +146,23 @@ class TriggerHandler(ABC):
         These are the webhook event types from Composio (e.g., 'GOOGLECALENDAR_...')
         """
 
+    def trigger_names_for_event(
+        self,
+        event_type: str,  # noqa: ARG002 -- interface contract; account-level handlers narrow by it
+    ) -> list[str]:
+        """Return the GAIA trigger names one Composio event fires; every name by default.
+
+        Per-resource subscriptions are still gated by their instance ids, so the
+        default is safe; an account-level handler with several events must narrow it.
+        """
+        return self.trigger_names
+
     @property
     def registers_instances(self) -> bool:
-        """Whether ``register`` returns per-owner Composio trigger instance ids.
+        """Return whether register returns per-owner Composio trigger instance ids.
 
         False for account-level triggers, which Composio fires on the connected
-        account itself: there is no per-owner instance to register, so the only
-        way to find their subscribers is by user and trigger name. Dispatch and
-        subscription storage both branch on this, so it lives with the handler
-        that decides it rather than in a list somewhere that can drift.
+        account itself — subscribers are then found by user and trigger name instead.
         """
         return True
 
@@ -131,28 +177,16 @@ class TriggerHandler(ABC):
         """Register triggers for whatever owns them.
 
         Args:
-            user_id: The user ID
             owner_id: The workflow or tracked-todo that owns this registration.
                 Handlers use it for logging only — Composio keys on the config.
-            trigger_name: The trigger name (e.g., 'calendar_event_created')
-            trigger_config: The complete TriggerConfig with typed trigger_data
-
-        Returns:
-            List of Composio trigger IDs that were registered
         """
 
     async def unregister(self, user_id: str, trigger_ids: list[str]) -> bool:
-        """Unregister triggers when workflow is deleted/deactivated.
+        """Unregister triggers when a workflow is deleted or deactivated.
 
-        Default implementation uses Composio triggers.delete API.
-        Override if provider needs custom logic.
-
-        Args:
-            user_id: The user ID
-            trigger_ids: List of Composio trigger IDs to unregister
-
-        Returns:
-            True if all triggers were unregistered successfully
+        Default implementation uses the Composio triggers.delete API; override
+        if the provider needs custom logic. Returns True only if every trigger
+        was unregistered successfully.
         """
         log.set(
             component="trigger_handler",
@@ -199,41 +233,30 @@ class TriggerHandler(ABC):
         self,
         user_id: str,
         trigger_name: str,
-        configs: list[dict[str, Any]],
+        configs: Sequence[Mapping[str, object]],
         composio_slug: str,
-        config_description_fn: Callable[[dict[str, Any]], str] | None = None,
+        config_description_fn: Callable[[Mapping[str, object]], str] | None = None,
     ) -> list[str]:
         """Register multiple triggers in parallel with automatic rollback on failure.
 
-        This is a reusable helper for handlers that create multiple triggers.
-        If any registration fails, all successful ones are rolled back.
-
-        Args:
-            user_id: The user ID
-            trigger_name: The trigger name (for error messages)
-            configs: List of Composio trigger configs to register
-            composio_slug: The Composio trigger slug
-            config_description_fn: Optional function to describe a config for logging
-
-        Returns:
-            List of registered trigger IDs (only if ALL succeed)
-
-        Raises:
-            TriggerRegistrationError: If any registration fails
+        Reusable helper for handlers that create multiple triggers. If any
+        registration fails, all successful ones are rolled back and
+        TriggerRegistrationError is raised.
         """
 
         if not configs:
             return []
 
         composio = get_composio_service()
+        connected_account_id = await primary_account_for_trigger(user_id, composio_slug)
 
-        async def register_single(config: dict[str, Any]) -> str | None:
+        async def register_single(config: Mapping[str, object]) -> str | None:
             """Register a single trigger and return trigger_id."""
             result = await asyncio.to_thread(
                 composio.composio.triggers.create,
-                user_id=user_id,
+                connected_account_id=connected_account_id,
                 slug=composio_slug,
-                trigger_config=config,
+                trigger_config=dict(config),
             )
             if result and hasattr(result, "trigger_id"):
                 return result.trigger_id
@@ -292,49 +315,20 @@ class TriggerHandler(ABC):
 
     @abstractmethod
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
-        """Find workflows that match an incoming webhook event.
-
-        Args:
-            event_type: The Composio event type
-            trigger_id: The Composio trigger ID from the webhook
-            data: The webhook payload data
-
-        Returns:
-            List of workflows to execute
-        """
+        """Find workflows that match an incoming webhook event."""
 
     async def get_config_options(
         self,
-        trigger_name: str,  # noqa: ARG002 -- framework contract
-        field_name: str,  # noqa: ARG002 -- framework contract
-        user_id: str,  # noqa: ARG002 -- framework contract
-        integration_id: str,  # noqa: ARG002 -- framework contract
-        parent_ids: list[str] | None = None,  # noqa: ARG002 -- framework contract
-        **_kwargs: str,
+        query: TriggerOptionsQuery,  # noqa: ARG002 -- framework contract
     ) -> Sequence[TriggerOption | TriggerOptionGroup]:
-        """Get dynamic options for a trigger configuration field.
+        """Get dynamic options (e.g. channels, boards, repos) for a config field.
 
-        Optional method for handlers to provide dropdown options for
-        configuration fields (e.g., list of channels, boards, repos).
-
-        Supports cascading dropdowns by accepting parent_ids to filter children.
-
-        ``Sequence`` (not ``list``) because ``list`` is invariant: handlers that
-        only ever produce flat options override this returning
-        ``list[TriggerOption]``.
-
-        Args:
-            trigger_name: The trigger slug (e.g., 'slack_new_message')
-            field_name: The config field name (e.g., 'channel_id')
-            user_id: The user ID
-            integration_id: The integration ID (e.g., 'slack')
-            parent_ids: Parent IDs for cascading options (e.g., workspace IDs)
-
-        Returns:
-            Flat options, or ``TriggerOptionGroup``s for cascading dropdowns.
-            Empty when no dynamic options are available.
+        Optional; supports cascading dropdowns via parent_ids. Return type is
+        Sequence (not list) since list is invariant and handlers that only
+        produce flat options override this returning list[TriggerOption].
+        Empty when no dynamic options are available.
         """
         return []
 
@@ -343,26 +337,13 @@ class TriggerHandler(ABC):
         event_type: str,
         trigger_id: str | None,
         user_id: str | None,
-        data: dict[str, Any],
+        data: dict[str, object],
     ) -> TriggerEventResult:
         """Process an incoming webhook event and queue matching workflows.
 
-        Default implementation:
-        1. Finds workflows using handler's find_workflows method
-        2. Queues each workflow for execution via WorkflowQueueService
-
-        Each handler's find_workflows() determines how to match workflows:
-        - Most handlers match by trigger_id (stored in composio_trigger_ids)
-        - Gmail matches by user_id (account-level triggers)
-
-        Args:
-            event_type: The Composio event type (e.g., 'GMAIL_NEW_GMAIL_MESSAGE')
-            trigger_id: The Composio trigger ID from the webhook (may be None)
-            user_id: User ID from webhook metadata (may be None)
-            data: The complete webhook payload data
-
-        Returns:
-            Dict with 'status' and 'message' keys
+        Each handler's find_workflows() determines how to match: most match by
+        trigger_id (stored in composio_trigger_ids), Gmail matches by user_id
+        (account-level triggers).
         """
         now_utc = datetime.now(UTC)
         trigger_ctx = TriggerContext(operation="dispatch", trigger_type=event_type)
@@ -385,10 +366,8 @@ class TriggerHandler(ABC):
         workflows = await self.find_workflows(event_type, trigger_id or "", data)
         log.set_ns("trigger", matched_count=len(workflows))
 
-        # Tracked todos subscribe to the same triggers workflows do, and this is
-        # handed off BEFORE the no-workflow return below: an event that matches no
-        # workflow can still be the reply a todo has been waiting for, and that
-        # return drops it.
+        # Handed off BEFORE the no-workflow return below: an event that matches no
+        # workflow can still be the reply a todo has been waiting for.
         todos_queued = await self._queue_todo_dispatch(event_type, trigger_id, user_id, data)
 
         if not workflows:
@@ -402,10 +381,8 @@ class TriggerHandler(ABC):
             )
             return TriggerEventResult(status="success", message="No matching workflows")
 
-        # Queue execution for each matching workflow.
-        # Tracked-todo signal context is identical for a given user, so compute
-        # it once per user_id and reuse — avoids repeated Mongo + VFS reads when
-        # multiple workflows for the same user match one event.
+        # Tracked-todo signal context is identical for a given user, so compute it once
+        # per user_id and reuse — avoids repeated Mongo + VFS reads across workflows.
         queued_count = 0
         signal_context_by_user: dict[str, str] = {}
         for workflow in workflows:
@@ -419,24 +396,21 @@ class TriggerHandler(ABC):
         return TriggerEventResult(status="success", message=f"Queued {queued_count} workflows")
 
     async def _queue_todo_dispatch(
-        self, event_type: str, trigger_id: str | None, user_id: str | None, data: dict[str, Any]
+        self, event_type: str, trigger_id: str | None, user_id: str | None, data: dict[str, object]
     ) -> bool:
         """Hand the todo fan-out to its worker task. Returns whether it was queued.
 
         Enqueue rather than call: dispatch needs the todo completion path, which
-        imports the trigger stack back to tear subscriptions down. A task name is
-        a string, so the cycle never forms.
-
-        A failure here must not cost the workflow dispatch below it — the two
-        consumers are independent, and letting a subscription problem take
-        workflows down with it turns a small bug into an outage.
+        imports the trigger stack back to tear subscriptions down, and a task
+        name (a string) never forms that cycle. A failure here must not cost
+        the workflow dispatch below it — the two consumers are independent.
         """
         try:
             pool = await RedisPoolManager.get_pool()
             await enqueue_worker_job(
                 pool,
                 "dispatch_todo_subscriptions",
-                self.trigger_names,
+                self.trigger_names_for_event(event_type),
                 trigger_id,
                 user_id,
                 data,
@@ -455,7 +429,7 @@ class TriggerHandler(ABC):
     async def _queue_one_workflow(
         self,
         workflow: Workflow,
-        data: dict[str, Any],
+        data: dict[str, object],
         signal_context_by_user: dict[str, str],
         event_type: str,
         trigger_id: str | None,
@@ -469,10 +443,8 @@ class TriggerHandler(ABC):
                     trigger_id=trigger_id,
                 )
                 return False
-            # Enrich context with tracked todos for signal matching. The
-            # trigger_type stamp is what lets the worker tell this run apart
-            # from a user's manual "run now" (unstamped, it defaulted to
-            # "manual" and was mislabeled in analytics and origin handling).
+            # The trigger_type stamp lets the worker tell this run apart from a user's
+            # manual "run now" (unstamped, it defaulted to "manual" and was mislabeled).
             context: dict[str, Any] = {"trigger_type": TriggerType.INTEGRATION.value}
             if workflow.user_id not in signal_context_by_user:
                 try:
@@ -490,10 +462,9 @@ class TriggerHandler(ABC):
             if todos_context:
                 context["tracked_todos_context"] = todos_context
 
-            # A poll-based trigger fires once per item Composio found, so its
-            # events are batched into one run instead of one run each. Triggers
-            # with no declared interval stay immediate — a meeting reminder held
-            # back for its window is a missed meeting.
+            # A poll-based trigger fires once per item Composio found, so its events
+            # are batched into one run. Triggers with no declared interval stay
+            # immediate — a meeting reminder held back for its window is a missed meeting.
             window_seconds = coalesce_window_seconds(workflow.trigger_config)
             if window_seconds > 0 and await buffer_trigger_event(
                 workflow.id, workflow.user_id, data, window_seconds, context

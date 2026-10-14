@@ -1,34 +1,28 @@
-import { apiauth } from "@/lib/api/client";
-import { apiService } from "@/lib/api/service";
-
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(
-  /\/$/,
-  "",
-);
-
-export interface ArtifactInfo {
-  path: string;
-  size_bytes: number;
-  mtime: number;
-  content_type: string | null;
-}
+import type { PathSerializer } from "openapi-fetch";
+import { apiBaseUrl } from "@/lib/api/client";
+import { api } from "@/lib/api/typed";
 
 function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
 /**
+ * `{path}` is a FastAPI path converter: its slashes separate segments rather
+ * than being data, so it is encoded per segment instead of whole.
+ */
+const nestedPathSerializer: PathSerializer = (pathname, pathParams) =>
+  pathname.replace(/\{(\w+)\}/g, (_match, name: string) => {
+    const value = String(pathParams[name]);
+    return name === "path" ? encodePath(value) : encodeURIComponent(value);
+  });
+
+/**
  * Rewrite bot-emitted artifact paths (./artifacts/foo, /artifacts/foo,
- * artifacts/foo) to the auth-gated backend URL for the current conversation.
- * Returns the original src for anything that doesn't match (absolute URLs,
- * data: URIs, etc.). Used by MarkdownRenderer and OpenUI components that
- * render images the bot wrote into the session's artifacts/ dir.
- *
- * `conversationId` is normally piped in from `useParams<{id}>()`; when
- * absent we fall back to parsing the current pathname so this works in
- * trees that mount outside the page's param scope (OpenUI components are
- * rendered via a dynamic CSR boundary that doesn't always see the route
- * params synchronously).
+ * artifacts/foo) to the auth-gated backend URL for this conversation;
+ * returns the original src for anything else. Used by MarkdownRenderer and
+ * OpenUI for images the bot wrote into artifacts/. `conversationId` falls
+ * back to parsing the pathname when `useParams` doesn't see it (OpenUI's
+ * dynamic CSR boundary can mount outside the page's param scope).
  */
 export function resolveArtifactSrc(
   src: string | undefined,
@@ -55,35 +49,35 @@ export function resolveArtifactSrc(
  */
 export const sessionFilesApi = {
   listArtifacts: (conversationId: string) =>
-    apiService.get<ArtifactInfo[]>(`/sessions/${conversationId}/artifacts`, {
+    api.get("/api/v1/sessions/{conv_id}/artifacts", {
+      path: { conv_id: conversationId },
       silent: true,
     }),
 
   listUploads: (conversationId: string) =>
-    apiService.get<ArtifactInfo[]>(`/sessions/${conversationId}/uploads`, {
+    api.get("/api/v1/sessions/{conv_id}/uploads", {
+      path: { conv_id: conversationId },
       silent: true,
     }),
 
   artifactUrl: (conversationId: string, path: string) =>
-    `${API_BASE}/sessions/${conversationId}/artifacts/${encodePath(path)}`,
+    `${apiBaseUrl}/sessions/${conversationId}/artifacts/${encodePath(path)}`,
 
   uploadUrl: (conversationId: string, path: string) =>
-    `${API_BASE}/sessions/${conversationId}/uploads/${encodePath(path)}`,
+    `${apiBaseUrl}/sessions/${conversationId}/uploads/${encodePath(path)}`,
 
-  fetchArtifact: async (
-    conversationId: string,
-    path: string,
-  ): Promise<string> => {
-    const res = await apiauth.get<string>(
-      `/sessions/${conversationId}/artifacts/${encodePath(path)}`,
-      { responseType: "text" },
-    );
-    return res.data;
-  },
+  // The route serves the file itself, so the schema declares no response body;
+  // `api.text` says what comes back instead.
+  fetchArtifact: (conversationId: string, path: string): Promise<string> =>
+    api.text("/api/v1/sessions/{conv_id}/artifacts/{path}", {
+      path: { conv_id: conversationId, path },
+      pathSerializer: nestedPathSerializer,
+      silent: true,
+    }),
 
   pin: (conversationId: string, path: string, targetName?: string) =>
-    apiService.post(`/sessions/${conversationId}/pin`, {
-      path,
-      target_name: targetName,
+    api.post("/api/v1/sessions/{conv_id}/pin", {
+      path: { conv_id: conversationId },
+      body: { path, target_name: targetName },
     }),
 };

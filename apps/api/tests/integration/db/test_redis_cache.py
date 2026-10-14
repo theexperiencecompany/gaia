@@ -89,13 +89,7 @@ class TestRedisCacheOperations:
     """Test RedisCache get/set/delete with mocked Redis."""
 
     async def test_set_and_get_cache(self):
-        """set() then get() should return the cached value.
-
-        Uses a capture-and-replay mock so that what set_cache serializes
-        and writes is exactly what get_cache reads and deserializes.
-        A bug in serialize_any or deserialize_any will cause the final
-        assertion to fail, making this a real serialization roundtrip.
-        """
+        """Uses a capture-and-replay mock, so a bug in serialize_any/deserialize_any fails the final assertion — a real roundtrip, not a mock echo."""
         stored: dict[str, str] = {}
 
         cache = RedisCache.__new__(RedisCache)
@@ -220,11 +214,9 @@ class TestModuleLevelWrappers:
 
     @patch("app.db.redis.redis_cache")
     async def test_get_and_delete_cache(self, mock_cache):
-        """get_and_delete_cache should use Redis GETDEL."""
-        mock_cache.redis = AsyncMock()
-        serialized = serialize_any({"token": "abc"})
-        mock_cache.redis.getdel = AsyncMock(return_value=serialized)
+        """get_and_delete_cache delegates to the cache's atomic GETDEL method."""
+        mock_cache.get_and_delete = AsyncMock(return_value={"token": "abc"})
 
         result = await get_and_delete_cache("one-time:key")
         assert result == {"token": "abc"}
-        mock_cache.redis.getdel.assert_awaited_once_with("one-time:key")
+        mock_cache.get_and_delete.assert_awaited_once_with("one-time:key", None)

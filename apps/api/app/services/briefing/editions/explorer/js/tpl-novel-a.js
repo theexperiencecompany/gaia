@@ -149,29 +149,79 @@
     .t-metromap .mm-leg-dec { stroke: var(--accent); stroke-width: 8; stroke-dasharray: 12 8; }
   `;
 
+  // -- label fitting: founder-approved deviation, see README (2026-10-14) --
+  // Each label wraps to the width its station has, at most MM_MAX_LINES lines,
+  // and the last line ends in an ellipsis when the text runs past them.
+  const MM_MAX_LINES = 2;
+  const MM_BOX_CHARS = 16;
+  const MM_STOP_CHARS = 22;
+  const MM_DEC_CHARS = 15;
+  const MM_IX_CHARS = 28;
+  const MM_NOTE_CHARS = 26;
+  const MM_BOX_LINE = 26;
+  const MM_NAME_LINE = 22;
+
+  function mmEllipsis(text, maxChars) {
+    const room = text.slice(0, maxChars - 1);
+    const cut = room.length < text.length && room.includes(" ") ? room.replace(/\s+\S*$/, "") : room;
+    return `${cut.replace(/[\s,.;:\u2014-]+$/, "")}\u2026`;
+  }
+
+  function mmWrap(text, maxChars, maxLines = MM_MAX_LINES) {
+    const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = "";
+    for (let i = 0; i < words.length; i++) {
+      const joined = line ? `${line} ${words[i]}` : words[i];
+      if (joined.length <= maxChars) {
+        line = joined;
+        continue;
+      }
+      if (lines.length === maxLines - 1) {
+        lines.push(mmEllipsis(words.slice(i).reduce((acc, w) => `${acc} ${w}`, line).trim(), maxChars));
+        return lines;
+      }
+      if (line) lines.push(line);
+      line = words[i].length > maxChars ? mmEllipsis(words[i], maxChars) : words[i];
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function mmText(cls, x, y, lines, lineHeight, fmt = esc) {
+    const spans = lines
+      .map((l, i) => `<tspan x="${x}" dy="${i ? lineHeight : 0}">${fmt(l)}</tspan>`)
+      // the space keeps the wrapped words apart in the text a reader or screen reader copies
+      .join(" ");
+    return `<text class="${cls}" x="${x}" y="${y}">${spans}</text>`;
+  }
+
   // -- svg builders -------------------------------------------------------
   function mmTermBox(x, ty, place, time, name, note, full, cls) {
     const cw = 12.6;
-    const w = Math.max(104, name.length * cw + 32);
-    const h = 42;
+    const names = mmWrap(name, MM_BOX_CHARS);
+    const longest = names.reduce((n, l) => Math.max(n, l.length), 0);
+    const w = Math.max(104, longest * cw + 32);
+    const h = 42 + MM_BOX_LINE * (names.length - 1);
     const gap = 20;
+    const notes = full && note ? mmWrap(note, MM_NOTE_CHARS, 1) : [];
     let bTop, cy2, timeY, noteEl = "";
     if (place === "above") {
       bTop = ty - gap - h;
       cy2 = ty - gap;
       timeY = bTop - 12;
-      if (full && note) noteEl = `<text class="mm-note" x="${x}" y="${ty + 33}">${esc(note)}</text>`;
+      if (notes.length) noteEl = mmText("mm-note", x, ty + 33, notes, MM_NAME_LINE);
     } else {
       bTop = ty + gap;
       cy2 = ty + gap;
       timeY = bTop + h + 24;
-      if (full && note) noteEl = `<text class="mm-note" x="${x}" y="${bTop + h + 44}">${esc(note)}</text>`;
+      if (notes.length) noteEl = mmText("mm-note", x, bTop + h + 44, notes, MM_NAME_LINE);
     }
     return (
       `<line class="mm-conn ${cls}" x1="${x}" y1="${ty}" x2="${x}" y2="${cy2}"/>` +
       `<circle class="mm-cap ${cls}" cx="${x}" cy="${ty}" r="9"/>` +
       `<rect class="mm-box ${cls}" x="${(x - w / 2).toFixed(1)}" y="${bTop}" width="${w.toFixed(1)}" height="${h}" rx="7"/>` +
-      `<text class="mm-boxname" x="${x}" y="${bTop + h / 2 + 7}">${caps(name)}</text>` +
+      mmText("mm-boxname", x, bTop + 28, names, MM_BOX_LINE, caps) +
       `<text class="mm-time" x="${x}" y="${timeY}">${esc(time)}</text>` +
       noteEl
     );
@@ -179,20 +229,24 @@
 
   function mmStop(x, ty, time, name, note, full) {
     // ordinary station: perpendicular tick, labels stacked below the trunk
+    const names = mmWrap(name, MM_STOP_CHARS);
+    const noteY = ty + 82 + MM_NAME_LINE * (names.length - 1);
     return (
       `<line class="mm-tick" x1="${x}" y1="${ty - 13}" x2="${x}" y2="${ty + 13}"/>` +
       `<text class="mm-time" x="${x}" y="${ty + 40}">${esc(time)}</text>` +
-      `<text class="mm-name" x="${x}" y="${ty + 62}">${esc(name)}</text>` +
-      (full && note ? `<text class="mm-note" x="${x}" y="${ty + 82}">${esc(note)}</text>` : "")
+      mmText("mm-name", x, ty + 62, names, MM_NAME_LINE) +
+      (full && note ? mmText("mm-note", x, noteY, mmWrap(note, MM_NOTE_CHARS, 1), MM_NAME_LINE) : "")
     );
   }
 
   function mmHollow(x, y, name, note, full) {
     // "proposed service" station: open circle, labels above the dashed spur
+    const names = mmWrap(name, MM_DEC_CHARS);
+    const nameY = y - 44 - MM_NAME_LINE * (names.length - 1);
     return (
       `<circle class="mm-hollow" cx="${x}" cy="${y}" r="13"/>` +
-      `<text class="mm-name" x="${x}" y="${y - 44}">${esc(name)}</text>` +
-      (full && note ? `<text class="mm-note" x="${x}" y="${y - 25}">${esc(note)}</text>` : "")
+      mmText("mm-name", x, nameY, names, MM_NAME_LINE) +
+      (full && note ? mmText("mm-note", x, y - 25, mmWrap(note, MM_DEC_CHARS, 1), MM_NAME_LINE) : "")
     );
   }
 
@@ -236,7 +290,7 @@
       const YOU_Y = 340, GAIA_Y = 600;
       const X_REV = 165, X_IX = 450, X_SYNC = 735, X_SHIP = 1030;
       const G_DONE = 165, G_MOVE = 690;
-      const D_A = 855, D_B = 1015, D_Y = 250; // decisions hollow stations (well spaced along the spur)
+      const D_A = 905, D_B = 1075, D_Y = 200; // decisions hollow stations, clear of the ship terminus box
 
       const you = c.today; // [review, sync, ship]
       const ov = c.overnight; // [done(02:14), draft(03:41), moved(04:09)]
@@ -248,14 +302,21 @@
         `<polyline class="mm-dec-line" points="${X_SYNC},${YOU_Y} ${X_SYNC + (YOU_Y - D_Y)},${D_Y} ${D_B},${D_Y}"/>`;
 
       // interchange: two rings joined by a neutral tie bar (GAIA hands to YOU)
+      const ixNames = mmWrap(ov[1].label, MM_IX_CHARS);
       const interchange =
         `<line class="mm-tie" x1="${X_IX}" y1="${YOU_Y}" x2="${X_IX}" y2="${GAIA_Y}"/>` +
         `<circle class="mm-ring" cx="${X_IX}" cy="${YOU_Y}" r="17"/>` +
         `<circle class="mm-ring" cx="${X_IX}" cy="${GAIA_Y}" r="17"/>` +
         `<text class="mm-ixtime" x="${X_IX + 30}" y="${(YOU_Y + GAIA_Y) / 2 - 20}">${esc(ov[1].t24 || "")}</text>` +
-        `<text class="mm-ixname" x="${X_IX + 30}" y="${(YOU_Y + GAIA_Y) / 2 + 3}">${esc(ov[1].label)}</text>` +
+        mmText("mm-ixname", X_IX + 30, (YOU_Y + GAIA_Y) / 2 + 3, ixNames, MM_NAME_LINE) +
         (full && ov[1].note
-          ? `<text class="mm-ixnote" x="${X_IX + 30}" y="${(YOU_Y + GAIA_Y) / 2 + 24}">${esc(ov[1].note)}</text>`
+          ? mmText(
+              "mm-ixnote",
+              X_IX + 30,
+              (YOU_Y + GAIA_Y) / 2 + 24 + MM_NAME_LINE * (ixNames.length - 1),
+              mmWrap(ov[1].note, MM_IX_CHARS, 1),
+              MM_NAME_LINE,
+            )
           : "");
 
       const stations =

@@ -16,13 +16,15 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.db.repositories.workflows import (
-    SystemWorkflowDefinition,
-    WorkflowReArm,
-    WorkflowsRepository,
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.workflows import WorkflowsRepository
+from app.models.scheduler_models import (
+    DeactivationReason,
+    ScheduledTaskStatus,
+    TaskRearm,
 )
-from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
+    SystemWorkflowDefinition,
     TriggerConfig,
     TriggerType,
     WorkflowDocument,
@@ -44,6 +46,7 @@ def _workflow(**overrides: object) -> WorkflowDocument:
         "prompt": "do the thing",
         "steps": [WorkflowStep(title="step", category="gmail", description="d")],
         "trigger_config": TriggerConfig(type=TriggerType.MANUAL),
+        "delivery": WorkflowDelivery.NOW,
     }
     data.update(overrides)
     return WorkflowDocument(**data)
@@ -119,21 +122,50 @@ class TestWorkflowsOwnedCrud:
         assert await repo.update_for_user(created.id, "attacker", WorkflowUpdate(title="X")) is None
         assert (await repo.get(created.id)).title == "New"
 
+    async def test_deactivate_records_the_blockers_in_the_same_write(self, repo):
+        """A pause on missing integrations carries them with it; a plain deactivation leaves whatever list was there alone."""
+        created = await repo.create(_workflow(user_id="owner"))
+
+        paused = await repo.deactivate(
+            created.id,
+            "owner",
+            reason=DeactivationReason.INTEGRATION_NEVER_CONNECTED,
+            blocked_on_integrations=["github", "slack"],
+        )
+        assert paused is not None
+        assert paused.activated is False
+        assert paused.deactivated_reason is DeactivationReason.INTEGRATION_NEVER_CONNECTED
+        assert paused.blocked_on_integrations == ["github", "slack"]
+        assert (await repo.get(created.id)).blocked_on_integrations == ["github", "slack"]
+
+        plain = await repo.deactivate(created.id, "owner")
+        assert plain is not None
+        assert plain.deactivated_reason is None
+        assert plain.blocked_on_integrations == ["github", "slack"]
+        assert await repo.deactivate(created.id, "attacker") is None
+
+    async def test_live_system_workflows_are_the_running_and_the_system_paused(self, repo):
+        key = _uid("sys")
+        running, paused, switched_off, other_key = [
+            await repo.create(
+                _workflow(is_system_workflow=True, system_workflow_key=k, activated=True)
+            )
+            for k in (key, key, key, _uid("sys"))
+        ]
+        await repo.deactivate(paused.id, paused.user_id, reason=DeactivationReason.USER_DORMANT)
+        await repo.deactivate(switched_off.id, switched_off.user_id)
+
+        live = await repo.find_live_system_workflows(key)
+
+        assert {w.id for w in live} == {running.id, paused.id}
+        assert other_key.id not in {w.id for w in live}
+
     async def test_delete_for_user_scoped(self, repo):
         created = await repo.create(_workflow(user_id="owner"))
         assert await repo.delete_for_user(created.id, "attacker") is False
         assert await repo.get(created.id) is not None
         assert await repo.delete_for_user(created.id, "owner") is True
         assert await repo.get(created.id) is None
-
-    async def test_delete_many_for_user(self, repo):
-        owner = _uid("owner")
-        a = await repo.create(_workflow(user_id=owner))
-        b = await repo.create(_workflow(user_id=owner))
-        other = await repo.create(_workflow(user_id=_uid("other")))
-        deleted = await repo.delete_many_for_user([a.id, b.id, other.id], owner)
-        assert deleted == 2  # other user's row is not touched
-        assert await repo.get(other.id) is not None
 
     async def test_list_for_user_newest_first_excludes_todo(self, repo):
         owner = _uid("owner")
@@ -212,9 +244,7 @@ class TestWorkflowsScheduler:
         assert await repo.claim_for_execution(wf.id) is False
 
     async def test_claim_pin_rejects_stale_fire_after_reschedule(self, repo):
-        """The bug-2 gate against real Mongo: a deferred ARQ job armed for 16:00
-        that fires after the workflow was rescheduled to 21:00 must be rejected,
-        and the rejection must leave the row claimable by the 21:00 job."""
+        """Bug-2 gate: a deferred job armed for 16:00 firing after a reschedule to 21:00 must be rejected, leaving the row claimable by 21:00."""
         old_fire = (datetime.now(UTC) + timedelta(hours=5)).replace(microsecond=0)
         new_fire = old_fire + timedelta(hours=5)
         wf = await repo.create(
@@ -237,7 +267,7 @@ class TestWorkflowsScheduler:
             await repo.set_status(
                 wf.id,
                 ScheduledTaskStatus.SCHEDULED,
-                rearm=WorkflowReArm(scheduled_at=new_fire, next_run=new_fire),
+                rearm=TaskRearm(scheduled_at=new_fire, next_run=new_fire),
             )
             is True
         )
@@ -253,15 +283,7 @@ class TestWorkflowsScheduler:
         assert (await repo.get(wf.id)).status == ScheduledTaskStatus.EXECUTING
 
     async def test_claim_pin_survives_the_real_stamp_round_trip(self, repo):
-        """The pin must match the armed occurrence through ARQ's serialized args.
-
-        The stamp travels as a unix int and comes back floored to the second,
-        while Mongo holds ``next_run`` at BSON's millisecond precision. Cron
-        fires land on whole seconds, so only a sub-second ``next_run`` — a
-        one-shot re-armed by the stale-executing reaper at its original time —
-        exposes it; the gate must not depend on that luck. Driven through the
-        real producer and parser so the encoding itself is under test.
-        """
+        """The pin must match through ARQ's real int-seconds stamp, not the sub-second next_run instant Mongo holds."""
         armed = datetime.now(UTC) + timedelta(hours=5)
         assert armed.microsecond, "fixture must carry a sub-second component"
         wf = await repo.create(
@@ -285,8 +307,7 @@ class TestWorkflowsScheduler:
         assert await repo.claim_for_execution(wf.id, expected_next_run=expected) is True
 
     async def test_claim_without_pin_stays_ungated(self, repo):
-        """Jobs enqueued before the stamp existed carry no expected time; they
-        must keep claiming across a deploy."""
+        """Jobs enqueued before the stamp existed carry no expected time; they must keep claiming across a deploy."""
         wf = await repo.create(
             _workflow(
                 activated=True,
@@ -324,7 +345,7 @@ class TestWorkflowsScheduler:
             wf.id,
             ScheduledTaskStatus.SCHEDULED,
             user_id=owner,
-            rearm=WorkflowReArm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
+            rearm=TaskRearm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
         )
         assert ok is True
         fetched = await repo.get(wf.id)
@@ -343,7 +364,7 @@ class TestWorkflowsScheduler:
         # an explicit None clears it (the reap path for a non-recurring workflow).
         assert (
             await repo.set_status(
-                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=WorkflowReArm(scheduled_at=None)
+                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=TaskRearm(scheduled_at=None)
             )
             is True
         )
@@ -351,6 +372,30 @@ class TestWorkflowsScheduler:
 
     async def test_set_status_missing_returns_false(self, repo):
         assert await repo.set_status(_uid("missing"), ScheduledTaskStatus.COMPLETED) is False
+
+    async def test_set_status_rearm_writes_scheduled_at_and_repeat_by_name(
+        self, repo, raw_collection
+    ):
+        """A re-arm lands on the exact top-level fields the scheduler reads back."""
+        run_at = (datetime.now(UTC) + timedelta(hours=1)).replace(microsecond=0)
+        wf = await repo.create(_workflow(status=ScheduledTaskStatus.EXECUTING))
+
+        assert (
+            await repo.set_status(
+                wf.id,
+                ScheduledTaskStatus.SCHEDULED,
+                rearm=TaskRearm(scheduled_at=run_at, repeat="0 9 * * *"),
+            )
+            is True
+        )
+        raw = await raw_collection.find_one({"_id": wf.id})
+        assert raw["scheduled_at"] == run_at
+        assert raw["repeat"] == "0 9 * * *"
+
+        # ``repeat=None`` means "leave it alone", not "clear it" — a status-only
+        # re-arm must never strip a recurring workflow's cron.
+        assert await repo.set_status(wf.id, ScheduledTaskStatus.EXECUTING) is True
+        assert (await raw_collection.find_one({"_id": wf.id}))["repeat"] == "0 9 * * *"
 
 
 class TestWorkflowsTriggersAndSystem:
@@ -491,6 +536,85 @@ class TestWorkflowsTriggersAndSystem:
         assert updated.trigger_config.type == TriggerType.SCHEDULE
         assert updated.trigger_config.composio_trigger_ids == ["t1"]
 
+    async def test_reset_system_workflow_rewrites_the_top_level_schedule(
+        self, repo, raw_collection
+    ):
+        """Reset replaces the stored scheduled_at/repeat, not just the trigger."""
+        stale = (datetime.now(UTC) - timedelta(days=1)).replace(microsecond=0)
+        next_run = (datetime.now(UTC) + timedelta(hours=2)).replace(microsecond=0)
+        wf = await repo.create(
+            _workflow(is_system_workflow=True, scheduled_at=stale, repeat="0 0 * * *")
+        )
+
+        updated = await repo.reset_system_workflow(
+            wf.id,
+            SystemWorkflowDefinition(
+                title="Fresh",
+                description="fresh desc",
+                prompt="fresh prompt",
+                steps=[WorkflowStep(title="s2", category="notion", description="d2")],
+                trigger_config=TriggerConfig(
+                    type=TriggerType.SCHEDULE,
+                    enabled=True,
+                    cron_expression="0 9 * * *",
+                    next_run=next_run,
+                ),
+                composio_trigger_ids=[],
+            ),
+        )
+        assert updated is not None
+        raw = await raw_collection.find_one({"_id": wf.id})
+        assert raw["scheduled_at"] == next_run
+        assert raw["repeat"] == "0 9 * * *"
+
+
+class TestPlaybookDeclineTally:
+    """count_playbook_decline: once per run, atomically, a fresh tally per hash."""
+
+    async def test_a_run_counts_once_however_many_times_it_declines(self, repo) -> None:
+        created = await repo.create(_workflow())
+        first = await repo.count_playbook_decline(
+            created.id, created.user_id, run_id="run_a", workflow_hash="h1"
+        )
+        again = await repo.count_playbook_decline(
+            created.id, created.user_id, run_id="run_a", workflow_hash="h1"
+        )
+        next_run = await repo.count_playbook_decline(
+            created.id, created.user_id, run_id="run_b", workflow_hash="h1"
+        )
+
+        assert (first, again, next_run) == (1, None, 2)
+        stored = await repo.get_for_user(created.id, created.user_id)
+        assert stored is not None
+        assert stored.playbook_declined_run == "run_b"
+
+    async def test_an_edited_workflow_starts_a_fresh_tally(self, repo) -> None:
+        created = await repo.create(_workflow())
+        await repo.count_playbook_decline(
+            created.id, created.user_id, run_id="r1", workflow_hash="h1"
+        )
+        await repo.count_playbook_decline(
+            created.id, created.user_id, run_id="r2", workflow_hash="h1"
+        )
+
+        fresh = await repo.count_playbook_decline(
+            created.id, created.user_id, run_id="r3", workflow_hash="h2"
+        )
+
+        assert fresh == 1
+        stored = await repo.get_for_user(created.id, created.user_id)
+        assert stored is not None
+        assert (stored.playbook_declines, stored.playbook_declined_hash) == (1, "h2")
+
+    async def test_another_users_workflow_is_not_counted(self, repo) -> None:
+        created = await repo.create(_workflow())
+        assert (
+            await repo.count_playbook_decline(
+                created.id, _uid("stranger"), run_id="r1", workflow_hash="h1"
+            )
+            is None
+        )
+
 
 class TestWorkflowsPublishAndWrites:
     async def test_find_public_slug_conflict(self, repo):
@@ -582,11 +706,7 @@ class TestWorkflowsPublishAndWrites:
 
 
 class TestScheduledWorkflowToolPayloadJsonSafety:
-    """Bug-1 gate against real Mongo: a persisted scheduled workflow read back
-    through the repository carries native datetimes (BSON dates), so the tool
-    payloads the workflow tools emit must be built with ``model_dump(mode="json")``
-    — their consumers (the LLM ToolMessage and the stream writer) plain
-    ``json.dumps`` them."""
+    """Bug-1 gate: a repository read carries native BSON datetimes, so tool payloads must use model_dump(mode="json") since consumers plain json.dumps them."""
 
     async def test_get_workflow_tool_payload_is_json_safe(self, repo):
         import json
@@ -624,9 +744,7 @@ class TestScheduledWorkflowToolPayloadJsonSafety:
 
 
 class TestWorkflowsUniqueIndexSurface:
-    """The concurrency-guard indexes live on the real collection, not the ephemeral
-    fixture — recreate them here to prove the exact DuplicateKeyError surface the
-    provisioner / publish paths depend on (they catch pymongo's DuplicateKeyError)."""
+    """Recreate the real concurrency-guard indexes to prove the exact DuplicateKeyError surface the provisioner/publish paths depend on."""
 
     async def _create_indexes(self, raw_collection) -> None:
         # Mirrors app/db/mongodb/indexes.py::create_workflow_indexes.
@@ -679,14 +797,11 @@ class TestWorkflowsUniqueIndexSurface:
 async def seeded_creator(
     raw_collection: AsyncIOMotorCollection,
 ) -> AsyncIterator[tuple[str, dict[str, object]]]:
-    """A real user document in the shared ``gaia_test.users`` collection, keyed by a
-    unique ObjectId so a concurrent run can't collide, dropped on teardown.
+    """Seed a real user document in gaia_test.users, keyed by a unique ObjectId so a concurrent run can't collide.
 
-    The ``creator_lookup_stage`` ``$lookup`` (``from: "users"``) resolves against
-    this collection server-side — the patched repository accessor only redirects
-    the ``workflows`` handle, so the join reads the genuine ``users`` collection.
-    Returns the creator's string id (what a workflow stores in ``created_by``) and
-    the seeded document.
+    creator_lookup_stage's $lookup resolves against this collection
+    server-side, so the join reads the genuine users collection. Returns
+    the creator's string id (created_by) and the seeded document.
     """
     users = raw_collection.database["users"]
     oid = ObjectId()
@@ -783,6 +898,31 @@ class TestWorkflowsPublicMarketplaceReads:
         bare_row = next(r for r in rows if r.id == bare.id)
         assert bare_row.use_case_categories == ["featured"]
 
+    async def test_find_public_matching_searches_both_lists_and_escapes(self, repo, raw_collection):
+        community = await repo.create(
+            _workflow(is_public=True, title="Investor digest", description="weekly")
+        )
+        featured = await repo.create(
+            _workflow(
+                title="Morning briefing", description="inbox for investors", total_executions=5
+            )
+        )
+        await raw_collection.update_one({"_id": featured.id}, {"$set": {"is_explore": True}})
+        by_integration = await repo.create(
+            _workflow(is_public=True, title="Sync", description="", source_integration="linear")
+        )
+        # private → never surfaces, even on a match
+        await repo.create(_workflow(is_public=False, title="Investor secret"))
+
+        rows = await repo.find_public_matching(["investor"], limit=10)
+        assert [r.id for r in rows] == [featured.id, community.id]  # featured first
+        assert [r.id for r in await repo.find_public_matching(["linear"], limit=10)] == [
+            by_integration.id
+        ]
+        assert await repo.find_public_matching(["inve.tor"], limit=10) == []  # regex-escaped
+        assert await repo.find_public_matching([], limit=10) == []
+        assert len(await repo.find_public_matching(["investor"], limit=1)) == 1
+
     async def test_find_public_by_step_category_matches_and_escapes(self, repo, seeded_creator):
         creator_id, creator = seeded_creator
         gmail_wf = await repo.create(
@@ -810,3 +950,34 @@ class TestWorkflowsPublicMarketplaceReads:
 
         # the pattern is escaped: "g.ail" is literal, not a regex matching "gmail".
         assert await repo.count_public_by_step_category("g.ail") == 0
+
+    async def test_find_public_matching_ranks_explore_then_runs_then_recency(
+        self, repo, raw_collection
+    ):
+        """Each sort key carries its own weight: featured > run count > recency."""
+        token = uuid.uuid4().hex[:10]
+        now = datetime.now(UTC).replace(microsecond=0)
+
+        async def seed(*, explore: bool, runs: int, updated_at: datetime) -> str:
+            wf = await repo.create(_workflow(is_public=not explore, title=f"{token} row"))
+            await raw_collection.update_one(
+                {"_id": wf.id},
+                {
+                    "$set": {
+                        "is_explore": explore,
+                        "total_executions": runs,
+                        "updated_at": updated_at,
+                    }
+                },
+            )
+            return wf.id
+
+        # Seeded stalest-first on purpose: a sort that stops reading ``updated_at``
+        # falls back to insertion order, which is the reverse of what we assert.
+        community_hot = await seed(explore=False, runs=100, updated_at=now)
+        explore_stale = await seed(explore=True, runs=50, updated_at=now - timedelta(days=2))
+        explore_fresh = await seed(explore=True, runs=50, updated_at=now - timedelta(days=1))
+        explore_cold = await seed(explore=True, runs=5, updated_at=now)
+
+        rows = await repo.find_public_matching([token], limit=10)
+        assert [r.id for r in rows] == [explore_fresh, explore_stale, explore_cold, community_hot]

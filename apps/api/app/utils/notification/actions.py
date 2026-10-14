@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import Request
 import httpx
@@ -17,7 +17,7 @@ from shared.py.wide_events import log
 
 
 class ActionHandler(ABC):
-    """Base class for all action handlers"""
+    """Base class for all action handlers."""
 
     @property
     @abstractmethod
@@ -41,7 +41,7 @@ class ActionHandler(ABC):
 
 # Action Handlers
 class ApiCallActionHandler(ActionHandler):
-    """Handler for API call actions"""
+    """Handler for API call actions."""
 
     @property
     def action_type(self) -> str:
@@ -152,7 +152,7 @@ class ApiCallActionHandler(ActionHandler):
 
 
 class RedirectActionHandler(ActionHandler):
-    """Handler for redirect actions (client-side)"""
+    """Handler for redirect actions (client-side)."""
 
     @property
     def action_type(self) -> str:
@@ -196,7 +196,7 @@ class RedirectActionHandler(ActionHandler):
 
 
 class ModalActionHandler(ActionHandler):
-    """Handler for modal actions (client-side)"""
+    """Handler for modal actions (client-side)."""
 
     @property
     def action_type(self) -> str:
@@ -245,18 +245,18 @@ class ModalActionHandler(ActionHandler):
         )
 
     def _process_template_variables(
-        self, props: dict[str, Any], notification_id: str, action_id: str, user_id: str
-    ) -> dict[str, Any]:
-        """Substitute ``{{notification_id}}``-style placeholders in modal props.
+        self, props: Mapping[str, object], notification_id: str, action_id: str, user_id: str
+    ) -> dict[str, object]:
+        """Substitute {{notification_id}}-style placeholders in modal props.
 
-        Props stay ``dict[str, Any]``: they are the arbitrary payload a modal
-        component declares for itself (``ModalConfig.props``), with no fixed key
+        Props stay an open mapping: they are the arbitrary payload a modal
+        component declares for itself (ModalConfig.props), with no fixed key
         set to model.
         """
         if not props:
             return {}
 
-        processed_props: dict[str, Any] = {}
+        processed_props: dict[str, object] = {}
         template_map = {
             "{{notification_id}}": notification_id,
             "{{action_id}}": action_id,

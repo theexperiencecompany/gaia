@@ -1,8 +1,8 @@
-"""Contract tests for ``app.utils.composio_hooks.all_hooks``.
+"""Contract tests for app.utils.composio_hooks.all_hooks.
 
 The module exists purely for its import side effects: importing it pulls in
-every hook module so their ``@register_*`` decorators run against the global
-``hook_registry``. These tests pin exactly that contract — the import succeeds,
+every hook module so their @register_* decorators run against the global
+hook_registry. These tests pin exactly that contract — the import succeeds,
 every hook module is re-exported, and the hooks actually land in the registry.
 """
 
@@ -12,11 +12,12 @@ from app.utils.composio_hooks.registry import hook_registry
 # Mirrors all_hooks.py's side-effect import list: when a hook module is added
 # there, add it here too or these tests stop proving anything.
 _HOOK_MODULES = (
+    "file_upload_hooks",
     "gmail_hooks",
+    "outlook_hooks",
     "reddit_hooks",
     "slack_hooks",
     "twitter_hooks",
-    "user_id_hooks",
 )
 
 

@@ -32,8 +32,17 @@ from app.models.conversation_models import (
     UpdateMessagesResponse,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import (
+    ChatConversationCreated,
+    ChatConversationDeleted,
+    ChatConversationRenamed,
+    ChatConversationStarred,
+    ChatMessagePinned,
+    ChatMessageUnpinned,
+)
 from shared.py.wide_events import log
 
 
@@ -45,13 +54,10 @@ def _like_escape(value: str) -> str:
 async def _delete_checkpoint_threads(conversation_id: str) -> None:
     """Delete the LangGraph Postgres checkpoint threads for a conversation.
 
-    A conversation owns its base thread (`thread_id == conversation_id`) plus
-    derived threads that embed the id — `executor_<conv>`,
-    `<integration>_executor_<conv>_<runhex>`, `workflow_<conv>`, and nested
-    combinations. Rather than enumerate the (dynamic, per-integration) prefixes,
-    match every thread whose id contains the conversation_id and delete each via
-    the saver. Best-effort: the nightly `prune_checkpoint_versions` orphan sweep
-    is the backstop if this fails, so a failure here never fails the API call.
+    A conversation owns its base thread plus derived ones that embed the id
+    (executor_<conv>, workflow_<conv>, etc.); rather than enumerate the
+    dynamic prefixes, this matches every thread whose id contains
+    conversation_id. Best-effort: the nightly prune_checkpoint_versions sweep is the backstop.
     """
 
     manager = await get_checkpointer_manager()
@@ -70,7 +76,7 @@ async def _delete_checkpoint_threads(conversation_id: str) -> None:
 
 
 async def _cleanup_checkpoint_threads(conversation_id: str) -> None:
-    """Best-effort wrapper around `_delete_checkpoint_threads` for delete paths.
+    """Best-effort wrapper around _delete_checkpoint_threads for delete paths.
 
     Mirrors the session-dir cleanup contract: a failure is logged and swallowed
     so a Postgres hiccup never fails an already-committed conversation delete;
@@ -87,8 +93,7 @@ async def _cleanup_checkpoint_threads(conversation_id: str) -> None:
 async def create_conversation_service(
     conversation: ConversationModel, user: AuthenticatedUser
 ) -> CreateConversationResponse:
-    """Create a new conversation."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
@@ -115,13 +120,12 @@ async def create_conversation_service(
 
     # Runs from the conversations endpoint, the chat stream's background init,
     # bot message handling, and seeding — always with an explicit user_id.
-    capture_event(
-        user_id,
-        AnalyticsEvents.CONVERSATION_CREATED,
-        {
-            "is_system_generated": document.is_system_generated,
-            "is_onboarding_demo": document.is_onboarding_demo,
-        },
+    capture(
+        UserId(user_id),
+        ChatConversationCreated(
+            is_system_generated=document.is_system_generated,
+            is_onboarding_demo=document.is_onboarding_demo,
+        ),
     )
 
     return CreateConversationResponse(
@@ -140,7 +144,7 @@ async def get_conversations(
     Bot-originated conversations are excluded from the web list (reachable by
     direct URL); the repository applies that source filter.
     """
-    user_id = user["user_id"]
+    user_id = user.user_id
     skip = (page - 1) * limit
 
     starred, non_starred, non_starred_count = await asyncio.gather(
@@ -162,7 +166,7 @@ async def get_conversations(
 
 async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> ConversationDocument:
     """Fetch a specific conversation by ID (messages already normalized on read)."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     document = await conversation_repository.get(conversation_id, user_id=user_id)
     if document is None:
         raise HTTPException(
@@ -176,7 +180,7 @@ async def star_conversation(
     conversation_id: str, starred: bool, user: AuthenticatedUser
 ) -> StarConversationResponse:
     """Star or unstar a conversation."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     updated = await conversation_repository.set_starred(
         conversation_id, user_id=user_id, starred=starred
     )
@@ -184,17 +188,16 @@ async def star_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found or update failed")
     # Called from the endpoint today, but attributed explicitly so a future
     # worker/bot caller is covered without relying on a request context.
-    capture_event(
-        user_id,
-        AnalyticsEvents.CONVERSATION_STARRED,
-        {"starred": starred, "conversation_id": conversation_id},
+    capture(
+        UserId(user_id),
+        ChatConversationStarred(starred=starred, conversation_id=conversation_id),
     )
     return StarConversationResponse(message="Conversation updated successfully", starred=starred)
 
 
 async def delete_all_conversations(user: AuthenticatedUser) -> DeleteAllConversationsResponse:
     """Delete all conversations for the authenticated user."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     # The repository returns the deleted ids so their (non-user-scoped) checkpoint
     # threads can be cleaned up afterwards.
     conversation_ids = await conversation_repository.delete_all_for_user(user_id)
@@ -205,7 +208,7 @@ async def delete_all_conversations(user: AuthenticatedUser) -> DeleteAllConversa
     for conversation_id in conversation_ids:
         await _cleanup_checkpoint_threads(conversation_id)
 
-    capture_event(user_id, AnalyticsEvents.CONVERSATION_DELETED, {"count": len(conversation_ids)})
+    capture(UserId(user_id), ChatConversationDeleted(count=len(conversation_ids)))
     return DeleteAllConversationsResponse(message="All conversations deleted successfully")
 
 
@@ -213,7 +216,7 @@ async def delete_conversation(
     conversation_id: str, user: AuthenticatedUser
 ) -> ConversationActionResponse:
     """Delete a specific conversation by ID."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     deleted = await conversation_repository.delete(conversation_id, user_id=user_id)
 
     if not deleted:
@@ -234,9 +237,7 @@ async def delete_conversation(
 
     await _cleanup_checkpoint_threads(conversation_id)
 
-    capture_event(
-        user_id, AnalyticsEvents.CONVERSATION_DELETED, {"conversation_id": conversation_id}
-    )
+    capture(UserId(user_id), ChatConversationDeleted(conversation_id=conversation_id))
     return ConversationActionResponse(
         message="Conversation deleted successfully",
         conversation_id=conversation_id,
@@ -248,10 +249,10 @@ async def update_messages(
 ) -> UpdateMessagesResponse:
     """Append messages to a conversation.
 
-    ``max_messages`` caps stored history to the most recent N (via ``$slice``) so
+    max_messages caps stored history to the most recent N (via $slice) so
     per-workflow threads can't outgrow MongoDB's 16MB document limit.
     """
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     message_ids = await conversation_repository.append_messages(
         request.conversation_id,
         user_id=user_id,
@@ -277,7 +278,7 @@ async def pin_message(
     conversation_id: str, message_id: str, pinned: bool, user: AuthenticatedUser
 ) -> PinMessageResponse:
     """Pin or unpin a message within a conversation."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     document = await conversation_repository.get(conversation_id, user_id=user_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -291,6 +292,7 @@ async def pin_message(
     if not updated:
         raise HTTPException(status_code=404, detail="Message not found or update failed")
 
+    capture(UserId(user_id), ChatMessagePinned() if pinned else ChatMessageUnpinned())
     response_message = (
         f"Message with ID {message_id} pinned successfully"
         if pinned
@@ -301,7 +303,7 @@ async def pin_message(
 
 async def get_starred_messages(user: AuthenticatedUser) -> PinnedMessagesResponse:
     """Fetch all pinned messages across all conversations for the authenticated user."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     return PinnedMessagesResponse(
         results=await conversation_repository.list_pinned_messages(user_id)
     )
@@ -332,13 +334,9 @@ async def create_system_conversation(
             detail=f"Failed to create system conversation: {e!s}",
         ) from e
 
-    capture_event(
-        user_id,
-        AnalyticsEvents.CONVERSATION_CREATED,
-        {
-            "is_system_generated": True,
-            "system_purpose": system_purpose.value,
-        },
+    capture(
+        UserId(user_id),
+        ChatConversationCreated(is_system_generated=True, system_purpose=system_purpose.value),
     )
 
     return SystemConversationCreated(
@@ -356,7 +354,7 @@ async def update_conversation_description(
     conversation_id: str, description: str, user: AuthenticatedUser
 ) -> UpdateDescriptionResponse:
     """Update the description of a specific conversation."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     updated = await conversation_repository.set_description(
         conversation_id, user_id=user_id, description=description
     )
@@ -369,11 +367,7 @@ async def update_conversation_description(
     # Also the auto-title path: the chat stream's background description task
     # calls this outside a request, so capture with the explicit user id.
     if user_id:
-        capture_event(
-            user_id,
-            AnalyticsEvents.CONVERSATION_RENAMED,
-            {"conversation_id": conversation_id},
-        )
+        capture(UserId(user_id), ChatConversationRenamed(conversation_id=conversation_id))
 
     return UpdateDescriptionResponse(
         message="Conversation description updated successfully",
@@ -386,7 +380,7 @@ async def mark_conversation_as_read(
     conversation_id: str, user: AuthenticatedUser
 ) -> ConversationActionResponse:
     """Mark a conversation as read (set is_unread to False)."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
     await conversation_repository.set_unread(conversation_id, user_id=user_id, unread=False)
@@ -399,8 +393,7 @@ async def mark_conversation_as_read(
 async def mark_conversation_as_unread(
     conversation_id: str, user: AuthenticatedUser
 ) -> ConversationActionResponse:
-    """Mark a conversation as unread."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
@@ -422,12 +415,13 @@ async def mark_conversation_as_unread(
 async def batch_sync_conversations(
     request: BatchSyncRequest, user: AuthenticatedUser
 ) -> BatchSyncResponse:
-    """Return only conversations updated since the client's last-seen timestamp,
-    including their messages and the stream id of an in-flight turn
-    (``active_stream_id``) so a reloaded client can re-attach without a separate
+    """Return only conversations updated since the client's last-seen timestamp.
+
+    Includes their messages and the stream id of an in-flight turn
+    (active_stream_id) so a reloaded client can re-attach without a separate
     discovery request.
     """
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
@@ -444,7 +438,6 @@ async def batch_sync_conversations(
                 description=document.description,
                 starred=document.starred,
                 is_system_generated=document.is_system_generated,
-                is_onboarding_conversation=document.is_onboarding_conversation,
                 system_purpose=document.system_purpose,
                 is_unread=document.is_unread,
                 createdAt=document.createdAt,
@@ -454,6 +447,7 @@ async def batch_sync_conversations(
                 active_stream_id=await stream_manager.get_resumable_stream_id(
                     user_id, document.conversation_id
                 ),
+                has_live_approval=document.has_live_approval,
             )
         )
 

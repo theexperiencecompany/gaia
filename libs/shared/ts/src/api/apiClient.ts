@@ -4,18 +4,6 @@ export interface ApiClientConfig {
   timeout?: number;
 }
 
-export class ApiError extends Error {
-  status: number;
-  code: string | undefined;
-
-  constructor(message: string, status: number, code?: string) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = code;
-  }
-}
-
 /**
  * Build the standard request headers, including Authorization if a token is present.
  */

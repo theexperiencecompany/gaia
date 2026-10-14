@@ -1,14 +1,6 @@
 /**
- * Copies the onnxruntime-web WASM runtime into public/wake-word/ort/
- * so the wake-word pipeline (libs/wake-word) can load it from the same
- * origin. The binaries are large generated files, so they are synced from
- * node_modules on dev/build instead of being committed.
- *
- * Only the CPU WASM bundle is copied — `libs/wake-word` imports
- * `onnxruntime-web/wasm` and runs the "wasm" execution provider, so the
- * JSEP (WebGPU/WebNN), JSPI, and asyncify variants are never loaded. The
- * JSEP binary alone is 25 MiB, which exceeds Cloudflare Workers' 25 MiB
- * per-asset limit, so shipping it would break the Cloudflare deploy.
+ * Copy the onnxruntime-web WASM runtime into public/wake-word/ort/ so the wake-word pipeline (libs/wake-word) loads it from the same origin; synced from node_modules on dev/build since the binaries are large generated files, not committed.
+ * Only the CPU WASM bundle is copied — libs/wake-word runs the "wasm" execution provider, so JSEP/WebGPU/WebNN, JSPI, and asyncify variants never load; the JSEP binary alone is 25MiB, over Cloudflare Workers' 25MiB per-asset limit, which would break the deploy.
  */
 import { copyFileSync, mkdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";

@@ -17,21 +17,7 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
     warning_message="Cloudinary configuration is missing or incomplete. Cloudinary features will be disabled.",
 )
 def init_cloudinary() -> None:
-    """
-    Initialize and configure the Cloudinary service.
-
-    This function sets up the Cloudinary configuration using the provided
-    environment variables for cloud name, API key, and API secret. If any
-    of these values are missing, it logs an error and raises an HTTPException.
-
-        dict: A dictionary containing the Cloudinary configuration values:
-            - cloud_name (str): The Cloudinary cloud name.
-            - api_key (str): The Cloudinary API key.
-            - api_secret (str): The Cloudinary API secret.
-
-    Returns:
-        dict: Cloudinary configuration.
-    """
+    """Configure the Cloudinary SDK from settings."""
     cloudinary.config(
         cloud_name=settings.CLOUDINARY_CLOUD_NAME,
         api_key=settings.CLOUDINARY_API_KEY,

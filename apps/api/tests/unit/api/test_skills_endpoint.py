@@ -19,7 +19,9 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import SkillInstalled, SkillUninstalled
+from tests.conftest import FAKE_USER
 
 if TYPE_CHECKING:
     from app.agents.skills.github_discovery import DiscoveredSkill
@@ -47,7 +49,7 @@ _GET_CONNECTED_INTEGRATION_IDS_ENDPOINT = (
     "app.api.v1.endpoints.skills.get_connected_integration_ids"
 )
 _UPDATE_SKILL_INLINE = "app.api.v1.endpoints.skills.update_skill_inline"
-_CAPTURE = "app.api.v1.endpoints.skills.capture_context_event"
+_CAPTURE = "app.api.v1.endpoints.skills.capture"
 
 
 def _make_skill_mock(**overrides) -> Skill:
@@ -194,8 +196,8 @@ class TestInstallFromGitHub:
 
         assert response.status_code == 201
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {"skill_id": "sk_abc123", "target": "gmail_agent", "source": "github"},
+            UserId(FAKE_USER.user_id),
+            SkillInstalled(skill_id="sk_abc123", target="gmail_agent", source="github"),
         )
 
     async def test_install_with_skill_name_auto_discovers(self, client: AsyncClient):
@@ -342,8 +344,8 @@ class TestInstallInline:
 
         assert response.status_code == 201
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {"skill_id": "sk_abc123", "target": "gmail_agent", "source": "inline"},
+            UserId(FAKE_USER.user_id),
+            SkillInstalled(skill_id="sk_abc123", target="gmail_agent", source="inline"),
         )
 
     async def test_create_inline_skill_missing_name_returns_422(self, client: AsyncClient):
@@ -621,8 +623,7 @@ class TestUninstallSkill:
         # skill, while the endpoint still answers 204.
         mock_uninstall.assert_awaited_once_with("507f1f77bcf86cd799439011", "sk_abc123")
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SKILL_UNINSTALLED,
-            {"skill_id": "sk_abc123", "target": "gmail_agent"},
+            UserId(FAKE_USER.user_id), SkillUninstalled(skill_id="sk_abc123", target="gmail_agent")
         )
 
     async def test_uninstall_skill_not_found_returns_404(self, client: AsyncClient):
@@ -652,9 +653,7 @@ class TestUninstallSkill:
 
 
 class TestListSkillTargets:
-    """Tests for the skill-targets endpoint. Mocks only get_connected_integration_ids
-    (the true I/O boundary) so get_skill_targets' own executor+connected-subagent
-    assembly logic runs for real."""
+    """Mocks only get_connected_integration_ids (the true I/O boundary) so get_skill_targets' own assembly logic runs for real."""
 
     async def test_returns_executor_plus_connected_integration(self, client: AsyncClient):
         with patch(
@@ -683,8 +682,7 @@ class TestListSkillTargets:
         assert [t["value"] for t in targets] == ["executor"]
 
     async def test_unknown_connected_integration_id_is_skipped(self, client: AsyncClient):
-        """An id with no subagent registration (or no subagent config) must be
-        skipped, not surfaced as a broken/blank target the UI can select."""
+        """An id with no subagent registration must be skipped, not surfaced as a broken/blank target the UI can select."""
         with patch(
             _GET_CONNECTED_INTEGRATION_IDS,
             new_callable=AsyncMock,
@@ -703,9 +701,7 @@ class TestListSkillTargets:
 
 
 class TestListBuiltinSkills:
-    """Tests for the builtin-skills endpoint, including the _is_available /
-    _group_label branch logic (executor-always-available, integration-backed
-    needs a connection, non-integration builtin subagents always available)."""
+    """Covers _is_available / _group_label branches: executor always available, integration-backed needs a connection, non-integration builtins always available."""
 
     def _builtin(self, **overrides):
         from app.agents.workspace.skill_loader import BuiltinSkill
@@ -739,10 +735,7 @@ class TestListBuiltinSkills:
         assert skills[0]["group_label"] == "General assistant"
 
     async def test_integration_backed_skill_reflects_connection_state(self, client: AsyncClient):
-        """A skill mapped to a real integration subagent (gmail) must show
-        connected=True only when that integration is in the connected-ids set —
-        the whole reason this endpoint exists is to let the UI grey out skills
-        for integrations the user hasn't connected."""
+        """A skill mapped to a real integration subagent (gmail) shows connected=True only when that integration is in the connected-ids set."""
         with (
             patch(_LOAD_BUILTIN_SKILLS, return_value=(self._builtin(subagent_id="gmail"),)),
             patch(
@@ -776,10 +769,7 @@ class TestListBuiltinSkills:
 
 
 class TestUpdateSkill:
-    """Tests for the update-skill endpoint, including _validate_target's real
-    400-rejection — every prior test that touched this path mocked
-    _validate_target itself into a no-op, so its rejection was never actually
-    proven through a real request."""
+    """Covers _validate_target's real 400-rejection; every prior test mocked _validate_target itself into a no-op, so this had never run through a real request."""
 
     async def test_update_returns_200(self, client: AsyncClient):
         with patch(
@@ -809,9 +799,7 @@ class TestUpdateSkill:
         assert response.status_code == 404
 
     async def test_update_with_disallowed_target_returns_400(self, client: AsyncClient):
-        """Mocks only get_skill_targets (the I/O boundary _validate_target
-        depends on), not _validate_target itself — this is what proves the
-        400-rejection actually fires through a real request."""
+        """Mocks only get_skill_targets, not _validate_target itself, so the 400-rejection is proven through a real request."""
         with patch(
             _GET_SKILL_TARGETS,
             new_callable=AsyncMock,
@@ -823,7 +811,7 @@ class TestUpdateSkill:
             )
 
         assert response.status_code == 400
-        assert "not available" in response.json()["detail"]
+        assert "not available" in response.json()["message"]
 
     async def test_update_with_allowed_target_succeeds(self, client: AsyncClient):
         from app.agents.skills.models import SkillTarget

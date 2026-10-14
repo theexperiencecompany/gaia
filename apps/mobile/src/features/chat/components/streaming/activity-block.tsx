@@ -26,6 +26,7 @@ import {
   Tick02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { APPROVAL_CHIP_META } from "@/features/chat/utils/approval-status";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { colors, typography } from "@/lib/design-tokens";
@@ -217,11 +218,7 @@ function WaitingForApprovalPill() {
 const APPROVAL_CHIP: Partial<
   Record<ApprovalStatus, { label: string; color: string }>
 > = {
-  approved: { label: "Approved", color: colors.success },
-  auto_approved: { label: "Auto-approved", color: colors.success },
-  denied: { label: "Denied", color: colors.error },
-  timeout: { label: "Expired", color: colors.zinc500 },
-  abandoned: { label: "Expired", color: colors.zinc500 },
+  ...APPROVAL_CHIP_META,
 };
 
 /** A settled HIL decision rides its tool's own row as a small chip. */
@@ -858,14 +855,11 @@ interface SummaryIconItem {
 }
 
 /**
- * Persistent per-turn activity surface — an OBJECT, not a MODE. Rendered as
- * the first sibling of every AI turn; streamed text accumulates below it
- * simultaneously instead of the old mutually-exclusive surface swap.
- *
- * RUNNING shows a single live line (pulse + current step + elapsed ticker);
- * COMPLETED collapses to one tappable "Used N tools · Xs" row. The unified
- * chain only ever appears via explicit tap — expansion animates height
- * 0↔measured without adding/removing list items (FlashList-safe).
+ * Persistent per-turn activity surface — an OBJECT, not a MODE: rendered as the
+ * first sibling of every AI turn, with streamed text accumulating below it
+ * simultaneously. RUNNING shows a live line (pulse + step + elapsed ticker);
+ * COMPLETED collapses to a tappable "Used N tools · Xs" row that expands via
+ * height 0↔measured (FlashList-safe, no list item add/remove).
  */
 export function ActivityBlock({
   toolData,

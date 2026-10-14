@@ -1,17 +1,11 @@
 """GAIA-branded HTML editions of a briefing payload.
 
-Each edition is a pure ``payload -> full HTML document`` renderer. The HTML is
-self-contained (embedded fonts, one inline stylesheet, no external requests) so
-it can be rasterized to an image by a headless browser, hosted, and shown in the
-briefing email + in-app. The ``gaia`` edition is a dark, single-accent editorial
-hero in GAIA's design language.
-
-This package is also the registry of template families. A daily brief draws
-its family from the user's shuffle bag (``DAILY_FAMILY_WEIGHTS``); the weekly
-recap is always ``WEEKLY_FAMILY``. Within a family the skin varies
-deterministically by date. A payload's persisted ``template_family`` selects the
-renderer forever, so the archive re-renders identically; legacy payloads with
-none render as the classic ``gaia`` edition.
+Each edition is a pure payload-to-HTML renderer, self-contained so a headless
+browser can rasterize it. This package is also the registry of template families:
+a daily brief draws its family from the user's shuffle bag (DAILY_FAMILY_WEIGHTS),
+the weekly recap is always WEEKLY_FAMILY, and a persisted template_family selects
+the renderer forever so the archive re-renders identically. Payloads with none
+render as the classic gaia edition.
 """
 
 from collections.abc import Callable
@@ -29,8 +23,10 @@ FAMILY_EDITION = "edition"
 
 
 def _make_explorer_renderer(family: str) -> Callable[..., str]:
-    """Close over one explorer family id, returning a render_edition-shaped
-    callable (payload, *, edition_no, generated_local, tz_label) -> str."""
+    """Close over one explorer family id and return a render_edition-shaped callable.
+
+    Signature: (payload, *, edition_no, generated_local, tz_label) -> str.
+    """
 
     def _render(
         payload: dict,
@@ -58,19 +54,11 @@ EXPLORER_RENDERER: dict[str, Callable[..., str]] = {
 }
 
 
-# Registered but never drawn: "metromap" pins stations at fixed SVG coordinates
-# sized for the founder fixture's two-word names, so real item text clips off
-# the canvas and adjacent labels overprint (explorer/README.md, "Known gaps").
-# Fixing it means changing the vendored layout, which only the founder's
-# session may do.
-_NOT_DRAWN = frozenset({"metromap"})
-
 # How many times each daily family appears in one pass of a user's shuffle bag
-# (app/services/briefing/shuffle_bag.py): every drawable daily family once,
-# Air Mail twice.
+# (app/services/briefing/shuffle_bag.py): every daily family once, Air Mail twice.
 DAILY_FAMILY_WEIGHTS: dict[str, int] = {
     family: 2 if family == POSTAL_FAMILY else 1
-    for family in sorted({FAMILY_EDITION, *EXPLORER_RENDERER} - {WEEKLY_FAMILY} - _NOT_DRAWN)
+    for family in sorted({FAMILY_EDITION, *EXPLORER_RENDERER} - {WEEKLY_FAMILY})
 }
 
 
@@ -90,16 +78,18 @@ _CLASSIC_SELECTOR = ".brief"
 
 
 def paper_selector(family: str | None) -> str:
-    """The element a cropped edition image is cut to, for ``family``."""
+    """Return the element a cropped edition image is cut to, for the family."""
     if family in _PAPER_SELECTORS:
         return _PAPER_SELECTORS[family]
     return _FULL_BLEED_SELECTOR if family in EXPLORER_RENDERER else _CLASSIC_SELECTOR
 
 
 def renderer_for(family: str | None) -> Callable[..., str] | None:
-    """The registered renderer for ``family``, or None for the classic edition,
-    unknown names, and legacy payloads — callers fall back to
-    ``render_edition`` so every payload always renders."""
+    """Return the registered renderer for the family.
+
+    Returns None for the classic edition, unknown names, and legacy payloads; callers
+    fall back to render_edition so every payload always renders.
+    """
     if family is None or family == FAMILY_EDITION:
         return None
     return EXPLORER_RENDERER.get(family)

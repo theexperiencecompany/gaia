@@ -27,7 +27,8 @@ ours to change.
 
 Four narrow classes of edit to `js/*.js` are allowed — each fixes a latent
 correctness bug in the vendored files rather than touch the approved design.
-**No layout, CSS or skin axis was touched by any of them.** The stamp art in
+**No layout, CSS or skin axis was touched by any of them.** The one layout
+change is the founder-approved `metromap` deviation below. The stamp art in
 `assets/stamps/` is an asset swap for Air Mail's city skin, not a JS edit.
 
 ### 1. Null guards
@@ -128,7 +129,7 @@ item, a fixture string, a zero-filled figure, or a missing headline.
 
 A daily brief draws its family from the user's shuffle bag
 (`DAILY_FAMILY_WEIGHTS` in `editions/__init__.py`, Air Mail twice, every other
-drawable family once; `app/services/briefing/shuffle_bag.py`). The weekly recap
+daily family once; `app/services/briefing/shuffle_bag.py`). The weekly recap
 is always `weekly`. Air Mail's city stamp comes from a second bag over the 85
 cities in `assets/stamps/` (`editions/stamps.py`); the render harness hands the
 drawn city to the template as its `city` skin, so the stamp art, the
@@ -142,12 +143,21 @@ held three today, three overnight and two decision items. Handed fewer, their
 page script threw and the brief rendered as a blank strip. The adapter pads
 exactly those buckets with an empty slot (`—`, `explorer_adapter._FIXED_SLOTS`).
 
-## Known gap — registered, never drawn
+## Founder-approved layout deviation — `metromap` (2026-10-14)
 
-- **`metromap`** (tpl-novel-a.js): its stations sit at fixed SVG coordinates
-  sized for the founder fixture's two-word station names ("Linear upgrade").
-  Real item text clips off the canvas edge and the decision station labels
-  overprint each other (re-confirmed rendering a real brief, 2026-10-14). There
-  is no truncation convention in the vendored set and inventing one would
-  change the layout, so the family stays out of the bag (`_NOT_DRAWN`) until
-  the founder's session supplies a content-aware layout.
+`metromap` (tpl-novel-a.js) placed its stations at fixed SVG coordinates sized
+for the fixture's two-word station names ("Linear upgrade"); real item text ran
+off the canvas and the decision labels overprinted each other, so it was kept
+out of the bag. The founder approved a minimal layout change on 2026-10-14,
+with the visual language unchanged (lines, stations, colours, type, skins):
+
+- Every station label wraps inside the width its station has (`MM_*_CHARS`),
+  at most two lines, and the last line ends in an ellipsis past that; station
+  notes take one line. Terminus boxes grow a line taller instead of wider.
+- The decisions spur rises to y 200 with its two stations at x 905 and 1075, so
+  their labels clear each other and the ship terminus box.
+
+`tests/integration/test_metromap_layout.py` measures every label in headless
+Chromium with fixture-length and long real-length text, on both station-note
+skins, and fails if one leaves the map or overlaps another. The family is in
+the daily bag again.

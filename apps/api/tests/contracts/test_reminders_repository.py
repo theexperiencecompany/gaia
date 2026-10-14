@@ -20,6 +20,7 @@ from app.models.reminder_models import (
     ReminderUpdate,
     StaticReminderPayload,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.services.reminder_service import ReminderScheduler
 from app.utils.occurrence import parse_occurrence_stamp
 
@@ -111,6 +112,37 @@ class TestRemindersScheduler:
         assert await repo.set_status(rem.id, ReminderStatus.COMPLETED) is True
         assert (await repo.get(rem.id)).status == ReminderStatus.COMPLETED
 
+    async def test_a_system_pause_is_found_by_its_reason_and_a_resume_clears_it(self, repo):
+        owner = _uid("owner")
+        lapsed = await repo.create(_reminder(user_id=owner, repeat="0 9 * * *"))
+        by_user = await repo.create(_reminder(user_id=owner, repeat="0 9 * * *"))
+        await repo.set_status(
+            lapsed.id, ReminderStatus.PAUSED, pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+        await repo.set_status(by_user.id, ReminderStatus.PAUSED)
+
+        found = await repo.find_paused_for_reason(owner, DeactivationReason.SUBSCRIPTION_LAPSED)
+        assert [r.id for r in found] == [lapsed.id]
+        assert found[0].pause_reason is DeactivationReason.SUBSCRIPTION_LAPSED
+
+        await repo.update_for_user(
+            lapsed.id, owner, ReminderUpdate(status=ReminderStatus.SCHEDULED, pause_reason=None)
+        )
+        assert (await repo.get(lapsed.id)).pause_reason is None
+        assert (
+            await repo.find_paused_for_reason(owner, DeactivationReason.SUBSCRIPTION_LAPSED) == []
+        )
+
+    async def test_a_legacy_row_that_breaks_the_schedule_rule_still_loads(
+        self, repo, raw_collection
+    ):
+        rem = await repo.create(_reminder(repeat="0 9 * * *"))
+        await raw_collection.update_one(
+            {"_id": ObjectId(rem.id)}, {"$set": {"repeat": "* * * * *"}}
+        )
+
+        assert (await repo.get(rem.id)).repeat == "* * * * *"
+
     async def test_set_status_missing_returns_false(self, repo):
         assert await repo.set_status(_MISSING_OBJECT_ID, ReminderStatus.COMPLETED) is False
 
@@ -122,20 +154,7 @@ class TestRemindersScheduler:
         assert (await repo.get(rem.id)).status == ReminderStatus.EXECUTING
 
     async def test_claim_pin_rejects_a_stale_occurrence(self, repo):
-        """A duplicate job armed for an occurrence that already ran must not fire.
-
-        Status alone is not enough for a RECURRING reminder. Two pods booting
-        minutes apart each enqueue a job for the same overdue reminder under a
-        different id (the past-due re-arm uses each process's own clock), so ARQ
-        does not dedup them. The first job claims, runs, and
-        ``handle_recurring_task`` puts the row back to SCHEDULED for the NEXT
-        occurrence — at which point the second job finds status="scheduled"
-        again, claims it, and delivers the same reminder a second time while
-        also eating an occurrence out of the series.
-
-        Pinning the armed occurrence is what closes it, exactly as
-        ``WorkflowsRepository.claim_for_execution`` pins ``next_run``.
-        """
+        """Status alone is not enough for RECURRING: two pods' jobs for the same overdue reminder must not both claim it once one has re-armed the row for the next occurrence."""
         first_run = (datetime.now(UTC) - timedelta(minutes=5)).replace(microsecond=0)
         next_run = first_run + timedelta(days=1)
         rem = await repo.create(_reminder(scheduled_at=first_run, status=ReminderStatus.SCHEDULED))
@@ -155,14 +174,7 @@ class TestRemindersScheduler:
         assert await repo.claim_for_execution(rem.id, expected_scheduled_at=next_run) is True
 
     async def test_find_stale_executing_returns_only_wedged_rows(self, repo, raw_collection):
-        """The recovery sweep's candidates: EXECUTING since before the cutoff.
-
-        A claim flips SCHEDULED -> EXECUTING with no lease. If the worker dies
-        before re-arming (a rolling deploy SIGKILLs it, or the job is cancelled
-        and its retry finds the row already claimed), the row stays EXECUTING
-        forever — and ``find_pending_before`` filters on ``status="scheduled"``,
-        so nothing can ever see it again. The reminder simply never fires.
-        """
+        """A row stuck EXECUTING since before the cutoff (a worker died without re-arming) never fires again unless the recovery sweep finds it."""
         now = datetime.now(UTC)
         wedged = await repo.create(_reminder(status=ReminderStatus.EXECUTING))
         # ``_insert`` always stamps updated_at=now, so age the wedged row directly.
@@ -183,21 +195,12 @@ class TestRemindersScheduler:
         assert [r.id for r in stale] == [wedged.id]
 
     async def test_claim_without_a_pin_still_claims(self, repo):
-        """Jobs enqueued before the stamp existed carry none — a deploy must not
-        strand them."""
+        """Jobs enqueued before the stamp existed carry none — a deploy must not strand them."""
         rem = await repo.create(_reminder(status=ReminderStatus.SCHEDULED))
         assert await repo.claim_for_execution(rem.id) is True
 
     async def test_claim_pin_survives_the_real_stamp_round_trip(self, repo):
-        """The pin must match the armed occurrence through ARQ's serialized args.
-
-        "Remind me in 10 minutes" arms ``now + delta``, which carries
-        microseconds. The stamp the job travels with is a unix int, so it comes
-        back floored to the second, while Mongo holds the armed instant at BSON's
-        millisecond precision — an equality pin never matched and the reminder
-        silently never fired. Driven through the real producer and parser so the
-        encoding itself is under test, not a hand-built stamp.
-        """
+        """The pin must match the armed occurrence through ARQ's real int-seconds stamp, not the sub-second instant Mongo holds."""
         armed = datetime.now(UTC) + timedelta(minutes=10)
         assert armed.microsecond, "fixture must carry a sub-second component"
         rem = await repo.create(_reminder(scheduled_at=armed, status=ReminderStatus.SCHEDULED))

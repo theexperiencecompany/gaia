@@ -7,15 +7,19 @@ import { Skeleton } from "@heroui/skeleton";
 import { Settings01Icon } from "@icons";
 
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationPermissionsModal } from "@/features/integrations/components/IntegrationPermissionsModal";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { useIntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
-import type { Integration } from "@/features/integrations/types";
+import type {
+  Integration,
+  IntegrationConnectOptions,
+} from "@/features/integrations/types";
 
+import { IntegrationAccounts } from "./integration-sidebar/IntegrationAccounts";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
 
@@ -27,6 +31,7 @@ interface IntegrationSidebarProps {
   integration: Integration;
   onConnect: (
     integrationId: string,
+    options?: IntegrationConnectOptions,
   ) => Promise<{ status: string; toolsCount?: number }>;
   onDisconnect?: (integrationId: string) => void;
   onDelete?: (integrationId: string) => Promise<void>;
@@ -48,6 +53,11 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   isSettling = false,
 }) => {
   const isConnected = integration.status === "connected";
+  // Composio integrations hold several accounts; an expired one still lists
+  // its accounts so each can be reconnected or removed.
+  const hasAccounts =
+    integration.managedBy === "composio" &&
+    (isConnected || integration.status === "expired");
   const {
     tools: integrationTools,
     mentionNames: toolMentionNames,
@@ -70,16 +80,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
       <SidebarHeader>
         <div className="w-fit">
-          {getToolCategoryIcon(
-            integration.id,
-            {
-              size: 40,
-              width: 40,
-              height: 40,
-              showBackground: false,
-            },
-            integration.iconUrl,
-          )}
+          <IntegrationIcon
+            integrationId={integration.id}
+            iconUrl={integration.iconUrl}
+            category={integration.category}
+            size={40}
+          />
         </div>
         <div className="mb-0 mt-2 flex flex-col items-start gap-1">
           <IntegrationHeaderChips
@@ -107,6 +113,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           onPublish={onPublish}
           onUnpublish={onUnpublish}
         />
+
+        {hasAccounts && (
+          <IntegrationAccounts
+            integration={integration}
+            onConnect={onConnect}
+          />
+        )}
 
         {isConnected && (
           <div className="mt-3">

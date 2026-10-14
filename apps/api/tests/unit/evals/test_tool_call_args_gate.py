@@ -3,11 +3,11 @@
 The scorer's docstring has always claimed "with arg check per expected entry",
 but the implementation only ever compared tool NAMES and call counts. Every
 precision case in the capability suite was therefore unfalsifiable on the thing
-it existed to measure: ``reminders-precision-absolute-datetime`` asserts a
+it existed to measure: reminders-precision-absolute-datetime asserts a
 reminder for 06:45 and passed with any datetime the agent chose, and
-``todos-priority-fidelity`` passed with the priorities swapped.
+todos-priority-fidelity passed with the priorities swapped.
 
-The check is opt-in per expected entry — an entry with no ``args`` key keeps its
+The check is opt-in per expected entry — an entry with no args key keeps its
 old name-and-count meaning, so the ~140 cases that never specified arguments do
 not silently change what they measure.
 """

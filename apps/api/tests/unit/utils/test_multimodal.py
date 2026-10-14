@@ -31,8 +31,7 @@ class TestExtractTextContent:
         assert "base64" not in result
 
     def test_media_only_content_yields_empty_string_not_a_repr(self):
-        """A bridge read_file returns an image with no text sibling. The old
-        `str(content)` produced the whole dict repr, base64 and all."""
+        """Regression: str(content) used to dump the whole dict repr, base64 and all."""
         assert extract_text_content([IMAGE]) == ""
 
     def test_plain_string_passes_through(self):
@@ -90,8 +89,7 @@ class TestMediaBlockDetection:
 
 class TestApproxContentChars:
     def test_media_block_is_charged_a_flat_cost_not_its_base64_length(self):
-        """A 1 MB image is ~1.4M base64 chars. Charged literally, one screenshot
-        reads as a near-full context window and triggers compaction immediately."""
+        """A 1 MB image is ~1.4M base64 chars — charged literally it would trigger compaction immediately."""
         charged = approx_content_chars([IMAGE])
 
         assert charged == MEDIA_BLOCK_TOKEN_ESTIMATE * 4

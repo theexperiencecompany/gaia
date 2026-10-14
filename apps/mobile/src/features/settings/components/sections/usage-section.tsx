@@ -4,7 +4,7 @@ import {
 } from "@gaia/shared/constants/usage";
 import { Button, Card, Chip, Spinner } from "heroui-native";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, View } from "react-native";
+import { Alert, Linking, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type {
   BudgetWindow,
@@ -12,6 +12,7 @@ import type {
   UsageSummary,
 } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
+import { PRICING_URL } from "@/lib/constants";
 import { colors } from "@/lib/design-tokens";
 import { useResponsive } from "@/lib/responsive";
 
@@ -217,12 +218,17 @@ export function UsageSection() {
                 marginTop: 2,
               }}
             >
-              {isPro ? "Pro" : "Free"}
+              {isPro ? "Pro" : "No subscription"}
             </Text>
           </View>
           {!isPro ? (
-            <Button className="bg-primary">
-              <Button.Label>Upgrade</Button.Label>
+            <Button
+              className="bg-primary"
+              onPress={() => {
+                void Linking.openURL(PRICING_URL);
+              }}
+            >
+              <Button.Label>Subscribe</Button.Label>
             </Button>
           ) : null}
         </Card.Body>

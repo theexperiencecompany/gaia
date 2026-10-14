@@ -1,16 +1,13 @@
 import { useMemo } from "react";
-
+import { foldReactionAcks } from "@/features/chat/utils/reactionUtils";
 import type { IMessage } from "@/lib/db/chatDb";
 import type { OptimisticMessage } from "@/stores/chatStore";
 import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
-// Stable MessageType per stored message. The store preserves idle IMessage
-// references across streaming ticks (only the streaming message is replaced —
-// see chatStore.addOrUpdateMessage), so caching the conversion by that ref keeps
-// idle messages referentially stable and remaps only the streaming one. That
-// stability is what lets the message list memoize and skip re-rendering every
-// bubble on every token.
+// Caches by message ref, since the store preserves idle IMessage references
+// across streaming ticks (only the streaming message is replaced — see
+// chatStore.addOrUpdateMessage) — this lets the message list skip re-rendering every bubble per token.
 const conversionCache = new WeakMap<IMessage, MessageType>();
 
 export const mapStoredMessageToConversationMessage = (
@@ -42,6 +39,9 @@ export const mapStoredMessageToConversationMessage = (
     isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
     error: message.error ?? undefined,
     replyToMessage: message.replyToMessageData ?? undefined,
+    kind: message.kind ?? undefined,
+    reacts_to_message_id: message.reacts_to_message_id ?? undefined,
+    reactions: message.reactions ?? undefined,
   } as MessageType;
 
   conversionCache.set(message, mapped);
@@ -89,7 +89,11 @@ export const useConversation = () => {
       : [];
 
     // Convert IndexedDB messages to MessageType (cached per stored message ref).
-    const messages = dbMessages.map(mapStoredMessageToConversationMessage);
+    // Reaction acks fold onto their targets first, so an emoji-ack renders as
+    // a badge on the answered message instead of a stray bubble.
+    const messages = foldReactionAcks(dbMessages).map(
+      mapStoredMessageToConversationMessage,
+    );
 
     // Only add optimistic message for NEW conversations (no activeConversationId)
     // For existing conversations, messages are already in IndexedDB with optimistic flag

@@ -1,11 +1,8 @@
 """Briefing generation prompts, the retention keystone.
 
-The daily briefing is the one message a day that either earns the next open or
-loses the user. These builders assemble the contract the silent agent runs
-against; the service (``app/services/briefing/service.py``) does the deterministic
-curation and context-gathering and feeds the formatted blocks in here. The agent
-proposes work with the ``create_tracked_todo`` tool, then emits exactly one
-``BriefingPayload`` JSON object as its entire final message.
+The builders assemble the contract the silent agent runs against; the service feeds in
+the formatted blocks. The agent proposes work with the create_tracked_todo tool, then
+emits exactly one BriefingPayload JSON object as its entire final message.
 """
 
 from dataclasses import dataclass
@@ -216,9 +213,8 @@ def build_briefing_voice_prompt(
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
-    ``wind_down`` escalates an idle streak: "warn" announces that the loop
-    pauses tomorrow unless a goal arrives; "final" is the one goodbye message
-    before GAIA goes dormant.
+    wind_down escalates an idle streak: "warn" announces that the loop pauses tomorrow
+    unless a goal arrives; "final" is the one goodbye message before GAIA goes dormant.
     """
     wind_down_note = ""
     if wind_down == "warn":
@@ -333,7 +329,7 @@ phrased as one question the user can answer with a single word. Never a generic
 
 
 def build_day_zero_hello_prompt(*, first_name: str, goal_block: str, has_goal: bool) -> str:
-    """The first text GAIA sends a user right after they link a chat platform."""
+    """Build the first text GAIA sends a user right after they link a chat platform."""
 
     if has_goal:
         task = f"""Say hi to {first_name} by name, warm and quick. Then, from what you know

@@ -7,6 +7,7 @@ import type {
   NotificationActionResponse,
   NotificationPreferences,
   PlatformLinksResponse,
+  QuietHours,
 } from "../types/inapp-notification-types";
 
 export const BULK_NOTIFICATION_ACTION = {
@@ -186,6 +187,17 @@ export const inAppNotificationsApi = {
     return apiService.put<NotificationActionResponse>(
       "/notifications/preferences",
       prefs,
+    );
+  },
+
+  getQuietHours: async (): Promise<QuietHours> => {
+    return apiService.get<QuietHours>("/notifications/preferences/quiet-hours");
+  },
+
+  updateQuietHours: async (quietHours: QuietHours): Promise<QuietHours> => {
+    return apiService.put<QuietHours>(
+      "/notifications/preferences/quiet-hours",
+      quietHours,
     );
   },
 

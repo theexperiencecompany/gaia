@@ -29,13 +29,17 @@ import {
   hashLogIdentifier,
   type IncomingMedia,
   type MediaOutcome,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
+  recordBotFailure,
   renderForPlatform,
   type SentMessage,
   STREAMING_DEFAULTS,
+  sanitizeErrorForLog,
   wideLog,
   withWideEvent,
 } from "@gaia/shared/bots";
@@ -52,6 +56,8 @@ import {
   type MessageContextMenuCommandInteraction,
   MessageFlags,
   Partials,
+  type SendableChannels,
+  type User,
 } from "discord.js";
 import { downloadDiscordAttachment, extractDiscordMedia } from "./media";
 import { ROTATING_STATUSES, STATUS_ROTATION_INTERVAL_MS } from "./statuses";
@@ -125,12 +131,22 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         async () => {
           this.startStatusRotation(c.user);
-          // Pre-warm DM channels for linked users. discord.js cannot reconstruct
-          // a DM channel from a cold MESSAGE_CREATE payload (it lacks
-          // type/recipients), so an uncached DM channel makes inbound DMs
-          // silently dropped after a restart. Opening each linked user's DM
-          // caches it so their DMs resolve.
+          // discord.js can't reconstruct a DM channel from a cold MESSAGE_CREATE
+          // (no type/recipients), so an uncached channel drops DMs after a
+          // restart; pre-warm each linked user's DM to cache it.
           await this.prewarmDmChannels();
+        },
+      );
+    });
+
+    // discord.js emits gateway and websocket failures as 'error'; with no listener
+    // the EventEmitter throws and takes the bot down. Recorded like Slack's app.error.
+    this.client.on(Events.Error, (error) => {
+      void withWideEvent(
+        "bot_runtime_error",
+        { platform: this.platform, component: "adapter" },
+        async () => {
+          recordBotFailure("discord_client_error", error);
         },
       );
     });
@@ -195,45 +211,73 @@ export class DiscordAdapter extends BaseBotAdapter {
     return this.client;
   }
 
+  /**
+   * Resolves where an outbound message is sent: the channel itself for a
+   * group/channel conversation, else the user, whose `send` is their DM.
+   */
+  private async resolveOutboundTarget(
+    destinationId: string,
+    isChannel: boolean,
+  ): Promise<SendableChannels | User> {
+    if (!isChannel) return this.client.users.fetch(destinationId);
+    const channel = await this.client.channels.fetch(destinationId);
+    if (channel?.isTextBased() && "send" in channel) return channel;
+    throw new Error(
+      `Discord destination ${destinationId} is not a sendable text channel`,
+    );
+  }
+
   protected async deliverOutbound(
     destinationId: string,
     text: string,
     isChannel: boolean,
   ): Promise<void> {
-    if (isChannel) {
-      // A group/channel conversation: send to the channel itself, not a DM.
-      const channel = await this.client.channels.fetch(destinationId);
-      if (channel?.isTextBased() && "send" in channel) {
-        await channel.send(text);
-        return;
-      }
-      throw new Error(
-        `Discord destination ${destinationId} is not a sendable text channel`,
-      );
-    }
-    const user = await this.client.users.fetch(destinationId);
-    await user.send(text);
+    const target = await this.resolveOutboundTarget(destinationId, isChannel);
+    await target.send(text);
   }
 
   /**
-   * Delivers an agent-generated file artifact to a Discord user. Fetches the
-   * bytes from GAIA (bot-authenticated) and DMs them as a message attachment.
-   * The destination is the stored Discord user id.
+   * Uploads an agent-generated file artifact as a message attachment: into the
+   * channel when `isChannel`, else a DM to the stored Discord user id.
    */
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
+    { data, filename, caption }: OutboundFile,
+    isChannel: boolean,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const user = await this.client.users.fetch(destinationId);
-    await user.send({
-      content: attachment.caption ?? undefined,
-      files: [{ attachment: artifact.data, name: attachment.filename }],
+    const target = await this.resolveOutboundTarget(destinationId, isChannel);
+    await target.send({
+      content: caption,
+      files: [{ attachment: data, name: filename }],
     });
+  }
+
+  protected override async reactToMessage(
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    try {
+      const channel = isChannel
+        ? await this.client.channels.fetch(destinationId)
+        : await (await this.client.users.fetch(destinationId)).createDM();
+      if (!channel?.isTextBased() || !("messages" in channel)) {
+        throw new Error(
+          `Discord destination ${destinationId} has no fetchable messages`,
+        );
+      }
+      const message = await channel.messages.fetch(platformMessageId);
+      await message.react(emoji);
+      return REACTION_OUTCOME.ATTACHED;
+    } catch (err) {
+      this.adapterLogger.warn("outbound_reaction_attach_failed", {
+        ...(err instanceof Error
+          ? { error_type: err.name, error: err.message }
+          : { error: String(err) }),
+      });
+      return REACTION_OUTCOME.ATTACH_FAILED;
+    }
   }
 
   /**
@@ -356,9 +400,9 @@ export class DiscordAdapter extends BaseBotAdapter {
       },
       async (authUrl: string) => {
         const publicContent =
-          "To use GAIA, please authenticate first — check your DMs for the link.";
+          "To use GAIA, please authenticate first. Check your DMs for the link.";
         const publicContentFallback =
-          "To use GAIA, please authenticate first — an ephemeral link has been sent above.";
+          "To use GAIA, please authenticate first. An ephemeral link has been sent above.";
         try {
           await interaction.user.send(
             renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
@@ -368,7 +412,8 @@ export class DiscordAdapter extends BaseBotAdapter {
           } else if (lastFollowUp) {
             await lastFollowUp.edit({ content: publicContent });
           }
-        } catch {
+        } catch (dmError) {
+          wideLog.warning("auth_dm_failed", sanitizeErrorForLog(dmError));
           await interaction.followUp({
             content: renderForPlatform(
               buildAuthLinkMessage(authUrl),
@@ -457,12 +502,9 @@ export class DiscordAdapter extends BaseBotAdapter {
     header: string,
   ): Promise<void> {
     let replied = false;
-    // The header owns the deferred reply; every bubble of the answer is its own
-    // follow-up. Editing the reply for extra bubbles (as this used to) silently
-    // overwrote the previous bubble, so a multi-bubble or over-length answer
-    // arrived as only its last piece. Keeping the header out of the streamed
-    // content also keeps the bubbles inside Discord's 2000-char limit, which
-    // the shared streamer sizes them against.
+    // Header owns the deferred reply; each bubble is its own follow-up (editing
+    // the reply for extra bubbles used to silently overwrite the prior one).
+    // Keeping the header out of streamed content keeps bubbles under Discord's 2000-char limit.
     await interaction.editReply({ content: `**${header}**` });
     let lastFollowUp: Message | null = null;
     await handleStreamingChat(
@@ -499,14 +541,16 @@ export class DiscordAdapter extends BaseBotAdapter {
             ),
           });
           replied = true;
-        } catch {
+        } catch (replyError) {
+          wideLog.warning("auth_reply_failed", sanitizeErrorForLog(replyError));
           try {
             await interaction.user.send(
               renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
             );
             replied = true;
-          } catch {
-            // both deliveries failed — leave replied false so error callback can run
+          } catch (dmError) {
+            // Neither the reply nor the DM reached the user: the link is lost.
+            wideLog.error("auth_link_undelivered", undefined, dmError);
           }
         }
       },
@@ -616,6 +660,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           platformUserId: userId,
           channelId: message.channelId,
           isDm: true,
+          platformMessageId: message.id,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -660,6 +705,8 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.discord,
         await this.analyticsFor(userId),
+        (emoji: string) =>
+          this.reactToMessage(userId, message.id, emoji, false),
       );
 
       stopTyping();
@@ -686,13 +733,13 @@ export class DiscordAdapter extends BaseBotAdapter {
       .setColor(0x6366f1)
       .setTitle("Hey, I'm GAIA 👋")
       .setDescription(
-        "Your personal AI — built to think ahead, remember everything, and get things done with you.\n\nHere's what I can do right in Discord:",
+        "Your personal AI, built to think ahead, remember everything, and get things done with you.\n\nHere's what I can do right in Discord:",
       )
       .addFields(
         {
           name: "Chat",
           value:
-            "Just type anything — ask questions, brainstorm, think out loud.",
+            "Just type anything: ask questions, brainstorm, think out loud.",
           inline: false,
         },
         {
@@ -832,12 +879,13 @@ export class DiscordAdapter extends BaseBotAdapter {
         renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
       );
       dmSent = true;
-    } catch {
-      // DM failed — public message below will instruct the user
+    } catch (dmError) {
+      // The public message below tells the user to open their DMs.
+      wideLog.warning("auth_dm_failed", sanitizeErrorForLog(dmError));
     }
     await send(
       dmSent
-        ? "To use GAIA here, please link your account — check your DMs for the link."
+        ? "To use GAIA here, please link your account. Check your DMs for the link."
         : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
     );
   }
@@ -873,6 +921,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           platformUserId: message.author.id,
           channelId: message.channelId,
           isDm: !message.guild,
+          platformMessageId: message.id,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -898,6 +947,10 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.discord,
         await this.analyticsFor(message.author.id),
+        (emoji: string) =>
+          message.guild
+            ? this.reactToMessage(message.channelId, message.id, emoji, true)
+            : this.reactToMessage(message.author.id, message.id, emoji, false),
       );
 
       stopTyping();

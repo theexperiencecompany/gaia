@@ -1,4 +1,4 @@
-"""Contract tests for SearchUrlsRepository (global, identity = business ``url``)."""
+"""Contract tests for SearchUrlsRepository (global, identity = business url)."""
 
 from __future__ import annotations
 

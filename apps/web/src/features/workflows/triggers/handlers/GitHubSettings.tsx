@@ -19,25 +19,31 @@ import {
 } from "../components/TriggerSettingsCard";
 import { TriggerTagInput } from "../components/TriggerTagInput";
 import { useInfiniteTriggerOptions } from "../hooks/useInfiniteTriggerOptions";
+import {
+  isTriggerOption,
+  type TriggerOption,
+} from "../hooks/useTriggerOptions";
 import type { TriggerSettingsProps } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
-interface GitHubTriggerData {
+type GitHubTriggerData = {
   trigger_name: string;
   repos?: string[];
-}
+};
 
-export interface GitHubConfig extends TriggerConfig {
+export interface GitHubConfig extends TriggerConfigDraft {
   trigger_name?: string;
   trigger_data?: GitHubTriggerData;
 }
 
-interface RepoOption {
-  value: string;
-  label: string;
-  owner?: string;
-  isLoader?: boolean;
-}
+/** A repository, or the trailing "Loading more..." row while a page is fetched. */
+type RepoItem = TriggerOption & { isLoader?: boolean };
+
+const LOADER_ITEM: RepoItem = {
+  value: "loading-more",
+  label: "Loading more...",
+  isLoader: true,
+};
 
 // Accepts "owner/repo" with valid GitHub name segments.
 function isValidRepo(value: string): boolean {
@@ -64,7 +70,6 @@ export function GitHubSettings({
 
   const triggerSlug = config.trigger_name || "";
 
-  // Infinite Query for pagination
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteTriggerOptions(
       integrationId,
@@ -73,8 +78,9 @@ export function GitHubSettings({
       isConnected && !!triggerSlug && !useManualInput,
     );
 
-  // Flatten pages
-  const repoOptions = (data?.pages.flat() || []) as RepoOption[];
+  const repoOptions: RepoItem[] = (data?.pages ?? [])
+    .flat()
+    .filter(isTriggerOption);
 
   const updateTriggerData = (updates: Partial<GitHubTriggerData>) => {
     const currentTriggerData = triggerData || {
@@ -101,13 +107,16 @@ export function GitHubSettings({
     });
   };
 
-  const handleScroll = (e: React.UIEvent<HTMLUListElement>) => {
-    const bottom =
-      e.currentTarget.scrollHeight - e.currentTarget.scrollTop ===
-      e.currentTarget.clientHeight;
-    if (bottom && hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
+  // Fetch the next page once the listbox is scrolled to its bottom.
+  const attachScrollLoader = (listbox: HTMLElement | null) => {
+    if (!listbox) return;
+    listbox.onscroll = () => {
+      const bottom =
+        listbox.scrollHeight - listbox.scrollTop === listbox.clientHeight;
+      if (bottom && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    };
   };
 
   if (!isConnected) {
@@ -135,28 +144,12 @@ export function GitHubSettings({
               selectedKeys={new Set(currentSelectedKeys)}
               onSelectionChange={handleSelectionChange}
               isLoading={isLoading}
-              scrollRef={(ref) => {
-                if (ref) {
-                  ref.onscroll =
-                    handleScroll as unknown as GlobalEventHandlers["onscroll"];
-                }
-              }}
+              scrollRef={attachScrollLoader}
               className="w-full"
-              items={[
-                ...repoOptions,
-                ...(hasNextPage
-                  ? [
-                      {
-                        value: "loading-more",
-                        label: "Loading more...",
-                        isLoader: true,
-                      },
-                    ]
-                  : []),
-              ]}
+              items={hasNextPage ? [...repoOptions, LOADER_ITEM] : repoOptions}
               renderValue={(items) => {
                 const count = items.filter(
-                  (item) => item.key !== "loading-more",
+                  (item) => item.key !== LOADER_ITEM.value,
                 ).length;
                 if (count === 0) return "Select repositories";
                 if (count === 1) return items[0]?.textValue || "1 repository";
@@ -187,7 +180,7 @@ export function GitHubSettings({
                   {item.isLoader ? (
                     <div className="flex justify-center w-full">
                       <span className="text-xs text-zinc-500">
-                        Loading more...
+                        {item.label}
                       </span>
                     </div>
                   ) : (

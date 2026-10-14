@@ -1,23 +1,12 @@
-"""Render a briefing payload through one of the 20 vendored explorer
-template families (``editions/explorer/js/tpl-*.js``).
+"""Render a briefing payload through one of the vendored explorer template families.
 
-Unlike the other editions in this package, these templates are not Python —
-they are the founder's approved JS design explorer, executed inside the same
-headless-Chromium raster pipeline (``render.py``'s ``render_html_to_image``)
-that screenshots every edition. ``render_explorer_edition`` builds one
-self-contained HTML document that: (1) defines a minimal ``EXPLORER`` shim,
-(2) inlines all 10 vendored ``<script>`` modules verbatim so they register
-themselves exactly as they do in the original explorer, (3) inlines the
-``ed`` payload (built by ``explorer_adapter.build_ed``) and a deterministic
-skin pick, and (4) renders the requested family into the DOM — all
-synchronously, so Playwright's ``page.set_content(..., wait_until="networkidle")``
-captures the finished render (no fetch/timers in this document at all, so
-"networkidle" and "load" are effectively immediate).
+The families are the founder's approved JS design explorer (editions/explorer/js/
+tpl-*.js), executed inside the headless-Chromium raster pipeline. The document is
+fully synchronous (no fetch or timers), so Playwright's networkidle wait returns
+immediately.
 
-Skin selection reimplements the explorer shell's own ``mulberry32``/
-``strSeed`` RNG (see ``explorer-shell.html``) rather than importing it — it's
-generic deterministic-hash infra, not part of any one template's approved
-design, and the vendored files never expose it themselves.
+Skin selection reimplements the explorer shell's mulberry32/strSeed RNG rather than
+importing it: the vendored files never expose it.
 """
 
 from functools import lru_cache
@@ -91,9 +80,11 @@ def _module_sources() -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def explorer_family_ids() -> tuple[str, ...]:
-    """The vendored explorer template ids, derived from their own
-    ``EXPLORER.register({ id: ... })`` calls so a newly vendored
-    ``tpl-*.js`` file auto-joins the list without touching this module."""
+    """Return the vendored explorer template ids.
+
+    Derived from their EXPLORER.register calls so a newly vendored tpl-*.js file
+    auto-joins the list.
+    """
     ids: list[str] = []
     for js_file in sorted(_JS_DIR.glob("tpl-*.js")):
         ids.extend(_REGISTER_ID_PATTERN.findall(js_file.read_text()))
@@ -129,9 +120,11 @@ def _font_faces_css() -> str:
 
 
 def _json_for_script(value: object) -> str:
-    """JSON-encode ``value`` for embedding inside an inline ``<script>``
-    literal — escapes ``</`` and ``<!--`` so no payload text can prematurely
-    close the script tag or open an HTML comment."""
+    """JSON-encode value for embedding inside an inline script literal.
+
+    Escapes "</" and "<!--" so no payload text can close the script tag or open an HTML
+    comment.
+    """
     return json.dumps(value).replace("</", "<\\/").replace("<!--", "<\\!--")
 
 
@@ -148,25 +141,8 @@ def render_explorer_edition(
 ) -> str:
     """Render a briefing payload through one vendored explorer family.
 
-    Args:
-        payload: A ``BriefingPayload.model_dump()`` dict.
-        family: One of ``explorer_family_ids()``.
-        skin_seed: Determinism key for the axis picks — same seed, same
-            skin, always (callers typically use the payload date + family).
-        edition_no: Sequential edition number.
-        generated_local: Human generation time, e.g. ``"6:02 AM"``.
-        tz_label: Optional timezone label. Unlike the other editions, the
-            explorer templates have no dedicated tz slot in ``ed`` — it is
-            accepted for signature parity with ``render_edition`` and
-            currently unused (matches ``generated_local``'s "not yet wired
-            end to end" state; see ``explorer_adapter.build_ed`` docstring).
-
-    Returns:
-        A full, self-contained HTML document as a string.
-
-    Raises:
-        ValueError: ``family`` is not a registered explorer template — fails
-            before touching the browser rather than risking a blank raster.
+    Raises ValueError for a family not in explorer_family_ids(). skin_seed makes the skin
+    deterministic; tz_label is accepted for signature parity with render_edition, unused.
     """
     del tz_label  # accepted for signature parity; see docstring
     if family not in explorer_family_ids():

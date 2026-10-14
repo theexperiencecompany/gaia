@@ -1,7 +1,7 @@
 """A persisted note must survive a vector-store outage — visibly, not silently.
 
 Indexing runs after the Mongo write commits. Before the ChromaDB client was
-repointed at the real server (`chromadb.Client` built a process-local in-memory
+repointed at the real server (chromadb.Client built a process-local in-memory
 store), that call could not fail, so the ordering was unreachable. Making the
 client real made it reachable: a Chroma outage would have 500'd note creation
 with the note already saved, telling the user their note was lost when it was

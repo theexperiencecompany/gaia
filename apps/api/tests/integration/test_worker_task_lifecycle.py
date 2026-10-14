@@ -11,6 +11,7 @@ Redis, external services). Verifies that each task function:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,7 +19,7 @@ from bson import ObjectId
 from freezegun import freeze_time as _freeze_time
 import pytest
 
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingPhase, UserDocument
 from app.utils.errors import AppError
 from app.workers.lifecycle.startup import startup
@@ -34,6 +35,7 @@ from app.workers.tasks.workflow_tasks import (
     execute_workflow_by_id,
     process_workflow_generation_task,
 )
+from tests.helpers import users_get
 
 # freezegun's module-restore logic collides with the transformers library
 # (references to torch at class-definition scope). Ignoring transformers
@@ -42,7 +44,7 @@ _FREEZEGUN_IGNORE = ["transformers"]
 
 
 def freeze_time(*args, **kwargs):
-    """Wrapper that always passes ignore=['transformers']."""
+    """Pass ignore=['transformers'] on every call."""
     kwargs.setdefault("ignore", _FREEZEGUN_IGNORE)
     return _freeze_time(*args, **kwargs)
 
@@ -91,8 +93,7 @@ class TestReminderTaskExecution:
 
     @freeze_time("2026-04-01T12:00:00Z")
     async def test_cleanup_expired_reminders_deletes_old_completed(self):
-        """cleanup_expired_reminders delegates to the repository with a 30-day cutoff.
-        (The completed/cancelled status filter is the repository's contract.)"""
+        """cleanup_expired_reminders delegates to the repository with a 30-day cutoff."""
 
         with patch(
             "app.workers.tasks.reminder_tasks.reminder_repository.delete_finished_before",
@@ -213,7 +214,7 @@ class TestCleanupTaskSafety:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 return_value="job-123",
             ) as mock_enqueue,
@@ -239,7 +240,7 @@ class TestCleanupTaskSafety:
             assert "No stuck users found" in result
 
     async def test_cleanup_handles_enqueue_failure_gracefully(self):
-        """If enqueue_intelligence_job returns None for a user, count it as an error."""
+        """If enqueue_gmail_personalization returns None for a user, count it as an error."""
 
         stuck_user = UserDocument(
             id=str(ObjectId()),
@@ -259,7 +260,7 @@ class TestCleanupTaskSafety:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 return_value=None,  # None means enqueue failed
             ),
@@ -315,21 +316,10 @@ class TestTaskErrorHandling:
     async def test_onboarding_task_reports_service_error(self):
         """If the intelligence service raises, the task catches it and returns a failure message."""
 
-        with (
-            patch(
-                "app.services.onboarding.intelligence_service.process_onboarding_intelligence",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("LLM timeout"),
-            ),
-            patch(
-                "app.workers.tasks.onboarding_tasks.user_repository.get",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.workers.tasks.onboarding_tasks.user_repository.set_pipeline_completion",
-                new_callable=AsyncMock,
-            ),
+        with patch(
+            "app.services.onboarding.intelligence_service.process_onboarding_intelligence",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("LLM timeout"),
         ):
             result = await process_onboarding_intelligence_task(ARQ_CTX, FAKE_USER_ID)
 
@@ -344,8 +334,26 @@ class TestTaskErrorHandling:
 
 
 @pytest.mark.integration
+# The fire's reservation renews its liveness in Redis: a per-test one, never the ambient client.
+@pytest.mark.usefixtures("fake_redis")
 class TestWorkflowTaskExecution:
     """Verify workflow execution tracks success/failure and sends notifications."""
+
+    @pytest.fixture(autouse=True)
+    def _subscription_active_by_default(self):
+        """Default the owner to an active subscription so the paid-only gate stays out of the way of these execution-lifecycle tests."""
+        with patch(
+            "app.workers.tasks.workflow_tasks.is_paid",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def _owners_are_users(self):
+        """Answer the owner check the way the real users collection does."""
+        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+            yield
 
     async def test_execute_workflow_not_found(self):
         """When workflow ID does not exist, return a not-found message."""
@@ -397,6 +405,22 @@ class TestWorkflowTaskExecution:
                 return_value=("conv-789", []),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
+            # The fire claims its workflow's conversation before it spends
+            # anything; nobody else holds it here.
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv-789",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.try_acquire_lock",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.release_lock_if_owned",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
 
@@ -458,6 +482,20 @@ class TestWorkflowTaskExecution:
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
             patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv-fail",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.try_acquire_lock",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.release_lock_if_owned",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
             mock_notif.create_notification = AsyncMock()
@@ -489,6 +527,12 @@ class TestWorkflowTaskExecution:
 @pytest.mark.integration
 class TestWorkerStartupHooks:
     """Verify the ARQ startup function initializes required services."""
+
+    @pytest.fixture(autouse=True)
+    def _no_browser_worker(self) -> Iterator[None]:
+        # A real one would start consuming the browser queue on whatever Redis is up.
+        with patch("app.workers.lifecycle.startup.start_browser_worker"):
+            yield
 
     async def test_startup_calls_unified_startup(self):
         """The startup hook should invoke unified_startup with 'arq_worker'."""
@@ -628,7 +672,7 @@ class TestOnboardingTask:
     """Verify onboarding task delegates correctly."""
 
     async def test_onboarding_intelligence_task_success(self):
-        """Successful run should call the intelligence service and return a message."""
+        """Successful run should call the Gmail personalization pipeline and return a message naming the user."""
 
         with patch(
             "app.services.onboarding.intelligence_service.process_onboarding_intelligence",
@@ -637,8 +681,7 @@ class TestOnboardingTask:
             result = await process_onboarding_intelligence_task(ARQ_CTX, FAKE_USER_ID)
 
             mock_service.assert_awaited_once_with(FAKE_USER_ID)
-            assert "onboarding intelligence completed" in result.lower()
-            assert FAKE_USER_ID in result
+            assert result == f"Gmail personalization completed for user {FAKE_USER_ID}"
 
 
 # ---------------------------------------------------------------------------
@@ -666,14 +709,16 @@ class TestWorkflowGenerationTask:
                 "workflow_id": "wf-gen-1",
             }
         )
-        mock_todo_update = AsyncMock(return_value=linked_todo)
+        mock_link_workflow = AsyncMock(return_value=linked_todo)
 
         mock_ws_manager = AsyncMock()
         mock_ws_manager.broadcast_to_user = AsyncMock()
 
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todo_repository.update", mock_todo_update),
+            patch(
+                "app.workers.tasks.workflow_tasks.todo_repository.link_workflow", mock_link_workflow
+            ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws_manager,
@@ -696,14 +741,11 @@ class TestWorkflowGenerationTask:
             # Verify workflow was created
             mock_wf_svc.create_workflow.assert_awaited_once()
 
-            # Verify the todo was linked to the workflow through the repository,
-            # scoped to the owner, with a typed workflow_id update.
-            mock_todo_update.assert_awaited_once()
-            assert mock_todo_update.await_args.args[0] == "aaaaaaaaaaaaaaaaaaaaaaaa"
-            assert mock_todo_update.await_args.kwargs["user_id"] == FAKE_USER_ID
-            applied_update = mock_todo_update.await_args.kwargs["update"]
-            assert isinstance(applied_update, TodoUpdate)
-            assert applied_update.workflow_id == "wf-gen-1"
+            # Verify the todo was linked through the repository's one guarded writer,
+            # scoped to the owner.
+            mock_link_workflow.assert_awaited_once_with(
+                "aaaaaaaaaaaaaaaaaaaaaaaa", user_id=FAKE_USER_ID, workflow_id="wf-gen-1"
+            )
 
             # Verify WebSocket broadcast
             mock_ws_manager.broadcast_to_user.assert_awaited_once()

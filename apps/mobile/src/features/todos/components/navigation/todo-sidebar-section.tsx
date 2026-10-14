@@ -23,7 +23,7 @@ const MAX_PROJECTS = 5;
 const MAX_LABELS = 5;
 
 const PRIORITY_TINTS: Record<
-  Exclude<Priority, Priority.NONE>,
+  Exclude<Priority, "none">,
   { label: string; color: string }
 > = {
   [Priority.HIGH]: { label: "High Priority", color: "#f87171" },

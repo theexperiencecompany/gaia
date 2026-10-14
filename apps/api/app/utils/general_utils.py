@@ -1,16 +1,30 @@
 import base64
+from collections.abc import Mapping
 from datetime import datetime
 import json
 from pathlib import Path
 import tomllib
-from typing import Any, TypedDict
+from typing import TypedDict
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.models.composio_schemas.gmail import GmailHeader, GmailMessagePart
+from app.models.integrations.gmail_messages import (
+    ComposioGmailMessage,
+    GmailApiMessage,
+    GmailMessageTimestamps,
+)
+from app.models.mail_models import GmailMessageSummary
 
 ELLIPSIS = "…"
 
 
 def is_json_safe(value: object) -> bool:
-    """Whether ``value`` survives a JSON round trip — the honest test for
-    "can this be persisted", rather than a proxy like isinstance-on-scalars."""
+    """Whether value survives a JSON round trip.
+
+    The honest test for "can this be persisted", rather than a proxy like
+    isinstance-on-scalars.
+    """
     try:
         json.dumps(value)
     except (TypeError, ValueError):
@@ -19,23 +33,15 @@ def is_json_safe(value: object) -> bool:
 
 
 def clip_text(text: str, limit: int) -> str:
-    """Cap ``text`` at ``limit`` characters, marking the cut so a reader (or a model)
-    can tell truncation apart from the real end of the value."""
+    """Cap text at limit characters, marking the cut.
+
+    So a reader (or a model) can tell truncation apart from the real end.
+    """
     return text if len(text) <= limit else f"{text[:limit]}{ELLIPSIS}"
 
 
 def get_context_window(text: str, query: str, chars_before: int = 15, chars_after: int = 30) -> str:
-    """
-    Get text window around the search query with specified characters before and after.
-
-    Args:
-        text (str): Full text to search in
-        query (str): Search term to find
-        chars_around (int): Number of characters to include before and after match
-
-    Returns:
-        str: Context window containing the match with surrounding text
-    """
+    """Return the text window around the search query, with chars_before/chars_after of context."""
     # Find the query in text (case-insensitive)
     query_lower = query.lower()
     text_lower = text.lower()
@@ -61,102 +67,112 @@ def get_context_window(text: str, query: str, chars_before: int = 15, chars_afte
     return context
 
 
-def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
-    """Transform a Gmail API or Composio message into the frontend-friendly format,
-    keeping every raw key alongside the derived ones."""
+def _message_time(m: GmailMessageTimestamps) -> str:
+    # Prefer 'date', then 'messageTimestamp', then fallback
     from dateutil.parser import parse as parse_date  # noqa: PLC0415 -- cycle
 
-    def get_sender(m: dict[str, Any]) -> str:
-        return m.get("from") or m.get("sender") or ""
+    if m.date:
+        return str(m.date)
+    if m.message_timestamp:
+        try:
+            return parse_date(m.message_timestamp).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            return str(m.message_timestamp)
+    # Gmail API fallback
+    if m.internal_date:
+        try:
+            timestamp = int(m.internal_date) / 1000
+            return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            return str(m.internal_date)
+    return ""
 
-    def get_time(m: dict[str, Any]) -> str:
-        # Prefer 'date', then 'messageTimestamp', then fallback
-        if m.get("date"):
-            return str(m["date"])
-        ts = m.get("messageTimestamp")
-        if ts:
-            try:
-                return parse_date(ts).strftime("%Y-%m-%d %H:%M")
-            except Exception:
-                return str(ts)
-        # Gmail API fallback
-        if m.get("internalDate"):
-            try:
-                timestamp = int(m["internalDate"]) / 1000
-                return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
-            except Exception:
-                return str(m["internalDate"])
-        return ""
 
-    def transform_composio(m: dict[str, Any]) -> dict[str, Any]:
-        labels = m.get("labelIds", [])
-        return {
-            **m,
-            "id": m.get("messageId", ""),
-            "threadId": m.get("threadId", ""),
-            "from": get_sender(m),
-            "to": m.get("to", ""),
-            "cc": m.get("cc", ""),
-            "replyTo": m.get("replyTo", ""),
-            "subject": m.get("subject", ""),
-            "time": get_time(m),
-            "snippet": m.get("snippet", m.get("messageText", "")),
-            "body": m.get("body", m.get("messageText", "")),
-            "isThread": bool(m.get("threadId") and len(labels) > 0),
+def transform_gmail_message(msg: Mapping[str, object]) -> GmailMessageSummary:
+    """Transform a Gmail API or Composio message into the frontend-friendly format.
+
+    Keeps every raw key alongside the derived ones.
+    """
+    # messageId is the discriminator: a Gmail API resource carries id, never messageId.
+    # messageText cannot be part of the test: Composio omits it under verbose=false.
+    # Every derived key is a string, so the result validates whatever was left null.
+    if "messageId" in msg:
+        composio = ComposioGmailMessage.model_validate(msg)
+        labels = composio.label_ids or []
+        return GmailMessageSummary.model_validate(
+            {
+                **msg,
+                "id": composio.message_id or "",
+                "threadId": composio.thread_id or "",
+                "from": composio.from_ or composio.sender or "",
+                "to": composio.to or "",
+                "cc": composio.cc or "",
+                "replyTo": composio.reply_to or "",
+                "subject": composio.subject or "",
+                "time": _message_time(composio),
+                "snippet": composio.snippet or composio.message_text or "",
+                "body": composio.body or composio.message_text or "",
+                "isThread": bool(composio.thread_id and len(labels) > 0),
+                "is_unread": "UNREAD" in labels,
+                "labelIds": labels,
+            }
+        )
+
+    gmail = GmailApiMessage.model_validate(msg)
+    headers = gmail.payload.headers if gmail.payload else []
+    labels = gmail.label_ids or []
+    return GmailMessageSummary.model_validate(
+        {
+            **msg,
+            "id": gmail.id or "",
+            "threadId": gmail.thread_id or "",
+            "from": _header(headers, "From"),
+            "to": _header(headers, "To"),
+            "cc": _header(headers, "Cc"),
+            "replyTo": _header(headers, "Reply-To"),
+            "subject": _header(headers, "Subject"),
+            "time": _message_time(gmail),
+            "snippet": gmail.snippet or "",
+            "body": decode_message_body(gmail),
+            "isThread": bool(gmail.thread_id and len(labels) > 0),
             "is_unread": "UNREAD" in labels,
+            "labelIds": labels,
         }
-
-    def transform_gmail_api(m: dict[str, Any]) -> dict[str, Any]:
-        headers = {h["name"]: h["value"] for h in m.get("payload", {}).get("headers", [])}
-        labels = m.get("labelIds", [])
-        return {
-            **m,
-            "id": m.get("id", ""),
-            "threadId": m.get("threadId", ""),
-            "from": headers.get("From", ""),
-            "to": headers.get("To", ""),
-            "cc": headers.get("Cc", ""),
-            "replyTo": headers.get("Reply-To", ""),
-            "subject": headers.get("Subject", ""),
-            "time": get_time(m),
-            "snippet": m.get("snippet", ""),
-            "body": decode_message_body(m),
-            "isThread": bool(m.get("threadId") and len(labels) > 0),
-            "is_unread": "UNREAD" in labels,
-        }
-
-    # Detect and transform
-    if "messageId" in msg and "messageText" in msg:
-        return transform_composio(msg)
-    return transform_gmail_api(msg)
+    )
 
 
-def decode_message_body(msg: dict[str, Any]) -> str | None:
-    """Decode the message body from a Gmail API message."""
-    payload = msg.get("payload", {})
-    parts = payload.get("parts", [])
+def _header(headers: list[GmailHeader], name: str) -> str:
+    """Return the last header named name (a repeated header resolved the way a dict of them did)."""
+    return next((h.value or "" for h in reversed(headers) if h.name == name), "")
+
+
+def _decode_part_data(data: str) -> str:
+    return base64.urlsafe_b64decode(data).decode(errors="ignore")
+
+
+def decode_message_body(msg: GmailApiMessage) -> str:
+    """Decode the message body from a Gmail API message; empty when it carries none."""
+    payload = msg.payload or GmailMessagePart()
+    parts = payload.parts
 
     # Handle single-part messages
     if not parts:
-        body_data = payload.get("body", {}).get("data", "")
+        body_data = payload.body.data if payload.body else None
         if body_data:
-            return base64.urlsafe_b64decode(body_data.replace("-", "+").replace("_", "/")).decode(
-                "utf-8", errors="ignore"
-            )
-        return None
+            return _decode_part_data(body_data)
+        return ""
 
     # For multipart messages, prioritize HTML over plain text
     html_body = None
     plain_body = None
 
     for part in parts:
-        part_mime_type = part.get("mimeType", "")
-        body_data = part.get("body", {}).get("data", "")
+        # any non-text/* fallback is skipped alike
+        part_mime_type = part.mime_type or ""  # pragma: no mutate
+        body_data = part.body.data if part.body else None
 
         if body_data:
-            decoded_content = base64.urlsafe_b64decode(
-                body_data.replace("-", "+").replace("_", "/")
-            ).decode("utf-8", errors="ignore")
+            decoded_content = _decode_part_data(body_data)
 
             if part_mime_type == "text/html":
                 html_body = decoded_content
@@ -164,7 +180,7 @@ def decode_message_body(msg: dict[str, Any]) -> str | None:
                 plain_body = decoded_content
 
     # Return HTML if available (frontend expects HTML), otherwise plain text
-    return html_body or plain_body
+    return html_body or plain_body or ""
 
 
 class ProjectInfo(TypedDict):
@@ -175,18 +191,33 @@ class ProjectInfo(TypedDict):
     description: str
 
 
+class _PyprojectProject(BaseModel):
+    """The ``[project]`` table of pyproject.toml, defaulted key by key."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str = "GAIA API"
+    version: str = "dev"
+    description: str = "Backend for GAIA"
+
+
+class _Pyproject(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    project: _PyprojectProject = Field(default_factory=_PyprojectProject)
+
+
 def get_project_info() -> ProjectInfo:
     """Get project info from pyproject.toml file."""
     try:
         # Path to pyproject.toml from this file location
         pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
         with open(pyproject_path, "rb") as f:
-            pyproject_data = tomllib.load(f)
-            project = pyproject_data.get("project", {})
+            project = _Pyproject.model_validate(tomllib.load(f)).project
             return ProjectInfo(
-                name=project.get("name", "GAIA API"),
-                version=project.get("version", "dev"),
-                description=project.get("description", "Backend for GAIA"),
+                name=project.name,
+                version=project.version,
+                description=project.description,
             )
     except Exception:
         return ProjectInfo(name="GAIA API", version="dev", description="Backend for GAIA")

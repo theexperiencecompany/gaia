@@ -15,6 +15,7 @@ acquirers pile on — and when everyone is done the pool is whole again.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -26,6 +27,7 @@ import pytest
 CI = Path(__file__).parent.parent
 LIB = CI / "lib" / "cpu-slots.sh"
 LOG = CI / "lib" / "log.sh"
+MUTATION = CI / "mutation.sh"
 
 HAVE_FLOCK = shutil.which("flock") is not None
 needs_flock = pytest.mark.skipif(not HAVE_FLOCK, reason="flock absent (governor is Linux-box-only)")
@@ -67,8 +69,7 @@ def _live_sum(holders: Path) -> int:
 
 
 def test_failopen_when_not_self_hosted(tmp_path: Path) -> None:
-    """RUNNER_ENVIRONMENT unset → acquire is a no-op that returns success and
-    takes nothing, so a GitHub-hosted VM is never touched by the governor."""
+    """With RUNNER_ENVIRONMENT unset, acquire takes nothing and succeeds (GitHub-hosted VMs)."""
     env = _base_env(tmp_path / "pool", 8)
     del env["RUNNER_ENVIRONMENT"]
     r = _run("cpu_slots_acquire 5 && echo OK", env)
@@ -99,6 +100,89 @@ def test_zero_and_noninteger_are_noops(tmp_path: Path) -> None:
     assert r.returncode == 0 and "OK" in r.stdout
 
 
+# ── the pool size (the default is the thing that gets tuned) ────────────────
+
+
+def _nproc() -> int:
+    return int(subprocess.run(["nproc"], capture_output=True, text=True, check=True).stdout)
+
+
+@pytest.mark.skipif(shutil.which("nproc") is None, reason="nproc absent")
+def test_pool_defaults_to_one_and_a_half_times_the_thread_count(tmp_path: Path) -> None:
+    """The measured default: nproc * 3 / 2, room for three mutation shards.
+
+    At exactly nproc a shard could not fit beside another one and the lane
+    serialised; at 2 x nproc four shards thrashed the box.
+    """
+    # Emptied, not deleted: `_run` layers this over os.environ, where conftest's
+    # autouse fixture has already put the suite's private pool — dropping the
+    # key here leaves that one inherited and the default never runs. Empty is
+    # not a uint, so cpu-slots takes exactly the branch under test.
+    env = {**_base_env(tmp_path / "pool", 8), "GAIA_CPU_TOKENS": ""}
+    r = _run("_cpu_slots_total", env)
+    assert r.returncode == 0
+    assert r.stdout.strip() == str(_nproc() * 3 // 2)
+
+
+def test_an_explicit_pool_size_wins_over_the_default(tmp_path: Path) -> None:
+    r = _run("_cpu_slots_total", _base_env(tmp_path / "pool", 5))
+    assert r.returncode == 0 and r.stdout.strip() == "5"
+
+
+# ── the mutation lane's weight in that pool ─────────────────────────────────
+#
+# The governor only works if each lane asks for what it really runs, so the
+# shard's own arithmetic belongs with the pool's. Driven through the REAL
+# `mutation.sh shard`, in a sandbox with no apps/api, so it prints its budget
+# and then fails on the missing module — the budget line is the contract.
+
+
+def _shard_budget(tmp_path: Path, env: dict[str, str]) -> tuple[int, int]:
+    """Run `mutation.sh shard` in a sandbox and return (workers, tokens)."""
+    scripts = tmp_path / "scripts" / "ci"
+    (scripts / "lib").mkdir(parents=True)
+    shutil.copy(MUTATION, scripts / "mutation.sh")
+    shutil.copy(LOG, scripts / "lib" / "log.sh")
+    shutil.copy(LIB, scripts / "lib" / "cpu-slots.sh")
+    group = json.dumps([{"module": "app/nope.py", "testfiles": '["t.py"]', "ranges": "[[1,1]]"}])
+    r = subprocess.run(
+        ["bash", str(scripts / "mutation.sh"), "shard"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, **env, "GROUP": group, "SHARD_LOG": str(tmp_path / "shard.log")},
+        cwd=tmp_path,
+        timeout=120,
+        check=False,
+    )
+    line = next(li for li in r.stdout.splitlines() if li.startswith("mutation shard: "))
+    workers, tokens = (int(word) for word in line.split() if word.isdigit())
+    return workers, tokens
+
+
+@pytest.mark.skipif(shutil.which("nproc") is None, reason="nproc absent")
+def test_a_shard_defaults_to_half_the_threads_and_takes_exactly_that(tmp_path: Path) -> None:
+    """nproc/2 mutant workers, and the same number of host tokens.
+
+    Taking more than it runs (the old nproc-2 floor) is what made two shards
+    mutually exclusive in the pool; taking fewer would let it outrun its grant.
+    """
+    env = {**_base_env(tmp_path / "pool", 24), "MUTMUT_MAX_CHILDREN": ""}
+    workers, tokens = _shard_budget(tmp_path, env)
+    assert workers == max(_nproc() // 2, 1)
+    assert tokens == workers
+
+
+def test_a_smaller_explicit_worker_count_is_not_raised_back_up(tmp_path: Path) -> None:
+    """An explicit MUTMUT_MAX_CHILDREN is honoured as given, in both numbers."""
+    env = {**_base_env(tmp_path / "pool", 24), "MUTMUT_MAX_CHILDREN": "2"}
+    assert _shard_budget(tmp_path, env) == (2, 2)
+
+
+def test_a_larger_explicit_worker_count_takes_matching_tokens(tmp_path: Path) -> None:
+    env = {**_base_env(tmp_path / "pool", 24), "MUTMUT_MAX_CHILDREN": "30"}
+    assert _shard_budget(tmp_path, env) == (30, 30)
+
+
 # ── the real semaphore (flock required) ─────────────────────────────────────
 
 # One actor: acquire W, mark that it is holding, hold HOLD_MS, release. Run
@@ -114,9 +198,7 @@ rm -f "$MARK"
 
 @needs_flock
 def test_never_oversubscribed_and_drains(tmp_path: Path) -> None:
-    """Twelve acquirers each want 3 tokens on a pool of 8 — 36 requested against
-    8. Sampling the holders dir throughout, the live sum must never exceed 8,
-    and after everyone finishes the pool is whole (holders empty)."""
+    """Twelve acquirers of 3 tokens on a pool of 8 never hold more than 8, and leave it whole."""
     pool = tmp_path / "pool"
     holders = pool / "holders"
     tokens, want, actors, hold = 8, 3, 12, 1.0
@@ -159,8 +241,7 @@ def test_never_oversubscribed_and_drains(tmp_path: Path) -> None:
 
 @needs_flock
 def test_dead_holder_is_reclaimed(tmp_path: Path) -> None:
-    """A SIGKILL'd holder cannot run its EXIT trap, so its tokens WOULD leak.
-    The next acquirer sees the holder pid is dead and reclaims them."""
+    """Reclaim a SIGKILL'd holder's tokens, which its skipped EXIT trap would otherwise leak."""
     pool = tmp_path / "pool"
     holders = pool / "holders"
     tokens, want = 8, 8
@@ -198,9 +279,7 @@ def test_dead_holder_is_reclaimed(tmp_path: Path) -> None:
 
 @needs_flock
 def test_timeout_fails_open_with_warning(tmp_path: Path) -> None:
-    """A live holder pins the whole pool; a second acquirer waits its timeout
-    and then PROCEEDS WITHOUT the tokens (a warning, exit 0) — the governor can
-    never hang or fail a gate."""
+    """Proceed without tokens (warning, exit 0) after the timeout — the governor never hangs a gate."""
     pool = tmp_path / "pool"
     holders = pool / "holders"
     tokens = 8

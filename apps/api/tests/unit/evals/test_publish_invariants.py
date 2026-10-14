@@ -23,8 +23,7 @@ def _ran(case_id: str, tokens_in: int, status: str = "passed") -> dict[str, Any]
 
 
 def test_a_case_that_produced_nothing_cannot_carry_a_score() -> None:
-    """76 cases once errored with empty transcripts and zero tokens, were
-    journaled as failures, and were averaged in as 0.0."""
+    """76 cases errored with empty transcripts and zero tokens were averaged in as 0.0."""
     records = [
         {
             "case_id": f"lme-{i}",
@@ -74,8 +73,7 @@ _REAL_DELTAS = [
 
 
 def test_cumulative_token_counts_are_rejected() -> None:
-    """Built from the real per-case deltas of the run that overstated usage 74x,
-    accumulated the way that run recorded them."""
+    """Built from the real per-case deltas of the run that overstated usage 74x."""
     running = 0
     cumulative = []
     for delta in _REAL_DELTAS:
@@ -87,8 +85,7 @@ def test_cumulative_token_counts_are_rejected() -> None:
 
 
 def test_a_long_genuine_series_still_publishes() -> None:
-    """The same deltas as themselves — a real per-case series of the same length
-    must not trip the cumulative check."""
+    """A real per-case series of the same length must not trip the cumulative check."""
     report = check_records([_ran(f"c{i}", n) for i, n in enumerate(_REAL_DELTAS)])
     assert report.ok, [v.detail for v in report.violations]
 
@@ -111,8 +108,7 @@ def test_journal_and_tracker_must_agree() -> None:
 
 
 def test_in_flight_spend_at_abort_does_not_block_publish() -> None:
-    """An aborted run's tracker holds spend for cases the journal never saw.
-    The intersection rule must ignore them, or every abort re-publish fails."""
+    """The intersection rule must ignore tracker spend for cases the journal never saw, or abort re-publish fails."""
     records = [_ran(f"c{i}", 1000) for i in range(10)]
     metered = {f"c{i}": (1000, 100) for i in range(10)}
     metered["in-flight-never-journaled"] = (62_000, 7_000)
@@ -127,8 +123,7 @@ def test_a_case_graded_twice_is_caught() -> None:
 
 
 def test_a_retry_superseding_an_error_is_not_a_duplicate() -> None:
-    """The sweep mechanism appends errored-then-graded by design; blocking it
-    would punish exactly the path that clears errored cases."""
+    """The sweep mechanism appends errored-then-graded by design and must not be flagged as a duplicate."""
     errored = _ran("same", 0)
     errored["status"] = "errored"
     errored["tokens"]["input"] = 0
@@ -150,20 +145,13 @@ def _worked_for(case_id: str, tokens_in: int, seconds: float) -> dict[str, Any]:
 
 
 def test_an_expensive_case_is_not_a_corrupt_one() -> None:
-    """No upper bound, deliberately. The app's own per-call accounting puts a
-    real capability case at a 131k median and the largest measured at 9.6M —
-    context grows step over step and compaction is skipped without JuiceFS. A
-    cap below that fails every honest native run, which is how a gate gets
-    switched off."""
+    """No upper bound: real capability cases hit a 131k median and up to 9.6M without JuiceFS compaction."""
     huge = [_worked_for(f"c{i}", n, 120.0) for i, n in enumerate((1_722_668, 2_981_848, 723_820))]
     assert check_records(huge).ok, [v.detail for v in check_records(huge).violations]
 
 
 def test_contamination_is_caught_by_reconciliation_not_by_size() -> None:
-    """What the old cap was really catching: a per-case delta on a shared meter
-    credits every case with its neighbours' spend, so the journal sums to
-    roughly the concurrency times the truth. That fails against the tracker
-    whatever the magnitude."""
+    """A per-case delta on a shared meter credits every case with its neighbours' spend, caught regardless of magnitude."""
     inflated = [_worked_for(f"c{i}", 390_716, 60.0) for i in range(12)]
     report = check_records(inflated, metered_by_case={f"c{i}": (131_393, 4_000) for i in range(12)})
     assert not report.ok
@@ -171,36 +159,27 @@ def test_contamination_is_caught_by_reconciliation_not_by_size() -> None:
 
 
 def test_an_estimate_of_the_question_is_not_a_measurement() -> None:
-    """gaia_bench recorded a median of 56 input tokens and hil 16, for cases that
-    spent a real minute in the agent. Both estimate from the question's character
-    count, which never sees the system prompt — and nothing caught it, because
-    every check only ever looked for numbers that were too LARGE."""
+    """gaia_bench measured a median of 56 input tokens (hil 16), estimated from the question length alone."""
     report = check_records([_worked_for(f"gaia-{i}", n, 53.4) for i, n in enumerate((104, 56, 88))])
     assert not report.ok
     assert any("implausibly small" in v.check for v in report.violations)
 
 
 def test_a_meter_that_never_fired_is_caught_too() -> None:
-    """regression journaled 0 tokens for every case: it read a per-provider total
-    under a provider name the tracker never used."""
+    """A regression read a per-provider total under a provider name the tracker never used, journaling 0 tokens."""
     report = check_records([_worked_for(f"reg-{i}", 0, 5.4) for i in range(5)])
     assert not report.ok
     assert any("implausibly small" in v.check for v in report.violations)
 
 
 def test_a_fake_transport_is_not_held_to_the_floor() -> None:
-    """A transport that answers in 0.07s never called a model, so it has nothing
-    to under-count. Note this exempts smoke by its speed, not by its name — and
-    smoke's first case sometimes takes 1.7-2.7s of warmup, so it is NOT reliably
-    exempt. The real fix there is for the suite to stop inventing token figures."""
+    """A transport answering in 0.07s is exempt by speed, not name — smoke's warmup can take 1.7-2.7s and is not reliably exempt."""
     report = check_records([_worked_for(f"smoke-{i}", 120, 0.07) for i in range(3)])
     assert report.ok, [v.detail for v in report.violations]
 
 
 def test_an_errored_case_is_not_held_to_the_floor() -> None:
-    """A case that died partway has a partial reading by definition. Flagging it
-    fires on exactly the runs an outage already ruined — verified against
-    comms-20260808-092206, where all 5 records the floor caught were errored."""
+    """A died-partway case's partial reading must not flag — verified against comms-20260808-092206."""
     dead = [_worked_for(f"c{i}", 0, 30.0) for i in range(5)]
     for record in dead:
         record["status"] = "errored"
@@ -209,8 +188,7 @@ def test_an_errored_case_is_not_held_to_the_floor() -> None:
 
 
 def test_a_graded_case_is_still_held_to_the_floor() -> None:
-    """The true positives all reach a verdict: every record the floor catches in
-    gaia_bench, hil and regression is passed or failed."""
+    """Every record the floor catches in gaia_bench, hil and regression reaches a real verdict."""
     graded = [_worked_for(f"c{i}", 104, 30.0) for i in range(5)]
     for record in graded:
         record["status"] = "failed"
@@ -225,8 +203,7 @@ def test_a_real_measurement_is_never_called_too_small() -> None:
 
 
 def test_an_outage_graded_as_a_wrong_answer_blocks_the_run() -> None:
-    """164 GAIA cases were journaled `failed` carrying an HTTP 500 from a dead
-    API, with no transcript and no scores, and were averaged into accuracy."""
+    """164 GAIA cases journaled failed with an HTTP 500 and no transcript were averaged into accuracy."""
     outage = [
         {
             "case_id": f"gaia-{i}",
@@ -247,8 +224,7 @@ def test_an_outage_graded_as_a_wrong_answer_blocks_the_run() -> None:
 
 
 def test_the_same_outage_recorded_honestly_publishes() -> None:
-    """`errored` is the honest status — unscored, out of the denominator. It is
-    the grading of a fault as a wrong answer that must stop a run, not the fault."""
+    """Errored is the honest, unscored status; only grading a fault as a wrong answer must stop a run."""
     honest = [
         {
             "case_id": f"gaia-{i}",

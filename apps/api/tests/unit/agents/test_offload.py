@@ -1,8 +1,8 @@
 """Structured offload marker helpers — round-trip, lift, tolerance.
 
 Pure unit tests (no I/O). Cover the read-side validators whose contracts must
-agree: read_offload only guarantees `path`, so tools_for_offload must tolerate a
-missing/unknown `fmt` (F1), and read_offload must never raise on a non-dict
+agree: read_offload only guarantees path, so tools_for_offload must tolerate a
+missing/unknown fmt (F1), and read_offload must never raise on a non-dict
 additional_kwargs (F2).
 """
 

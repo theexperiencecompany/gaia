@@ -2,7 +2,11 @@
 
 from unittest.mock import AsyncMock, patch
 
+from app.helpers.integration_helpers import ParsedIntegrationSlug
 from app.models.integration_models import Integration
+
+_NO_SLUG = ParsedIntegrationSlug(name_part="bad-slug", category=None, shortid=None)
+_LEGACY_SLUG = ParsedIntegrationSlug(name_part="legacy", category=None, shortid="abc123")
 
 INTEGRATION_ID = "integ-001"
 
@@ -82,7 +86,7 @@ class TestGetPublicIntegration:
             patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
             patch(
                 "app.api.v1.endpoints.integrations.public.parse_integration_slug",
-                return_value={},
+                return_value=_NO_SLUG,
             ),
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=None)
@@ -97,7 +101,7 @@ class TestGetPublicIntegration:
         with (
             patch(
                 "app.api.v1.endpoints.integrations.public.parse_integration_slug",
-                return_value={"shortid": "abc123"},
+                return_value=_LEGACY_SLUG,
             ),
             patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
         ):

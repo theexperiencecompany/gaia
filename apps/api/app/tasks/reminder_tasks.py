@@ -1,27 +1,31 @@
-"""
-Reminder task handlers for static reminders only.
-"""
-
-from typing import cast
+"""Reminder task handlers for static reminders only."""
 
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
     StaticReminderPayload,
 )
-from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.models.scheduler_models import TaskOutcome
+from app.services.analytics_service import capture
 from app.services.notification_service import notification_service
-from app.services.user_service import get_user_by_id
+from app.utils.auth_utils import load_user_context
 from app.utils.notification.sources import AIProactiveNotificationSource
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.wide_events import log
+
+#: The surface name a paywalled reminder is attributed to in the funnel. Matches
+#: the snake_case surface naming the bot and onboarding gates pass (the HTTP
+#: middleware passes the request path instead, which is its surface).
+PAYWALL_FEATURE_REMINDER = "reminder"
 
 
 def _reminder_result_text(payload: StaticReminderPayload) -> str:
-    """The reminder body as GAIA would voice it into a chat: bold title, then body."""
+    """Format the reminder body as GAIA would voice it into a chat: bold title, then body."""
     segments = [
         seg for seg in (f"**{payload.title}**" if payload.title else "", payload.body) if seg
     ]
@@ -29,8 +33,9 @@ def _reminder_result_text(payload: StaticReminderPayload) -> str:
 
 
 async def _execute_static_reminder(reminder: ReminderModel) -> None:
-    """Fire a static reminder: raise the in-app badge and deliver it into the
-    user's linked chat platforms, recorded into the conversation's langgraph thread.
+    """Fire a static reminder: raise the in-app badge and deliver it to the user's platforms.
+
+    Delivery is recorded into the conversation's langgraph thread so later turns can backtrack.
     """
     if not isinstance(reminder.payload, StaticReminderPayload):
         raise ValueError("Invalid payload type for static reminder")
@@ -48,44 +53,32 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
 
     await notification_service.create_notification(notification)
 
-    # Deliver into the user's real chat platforms via the same path a finished
-    # workflow uses — so the reminder lands as a GAIA message AND is recorded into
-    # the platform conversation's langgraph thread, framed with the reminder id so
-    # a later turn can backtrack to it. Best-effort; the in-app badge above is the
-    # primary delivery. The notification itself is pinned to in-app, so this is the
-    # only platform send (no double delivery).
+    # Same delivery path a finished workflow uses, framed with the reminder id so a
+    # later turn can backtrack. Best-effort — the notification above is pinned to
+    # in-app, so this is the only platform send (no double delivery).
     await _deliver_reminder_to_platforms(reminder)
 
     log.info("Static reminder sent notification", reminder_id=reminder.id, user_id=reminder.user_id)
 
 
 async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
-    """Deliver a fired reminder into the chat that created it (on its own surface)
-    AND the user's other linked chat platforms, each recorded into that
-    conversation's langgraph thread. Best-effort — never fails the reminder.
+    """Deliver a fired reminder into its source chat and the user's other linked platforms, best-effort.
 
-    This is a supplementary side channel; the in-app badge is the primary
-    delivery and has already succeeded by the time we get here. So every failure
-    is swallowed and logged, never propagated — in particular get_user_by_id
-    raises HTTPException on a transient user-repo error, which must not mark the
-    reminder failed (and skip the recurring re-arm) over a side channel.
+    Side channel behind the in-app badge: swallows every failure — including
+    load_user_context's HTTPException on a transient error — so it never fails the
+    reminder or skips the recurring re-arm.
     """
     if not isinstance(reminder.payload, StaticReminderPayload) or not reminder.id:
         return
     try:
-        user_data = await get_user_by_id(reminder.user_id)
-        if not user_data:
+        user = await load_user_context(reminder.user_id)
+        if user is None:
             log.warning(
                 "Reminder platform delivery skipped: user not found",
                 reminder_id=reminder.id,
                 user_id=reminder.user_id,
             )
             return
-        # get_user_by_id returns the raw Mongo doc keyed by _id; downstream
-        # delivery (update_messages ownership, session keying) reads user_id, so
-        # stamp it — the same normalization the tracked-todo worker does.
-        user_data["user_id"] = reminder.user_id
-        user = cast(AuthenticatedUser, user_data)
         text = _reminder_result_text(reminder.payload)
         title = reminder.payload.title
         origin = (
@@ -120,21 +113,30 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
 
 async def execute_reminder_by_agent(
     reminder: ReminderModel,
-) -> None:
-    """
-    Execute a static reminder task.
-
-    This is the main entry point for reminder execution. Only handles
-    STATIC reminders that send simple notifications.
-
-    Args:
-        reminder: The reminder to execute
-    """
+) -> TaskOutcome:
+    """Execute a static reminder task; the only agent type handled here is STATIC."""
     log.info("Executing reminder", reminder_id=reminder.id, agent=reminder.agent)
 
     if not reminder.id:
-        log.error("Reminder has no ID, skipping execution", agent=reminder.agent)
+        log.error(
+            "Reminder has no ID, skipping execution",
+            agent=reminder.agent,
+            user_id=reminder.user_id,
+        )
         raise ValueError(f"Reminder {reminder.id} has no ID, skipping execution.")
+
+    # The scheduler pauses a blocked recurring reminder, so this fires once per job.
+    if not await is_paid(reminder.user_id):
+        log.warning(
+            "Reminder skipped — subscription required",
+            reminder_id=reminder.id,
+            user_id=reminder.user_id,
+        )
+        # Same event every HTTP/bot paywall block fires; this gate skips instead
+        # of going through require_active_subscription, so without it the funnel
+        # could not see reminders lost to the wall.
+        capture_paywall_block(reminder.user_id, PAYWALL_FEATURE_REMINDER)
+        return TaskOutcome.ENTITLEMENT_BLOCKED
 
     try:
         if reminder.agent == AgentType.STATIC:
@@ -143,15 +145,16 @@ async def execute_reminder_by_agent(
             raise ValueError(f"Unknown agent type: {reminder.agent}")
 
         log.info("Reminder executed successfully", reminder_id=reminder.id, agent=reminder.agent)
-        capture_event(
-            reminder.user_id,
-            AnalyticsEvents.REMINDER_COMPLETED,
-            {"reminder_id": reminder.id, "agent": reminder.agent.value},
+        capture(
+            UserId(reminder.user_id),
+            ReminderCompleted(reminder_id=reminder.id, agent=reminder.agent.value),
         )
+        return TaskOutcome.EXECUTED
     except Exception as e:
         log.error(
             "Failed to execute reminder",
             reminder_id=reminder.id,
+            user_id=reminder.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )

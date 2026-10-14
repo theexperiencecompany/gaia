@@ -1,6 +1,7 @@
 """Unit tests for OAuth utility functions."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import HTTPException
 import pytest
@@ -87,8 +88,7 @@ class TestBuildGoogleOAuthUrl:
         mock_settings.GOOGLE_CLIENT_ID = "cid"
         mock_settings.GOOGLE_CALLBACK_URL = "http://localhost/callback"
 
-        mock_token = MagicMock()
-        mock_token.get.return_value = "existing_scope_1 existing_scope_2"
+        mock_token = {"access_token": "at", "scope": "existing_scope_1 existing_scope_2"}
         mock_token_repo.get_token = AsyncMock(return_value=mock_token)
 
         url = await build_google_oauth_url(
@@ -110,8 +110,7 @@ class TestBuildGoogleOAuthUrl:
         mock_settings.GOOGLE_CLIENT_ID = "cid"
         mock_settings.GOOGLE_CALLBACK_URL = "http://localhost/callback"
 
-        mock_token = MagicMock()
-        mock_token.get.return_value = "openid email"
+        mock_token = {"access_token": "at", "scope": "openid email"}
         mock_token_repo.get_token = AsyncMock(return_value=mock_token)
 
         url = await build_google_oauth_url(
@@ -174,8 +173,7 @@ class TestBuildGoogleOAuthUrl:
         mock_settings.GOOGLE_CLIENT_ID = "cid"
         mock_settings.GOOGLE_CALLBACK_URL = "http://localhost/callback"
 
-        mock_token = MagicMock()
-        mock_token.get.return_value = None  # scope is None
+        mock_token = {"access_token": "at", "scope": None}
         mock_token_repo.get_token = AsyncMock(return_value=mock_token)
 
         url = await build_google_oauth_url(
@@ -187,6 +185,9 @@ class TestBuildGoogleOAuthUrl:
 
         # Should still produce a valid URL despite None scope
         assert url.startswith("https://accounts.google.com/o/oauth2/auth?")
+        # A None scope contributes no scopes of its own.
+        (scope,) = parse_qs(urlparse(url).query)["scope"]
+        assert set(scope.split()) == {"openid", "profile", "email", "new_scope"}
 
     @patch("app.utils.oauth_utils.settings")
     @patch("app.utils.oauth_utils.token_repository")

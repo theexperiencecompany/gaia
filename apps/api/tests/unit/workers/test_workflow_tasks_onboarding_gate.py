@@ -9,12 +9,13 @@ app. Manual "run now" fires and onboarded users are unaffected.
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.models.user_models import UserDocument
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
 
-def _workflow(user_id: str = "user-1") -> MagicMock:
+def _workflow(user_id: str = "6812f0b3c9a14e2b7d5a91cc") -> MagicMock:
     wf = MagicMock()
     wf.user_id = user_id
     wf.steps = []
@@ -23,10 +24,8 @@ def _workflow(user_id: str = "user-1") -> MagicMock:
     return wf
 
 
-def _user(completed: bool) -> MagicMock:
-    user = MagicMock()
-    user.onboarding = {"completed": completed}
-    return user
+def _user(completed: bool) -> UserDocument:
+    return UserDocument.model_validate({"onboarding": {"completed": completed}})
 
 
 async def _run_task(
@@ -35,6 +34,9 @@ async def _run_task(
     with (
         patch(f"{MODULE}.workflow_scheduler") as scheduler,
         patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock, return_value=user),
+        # The paid-only gate is defaulted to active by the workers-dir conftest's
+        # autouse _subscription_active_by_default fixture — these tests are
+        # about the onboarding gate, not that one.
         patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
@@ -44,7 +46,7 @@ async def _run_task(
         ),
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture_event"),
+        patch(f"{MODULE}.capture"),
     ):
         scheduler.get_task = AsyncMock(return_value=workflow)
         scheduler.claim_task_for_execution = AsyncMock(return_value=True)
@@ -64,8 +66,7 @@ class TestOnboardingGate:
         create.assert_not_awaited()
 
     async def test_unstamped_trigger_fire_is_recognized_and_skipped(self) -> None:
-        """In-flight jobs queued before the trigger service stamped trigger_type
-        carry only trigger_data — they must still be treated as system-initiated."""
+        """A job queued before trigger_type was stamped carries only trigger_data but is still system-initiated."""
         result, budget, create = await _run_task(
             _workflow(), _user(completed=False), {"trigger_data": {"event": "x"}}
         )

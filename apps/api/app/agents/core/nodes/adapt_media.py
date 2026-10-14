@@ -1,8 +1,8 @@
 """Pre-model hook that fits the inline media in history to the active model lane.
 
-Media enters ToolMessages on any lane whose tools can produce it (the `read`
+Media enters ToolMessages on any lane whose tools can produce it (the read
 tool, MCP tools). Per model call this node rewrites those messages into what the
-lane can actually receive — see `app/agents/llm/vision/`. Hook output feeds the
+lane can actually receive — see app/agents/llm/vision/. Hook output feeds the
 model request only; persisted history keeps the canonical block shape.
 """
 

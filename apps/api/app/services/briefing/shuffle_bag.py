@@ -1,10 +1,9 @@
 """A per-user shuffle bag: every member appears its weight in times per pass.
 
-Each pass is a fresh random order of the whole pool (a member with weight 2
-appears twice), consumed one draw a day. No member lands on two consecutive
-draws, inside a pass or across the reshuffle boundary, and no pass repeats the
-order of the one before it. The edition family and the Air Mail stamp city are
-both drawn this way; the state is the small ``ShuffleBag`` persisted per user.
+Each pass is a fresh random order of the whole pool, consumed one draw a day. No
+member lands on two consecutive draws (including across the reshuffle boundary) and
+no pass repeats the previous order. The edition family and the Air Mail stamp city
+are both drawn this way; the state is the small ShuffleBag persisted per user.
 """
 
 from collections.abc import Mapping

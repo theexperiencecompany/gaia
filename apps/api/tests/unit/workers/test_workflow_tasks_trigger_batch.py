@@ -9,6 +9,7 @@ already took them.
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.models.user_models import UserDocument
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
@@ -16,17 +17,15 @@ MODULE = "app.workers.tasks.workflow_tasks"
 
 def _workflow() -> MagicMock:
     wf = MagicMock()
-    wf.user_id = "user-1"
+    wf.user_id = "6812f0b3c9a14e2b7d5a91cc"
     wf.steps = []
     wf.repeat = None
     wf.activated = True
     return wf
 
 
-def _onboarded_user() -> MagicMock:
-    user = MagicMock()
-    user.onboarding = {"completed": True}
-    return user
+def _onboarded_user() -> UserDocument:
+    return UserDocument.model_validate({"onboarding": {"completed": True}})
 
 
 async def _run_task(
@@ -42,6 +41,9 @@ async def _run_task(
         patch(
             f"{MODULE}.drain_trigger_batch", new_callable=AsyncMock, return_value=drained
         ) as drain,
+        # The paid-only gate is defaulted to active by the workers-dir conftest's
+        # autouse _subscription_active_by_default fixture — these tests are
+        # about batching, not that one.
         patch(
             f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock, side_effect=budget_error
         ),
@@ -56,7 +58,7 @@ async def _run_task(
         ) as run_chat,
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
-        patch(f"{MODULE}.capture_event"),
+        patch(f"{MODULE}.capture"),
     ):
         workflow = _workflow()
         scheduler.get_task = AsyncMock(return_value=workflow)
@@ -93,8 +95,7 @@ class TestTriggerBatchDrain:
         coalesce.assert_called_once_with(workflow.trigger_config)
 
     async def test_empty_batch_skips_the_run_entirely(self) -> None:
-        """Another run already drained these events — executing again would
-        spend the user's budget re-processing nothing."""
+        """A drained batch must not spend the user's budget re-processing nothing."""
         result, _drain, run_chat, refill, log_mock, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"}, []
         )
@@ -119,8 +120,7 @@ class TestTriggerBatchDrain:
 
 class TestGatesRunBeforeTheDrain:
     async def test_budget_walled_run_leaves_the_buffer_intact(self) -> None:
-        """A rejected run must not consume the batch — the events belong to a
-        future run after the budget resets, not to the void."""
+        """A rejected run must not consume the batch; those events belong to a future run."""
         result, drain, run_chat, _refill, _log, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
             [{"id": 1}],
@@ -133,9 +133,7 @@ class TestGatesRunBeforeTheDrain:
 
 class TestRefillOnEveryExit:
     async def test_a_budget_walled_run_still_reschedules_refill_arrivals(self) -> None:
-        """Events that land while a gate-rejected run holds the job id would be
-        stranded without the finally — a failed run must strand them no more
-        than a successful one."""
+        """A failed, gate-rejected run must not strand arrivals any more than a successful one."""
         result, _drain, _run_chat, refill, _log, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
             [{"id": 1}],
@@ -147,8 +145,7 @@ class TestRefillOnEveryExit:
         assert (wf_id, batch_key, window_seconds) == ("wf-1", "trigger_batch:wf-1", 900)
 
     async def test_a_refill_scheduling_error_never_masks_the_run_result(self) -> None:
-        """The finally is best-effort: a Redis blip while scheduling the
-        follow-up must not turn a successful run into a failure."""
+        """The refill is best-effort: a Redis blip scheduling it must not fail a successful run."""
         events = [{"id": 1}]
         with patch(
             f"{MODULE}.reschedule_if_refilled",
@@ -175,7 +172,7 @@ class TestRefillOnEveryExit:
                 patch(
                     f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock
                 ),
-                patch(f"{MODULE}.capture_event"),
+                patch(f"{MODULE}.capture"),
                 patch(f"{MODULE}.log") as log_mock,
             ):
                 scheduler.get_task = AsyncMock(return_value=_workflow())
@@ -198,8 +195,7 @@ class TestRefillOnEveryExit:
         )
 
     async def test_a_run_with_no_context_never_touches_batching(self) -> None:
-        """Scheduled fires pass no context at all — nothing batch-shaped may
-        run for them, including the finally's refill check."""
+        """Scheduled fires pass no context, so no batch-shaped logic may run for them."""
         result, drain, _run_chat, refill, _log, coalesce, _wf = await _run_task(None, [])
 
         assert result == "Workflow wf-1 executed successfully"
@@ -210,8 +206,7 @@ class TestRefillOnEveryExit:
 
 class TestDrainUnavailable:
     async def test_redis_down_at_drain_never_claims_the_batch_was_empty(self) -> None:
-        """None from the drain means "could not look" — the run must exit
-        without consuming, and the finally still schedules the follow-up."""
+        """None from the drain means "could not look"; the run must exit without consuming."""
         result, drain, run_chat, refill, log_mock, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
             None,  # drain_trigger_batch returns None

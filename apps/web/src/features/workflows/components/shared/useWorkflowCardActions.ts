@@ -4,15 +4,17 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toTriggerConfig } from "@/features/workflows/triggers/types";
+import { track } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { useAppendToInput } from "@/stores/composerStore";
 import type {
   CommunityWorkflow,
   PublicWorkflowStep,
-  TriggerConfig,
+  TriggerConfigDraft,
   Workflow,
 } from "@/types/features/workflowTypes";
+import { ONE_CLICK_WORKFLOW_DELIVERY } from "../../constants/delivery";
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
 
 interface UseWorkflowCardActionsParams {
@@ -26,7 +28,7 @@ interface UseWorkflowCardActionsParams {
   slug?: string;
   prompt?: string;
   variant: "user" | "community" | "explore" | "suggestion";
-  sourceTriggerConfig?: TriggerConfig;
+  sourceTriggerConfig?: TriggerConfigDraft;
   systemWorkflowKey?: string | null;
   resolvedAction: "run" | "create" | "insert-prompt" | "navigate" | "none";
   onCardClick?: () => void;
@@ -68,11 +70,6 @@ export function useWorkflowCardActions({
     if (!workflow || isLoading) return;
     setIsLoading(true);
     try {
-      trackEvent(ANALYTICS_EVENTS.WORKFLOWS_EXECUTED, {
-        workflow_id: workflow.id,
-        step_count: workflow.steps?.length || 0,
-        trigger_type: workflow.trigger_config.type,
-      });
       selectWorkflow(workflow, { autoSend: true });
       onActionComplete?.();
     } catch (error) {
@@ -108,10 +105,9 @@ export function useWorkflowCardActions({
         description: communityWorkflow?.description || description || undefined,
         prompt: communityWorkflow?.prompt || displayDescription || title,
         // Reproduce the trigger the card advertises; manual only as a fallback.
-        trigger_config: sourceTriggerConfig ?? {
-          type: "manual" as const,
-          enabled: true,
-        },
+        trigger_config: toTriggerConfig(
+          sourceTriggerConfig ?? { type: "manual", enabled: true },
+        ),
         system_workflow_key: systemWorkflowKey,
         // Pass formatted steps if available to avoid regeneration
         ...(formattedSteps &&
@@ -120,18 +116,13 @@ export function useWorkflowCardActions({
           }),
         // Only generate if no steps exist
         generate_immediately: !formattedSteps || formattedSteps.length === 0,
+        delivery: ONE_CLICK_WORKFLOW_DELIVERY,
       };
 
       const result = await createWorkflow(workflowRequest);
 
       if (result.success && result.workflow) {
         toast.success("Workflow created successfully!", { id: toastId });
-        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
-          workflow_id: result.workflow.id,
-          step_count: result.workflow.steps?.length || 0,
-          trigger_type: "manual",
-          has_schedule: false,
-        });
         selectWorkflow(result.workflow, { autoSend: variant === "suggestion" });
         onActionComplete?.();
       }
@@ -146,7 +137,7 @@ export function useWorkflowCardActions({
   const handleInsertPrompt = () => {
     if (prompt) {
       // `title` is user-authored free text — intentionally not sent.
-      trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED);
+      track("use_cases:prompt_inserted", {});
       appendToInput(prompt);
       router.push("/c");
       onActionComplete?.();
@@ -156,7 +147,7 @@ export function useWorkflowCardActions({
   const handleNavigate = () => {
     const targetSlug = slug || communityWorkflow?.slug || workflow?.slug;
     if (targetSlug) {
-      trackEvent(ANALYTICS_EVENTS.WORKFLOW_CARD_NAVIGATE, {
+      track("workflow_card:navigate", {
         slug: targetSlug,
         variant,
       });

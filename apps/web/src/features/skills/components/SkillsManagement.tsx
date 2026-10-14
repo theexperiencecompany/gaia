@@ -13,7 +13,7 @@ import type { ComponentType } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import type { Skill } from "../api/types";
 import { useSkills } from "../hooks/useSkills";
 import { buildTargetMap } from "../utils";
@@ -40,7 +40,7 @@ export default function SkillsManagement() {
   useEffect(() => {
     if (!query.trim()) return;
     const timer = setTimeout(() => {
-      trackEvent(ANALYTICS_EVENTS.SKILL_SEARCHED);
+      track("skill:searched", {});
     }, 500);
     return () => clearTimeout(timer);
   }, [query]);

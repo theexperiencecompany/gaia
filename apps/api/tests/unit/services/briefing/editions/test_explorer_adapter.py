@@ -1,7 +1,7 @@
-"""Unit tests for the ``BriefingPayload`` -> explorer ``ed`` adapter.
+"""Unit tests for the BriefingPayload -> explorer ed adapter.
 
-``build_ed`` is pure, so every test drives the real function with a real
-payload dict and pins the exact ``ed`` values the vendored JS templates read.
+build_ed is pure, so every test drives the real function and pins the exact ed values
+the vendored JS templates read.
 """
 
 from typing import Any
@@ -339,9 +339,11 @@ class TestHeadline:
 
 @pytest.mark.unit
 class TestFixedSlots:
-    """Some vendored families index fixed item slots (the founder fixture always
-    held three today, three overnight and two decision items). A family handed
-    fewer threw in the page script, and Chromium shipped a blank 2px PNG."""
+    """Some vendored families index fixed item slots.
+
+    The founder fixture always held three today, three overnight and two decision items.
+    A family handed fewer threw in the page script, and Chromium shipped a blank 2px PNG.
+    """
 
     def _sparse(self) -> dict[str, Any]:
         return _payload(

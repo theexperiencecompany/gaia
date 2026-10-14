@@ -1,5 +1,20 @@
+/**
+ * useInfiniteTriggerOptions Hook
+ *
+ * Pages through the dynamic options of a trigger field for handlers that
+ * page them (GitHub repositories); a new `search` starts again from page 1.
+ */
+
 import { useInfiniteQuery } from "@tanstack/react-query";
+
 import { workflowApi } from "@/features/workflows/api/workflowApi";
+
+/**
+ * Options per page — the `per_page` the GitHub handler requests
+ * (`apps/api/app/services/triggers/handlers/github.py`). A shorter page is
+ * the last one.
+ */
+export const TRIGGER_OPTIONS_PAGE_SIZE = 100;
 
 export const useInfiniteTriggerOptions = (
   integrationId: string,
@@ -17,21 +32,16 @@ export const useInfiniteTriggerOptions = (
       "infinite",
       search,
     ],
-    queryFn: async ({ pageParam = 1 }) => {
-      // Call with queryParams ({ page, search })
-      return workflowApi.getTriggerOptions(
-        integrationId,
-        triggerSlug,
-        fieldName,
-        { page: pageParam, search },
-      );
-    },
-    getNextPageParam: (lastPage, allPages) => {
-      // If last page has no options or fewer than expected (e.g. 50), stop
-      if (!lastPage || lastPage.length < 50) return undefined;
-      return allPages.length + 1;
-    },
+    queryFn: ({ pageParam }) =>
+      workflowApi.getTriggerOptions(integrationId, triggerSlug, fieldName, {
+        page: pageParam,
+        search,
+      }),
     initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length < TRIGGER_OPTIONS_PAGE_SIZE
+        ? undefined
+        : allPages.length + 1,
     enabled: enabled && !!integrationId && !!triggerSlug && !!fieldName,
   });
 };

@@ -1,27 +1,10 @@
-"""
-LangChain AgentMiddleware Integration for langgraph_bigtool.
+"""Bridge between LangChain's official AgentMiddleware system and our langgraph_bigtool agent architecture.
 
-This package provides a bridge between LangChain's official AgentMiddleware
-system and our custom langgraph_bigtool-based agent architecture.
-
-Key Components:
-- MiddlewareExecutor: Executes middleware hooks at appropriate points
-- SubagentMiddleware: Spawn subagents for parallel/focused work
-- WorkspaceArchivingSummarizationMiddleware: Archives history to the
-  persistent workspace before summarization
-- WorkspaceCompactionMiddleware: Persists large tool outputs to the
-  persistent workspace and replaces them with a `/workspace/...` reference
-- create_middleware_stack: Factory function to create the standard middleware stack
-
-Usage in build_graph.py:
-    from app.agents.middleware import create_middleware_stack
-
-    middleware = create_middleware_stack()
-
-    builder = create_agent(
-        agent_config=AgentConfig(middleware=middleware),
-        ...
-    )
+Key components: MiddlewareExecutor (runs hooks), SubagentMiddleware (spawns
+subagents), WorkspaceArchivingSummarizationMiddleware (archives history
+before summarization), WorkspaceCompactionMiddleware (persists large tool
+outputs to a /workspace/... reference), create_middleware_stack (the
+standard stack factory, used in build_graph.py).
 """
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
@@ -45,7 +28,6 @@ from app.agents.middleware.runtime_adapter import (
     create_model_request,
     create_tool_call_request,
 )
-from app.agents.middleware.style_guard import StyleGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
@@ -58,7 +40,6 @@ __all__ = [
     "LoopGuardMiddleware",
     "MediaDescriptionMiddleware",
     "MiddlewareExecutor",
-    "StyleGuardMiddleware",
     "SubagentMiddleware",
     "WorkspaceArchivingSummarizationMiddleware",
     "WorkspaceCompactionMiddleware",

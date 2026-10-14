@@ -2,12 +2,13 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.executor_queue import ExecutorRunItem
 from app.db.repositories.base import MongoDocument
+from app.models.agent_config import SubagentResumeItem
 
 
 class HILApprovalStatus(StrEnum):
@@ -47,6 +48,32 @@ class DeclinedCallRecord(TypedDict):
     """
 
     feedback: str | None
+    # Present only on auto-mode refusals (absent on rows written before this
+    # shipped, which correctly read as user-made).
+    auto: NotRequired[bool]
+
+
+class HilInterruptPayload(TypedDict, total=False):
+    """What the HIL gate passes to interrupt() (gate.decide_tool_call).
+
+    approval_ids is added when several gated calls park in one step (subagent_runner.merge_approvals).
+    """
+
+    type: str
+    approval_id: str
+    tool_name: str
+    summary: str
+    integration_name: str | None
+    approval_ids: list[str]
+
+
+class HilResumeDecision(TypedDict, total=False):
+    """The Command(resume=...) value a decided approval wakes its gate with (resolution.py)."""
+
+    status: str
+    feedback: str | None
+    scope: str
+    approval_id: str
 
 
 class HILPreferences(BaseModel):
@@ -59,6 +86,9 @@ class HILPreferences(BaseModel):
     # tool name -> should-ask (True = always ask, False = always allow). Holds
     # only the tools the user explicitly flipped, so it stays small.
     tool_overrides: dict[str, bool] = Field(default_factory=dict)
+    # Auto mode declines to judge these tools — they always get a card. The
+    # deny-rule half of deny > ask > allow: explicit, per-user, no inference.
+    never_auto_tools: list[str] = Field(default_factory=list)
 
 
 class HILToolRiskRecord(MongoDocument):
@@ -111,18 +141,27 @@ class HILApprovalRecord(MongoDocument):
     # Stamped when the resume run is dispatched; a decided record without it is
     # a crashed resume the sweep re-dispatches.
     resumed_at: datetime | None = None
-    # Set only when a *detached background subagent* parked on this approval. The
-    # subagent's graph is checkpointed under this deterministic thread id, so the
-    # executor's wait_for_subagents join can rediscover and resume it after the
-    # executor's own pause — durable state, never the in-process session. ``None`` for
-    # every other approval (interactive tool calls, blocking handoffs).
+    # Set at creation only when a background subagent raised this approval: its thread
+    # and the SubagentResumeItem that rebuilds it, so any process can resume it on a
+    # decision. dict[str, Any] on the read side for the same reason as resume_item.
     subagent_thread_id: str | None = None
-    subagent_agent_name: str | None = None
-    # Stamped by the join once the parked subagent has been resumed and its result
-    # collected. Distinct from ``resumed_at`` (which records that a decision dispatched
-    # the *executor*): a batch decision wakes the executor once, then each parked
-    # subagent is collected individually across join rounds.
-    subagent_collected_at: datetime | None = None
+    subagent_resume: dict[str, Any] | None = None
+
+    def resume_payload(self) -> HilResumeDecision:
+        """The Command(resume=...) value this decided record wakes its gate with.
+
+        Abandoned resumes as a denial: the user moved on, the agent must not act.
+        approval_id lets a gate sequence match its own decision on replay.
+        """
+        status = self.status
+        return {
+            "status": HILApprovalStatus.DENIED.value
+            if status is HILApprovalStatus.ABANDONED
+            else status.value,
+            "feedback": self.feedback,
+            "scope": self.scope,
+            "approval_id": self.approval_id,
+        }
 
 
 class HILApprovalUpdate(BaseModel):
@@ -135,15 +174,12 @@ class HILApprovalUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # Typed on the write side only. set_resume_item is the sole writer and takes
-    # an ExecutorRunItem, so every write is controlled. HILApprovalRecord keeps
-    # `dict[str, Any]` on the read side deliberately — narrowing a persisted
-    # field would start rejecting rows written before this type existed.
+    # Typed on the write side only — set_resume_item is the sole writer, taking
+    # an ExecutorRunItem. The read side (HILApprovalRecord) stays dict[str, Any]
+    # deliberately: narrowing it would reject rows written before this type existed.
     resume_item: ExecutorRunItem | None = None
     resumed_at: datetime | None = None
-    subagent_thread_id: str | None = None
-    subagent_agent_name: str | None = None
-    subagent_collected_at: datetime | None = None
+    subagent_resume: SubagentResumeItem | None = None
 
 
 class HILToolRiskUpdate(BaseModel):
@@ -154,3 +190,95 @@ class HILToolRiskUpdate(BaseModel):
     is_destructive: bool | None = None
     rationale: str | None = None
     classified_at: datetime | None = None
+
+
+class LedgerState(StrEnum):
+    """Where one ledger approval stands. Separate enum from ``HILApprovalStatus``:
+    the ledger has no expiry/timeout states and adds execution tracking — reusing
+    the old enum would let timeout machinery read ledger rows and vice versa."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+    REVOKED = "revoked"
+    EXECUTING = "executing"
+    EXECUTED = "executed"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
+LIVE_LEDGER_STATES = frozenset({LedgerState.PENDING, LedgerState.APPROVED})
+
+
+class ApprovalProposal(BaseModel):
+    """What a gated call proposes; the ledger mints the id and owns the state."""
+
+    conversation_id: str
+    user_id: str = ""
+    fingerprint: str
+    tool_name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    # The connected account the call acts as; None is the integration's primary.
+    account: str | None = None
+    summary: str = ""
+    rationale: str = ""
+    preview: str = ""
+    owner_agent: str = ""
+    blocked_by: list[str] = Field(default_factory=list)
+    # Background owner parked on this approval, for the resume driver: who to wake
+    # when it decides ("workflow"|"todo" plus the id). Empty on live runs, which
+    # resume through the executor inbox; set once at registration.
+    owner_run_type: str = ""
+    owner_id: str = ""
+    proposing_run_id: str | None = None
+
+
+class ApprovalLedgerDocument(MongoDocument, ApprovalProposal):
+    """One entry in the executor-free approval ledger (``approval_ledger``).
+
+    Uncached and never expiring: rows are decision state read at low volume, and
+    a pending row leaves only by user decision or agent revoke — never by timer.
+    """
+
+    approval_id: str
+    # Whether a resume was already enqueued: the approve tap and any retry/reconnect
+    # share it, so exactly one resume per approval. Every further resume needs a
+    # fresh user approval (the human is the loop breaker).
+    owner_resumed: bool = False
+    state: LedgerState = LedgerState.PENDING
+    feedback: str | None = None
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    v: int = 0
+    created_at: datetime | None = None
+    # When this row entered EXECUTING. The lazy reconciler treats EXECUTING
+    # older than the cutoff as crashed (UNKNOWN) — never blind-retried.
+    executing_started_at: datetime | None = None
+
+
+# What a bot user's chat reply to pending approvals resolves to (services/hil/conversational.py).
+DecisionAction = Literal["approve", "deny", "unrelated"]
+
+
+class DecisionResult(BaseModel):
+    """Classification of a user's reply to a single pending approval."""
+
+    action: DecisionAction
+    feedback: str | None = None
+
+
+class BatchItemDecision(BaseModel):
+    """One pending action's verdict from the user's reply."""
+
+    index: int = Field(description="1-based index of the pending action")
+    action: Literal["approve", "deny", "leave"]
+    feedback: str | None = None
+
+
+class BatchDecisionResult(BaseModel):
+    """Classification of a reply against several pending approvals."""
+
+    unrelated: bool = Field(
+        description="True when the message is a new request, not an answer to the pending actions"
+    )
+    decisions: list[BatchItemDecision] = Field(default_factory=list)

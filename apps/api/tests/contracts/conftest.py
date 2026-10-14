@@ -4,10 +4,10 @@ The contract suite runs against real Mongo + real Redis (never mocks) — that i
 what makes it a backend-agnostic certificate: the same contract classes will one
 day run against a Postgres repository and green-on-both proves equivalence.
 
-Isolation, so the default ``-n 4`` xdist run is safe:
+Isolation, so the default -n 4 xdist run is safe:
 - Mongo: a fresh Motor client per test on a uniquely-named collection in
-  ``gaia_test``, wired into the repository accessor and dropped on teardown.
-- Redis: the app's ``redis_cache`` singleton is repointed at a per-worker Redis
+  gaia_test, wired into the repository accessor and dropped on teardown.
+- Redis: the app's redis_cache singleton is repointed at a per-worker Redis
   DB and flushed per test.
 """
 
@@ -52,7 +52,7 @@ def redis_url() -> str:
 async def raw_collection(
     mongodb_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[AsyncIOMotorCollection]:
-    """A fresh, uniquely-named Motor collection wired into the repository accessor.
+    """Return a fresh, uniquely-named Motor collection wired into the repository accessor.
 
     Fresh client per test avoids event-loop cross-contamination; the unique name
     keeps parallel xdist workers from colliding. Every repository under test
@@ -67,7 +67,17 @@ async def raw_collection(
     # lane sharing one mongod owns — and can drop — everything it creates.
     coll = client[worker_mongo_db_name()][f"contract_fixture_{worker}_{uuid.uuid4().hex}"]
 
-    monkeypatch.setattr("app.db.repositories.base.get_async_collection", lambda _name: coll)
+    # Both modules that hold the accessor: the base owns every standard path,
+    # and notifications binds its own for the one bulk update_many the base
+    # has no seam for. Missing either sends that repository at real Mongo.
+    def accessor(name: str) -> AsyncIOMotorCollection:
+        # pymongo refuses a non-str name, so a repository that lost its name fails here too.
+        if not isinstance(name, str):
+            raise TypeError("name must be an instance of str")
+        return coll
+
+    monkeypatch.setattr("app.db.repositories.base.get_async_collection", accessor)
+    monkeypatch.setattr("app.db.repositories.notifications.get_async_collection", accessor)
 
     yield coll
 
@@ -77,7 +87,7 @@ async def raw_collection(
 
 @pytest.fixture(autouse=True)
 async def redis(redis_url: str, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Redis]:
-    """Real Redis repointed into ``redis_cache`` and flushed per test.
+    """Real Redis repointed into redis_cache and flushed per test.
 
     Autouse so no contract test can accidentally hit the developer's default
     Redis DB and leak cache state into the next test.

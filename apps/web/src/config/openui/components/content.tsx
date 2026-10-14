@@ -13,12 +13,8 @@ import { MapBlockView } from "./MapBlockView";
 import { NumberTickerView } from "./NumberTickerView";
 import { VideoBlockView } from "./VideoBlockView";
 
-// ---------------------------------------------------------------------------
-// Component definitions
-//
-// This module is the registration surface consumed by ../genericLibrary; the
-// views themselves live in their own files next to this one.
-// ---------------------------------------------------------------------------
+// Component definitions: the registration surface consumed by
+// ../genericLibrary — the views themselves live in their own files next to this one.
 
 export const imageGalleryDef = defineComponent({
   name: "ImageGallery",

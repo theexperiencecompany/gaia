@@ -9,6 +9,7 @@ provisioning time so each user gets unique step IDs rather than sharing module-l
 from collections.abc import Callable
 from uuid import uuid4
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_configs import CalendarEventStartingSoonConfig
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -35,6 +36,8 @@ def _meeting_prep() -> CreateWorkflowRequest:
         is_system_workflow=True,
         source_integration="googlecalendar",
         system_workflow_key="calendar:meeting_prep",
+        # A pre-meeting brief is only useful before the meeting starts.
+        delivery=WorkflowDelivery.NOW,
         trigger_config=TriggerConfig(
             type=TriggerType.INTEGRATION,
             trigger_name="calendar_event_starting_soon",
@@ -92,11 +95,12 @@ def _meeting_reminder() -> CreateWorkflowRequest:
         prompt=(
             "Send the user a short reminder for the upcoming calendar event from the trigger. "
             "Include the event title, time, and join link or location if available. "
-            "Keep it to 2-3 lines — this is just a heads-up, not a full briefing."
+            "Keep it to 2-3 lines. This is just a heads-up, not a full briefing."
         ),
         is_system_workflow=True,
         source_integration="googlecalendar",
         system_workflow_key="calendar:meeting_reminder",
+        delivery=WorkflowDelivery.NOW,
         trigger_config=TriggerConfig(
             type=TriggerType.INTEGRATION,
             trigger_name="calendar_event_starting_soon",

@@ -106,8 +106,7 @@ async def test_a_case_is_charged_only_for_what_it_spent(tmp_path: Path) -> None:
 
 
 async def test_the_per_case_figures_sum_to_the_run_total(tmp_path: Path) -> None:
-    """The cross-check the publish gate makes. Under the old delta this summed
-    to roughly concurrency times the truth."""
+    """The cross-check the publish gate makes; under the old delta this summed to roughly concurrency times the truth."""
     records = await _run_concurrently(tmp_path)
     journalled = sum(int(r["tokens"]["input"]) for r in records.values())
     assert journalled == sum(v[0] for v in SPEND.values())
@@ -119,8 +118,7 @@ async def test_a_metered_case_is_labelled_as_measured(tmp_path: Path) -> None:
 
 
 def test_a_transport_that_measures_nothing_is_labelled_an_estimate() -> None:
-    """gaia_bench and hil: their endpoints report no usage, so their figure is a
-    character estimate. It stays, but it can no longer pass for a measurement."""
+    """gaia_bench and hil endpoints report no usage, so their figure is a character estimate that can no longer pass for a measurement."""
     tracker = EvalCostTracker({}, 0.0)
     run = CaseRun(case_id="g", text="x", tokens_in=56, tokens_out=12)
     assert runner._attribute_tokens(run, tracker, "g") == runner.TOKENS_ESTIMATED
@@ -128,8 +126,7 @@ def test_a_transport_that_measures_nothing_is_labelled_an_estimate() -> None:
 
 
 def test_the_meter_overrides_a_transports_own_figure() -> None:
-    """A suite computing its own number cannot outvote the meter — that is what
-    made five suites disagree."""
+    """A suite computing its own number cannot outvote the meter — that is what made five suites disagree."""
     tracker = EvalCostTracker({}, 0.0)
     tracker.set_provider("opencode")
     with tracker.case_scope("k"):
@@ -159,8 +156,7 @@ def test_manual_usage_lands_on_the_case_that_reported_it() -> None:
 
 @pytest.mark.parametrize("case_id", ["a", "b", "c"])
 async def test_no_case_is_credited_with_the_whole_run(tmp_path: Path, case_id: str) -> None:
-    """The delta's worst symptom: the last case to finish carried nearly the
-    entire run's spend, and the first carried most of it too."""
+    """The delta's worst symptom: the last case to finish carried nearly the entire run's spend."""
     records = await _run_concurrently(tmp_path)
     run_total = sum(v[0] for v in SPEND.values())
     assert int(records[case_id]["tokens"]["input"]) < run_total

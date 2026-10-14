@@ -1,17 +1,13 @@
 """Every edition family renders a real brief honestly, in a real browser.
 
-Drives the production path from a ``BriefingPayload`` through the family's
-renderer and headless Chromium — no browser fake. Two failure modes shipped
-before this test existed:
+Drives the production path from a BriefingPayload through the family's renderer and
+headless Chromium, with no browser fake. Two shipped failure modes are pinned:
 
-- The vendored templates index fixed item slots (``boardingpass`` read
-  ``today[2]``); a page script that throws leaves an empty ``#root``, and
-  Chromium screenshots it as a 2px-high blank PNG. So the image is asserted on.
-- The templates were authored against a demo fixture: the weekly family printed
-  its fixture week ("term sheet signed with Mehul", "217 emails handled") and
-  every family printed missing figures as "0". So the rendered text is asserted
-  on: the brief's own headline is there, and no fixture string, zero-filled
-  figure, or "null"/"undefined" is.
+- Templates index fixed item slots; a throwing page script leaves an empty root that
+  screenshots as a 2px-high blank PNG, so the image is asserted on.
+- Templates printed demo-fixture text and zero-filled missing figures, so the rendered
+  text is asserted on: the brief's headline is there, no fixture string, "0" or
+  "null"/"undefined" is.
 """
 
 from __future__ import annotations
@@ -79,7 +75,7 @@ _WEEKLY_HEADLINE = "A steady week: twelve things done, four of them by you."
 
 
 def _as_rendered(family: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """The payload as the pipeline would hand it to ``family``."""
+    """Return the payload as the pipeline would hand it to the family."""
     if family == "weekly":
         return {**payload, "headline": _WEEKLY_HEADLINE, "mood": "weekly"}
     return payload

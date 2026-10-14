@@ -44,6 +44,12 @@ vi.mock("@slack/bolt", () => ({
 
 vi.mock("@gaia/shared/bots", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
+  // The real boundary and failure recorder, so the runtime-error test reads
+  // the bot_event the adapter really prints.
+  const actual =
+    await vi.importActual<typeof import("@gaia/shared/bots")>(
+      "@gaia/shared/bots",
+    );
   const base = makeGaiaSharedMock("slack", {
     streamingDefaults: {
       slack: { editIntervalMs: 1500, streaming: true, platform: "slack" },
@@ -56,6 +62,8 @@ vi.mock("@gaia/shared/bots", async () => {
   const SUBCOMMAND_COMMANDS = new Set(["todo", "workflow"]);
   return {
     ...base,
+    withWideEvent: actual.withWideEvent,
+    recordBotFailure: actual.recordBotFailure,
     extractSubcommandArgs: vi.fn(
       (commandName: string, rawText: string | undefined) => {
         if (!SUBCOMMAND_COMMANDS.has(commandName)) return {};
@@ -70,8 +78,13 @@ vi.mock("@gaia/shared/bots", async () => {
 // Import adapter after mocks are in place
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat } from "@gaia/shared/bots";
+import {
+  handleStreamingChat,
+  type OutboundFile,
+  type ReactionOutcome,
+} from "@gaia/shared/bots";
 import { SlackAdapter } from "../../slack/src/adapter";
+import { captureBotEvents } from "../shared/helpers/capture-bot-event";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,6 +99,7 @@ function makeSlackClient(tsOverride?: string) {
         .mockResolvedValue({ ts: tsOverride ?? "1234567890.123456" }),
       update: vi.fn().mockResolvedValue({}),
       postEphemeral: vi.fn().mockResolvedValue({}),
+      delete: vi.fn().mockResolvedValue({}),
     },
   };
 }
@@ -374,6 +388,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -696,6 +711,7 @@ describe("SlackAdapter - app_mention event handling", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -783,6 +799,7 @@ describe("SlackAdapter - DM message event handling", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -920,5 +937,345 @@ describe("SlackAdapter - deliverOutbound channel routing", () => {
       channel: "D-dm",
       text: "hi",
     });
+  });
+});
+
+describe("SlackAdapter - sendOutboundFile channel routing", () => {
+  type FileDeliverer = {
+    sendOutboundFile: (
+      destinationId: string,
+      file: OutboundFile,
+      isChannel: boolean,
+    ) => Promise<void>;
+    app: unknown;
+  };
+
+  const shot: OutboundFile = {
+    data: Buffer.from("png"),
+    mime: "image/png",
+    filename: "browser-step-1.png",
+    caption: "Step 1",
+  };
+
+  function makeAdapter() {
+    const adapter = new SlackAdapter() as unknown as FileDeliverer;
+    const app = {
+      client: {
+        files: { uploadV2: vi.fn().mockResolvedValue({}) },
+        conversations: {
+          open: vi.fn().mockResolvedValue({ channel: { id: "D-dm" } }),
+        },
+      },
+    };
+    adapter.app = app;
+    return { adapter, app };
+  }
+
+  it("uploads a group's photo into the channel and skips DM resolution", async () => {
+    const { adapter, app } = makeAdapter();
+
+    await adapter.sendOutboundFile("C-group", shot, true);
+
+    expect(app.client.conversations.open).not.toHaveBeenCalled();
+    expect(app.client.files.uploadV2).toHaveBeenCalledWith(
+      expect.objectContaining({ channel_id: "C-group" }),
+    );
+  });
+
+  it("uploads a photo to the user's DM when not a channel", async () => {
+    const { adapter, app } = makeAdapter();
+
+    await adapter.sendOutboundFile("U-user", shot, false);
+
+    expect(app.client.conversations.open).toHaveBeenCalledWith({
+      users: "U-user",
+    });
+    expect(app.client.files.uploadV2).toHaveBeenCalledWith(
+      expect.objectContaining({ channel_id: "D-dm" }),
+    );
+  });
+
+  it("re-resolves the DM after an upload to a stale DM channel fails", async () => {
+    const { adapter, app } = makeAdapter();
+    app.client.files.uploadV2.mockRejectedValueOnce(
+      new Error("channel_not_found"),
+    );
+
+    await expect(
+      adapter.sendOutboundFile("U-user", shot, false),
+    ).rejects.toThrow("channel_not_found");
+    await adapter.sendOutboundFile("U-user", shot, false);
+
+    expect(app.client.conversations.open).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// app.error — Bolt's last-resort handler
+// ---------------------------------------------------------------------------
+
+// The mock above does not reach apps/bots/slack's @slack/bolt, so this is a real
+// Bolt App dispatching a throwing listener into the adapter's error handler;
+// app_uninstalled skips Bolt's authorize step, so no Slack API call is made.
+describe("SlackAdapter - runtime errors", () => {
+  interface RealBoltApp {
+    event: (type: string, listener: () => Promise<void>) => void;
+    processEvent: (event: {
+      body: Record<string, unknown>;
+      ack: () => Promise<void>;
+    }) => Promise<void>;
+  }
+
+  async function bootRealApp(): Promise<RealBoltApp> {
+    vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test");
+    vi.stubEnv("SLACK_SIGNING_SECRET", "signing-secret");
+    vi.stubEnv("SLACK_APP_TOKEN", "xapp-test");
+    const adapter = new SlackAdapter();
+    await (
+      adapter as unknown as { initialize: () => Promise<void> }
+    ).initialize();
+    vi.unstubAllEnvs();
+    return (adapter as unknown as { app: RealBoltApp }).app;
+  }
+
+  it("turns a listener crash into a failed bot_runtime_error event with its reason and hashed user", async () => {
+    const app = await bootRealApp();
+    app.event("app_uninstalled", async () => {
+      throw new Error("An API error occurred: channel_not_found");
+    });
+
+    const events = await captureBotEvents("bot_runtime_error", () =>
+      app.processEvent({
+        body: {
+          type: "event_callback",
+          team_id: "T1",
+          api_app_id: "A1",
+          event: { type: "app_uninstalled", user: "U123" },
+        },
+        ack: async () => undefined,
+      }),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      platform: "slack",
+      outcome: "failed",
+      reason: "destination_not_found",
+      user_hash: "h_U123",
+    });
+    expect(JSON.stringify(events[0])).not.toContain('"U123"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reactToMessage — the native reaction primitive, and the live turn using it
+// ---------------------------------------------------------------------------
+
+type SlackReactor = {
+  reactToMessage: (
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    isChannel: boolean,
+  ) => Promise<ReactionOutcome>;
+  app: unknown;
+};
+
+describe("SlackAdapter - reactToMessage", () => {
+  function makeReactor(reactionsAdd: unknown) {
+    const adapter = new SlackAdapter() as unknown as SlackReactor;
+    adapter.app = {
+      client: {
+        chat: { postMessage: vi.fn().mockResolvedValue({ ts: "1.1" }) },
+        conversations: {
+          open: vi.fn().mockResolvedValue({ channel: { id: "D-dm" } }),
+        },
+        reactions: { add: reactionsAdd },
+      },
+    };
+    return adapter;
+  }
+
+  function postMessageOf(adapter: SlackReactor) {
+    return (
+      adapter.app as {
+        client: { chat: { postMessage: ReturnType<typeof vi.fn> } };
+      }
+    ).client.chat.postMessage;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("attaches via reactions.add with the shortcode in a channel", async () => {
+    const add = vi.fn().mockResolvedValue({});
+    const adapter = makeReactor(add);
+
+    const attached = await adapter.reactToMessage(
+      "C-group",
+      "123.456",
+      "👍",
+      true,
+    );
+
+    expect(attached).toBe("attached");
+    expect(add).toHaveBeenCalledWith({
+      channel: "C-group",
+      timestamp: "123.456",
+      name: "+1",
+    });
+  });
+
+  it("resolves the DM channel for user destinations", async () => {
+    const add = vi.fn().mockResolvedValue({});
+    const adapter = makeReactor(add);
+
+    await adapter.reactToMessage("U-user", "123.456", "✅", false);
+
+    expect(add).toHaveBeenCalledWith({
+      channel: "D-dm",
+      timestamp: "123.456",
+      name: "white_check_mark",
+    });
+  });
+
+  it("attaches any standard emoji comms picks, not only a curated few", async () => {
+    const add = vi.fn().mockResolvedValue({});
+    const adapter = makeReactor(add);
+
+    const attached = await adapter.reactToMessage(
+      "C-group",
+      "123.456",
+      "😅",
+      true,
+    );
+
+    expect(attached).toBe("attached");
+    expect(add).toHaveBeenCalledWith({
+      channel: "C-group",
+      timestamp: "123.456",
+      name: "sweat_smile",
+    });
+  });
+
+  it("refuses an emoji with no known shortcode without calling Slack or sending text", async () => {
+    const add = vi.fn().mockResolvedValue({});
+    const adapter = makeReactor(add);
+
+    const attached = await adapter.reactToMessage(
+      "C-group",
+      "123.456",
+      "🫡",
+      true,
+    );
+
+    expect(attached).toBe("unmapped_emoji");
+    expect(add).not.toHaveBeenCalled();
+    expect(postMessageOf(adapter)).not.toHaveBeenCalled();
+  });
+
+  it("refuses without sending text when attach fails", async () => {
+    const add = vi.fn().mockRejectedValue(new Error("message_not_found"));
+    const adapter = makeReactor(add);
+
+    const attached = await adapter.reactToMessage(
+      "C-group",
+      "123.456",
+      "👍",
+      true,
+    );
+
+    expect(attached).toBe("attach_failed");
+    expect(postMessageOf(adapter)).not.toHaveBeenCalled();
+  });
+});
+
+describe("SlackAdapter - live turn reaction", () => {
+  type Streamer = {
+    handleSlackStreaming: (
+      client: ReturnType<typeof makeSlackClient>,
+      channelId: string,
+      userId: string,
+      message: string,
+      isDm: boolean,
+      inboundTs?: string,
+    ) => Promise<void>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function lastReactionHook(): (emoji: string) => Promise<ReactionOutcome> {
+    return vi.mocked(handleStreamingChat).mock.calls.at(-1)?.[8] as (
+      emoji: string,
+    ) => Promise<ReactionOutcome>;
+  }
+
+  it("reacts to the inbound message and deletes the Thinking... placeholder", async () => {
+    const adapter = new SlackAdapter();
+    const react = vi
+      .spyOn(adapter as unknown as SlackReactor, "reactToMessage")
+      .mockResolvedValue("attached");
+    const client = makeSlackClient("ts-placeholder");
+
+    await (adapter as unknown as Streamer).handleSlackStreaming(
+      client,
+      "D123",
+      "U456",
+      "thanks!",
+      true,
+      "111.222",
+    );
+
+    await expect(lastReactionHook()("👍")).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith("D123", "111.222", "👍", true);
+    expect(client.chat.delete).toHaveBeenCalledWith({
+      channel: "D123",
+      ts: "ts-placeholder",
+    });
+  });
+
+  it("keeps the placeholder for the text fallback when the reaction is refused", async () => {
+    const adapter = new SlackAdapter();
+    vi.spyOn(
+      adapter as unknown as SlackReactor,
+      "reactToMessage",
+    ).mockResolvedValue("unmapped_emoji");
+    const client = makeSlackClient("ts-placeholder");
+
+    await (adapter as unknown as Streamer).handleSlackStreaming(
+      client,
+      "D123",
+      "U456",
+      "thanks!",
+      true,
+      "111.222",
+    );
+
+    await expect(lastReactionHook()("👍")).resolves.toBe("unmapped_emoji");
+    expect(client.chat.delete).not.toHaveBeenCalled();
+  });
+
+  it("falls back to text for a slash command, which has no message to react to", async () => {
+    const adapter = new SlackAdapter();
+    const react = vi.spyOn(
+      adapter as unknown as SlackReactor,
+      "reactToMessage",
+    );
+    const client = makeSlackClient("ts-placeholder");
+
+    await (adapter as unknown as Streamer).handleSlackStreaming(
+      client,
+      "C789",
+      "U456",
+      "thanks!",
+      false,
+    );
+
+    await expect(lastReactionHook()("👍")).resolves.toBe("no_target");
+    expect(react).not.toHaveBeenCalled();
+    expect(client.chat.delete).not.toHaveBeenCalled();
   });
 });

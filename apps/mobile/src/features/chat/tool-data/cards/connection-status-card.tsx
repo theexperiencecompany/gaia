@@ -15,14 +15,9 @@ import {
 } from "@/features/chat/tool-data/primitives";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 
-// ---------------------------------------------------------------------------
-// Types
-//
-// Backend ships either a single-integration probe (legacy `status` shape)
-// or a list summary (`{ integrations: [...] }`). The card normalizes both
-// to a single rendering pipeline so the same chat tool can describe one or
-// many integrations.
-// ---------------------------------------------------------------------------
+// Backend ships either a single-integration probe (legacy `status` shape) or a
+// list summary (`{ integrations: [...] }`); the card normalizes both to one
+// rendering pipeline for one or many integrations.
 
 export type ConnectionStatus = "connected" | "disconnected" | "error";
 
@@ -193,14 +188,9 @@ function IntegrationStatusRow({ item }: { item: NormalizedItem }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// ConnectionStatusCard — list of integration statuses with a manage CTA.
-//
-// Renders both single-integration and list-shape payloads. Matches the
-// chat tool card styling contract (zinc-800 shell, zinc-900 inner rows,
-// no borders) and uses heroui-native primitives for chips/buttons so the
-// theming stays consistent with other tool cards.
-// ---------------------------------------------------------------------------
+// ConnectionStatusCard: list of integration statuses with a manage CTA, for both
+// single and list-shape payloads. Matches the chat tool card styling contract
+// (zinc-800 shell, zinc-900 inner rows, no borders) via heroui-native primitives.
 
 export function ConnectionStatusCard({ data }: { data: ConnectionStatusData }) {
   const router = useRouter();

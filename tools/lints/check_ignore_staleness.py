@@ -100,7 +100,7 @@ _RUFF_ENV = {k: v for k, v in os.environ.items() if k not in {"FORCE_COLOR", "CL
 
 
 def fires(entry: Entry) -> bool:
-    """True when the rule still fires somewhere in the file WITHOUT the exemption.
+    """Return True when the rule still fires somewhere in the file WITHOUT the exemption.
 
     Runs against a temp copy of pyproject.toml with only THIS entry stripped,
     so every other setting (line-length, target-version, select, sibling

@@ -18,7 +18,6 @@ from typing import Annotated, Any
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 from app.agents.tools.workflow_shared_tools import (
     SUBAGENT_WORKFLOW_TOOLS as _SUBAGENT_WORKFLOW_TOOLS,
@@ -26,8 +25,9 @@ from app.agents.tools.workflow_shared_tools import (
     search_triggers,
 )
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.decorators import with_rate_limiting
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import agent_configurable, current_stream_writer, get_user_id
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
@@ -41,7 +41,6 @@ from app.utils.workflow_utils import (
     create_workflow_directly,
     error_response,
     get_thread_id,
-    get_user_id,
     success_response,
 )
 from shared.py.wide_events import log
@@ -56,6 +55,13 @@ async def create_workflow(
     user_request: Annotated[
         str,
         "The user's exact words describing what workflow they want. Pass verbatim.",
+    ],
+    delivery: Annotated[
+        WorkflowDelivery,
+        "How each run's result reaches the user, from what they said: 'now' when they "
+        "want to be told as soon as it finishes (alerts, reminders, anything time-"
+        "sensitive); 'brief' when they want it in their daily brief or it is a routine "
+        "background check; 'silent' when they asked not to be notified.",
     ],
 ) -> dict[str, Any]:
     """
@@ -72,11 +78,11 @@ async def create_workflow(
 
     EXAMPLES:
 
-    User: "Create a workflow that checks my email every morning"
-    -> create_workflow(user_request="checks my email every morning")
+    User: "Create a workflow that checks my email every morning, put it in my brief"
+    -> create_workflow(user_request="checks my email every morning", delivery="brief")
 
     User: "I want a workflow that notifies me on Slack when I get a GitHub PR"
-    -> create_workflow(user_request="notifies me on Slack when I get a GitHub PR")
+    -> create_workflow(user_request="notifies me on Slack when I get a GitHub PR", delivery="now")
 
     DO NOT:
     - Parse cron expressions
@@ -85,20 +91,18 @@ async def create_workflow(
     - Generate titles or descriptions
     - Fill in any other parameters
 
-    Just pass user_request. The workflow assistant handles everything else. To
-    change an existing workflow, use edit_workflow instead.
+    Pass user_request and delivery; the workflow assistant handles everything
+    else. To change an existing workflow, use edit_workflow instead.
     """
     log.set(tool={"name": "create_workflow", "action": "create"})
 
-    # Validate the input BEFORE touching any run context: a blank request must
-    # return the clean error, not blow up on get_stream_writer outside a graph.
     if not user_request or not user_request.strip():
         return error_response(
             "missing_request",
             "user_request is required. Pass the user's words describing what workflow they want.",
         )
 
-    writer = get_stream_writer()
+    writer = current_stream_writer()
 
     try:
         user_id = get_user_id(config)
@@ -125,7 +129,6 @@ async def create_workflow(
             ),
         )
 
-        # Parse the response
         result = parse_subagent_response(subagent_response)
         log.info(f"{LogTag.TOOL} create_workflow: parsed mode", mode=result.mode)
 
@@ -144,6 +147,7 @@ async def create_workflow(
                     draft=draft,
                     user_id=user_id,
                     writer=writer,
+                    delivery=delivery,
                     user_timezone=user_timezone,
                 )
 
@@ -157,7 +161,7 @@ async def create_workflow(
                 )
 
             # Stream workflow draft to frontend for user confirmation
-            writer(result.draft.to_stream_payload())
+            writer(result.draft.to_stream_payload(delivery))
             log.info(
                 f"{LogTag.TOOL} create_workflow: streamed draft", draft_title=result.draft.title
             )
@@ -218,12 +222,10 @@ async def get_workflow(
         if not workflow:
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
-        # mode="json": this payload is plain json.dumps'd twice — as the tool
-        # result handed to the LLM and as the stream-writer SSE frame — so a
-        # native datetime raises TypeError inside the tool and wedges the agent
-        # in a retry loop.
+        # mode="json": plain json.dumps'd twice (tool result + SSE frame), so a
+        # native datetime would raise TypeError and wedge the agent in a retry loop.
         workflow_json = workflow.model_dump(mode="json")
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"workflow_data": {"action": "get", "workflow": workflow_json}})
 
         return success_response(workflow_json)
@@ -257,7 +259,7 @@ async def execute_workflow(
             "message": result.message,
         }
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"workflow_execution": {"action": "started", "execution": data}})
 
         return success_response(data)
@@ -290,7 +292,7 @@ async def pause_workflow(
         if not workflow:
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {"workflow_data": {"action": "paused", "workflow": workflow.model_dump(mode="json")}}
         )
@@ -331,7 +333,7 @@ async def resume_workflow(
         if not workflow:
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer(
             {"workflow_data": {"action": "resumed", "workflow": workflow.model_dump(mode="json")}}
         )
@@ -369,7 +371,7 @@ async def edit_workflow(
     done by the user in the app's workflow editor, not here.
     """
     log.set(tool={"name": "edit_workflow", "action": "edit"})
-    writer = get_stream_writer()
+    writer = current_stream_writer()
 
     try:
         user_id = get_user_id(config)

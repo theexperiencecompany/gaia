@@ -2,7 +2,6 @@
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { ToolsIcon } from "@icons";
-import type { ApprovalStatus } from "@shared/chat";
 import { useCallback, useMemo, useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import type {
@@ -11,7 +10,7 @@ import type {
 } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
-import { StepRow, SubagentRow } from "./SubagentRow";
+import { type ApprovalOutcome, StepRow, SubagentRow } from "./SubagentRow";
 import { deriveTimelineItemKeys } from "./TextBubble/useSubagentSynthesis";
 
 /**
@@ -40,7 +39,7 @@ interface UnifiedToolThreadProps {
    *  "Waiting for approval" instead of a running spinner. */
   pendingApprovalToolCallIds: Set<string>;
   /** Settled decisions keyed by tool_call_id — the row carries the outcome chip. */
-  approvalStatusByToolCallId: Map<string, ApprovalStatus>;
+  approvalOutcomeByToolCallId: Map<string, ApprovalOutcome>;
 }
 
 const SHOW_ICONS = 10;
@@ -95,13 +94,9 @@ function StackedIcons({
   );
 }
 
-// ── Stable keys for streamed entries ────────────────────────────────────────
-
-// Root timeline items get one stable React key each, derived from stream-
-// stable structure (tool_call_id / subagent_id / anchored slot — never payload
-// content) by deriveTimelineItemKeys in ./TextBubble/useSubagentSynthesis. A
-// growing reasoning delta therefore keeps its key across every stream frame
-// instead of remounting its Thinking row (which would snap `expanded` shut).
+// Root timeline items get one stable React key each, derived from
+// stream-stable structure (tool_call_id/subagent_id/anchored slot, never
+// payload) — a growing reasoning delta keeps its key instead of remounting and snapping `expanded` shut.
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -109,7 +104,7 @@ export default function UnifiedToolThread({
   timeline,
   isStreaming,
   pendingApprovalToolCallIds,
-  approvalStatusByToolCallId,
+  approvalOutcomeByToolCallId,
 }: Readonly<UnifiedToolThreadProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { getIntegrationName: lookupName, getIntegrationIconUrl } =
@@ -183,9 +178,8 @@ export default function UnifiedToolThread({
   }, [timeline, getIconUrl]);
 
   // One stable React key per timeline item — derived from stream-stable
-  // structure (tool_call_id / subagent_id / anchored slot), never payload
-  // content, so a growing reasoning delta keeps its row's identity and its
-  // `expanded` state across every stream frame.
+  // structure (tool_call_id/subagent_id/anchored slot), never payload, so a
+  // growing reasoning delta keeps its row's identity and `expanded` state.
   const itemKeys = deriveTimelineItemKeys(timeline);
 
   if (timeline.length === 0) return null;
@@ -213,8 +207,11 @@ export default function UnifiedToolThread({
               <span
                 className={`text-xs font-medium transition-colors duration-200 ${totalToolCount > 1 ? "ml-2" : ""}`}
               >
-                Used {totalToolCount} tool
-                {totalToolCount === 1 ? "" : "s"}
+                {/* A turn can be thinking-only (comms reasoning with no tool
+                    call), and "Used 0 tools" is a nonsense label for it. */}
+                {totalToolCount === 0
+                  ? "Thinking"
+                  : `Used ${totalToolCount} tool${totalToolCount === 1 ? "" : "s"}`}
               </span>
               <ChevronDown
                 className={`${isExpanded ? "rotate-180" : ""} ml-2 transition-transform duration-200`}
@@ -237,7 +234,7 @@ export default function UnifiedToolThread({
                     getIconUrl={getIconUrl}
                     getIntegrationName={getIntegrationName}
                     pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-                    approvalStatusByToolCallId={approvalStatusByToolCallId}
+                    approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
                   />
                 );
               }
@@ -251,7 +248,7 @@ export default function UnifiedToolThread({
                   getIconUrl={getIconUrl}
                   getIntegrationName={getIntegrationName}
                   pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-                  approvalStatusByToolCallId={approvalStatusByToolCallId}
+                  approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
                 />
               );
             })}

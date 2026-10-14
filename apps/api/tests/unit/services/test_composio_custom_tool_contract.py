@@ -43,20 +43,7 @@ def registered() -> tuple[dict, CustomToolsRegistry]:
 
 class TestNoToolIsAsync:
     def test_every_custom_tool_is_a_sync_function(self, registered):
-        """The one that silently corrupts results.
-
-        ``CustomTool.invoke_trusted`` calls ``self.f(...)`` and returns without
-        awaiting. An ``async def`` tool therefore registers fine, "executes"
-        with no error, and hands back an un-awaited coroutine wrapped as
-        ``successful: True`` — the model reads a coroutine repr as its result
-        and the real API call never happens. The only runtime signal is a
-        RuntimeWarning nobody is watching.
-
-        The SDK does reject async tools, but on the ``experimental.tool`` /
-        tool-router class — a different path. ``composio.tools.custom_tool``,
-        which is what this app uses, has no such guard. Anyone grepping for
-        ``iscoroutinefunction`` finds those hits and concludes it is handled.
-        """
+        """An async custom tool silently returns an un-awaited coroutine as success; the SDK's async guard covers only the tool-router path, not custom_tool."""
         tools, _ = registered
 
         offenders = [slug for slug, tool in tools.items() if asyncio.iscoroutinefunction(tool.f)]
@@ -82,10 +69,7 @@ class TestNoToolIsAsync:
 
 class TestSignatures:
     def test_every_toolkit_tool_takes_the_parameters_the_sdk_passes(self, registered):
-        """``invoke_trusted`` calls toolkit-bound tools with exactly
-        ``request``, ``execute_request`` and ``auth_credentials`` as keywords.
-        A tool that renames or omits one raises TypeError the first time a user
-        triggers it — never at registration, never in CI."""
+        """A wrong parameter name raises TypeError only when a user triggers the tool, never at registration or in CI."""
         tools, _ = registered
         wrong = {}
 
@@ -99,8 +83,7 @@ class TestSignatures:
         assert wrong == {}, f"custom tools with a signature the SDK cannot call: {wrong}"
 
     def test_every_tool_declares_a_request_model(self, registered):
-        """``invoke_trusted`` validates the LLM's arguments through it. Without
-        one there is nothing between model-authored JSON and the provider."""
+        """Without a request model, nothing validates the LLM's arguments before they reach the provider."""
         tools, _ = registered
 
         assert [slug for slug, tool in tools.items() if tool.request_model is None] == []
@@ -108,10 +91,7 @@ class TestSignatures:
 
 class TestRegistryAgreesWithReality:
     def test_every_declared_tool_name_actually_registered(self, registered):
-        """Each register function returns a hardcoded list of slugs, and that
-        list is what ``get_tools`` asks Composio for. A name that drifts from
-        its decorated function — a rename, a typo — is requested forever and
-        never found, so the integration loses that action with no error."""
+        """A declared slug that drifts from its decorated function is requested forever and never found, losing that action with no error."""
         tools, registry = registered
         declared = {
             name
@@ -124,8 +104,7 @@ class TestRegistryAgreesWithReality:
         )
 
     def test_every_registered_tool_is_declared(self, registered):
-        """The reverse drift: a tool that exists but is not in its toolkit's
-        list is dead weight — never offered to any model."""
+        """The reverse drift: a registered tool absent from its toolkit's list is dead weight, never offered to any model."""
         tools, registry = registered
         declared = {
             name
@@ -138,9 +117,7 @@ class TestRegistryAgreesWithReality:
         )
 
     def test_no_slug_is_claimed_by_two_toolkits(self, registered):
-        """Registration is a dict keyed by slug, so a duplicate silently
-        replaces the earlier tool — the losing toolkit's action just stops
-        working, and which one loses depends on registration order."""
+        """A duplicate slug silently replaces the earlier tool; which toolkit's action survives depends on registration order."""
         _, registry = registered
         seen: dict[str, str] = {}
         clashes: dict[str, tuple[str, str]] = {}
@@ -154,8 +131,7 @@ class TestRegistryAgreesWithReality:
         assert clashes == {}, f"slug claimed by two toolkits: {clashes}"
 
     def test_every_configured_toolkit_registered_something(self, registered):
-        """A toolkit whose register function returns nothing is a silent
-        regression: the integration still connects, and has no custom tools."""
+        """A toolkit whose register function returns nothing silently connects with no custom tools."""
         _, registry = registered
 
         empty = [
@@ -167,9 +143,7 @@ class TestRegistryAgreesWithReality:
         assert empty == [], f"toolkits that registered no custom tools: {empty}"
 
     def test_initialization_is_idempotent(self, registered):
-        """``initialize`` runs on every ComposioService construction. If it
-        re-registered, slugs would collide with themselves and the count would
-        drift upward across the process lifetime."""
+        """Re-registering on repeat initialization would collide slugs with themselves and drift the count upward."""
         tools, registry = registered
         before = len(tools)
 

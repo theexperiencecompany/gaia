@@ -3,7 +3,7 @@ import { del } from "idb-keyval";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { useElectron } from "@/hooks/useElectron";
-import { ANALYTICS_EVENTS, resetUser, trackEvent } from "@/lib/analytics";
+import { resetUser } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { authApi } from "../api/authApi";
 
@@ -88,17 +88,14 @@ export const useLogout = () => {
 
     await clearAllStorage();
 
-    // Capture before resetting so the event stays attributed to the user
-    // who logged out, then reset the PostHog identity.
-    trackEvent(ANALYTICS_EVENTS.USER_LOGGED_OUT);
+    // Logout is tracked server-side (POST /user/logout emits
+    // user:logged_out with the stable distinct_id). Emitting here too would
+    // double-count every logout, so just reset the client identity.
     resetUser();
 
-    // Redirection will be handled by the authApi.logout method
-    // but in case it doesn't (for example, if there's no logout_url),
-    // we redirect to the post-logout landing. In Electron the marketing
-    // homepage lives in the (landing) group, which has no ElectronRouteGuard
-    // to bounce logged-out users — so send desktop users straight to the
-    // desktop login screen instead of the public landing page.
+    // Fallback redirect if authApi.logout doesn't (no logout_url) — in
+    // Electron, (landing) has no ElectronRouteGuard to bounce logged-out
+    // users, so desktop goes to the desktop login screen instead of "/".
     router.push(isElectron ? "/desktop-login" : "/");
   }, [clearAllStorage, router, isElectron]);
 

@@ -1,10 +1,8 @@
 """Unit tests for the email notification channel adapter.
 
-The send is faked at the platform email service (``send_email``, tested on its
-own), not by stubbing the adapter's own methods, so the assertions are on the
-exact message the provider would receive — sender, recipient, subject, body and
-the RFC 8058 one-click unsubscribe headers. The other stubbed collaborators are
-the user repository and the edition renderer (a real browser rasterization).
+The send is faked at the platform email service (send_email), so assertions are on
+the exact message the provider would receive. The other stubbed collaborators are the
+user repository and the edition renderer (a real browser rasterization).
 """
 
 from __future__ import annotations
@@ -45,7 +43,7 @@ _API_HOST = "https://api.test"
 
 
 def _expected_unsubscribe_url(user_id: str) -> str:
-    """The link the adapter must sign for this user.
+    """Build the link the adapter must sign for this user.
 
     Signed here with the same serializer the production helper uses rather
     than pasted as a literal, so the assertion proves the two agree — and so
@@ -80,8 +78,10 @@ _BRIEF_PAYLOAD: dict[str, Any] = {
 
 @pytest.fixture(autouse=True)
 def esp_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A fully configured ESP with a fixed unsubscribe secret, so the signed
-    token in the outgoing headers is deterministic."""
+    """Configure a full ESP with a fixed unsubscribe secret.
+
+    That keeps the signed token in the outgoing headers deterministic.
+    """
     # Deliberately not shaped like a real Resend key (`re_...`): secret scanning
     # flags the vendor prefix, and the value here only has to round-trip.
     monkeypatch.setattr(settings, "RESEND_API_KEY", "unit-test-esp-key")
@@ -99,8 +99,7 @@ def user_on_file(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 @pytest.fixture
 def failed_edition_render(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    """The edition renderer blows up, so ``deliver`` degrades to the HTML
-    template. Its message is the one the wide event has to carry."""
+    """Make the edition renderer raise, so deliver degrades to the HTML template."""
     renderer = AsyncMock(side_effect=RuntimeError("browser died"))
     monkeypatch.setattr(email_module, "render_edition_email", renderer)
     return renderer
@@ -131,7 +130,7 @@ def _mock_send() -> AsyncMock:
 
 
 def _sent_body(send: AsyncMock) -> dict[str, Any]:
-    """The last message, keyed the way the provider's API names its fields."""
+    """Return the last message, keyed the way the provider's API names its fields."""
     (message,) = send.await_args.args
     assert isinstance(message, EmailMessage)
     return {
@@ -282,9 +281,7 @@ class TestDeliverSkips:
     async def test_a_missing_address_is_never_replaced_by_a_placeholder(
         self, user_on_file: AsyncMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A stand-in address would mail somebody else's inbox a stranger's
-        brief, so the empty string — which normalizes to nothing — is the only
-        acceptable fallback for a user with no address."""
+        """A missing address yields the empty string, never a placeholder."""
         user_on_file.return_value = UserDocument(id=_USER_ID, email=None)
         normalizer = MagicMock(side_effect=normalize_email)
         monkeypatch.setattr(email_module, "normalize_email", normalizer)
@@ -448,8 +445,7 @@ class TestDeliverBriefings:
     async def test_edition_render_failure_is_recorded_on_the_wide_event(
         self, failed_edition_render: AsyncMock
     ) -> None:
-        """Degrading is only defensible because the failure stays observable —
-        so the warning's message and every field it carries are pinned."""
+        """The edition render failure is recorded on the wide event, message and fields."""
         async with captured_wide_event() as event:
             await EmailChannelAdapter().deliver(
                 _content(kind=NOTIFICATION_KIND_BRIEFING_WEEKLY, payload=_BRIEF_PAYLOAD),
@@ -508,8 +504,7 @@ class TestDeliverBriefings:
 @pytest.mark.asyncio
 class TestDeliverFailures:
     async def test_a_failed_send_propagates_to_the_orchestrator(self) -> None:
-        """The orchestrator records a raising adapter as a failed channel, so the
-        adapter must not swallow the provider's error into a fake status."""
+        """A raising adapter propagates so the orchestrator records a failed channel."""
         _SEND.side_effect = RuntimeError("provider down")
 
         with pytest.raises(RuntimeError, match="provider down"):

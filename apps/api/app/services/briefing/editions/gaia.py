@@ -1,16 +1,10 @@
-"""GAIA edition — a briefing rendered in GAIA's own product design language.
+"""GAIA edition: a briefing rendered in GAIA's own product design language.
 
-Dark-first, flat and single-accent: depth comes from layered backgrounds and
-whitespace, never from boxes, borders, shadows or gradients. One bright cyan
-(``#00bbff``) is the only accent — it marks the identity, the section numerals,
-the things that still need the reader, and attached artifacts. Everything else
-is neutral. The display headline is set in PP Editorial New (embedded so the
-offline raster gets crisp brand type); all other text is Inter.
-
-The output is a fixed 1180px-wide, self-contained HTML document (one inline
-stylesheet, fonts embedded as data URIs, no external requests) destined for a
-headless-browser raster. ``render_edition`` is the only entry point; everything
-else is a private section builder.
+Dark-first, flat and single-accent (cyan #00bbff): depth comes from layered
+backgrounds and whitespace, never boxes, borders, shadows or gradients. Headline in
+PP Editorial New, all other text Inter. The output is a fixed 1180px-wide,
+self-contained HTML document for headless-browser raster; render_edition is the only
+entry point.
 """
 
 from html import escape
@@ -27,9 +21,8 @@ _DIM = "#71717a"
 _HAIR = "#27272a"
 
 # --- Font stacks ----------------------------------------------------------------
-# Inter carries every UI surface; PP Editorial New is reserved for the display
-# headline. The Editorial faces are embedded below; the Inter stack falls back to
-# the platform UI face since Inter itself is not vendored for the offline raster.
+# PP Editorial New is reserved for the display headline; Inter is not vendored, so
+# its stack falls back to the platform UI face.
 _INTER = 'Inter, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'
 _DISPLAY = '"PP Editorial New", "Playfair Display", Georgia, serif'
 
@@ -37,10 +30,8 @@ _DISPLAY = '"PP Editorial New", "Playfair Display", Georgia, serif'
 _CANVAS_PX = CANVAS_PX
 
 # --- Item furniture: kind -> (marker, tone) -------------------------------------
-# ``BriefingItemKind`` ("gaia"/"you"/"proposal"/"lookback"/"note") and the
-# caller's "needs_you" vocabulary both resolve here. Cyan markers flag the things
-# that still need the reader; dim markers note work already done; a plain item
-# carries no marker at all.
+# BriefingItemKind and the caller's "needs_you" vocabulary both resolve here. Cyan
+# markers flag what still needs the reader, dim ones work already done.
 _ACCENT_TONE = "accent"
 _DIM_TONE = "dim"
 _MARKERS: dict[str, tuple[str, str]] = {
@@ -72,14 +63,8 @@ def render_edition(
 ) -> str:
     """Render a briefing payload in GAIA's product design language.
 
-    Args:
-        payload: A ``BriefingPayload.model_dump()`` dict.
-        edition_no: Sequential edition number printed in the dateline.
-        generated_local: Human generation time, e.g. ``"6:02 AM"``.
-        tz_label: Optional timezone label appended after the time.
-
-    Returns:
-        A full, self-contained HTML document as a string.
+    edition_no is printed in the dateline; generated_local (e.g. "6:02 AM") is followed
+    by the optional tz_label. Returns a self-contained HTML document.
     """
     kicker = escape(str(payload.get("kicker", "")))
     headline = escape(str(payload.get("headline", "")))

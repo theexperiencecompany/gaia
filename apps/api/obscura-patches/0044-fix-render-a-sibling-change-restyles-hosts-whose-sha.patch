@@ -1,0 +1,151 @@
+From 17ffd922e205a394b1158f6700c29a8a0da199db Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 06:14:18 +0530
+Subject: [PATCH] fix(render): a sibling change restyles hosts whose shadow
+ sheets test their position
+
+`:host(:first-child)` and `:host(:nth-child())` live in the host's own
+shadow sheet, but a light-DOM insert or remove looked up structural rules
+only in the sheets that select the parent's children, so a host that moved
+from first to second kept its first-child style until a full cascade. The
+structural scopes of a child-list change now also consult the shadow sheets
+of the parent's child hosts.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-render/src/dom.rs              | 37 ++++++++++++++---
+ .../src/dom/shadow_restyle_tests.rs           | 41 +++++++++++++++++++
+ 2 files changed, 73 insertions(+), 5 deletions(-)
+
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index ac74c90..0a9ec66 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -3594,6 +3594,25 @@ fn child_list_sheets<'a>(
+     sheets
+ }
+ 
++/// The sheets whose structural rules can test `parent`'s children: the ones
++/// that select the children, plus each child host's own shadow sheet, whose
++/// `:host(:first-child)` / `:host(:nth-child())` rules test the host's place
++/// among its siblings.
++fn child_structure_sheets<'a>(
++    tree: &DomTree,
++    parent: NodeId,
++    child_sheets: &[&'a crate::css::Stylesheet],
++    shadow_sheets: &'a HashMap<NodeId, std::sync::Arc<crate::css::Stylesheet>>,
++) -> Vec<&'a crate::css::Stylesheet> {
++    let mut sheets = child_sheets.to_vec();
++    for child in element_children(tree, parent) {
++        if let Some(sheet) = tree.shadow_root(child).and_then(|root| shadow_sheets.get(&root)) {
++            push_sheet(&mut sheets, sheet);
++        }
++    }
++    sheets
++}
++
+ fn subtree_contains_slot_element(tree: &DomTree, root: NodeId) -> bool {
+     std::iter::once(root)
+         .chain(tree.descendants(root))
+@@ -4369,25 +4388,30 @@ fn retained_style_plan(
+                         add_table_row_child_scope(tree, parent, &mut dirty);
+                         for scoped in &sheets {
+                             let map = scoped.invalidation_map();
+-                            add_removed_structural_scopes(tree, map, node, parent, &mut dirty);
+                             add_removed_sibling_scopes(tree, map, parent, &mut dirty);
+                             add_empty_parent_scope(tree, map, parent, mutations, &mut dirty);
+                         }
++                        for scoped in child_structure_sheets(tree, parent, &sheets, shadow_sheets) {
++                            let map = scoped.invalidation_map();
++                            add_removed_structural_scopes(tree, map, node, parent, &mut dirty);
++                        }
+                     }
+                     add_style_context_chain(tree, new_parent, &mut dirty);
+                     add_table_row_child_scope(tree, new_parent, &mut dirty);
+                     for scoped in &sheets {
+                         let map = scoped.invalidation_map();
++                        add_inserted_sibling_scopes(tree, map, node, new_parent, &mut dirty);
++                        add_empty_parent_scope(tree, map, new_parent, mutations, &mut dirty);
++                    }
++                    for scoped in child_structure_sheets(tree, new_parent, &sheets, shadow_sheets) {
+                         add_inserted_structural_scopes(
+                             tree,
+-                            map,
++                            scoped.invalidation_map(),
+                             node,
+                             new_parent,
+                             mutations,
+                             &mut dirty,
+                         );
+-                        add_inserted_sibling_scopes(tree, map, node, new_parent, &mut dirty);
+-                        add_empty_parent_scope(tree, map, new_parent, mutations, &mut dirty);
+                     }
+                 }
+                 TreeStyleMutation::Remove {
+@@ -4434,10 +4458,13 @@ fn retained_style_plan(
+                     add_table_row_child_scope(tree, old_parent, &mut dirty);
+                     for scoped in &sheets {
+                         let map = scoped.invalidation_map();
+-                        add_removed_structural_scopes(tree, map, node, old_parent, &mut dirty);
+                         add_removed_sibling_scopes(tree, map, old_parent, &mut dirty);
+                         add_empty_parent_scope(tree, map, old_parent, mutations, &mut dirty);
+                     }
++                    for scoped in child_structure_sheets(tree, old_parent, &sheets, shadow_sheets) {
++                        let map = scoped.invalidation_map();
++                        add_removed_structural_scopes(tree, map, node, old_parent, &mut dirty);
++                    }
+                 }
+                 TreeStyleMutation::Text { node, parent } => {
+                     if in_document_scope(tree, parent) && node_is_style_text(tree, node, parent) {
+diff --git a/crates/obscura-render/src/dom/shadow_restyle_tests.rs b/crates/obscura-render/src/dom/shadow_restyle_tests.rs
+index 29f5703..00416ab 100644
+--- a/crates/obscura-render/src/dom/shadow_restyle_tests.rs
++++ b/crates/obscura-render/src/dom/shadow_restyle_tests.rs
+@@ -479,6 +479,47 @@ fn retained_attach_shadow_after_layout_matches_full() {
+ 
+ /// Cost: with many styled components, a mutation inside one of them
+ /// re-cascades that component only.
++/// A host's place among its siblings is state its own shadow sheet can test
++/// with `:host(:first-child)` / `:host(:nth-child())`; inserting or removing a
++/// light-DOM sibling must restyle it.
++#[test]
++fn retained_sibling_change_restyles_hosts_with_structural_host_rules() {
++    let mut peers = String::new();
++    for index in 0..CLEAN_PEERS {
++        peers.push_str(&format!("<span class=clean data-index={index}></span>"));
++    }
++    let html = format!(
++        r#"<!doctype html><html><head><style>
++             html,body{{margin:0}} .clean{{display:block;height:1px}}
++           </style></head><body>
++           <div id="list"><x-row id="a"></x-row><x-row id="b"></x-row></div>
++           <div id="source"><style>:host{{display:block;height:5px}}
++             :host(:first-child){{height:31px}} :host(:nth-child(even)){{width:77px}}</style><i>row</i></div>
++           <div id="source-b"><style>:host{{display:block;height:5px}}
++             :host(:first-child){{height:31px}} :host(:nth-child(even)){{width:77px}}</style><i>row</i></div>
++           <p id="spare">new first row</p>
++           <aside id="clean">{peers}</aside>
++           </body></html>"#
++    );
++    let tree = parse_html(&html);
++    let id = |name: &str| tree.get_element_by_id(name).unwrap_or_else(|| panic!("{name}"));
++    let (list, a, spare) = (id("list"), id("a"), id("spare"));
++    attach(&tree, a, id("source"));
++    attach(&tree, id("b"), id("source-b"));
++    tree.remove_child(spare);
++    let mut cache = crate::css::StylesheetCache::default();
++
++    let initial = initial_layout(&tree, &mut cache);
++    tree.insert_before(a, spare);
++    let insert = TreeStyleMutation::Insert { node: spare, old_parent: None, new_parent: list };
++    finish("sibling insert before hosts", &tree, &mut cache, initial, &[insert.into()], COMPONENT_BUDGET);
++
++    let initial = initial_layout(&tree, &mut cache);
++    tree.remove_child(spare);
++    let remove = TreeStyleMutation::remove(&tree, spare, list);
++    finish("sibling remove before hosts", &tree, &mut cache, initial, &[remove.into()], COMPONENT_BUDGET);
++}
++
+ #[test]
+ fn retained_shadow_mutation_restyles_only_its_component() {
+     let mut peers = String::new();

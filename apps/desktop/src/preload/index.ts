@@ -15,12 +15,20 @@
 
 import { electronAPI } from "@electron-toolkit/preload";
 import type {
+  AddOptions,
+  BridgeInvokeResult,
+  BridgeStatus,
+  DeviceServerView,
+} from "@gaia/shared/bridge-core";
+import type {
   DesktopPermissionPane,
   DesktopPermissionStatus,
   DesktopSettingsSnapshot,
   DesktopShortcutUpdateResult,
   DesktopToolRequest,
   DesktopToolResult,
+  FolderAccessResult,
+  ProtectedFolder,
 } from "@gaia/shared/desktop-tools";
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC } from "../ipc-channels";
@@ -108,15 +116,10 @@ const api = {
     ipcRenderer.send(IPC.popupResize, height),
 
   /**
-   * Subscribe to popup activation events.
-   *
-   * Fired when the assistant popup is shown so the renderer can play
-   * its entrance animation. The payload carries how it was summoned
-   * ("wake-word" | "shortcut") — the acknowledgment sound is scoped to
-   * voice activations.
-   *
-   * @param callback - Handler invoked with the activation payload.
-   * @returns A cleanup function that removes the listener.
+   * Subscribe to popup activation events, fired when the assistant popup is shown
+   * so the renderer can play its entrance animation. Payload carries how it was
+   * summoned ("wake-word" | "shortcut") — the acknowledgment sound is scoped to
+   * voice activations. Returns a cleanup function that removes the listener.
    */
   onPopupActivate: (
     callback: (data: { trigger: "wake-word" | "shortcut" }) => void,
@@ -180,6 +183,14 @@ const api = {
     ipcRenderer.invoke(IPC.desktopToolRequestPermission, pane),
 
   /**
+   * Trigger the one-time macOS TCC prompt for a protected folder (Downloads /
+   * Documents / Desktop) by reading it in the main process; resolves to whether
+   * the app can now read it. Reliable only on a signed build.
+   */
+  requestFolderAccess: (folder: ProtectedFolder): Promise<FolderAccessResult> =>
+    ipcRenderer.invoke(IPC.desktopToolRequestFolderAccess, folder),
+
+  /**
    * Relaunch the app. Needed after granting Screen Recording — macOS only
    * applies that permission to a freshly launched process.
    */
@@ -201,6 +212,94 @@ const api = {
   /** Switch the dock icon (Arc-style) and persist the choice. */
   setAppIcon: (id: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC.desktopSettingsSetIcon, id),
+
+  /**
+   * Device bridge control surface — pair this Mac, run/stop its MCP tunnel,
+   * and manage the servers it exposes. Every call resolves to a
+   * {@link BridgeInvokeResult} envelope: `{ ok: true, value }` on success or
+   * `{ ok: false, error: { code, message } }` on failure, so the renderer never
+   * sees a raw stack. The device refresh token never crosses this boundary —
+   * it is minted and stored in the main process only.
+   */
+  bridge: {
+    /** Pair this device off the signed-in session; returns the new status. */
+    pair: (): Promise<BridgeInvokeResult<BridgeStatus>> =>
+      ipcRenderer.invoke(IPC.bridgePair),
+
+    /** Whether this device is paired and whether its tunnel is running. */
+    status: (): Promise<BridgeInvokeResult<BridgeStatus>> =>
+      ipcRenderer.invoke(IPC.bridgeStatus),
+
+    /** Start the supervised tunnel; returns the new status. */
+    start: (): Promise<BridgeInvokeResult<BridgeStatus>> =>
+      ipcRenderer.invoke(IPC.bridgeStart),
+
+    /** Stop the tunnel; returns the new status. */
+    stop: (): Promise<BridgeInvokeResult<BridgeStatus>> =>
+      ipcRenderer.invoke(IPC.bridgeStop),
+
+    /** The MCP servers this device exposes, each with its live connect state. */
+    listServers: (): Promise<BridgeInvokeResult<DeviceServerView[]>> =>
+      ipcRenderer.invoke(IPC.bridgeListServers),
+
+    /** Add or update a server from CLI-equivalent flags; the main process builds
+     * the ServerConfig via the shared buildConfigFromFlags. Returns immediately
+     * with the new server as "connecting" — its final state arrives via
+     * onServersChanged once the background connect settles. */
+    addServer: (
+      opts: AddOptions,
+    ): Promise<BridgeInvokeResult<DeviceServerView[]>> =>
+      ipcRenderer.invoke(IPC.bridgeAddServer, opts),
+
+    /** Retry the background connect for a server that failed. */
+    retryServer: (
+      key: string,
+    ): Promise<BridgeInvokeResult<DeviceServerView[]>> =>
+      ipcRenderer.invoke(IPC.bridgeRetryServer, key),
+
+    /** Remove a server by key; returns the updated server list. */
+    removeServer: (
+      key: string,
+    ): Promise<BridgeInvokeResult<DeviceServerView[]>> =>
+      ipcRenderer.invoke(IPC.bridgeRemoveServer, key),
+
+    /**
+     * Subscribe to server-list changes pushed from the main process (add,
+     * background connect resolving to connected/error, remove).
+     *
+     * @param callback - Handler invoked with the new server list.
+     * @returns A cleanup function that removes the listener.
+     */
+    onServersChanged: (
+      callback: (servers: DeviceServerView[]) => void,
+    ): (() => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        servers: DeviceServerView[],
+      ) => callback(servers);
+      ipcRenderer.on(IPC.bridgeServersChanged, handler);
+      return () =>
+        ipcRenderer.removeListener(IPC.bridgeServersChanged, handler);
+    },
+
+    /**
+     * Subscribe to bridge status changes pushed from the main process
+     * (pair, start, stop, revoke/logout teardown).
+     *
+     * @param callback - Handler invoked with the new status.
+     * @returns A cleanup function that removes the listener.
+     */
+    onStatusChanged: (
+      callback: (status: BridgeStatus) => void,
+    ): (() => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        status: BridgeStatus,
+      ) => callback(status);
+      ipcRenderer.on(IPC.bridgeStatusChanged, handler);
+      return () => ipcRenderer.removeListener(IPC.bridgeStatusChanged, handler);
+    },
+  },
 };
 
 /*

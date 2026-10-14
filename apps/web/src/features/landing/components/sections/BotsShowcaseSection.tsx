@@ -372,10 +372,9 @@ function FloatingCTA({
   onPrev: () => void;
   onNext: () => void;
 }) {
-  // Reserve the static-flow slot so the layout never jumps when the button
-  // pops out of the flow into a fixed position. The CTA is rendered twice:
-  //   - In flow, invisible while floating (reserves space)
-  //   - Fixed at the bottom while floating, fades in via opacity only
+  // Reserve the static-flow slot so layout never jumps when the button pops
+  // into a fixed position. Rendered twice: in-flow (invisible while floating,
+  // to reserve space) and fixed at the bottom while floating (fades in via opacity).
   return (
     <div className="relative flex w-full justify-center pt-2">
       <div

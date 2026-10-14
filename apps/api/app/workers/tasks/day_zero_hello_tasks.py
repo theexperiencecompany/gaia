@@ -1,9 +1,8 @@
 """Day-zero hello: GAIA's first text after a user links a chat platform.
 
-Enqueued from ``PlatformLinkService.link_account`` on a brand-new chat link. One
-silent agent turn writes a short, goal-grounded greeting; it is delivered to that
-one platform and mirrored into its bot conversation so the user's reply lands
-with context. Guarded to fire once per user, ever.
+Enqueued from PlatformLinkService.link_account on a brand-new chat link. One silent
+agent turn writes a short greeting, posted into the platform DM through
+post_to_platform_chat. Fires once per user, ever.
 """
 
 from __future__ import annotations
@@ -11,20 +10,24 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import json
 import re
-from typing import cast
 from uuid import uuid4
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
+from app.agents.core.background.platform_chat import post_to_platform_chat
 from app.agents.prompts.briefing_prompts import build_day_zero_hello_prompt
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageDict, MessageRequestWithHistory
-from app.models.user_models import AuthenticatedUser
-from app.services.briefing import chat_sync, context
-from app.services.outbound_delivery import OutboundResult, publish_outbound_message
-from app.services.platform_link_service import PlatformLinkService
-from app.services.user_service import get_user_by_id
-from app.utils.analytics import track
+from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.analytics_service import capture
+from app.services.briefing import context
+from app.services.delivery.chat_channel import pick_chat_channel
+from app.services.outbound_delivery import OutboundResult
+from app.services.platform_link_service import linked_platforms_of
+from app.utils.auth_utils import build_user_context
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent
 from shared.py.wide_events import UserContext, log, wide_task
 
 # Only greet accounts young enough that a first hello still makes sense; an old
@@ -59,7 +62,7 @@ def _parse_bubbles(raw: str) -> list[str]:
     )
 
 
-async def _run_silent(user: dict, prompt: str) -> str:
+async def _run_silent(user: AuthenticatedUser, prompt: str) -> str:
     """One silent agent turn on a fresh thread; returns the final text.
 
     Mirrors the briefing service's silent-run plumbing.
@@ -72,17 +75,11 @@ async def _run_silent(user: dict, prompt: str) -> str:
         selectedTool=None,
         selectedWorkflow=None,
     )
-    user_data = {
-        "user_id": user["user_id"],
-        "name": user.get("name"),
-        "email": user.get("email"),
-        "timezone": user.get("timezone"),
-    }
-    conversation_id = f"dayzero-{user['user_id']}-{uuid4().hex[:6]}"
+    conversation_id = f"dayzero-{user.user_id}-{uuid4().hex[:6]}"
     run = await call_agent_silent(
         request=request,
         conversation_id=conversation_id,
-        user=cast(AuthenticatedUser, user_data),
+        user=user,
         options=AgentRunOptions(
             trigger_context={"execution_mode": "background"},
             source="day_zero_hello",
@@ -91,17 +88,17 @@ async def _run_silent(user: dict, prompt: str) -> str:
     return run.message
 
 
-def _first_name(user: dict) -> str:
-    name = (user.get("name") or "").strip()
+def _first_name(user: UserDocument) -> str:
+    name = (user.name or "").strip()
     return name.split()[0] if name else "there"
 
 
 async def send_day_zero_hello(ctx: dict, user_id: str, platform: str) -> str:
     """Send GAIA's first hello to a freshly-linked chat platform, once per user.
 
-    Guards (all must hold): no prior ``day_zero_hello`` flag, account created
-    within ``DAY_ZERO_MAX_ACCOUNT_AGE_DAYS``, and the platform is still linked.
-    A guard failing is a normal skip; only a real broker failure raises.
+    Guards (all must hold): no prior day_zero_hello flag, account created within
+    DAY_ZERO_MAX_ACCOUNT_AGE_DAYS, and the platform is still linked. A failing guard is a
+    normal skip; only a real broker failure raises.
     """
     async with wide_task("send_day_zero_hello", user=UserContext(id=user_id)):
         log.set(platform=platform)
@@ -110,17 +107,18 @@ async def send_day_zero_hello(ctx: dict, user_id: str, platform: str) -> str:
             log.set(skipped="unsupported_platform")
             return f"skip {user_id}: unsupported platform {platform}"
 
-        user = await get_user_by_id(user_id)
-        if not user:
+        user = await user_repository.get(user_id)
+        if user is None:
             log.set(skipped="unknown_user")
             return f"skip {user_id}: unknown user"
-        user["user_id"] = user_id
 
-        if user.get("day_zero_hello"):
+        if user.day_zero_hello is not None:
             log.set(skipped="already_sent")
             return f"skip {user_id}: day-zero hello already sent"
 
-        created_at = user.get("created_at")
+        created_at = user.created_at
+        if created_at is not None and created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
         account_too_old = created_at is None or datetime.now(UTC) - created_at > timedelta(
             days=DAY_ZERO_MAX_ACCOUNT_AGE_DAYS
         )
@@ -128,8 +126,10 @@ async def send_day_zero_hello(ctx: dict, user_id: str, platform: str) -> str:
             log.set(skipped="account_too_old")
             return f"skip {user_id}: account older than {DAY_ZERO_MAX_ACCOUNT_AGE_DAYS} days"
 
-        linked = await PlatformLinkService.get_linked_platforms(user_id)
-        if platform not in linked:
+        # The platform just linked, regardless of priority or preferences: the
+        # hello greets the account the user connected.
+        channel = pick_chat_channel([source.value], linked_platforms_of(user), {})
+        if channel is None:
             log.set(skipped="not_linked")
             return f"skip {user_id}: {platform} not linked"
 
@@ -137,9 +137,15 @@ async def send_day_zero_hello(ctx: dict, user_id: str, platform: str) -> str:
         prompt = build_day_zero_hello_prompt(
             first_name=_first_name(user), goal_block=goal_block, has_goal=has_goal
         )
-        bubbles = _parse_bubbles(await _run_silent(user, prompt))
+        auth_user = build_user_context(user, auth_provider=None)
+        bubbles = _parse_bubbles(await _run_silent(auth_user, prompt))
 
-        result = await publish_outbound_message(source, user_id, bubbles)
+        result = await post_to_platform_chat(
+            user=auth_user,
+            channel=channel,
+            text=NEW_MESSAGE_BREAKER.join(bubbles),
+            origin="day-zero hello",
+        )
         if result is not OutboundResult.PUBLISHED:
             # Nothing landed, so leave the once-ever flag unset: a later relink can
             # still greet them. A broker failure is a real error worth retrying.
@@ -150,8 +156,7 @@ async def send_day_zero_hello(ctx: dict, user_id: str, platform: str) -> str:
             log.set(skipped="publish_skipped")
             return f"skip {user_id}: publish skipped ({platform})"
 
-        await chat_sync.persist_bot_message(user_id, user, platform, bubbles)
         await user_repository.mark_day_zero_hello_sent(user_id, platform)
-        track(user_id, "day_zero_hello_sent", {"platform": platform, "has_goal": has_goal})
+        capture(UserId(user_id), BriefingDayZeroHelloSent(platform=platform, has_goal=has_goal))
         log.set(bubbles=len(bubbles), has_goal=has_goal)
         return f"sent day-zero hello to {user_id} on {platform}"

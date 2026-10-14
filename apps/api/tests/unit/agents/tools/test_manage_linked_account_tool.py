@@ -12,7 +12,6 @@ from pydantic import ValidationError
 import pytest
 
 from app.agents.tools import account_tools
-from app.services.analytics_service import AnalyticsEvents
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.account_tools"
@@ -21,11 +20,8 @@ CONFIG = {"metadata": {"user_id": "user-1"}}
 
 @pytest.fixture(autouse=True)
 def _quiet():
-    with (
-        patch(f"{MODULE}.log"),
-        patch(f"{MODULE}.capture_context_event") as capture,
-    ):
-        yield capture
+    with patch(f"{MODULE}.log"):
+        yield
 
 
 @pytest.mark.unit
@@ -54,12 +50,7 @@ class TestGenerateLink:
         connect.assert_awaited_once_with("user-1", "telegram", phone=None)
 
     async def test_imessage_forwards_the_phone_number_to_the_connect_flow(self) -> None:
-        """iMessage is the one platform whose connect flow REQUIRES a phone.
-
-        Every other case here connects without one, so a tool that dropped the
-        argument would look correct in all of them while iMessage linking from
-        chat failed with "phone required" on every attempt.
-        """
+        """IMessage is the one platform whose connect flow REQUIRES a phone."""
         flow = AsyncMock()
         flow.auth_url = None
         flow.instructions = "Text /auth to +15550000000"
@@ -109,14 +100,13 @@ class TestGenerateLink:
 @pytest.mark.unit
 class TestDisconnect:
     async def test_disconnect_runs_the_real_seam_refreshes_projection_and_confirms(
-        self,
+        self, posthog_events: list[dict[str, object]]
     ) -> None:
         unlink = AsyncMock()
         resync = MagicMock()
         with (
             patch(f"{MODULE}.disconnect_platform_account", new=unlink),
             patch(f"{MODULE}.schedule_account_sync", new=resync),
-            patch(f"{MODULE}.capture_context_event") as capture,
             patch(f"{MODULE}.log") as log_mock,
         ):
             result = await account_tools.manage_linked_account.ainvoke(
@@ -127,9 +117,9 @@ class TestDisconnect:
         assert "whatsapp disconnected" in result.lower()
         # The linked-accounts projection must reflect reality immediately.
         resync.assert_called_once_with("user-1")
-        capture.assert_called_once_with(
-            AnalyticsEvents.ACCOUNT_PLATFORM_DISCONNECTED, {"area": "linked_accounts"}
-        )
+        # The unlink seam owns integration:disconnected; a second event here
+        # would count one disconnect twice.
+        assert posthog_events == []
         # The wide event names the action and platform — downstream debugging
         # of a disconnect reads these, not the return string.
         log_mock.set.assert_called_once_with(action="disconnect", platform="whatsapp")

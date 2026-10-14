@@ -2,8 +2,8 @@
 
 Three backends, one per concern:
 - Cloudinary — the durable blob copy.
-- MongoDB (via `file_repository`) — authoritative file metadata + summary.
-- ChromaDB `documents` — the vector index powering `search_uploaded_files`.
+- MongoDB (via file_repository) — authoritative file metadata + summary.
+- ChromaDB documents — the vector index powering search_uploaded_files.
 
 ChromaDB writes are best-effort: a failure degrades search but must never fail
 the upload, so the blob + metadata are still persisted.
@@ -14,7 +14,6 @@ import io
 from typing import cast
 import uuid
 
-import cloudinary
 import cloudinary.uploader
 from fastapi import HTTPException
 from langchain_core.documents import Document
@@ -75,7 +74,7 @@ def _build_index_documents(
     """Turn a generated summary into ChromaDB documents + their ids.
 
     Multi-page documents are indexed one vector per page (each under a fresh id);
-    everything else is a single vector keyed by `file_id`.
+    everything else is a single vector keyed by file_id.
     """
     base_metadata = {
         "file_id": file_id,

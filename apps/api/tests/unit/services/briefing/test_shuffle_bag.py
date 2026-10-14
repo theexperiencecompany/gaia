@@ -72,8 +72,6 @@ class TestDraw:
 class TestDailyFamilyWeights:
     def test_postal_is_twice_as_common_and_every_daily_family_is_in(self) -> None:
         assert DAILY_FAMILY_WEIGHTS["postal"] == 2
-        assert set(DAILY_FAMILY_WEIGHTS) == {FAMILY_EDITION, *EXPLORER_RENDERER} - {
-            WEEKLY_FAMILY,
-            "metromap",
-        }
+        assert set(DAILY_FAMILY_WEIGHTS) == {FAMILY_EDITION, *EXPLORER_RENDERER} - {WEEKLY_FAMILY}
+        assert "metromap" in DAILY_FAMILY_WEIGHTS
         assert all(w == 1 for f, w in DAILY_FAMILY_WEIGHTS.items() if f != "postal")

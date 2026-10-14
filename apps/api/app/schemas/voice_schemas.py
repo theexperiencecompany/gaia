@@ -2,8 +2,11 @@
 
 from pydantic import BaseModel, Field
 
+from app.schemas.common import ResponseModel
+from shared.py.analytics.catalog.properties import Identifier
 
-class VoiceOption(BaseModel):
+
+class VoiceOption(ResponseModel):
     """One selectable ElevenLabs voice from the curated catalog."""
 
     voice_id: str = Field(description="ElevenLabs voice id")
@@ -28,7 +31,7 @@ class VoiceOption(BaseModel):
     starred: bool = Field(default=False, description="Starred by this user")
 
 
-class VoiceTokenResponse(BaseModel):
+class VoiceTokenResponse(ResponseModel):
     """LiveKit session credentials minted by GET /token.
 
     Field names are camelCase to match what the LiveKit web client consumes.
@@ -45,7 +48,7 @@ class VoiceTokenResponse(BaseModel):
     )
 
 
-class VoiceListResponse(BaseModel):
+class VoiceListResponse(ResponseModel):
     """Catalog of selectable voices plus the user's current selection."""
 
     voices: list[VoiceOption]
@@ -58,7 +61,7 @@ class VoiceListResponse(BaseModel):
 class UpdateVoiceRequest(BaseModel):
     """Request body for choosing a voice."""
 
-    voice_id: str = Field(min_length=1, description="Catalog voice id to use for voice mode")
+    voice_id: Identifier = Field(description="Catalog voice id to use for voice mode")
 
 
 class VoiceSelectionResponse(BaseModel):

@@ -1,11 +1,13 @@
 """Smoke tests for the FastAPI entry point (app.main).
 
 app.main constructs the real app at import time; under the root conftest's
-hermetic mocks that is safe (the same path the `client` fixture uses). Route
+hermetic mocks that is safe (the same path the client fixture uses). Route
 registration resolves lazily at request time in FastAPI 0.139, so the
 registration assertion dispatches a real request instead of inspecting
 app.routes. app.main.py was at 0% coverage.
 """
+
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -23,5 +25,20 @@ async def test_health_route_serves_requests() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health")
+
+    assert response.status_code == 200
+
+
+async def test_health_never_counts_against_the_rate_limit_store() -> None:
+    """The hermetic run has no Redis; the app-wide limit must be off, not stored."""
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    with patch(
+        "app.api.v1.middleware.rate_limiter.sync_check_limits",
+        side_effect=ConnectionError("no redis in the hermetic run"),
+    ):
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/health")
 
     assert response.status_code == 200

@@ -1,8 +1,7 @@
 """The brief's skim text: the one short shape every surface leads with.
 
-Headline, then at most ``MAX_SKIM_ASKS`` things waiting on the user, then one
-sentence on what happened overnight, then the link to the full brief. The chat
-caption and the email subject/preheader are all cut from this one ``Skim``.
+Headline, at most MAX_SKIM_ASKS things waiting on the user, one sentence on what
+happened overnight, then the link. Chat caption and email subject/preheader are cut from it.
 """
 
 from dataclasses import dataclass
@@ -56,7 +55,7 @@ def _named(titles: list[str]) -> str:
 
 
 def _overnight(done: list[str], running: list[str], period: str) -> str | None:
-    """One sentence on GAIA's work over ``period`` ("Overnight", "This week")."""
+    """One sentence on GAIA's work over period ("Overnight", "This week")."""
     verb = "is" if len(running) == 1 else "are"
     if done and running:
         return f"{period} I finished {_named(done)}; {_named(running)} {verb} still in progress."
@@ -85,37 +84,3 @@ def build_skim(payload: BriefingPayload, link: str) -> Skim:
         ),
         link=link,
     )
-
-
-def _cut_words(paragraph: str, limit: int) -> list[str]:
-    chunks: list[str] = []
-    current = ""
-    for word in paragraph.split():
-        candidate = f"{current} {word}" if current else word
-        if len(candidate) > limit and current:
-            chunks.append(current)
-            current = word
-        else:
-            current = candidate
-    if current:
-        chunks.append(current)
-    return chunks
-
-
-def split_for_caption(text: str, *, limit: int) -> list[str]:
-    """The skim as the first caption plus follow-up messages, each within
-    ``limit`` characters, broken between paragraphs (then words) — never mid-word."""
-    parts: list[str] = []
-    current = ""
-    for paragraph in text.split(_PARAGRAPH):
-        pieces = [paragraph] if len(paragraph) <= limit else _cut_words(paragraph, limit)
-        for piece in pieces:
-            candidate = f"{current}{_PARAGRAPH}{piece}" if current else piece
-            if len(candidate) > limit and current:
-                parts.append(current)
-                current = piece
-            else:
-                current = candidate
-    if current:
-        parts.append(current)
-    return parts

@@ -4,16 +4,25 @@ import json
 import re
 import uuid
 
-import cloudinary
 import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
+from app.models.integrations.cloudinary import CloudinaryUploadResult
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.image_utils import convert_image_to_text, generate_image
 from shared.py.wide_events import get_trace_id, log, log_context
+
+
+class ImageGenerationFailure(BaseModel):
+    """The failure dict ``generate_image`` returns in place of image bytes."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    error: str = "unknown error"
 
 
 def generate_public_id(refined_text: str, max_length: int = 50) -> str:
@@ -25,16 +34,7 @@ def generate_public_id(refined_text: str, max_length: int = 50) -> str:
 
 
 async def api_generate_image(message: str, improve_prompt: bool = True) -> ImageData:
-    """
-    Generate an image based on the provided message prompt and upload it to Cloudinary.
-
-    Args:
-        message (str): The user's input prompt for image generation.
-        improve_prompt (bool): Whether to improve the prompt using AI.
-
-    Raises:
-        HTTPException: If an error occurs during image generation or upload.
-    """
+    """Generate an image from the prompt and upload it to Cloudinary."""
     log.set(
         component="image_service",
         operation="generate_image",
@@ -51,7 +51,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
                 part.strip()
                 for part in [
                     message or "",
-                    improved_prompt.get("response", "") or "",
+                    improved_prompt.response or "",
                 ]
                 if part.strip()
             )
@@ -71,9 +71,8 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
         # ever returns a dict on the httpx failure path ({"error": str(e)});
         # bytes is the sole success shape.
         if isinstance(image_data, dict):
-            raise ValueError(
-                f"Failed to generate image: {image_data.get('error', 'unknown error')}"
-            )
+            failure = ImageGenerationFailure.model_validate(image_data)
+            raise ValueError(f"Failed to generate image: {failure.error}")
         if isinstance(image_data, bytes):
             # Already bytes, use as is
             image_bytes = image_data
@@ -87,7 +86,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
             overwrite=True,
         )
 
-        image_url = upload_result.get("secure_url")
+        image_url = CloudinaryUploadResult.model_validate(upload_result).secure_url
         log.info("Image uploaded successfully. URL", image_url=image_url)
 
         return ImageData(
@@ -108,7 +107,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
 
 
 async def image_to_text_endpoint(message: str, file: UploadFile) -> ImageToTextResponse:
-    """Describe an uploaded image, answering ``message`` about it."""
+    """Describe an uploaded image, answering message about it."""
     log.set(component="image_service", operation="image_to_text")
     try:
         response = await convert_image_to_text(file, message)
@@ -131,22 +130,11 @@ async def image_to_text_endpoint(message: str, file: UploadFile) -> ImageToTextR
 
 
 async def generate_image_stream(query_text: str) -> AsyncGenerator[str, None]:
-    """
-    Create a streaming generator for image generation responses.
-    This generator yields data in the format expected by the frontend
-    for image generation results.
+    """Stream image generation as SSE lines.
 
-    Args:
-        query_text (str): The user's text prompt for image generation
-
-    Yields:
-        str: Formatted response lines for streaming
-
-    The body runs while the response streams — after the request's
-    ``http_request`` event has emitted — so it needs its own boundary or the
-    generation outcome is silently discarded. The generator body inherits the
-    request's context, so ``get_trace_id()`` still returns the request's
-    trace_id.
+    Runs after the request's http_request event has emitted, so it needs its
+    own log boundary or the outcome is silently discarded. Still inherits the
+    request's trace_id via get_trace_id().
     """
     async with log_context(
         "image_generation_stream",

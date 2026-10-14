@@ -62,6 +62,7 @@ export function useWorkflowSaveGate({
       formData.selectedTrigger !== currentFormData.selectedTrigger ||
       JSON.stringify(formData.trigger_config) !==
         JSON.stringify(currentFormData.trigger_config) ||
+      formData.delivery !== currentFormData.delivery ||
       persistedSlugs !== currentSlugs
     );
   }, [mode, existingWorkflow, formData, selectedIntegrationSlugs]);
@@ -69,6 +70,10 @@ export function useWorkflowSaveGate({
   // Check if save button should be disabled (used for hotkey and button)
   const isSaveDisabled = useCallback(() => {
     if (!formData.title.trim() || !formData.prompt?.trim()) {
+      return true;
+    }
+
+    if (!formData.delivery) {
       return true;
     }
 

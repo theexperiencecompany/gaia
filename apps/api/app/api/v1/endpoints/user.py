@@ -8,9 +8,9 @@ from fastapi import (
     Form,
     HTTPException,
     Request,
+    Response,
     UploadFile,
 )
-from fastapi.responses import JSONResponse
 from workos import WorkOSClient
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
@@ -18,10 +18,12 @@ from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
+from app.models.chat_channel_models import ChannelPriorityList
 from app.models.user_models import (
     AuthenticatedUser,
     AuthenticatedUserResponse,
-    HoloCardOnboardingFields,
+    LogoutResponse,
+    OnboardingSubdocument,
     PublicHoloCardResponse,
     UpdateHoloCardColorsResponse,
     UpdateTimezoneResponse,
@@ -29,20 +31,30 @@ from app.models.user_models import (
     UserUpdateResponse,
 )
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_context_event, track_logout
+from app.services.analytics_service import capture
+from app.services.delivery.chat_channel import (
+    get_chat_channel_priority,
+    set_chat_channel_priority,
+)
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
 from app.utils.timezone import is_valid_timezone
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.auth import UserLoggedOut
+from shared.py.analytics.catalog.settings import ProfileUpdated
 from shared.py.wide_events import log
 
 router = APIRouter()
 
+#: ``AuthenticatedUser``'s per-auth-path flags — see ``get_me`` for why they are
+#: serialized only when set.
+_AUTH_PATH_FLAGS = ("impersonated", "bot_authenticated", "dev_bypass")
+
 workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
-# exclude_none: the per-auth-path flags (impersonated/bot_authenticated/dev_bypass)
-# and the optional profile fields are only meaningful when set — the response has
-# always omitted them rather than sending nulls, and clients rely on that.
+# exclude_none: the per-auth-path flags and optional profile fields are only
+# meaningful when set; the response has always omitted nulls, and clients rely on that.
 # evlog-map-disable-next-line audit -- read-only profile lookup, no state change to audit
 @router.get("/me", response_model_exclude_none=True)
 async def get_me(
@@ -52,16 +64,32 @@ async def get_me(
     Returns the current authenticated user's details.
     Uses the dependency injection to fetch user data.
     """
-    # Get onboarding status
-    onboarding_status = await get_user_onboarding_status(user["user_id"])
+    onboarding_status = await get_user_onboarding_status(user.user_id)
 
     log.set(
-        user={"id": user["user_id"], "email": user.get("email")},
+        user={"id": user.user_id, "email": user.email},
         operation="get_me",
     )
 
+    # The auth-path flags are on the wire only when set — a plain session has
+    # never sent ``impersonated: false`` — so the False ones stay out here, the
+    # same way ``response_model_exclude_none`` keeps the unset document fields out.
+    flags = {
+        name: True
+        for name, value in (
+            ("impersonated", user.impersonated),
+            ("bot_authenticated", user.bot_authenticated),
+            ("dev_bypass", user.dev_bypass),
+        )
+        if value
+    }
     response = AuthenticatedUserResponse.model_validate(
-        {**user, "message": "User retrieved successfully", "onboarding": onboarding_status}
+        {
+            **user.model_dump(exclude=set(_AUTH_PATH_FLAGS)),
+            **flags,
+            "message": "User retrieved successfully",
+            "onboarding": onboarding_status,
+        }
     )
 
     log.set(outcome="success")
@@ -78,9 +106,9 @@ async def update_me(
     Update the current user's profile information.
     Supports updating name and profile picture.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     log.set(
-        user={"id": user_id, "email": user.get("email")},
+        user={"id": user_id, "email": user.email},
         operation="update_me",
         has_picture_upload=bool(picture and picture.size and picture.size > 0),
     )
@@ -107,7 +135,6 @@ async def update_me(
         picture_data = await picture.read()
         log.set(picture_size_bytes=picture.size)
 
-    # Update user profile
     updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
 
     changed_fields = [
@@ -116,12 +143,12 @@ async def update_me(
         if changed
     ]
     log.audit("profile updated", actor=user_id, changed_fields=changed_fields)
-    capture_context_event(
-        AnalyticsEvents.PROFILE_UPDATED,
-        {
-            "changed_field_count": len(changed_fields),
-            "has_picture_upload": picture_data is not None,
-        },
+    capture(
+        UserId(user_id),
+        ProfileUpdated(
+            changed_field_count=len(changed_fields),
+            has_picture_upload=picture_data is not None,
+        ),
     )
     log.set(outcome="success")
     return updated_user
@@ -136,7 +163,7 @@ async def update_user_name(
     Update the user's name. This is the consolidated endpoint for name updates.
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         log.set(user={"id": user_id}, operation="update_user_name")
 
         if not user_id or not isinstance(user_id, str):
@@ -144,7 +171,7 @@ async def update_user_name(
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
         log.audit("profile updated", actor=user_id, changed_fields=["name"])
-        capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 1})
+        capture(UserId(user_id), ProfileUpdated(changed_field_count=1))
         log.set(outcome="success")
         return updated_user
     except HTTPException:
@@ -152,7 +179,7 @@ async def update_user_name(
     except Exception as e:
         log.error(
             f"{LogTag.API} Error updating user name",
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
             exc_info=True,
@@ -192,7 +219,7 @@ async def update_user_timezone(
 
         schedule_account_sync(user_id)
         log.audit("profile updated", actor=user_id, changed_fields=["timezone"])
-        capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 1})
+        capture(UserId(user_id), ProfileUpdated(changed_field_count=1))
         log.set(outcome="success")
         return UpdateTimezoneResponse(
             success=True,
@@ -232,7 +259,7 @@ async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
         if not user_doc:
             raise HTTPException(status_code=404, detail="Card not found")
 
-        onboarding = HoloCardOnboardingFields.model_validate(user_doc.onboarding or {})
+        onboarding = user_doc.onboarding or OnboardingSubdocument()
 
         # Check if user has completed onboarding
         if not onboarding.house:
@@ -314,7 +341,7 @@ async def update_holo_card_colors(
             actor=user_id,
             changed_fields=["overlay_color", "overlay_opacity"],
         )
-        capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 2})
+        capture(UserId(user_id), ProfileUpdated(changed_field_count=2))
         log.set(outcome="success")
         return UpdateHoloCardColorsResponse(
             success=True,
@@ -339,8 +366,9 @@ async def update_holo_card_colors(
 @router.post("/logout")
 async def logout(
     request: Request,
+    response: Response,
     user: AuthenticatedUser = Depends(get_current_user),
-) -> JSONResponse:
+) -> LogoutResponse:
     """
     Logout user and return logout URL for frontend redirection.
     """
@@ -360,29 +388,18 @@ async def logout(
         if not session:
             raise HTTPException(status_code=401, detail="Invalid session")
 
-        user_email: str | None = user.get("email")
-        user_id: str | None = user.get("user_id")
+        user_email: str | None = user.email
+        user_id: str | None = user.user_id
 
         # The auth model always carries both fields, so an or-flip of this
         # guard is behaviorally unreachable (the mutation gate would never see
         # it red). pragma: no mutate
         if user_email and user_id:  # pragma: no mutate
-            try:
-                track_logout(user_id=user_id)
-            except Exception as analytics_error:
-                log.warning(
-                    f"{LogTag.API} Failed to track logout analytics",
-                    user_email=user_email,
-                    error_type=type(analytics_error).__name__,
-                    error=str(analytics_error),
-                )
+            capture(UserId(user_id), UserLoggedOut())
 
         logout_url = session.get_logout_url()
 
         log.audit("logged out", actor=user_id)
-
-        # Create response with logout URL
-        response = JSONResponse(content={"logout_url": logout_url})
 
         # Clear the session cookie
         response.delete_cookie(
@@ -394,13 +411,43 @@ async def logout(
         )
 
         log.set(outcome="success")
-        return response
+        return LogoutResponse(logout_url=logout_url)
 
     except Exception as e:
         log.error(
             f"{LogTag.API} Logout error",
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Logout failed") from e
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/chat-channel-priority")
+async def read_chat_channel_priority(
+    user_id: str = Depends(get_user_id),
+) -> ChannelPriorityList:
+    """The order GAIA picks the one platform it texts on."""
+    log.set(user={"id": user_id}, operation="read_chat_channel_priority")
+    # Validated, not cast: the stored strings are checked against the ChatChannel
+    # set the same way a request body is.
+    return ChannelPriorityList.model_validate(
+        {"priority": await get_chat_channel_priority(user_id)}
+    )
+
+
+@router.patch("/chat-channel-priority")
+async def update_chat_channel_priority(
+    body: ChannelPriorityList,
+    user_id: str = Depends(get_user_id),
+) -> ChannelPriorityList:
+    """Reorder where GAIA texts first.
+
+    The stored list is the validated one (duplicates collapsed), and it is echoed
+    back so the UI shows what was saved rather than what was sent.
+    """
+    log.set(user={"id": user_id}, operation="update_chat_channel_priority")
+    await set_chat_channel_priority(user_id, body.priority)
+    log.audit("chat channel priority updated", actor=user_id, priority=body.priority)
+    return body

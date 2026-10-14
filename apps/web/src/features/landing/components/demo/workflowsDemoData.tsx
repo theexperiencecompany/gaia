@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import type { WorkflowStep } from "./WorkflowsDemoBase";
+import type { DemoWorkflowStep } from "./WorkflowsDemoBase";
 
 export interface WorkflowsDemoConfig {
   title: string;
   schedule: string;
-  steps: WorkflowStep[];
+  steps: DemoWorkflowStep[];
   fallbackIcon?: (isDone: boolean, isRunning: boolean) => ReactNode;
 }
 

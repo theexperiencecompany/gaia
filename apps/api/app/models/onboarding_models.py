@@ -1,9 +1,10 @@
-from typing import Any, ClassVar, Literal, TypedDict
+from typing import ClassVar, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
 from app.models.user_models import OnboardingPhase
-from app.models.workflow_models import IntegrationRef, TriggerType, WorkflowStep
+from app.models.workflow_models import WorkflowStep
+from shared.py.analytics.catalog.properties import Identifier
 
 # The four holo-card houses. The frontend types the same closed set.
 House = Literal["frostpeak", "greenvale", "mistgrove", "bluehaven"]
@@ -11,6 +12,8 @@ HOUSES: list[House] = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
 
 class WritingStyleExampleBlocks(BaseModel):
+    """An example email split into the parts the onboarding card renders separately."""
+
     greeting: str = Field(
         default="",
         description=(
@@ -36,17 +39,29 @@ class WritingStyleExampleBlocks(BaseModel):
 
 
 class WritingStyleProfile(BaseModel):
+    """The learned writing style, plus the user's own edit of the summary if any."""
+
     summary: str
     example: WritingStyleExampleBlocks
     user_edited_summary: str | None = None
 
 
 class SocialProfile(BaseModel):
+    """One social account belonging to the user, as stored and sent to the client."""
+
     platform: str
     url: str
 
 
+class ConfirmedSocialProfile(SocialProfile):
+    """A profile the user confirmed; its platform is a slug so onboarding analytics can carry it."""
+
+    platform: Identifier
+
+
 class EmailSummary(BaseModel):
+    """An important email as the triage LLM returns it."""
+
     sender: str
     subject: str
     snippet: str = ""
@@ -71,6 +86,8 @@ class TriageEmailSummary(BaseModel):
 
 
 class InboxTriage(BaseModel):
+    """The whole inbox-scan result, as held in memory for the rest of onboarding."""
+
     total_scanned: int
     total_unread: int
     summary: str = ""
@@ -99,6 +116,8 @@ class PersistedTriageSummary(BaseModel):
 
 
 class InboxTriageOutput(BaseModel):
+    """Structured-output contract for the inbox-triage LLM call."""
+
     summary: str = Field(
         min_length=1,
         description="2-3 sentence overview of the inbox written conversationally to the user",
@@ -110,6 +129,8 @@ class InboxTriageOutput(BaseModel):
 
 
 class WritingStyleOutput(BaseModel):
+    """Structured-output contract for the writing-style LLM call."""
+
     summary: str = Field(
         description=(
             "2-3 sentence writing style description capturing concrete observable patterns: "
@@ -119,16 +140,18 @@ class WritingStyleOutput(BaseModel):
     example: WritingStyleExampleBlocks = Field(
         description=(
             "Example email written in the user's voice, broken into structured blocks. "
-            "Must reflect the observed style — do not invent traits not seen in the emails."
+            "Must reflect the observed style. Do not invent traits not seen in the emails."
         ),
     )
 
 
 class HoloCardLLMOutput(BaseModel):
+    """Structured-output contract for the holo-card LLM call."""
+
     personality_phrase: str = Field(
         description=(
             "Unique 2-3 word personality phrase capturing the user's essence. "
-            "Poetic, metaphorical, and unexpected — never corporate buzzwords, "
+            "Poetic, metaphorical, and unexpected. Never corporate buzzwords, "
             "generic descriptors, or obvious profession references. Examples of "
             "the right register: 'Midnight Architect', 'Velvet Rebel', 'Pattern "
             "Seeker', 'Quiet Thunder'."
@@ -138,13 +161,15 @@ class HoloCardLLMOutput(BaseModel):
         description=(
             "Sassy, insightful 2-3 sentence bio in third person that makes the "
             "user think 'wow, how does GAIA know me so well?'. Calls out patterns "
-            "and quirks, not job titles. NEVER use em dashes or en dashes — use "
+            "and quirks, not job titles. NEVER use em dashes or en dashes. Use "
             "commas, periods, colons, or parentheses instead."
         ),
     )
 
 
 class WritingStyleExampleOutput(BaseModel):
+    """Structured-output contract for regenerating the style example on its own."""
+
     example: WritingStyleExampleBlocks = Field(
         description=(
             "Example email matching the provided style summary, broken into structured blocks."
@@ -165,6 +190,8 @@ class OwnedSocialProfile(BaseModel):
 
 
 class SocialProfileFilterOutput(BaseModel):
+    """Structured-output contract for the profile-ownership LLM call."""
+
     owned_profiles: list[OwnedSocialProfile] = Field(
         description="Profiles that belong to the user. Empty list if none."
     )
@@ -172,25 +199,10 @@ class SocialProfileFilterOutput(BaseModel):
 
 # --------------------------------------------------------------------- clarify
 
-ClarifyQuestionKind = Literal["scope", "blocker", "constraint"]
-
-
-class ClarifyQuestion(BaseModel):
-    """One no-Gmail follow-up question from ``POST /onboarding/clarify-questions``."""
-
-    id: ClarifyQuestionKind
-    kind: ClarifyQuestionKind
-    question: str
-    options: list[str]
-
-
-class ClarifyQuestionsResponse(BaseModel):
-    questions: list[ClarifyQuestion]
-
 
 class ClarifyAnswerRecord(TypedDict, total=False):
-    """``users.onboarding.clarify_answers`` as persisted by ``complete_onboarding``
-    from :class:`~app.models.user_models.ClarifyAnswer`.
+    """``users.onboarding.clarify_answers`` as persisted by the pre-paid-flow
+    onboarding submission. Read-only legacy data — nothing writes it now.
 
     A ``TypedDict``, not a model (Type Safety item 6): it is read straight off an
     already-persisted subdocument and only ever consumed in-process, so validating
@@ -205,45 +217,6 @@ class ClarifyAnswerRecord(TypedDict, total=False):
 
 
 # ------------------------------------------------------- pipeline output shapes
-
-
-class OnboardingTodoSource(BaseModel):
-    """The email a generated onboarding todo was drafted from."""
-
-    sender: str
-    subject: str
-
-
-class OnboardingTodoSummary(BaseModel):
-    """A todo the onboarding pipeline created, as sent on ``todos_ready`` and fed
-    to the first-message prompt."""
-
-    id: str
-    title: str
-    source_email: OnboardingTodoSource | None = None
-
-
-class OnboardingTriggerPayload(BaseModel):
-    """A created workflow's trigger, shaped like the workflow API's own ``trigger``
-    field so the onboarding cards and the app render it identically."""
-
-    type: TriggerType
-    cron_expression: str | None = None
-    timezone: str | None = None
-    trigger_name: str | None = None
-
-
-class OnboardingWorkflowSummary(BaseModel):
-    """A workflow the onboarding pipeline created, as sent on ``workflows_ready``."""
-
-    id: str
-    title: str
-    description: str
-    categories: list[str]
-    trigger: OnboardingTriggerPayload
-    # Omitted from the wire (not null) on the fallback workflow, which is built
-    # without the connected-integration check.
-    missing_integrations: list[IntegrationRef] | None = None
 
 
 class UserProfileMetadata(BaseModel):
@@ -267,13 +240,13 @@ class ProfileCardDesign(BaseModel):
 class StagePayload(BaseModel):
     """Base for the ``payload`` of an ``onboarding_stage`` WebSocket event."""
 
-    # Whether a None field is dropped from the wire payload or sent as an explicit
-    # null. Both are load-bearing: the frontend reads a missing `source_email` as
-    # "this todo came from no email", but a null `style_summary` as "style learning
-    # ran and came back empty".
+    # Whether a None field is dropped from the wire payload or sent as explicit
+    # null. Both are load-bearing: a missing source_email means "no email", but
+    # a null style_summary means "style learning ran and came back empty".
     omit_none_on_wire: ClassVar[bool] = False
 
-    def to_wire(self) -> dict[str, Any]:
+    def to_wire(self) -> dict[str, object]:
+        """The payload as it goes onto the WebSocket frame."""
         return self.model_dump(mode="json", exclude_none=self.omit_none_on_wire)
 
 
@@ -284,36 +257,26 @@ class StatusTextPayload(StagePayload):
 
 
 class WritingStyleReadyPayload(StagePayload):
+    """Payload of the ``writing_style_ready`` stage event."""
+
     style_summary: str | None
     example: WritingStyleExampleBlocks | None
 
 
 class SocialProfilesReadyPayload(StagePayload):
+    """Payload of the ``social_profiles_ready`` stage event."""
+
     profiles: list[SocialProfile]
 
 
 class TriageReadyPayload(StagePayload):
+    """Payload of the ``triage_ready`` stage event."""
+
     total_scanned: int
     total_unread: int
     summary: str | None
     patterns: list[str]
     important_emails: list[TriageEmailSummary]
-
-
-class TodosReadyPayload(StatusTextPayload):
-    omit_none_on_wire: ClassVar[bool] = True
-
-    todos: list[OnboardingTodoSummary]
-
-
-class WorkflowsReadyPayload(StatusTextPayload):
-    omit_none_on_wire: ClassVar[bool] = True
-
-    workflows: list[OnboardingWorkflowSummary]
-
-
-class CompletePayload(StagePayload):
-    conversation_id: str | None
 
 
 # ----------------------------------------------------------- endpoint responses
@@ -331,24 +294,34 @@ class OnboardingResetCounts(BaseModel):
 
 
 class OnboardingResetResponse(OnboardingResetCounts):
+    """Response body for the onboarding reset endpoint."""
+
     success: bool
 
 
 class OnboardingPhaseUpdateResponse(BaseModel):
+    """Response body for an onboarding phase update."""
+
     success: bool
     phase: OnboardingPhase
     message: str
 
 
 class SaveWritingStyleResponse(BaseModel):
+    """Response body for saving a user-edited writing style."""
+
     success: bool
 
 
 class RegenerateWritingStyleExampleResponse(BaseModel):
+    """Response body for regenerating the writing-style example."""
+
     example: WritingStyleExampleBlocks | None
 
 
 class SaveSocialProfilesResponse(BaseModel):
+    """Response body for confirming social profiles, carrying how many were kept."""
+
     success: bool
     saved: int
 
@@ -363,18 +336,21 @@ class PersonalizationWorkflow(BaseModel):
 
 
 class PersonalizationWritingStyle(BaseModel):
+    """The learned writing style as rendered by the onboarding cards."""
+
     style_summary: str
     example: WritingStyleExampleBlocks | None
 
 
 class PersonalizationTodo(BaseModel):
+    """A suggested todo as rendered by the onboarding cards."""
+
     id: str
     title: str
     description: str | None
-    # `TodoDocument.source_email` is a `str | None` that nothing in the backend
-    # writes, so this is always null — while the `todos_ready` WebSocket event
-    # carries a {sender, subject} object the frontend renders. Typed as it really
-    # is; reconciling the two is a product change, not a typing fix.
+    # TodoDocument.source_email is str | None but nothing in the backend writes
+    # it, so this is always null — the todos_ready WebSocket event carries a
+    # {sender, subject} object instead. Reconciling is a product change, not a fix.
     source_email: str | None
 
 

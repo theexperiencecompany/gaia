@@ -10,10 +10,9 @@ from datetime import UTC, datetime
 from typing import Literal
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, HUE_MAX
-from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY
 from app.db.repositories.base import UserScopedDocument
 
 BriefingKind = Literal["daily", "weekly"]
@@ -40,6 +39,8 @@ BRIEFING_ITEM_STATES: dict[BriefingItemKind, str] = {
 class BriefingStat(BaseModel):
     """One tuple in the stat row (e.g. value="12" label="drafts staged")."""
 
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     value: str
     label: str
     delta: str | None = None
@@ -47,6 +48,8 @@ class BriefingStat(BaseModel):
 
 class BriefingItem(BaseModel):
     """A single line inside a section, optionally bound to a todo."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     text: str
     todo_id: str | None = None
@@ -59,6 +62,8 @@ class BriefingItem(BaseModel):
 
 class BriefingSection(BaseModel):
     """A Roman-numeraled section of the briefing."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     numeral: str
     title: str
@@ -102,6 +107,8 @@ class BriefingWeek(BaseModel):
 
 class BriefingPayload(BaseModel):
     """The structured briefing the run emits and every channel renders."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     kicker: str
     date: str
@@ -163,7 +170,9 @@ class BriefingModel(UserScopedDocument):
     persisted as Mongo's ``_id`` (``uses_object_id=False``).
     """
 
-    model_config = ConfigDict(extra="ignore", from_attributes=True)
+    model_config = ConfigDict(
+        extra="ignore", from_attributes=True, json_schema_serialization_defaults_required=True
+    )
 
     id: str = Field(default_factory=lambda: f"brief_{uuid.uuid4().hex[:12]}")
     date: str  # user-local YYYY-MM-DD
@@ -210,25 +219,3 @@ class BriefingListResponse(BaseModel):
     """Archive response shape (frontend is coded against this)."""
 
     briefings: list[BriefingModel]
-
-
-class ChannelPriorityResponse(BaseModel):
-    """The user's briefing chat-channel priority order (settings UI reads this)."""
-
-    chat_channel_priority: list[str]
-
-
-class ChannelPriorityUpdate(BaseModel):
-    """A non-empty, duplicate-free ordered subset of the chat platforms."""
-
-    chat_channel_priority: list[str] = Field(min_length=1)
-
-    @field_validator("chat_channel_priority")
-    @classmethod
-    def _validate_platforms(cls, value: list[str]) -> list[str]:
-        if len(set(value)) != len(value):
-            raise ValueError("chat_channel_priority must not contain duplicates")
-        unknown = [p for p in value if p not in DEFAULT_CHAT_CHANNEL_PRIORITY]
-        if unknown:
-            raise ValueError(f"unknown chat platform(s): {', '.join(unknown)}")
-        return value

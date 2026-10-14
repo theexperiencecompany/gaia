@@ -21,14 +21,9 @@ autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
 /**
- * Register all auto-updater event handlers.
- *
- * Hooks into electron-updater's event lifecycle to:
- * - Log update check progress
- * - Prompt the user when an update is available
- * - Show download progress
- * - Offer a restart once the update is downloaded
- * - Silently swallow errors (updates are non-critical)
+ * Register all auto-updater event handlers: logs check progress, prompts on an
+ * available update, shows download progress, offers a restart once downloaded,
+ * and swallows errors (updates are non-critical).
  */
 export function setupAutoUpdater(): void {
   autoUpdater.on("checking-for-update", () => {

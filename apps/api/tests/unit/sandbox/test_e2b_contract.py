@@ -1,17 +1,17 @@
 """Layer 1 — E2B SDK contract guards.
 
-The whole sandbox layer rests on assumptions about the `e2b` SDK surface:
-the pause method is `beta_pause` (not `pause`), `connect` auto-resumes, files
-ops raise specific exception types, `EntryInfo` carries `modified_time`, etc.
+The whole sandbox layer rests on assumptions about the e2b SDK surface:
+the pause method is beta_pause (not pause), connect auto-resumes, files
+ops raise specific exception types, EntryInfo carries modified_time, etc.
 
 Mocked behavior tests CANNOT catch an SDK upgrade that renames these — they
 mock the very surface that changed. THESE tests run against the *installed*
-SDK with zero mocks, so they break loudly the day `nx run api:sync` bumps e2b
+SDK with zero mocks, so they break loudly the day nx run api:sync bumps e2b
 in a way that would silently break production (exactly the original
-`getattr(sbx, "pause")` → None bug).
+getattr(sbx, "pause") → None bug).
 
-If one of these fails after a dependency bump, the fix is in `app/services/
-sandbox/` and `app/agents/tools/coding/`, NOT in this test.
+If one of these fails after a dependency bump, the fix is in app/services/
+sandbox/ and app/agents/tools/coding/, NOT in this test.
 """
 
 from __future__ import annotations

@@ -1,11 +1,13 @@
 import type { TurnAccumulator } from "@gaia/shared/chat";
 import { applyStreamEvent, createTurnAccumulator } from "@gaia/shared/chat";
+import { foldReactionAcks } from "@gaia/shared/utils";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { chatDb } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chat-store";
+import { usePaywallStore } from "@/stores/paywall-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
 import { chatKeys, useConversationQuery } from "../api/queries";
 import type { AttachmentFile } from "../components/composer/attachment-preview";
@@ -138,7 +140,15 @@ export function useChat(
     ),
   );
 
-  const messages = streamingMessages ?? cachedMessages ?? EMPTY_MESSAGES;
+  const rawMessages = streamingMessages ?? cachedMessages ?? EMPTY_MESSAGES;
+
+  // Reaction acks fold onto their targets here so an emoji-ack renders as a
+  // badge on the answered message instead of a stray bubble — web parity via
+  // the same shared fold `useConversation` uses. Stored records stay unfolded.
+  const messages = useMemo(
+    () => foldReactionAcks(rawMessages, (message) => message.text),
+    [rawMessages],
+  );
 
   const streamingState = useChatStore(
     useShallow((state) => state.streamingState),
@@ -290,14 +300,16 @@ export function useChat(
         isStreaming: true,
         conversationId: storeKey,
       });
+      // Clear any previous wall: if the user has since subscribed this send
+      // succeeds, and leaving the old notice up would say otherwise. A still
+      // unsubscribed user gets another 402 and the wall comes straight back.
+      usePaywallStore.getState().clearBlock();
       turnAccumulatorRef.current = createTurnAccumulator();
       streamIdRef.current = null;
 
-      // --- Single-settle turn finalization --------------------------------
-      // Exactly one of done / error / aborted ever runs. The SSE layer can
-      // fire multiple terminal signals (error then close, abort then close);
-      // without this guard each of them re-persisted state and raced the
-      // reconcile refetch.
+      // Single-settle turn finalization: exactly one of done/error/aborted ever
+      // runs. The SSE layer can fire multiple terminal signals (error then close,
+      // abort then close); without this guard each would re-persist state and race the reconcile refetch.
       let settled: "done" | "error" | "aborted" | null = null;
       const settle = (cause: "done" | "error" | "aborted") => {
         if (settled) return;
@@ -377,61 +389,52 @@ export function useChat(
             onStreamId: (id) => {
               streamIdRef.current = id;
             },
-            onConversationCreated: (
-              newConvId,
-              userMsgId,
-              botMsgId,
-              description,
-            ) => {
-              const liveStore = useChatStore.getState();
-              const msgs = liveStore.messagesByConversation[storeKey] || [];
-
-              const updatedMsgs = msgs.map((msg, idx) => {
-                if (idx === msgs.length - 2) return { ...msg, id: userMsgId };
-                if (idx === msgs.length - 1) return { ...msg, id: botMsgId };
-                return msg;
-              });
-
-              if (!chatId && newConvId) {
-                liveStore.setMessages(newConvId, updatedMsgs);
-                liveStore.clearMessages(storeKey);
-                liveStore.setStreamingState({ conversationId: newConvId });
-                liveStore.setActiveChatId(newConvId);
-
-                // The server-assigned bot id replaces our temp id — keep the
-                // retry binding pointing at the real message.
-                if (lastRequestRef.current) {
-                  lastRequestRef.current = {
-                    ...lastRequestRef.current,
-                    assistantMessageId: botMsgId,
-                  };
-                }
-
-                // Show the new conversation in the sidebar immediately by
-                // prepending to the React Query cache (the sidebar's single
-                // source of truth); the background refetch confirms it.
-                queryClient.setQueryData(
-                  chatKeys.conversations(),
-                  (prev: Conversation[] | undefined) => {
-                    if (!prev) return prev;
-                    if (prev.some((c) => c.id === newConvId)) return prev;
-                    const now = new Date().toISOString();
-                    const entry = {
-                      id: newConvId,
-                      title: description || "New conversation",
-                      created_at: now,
-                      updated_at: now,
-                    };
-                    return [entry, ...prev];
-                  },
-                );
-
-                activeConvIdRef.current = newConvId;
-                setCurrentConversationId(newConvId);
-                options?.onNavigate?.(newConvId);
-              } else {
-                liveStore.setMessages(storeKey, updatedMsgs);
+            onMessageIds: (userMsgId, botMsgId) => {
+              // Server ids let an emoji_ack find the user message it reacts to.
+              useChatStore
+                .getState()
+                .adoptTurnMessageIds(storeKey, userMsgId, botMsgId);
+              // Keep the retry binding pointing at the real message.
+              if (lastRequestRef.current) {
+                lastRequestRef.current = {
+                  ...lastRequestRef.current,
+                  assistantMessageId: botMsgId,
+                };
               }
+            },
+            onConversationCreated: (newConvId, description) => {
+              if (chatId) return;
+              const liveStore = useChatStore.getState();
+              liveStore.setMessages(
+                newConvId,
+                liveStore.messagesByConversation[storeKey] || [],
+              );
+              liveStore.clearMessages(storeKey);
+              liveStore.setStreamingState({ conversationId: newConvId });
+              liveStore.setActiveChatId(newConvId);
+
+              // Show the new conversation in the sidebar immediately by
+              // prepending to the React Query cache (the sidebar's single
+              // source of truth); the background refetch confirms it.
+              queryClient.setQueryData(
+                chatKeys.conversations(),
+                (prev: Conversation[] | undefined) => {
+                  if (!prev) return prev;
+                  if (prev.some((c) => c.id === newConvId)) return prev;
+                  const now = new Date().toISOString();
+                  const entry = {
+                    id: newConvId,
+                    title: description || "New conversation",
+                    created_at: now,
+                    updated_at: now,
+                  };
+                  return [entry, ...prev];
+                },
+              );
+
+              activeConvIdRef.current = newConvId;
+              setCurrentConversationId(newConvId);
+              options?.onNavigate?.(newConvId);
             },
             onProgress: (message, toolName) => {
               useChatStore.getState().setStreamingState({
@@ -440,11 +443,9 @@ export function useChat(
               });
             },
             onStreamEvent: (event) => {
-              // Fold every parsed frame into the shared turn accumulator,
-              // then derive live UI state from it. The reducer already
-              // upserts approvals per approval_id, coalesces reasoning into
-              // tool_calls_data entries, nests subagent groups and upserts
-              // todo progress — no hand-rolled accumulation here.
+              // Fold every parsed frame into the shared turn accumulator, then
+              // derive live UI state from it — the reducer already upserts
+              // approvals, coalesces reasoning into tool_calls_data, nests subagent groups, and upserts todo progress.
               turnAccumulatorRef.current = applyStreamEvent(
                 turnAccumulatorRef.current,
                 event,
@@ -457,6 +458,15 @@ export function useChat(
               switch (event.type) {
                 case "response":
                   liveStore.updateLastMessage(convId, acc.responseText);
+                  return;
+                case "emoji_ack":
+                  // The turn is a reaction: foldReactionAcks badges the emoji
+                  // onto the user's message instead of rendering this bubble.
+                  liveStore.updateLastAssistantMessage(convId, {
+                    text: event.emoji,
+                    kind: "emoji_ack",
+                    reacts_to_message_id: event.reactsToMessageId,
+                  });
                   return;
                 case "tool_data":
                 case "tool_output":
@@ -500,6 +510,18 @@ export function useChat(
                 .getState()
                 .updateLastAssistantMessage(activeConvIdRef.current!, {
                   error: "Connection lost before the response finished.",
+                });
+              settle("error");
+            },
+            onSubscriptionRequired: (detail) => {
+              // Not a failure to retry — the account simply isn't subscribed. The
+              // wall (with checkout link) renders above the composer; the assistant
+              // bubble just says why it stopped, with no retry affordance.
+              usePaywallStore.getState().setBlocked(detail);
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  error: detail.message,
                 });
               settle("error");
             },

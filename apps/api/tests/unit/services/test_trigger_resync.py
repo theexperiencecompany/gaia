@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
@@ -16,6 +17,7 @@ MODULE = "app.services.workflow.trigger_service"
 
 def _wf(wf_id: str, trigger_name: str, ids: list[str] | None) -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id=wf_id,
         user_id="user1",
         title="wf",
@@ -31,7 +33,7 @@ def _wf(wf_id: str, trigger_name: str, ids: list[str] | None) -> WorkflowDocumen
 
 
 def _repo_returning(workflows: list[WorkflowDocument]) -> MagicMock:
-    """A stand-in for workflow_repository — the resync's find + repoint seam."""
+    """Build a stand-in for workflow_repository — the resync's find + repoint seam."""
     repo = MagicMock()
     repo.find_active_integration_workflows = AsyncMock(return_value=workflows)
     repo.set_composio_trigger_ids = AsyncMock()

@@ -1,28 +1,28 @@
 """Briefing system workflow definitions.
 
-Provisioned for every user at onboarding completion and via the existing-user
-backfill — not on integration connect. Both are SCHEDULE workflows in the user's
-timezone; the workflow ARQ path special-cases their ``system_workflow_key`` to
-route into the briefing service instead of the generic chat execution, so the
-``prompt``/``steps`` here are display metadata for the workflows UI, not the
-generation logic (that lives in ``app/agents/prompts/briefing_prompts.py``).
+Provisioned at onboarding completion and via the existing-user backfill, not on
+integration connect. Both are SCHEDULE workflows in the user's timezone; the workflow
+ARQ path routes their system_workflow_key into the briefing service, so the
+prompt/steps here are display metadata only.
 """
 
 from collections.abc import Callable
 from uuid import uuid4
 
 from app.constants.briefing import (
-    DAILY_BRIEFING_CRON,
     DAILY_BRIEFING_WORKFLOW_KEY,
     WEEKLY_DIGEST_CRON,
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
+from app.constants.workflows import WorkflowDelivery
+from app.models.notification.notification_models import default_quiet_hours
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
     TriggerType,
     WorkflowStep,
 )
+from app.services.briefing.schedule import daily_briefing_cron
 
 
 def _daily_briefing() -> CreateWorkflowRequest:
@@ -35,10 +35,14 @@ def _daily_briefing() -> CreateWorkflowRequest:
             "structured briefing payload."
         ),
         is_system_workflow=True,
+        # The brief delivers itself (in-app, email, the chat photo); the run's
+        # own completion never notifies.
+        delivery=WorkflowDelivery.SILENT,
         system_workflow_key=DAILY_BRIEFING_WORKFLOW_KEY,
         trigger_config=TriggerConfig(
             type=TriggerType.SCHEDULE,
-            cron_expression=DAILY_BRIEFING_CRON,
+            # The default quiet hours' slot; provisioning stamps the user's own.
+            cron_expression=daily_briefing_cron(default_quiet_hours()),
             enabled=True,
         ),
         steps=[
@@ -64,6 +68,9 @@ def _weekly_digest() -> CreateWorkflowRequest:
             "and by the user). Emit one structured payload."
         ),
         is_system_workflow=True,
+        # The brief delivers itself (in-app, email, the chat photo); the run's
+        # own completion never notifies.
+        delivery=WorkflowDelivery.SILENT,
         system_workflow_key=WEEKLY_DIGEST_WORKFLOW_KEY,
         trigger_config=TriggerConfig(
             type=TriggerType.SCHEDULE,

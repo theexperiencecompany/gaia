@@ -1,0 +1,36 @@
+# api-client-imports: files that import apps/mobile/src/lib/api (the raw,
+# untyped request engine) from outside apps/mobile/src/lib.
+#
+# apiService takes any URL and any type argument, so a typo in the path or a
+# guessed response shape compiles. The boundary ships as a ratchet rather than
+# a Biome rule because these call sites are live: a Biome rule would have to be
+# switched off to keep `biome check` green, and a switched-off rule protects
+# nothing. New files fail the gate; these are the ones that already existed.
+#
+# This file only ever shrinks.
+
+apps/mobile/src/features/auth/hooks/use-auth.tsx
+apps/mobile/src/features/calendar/api/calendar-api.ts
+apps/mobile/src/features/chat/api/chat-api.ts
+apps/mobile/src/features/chat/api/models-api.ts
+apps/mobile/src/features/chat/api/queries.ts
+apps/mobile/src/features/chat/hooks/use-link-preview.ts
+apps/mobile/src/features/chat/hooks/useToolsList.ts
+apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx
+apps/mobile/src/features/dashboard/api/dashboard-api.ts
+apps/mobile/src/features/integrations/api/integrations-api.ts
+apps/mobile/src/features/memory/api/memory-api.ts
+apps/mobile/src/features/notes/api/notes-api.ts
+apps/mobile/src/features/notifications/api/inapp-notifications-api.ts
+apps/mobile/src/features/notifications/api/notifications-api.ts
+apps/mobile/src/features/onboarding/api/onboarding-api.ts
+apps/mobile/src/features/reminders/api/reminders-api.ts
+apps/mobile/src/features/search/api/search-api.ts
+apps/mobile/src/features/settings/api/settings-api.ts
+apps/mobile/src/features/settings/components/sections/account-section.tsx
+apps/mobile/src/features/settings/components/sections/memory-section.tsx
+apps/mobile/src/features/settings/components/SupportScreen.tsx
+apps/mobile/src/features/skills/api/skills-api.ts
+apps/mobile/src/features/todos/api/todo-api.ts
+apps/mobile/src/features/tools/api/tools-api.ts
+apps/mobile/src/features/workflows/api/workflow-api.ts

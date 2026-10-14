@@ -7,11 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Break the circular import: triggers.__init__ -> handlers -> base ->
-# workflow.queue_service -> workflow.__init__ -> workflow.service ->
-# workflow.trigger_service -> triggers (not yet finished)
-# ---------------------------------------------------------------------------
+# Break the cycle triggers -> handlers -> base -> workflow -> triggers by pre-seeding
+# app.services.workflow as a stub module before triggers imports from it.
 
 _api_root = Path(__file__).resolve().parents[3]
 

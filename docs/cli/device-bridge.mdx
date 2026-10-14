@@ -1,0 +1,273 @@
+---
+title: "Device Bridge"
+description: "Connect your machine to GAIA — run commands on it and reach its local MCP servers and files over one secure outbound tunnel, from the desktop app or the gaia CLI."
+icon: "plug"
+---
+
+## Overview
+
+The device bridge connects your own machine to GAIA. Once a machine is
+connected, GAIA can run commands on it and reach the local MCP servers you
+add — the same way it uses any other integration.
+
+- **Run commands and read/write files** — the agent runs shell commands on a
+  connected device with the `run_on_device` tool, which lets it read and write
+  files anywhere the device's user account can. File access comes automatically
+  with being connected; there is nothing to configure.
+- **Local MCP servers** — anything you can start with a command (`npx`, `uvx`,
+  `docker`, `python`) or that already runs at a local URL.
+- **One outbound tunnel** — the bridge dials out to GAIA; it opens **no inbound
+  ports** on your machine. Your device is reachable only while the tunnel runs,
+  and you can revoke it anytime from **Settings → Devices**.
+
+<Note>
+  The bridge is separate from self-hosting. You can pair a machine with GAIA
+  Cloud or your own instance — it does not require running GAIA locally.
+</Note>
+
+## Two ways to connect
+
+There are two ways to connect a machine — pick whichever fits:
+
+- **[GAIA desktop app](#connect-with-the-desktop-app-macos-and-linux)** —
+  connect the computer you're on with one click, no CLI and no pairing code.
+  Works on macOS and Linux.
+- **[`gaia` CLI](#connect-with-the-cli)** — pair any machine from the terminal.
+  Best for headless servers, Windows (WSL2), and scripted or advanced setups.
+
+<Note>
+  The desktop app and the CLI are **independent devices**. Connecting one never
+  affects the other, and a single machine can run both — each appears separately
+  under **Settings → Devices**, and revoking one leaves the other online.
+</Note>
+
+## Connect with the desktop app (macOS and Linux)
+
+The GAIA desktop app can connect the computer it runs on directly — no CLI, no
+pairing code. It works on macOS and Linux (Windows isn't supported yet).
+
+<Steps>
+  <Step title="Open the Devices settings">
+    In the GAIA desktop app, go to **Settings → Devices**. The **This computer**
+    card appears at the top (it shows only in the desktop app).
+  </Step>
+
+  <Step title="Enable on this computer">
+    Click **Enable on this computer**. The app pairs this machine as its own
+    device from your signed-in session and starts the tunnel — no code to copy.
+    The card's status chip switches to **Online**. Once connected, GAIA can run
+    commands and read or write files on this computer via `run_on_device` — no
+    file setup required.
+  </Step>
+
+  <Step title="Add MCP servers">
+    Use **Add server** on the same card to connect a local MCP server, and
+    remove any entry from its row. The toggle on the card keeps the tunnel
+    running or pauses it live.
+  </Step>
+</Steps>
+
+### Stay online from the menu bar
+
+A system-tray (menu-bar) item mirrors the device status — **online**,
+**paused**, or **not connected** — and lets you **Connect** or **Pause** the
+tunnel, open the app, or **Quit** (which drops the device offline cleanly).
+Turn on **Launch at login** from the tray to keep this computer online across
+restarts.
+
+### Grant Full Disk Access (macOS only)
+
+On macOS, the OS-protected folders (Downloads, Desktop, Documents, and so on)
+stay off limits until you grant **Full Disk Access** to **GAIA.app** in
+**System Settings → Privacy & Security → Full Disk Access** — the app's shells
+inherit the grant, so `run_on_device` can reach those folders. Everything else
+works as soon as the device is connected.
+
+<Note>
+  macOS only. On Linux there is nothing to grant — file access is immediate once
+  the device is connected, bounded only by normal Unix file permissions.
+</Note>
+
+## Connect with the CLI
+
+The `gaia` CLI pairs any machine — macOS, Linux, or Windows (WSL2) — from the
+terminal. Use it for headless servers, non-macOS machines, and scripted or
+advanced setups.
+
+### Requirements
+
+- **macOS, Linux, or Windows (WSL2 recommended)**
+- **Node.js 20+**
+- A GAIA account to pair with
+
+### Install the CLI
+
+The bridge ships with the GAIA CLI (`@heygaia/cli`). Install it globally with
+your package manager:
+
+<Snippet file="cli-install.mdx" />
+
+Verify it is available:
+
+```bash
+gaia bridge --help
+```
+
+### Pair your machine
+
+Pairing links this machine to your GAIA account. You only do it once per
+machine.
+
+<Steps>
+  <Step title="Start pairing">
+    Run:
+
+    ```bash
+    gaia bridge login
+    ```
+
+    The CLI prints a short code and a link, then waits for approval.
+  </Step>
+
+  <Step title="Approve the device">
+    Approve the code in either place:
+
+    - **In GAIA chat** — paste the code into a chat. GAIA shows an approve
+      button for it.
+    - **In settings** — open **Settings → Devices**
+      (`/settings/devices/approve`) and enter the code.
+
+    Once approved, the CLI confirms the device is paired.
+  </Step>
+</Steps>
+
+**Options for `gaia bridge login`:**
+
+| Flag            | Description                                     |
+| --------------- | ----------------------------------------------- |
+| `--name <name>` | Name to show for this device in **Settings**    |
+| `--api <url>`   | Pair against a specific GAIA API base URL       |
+
+```bash
+gaia bridge login --name my-laptop
+```
+
+### Connect a local MCP server
+
+Run the guided wizard and pick what to connect:
+
+```bash
+gaia bridge add
+```
+
+The wizard connects either of two kinds of MCP server. If the machine isn't
+paired yet, it walks you through pairing first.
+
+<AccordionGroup>
+  <Accordion title="A command that starts an MCP server (stdio)">
+    Give the wizard the command that launches your server, for example:
+
+    ```bash
+    npx -y @modelcontextprotocol/server-everything
+    ```
+
+    Other examples: `uvx some-server`, `docker run -i --rm my/image`. The
+    wizard collects any environment variables or secrets the server needs, then
+    starts it and lists its tools to confirm it works before saving.
+  </Accordion>
+
+  <Accordion title="An MCP server already running at a local URL">
+    Point the wizard at a server already listening on your machine, for example
+    `http://localhost:3000/mcp`. The URL must be loopback
+    (`localhost`, `127.0.0.1`, or `::1`). You can add optional request headers
+    such as `Authorization`.
+  </Accordion>
+</AccordionGroup>
+
+Secrets you enter (env vars, headers) are stored locally and never leave your
+machine. After saving, the wizard registers the server with GAIA and offers to
+start the tunnel right away.
+
+<Note>
+  You don't add files or folders here. Once the device is connected, GAIA can
+  run commands and read or write files on it via `run_on_device` automatically —
+  bounded only by the device user account's permissions. On macOS, the
+  OS-protected folders (Downloads, Desktop, Documents, and so on) additionally
+  require granting **Full Disk Access** to the terminal that runs
+  `gaia bridge up` (**System Settings → Privacy & Security → Full Disk
+  Access**); on Linux there is no such prompt.
+</Note>
+
+### Keep the device online
+
+Your device is online only while the tunnel is running. Start it with:
+
+```bash
+gaia bridge up
+```
+
+This starts the outbound tunnel as a background daemon and frees your terminal —
+the device stays online after you close the shell. Stop it with:
+
+```bash
+gaia bridge down
+```
+
+When the tunnel isn't running, GAIA sees the device as offline. Run
+`gaia bridge ls` to check whether it's currently running.
+
+### Manage devices and servers
+
+```bash
+gaia bridge ls          # show pairing status and configured servers
+gaia bridge rm <key>    # remove one configured server
+gaia bridge logout      # forget this machine's local credentials
+```
+
+Use the `<key>` shown by `gaia bridge ls` when removing a server:
+
+```bash
+gaia bridge rm everything
+```
+
+<Note>
+  `gaia bridge logout` only clears local credentials on this machine. To fully
+  revoke a device from your account, remove it in GAIA under **Settings →
+  Devices**.
+</Note>
+
+### Command reference
+
+| Command                         | Description                                                              |
+| ------------------------------- | ------------------------------------------------------------------------ |
+| `gaia bridge login`             | Pair this machine with your GAIA account                                 |
+| `gaia bridge add`               | Guided wizard to connect a local MCP server                              |
+| `gaia bridge up`                | Start the outbound tunnel as a background daemon (brings the device online) |
+| `gaia bridge down`              | Stop the background tunnel (takes the device offline)                    |
+| `gaia bridge ls`                | Show pairing status and configured servers                               |
+| `gaia bridge rm <key>`          | Remove a configured server                                               |
+| `gaia bridge logout`            | Forget local credentials on this machine                                 |
+
+## Security
+
+- **Outbound-only.** The bridge dials out to GAIA. It opens no inbound ports and
+  requires no port forwarding.
+- **File access follows the device.** When a device is connected, GAIA can run
+  commands and read or write files on it via `run_on_device`, bounded by the
+  device user account's permissions (and, on macOS, by Full Disk Access). It has
+  no access at all while the tunnel is down.
+- **Secrets stay local.** Environment variables and request headers you enter
+  are stored on your machine and are not uploaded.
+- **Revoke anytime.** Remove a device from **Settings → Devices** to cut off
+  access immediately.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Commands Reference" icon="terminal" href="/cli/commands">
+    See all GAIA CLI commands
+  </Card>
+  <Card title="Installation" icon="download" href="/cli/installation">
+    Install and upgrade the CLI
+  </Card>
+</CardGroup>

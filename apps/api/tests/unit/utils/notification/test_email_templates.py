@@ -458,12 +458,7 @@ class TestBriefingDocumentShape:
         assert order == sorted(order)
 
     def test_empty_payload_document_is_exactly_this(self) -> None:
-        """An absent block contributes nothing at all — not a stray character.
-
-        Every optional block returns "" when its payload key is missing, and
-        the required ones fall back to empty text nodes. Pinning the whole
-        document is the only assertion that proves both.
-        """
+        """An absent block contributes nothing, not even a stray character."""
         html = render_daily_brief_email({}, "https://u")
 
         assert html == (

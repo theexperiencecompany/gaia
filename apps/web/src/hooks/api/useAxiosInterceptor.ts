@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-import { apiauth } from "@/lib/api/client";
+import { registerApiErrorHandler } from "@/lib/api/client";
 import { toast } from "@/lib/toast";
 import { processAxiosError } from "@/utils/interceptorUtils";
 
@@ -14,22 +14,16 @@ import { processAxiosError } from "@/utils/interceptorUtils";
 export default function useAxiosInterceptor() {
   const router = useRouter();
 
-  useEffect(() => {
-    const interceptor = apiauth.interceptors.response.use(
-      (response) => response,
-      (error) => {
+  useEffect(
+    () =>
+      registerApiErrorHandler((error) => {
         try {
           processAxiosError(error, { router });
         } catch (handlerError) {
           console.error("Error handling axios interceptor:", handlerError);
           toast.error("An unexpected error occurred.");
         }
-        return Promise.reject(error);
-      },
-    );
-
-    return () => {
-      apiauth.interceptors.response.eject(interceptor);
-    };
-  }, [router]);
+      }),
+    [router],
+  );
 }

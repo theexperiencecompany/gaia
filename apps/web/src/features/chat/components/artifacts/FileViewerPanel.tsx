@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState, type WheelEvent } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
-import { useRightSidebar } from "@/stores/rightSidebarStore";
+import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 interface FileViewerPanelProps {
   conversationId: string;
@@ -211,12 +211,9 @@ function FileViewerBody({
     );
   }
   if (isPdf) {
-    // Render via the browser's native PDF viewer. Never fetch a PDF as text
-    // (the old fallback did, streaming the whole binary as a string — slow on
-    // a cold R2 read, and the bytes rendered as a garbage code block). Fully
-    // sandboxed like the HTML preview below: a passive viewer frame needs no
-    // scripts/forms/popups/top-navigation, and downloads stay available via
-    // the panel's own Download button.
+    // Native PDF viewer — never fetch as text (old fallback streamed the
+    // binary as a string, slow on cold R2 reads, rendered as garbage). Fully
+    // sandboxed like the HTML preview; downloads stay via the panel's own button.
     return (
       <iframe
         title={filename}
@@ -269,7 +266,7 @@ export default function FileViewerPanel({
     error,
   } = useArtifactText(conversationId, path, inlineBody, !isImage && !isPdf);
   const [copied, setCopied] = useState(false);
-  const closeSidebar = useRightSidebar((state) => state.close);
+  const closeSidebar = useCloseRightSidebar();
 
   const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(contentType) || isImage;
 

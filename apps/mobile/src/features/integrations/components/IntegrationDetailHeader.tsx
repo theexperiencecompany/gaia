@@ -11,16 +11,11 @@ interface IntegrationDetailHeaderProps {
 }
 
 /**
- * Header for the integration detail sheet.
- *
- * Mirrors the web `IntegrationSidebar` header byte-for-byte:
- *   - 40px logo, no circular background tint, no padding
- *   - Tiny chip row that ONLY shows "Connected" when connected and a
- *     "Created by …" chip for custom integrations (no category, auth-type,
- *     managed-by, or "Custom" badges — those don't exist on web)
- *   - Title in `text-2xl font-semibold text-zinc-100`
- *   - Description directly under the title in `text-sm font-light
- *     text-zinc-400`
+ * Header for the integration detail sheet, mirroring web's `IntegrationSidebar`
+ * header byte-for-byte: 40px logo (no tint/padding), a chip row showing only
+ * "Connected" and "Created by …" for custom integrations (no category/auth-type/
+ * managed-by badges), title in text-2xl font-semibold, description below in
+ * text-sm font-light text-zinc-400.
  */
 export function IntegrationDetailHeader({
   integration,

@@ -114,14 +114,11 @@ const RESERVED_LOG_KEYS: ReadonlySet<string> = new Set(ENVELOPE_KEYS);
 const COLLIDING_KEY_PREFIX = "ctx_";
 
 /**
- * The `service` value stamped on every log line. Must match the Promtail label
- * for the container the line is emitted from (the Docker Compose service names:
- * `discord-bot`, `slack-bot`, `telegram-bot`, `whatsapp-bot` — see
- * infra/docker/observability/promtail-config.yaml), so
- * `{service="discord-bot"} | json | service="discord-bot"` agrees with itself.
- * Loggers created with the "shared" platform (module-scope loggers in shared
- * code) resolve via the container's `BOT_NAME` env (set in apps/bots/Dockerfile),
- * falling back to "gaia-bots" outside a bot container.
+ * The `service` value stamped on every log line. Must match the Promtail label for the
+ * container it's emitted from (the Docker Compose service names: discord-bot, slack-bot,
+ * telegram-bot, whatsapp-bot — see infra/docker/observability/promtail-config.yaml), so a
+ * `{service=...}` query agrees with itself. The "shared" platform resolves via the container's
+ * `BOT_NAME` env (apps/bots/Dockerfile), falling back to "gaia-bots" outside a bot container.
  */
 function resolveServiceName(platform: PlatformName | "shared"): string {
   if (platform !== "shared") return `${platform}-bot`;
@@ -167,38 +164,73 @@ export function hashLogIdentifier(
 }
 
 /**
- * Extracts the HTTP status from an Axios-style error (`error.response.status`),
- * or `undefined` if absent. Centralizes the repeated `unknown`-cast that every
- * call site (API client, streaming, media, formatters) was duplicating.
+ * The HTTP status a failed call carries, whichever client raised it: Axios
+ * (`response.status`), `GaiaApiError` and discord.js (`status`), grammY
+ * (`error_code`, Telegram's Bot API status) or Kapso (`httpStatus`).
+ * `undefined` when there is none.
  */
 export function getHttpStatus(error: unknown): number | undefined {
-  return (error as { response?: { status?: number } } | null)?.response?.status;
+  const candidate = error as {
+    response?: { status?: unknown };
+    status?: unknown;
+    error_code?: unknown;
+    httpStatus?: unknown;
+  } | null;
+  for (const value of [
+    candidate?.response?.status,
+    candidate?.status,
+    candidate?.error_code,
+    candidate?.httpStatus,
+  ]) {
+    if (typeof value === "number") return value;
+  }
+  return undefined;
 }
 
 /**
- * Describe a thrown value with the two flat scalars every GAIA surface uses:
- * `error_type` (the exception's class/name) and `error` (its message).
- *
- * These names are the contract, not a preference. Python's `log.error(...,
- * error=str(exc), error_type=type(exc).__name__)` is the vocabulary of ~900 call
- * sites, the wide-events lint and the observability scanner. Nesting the pair
- * under a single `error: {...}` object — as this used to — put a string on one
- * surface and an object on the other under the SAME key, which is the one shape
- * `| json` cannot cope with: the label is dropped and the line silently falls
- * out of every error dashboard.
+ * The API's error body — the flat `{ message, code, ... }` envelope every
+ * non-2xx response carries, read from an Axios error or a `GaiaApiError` —
+ * or `{}` when the response had no JSON body.
+ */
+export function getErrorReason(error: unknown): Record<string, unknown> {
+  const candidate = error as {
+    response?: { data?: unknown };
+    reason?: unknown;
+  } | null;
+  const data = candidate?.response?.data ?? candidate?.reason;
+  if (typeof data !== "object" || data === null) return {};
+  return data as Record<string, unknown>;
+}
+
+/** The API's machine-readable error `code` (e.g. `BOT_ACCOUNT_NOT_LINKED`), if it sent one. */
+export function getApiErrorCode(error: unknown): string | undefined {
+  const code = getErrorReason(error).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+/**
+ * Describes a thrown value as flat scalars: `error_type` and `error` (Python's vocabulary),
+ * plus `http_status`, and an API refusal's `error_code` and `error_detail` (its message).
+ * Never a nested `error: {...}` object — the one shape `| json` can't parse.
  */
 export function sanitizeErrorForLog(error: unknown): BotLogFields {
-  if (error instanceof Error) {
+  if (!(error instanceof Error)) {
     return {
-      error_type: error.name,
-      error: error.message,
+      error_type: "Unknown",
+      error: typeof error === "string" ? error : "Unknown non-Error thrown",
     };
   }
-
-  return {
-    error_type: "Unknown",
-    error: typeof error === "string" ? error : "Unknown non-Error thrown",
+  const fields: BotLogFields = {
+    error_type: error.name,
+    error: error.message,
   };
+  const status = getHttpStatus(error);
+  if (status !== undefined) fields.http_status = status;
+  const code = getApiErrorCode(error);
+  if (code !== undefined) fields.error_code = code;
+  const detail = getErrorReason(error).message;
+  if (typeof detail === "string") fields.error_detail = detail;
+  return fields;
 }
 
 function toJsonValue(value: unknown, depth = 0): JsonValue {
@@ -250,7 +282,7 @@ function write(level: BotLogLevel, line: string): void {
     return;
   }
   if (level === "info" || level === "audit") {
-    console.log(line);
+    console.info(line);
     return;
   }
   if (level === "warn") {
@@ -291,10 +323,9 @@ function buildRecord(
     message: event,
   };
 
-  // Derived-from-the-throwable first, caller fields second: an explicit
-  // `error_type` passed by the call site describes the failure better than the
-  // JS `Error.name` it would otherwise be overwritten by, and Python — where
-  // every one of these fields is explicit — has no derived value to lose.
+  // Derived-from-the-throwable fields go first, caller fields second: an explicit `error_type`
+  // from the call site describes the failure better than the JS `Error.name` it would otherwise
+  // overwrite, and Python (where every field is explicit) has no derived value to lose.
   if (error !== undefined) {
     for (const [key, value] of Object.entries(sanitizeErrorForLog(error))) {
       record[key] = toJsonValue(value);
@@ -337,14 +368,12 @@ function capLineSize(record: Record<string, JsonValue>, line: string): string {
 }
 
 /**
- * Serializes and writes one canonical JSON log line. The single low-level
- * emitter shared by {@link createBotLogger} and the wide-event runtime
- * (`wide-events.ts`), so every line carries the same envelope
- * (time/level/env/service/logger/platform/component/message).
+ * Serializes and writes one canonical JSON log line — the single low-level emitter shared by
+ * {@link createBotLogger} and the wide-event runtime (`wide-events.ts`), so every line carries
+ * the same envelope (time/level/env/service/logger/platform/component/message).
  *
- * The same line goes to stdout (scraped by Promtail's Docker service-discovery
- * job) and to the local structured file sink (scraped by Promtail's file job
- * when the bot runs outside Docker) — see `log-file-sink.ts`.
+ * Goes to both stdout (Promtail's Docker service-discovery job) and the local file sink
+ * (Promtail's file job when the bot runs outside Docker) — see `log-file-sink.ts`.
  */
 export function emitBotLogLine(
   level: BotLogLevel,

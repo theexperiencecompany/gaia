@@ -1,10 +1,7 @@
 """Unit tests for the vendored-explorer HTML document builder.
 
-``render_explorer_edition`` produces a self-contained document that a headless
-Chromium later rasters. These tests assert on the document itself — the
-inlined modules, the embedded ``ed``/seed literals, the script-tag escaping
-and the failure path — not on the rastered pixels, which need a real browser
-and belong to the render pipeline's own tier.
+Assertions are on the document itself (inlined modules, embedded ed/seed literals,
+script-tag escaping, the failure path), not on rastered pixels.
 """
 
 from collections.abc import Iterator
@@ -25,10 +22,8 @@ from app.services.briefing.editions.explorer_render import (
     render_explorer_edition,
 )
 
-# Every loader is @lru_cache(maxsize=1) over a file read, and the cache outlives
-# the test that fills it — without this each test would assert against whatever
-# an earlier test happened to load, and a broken loader would only ever be seen
-# by the first test to call it.
+# Every loader is @lru_cache(maxsize=1) and the cache outlives the test that fills it,
+# so each test must start cold.
 _CACHED_LOADERS = (
     _module_sources,
     explorer_family_ids,

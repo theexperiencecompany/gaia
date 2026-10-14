@@ -19,8 +19,9 @@ from app.schemas.integrations.responses import (
     PublishIntegrationResponse,
     UnpublishIntegrationResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integrations.custom_crud import (
+    CustomConnectionResult,
     create_and_connect_custom_integration,
     delete_custom_integration,
     update_custom_integration,
@@ -31,6 +32,14 @@ from app.services.integrations.publish_service import (
     unpublish_custom_integration,
 )
 from app.services.mcp.mcp_client import get_mcp_client
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    IntegrationConnected,
+    IntegrationCustomDeleted,
+    IntegrationCustomPublished,
+    IntegrationCustomUnpublished,
+    IntegrationCustomUpdated,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -48,7 +57,8 @@ async def create_custom_mcp_integration(
             user={"id": user_id},
         )
         mcp_client = await get_mcp_client(user_id=user_id)
-        integration, conn_result = await create_and_connect_custom_integration(
+        connection: CustomConnectionResult
+        integration, connection = await create_and_connect_custom_integration(
             user_id,
             RequestModel(
                 name=request.name,
@@ -67,23 +77,23 @@ async def create_custom_mcp_integration(
         log.set(outcome="success")
         # OAuth-managed connects complete at the MCP OAuth callback; only a
         # direct (no-auth / bearer) connect finishes here.
-        if conn_result.get("status") == "connected":
-            capture_context_event(
-                AnalyticsEvents.INTEGRATION_CONNECTED,
-                {
-                    "integration_id": integration.integration_id,
-                    "auth_type": "bearer" if request.bearer_token else "none",
-                },
+        if connection.get("status") == "connected":
+            capture(
+                UserId(user_id),
+                IntegrationConnected(
+                    integration_id=integration.integration_id,
+                    auth_type="bearer" if request.bearer_token else "none",
+                ),
             )
         return CreateCustomIntegrationResponse(
             message="Custom integration created",
             integration_id=integration.integration_id,
             name=integration.name,
             connection=CustomIntegrationConnectionResult(
-                status=conn_result["status"],
-                tools_count=conn_result.get("tools_count"),
-                oauth_url=conn_result.get("oauth_url"),
-                error=conn_result.get("error"),
+                status=connection["status"],
+                tools_count=connection.get("tools_count"),
+                oauth_url=connection.get("oauth_url"),
+                error=connection.get("error"),
             ),
         )
     except ValueError as e:
@@ -129,6 +139,7 @@ async def update_custom_mcp_integration(
             )
         log.set(integration_name=updated.name)
         log.set(outcome="success")
+        capture(UserId(user_id), IntegrationCustomUpdated(integration_id=integration_id))
         return IntegrationSuccessResponse(
             message="Integration updated",
             integration_id=updated.integration_id,
@@ -164,6 +175,7 @@ async def delete_custom_mcp_integration(
                 status_code=404, detail="Integration not found or you are not the owner"
             )
         log.set(outcome="success")
+        capture(UserId(user_id), IntegrationCustomDeleted(integration_id=integration_id))
         return IntegrationSuccessResponse(
             message="Integration deleted",
             integration_id=integration_id,
@@ -193,12 +205,13 @@ async def publish_integration(
             user={"id": user_id},
             integration={"id": integration_id},
         )
-        result = await publish_custom_integration(integration_id, user_id)
+        public_url = await publish_custom_integration(integration_id, user_id)
         log.set(outcome="success")
+        capture(UserId(user_id), IntegrationCustomPublished(integration_id=integration_id))
         return PublishIntegrationResponse(
             message="Integration published successfully",
-            integration_id=result["integration_id"],
-            public_url=result["public_url"],
+            integration_id=integration_id,
+            public_url=public_url,
         )
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
@@ -225,11 +238,12 @@ async def unpublish_integration(
             user={"id": user_id},
             integration={"id": integration_id},
         )
-        result = await unpublish_custom_integration(integration_id, user_id)
+        await unpublish_custom_integration(integration_id, user_id)
         log.set(outcome="success")
+        capture(UserId(user_id), IntegrationCustomUnpublished(integration_id=integration_id))
         return UnpublishIntegrationResponse(
             message="Integration unpublished successfully",
-            integration_id=result["integration_id"],
+            integration_id=integration_id,
         )
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e

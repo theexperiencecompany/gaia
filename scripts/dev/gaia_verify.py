@@ -44,6 +44,7 @@ class Lane:
     heavy: bool
     timeout_s: int
     require_cmd: list[str]
+    require_env: list[str]
     command: str
 
 
@@ -81,6 +82,7 @@ def load_lanes(path: Path) -> list[Lane]:
                     heavy=bool(row["heavy"]),
                     timeout_s=int(row["timeout_s"]),
                     require_cmd=list(row.get("require_cmd", [])),
+                    require_env=list(row.get("require_env", [])),
                     command=row["command"],
                 )
             )
@@ -103,7 +105,7 @@ def run(
 
 
 def pick_base(root: Path, explicit: str | None) -> str:
-    """--base flag > $GH_BASE > current PR's base via gh > origin/master."""
+    """Resolve the base ref: --base flag > $GH_BASE > current PR's base via gh > origin/master."""
     if explicit:
         return explicit
     env_base = os.environ.get("GH_BASE")
@@ -259,6 +261,13 @@ def main() -> int:
         missing_tools = [c for c in ln.require_cmd if not shutil.which(c)]
         if missing_tools:
             skipped_pre.append((ln, f"missing tool(s): {','.join(missing_tools)}"))
+            continue
+        # A lane named with --only runs regardless, so its own missing-credential error shows.
+        missing_env = [v for v in ln.require_env if not os.environ.get(v)]
+        if missing_env and not only:
+            skipped_pre.append(
+                (ln, f"missing env: {','.join(missing_env)} (--only {ln.name} runs it)")
+            )
             continue
         selected.append((ln, matched))
 

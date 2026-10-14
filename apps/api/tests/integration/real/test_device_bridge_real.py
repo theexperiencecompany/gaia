@@ -1,15 +1,15 @@
 """Service tests: call real device-bridge modules against real Redis.
 
-The conftest's ``real_redis`` fixture patches ``redis_cache.redis`` to a real
+The conftest's real_redis fixture patches redis_cache.redis to a real
 connection; every function under test runs unmodified. A "fake daemon" task
 plays the *other* end of the tunnel (subscribing to the down-channel and
-replying on the up-channel exactly like ``gaia bridge`` would) so
-``DeviceConnector`` is exercised end-to-end without spawning Node.
+replying on the up-channel exactly like gaia bridge would) so
+DeviceConnector is exercised end-to-end without spawning Node.
 
 Each test targets a specific bug this bridge has actually shipped with:
 presence flapping across pods, a session's replies leaking to another
 session, a revoke closing the wrong socket, and cancellation leaking out of
-``disconnect()``.
+disconnect().
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ FAKE_SERVER_KEY = "fake-server"
 
 
 async def _wait_until(predicate, timeout: float = 3.0, interval: float = 0.05) -> None:
-    """Poll ``predicate`` until it's truthy or raise on timeout (for pub/sub-driven state)."""
+    """Poll predicate until it's truthy or raise on timeout (for pub/sub-driven state)."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while not predicate():
@@ -41,16 +41,11 @@ async def _wait_until(predicate, timeout: float = 3.0, interval: float = 0.05) -
 
 
 async def _fake_daemon(device_id: str, real_redis) -> None:
-    """Stand in for the ``gaia bridge`` daemon: relay down-channel frames to a
+    """Stand in for the gaia bridge daemon, relaying down-channel frames to a canned MCP initialize response on the up-channel.
 
-    canned MCP ``initialize`` response on the up-channel, exactly like the
-    real daemon's ``openSession``/``forwardToServer`` would for a real server.
-
-    ``pod`` only rides the ``mcp.open`` frame (see ``DeviceConnector.connect``);
-    every later down-frame for the session omits it, exactly as the real
-    ``gaia bridge`` daemon's own ``tunnel.ts`` expects — it caches the pod id
-    once, at open time, and echoes that cached value on every reply for the
-    session's lifetime rather than re-reading it each time.
+    The pod id only rides the mcp.open frame; every later down-frame omits
+    it, exactly like the real daemon's tunnel.ts — it caches the pod id once
+    at open time and echoes it on every reply for the session's lifetime.
     """
     session_pods: dict[str, str] = {}
     pubsub = real_redis.pubsub()
@@ -98,7 +93,7 @@ async def _fake_daemon(device_id: str, real_redis) -> None:
 
 @pytest.mark.service
 class TestPresenceOwnership:
-    """mark_offline is a compare-and-delete keyed on POD_ID — a stale pod's
+    """mark_offline is a compare-and-delete keyed on POD_ID — a stale pod's.
 
     teardown must never evict a presence claim a live reconnect already made
     on another pod.
@@ -187,11 +182,7 @@ class TestUpListenerDispatch:
             await up_listener_module.stop_up_listener()
 
     async def test_dispatch_ignores_a_frame_for_an_unregistered_session(self, real_redis):
-        """A frame with no matching inbox must be dropped, not raise — an
-
-        uncaught exception here would kill the shared listener loop for every
-        session on the pod, not just this one.
-        """
+        """An unmatched frame must be dropped, not raise — an uncaught exception would kill the shared listener loop for every session on the pod."""
         up_listener_module.start_up_listener()
         try:
             await asyncio.sleep(0.2)  # let the listener's subscribe() land first

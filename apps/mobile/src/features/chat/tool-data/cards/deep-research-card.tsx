@@ -134,12 +134,9 @@ function DeepResearchErrorCard() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Enhanced results tab
-// Web: each card uses `rounded-2xl bg-zinc-800 p-4` with title (primary,
-// truncated) + LinkBackward icon + hostname row. Full-content rendering is
-// commented out on web — match exactly.
-// ---------------------------------------------------------------------------
+// Enhanced results tab: web uses `rounded-2xl bg-zinc-800 p-4` with title
+// (primary, truncated) + LinkBackward icon + hostname row; full-content
+// rendering is commented out on web — match exactly.
 
 function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
   const hostname = getHostname(result.url);
@@ -183,12 +180,9 @@ function EnhancedResultsSection({ results }: { results: EnhancedWebResult[] }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Original search tab — mirrors web's nested SearchResultsTabs render.
-// Reuses the shared WebResultRow + NewsResultCard primitives. Image strip
-// is the deep-research-specific overlapping rotated tile pattern matching
-// web's SearchResultsTabs ImageResults.
-// ---------------------------------------------------------------------------
+// Original search tab: mirrors web's nested SearchResultsTabs, reusing the
+// shared WebResultRow + NewsResultCard primitives. Image strip is the
+// deep-research overlapping rotated tile pattern from web's ImageResults.
 
 const IMAGE_TILE_SIZE = 96;
 const IMAGE_OVERLAP = -32;
@@ -342,11 +336,8 @@ function OriginalSearchSection({ search }: { search: SearchResults }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Search metadata tab — query / elapsed time / content size
-// Web: "Search Statistics" heading, then label-value rows, all in one
-// rounded-lg bg-zinc-800 card.
-// ---------------------------------------------------------------------------
+// Search metadata tab (query/elapsed time/content size): web shows a "Search
+// Statistics" heading then label-value rows, all in one rounded-lg bg-zinc-800 card.
 
 function MetadataSection({
   metadata,
@@ -407,14 +398,9 @@ function MetadataSection({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Completed state — flat (no ToolCardShell). Mirrors web:
-// - Accordion trigger pill ("Hide/Show Deep research Results", bg-white/10)
-// - Tab row when expanded (Enhanced / Original / Search Info)
-// - Each tab content rendered below
-// Matches web's `<Accordion><AccordionItem>` + `<Tabs>` layout, but rolled by
-// hand — heroui-native doesn't ship a Tabs component the mobile app uses.
-// ---------------------------------------------------------------------------
+// Completed state, flat (no ToolCardShell): mirrors web's Accordion trigger
+// pill ("Hide/Show Deep research Results") + tab row (Enhanced/Original/Search
+// Info) + tab content, rolled by hand since heroui-native has no Tabs component.
 
 interface TabDef {
   key: Tab;

@@ -113,7 +113,7 @@ export const useFileAttachments = () => {
               }
               return uploaded;
             } catch (error) {
-              // apiService already surfaced the backend detail (413/415…)
+              // The API client already surfaced the backend detail (413/415…)
               // as a toast — just drop the failed chip.
               removeUploadedFile(tempId);
               throw error;

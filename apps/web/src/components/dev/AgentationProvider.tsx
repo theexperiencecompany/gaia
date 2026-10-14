@@ -2,11 +2,9 @@
 
 import dynamic from "next/dynamic";
 
-// `agentation` is a devDependency, so a static top-level import would break
-// production builds (`pnpm install --prod` / Cloudflare deploy) at module
-// resolution time. Resolve it only when NODE_ENV === "development" — the
-// constant is inlined at build time so the production bundle never references
-// the package.
+// `agentation` is a devDependency; a static import would break production
+// builds (`pnpm install --prod` / Cloudflare). Resolved only when
+// NODE_ENV === "development", inlined at build so prod never references it.
 const Agentation =
   process.env.NODE_ENV === "development"
     ? dynamic(

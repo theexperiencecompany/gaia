@@ -7,10 +7,9 @@ export default defineConfig({
   outDir: "dist",
   clean: true,
   noExternal: [/.*/],
-  // Shebang first so `dist/cli.js` is directly executable as the `gaia-sim`
-  // bin; the createRequire shim after it lets bundled CJS deps (axios, amqplib)
-  // call require() from an ESM bundle. Node strips the shebang when index.js is
-  // imported as a library, so applying the banner to both entries is harmless.
+  // Shebang first so dist/cli.js is directly executable as the gaia-sim bin; the
+  // createRequire shim lets bundled CJS deps (axios, amqplib) call require() from
+  // an ESM bundle. Node strips the shebang on library import, so it's harmless here.
   banner: {
     js: `#!/usr/bin/env node\nimport{createRequire}from"module";const require=createRequire(import.meta.url);`,
   },

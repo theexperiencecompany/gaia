@@ -5,6 +5,15 @@
 // Core message types
 // ---------------------------------------------------------------------------
 
+import type { ToolDataEntry, WorkflowDelivery } from "../api/generated";
+
+export type {
+  RecurrenceData,
+  RecurrenceRule,
+  ReplyToMessageData,
+  ToolDataEntry,
+} from "../api/generated";
+
 export interface ApiFileData {
   fileId: string;
   fileName?: string;
@@ -18,12 +27,6 @@ export interface ApiToolData {
   data: Record<string, unknown>;
   timestamp?: string | null;
   tool_category?: string;
-}
-
-export interface ReplyToMessageData {
-  id: string;
-  content: string;
-  role: "user" | "assistant";
 }
 
 export interface Conversation {
@@ -254,22 +257,6 @@ export interface PeopleSearchData {
 // Calendar
 // ---------------------------------------------------------------------------
 
-export interface RecurrenceRule {
-  frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
-  interval?: number;
-  count?: number;
-  until?: string;
-  by_day?: string[];
-  by_month_day?: number[];
-  by_month?: number[];
-  exclude_dates?: string[];
-  include_dates?: string[];
-}
-
-export interface RecurrenceData {
-  rrule: RecurrenceRule;
-}
-
 export interface CalendarEventDateTime {
   date?: string;
   dateTime?: string;
@@ -294,25 +281,6 @@ export interface SameDayEvent {
   calendarTitle?: string;
   background_color?: string;
 }
-
-export interface CalendarOptions {
-  summary: string;
-  description?: string;
-  start?: string;
-  end?: string;
-  calendar_id?: string;
-  calendar_name?: string;
-  background_color?: string;
-  is_all_day?: boolean;
-  recurrence?: RecurrenceData;
-  attendees?: string[];
-  create_meeting_room?: boolean;
-  same_day_events?: SameDayEvent[];
-  // Additional fields from mobile usage
-  title?: string;
-  location?: string;
-}
-
 export interface CalendarDeleteOptions {
   action: "delete";
   event_id: string;
@@ -662,6 +630,8 @@ export interface WorkflowDraftData {
   trigger_type: "manual" | "scheduled" | "integration";
   trigger_slug?: string | null;
   cron_expression?: string | null;
+  /** Chosen by the agent from the user's words; absent on drafts saved before delivery modes. */
+  delivery?: WorkflowDelivery;
 }
 
 export interface WorkflowCreatedData {
@@ -773,6 +743,12 @@ export const REASONING_TOOL_NAME = "reasoning";
 // tool_name marker for a subagent group entry in tool_data.
 export const SUBAGENT_GROUP_TOOL_NAME = "subagent_group";
 
+// The browser tool and the category its own actions carry. Mirrors
+// the browser_task tool and BROWSER_TOOL_CATEGORY in app/constants/browser.py — the
+// call and the "Browser" group it opens are matched by these on the client.
+export const BROWSER_TASK_TOOL_NAME = "browser_task";
+export const BROWSER_TOOL_CATEGORY = "browser";
+
 export interface SubagentGroupData {
   subagent_id: string;
   subagent_name: string;
@@ -802,7 +778,6 @@ export type ToolName =
   | "email_fetch_data"
   | "email_thread_data"
   | "weather_data"
-  | "calendar_options"
   | "calendar_delete_options"
   | "calendar_edit_options"
   | "calendar_fetch_data"
@@ -841,7 +816,6 @@ export interface ToolDataMap {
   email_fetch_data: EmailFetchData[];
   email_thread_data: EmailThreadData;
   weather_data: WeatherData;
-  calendar_options: CalendarOptions[];
   calendar_delete_options: CalendarDeleteOptions[];
   calendar_edit_options: CalendarEditOptions[];
   calendar_fetch_data: CalendarFetchData[];
@@ -873,13 +847,6 @@ export interface ToolDataMap {
   chart_data: GenericToolData[];
 }
 
-export interface ToolDataEntry {
-  tool_name: ToolName | string;
-  tool_category?: string;
-  data: ToolDataMap[ToolName] | unknown;
-  timestamp?: string | null;
-}
-
 export function isKnownTool(name: string): name is ToolName {
   const knownTools = new Set<string>([
     "email_compose_data",
@@ -887,7 +854,6 @@ export function isKnownTool(name: string): name is ToolName {
     "email_fetch_data",
     "email_thread_data",
     "weather_data",
-    "calendar_options",
     "calendar_delete_options",
     "calendar_edit_options",
     "calendar_fetch_data",

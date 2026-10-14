@@ -16,14 +16,8 @@ from app.utils.markdown_utils import split_yaml_frontmatter
 def parse_skill_md(content: str) -> tuple[SkillMetadata, str]:
     """Parse a SKILL.md file into metadata and body content.
 
-    Args:
-        content: Raw SKILL.md file content
-
-    Returns:
-        Tuple of (SkillMetadata, body_markdown)
-
     Raises:
-        ValueError: If frontmatter is missing or invalid
+        ValueError: If frontmatter is missing or invalid.
     """
     if not content or not content.strip():
         raise ValueError("SKILL.md content is empty")
@@ -65,14 +59,7 @@ def parse_skill_md(content: str) -> tuple[SkillMetadata, str]:
 
 
 def validate_skill_content(content: str) -> list[str]:
-    """Validate a SKILL.md file and return a list of errors.
-
-    Args:
-        content: Raw SKILL.md file content
-
-    Returns:
-        List of validation error messages (empty if valid)
-    """
+    """Validate a SKILL.md file and return a list of errors (empty if valid)."""
     errors: list[str] = []
 
     if not content or not content.strip():
@@ -145,18 +132,7 @@ def generate_skill_md(
     target: str = "executor",
     metadata: dict[str, str] | None = None,
 ) -> str:
-    """Generate a SKILL.md file from components.
-
-    Args:
-        name: Skill name (kebab-case)
-        description: What the skill does
-        instructions: Markdown body instructions
-        target: Target agent (default: executor)
-        metadata: Optional additional metadata
-
-    Returns:
-        Complete SKILL.md content
-    """
+    """Generate a SKILL.md file from components."""
     # Validate up-front for clearer errors
     SkillMetadata(
         name=name,

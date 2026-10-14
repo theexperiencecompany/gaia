@@ -1,15 +1,9 @@
 """Assemble a briefing email whose body IS the rendered edition.
 
-The high-craft edition template (``editions/``) targets a real browser, so it
-leans on modern CSS that Gmail/Outlook strip. Rather than degrade the design to
-email-safe HTML, we rasterize the edition to a PNG (``render.py``), host it on
-the CDN, and reference it by URL — Gmail blocks base64 ``data:`` images and a
-hosted URL has no size ceiling, so the full-res edition renders everywhere.
-Beneath it sits a small, genuinely email-safe **action strip** (real links +
-alt text) so approvals stay one tap and the mail degrades if images are off.
-
-Nothing here performs an outward action — links deep-link into the app where the
-user approves. The email can never approve or send on its own.
+The edition targets a real browser, so it is rasterized to an image (render.py),
+hosted on the CDN, and referenced by URL (Gmail blocks base64 data: images). Beneath
+it sits a small email-safe action strip of deep links into the app; the email can
+never approve or send on its own.
 """
 
 from __future__ import annotations
@@ -48,9 +42,11 @@ _HAIRLINE = "#27272a"
 
 
 def _public_app_url() -> str:
-    """The app URL to link to from email — never localhost. An email is always
-    opened away from the dev host, so a localhost FRONTEND_URL must fall back to
-    the public origin or every link in the mail is dead."""
+    """Return the app URL to link to from email — never localhost.
+
+    An email is always opened away from the dev host, so a localhost FRONTEND_URL must
+    fall back to the public origin or every link in the mail is dead.
+    """
     url = (settings.FRONTEND_URL or "").rstrip("/")
     if not url or "localhost" in url or "127.0.0.1" in url:
         return _PUBLIC_APP_URL
@@ -88,8 +84,11 @@ def _resolve_link(link: str | None) -> str | None:
 
 
 def _action_strip(payload: dict, unsubscribe_url: str) -> str:
-    """Email-safe (table + inline-styled) strip under the image: primary CTA,
-    per-proposal review links, unsubscribe. Deep-links only — never approves."""
+    """Build the email-safe (table + inline-styled) strip under the image.
+
+    It holds the primary CTA, per-proposal review links and unsubscribe. Deep-links
+    only — never approves.
+    """
     app_url = _public_app_url()
     actions = _action_items(payload)
 
@@ -145,8 +144,11 @@ async def render_edition_png(
     generated_local: str = "",
     tz_label: str = "",
 ) -> bytes:
-    """The edition as a PNG. ``crop_to_paper`` cuts it to the family's paper
-    (the chat image); the email keeps the full composition."""
+    """Render the edition as a PNG.
+
+    crop_to_paper cuts it to the family's paper (the chat image); the email keeps the
+    full composition.
+    """
     family = payload.get("template_family")
     # The classic edition (and every legacy payload without a family) renders
     # via render_edition.
@@ -167,6 +169,36 @@ async def render_edition_png(
     )
 
 
+async def host_edition_image(
+    payload: dict,
+    *,
+    user_id: str,
+    kind: str,
+    crop_to_paper: bool,
+    generated_local: str = "",
+    tz_label: str = "",
+) -> str:
+    """Render the edition and host it on the CDN; returns the image URL.
+
+    One public id per user, kind, date and crop, uploaded with overwrite, so a re-run
+    replaces the same asset.
+    """
+    image = await render_edition_png(
+        payload, crop_to_paper=crop_to_paper, generated_local=generated_local, tz_label=tz_label
+    )
+    crop = "_chat" if crop_to_paper else ""
+    public_id = f"briefing/editions/{user_id}/{kind}_{payload.get('date', 'latest')}{crop}"
+    image_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
+    log.debug(
+        "briefing.edition_image.hosted",
+        kind=kind,
+        crop_to_paper=crop_to_paper,
+        image_bytes=len(image),
+        url=image_url,
+    )
+    return image_url
+
+
 async def render_edition_email(
     payload: dict,
     *,
@@ -179,22 +211,16 @@ async def render_edition_email(
 ) -> str:
     """Render the edition to a hosted image and wrap it with the action strip.
 
-    The full-res PNG is uploaded to the CDN and referenced by URL — Gmail blocks
-    base64 ``data:`` images, and a hosted URL has no size ceiling. Raises on any
-    render/upload failure so the caller can fall back to the plain HTML template.
+    Raises on any render/upload failure so the caller can fall back to the plain HTML
+    template.
     """
-    edition_no = _edition_no(payload.get("date"))
-    image = await render_edition_png(
-        payload, crop_to_paper=False, generated_local=generated_local, tz_label=tz_label
-    )
-    public_id = f"briefing/editions/{user_id}/{kind}_{payload.get('date', 'latest')}"
-    image_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
-    log.debug(
-        "briefing.edition_email.rendered",
+    image_url = await host_edition_image(
+        payload,
+        user_id=user_id,
         kind=kind,
-        edition_no=edition_no,
-        image_bytes=len(image),
-        url=image_url,
+        crop_to_paper=False,
+        generated_local=generated_local,
+        tz_label=tz_label,
     )
 
     alt = escape(

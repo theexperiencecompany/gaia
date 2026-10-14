@@ -29,7 +29,7 @@ for name in "${!EXPECTED_SIZE[@]}"; do
     printf '  refetch %s (size %d ≠ expected %d)\n' "$name" "$size" "$expected"
   fi
   printf '  fetch  %s ... ' "$name"
-  curl -sSL -o "$path" "$BASE_URL/$name"
+  curl --proto "=https" --tlsv1.2 -sSL -o "$path" "$BASE_URL/$name"
   size=$(stat -f%z "$path" 2>/dev/null || stat -c%s "$path")
   printf '%d bytes\n' "$size"
   if [[ "$size" != "$expected" ]]; then

@@ -1,10 +1,8 @@
-"""BriefingService — the daily/weekly run pipeline.
+"""BriefingService: the daily/weekly run pipeline.
 
-Deterministic fact assembly and context-gathering happen here; the agent only
-turns the gathered context into one structured ``BriefingPayload`` (forced via
-prompt contract, validated on the way out — invalid output fails the run loudly
-and stores nothing). Persistence precedes delivery so the dashboard never misses
-a brief that reached a channel.
+The agent only turns gathered context into one BriefingPayload; invalid output fails
+the run loudly and stores nothing. Persistence precedes delivery so the dashboard
+never misses a brief that reached a channel.
 """
 
 import asyncio
@@ -14,10 +12,10 @@ from datetime import UTC, datetime, timedelta
 import json
 import random
 import re
-from typing import cast
 from uuid import uuid4
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
+from app.agents.core.background.platform_chat import PlatformImage, post_to_platform_chat
 from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
     build_briefing_voice_prompt,
@@ -27,7 +25,6 @@ from app.constants.briefing import (
     BOOTSTRAP_GRACE_DAYS,
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
-    CHAT_CAPTION_MAX_CHARS,
     MAX_BRIEF_ITEMS,
     POSTAL_FAMILY,
     WEEKLY_FAMILY,
@@ -38,9 +35,12 @@ from app.constants.briefing import (
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
+    NotificationChannel,
 )
 from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.users import user_repository
+from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
     BRIEFING_ITEM_STATES,
     BriefingEvent,
@@ -64,23 +64,26 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.models.todo_models import TodoDocument
-from app.models.user_models import AuthenticatedUser
-from app.services.briefing import chat_sync, context, delivery_channels, dormancy
+from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.analytics_service import capture
+from app.services.briefing import chat_sync, context, dormancy
 from app.services.briefing.context import UserClock
+from app.services.briefing.edition_email import host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.shuffle_bag import draw
-from app.services.briefing.skim import build_skim, full_brief_url, split_for_caption
+from app.services.briefing.skim import Skim, build_skim, full_brief_url
+from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
 from app.services.notification_service import notification_service
-from app.services.user_service import get_user_by_id
-from app.utils.analytics import track
+from app.services.outbound_delivery import OutboundResult
+from app.utils.auth_utils import build_user_context
+from app.utils.notification.channel_preferences import normalize_channel_preferences
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.briefings import BriefingSent
 from shared.py.wide_events import log
 
 # Extracts a ```json fenced block (or a bare object) from the agent's final text.
 _JSON_FENCE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
-
-# Marker on the user doc while the existing-user bootstrap interview is pending.
-BOOTSTRAP_FIELD = "briefing_bootstrap"
 
 
 class BriefingGenerationError(Exception):
@@ -90,9 +93,8 @@ class BriefingGenerationError(Exception):
 def _parse_payload(raw: str) -> BriefingPayload:
     """Extract and validate the single BriefingPayload from the agent output.
 
-    ``call_agent_silent`` swallows its own errors into a plain string, so a failed
-    run lands here and fails validation — which is exactly the loud failure we
-    want (no partial briefing is stored).
+    call_agent_silent swallows its errors into a plain string, which fails validation
+    here, so no partial briefing is stored.
     """
     candidates = _JSON_FENCE.findall(raw) or [raw]
     for block in candidates:
@@ -117,7 +119,9 @@ def _parse_payload(raw: str) -> BriefingPayload:
     )
 
 
-async def _run_silent(user: dict, clock: UserClock, prompt: str, conversation_key: str) -> str:
+async def _run_silent(
+    user: AuthenticatedUser, clock: UserClock, prompt: str, conversation_key: str
+) -> str:
     """One silent agent turn on a fresh per-day thread; returns the final text."""
     # construct_langchain_messages reads the human turn from `messages`
     # (`message` alone is not consulted when no workflow/tool is selected).
@@ -129,22 +133,16 @@ async def _run_silent(user: dict, clock: UserClock, prompt: str, conversation_ke
         selectedTool=None,
         selectedWorkflow=None,
     )
-    user_data = {
-        "user_id": user["user_id"],
-        "name": user.get("name"),
-        "email": user.get("email"),
-        "timezone": clock.tz.key,
-    }
     # Fresh thread per RUN, not per day: a same-day retry (or rerun) on a shared
     # thread would resume the failed attempt's polluted state via the
     # checkpointer, and stale turns would masquerade as today's context.
     conversation_id = (
-        f"briefing-{conversation_key}-{user['user_id']}-{clock.date_str}-{uuid4().hex[:6]}"
+        f"briefing-{conversation_key}-{user.user_id}-{clock.date_str}-{uuid4().hex[:6]}"
     )
     run = await call_agent_silent(
         request=request,
         conversation_id=conversation_id,
-        user=cast(AuthenticatedUser, user_data),
+        user=user.with_timezone(clock.tz.key),
         options=AgentRunOptions(
             trigger_context={"execution_mode": "background"},
             source="briefing",
@@ -154,14 +152,16 @@ async def _run_silent(user: dict, clock: UserClock, prompt: str, conversation_ke
 
 
 async def _generate_payload(
-    user: dict, clock: UserClock, prompt: str, kind: BriefingKind
+    user: AuthenticatedUser, clock: UserClock, prompt: str, kind: BriefingKind
 ) -> BriefingPayload:
     return _parse_payload(await _run_silent(user, clock, prompt, conversation_key=kind))
 
 
 def _gaia_shipped_lines(docs: list[TodoDocument]) -> str:
-    """GAIA completions, each with a canvas snippet so the digest voices
-    specifics instead of bare titles."""
+    """List GAIA completions, each with a canvas snippet.
+
+    The snippet lets the digest voice specifics instead of bare titles.
+    """
     lines: list[str] = []
     for d in docs[:15]:
         snippet = _canvas_snippet(d.canvas_content or "")
@@ -182,21 +182,6 @@ def _format_week(completed: context.CompletedWork) -> str:
     return "\n\n".join(lines)
 
 
-def _delivery_body(payload: BriefingPayload) -> str:
-    top: list[str] = []
-    for section in payload.sections:
-        for item in section.items:
-            top.append(item.text)
-            if len(top) >= 3:
-                break
-        if len(top) >= 3:
-            break
-    parts = [payload.lede]
-    if top:
-        parts.append("\n".join(f"- {t}" for t in top))
-    return "\n\n".join(parts)
-
-
 _ARTIFACT_PREVIEW_CHARS = 240
 # Bookkeeping sections excluded when sizing the DELIVERABLE: a one-line decision
 # behind a long research trail must not read as "massive", so these log/scratch
@@ -206,11 +191,12 @@ _BOILERPLATE_SECTIONS = ("activity log", "timeline", "learnings", "context", "sy
 
 @dataclass
 class _ArtifactFact:
-    """What the voice pass balances per item: a concrete summary it always voices,
-    an always-available link, the deliverable size as a HINT (not a verdict — a
-    long research trail behind a one-line decision is not a thing to open), and
-    whether it is waiting on the user. The pass summarises everything and links
-    only what's genuinely a deliverable-to-open or waiting on the user.
+    """What the voice pass balances per item.
+
+    A concrete summary it always voices, an always-available link, the deliverable size
+    as a HINT (not a verdict — a long research trail behind a one-line decision is not a
+    thing to open), and whether it is waiting on the user. The pass summarises everything
+    and links only what's genuinely a deliverable-to-open or waiting on the user.
     """
 
     snippet: str
@@ -220,8 +206,11 @@ class _ArtifactFact:
 
 
 def _canvas_snippet(canvas: str) -> str:
-    """A short, header-free preview of a canvas for the voice pass to draw
-    concrete specifics from (names, counts) — never shown to the user verbatim."""
+    """Return a short, header-free preview of a canvas for the voice pass.
+
+    The pass draws concrete specifics from it (names, counts); it is never shown to the
+    user verbatim.
+    """
     lines = [
         ln.strip()
         for ln in canvas.splitlines()
@@ -231,9 +220,11 @@ def _canvas_snippet(canvas: str) -> str:
 
 
 def _deliverable_size(canvas: str) -> int:
-    """Chars of actual deliverable content — the canvas minus its bookkeeping
-    sections — so "massive" tracks the thing the user would open, not the
-    research/logs behind a small stated result."""
+    """Count chars of actual deliverable content: the canvas minus its bookkeeping sections.
+
+    That way "massive" tracks the thing the user would open, not the research/logs behind
+    a small stated result.
+    """
     kept: list[str] = []
     skipping = False
     for line in canvas.splitlines():
@@ -247,9 +238,10 @@ def _deliverable_size(canvas: str) -> int:
 
 
 def _gather_artifacts(work: context.TrackedWork) -> dict[str, _ArtifactFact]:
-    """Per tracked item: a concrete summary and the two signals the voice pass
-    balances on — is the deliverable big, is it waiting on the user. The pass
-    always summarises; it appends the link only for big or waiting items, never
+    """Build, per tracked item, a concrete summary and the two signals the voice pass uses.
+
+    The signals are whether the deliverable is big and whether it is waiting on the user.
+    The pass always summarises; it appends the link only for big or waiting items, never
     a bare link and never one for a small stated result.
     """
     out: dict[str, _ArtifactFact] = {}
@@ -268,41 +260,63 @@ def _gather_artifacts(work: context.TrackedWork) -> dict[str, _ArtifactFact]:
     return out
 
 
-def _platform_parts(payload: BriefingPayload) -> list[str]:
-    """What the chat platform receives: the skim, split under the caption limit."""
-    return split_for_caption(
-        build_skim(payload, full_brief_url()).text, limit=CHAT_CAPTION_MAX_CHARS
+def _wants_email(user: UserDocument) -> bool:
+    """Email goes out when the user left it on and has an address on file."""
+    prefs = normalize_channel_preferences(user.notification_channel_prefs)
+    return prefs.get(NotificationChannel.EMAIL, True) and bool((user.email or "").strip())
+
+
+async def _post_to_chat(
+    user: UserDocument, channel: ChatChannel, skim: Skim, image_url: str, kind: BriefingKind
+) -> OutboundResult:
+    """Post the edition image with the skim as its caption into the user's DM.
+
+    A reply there lands with the brief in context.
+    """
+    return await post_to_platform_chat(
+        user=build_user_context(user, auth_provider=None),
+        channel=channel,
+        text=skim.text,
+        origin=f"{kind} brief",
+        image=PlatformImage(url=image_url, filename=f"gaia-{kind}-brief.png"),
     )
 
 
 async def _deliver(
-    user_id: str,
-    user: dict,
+    user: UserDocument,
     briefing: BriefingModel,
     payload: BriefingPayload,
     notification_kind: str,
 ) -> list[str]:
-    """Fan out the briefing via the notification orchestrator (in-app + platforms).
+    """Deliver one brief to every channel the user has.
 
-    Channels are resolved to a single chat platform (per the user's priority) plus
-    in-app and email, then passed explicitly — which suppresses the orchestrator's
-    all-platforms auto-inject so one brief never triple-delivers. ``metadata.kind``
-    selects the email template and ``content.rich_content`` carries the full
-    payload the email adapter renders — both are the delivery contract the channels
-    layer keys off (without them email falls back to the plain template).
+    The chat image is rendered and hosted first, so a render failure leaves nothing
+    half-delivered. The orchestrator gets only in-app (plus email when wanted), never the
+    chat platform: that message is the photo, posted through post_to_platform_chat.
     """
-    platform_parts = _platform_parts(payload)
-    resolved = await delivery_channels.resolve_briefing_channels(user_id, user)
+    kind: BriefingKind = briefing.kind
+    skim = build_skim(payload, full_brief_url())
+    channel = await resolve_chat_channel(user.id)
+    image_url = (
+        await host_edition_image(
+            payload.model_dump(), user_id=user.id, kind=kind, crop_to_paper=True
+        )
+        if channel
+        else None
+    )
+    channels = [NotificationChannel.INAPP] + (
+        [NotificationChannel.EMAIL] if _wants_email(user) else []
+    )
     record = await notification_service.create_notification(
         NotificationRequest(
-            user_id=user_id,
+            user_id=user.id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
             type=NotificationType.INFO,
             priority=2,
-            channels=[ChannelConfig(channel_type=channel) for channel in resolved],
+            channels=[ChannelConfig(channel_type=c) for c in channels],
             content=NotificationContent(
                 title=payload.headline,
-                body=_delivery_body(payload),
+                body=skim.text,
                 rich_content=payload.model_dump(),
                 actions=[
                     NotificationAction(
@@ -311,7 +325,7 @@ async def _deliver(
                         style=ActionStyle.PRIMARY,
                         config=ActionConfig(
                             redirect=RedirectConfig(
-                                url="/dashboard",
+                                url="/briefings",
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )
@@ -321,31 +335,59 @@ async def _deliver(
             ),
             metadata={
                 "kind": notification_kind,
-                "platform_parts": platform_parts,
                 "briefing_id": briefing.id,
                 "date": briefing.date,
             },
         )
     )
-    channels = [c.channel_type for c in getattr(record, "channels", [])] if record else []
-    return channels or ["inapp"]
+    delivered = [c.channel_type for c in record.channels]
+    if channel and image_url:
+        result = await _post_to_chat(user, channel, skim, image_url, kind)
+        if result is OutboundResult.PUBLISHED:
+            delivered.append(channel.source.value)
+    return delivered
 
 
 _NEEDS_YOU_SECTION_TITLE = "NEEDS YOU"
+_HELD_SECTION_TITLE = "WHILE YOU WERE AWAY"
 _WORK_SECTION_TITLE = "GAIA'S WORK"
-_SECTION_NUMERALS = ("I", "II")
+_SECTION_NUMERALS = ("I", "II", "III")
 
 
 def _work_item(doc: TodoDocument, kind: BriefingItemKind) -> dict:
     return {"text": doc.title, "todo_id": doc.id, "kind": kind}
 
 
-def _work_sections(work: context.TrackedWork) -> tuple[list[dict], int]:
-    """Code-built sections for GAIA's tracked work. Truth by construction.
+def _held_text(doc: PendingBriefItemDocument) -> str:
+    """One line for a held result: where it came from and its report's first line."""
+    first_line = next((line.strip() for line in doc.text.splitlines() if line.strip()), "")
+    return f"{doc.source_title}: {first_line}"
 
-    Needs-you items (blocked, then failed) come first, then GAIA's own work
-    (finished, then running), and the whole brief stops at ``MAX_BRIEF_ITEMS``.
-    Returns the sections and how many items the cap left out.
+
+def _same_text_key(text: str) -> str:
+    return " ".join(text.split()).casefold()
+
+
+@dataclass
+class _Sections:
+    """The brief's code-built sections and what building them decided.
+
+    reports maps a held item's text to its full report; carried_ids are the held items
+    this brief accounts for, cleared once it has gone out.
+    """
+
+    sections: list[dict]
+    left_out: int
+    reports: dict[str, str]
+    carried_ids: list[str]
+
+
+def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocument]) -> _Sections:
+    """Code-built sections for GAIA's tracked work and held results.
+
+    Order: needs-you (blocked, then failed), held results, then GAIA's own work, capped
+    at MAX_BRIEF_ITEMS. A held result already in the brief still counts as carried; one
+    the cap leaves out waits for the next brief.
     """
     needs_you = [_work_item(d, "you") for d in work.blocked] + [
         _work_item(d, "failed") for d in work.failed
@@ -353,18 +395,44 @@ def _work_sections(work: context.TrackedWork) -> tuple[list[dict], int]:
     gaia_work = [_work_item(d, "lookback") for d in work.completed] + [
         _work_item(d, "gaia") for d in work.running
     ]
+    seen = {_same_text_key(item["text"]) for item in needs_you + gaia_work}
+    held_items: list[dict] = []
+    held_ids: list[str] = []
+    duplicate_ids: list[str] = []
+    reports: dict[str, str] = {}
+    for doc in held:
+        text = _held_text(doc)
+        if _same_text_key(text) in seen:
+            duplicate_ids.append(doc.id)
+            continue
+        seen.add(_same_text_key(text))
+        held_items.append({"text": text, "kind": "note"})
+        held_ids.append(doc.id)
+        reports[text] = doc.text
 
     sections: list[dict] = []
     budget = MAX_BRIEF_ITEMS
-    for title, items in ((_NEEDS_YOU_SECTION_TITLE, needs_you), (_WORK_SECTION_TITLE, gaia_work)):
+    kept_held = 0
+    for title, items in (
+        (_NEEDS_YOU_SECTION_TITLE, needs_you),
+        (_HELD_SECTION_TITLE, held_items),
+        (_WORK_SECTION_TITLE, gaia_work),
+    ):
         kept = items[:budget]
         budget -= len(kept)
+        if title == _HELD_SECTION_TITLE:
+            kept_held = len(kept)
         if kept:
             sections.append(
                 {"numeral": _SECTION_NUMERALS[len(sections)], "title": title, "items": kept}
             )
     kept_total = MAX_BRIEF_ITEMS - budget
-    return sections, len(needs_you) + len(gaia_work) - kept_total
+    return _Sections(
+        sections=sections,
+        left_out=len(needs_you) + len(held_items) + len(gaia_work) - kept_total,
+        reports=reports,
+        carried_ids=held_ids[:kept_held] + duplicate_ids,
+    )
 
 
 def _fact_line(item: dict, art: _ArtifactFact | None) -> str:
@@ -380,20 +448,33 @@ def _fact_line(item: dict, art: _ArtifactFact | None) -> str:
     return line
 
 
+@dataclass
+class _Facts:
+    """The brief's sections and stats, the facts block the model voices, and held items.
+
+    The held items are the ones the brief carries.
+    """
+
+    sections: list[dict]
+    stats: list[dict]
+    block: str
+    carried_ids: list[str]
+
+
 def _build_facts(
     work: context.TrackedWork,
+    held: list[PendingBriefItemDocument],
     artifacts: dict[str, _ArtifactFact],
     user_todos_note: str,
-) -> tuple[list[dict], list[dict], str]:
-    """Assemble sections + stats deterministically from tracked-work state.
+) -> _Facts:
+    """Assemble sections + stats deterministically from tracked-work state and held results.
 
-    Returns (sections, stats, facts_block) — the model voices the facts_block but
-    the rendered sections come from here, so the brief cannot lie. Each fact hands
-    the model a concrete ``summary`` to voice, whether the deliverable is big and
-    whether it is waiting on the user, and the link — the model summarises every
-    item and only appends the link for big/waiting ones.
+    The rendered sections come from here so the brief cannot lie. Each fact gives the
+    model a summary, whether it is big or waiting on the user, and the link; the link is
+    appended only for big/waiting ones.
     """
-    sections, left_out = _work_sections(work)
+    built = _work_sections(work, held)
+    sections, left_out = built.sections, built.left_out
     for sec in sections:
         for it in sec["items"]:
             art = artifacts.get(it.get("todo_id", ""))
@@ -412,6 +493,9 @@ def _build_facts(
         fact_lines.append(f"[{sec['title']}]")
         for it in sec["items"]:
             fact_lines.append(_fact_line(it, artifacts.get(it.get("todo_id", ""))))
+            report = built.reports.get(it["text"])
+            if report:
+                fact_lines.append(f"  full report:\n{report}")
     if left_out:
         fact_lines.append(
             f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
@@ -422,7 +506,7 @@ def _build_facts(
             "ran, finished, or is pending beyond what is stated here."
         )
     fact_lines.append(user_todos_note)
-    return sections, stats, "\n".join(fact_lines)
+    return _Facts(sections, stats, "\n".join(fact_lines), built.carried_ids)
 
 
 _VOICE_KEYS = ("headline", "lede", "caption", "mood", "bubbles")
@@ -450,35 +534,33 @@ def _parse_voice(raw: str) -> dict:
     )
 
 
-def _bootstrap_should_skip(user: dict, has_goal: bool) -> bool:
+def _bootstrap_should_skip(user: UserDocument, has_goal: bool) -> bool:
     """Existing-user rollout gate: hold the first briefing until a goal is known.
 
     Returns True to skip this run entirely. Once a goal memory arrives OR the
     grace window elapses, the run proceeds (best-effort, re-asking on grace).
     """
-    marker = user.get(BOOTSTRAP_FIELD)
-    if not marker or not marker.get("pending"):
+    marker = user.briefing_bootstrap
+    if marker is None or not marker.pending:
         return False
     if has_goal:
         return False  # goal arrived — proceed and clear the marker after sending
-    since = marker.get("since")
-    if isinstance(since, datetime):
-        if since.tzinfo is None:
-            since = since.replace(tzinfo=UTC)
-        if datetime.now(UTC) - since < timedelta(days=BOOTSTRAP_GRACE_DAYS):
-            return True  # still inside the interview grace window
-    return False  # grace elapsed — fall through to a best-effort briefing
+    since = marker.since if marker.since.tzinfo else marker.since.replace(tzinfo=UTC)
+    # Inside the interview grace window: hold. Past it: a best-effort briefing.
+    return datetime.now(UTC) - since < timedelta(days=BOOTSTRAP_GRACE_DAYS)
 
 
-async def _clear_bootstrap(user_id: str, user: dict) -> None:
-    if user.get(BOOTSTRAP_FIELD):
-        await user_repository.clear_briefing_bootstrap(user_id)
+async def _clear_bootstrap(user: UserDocument) -> None:
+    if user.briefing_bootstrap is not None:
+        await user_repository.clear_briefing_bootstrap(user.id)
 
 
-async def _wake_or_skip(user_id: str, user: dict) -> dormancy.DormancyState | None:
-    """Dormant loop: wake on a reactivation signal (user active, any message),
-    otherwise None means skip before any LLM cost. The daily run is the only
-    writer of dormancy state."""
+async def _wake_or_skip(user_id: str, user: UserDocument) -> dormancy.DormancyState | None:
+    """Wake a dormant loop on a reactivation signal (user active, any message).
+
+    Otherwise None means skip before any LLM cost. The daily run is the only writer of
+    dormancy state.
+    """
     dstate = dormancy.state_from_user(user)
     if not dstate.dormant_since:
         return dstate
@@ -498,8 +580,10 @@ def _calendar_note(events: list[BriefingEvent]) -> str:
 
 
 async def _draw_from_bag(user_id: str, bag: BriefingBag, weights: Mapping[str, int]) -> str:
-    """Today's draw from one of the user's shuffle bags, persisted at once so
-    tomorrow continues the pass."""
+    """Draw today's member from one of the user's shuffle bags.
+
+    The new state is persisted at once so tomorrow continues the pass.
+    """
     state = await user_repository.get_briefing_bag(user_id, bag)
     member, next_state = draw(state, weights, random.SystemRandom())
     await user_repository.set_briefing_bag(user_id, bag, next_state)
@@ -553,31 +637,38 @@ def _daily_payload(
     )
 
 
-async def _publish_daily(
-    user_id: str, user: dict, clock: UserClock, payload: BriefingPayload
+async def _publish(
+    user: UserDocument,
+    clock: UserClock,
+    kind: BriefingKind,
+    payload: BriefingPayload,
+    notification_kind: str,
 ) -> BriefingModel:
-    briefing = await briefing_repository.upsert_briefing(
-        user_id, clock.date_str, BRIEFING_KIND_DAILY, payload
+    """Store the brief, deliver it, record where it went and report it."""
+    briefing = await briefing_repository.upsert_briefing(user.id, clock.date_str, kind, payload)
+    channels = await _deliver(user, briefing, payload, notification_kind)
+    await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
+    capture(
+        UserId(user.id),
+        BriefingSent(
+            kind=kind,
+            family=payload.template_family or "edition",
+            mood=payload.mood,
+            item_count=sum(len(s.items) for s in payload.sections),
+            channel_count=len(channels),
+        ),
     )
-    channels = await _deliver(user_id, user, briefing, payload, NOTIFICATION_KIND_BRIEFING_DAILY)
-    await briefing_repository.set_delivered_channels(
-        user_id, clock.date_str, BRIEFING_KIND_DAILY, channels
-    )
-    # The bot's conversation must contain the brief it "sent", so replies like
-    # "yeah send them" land with real context instead of a cold thread.
-    await chat_sync.persist_delivered_brief(user_id, user, _platform_parts(payload), channels)
-    await _clear_bootstrap(user_id, user)
+    log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels)
     return briefing
 
 
 async def run_daily_briefing(user_id: str) -> None:
     """Look back, plan, and deliver one daily briefing for the user."""
     log.set(component="briefing", operation="run_daily_briefing", user_id=user_id)
-    user = await get_user_by_id(user_id)
-    if not user:
+    user = await user_repository.get(user_id)
+    if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")
-    user["user_id"] = user_id
-    clock = context.resolve_clock(user.get("timezone"))
+    clock = context.resolve_clock(user.timezone)
 
     dstate = await _wake_or_skip(user_id, user)
     if dstate is None:
@@ -606,22 +697,25 @@ async def run_daily_briefing(user_id: str) -> None:
     open_count, open_titles = await context.user_open_todo_summary(user_id)
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
-    sections, stats, facts_block = _build_facts(
+    held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
+    facts = _build_facts(
         work,
+        held,
         artifacts,
         _user_todos_note(open_count, open_titles) + "\n" + _calendar_note(calendar),
     )
 
-    # Idle ladder: nothing to report (no tracked work, no goal knowledge) escalates
-    # from the goal question to a plain warning to one goodbye, then dormancy.
-    idle = work.is_empty and not has_goal
+    # Idle ladder: nothing to report (no tracked work, no held results, no goal
+    # knowledge) escalates from the goal question to a plain warning to one
+    # goodbye, then dormancy.
+    idle = work.is_empty and not held and not has_goal
     idle_days = await dormancy.record_idle_day(user_id, dstate, idle, clock.date_str)
     wind_down = dormancy.wind_down_stage(idle_days) if idle else None
 
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
         blocks=VoicePromptBlocks(
-            facts=facts_block,
+            facts=facts.block,
             goal=goal_block,
             lookback=lookback_block,
             replies=await chat_sync.format_replies_block(user_id, since),
@@ -631,9 +725,14 @@ async def run_daily_briefing(user_id: str) -> None:
         wind_down=wind_down,
     )
     voice = _parse_voice(
-        await _run_silent(user, clock, prompt, conversation_key=BRIEFING_KIND_DAILY)
+        await _run_silent(
+            build_user_context(user, auth_provider=None),
+            clock,
+            prompt,
+            conversation_key=BRIEFING_KIND_DAILY,
+        )
     )
-    payload = _daily_payload(clock, voice, sections, stats, winback.is_winback)
+    payload = _daily_payload(clock, voice, facts.sections, facts.stats, winback.is_winback)
     payload.calendar = calendar
     payload.tallies = BriefingTallies(
         done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
@@ -643,29 +742,24 @@ async def run_daily_briefing(user_id: str) -> None:
         payload,
         await _draw_from_bag(user_id, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS),
     )
-    briefing = await _publish_daily(user_id, user, clock, payload)
+    await _publish(user, clock, BRIEFING_KIND_DAILY, payload, NOTIFICATION_KIND_BRIEFING_DAILY)
+    if facts.carried_ids:
+        await pending_brief_items_repository.consume(user_id, facts.carried_ids)
+    await _clear_bootstrap(user)
 
     # The goodbye went out — pause the loop until a reactivation signal.
     if wind_down == dormancy.WIND_DOWN_FINAL:
         await dormancy.enter_dormancy(user_id)
         log.info("briefing.dormancy_entered", user_id=user_id, idle_days=idle_days)
 
-    track(
-        user_id,
-        "briefing_sent",
-        {"kind": BRIEFING_KIND_DAILY, "briefing_id": briefing.id, "mood": payload.mood},
-    )
-    log.info("briefing.sent", user_id=user_id, kind=BRIEFING_KIND_DAILY, mood=payload.mood)
-
 
 async def run_weekly_digest(user_id: str) -> None:
     """Zoom out on the week: completed work, GAIA's and the user's."""
     log.set(component="briefing", operation="run_weekly_digest", user_id=user_id)
-    user = await get_user_by_id(user_id)
-    if not user:
+    user = await user_repository.get(user_id)
+    if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")
-    user["user_id"] = user_id
-    clock = context.resolve_clock(user.get("timezone"))
+    clock = context.resolve_clock(user.timezone)
 
     # A dormant loop has nothing to zoom out on; the daily run owns reactivation.
     dstate = dormancy.state_from_user(user)
@@ -687,7 +781,9 @@ async def run_weekly_digest(user_id: str) -> None:
     # Bounded: a stalled agent run must fail the cron loudly, not hang the
     # worker slot (observed live 2026-08-07).
     async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
-        payload = await _generate_payload(user, clock, prompt, BRIEFING_KIND_WEEKLY)
+        payload = await _generate_payload(
+            build_user_context(user, auth_provider=None), clock, prompt, BRIEFING_KIND_WEEKLY
+        )
     payload.hue = hue_for_day(clock.day_of_year)
     payload.generated_at = clock.now_local.strftime("%-I:%M %p")
     payload.week = week
@@ -696,18 +792,4 @@ async def run_weekly_digest(user_id: str) -> None:
     )
     await _assign_edition(user_id, payload, WEEKLY_FAMILY)
 
-    briefing = await briefing_repository.upsert_briefing(
-        user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload
-    )
-    channels = await _deliver(user_id, user, briefing, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY)
-    await briefing_repository.set_delivered_channels(
-        user_id, clock.date_str, BRIEFING_KIND_WEEKLY, channels
-    )
-    await chat_sync.persist_delivered_brief(user_id, user, _platform_parts(payload), channels)
-
-    track(
-        user_id,
-        "briefing_sent",
-        {"kind": BRIEFING_KIND_WEEKLY, "briefing_id": briefing.id, "mood": payload.mood},
-    )
-    log.info("briefing.sent", user_id=user_id, kind=BRIEFING_KIND_WEEKLY)
+    await _publish(user, clock, BRIEFING_KIND_WEEKLY, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY)

@@ -18,7 +18,6 @@ from langgraph.errors import GraphInterrupt
 import pytest
 
 from app.agents.core.subagents.subagent_runner import recover_from_checkpoint
-from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
 from app.constants.hil import (
     HIL_EXEMPT_TOOLS,
     HIL_PAUSING_TOOLS,
@@ -50,12 +49,14 @@ POLICY = "app.services.hil.policy"
 RESOLUTION = "app.services.hil.resolution"
 STORE = "app.services.hil.approvals_store"
 
+pytestmark = pytest.mark.usefixtures("hil_barrier_mode")
+
 
 def snapshot(next_nodes: tuple[str, ...] = (), messages: list[Any] | None = None) -> Any:
-    """A LangGraph StateSnapshot as ``aget_state`` returns it.
+    """Build a LangGraph StateSnapshot as aget_state returns it.
 
-    A thread that never ran has no checkpoint: empty ``next`` AND empty ``values``. A
-    thread that FINISHED looks identical in ``next`` alone — which is the bug below.
+    A thread that never ran has no checkpoint: empty next AND empty values. A
+    thread that FINISHED looks identical in next alone — which is the bug below.
     """
     return SimpleNamespace(
         next=next_nodes,
@@ -73,12 +74,12 @@ def ctx_with(snap: Any) -> Any:
 
 
 class TestFinishedSubagentIsNotDrivenTwice:
-    """Bug: ``_parked_interrupt`` returned ``None`` for a thread that had FINISHED as well
-    as one that had never run, so on an executor resume a completed blocking handoff was
-    re-invoked from scratch — repeating every side effect its subagent had already caused.
+    """Bug: _parked_interrupt returned None for both a finished and a never-run thread.
 
-    Trigger: one AI message with ``handoff(...)`` plus a gated tool. The handoff completes,
-    the gated tool pauses, and LangGraph re-runs the whole node on resume.
+    On an executor resume, a completed blocking handoff was re-invoked from scratch,
+    repeating every side effect its subagent had already caused. Trigger: one AI message
+    with handoff(...) plus a gated tool — the handoff completes, the gated tool pauses,
+    and LangGraph re-runs the whole node on resume.
     """
 
     async def test_a_finished_thread_returns_its_answer_instead_of_running_again(
@@ -133,15 +134,11 @@ class TestFinishedSubagentIsNotDrivenTwice:
         assert outcome.text == "Task completed."
 
 
-class TestJoinToolIsNeverGated:
-    """Bug: ``wait_for_subagents`` was absent from ``HIL_EXEMPT_TOOLS`` and is registered
-    directly into the executor's tool dict rather than the ToolRegistry — so the gate sent
-    it to the LLM destructive classifier, which fails CLOSED. A classifier outage would
-    gate the very join that collects parked approvals.
-    """
+class TestExemptToolsAreNeverGated:
+    """The join tool is gone, but the regression coverage stays: HIL_EXEMPT_TOOLS must keep covering every bound orchestration tool, or the gate sends one to the LLM destructive classifier, which fails CLOSED."""
 
     def test_the_join_tool_is_exempt(self) -> None:
-        assert WAIT_FOR_SUBAGENTS_NAME in HIL_EXEMPT_TOOLS
+        assert {"handoff", "spawn_subagent"} <= HIL_EXEMPT_TOOLS
 
     async def test_the_gate_runs_it_without_resolving_any_policy(self) -> None:
         ran = False
@@ -152,7 +149,7 @@ class TestJoinToolIsNeverGated:
             return ToolMessage(content="collected", tool_call_id="call-1")
 
         with patch(f"{GATE}.resolve_policy", new=AsyncMock()) as policy:
-            result = await run_through_gate(make_request(name=WAIT_FOR_SUBAGENTS_NAME), handler)
+            result = await run_through_gate(make_request(name="handoff"), handler)
 
         assert ran is True
         assert result.content == "collected"
@@ -165,9 +162,10 @@ class TestJoinToolIsNeverGated:
 
 
 class TestExemptSiblingsThatPauseSuppressAutoApproval:
-    """Bug: the sibling guard skipped every exempt tool, but ``handoff`` and
-    ``wait_for_subagents`` are exempt AND can pause. A gated tool sharing a message with
-    one of them auto-ran, then ran a SECOND time when the pause re-ran the whole node.
+    """Bug: the sibling guard skipped every exempt tool, but handoff is exempt AND can pause.
+
+    A gated tool sharing a message with one of them auto-ran, then ran a SECOND time when the pause
+    re-ran the whole node.
     """
 
     @pytest.fixture(autouse=True)
@@ -184,19 +182,37 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
         ):
             yield
 
-    @pytest.mark.parametrize("pausing_tool", ["handoff", WAIT_FOR_SUBAGENTS_NAME])
+    @pytest.mark.parametrize("pausing_tool", ["handoff", "spawn_subagent"])
     async def test_a_pausing_sibling_blocks_auto_approval(self, pausing_tool: str) -> None:
         request = make_request(
             call_id="call-1",
             messages=[
                 ai_message_with_calls(
                     {"id": "call-1", "name": "send_email", "args": {}},
-                    {"id": "call-2", "name": pausing_tool, "args": {}},
+                    {"id": "call-2", "name": pausing_tool, "args": {"background": False}},
                 )
             ],
         )
 
         assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+    @pytest.mark.parametrize("delegation_tool", ["handoff", "spawn_subagent"])
+    async def test_a_background_delegation_sibling_does_not_block(
+        self, delegation_tool: str
+    ) -> None:
+        # A background run parks on its own thread and never re-runs this node, so it
+        # must not cost the gated sibling its auto-approval.
+        request = make_request(
+            call_id="call-1",
+            messages=[
+                ai_message_with_calls(
+                    {"id": "call-1", "name": "send_email", "args": {}},
+                    {"id": "call-2", "name": delegation_tool, "args": {}},
+                )
+            ],
+        )
+
+        assert await has_pausing_sibling(request, USER_ID, "call-1") is False
 
     async def test_a_harmless_exempt_sibling_still_does_not_block(self) -> None:
         # The fix must not degrade into "any exempt sibling blocks", which would disable
@@ -216,20 +232,16 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
     async def test_the_gate_actually_consults_the_sibling_guard_before_auto_running(
         self,
     ) -> None:
-        # The guard above is only worth having if the gate CALLS it. Every other test of
-        # the whole-gate journeys patches has_pausing_sibling to a constant, so the seam
-        # between _judge and the guard was never exercised — a tested component behind an
-        # untested wire. Nothing is patched here but the I/O edges: the real guard runs,
-        # sees the pausing `handoff` sibling, and must veto auto-approval even though the
-        # judge says yes. If the wire is cut, the send happens now and AGAIN when the
-        # sibling's pause re-runs the whole node ("one send became two").
+        # Every other whole-gate test patches has_pausing_sibling to a constant, so this
+        # seam was never exercised. Only I/O edges are mocked here: the real guard runs and
+        # must veto auto-approval despite the judge saying yes, or "one send became two."
         handler = AsyncMock()
         request = make_request(
             call_id="call-1",
             messages=[
                 ai_message_with_calls(
                     {"id": "call-1", "name": "send_email", "args": {}},
-                    {"id": "call-2", "name": "handoff", "args": {}},
+                    {"id": "call-2", "name": "handoff", "args": {"background": False}},
                 )
             ],
         )
@@ -245,7 +257,9 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
             patch(f"{GATE}.remember_declined_call", new=AsyncMock()),
             patch(
                 f"{GATE}.judge_intent",
-                new=AsyncMock(return_value=IntentDecision(True, "you said send it")),
+                new=AsyncMock(
+                    return_value=IntentDecision(outcome="accept", reason="you said send it")
+                ),
             ) as judge,
             patch(f"{GATE}.interrupt", side_effect=GraphInterrupt(())) as interrupt,
         ):
@@ -260,7 +274,7 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
 
 
 class TestAnAutoApprovedRecordStillHasToRun:
-    """``auto_approved`` means the user was not ASKED. It never meant the call ran.
+    """auto_approved means the user was not ASKED. It never meant the call ran.
 
     It used to: auto mode approved and executed in one pass, so a replay finding the
     record had to refuse (the action was irreversible and already done). Approvals are
@@ -271,7 +285,7 @@ class TestAnAutoApprovedRecordStillHasToRun:
 
     @pytest.fixture
     def auto(self):
-        """The tool node, over a record auto mode decided without asking."""
+        """Patch the tool node, over a record auto mode decided without asking."""
         with (
             patch(f"{GATE}.log"),
             patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="auto")),
@@ -315,7 +329,7 @@ class TestAPendingRecordParksInsteadOfRunning:
     The call must neither run nor be refused: it parks, and the run resumes when the
     decision lands. Its siblings are unaffected — LangGraph persists the writes of the
     tasks that completed in the interrupting step (see
-    ``tests/unit/agents/test_pause_checkpointing.py``), which is what makes pausing
+    tests/unit/agents/test_pause_checkpointing.py), which is what makes pausing
     here safe rather than a source of double-execution.
     """
 
@@ -360,7 +374,9 @@ class TestAPendingRecordParksInsteadOfRunning:
             judge = stack.enter_context(
                 patch(
                     f"{GATE}.judge_intent",
-                    new=AsyncMock(return_value=IntentDecision(True, "you said send it")),
+                    new=AsyncMock(
+                        return_value=IntentDecision(outcome="accept", reason="you said send it")
+                    ),
                 )
             )
             with pytest.raises(GraphInterrupt):
@@ -371,11 +387,11 @@ class TestAPendingRecordParksInsteadOfRunning:
 
 
 class TestAResumeWithNoDecisionFailsClosed:
-    """The one path where ``interrupt()`` RETURNS instead of exiting the run.
+    """The one path where interrupt() RETURNS instead of exiting the run.
 
     On a replay LangGraph hands the resume value back rather than raising, so execution
     continues past the pause. Normally the decision is already on the record and the
-    call never reaches the pause again — ``resolve_approval`` marks the record decided
+    call never reaches the pause again — resolve_approval marks the record decided
     before it dispatches the resume. But the gate must not assume that: the resume value
     is a wake-up, not a decision, and treating "we were woken" as "the user said yes"
     would run an irreversible action nobody approved.
@@ -408,7 +424,9 @@ class TestAResumeWithNoDecisionFailsClosed:
             result = await run_through_gate(make_request(), handler)
 
         handler.assert_not_awaited(), "no record decision means no execution, ever"
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
+        # System error, not a denial: the run could pause (it just did), but no
+        # decision landed on its record. "denied" would lie about the cause.
+        assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"
 
     async def test_an_approved_record_does_run_it(self) -> None:
         # The positive control: without this, "never runs" would also pass if the gate
@@ -441,8 +459,7 @@ async def drain_spawned_tasks() -> None:
 
 
 class _ApprovalStore:
-    """Stand-in for the approvals collection, keeping the one semantic that decides
-    this: ``pending -> decided`` is conditional, so it happens at most once."""
+    """Stand-in for the approvals collection: pending -> decided is conditional, so it happens once."""
 
     def __init__(self, *records: Any) -> None:
         self.records = {record.approval_id: record for record in records}
@@ -482,10 +499,10 @@ class _ApprovalStore:
 
 
 class TestCancelledRunIsNotResurrectedByItsApproval:
-    """cancel_executor stops the run and drops the busy lock, but neither reaches the
-    approval record. Left pending it is a live Approve button — and a user-free timeout
-    sweep — pointing at the run the user stopped, re-dispatched on a fresh stream that
-    the original cancel flag never covered.
+    """cancel_executor stops the run and drops the busy lock, but neither reaches the record.
+
+    Left pending, it is a live Approve button — and a timeout sweep — pointing at the
+    stopped run, re-dispatched on a fresh stream the original cancel flag never covered.
     """
 
     @staticmethod
@@ -557,7 +574,10 @@ class TestCancelledRunIsNotResurrectedByItsApproval:
 
         approval_id, update = repository.update.await_args.args
         assert approval_id == "a1"
-        assert update.model_dump(exclude_unset=True) == {"resume_item": None}
+        assert update.model_dump(exclude_unset=True) == {
+            "resume_item": None,
+            "subagent_resume": None,
+        }
 
     async def test_an_uncancelled_approval_still_resumes_normally(self) -> None:
         # The guard must not cost the feature: an ordinary approval still runs.

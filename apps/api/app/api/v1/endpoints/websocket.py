@@ -19,16 +19,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     ``ws_connection`` line per connection lifetime, covering auth failures
     too — so this handler just calls ``log.set()`` like an HTTP handler.
     """
-    # Authenticate the WebSocket connection using cookies
+    # Raises WebSocketException on any auth failure, and never yields a user
+    # without a string id, so there is no unauthenticated path past this line.
     user = await get_current_user_ws(websocket)
-
-    # Check if we have a valid user with a user_id
-    user_id = user.get("user_id")
-    if not user_id or not isinstance(user_id, str):
-        log.set(disconnect_reason="auth_failure")
-        log.warning("WebSocket connection attempted with invalid user_id")
-        return
-
+    user_id = user.user_id
     log.set(user={"id": user_id})
 
     # Accept the connection now that we've verified the user

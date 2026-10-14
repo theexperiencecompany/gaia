@@ -7,12 +7,18 @@ in test_timezone.py / test_cron_utils.py; here we assert the composition.
 
 from datetime import UTC, datetime
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import (
     PlaybookDiscard,
+    PublicWorkflowRow,
+    PublicWorkflowStep,
     TriggerConfig,
     TriggerType,
+    Workflow,
     WorkflowDocument,
+    WorkflowStep,
     WorkflowUpdate,
+    public_workflow_steps,
 )
 
 BASE = datetime(2025, 1, 1, 0, 0, tzinfo=UTC)  # midnight UTC
@@ -81,6 +87,7 @@ class TestTriggerConfigUpdateNextRun:
 
 def _stored_workflow(**overrides: object) -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id="wf_1",
         user_id="u_1",
         title="Daily agenda",
@@ -91,9 +98,7 @@ def _stored_workflow(**overrides: object) -> WorkflowDocument:
 
 
 class TestThePlaybookDiscardAWorkflowRemembers:
-    """The discard record is the only durable answer to "where did my shortcut
-    go" — the worker's warning line ages out of log retention long before the
-    question is asked."""
+    """The discard record is the only durable answer to "where did my shortcut go" — the worker's warning line ages out of log retention first."""
 
     DISCARD = PlaybookDiscard(
         playbook_id="pb_1",
@@ -114,10 +119,118 @@ class TestThePlaybookDiscardAWorkflowRemembers:
         assert _stored_workflow().last_playbook_discard is None
 
     def test_the_update_carries_it_as_a_set_field(self) -> None:
-        """``$set`` is built from the fields the caller actually set, so a discard
-        written through anything but this field never reaches Mongo."""
+        """$set is built from the fields the caller actually set, so a discard written elsewhere never reaches Mongo."""
         update = WorkflowUpdate(last_playbook_discard=self.DISCARD)
 
         assert update.model_dump(exclude_unset=True) == {
             "last_playbook_discard": self.DISCARD.model_dump()
         }
+
+
+class TestPublicWorkflowSteps:
+    def _row(self, *steps: WorkflowStep) -> PublicWorkflowRow:
+        return PublicWorkflowRow(
+            id="wf_1",
+            user_id="u_1",
+            title="Daily agenda",
+            steps=list(steps),
+            trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+            delivery=WorkflowDelivery.NOW,
+        )
+
+    def test_a_categorised_step_keeps_its_category(self) -> None:
+        row = self._row(
+            WorkflowStep(id="s1", title="Fetch mail", category="gmail", description="Read inbox")
+        )
+
+        assert public_workflow_steps(row) == [
+            PublicWorkflowStep(
+                id="s1", title="Fetch mail", description="Read inbox", category="gmail"
+            )
+        ]
+
+    def test_an_uncategorised_step_reads_as_general(self) -> None:
+        row = self._row(WorkflowStep(id="s1", title="Summarise", category="", description="Digest"))
+
+        assert public_workflow_steps(row) == [
+            PublicWorkflowStep(id="s1", title="Summarise", description="Digest", category="general")
+        ]
+
+
+def _workflow(trigger: TriggerConfig, **fields: object) -> Workflow:
+    return Workflow.model_validate(
+        {
+            "user_id": "u1",
+            "title": "Digest",
+            "steps": [],
+            "trigger_config": trigger,
+            "delivery": WorkflowDelivery.NOW,
+            **fields,
+        }
+    )
+
+
+class TestWorkflowScheduleFromTrigger:
+    NEXT = datetime(2026, 10, 9, 9, 0, tzinfo=UTC)
+
+    def _cron_trigger(self) -> TriggerConfig:
+        return TriggerConfig(
+            type=TriggerType.SCHEDULE, cron_expression="0 9 * * *", next_run=self.NEXT
+        )
+
+    def test_a_cron_trigger_supplies_the_schedule_the_caller_left_out(self) -> None:
+        workflow = _workflow(self._cron_trigger())
+
+        assert (workflow.scheduled_at, workflow.repeat) == (self.NEXT, "0 9 * * *")
+
+    def test_a_schedule_the_caller_gave_is_kept(self) -> None:
+        given = datetime(2026, 10, 10, 7, 0, tzinfo=UTC)
+
+        workflow = _workflow(self._cron_trigger(), scheduled_at=given, repeat="0 7 * * *")
+
+        assert (workflow.scheduled_at, workflow.repeat) == (given, "0 7 * * *")
+
+
+class TestLegacyWorkflowText:
+    def test_a_null_description_and_prompt_read_as_empty_text(self) -> None:
+        workflow = _workflow(TriggerConfig(type=TriggerType.MANUAL), description=None, prompt=None)
+
+        assert (workflow.description, workflow.prompt) == ("", "")
+
+    def test_a_record_with_no_prompt_runs_its_description(self) -> None:
+        workflow = _workflow(TriggerConfig(type=TriggerType.MANUAL), description="Sum my inbox")
+
+        assert workflow.prompt == "Sum my inbox"
+
+
+class TestLegacyWorkflowRecordsReadAsTheyRan:
+    """A record stored before delivery modes must load: the API's startup scan reads every one."""
+
+    @staticmethod
+    def _stored(**fields: object) -> dict[str, object]:
+        return {
+            "_id": "wf_legacy00001",
+            "user_id": "user-1",
+            "title": "Morning digest",
+            "prompt": "Summarise my inbox",
+            "trigger_config": {"type": "manual", "enabled": True},
+            "steps": [],
+            **fields,
+        }
+
+    def test_a_silent_flag_reads_as_silent(self) -> None:
+        doc = WorkflowDocument.model_validate(self._stored(notify_on_completion=False))
+        assert doc.delivery is WorkflowDelivery.SILENT
+
+    def test_a_notifying_flag_reads_as_now(self) -> None:
+        doc = WorkflowDocument.model_validate(self._stored(notify_on_completion=True))
+        assert doc.delivery is WorkflowDelivery.NOW
+
+    def test_a_flag_never_written_reads_as_the_old_default_now(self) -> None:
+        assert WorkflowDocument.model_validate(self._stored()).delivery is WorkflowDelivery.NOW
+
+    def test_a_stored_delivery_wins_over_a_stale_flag(self) -> None:
+        doc = WorkflowDocument.model_validate(
+            self._stored(delivery="brief", notify_on_completion=False)
+        )
+        assert doc.delivery is WorkflowDelivery.BRIEF

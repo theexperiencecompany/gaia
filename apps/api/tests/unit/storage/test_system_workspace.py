@@ -1,23 +1,16 @@
-"""Shared ``_system`` subtree + per-user symlinks: isolation, hash-gating, linking.
+"""Shared _system subtree + per-user symlinks: isolation, hash-gating, linking.
 
-``_system`` is the ONE copy of INDEX.md / the GUIDE.md docs / builtin skill bodies
-that every user's workspace points at. Two failure classes matter here and neither
-shows up in logs:
+_system is the one copy of INDEX.md / GUIDE.md / builtin skill bodies that every user's
+workspace points at. Two failure classes matter and neither shows up in logs: isolation (a link
+written for user A landing in the shared tree, or in user B's, corrupts the single copy for
+everyone, since _place_symlink unlinks whatever it finds) and hash-gating (the signature marker
+makes bootstrap cheap — short-circuiting wrongly leaves stale docs forever, failing to
+short-circuit rewrites the whole library on JuiceFS every time).
 
-  - **isolation** — a link written for user A landing in the shared tree (or in
-    user B's tree) corrupts the single copy for everyone, and ``_place_symlink``
-    deliberately ``unlink()``s whatever it finds, so the real body is destroyed.
-  - **hash-gating** — the signature marker is what makes bootstrap cheap. If it
-    short-circuits when it shouldn't, users get stale docs forever; if it fails to
-    short-circuit, every bootstrap rewrites the whole library on JuiceFS.
-
-The filesystem IS the thing under test, so ``tmp_path`` is used as a real mount
-root rather than mocking ``Path``. Mocked boundaries: the mount-detection
-primitives in ``juicefs`` and the ``system_files()`` manifest.
-
-Note on patching: ``system_workspace`` does ``from ...juicefs import _mount_root``,
-so it holds its OWN reference — patching ``juicefs._mount_root`` alone does not
-reach ``system_subtree_available()``. Both bindings are patched below.
+The filesystem is the thing under test, so tmp_path is a real mount root rather than a mocked
+Path. Mocked boundaries: the mount-detection primitives in juicefs and system_files(). Note:
+system_workspace imports _mount_root directly and holds its own reference, so both
+juicefs._mount_root and system_subtree_available() must be patched.
 """
 
 from __future__ import annotations
@@ -57,7 +50,7 @@ MANIFEST: list[SystemFile] = [
 
 @pytest.fixture
 def mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A real directory standing in for the JuiceFS host mount."""
+    """Use a real directory as a stand-in for the JuiceFS host mount."""
     root = tmp_path / "jfs"
     root.mkdir()
     monkeypatch.setattr("app.services.storage.juicefs._mount_root", lambda: root)
@@ -81,7 +74,7 @@ def unmount(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def age(path: Path) -> None:
-    """Backdate mtime so any rewrite of ``path`` becomes observable."""
+    """Backdate mtime so any rewrite of path becomes observable."""
     os.utime(path, (0, 0))
 
 
@@ -262,11 +255,9 @@ async def test_a_second_bootstrap_touches_nothing(mount: Path, manifest: list[Sy
 async def test_a_marker_with_trailing_whitespace_still_counts_as_current(
     mount: Path, manifest: list[SystemFile]
 ) -> None:
-    # A marker round-tripped through an editor or a shell `echo` gains a newline.
-    # Without the strip() it never matches and the library is rewritten forever.
-    # Asserted on the MARKER, not the bodies: an unchanged library rewrites its
-    # bodies to identical content, so only the marker losing its newline reveals
-    # that the gate missed.
+    # A marker round-tripped through an editor/echo gains a newline; without strip() it never
+    # matches and the library rewrites forever. Assert on the marker, not the bodies — an
+    # unchanged library rewrites bodies to identical content, so only the marker reveals a miss.
     await ensure_system_subtree()
     root = mount / SYSTEM_SUBDIR
     marker = root / ".gaia_system.v"
@@ -412,10 +403,9 @@ def test_placing_a_link_where_nothing_exists_creates_it(tmp_path: Path) -> None:
 
 
 def test_an_already_correct_link_is_reported_as_unchanged(tmp_path: Path) -> None:
-    # These links are deliberately DANGLING on the host (/workspace does not
-    # exist there), so exists() is False for them. Checking exists() before
-    # is_symlink() would unlink-and-recreate every link on every provisioning
-    # pass and report spurious churn.
+    # These links are deliberately dangling on the host (/workspace doesn't exist there), so
+    # exists() is False. Checking exists() before is_symlink() would unlink-and-recreate every
+    # link on every provisioning pass and report spurious churn.
     target = f"{SANDBOX_SYSTEM_DIR}/INDEX.md"
     link = tmp_path / "INDEX.md"
     _place_symlink(link, target)
@@ -535,10 +525,9 @@ async def test_a_vanished_mount_under_an_existing_subtree_fails_loud(
 async def test_a_traversing_user_id_cannot_overwrite_the_shared_system_tree(
     mount: Path, manifest: list[SystemFile]
 ) -> None:
-    # `_place_symlink` unlinks whatever it finds before linking, so a user_id
-    # that escapes /users/<uid> does not merely write somewhere odd — it DESTROYS
-    # the single shared copy every other user's workspace points at, and the hash
-    # marker then blocks ensure_system_subtree from ever repairing it.
+    # _place_symlink unlinks whatever it finds before linking, so a user_id escaping /users/<uid>
+    # doesn't just write somewhere odd — it destroys the single shared copy every other user's
+    # workspace points at, and the hash marker then blocks ensure_system_subtree from repairing it.
     await ensure_system_subtree()
     victim = mount / SYSTEM_SUBDIR / "INDEX.md"
     assert victim.read_text() == "index body"

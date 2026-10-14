@@ -1,3 +1,4 @@
+import { ApiError, REQUEST_ID_HEADER } from "@gaia/shared/api/apiError";
 import { getUserTimezone } from "@gaia/shared/api/timezone";
 import {
   clearAuthData,
@@ -5,10 +6,9 @@ import {
 } from "@/features/auth/utils/auth-storage";
 import { API_BASE_URL } from "./constants";
 
-// Callback invoked when any request returns 401 Unauthorized.
-// Wired up by AuthProvider via setOnUnauthorized() so that the auth layer
-// can clear stored credentials and redirect to login without creating a
-// circular dependency between api.ts and the React context.
+// Callback for any 401 Unauthorized response, wired up by AuthProvider via
+// setOnUnauthorized() so the auth layer can clear credentials and redirect to
+// login without a circular dependency between api.ts and the React context.
 let onUnauthorizedCallback: (() => void) | null = null;
 
 export function setOnUnauthorized(callback: () => void): void {
@@ -26,22 +26,7 @@ interface RequestConfig {
   options?: ApiOptions;
 }
 
-/**
- * Error thrown for non-2xx responses. Carries the HTTP status so callers
- * can branch on specific cases (e.g. 404 → fall back to defaults) without
- * fragile message-string parsing.
- */
-export class ApiError extends Error {
-  status: number;
-  body: string;
-
-  constructor(status: number, body: string, message?: string) {
-    super(message ?? `API request failed: ${status}`);
-    this.name = "ApiError";
-    this.status = status;
-    this.body = body;
-  }
-}
+export { ApiError };
 
 async function request<T = unknown>(config: RequestConfig): Promise<T> {
   const { method, url, data, options: _options = {} } = config;
@@ -83,7 +68,15 @@ async function request<T = unknown>(config: RequestConfig): Promise<T> {
 
     const errorText = await response.text();
     console.warn(`[API] ${method} ${url} → ${response.status}: ${errorText}`);
-    throw new ApiError(response.status, errorText);
+    let body: unknown = errorText;
+    try {
+      body = JSON.parse(errorText);
+    } catch {
+      // non-JSON error body; the raw text is what the envelope check sees
+    }
+    throw ApiError.fromBody(response.status, body, {
+      requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+    });
   }
 
   const contentType = response.headers.get("content-type");

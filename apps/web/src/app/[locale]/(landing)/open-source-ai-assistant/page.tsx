@@ -13,7 +13,7 @@ import {
 import OpenSourceAIClient from "./OpenSourceAIClient";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Open Source AI Assistant — Self-Host Your Personal AI",
+  title: "Open Source AI Assistant: Self-Host Your Personal AI",
   description:
     "GAIA is the open source AI assistant that manages your email, calendar, tasks, and workflows. Fully self-hostable. Your data stays on your servers. Free forever.",
   path: "/open-source-ai-assistant",
@@ -40,7 +40,7 @@ const faqs = [
   {
     question: "What data does GAIA store?",
     answer:
-      "When self-hosted, GAIA stores data exclusively on your own servers — PostgreSQL for structured data, MongoDB for documents, Redis for caching, and ChromaDB for vector embeddings. Nothing is sent to GAIA's servers. You control every byte.",
+      "When self-hosted, GAIA stores data exclusively on your own servers: PostgreSQL for structured data, MongoDB for documents, Redis for caching, and ChromaDB for vector embeddings. Nothing is sent to GAIA's servers. You control every byte.",
   },
   {
     question: "Can I audit GAIA's code?",
@@ -50,7 +50,7 @@ const faqs = [
   {
     question: "What are the system requirements to self-host GAIA?",
     answer:
-      "GAIA runs via Docker Compose. You need a Linux server (or macOS/Windows for local dev) with at least 4GB RAM and Docker installed. A modern VPS with 2 vCPUs and 4GB RAM is sufficient for a single user. The full stack includes PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ — all orchestrated by Docker Compose.",
+      "GAIA runs via Docker Compose. You need a Linux server (or macOS/Windows for local dev) with at least 4GB RAM and Docker installed. A modern VPS with 2 vCPUs and 4GB RAM is sufficient for a single user. The full stack includes PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ, all orchestrated by Docker Compose.",
   },
 ];
 
@@ -65,13 +65,13 @@ const selfHostSteps = [
   },
   {
     name: "Deploy with Docker Compose",
-    text: "Run `cd infra/docker && docker compose up` to start all services — the API, worker, databases, and message broker — in one command. GAIA is running on your server.",
+    text: "Run `cd infra/docker && docker compose up` to start all services (the API, worker, databases, and message broker) in one command. GAIA is running on your server.",
   },
 ];
 
 export default function OpenSourceAIAssistantPage() {
   const webPageSchema = generateWebPageSchema(
-    "Open Source AI Assistant — Self-Host Your Personal AI | GAIA",
+    "Open Source AI Assistant: Self-Host Your Personal AI | GAIA",
     "GAIA is the open source AI assistant that manages your email, calendar, tasks, and workflows. Fully self-hostable. Your data stays on your servers. Free forever.",
     `${siteConfig.url}/open-source-ai-assistant`,
     [

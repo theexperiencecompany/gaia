@@ -1,20 +1,11 @@
 """WebSocket broadcast delivery across replicas, against real Redis.
 
-Only real Redis proves this. The property is about Redis pub/sub's *delivery
-shape*, and the two bugs on either side of it are opposites:
-
-- A durable queue (the RabbitMQ predecessor) is competing-consumers: with N
-  replicas each broadcast reached exactly ONE of them, so a user parked on any
-  other replica silently received nothing. ``test_every_replica_receives_it``
-  pins the fan-out that replaced it.
-- Delivering locally *and* publishing means the publishing replica writes to its
-  own sockets twice — once directly, once off its own subscription. Every other
-  replica still sees one. ``test_broadcast_writes_nothing_locally`` pins the
-  publish-only rule that prevents it; the asymmetry is what made it survive
-  review, because a two-replica smoke test only shows it on one side.
-
-A fake mocking either half would assert nothing about Redis, which is where both
-behaviours actually live.
+Only real Redis proves this: the property is Redis pub/sub's delivery shape.
+The RabbitMQ predecessor was competing-consumers (each broadcast reached only
+ONE of N replicas); test_every_replica_receives_it pins the fan-out that
+replaced it. Delivering locally *and* publishing would make the publishing
+replica write to its own sockets twice; test_broadcast_writes_nothing_locally
+pins the publish-only rule that prevents it.
 """
 
 from __future__ import annotations
@@ -74,11 +65,7 @@ async def _published_payload(client) -> str:
 
 @pytest.mark.asyncio
 async def test_broadcast_writes_nothing_locally(real_redis, sockets) -> None:
-    """The publishing replica must not touch its own sockets.
-
-    Its listener will deliver the message like everyone else's; writing here too
-    is what makes the publisher — and only the publisher — deliver twice.
-    """
+    """The publishing replica must not touch its own sockets, or it delivers the message twice."""
     a, b = sockets
 
     await websocket_manager.broadcast_to_user(USER, {"type": "probe", "n": 1})
@@ -100,11 +87,7 @@ async def test_each_local_socket_receives_exactly_one_copy(real_redis, sockets) 
 
 @pytest.mark.asyncio
 async def test_every_replica_receives_it(real_redis) -> None:
-    """Fan-out, not competing-consumers: N subscribers each get the message.
-
-    Two independent subscriptions stand in for two replicas' listeners. Under
-    the old queue exactly one of them would have seen it.
-    """
+    """Fan-out, not competing-consumers: N subscribers each get the message."""
     first, second = real_redis.pubsub(), real_redis.pubsub()
     await first.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
     await second.subscribe(WEBSOCKET_BROADCAST_CHANNEL)

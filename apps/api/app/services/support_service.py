@@ -4,7 +4,6 @@ import asyncio
 from datetime import UTC, datetime
 import uuid
 
-import cloudinary
 import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
 
@@ -569,10 +568,7 @@ async def _send_support_email_notifications(
     Raises on failure so the caller can roll back the transaction.
     """
     try:
-        # Send to support team
         await send_support_team_notification(notification_data)
-
-        # Send support to user email
         await send_support_to_user_email(notification_data)
 
     except Exception as e:

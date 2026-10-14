@@ -1,19 +1,14 @@
 """Email notification channel adapter.
 
-Sends through the platform email service (``app/services/email``), the same
-provider path every other GAIA email takes. Missing ``RESEND_API_KEY`` /
-``EMAIL_UNSUBSCRIBE_SECRET`` is an ops precondition, not a feature flag: the
-adapter skips with a structured log until both are configured. A send that
-fails raises, and the orchestrator records the channel as failed.
+Sends through the platform email service (app/services/email). Missing
+RESEND_API_KEY / EMAIL_UNSUBSCRIBE_SECRET is an ops precondition: the adapter skips
+with a structured log. A failed send raises and the orchestrator records the channel
+as failed.
 
-Template selection keys off ``notification.metadata["kind"]``:
-``briefing_daily`` / ``briefing_weekly`` render the briefing edition
-(``app/services/briefing/edition_email.py``) from
-``notification.content.rich_content`` (the same ``BriefingPayload`` dict the
-OpenUI dashboard card renders — no re-invoking the LLM to reformat), falling
-back to the HTML briefing template if the edition render fails. Anything else
-renders the plain-notification template from ``content.title`` /
-``content.body``.
+Template selection keys off notification.metadata["kind"]: briefing_daily and
+briefing_weekly render the briefing edition from content.rich_content, falling back
+to the HTML briefing template if the edition render fails. Anything else renders the
+plain-notification template.
 """
 
 from __future__ import annotations
@@ -59,8 +54,10 @@ class EmailChannelAdapter(ChannelAdapter):
         return NotificationChannel.EMAIL
 
     def can_handle(self, notification: NotificationRequest) -> bool:
-        """Always claim the notification; ``deliver`` decides skip vs send
-        (no configured ESP keys, no email on file)."""
+        """Claim every notification.
+
+        deliver decides skip vs send.
+        """
         return True
 
     async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
@@ -122,7 +119,7 @@ class EmailChannelAdapter(ChannelAdapter):
         return self._success()
 
     def _render(self, content: dict[str, Any], unsubscribe_url: str) -> tuple[str, str]:
-        """Picks the template by ``kind`` and returns ``(subject, html)``."""
+        """Pick the template by kind and return (subject, html)."""
         kind = content.get("kind")
         payload = content.get("payload") or {}
         title = content.get("title") or "GAIA"

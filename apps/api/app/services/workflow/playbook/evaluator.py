@@ -1,18 +1,17 @@
-"""Resolve a playbook step's ``$placeholders`` against the run that is happening.
+"""Resolve a playbook step's $placeholders against the run that is happening.
 
-Pure: given a value and a :class:`RunContext`, produce the value the tool is
-actually called with. No I/O, no ``eval``, no dynamic code — the vocabulary is a
-closed table matched by one scanner, so an argument a playbook author writes can
+Pure: given a value and a RunContext, produce the value the tool is actually
+called with. No I/O, no eval, no dynamic code — the vocabulary is a closed
+table matched by one scanner, so an argument a playbook author writes can
 only ever become data.
 
 The one asymmetry worth knowing: the current run is addressed by step id
-(``$steps.<id>``) and the previous run by TOOL NAME (``$last_run.<TOOL>``),
-because the run before a playbook's first replay was agentic and has no step ids
-at all. That is also why a ``$last_run`` naming a tool the previous run never
-called is ``None`` rather than an error: a first replay legitimately has nothing
-to look back at. Every other miss — a ``$last_run`` path absent from what that
-tool did return, an unresolvable ``$steps`` / ``$trigger`` / ``$user`` — means
-the playbook no longer matches reality and must fail loudly instead of calling a
+($steps.<id>) and the previous run by TOOL NAME ($last_run.<TOOL>), because
+the run before a playbook's first replay was agentic and has no step ids at
+all — so a $last_run naming a tool the previous run never called is None
+rather than an error. Every other miss — a $last_run path absent from what
+that tool did return, an unresolvable $steps / $trigger / $user — means the
+playbook no longer matches reality and must fail loudly instead of calling a
 tool with a hole in it.
 """
 
@@ -23,9 +22,20 @@ import json
 import re
 from typing import Any
 
-from app.models.playbook_models import ASK_KEY, ask_slot_key, is_ask_slot
-from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall
+from app.models.playbook_models import (
+    ASK_KEY,
+    TIME_KEY,
+    AskKind,
+    LocatedAsk,
+    PlaybookAskFill,
+    TimeSlot,
+    ask_slot_key,
+    is_ask_slot,
+    is_time_slot,
+)
+from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall, parse_result
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
+from app.services.workflow.playbook.time_layouts import render_iso
 from app.utils.errors import AppError
 
 #: Offset suffixes ``$now``/``$today`` accept, as ``timedelta`` keywords.
@@ -41,9 +51,8 @@ _OFFSET_UNITS: dict[str, str] = {
 _USER_FIELDS = ("email", "name", "timezone")
 
 #: Addresses the file a step offloaded its result to, rather than the result.
-#: Public because the validator has to exempt it: the offload file exists only
-#: at replay, so checking it against the authoring run's result would refuse a
-#: reference that is correct.
+#: Public so the validator can exempt it: the offload file exists only at
+#: replay, so checking it against the authoring run's result would refuse it.
 STEP_FILE_FIELD = "file"
 
 
@@ -51,7 +60,7 @@ STEP_FILE_FIELD = "file"
 class PlaceholderError(AppError):
     """A placeholder this run cannot resolve, named so the failure says which one.
 
-    Raised for ``$steps`` / ``$trigger`` / ``$user``, and for an ask slot no
+    Raised for $steps / $trigger / $user, and for an ask slot no
     model wrote: every one of them addresses something this run was supposed to
     have, so a miss means the playbook is stale and the run must stop rather
     than proceed with a gap.
@@ -71,13 +80,18 @@ class PlaybookUser:
 class StepResult:
     """What one executed step leaves behind for the steps after it.
 
-    ``value`` is the tool's result parsed as JSON when it is JSON, and the raw
-    string otherwise. ``file`` is the workspace path when the tool offloaded its
+    value is the tool's result parsed as JSON when it is JSON, and the raw
+    string otherwise. file is the workspace path when the tool offloaded its
     result instead of returning it inline.
     """
 
     value: object
     file: str | None = None
+
+
+#: Marks "this step is not inside a for_each". Distinct from None, which is a
+#: value an element can legitimately have.
+NO_ITEM = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,16 +108,20 @@ class RunContext:
     steps: Mapping[str, StepResult] = field(default_factory=dict)
     #: Previous run's results keyed by TOOL NAME (see the module docstring).
     last_run: Mapping[str, object] = field(default_factory=dict)
-    #: What the mid-run model call wrote, keyed the way ``ask_slot_key`` spells
+    #: What the mid-run model calls wrote, keyed the way ``ask_slot_key`` spells
     #: a slot's address. Read by ``fill_ask_slots``, never by ``resolve_value``.
-    asks: Mapping[str, str] = field(default_factory=dict)
+    asks: "AskAnswers" = field(default_factory=lambda: AskAnswers())
+    #: The element a ``for_each`` step is currently on, or ``NO_ITEM`` outside
+    #: one. A sentinel rather than ``None``: a list holding a genuine null must
+    #: still resolve ``$item`` to it, not report the step is not a loop.
+    item: object = field(default=NO_ITEM)
 
 
 def last_run_index(trace: Sequence[RecordedCall]) -> dict[str, object]:
-    """The previous run's results keyed by tool name, most recent call winning.
+    """Return the previous run's results keyed by tool name, most recent call winning.
 
     A tool called several times in one run resolves to its LAST result, which is
-    what a cursor placeholder (``$last_run.GMAIL_FETCH_MESSAGES.next_page``)
+    what a cursor placeholder ($last_run.GMAIL_FETCH_MESSAGES.next_page)
     wants: where the run finished, not where it started.
     """
     index: dict[str, object] = {}
@@ -112,18 +130,96 @@ def last_run_index(trace: Sequence[RecordedCall]) -> dict[str, object]:
     return index
 
 
-def fill_ask_slots(
-    args: Mapping[str, Any], asks: Mapping[str, str], key_prefix: str
-) -> dict[str, Any]:
-    """One step's arguments with every inline ask slot replaced by its written text.
+class AskAnswers:
+    """Every answer the run's ask calls have written, by the key of the slot it fills.
 
-    Pure, and deliberately a separate pass ahead of :func:`resolve_args`: a slot
-    becomes an ordinary string first, and is then scanned for placeholders like
-    any other value. That is what keeps ``$ask`` a value in the grammar rather
-    than a second grammar with its own resolution rules.
+    One table for both kinds of answer, typed at the edge: record refuses an
+    answer for a slot that was not asked and an answer of the wrong kind for the
+    slot it names, and the two readers raise when the slot was never written.
+    Nothing here is a bare dict lookup, because the last time it was, a skipped
+    slot became an empty string inside a real tool argument.
+    """
 
-    ``key_prefix`` is the step's id (its tool name when it has no id); together
-    with the argument path it spells the key the ask call answered under.
+    def __init__(self) -> None:
+        self._texts: dict[str, str] = {}
+        self._items: dict[str, list[str]] = {}
+
+    def record(self, fill: PlaybookAskFill, asked: Sequence[LocatedAsk]) -> None:
+        """Keep what one ask call wrote, checked against the slots it was asked for.
+
+        Accumulates, never replaces: an earlier step's answers are still part of
+        the arguments its record shows, and the narration reads them all.
+        """
+        expected = {ask.key: ask.kind for ask in asked}
+        for answer in fill.asks:
+            kind = expected.get(answer.name)
+            if kind is None:
+                raise PlaceholderError(
+                    message=f"{answer.name} is not a slot this step asked for",
+                    why="the ask call answered a slot that was not listed",
+                    fix="answer exactly the slots listed, keyed as they are listed",
+                )
+            if answer.kind is not kind:
+                raise PlaceholderError(
+                    message=f"{answer.name} was answered with {answer.kind.value}, not {kind.value}",
+                    why="a for_each source takes items and an argument slot takes text",
+                    fix=f"answer {answer.name} with {kind.value}",
+                )
+            if kind is AskKind.ITEMS:
+                # ``kind`` is ITEMS only when items were given; an empty list is
+                # "nothing qualifies today", which the loop runs zero times over.
+                self._items[answer.name] = list(answer.items or [])
+            else:
+                self._texts[answer.name] = answer.text
+
+    def unwritten(self, asked: Sequence[LocatedAsk]) -> list[str]:
+        """Return the asked slots no answer covered, for the warning that names them."""
+        return sorted(
+            ask.key for ask in asked if ask.key not in self._texts and ask.key not in self._items
+        )
+
+    def text(self, key: str) -> str:
+        if key not in self._texts:
+            raise PlaceholderError(
+                message=f"{key} was never written",
+                why="the run's ask call produced no text for that slot",
+                fix="write one entry per slot listed, keyed exactly as the slot is listed",
+            )
+        return self._texts[key]
+
+    def items(self, key: str) -> list[str]:
+        if key not in self._items:
+            raise PlaceholderError(
+                message=f"{key} was never written",
+                why="the run's ask call produced no items for that for_each slot",
+                fix="answer the for_each slot with items, keyed exactly as the slot is listed",
+            )
+        return self._items[key]
+
+    def render(self) -> str:
+        """Return the answers as the end-of-run call reads them.
+
+        A for_each source's answer is the list of elements the step then ran
+        over. The narration sees each element's call in completed; this is
+        where it sees that those were a selection, and what the selection was.
+        """
+        if not self._texts and not self._items:
+            return "none"
+        lines = [f"- {key}: {text}" for key, text in self._texts.items()]
+        lines.extend(
+            f"- {key}: picked {len(picked)}: {', '.join(picked)}"
+            for key, picked in self._items.items()
+        )
+        return "\n".join(lines)
+
+
+def fill_ask_slots(args: Mapping[str, Any], asks: AskAnswers, key_prefix: str) -> dict[str, Any]:
+    """Return one step's arguments with every inline ask slot replaced by its written text.
+
+    A separate pass ahead of resolve_args: a slot becomes an ordinary string
+    first, then is scanned for placeholders like any other value, keeping
+    $ask a value in the grammar rather than a second grammar of its own.
+    key_prefix is the step's id (its tool name when it has none).
     """
     return {
         str(key): _fill_value(value, asks, key_prefix, (str(key),)) for key, value in args.items()
@@ -131,17 +227,10 @@ def fill_ask_slots(
 
 
 def _fill_value(
-    value: object, asks: Mapping[str, str], prefix: str, path: tuple[str | int, ...]
+    value: object, asks: AskAnswers, prefix: str, path: tuple[str | int, ...]
 ) -> object:
     if is_ask_slot(value):
-        key = ask_slot_key(prefix, path)
-        if key not in asks:
-            raise PlaceholderError(
-                message=f"{key} was never written",
-                why="the run's ask call produced no text for that slot",
-                fix="write one entry per slot listed, keyed exactly as the slot is listed",
-            )
-        return asks[key]
+        return asks.text(ask_slot_key(prefix, path))
     if isinstance(value, Mapping):
         return {
             str(key): _fill_value(item, asks, prefix, (*path, str(key)))
@@ -155,7 +244,7 @@ def _fill_value(
 def resolve_args(args: Mapping[str, Any], context: RunContext) -> dict[str, Any]:
     """One step's arguments with every placeholder resolved.
 
-    An argument that IS a placeholder and resolves to ``None`` (a ``$last_run``
+    An argument that IS a placeholder and resolves to None (a $last_run
     with no history behind it) is left out, so the tool's own default applies
     rather than a null reaching a parameter that does not accept one. A literal
     null, and a null inside a nested value, are kept as written.
@@ -168,8 +257,7 @@ def resolve_args(args: Mapping[str, Any], context: RunContext) -> dict[str, Any]
         if _carries_cut_value(item):
             # A recorded string cut to fit the record (a page token, a long id)
             # is not the value; sending the stub would page from nowhere. The
-            # stub is just as wrong nested in a list or a dict, or interpolated
-            # into a longer string, so the whole argument is scanned.
+            # whole argument is scanned since the stub is just as wrong nested.
             raise PlaceholderError(
                 f"{key}: the recorded value was cut when it was stored and cannot be replayed"
             )
@@ -181,7 +269,7 @@ def _carries_cut_value(value: object) -> bool:
     """Whether a resolved argument holds a string that was cut when recorded.
 
     The marker is searched for rather than matched at the end, because a cut
-    value interpolated into a longer string (``page=<cut>&limit=50``) carries the
+    value interpolated into a longer string (page=<cut>&limit=50) carries the
     stub in the middle and is no more replayable there than on its own.
     """
     if isinstance(value, str):
@@ -197,19 +285,20 @@ def resolve_value(value: object, context: RunContext) -> object:
     """Resolve one value, descending into lists and mappings.
 
     A whole-value placeholder keeps the resolved value's real type (so
-    ``max_results: $steps.x.count`` stays an int); a placeholder embedded in a
+    max_results: $steps.x.count stays an int); a placeholder embedded in a
     larger string is interpolated into it.
     """
     if is_ask_slot(value):
         # fill_ask_slots runs first and leaves none behind, so reaching one here
-        # means a step was resolved without being filled — the text a model was
-        # supposed to write is missing, and the slot's dict must not be sent as
-        # an argument in its place.
+        # means a step was resolved without being filled — its slot dict must
+        # not be sent as an argument in place of the model's written text.
         raise PlaceholderError(
             message=f"an {ASK_KEY} slot was not filled before resolution",
             why="the run resolved this step's arguments without first filling its ask slots",
             fix="fill the step's ask slots before resolving its arguments",
         )
+    if is_time_slot(value):
+        return _render_time_slot(TimeSlot.model_validate(value), context.now)
     if isinstance(value, Mapping):
         return {str(key): resolve_value(item, context) for key, item in value.items()}
     if isinstance(value, list):
@@ -221,6 +310,22 @@ def resolve_value(value: object, context: RunContext) -> object:
     if whole is not None:
         return _resolve_token(whole, context)
     return PLACEHOLDER_TOKEN.sub(lambda match: _render(_resolve_token(match, context)), value)
+
+
+def _render_time_slot(slot: TimeSlot, now: datetime) -> str:
+    """Return the slot's instant in its layout.
+
+    The model validator already refuses any placeholder that is not a time,
+    so the raise here restates that same contract for a slot built around it.
+    """
+    match = PLACEHOLDER_TOKEN.fullmatch(slot.placeholder)
+    if match is None:
+        raise PlaceholderError(
+            message=f"{slot.placeholder} is not a time placeholder",
+            why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
+            fix="write the time as $today + 1d 09:00 or similar",
+        )
+    return _resolve_moment(match, now).strftime(slot.format)
 
 
 def _resolve_token(match: re.Match[str], context: RunContext) -> object:
@@ -236,7 +341,7 @@ def _resolve_token(match: re.Match[str], context: RunContext) -> object:
                 why=f"${root} resolves to a time, so it has nothing to address under it",
                 fix=f"write ${root} on its own, optionally with an offset like ${root} + 1d",
             )
-        return _resolve_time(root, sign, match.group("amount"), match.group("unit"), context.now)
+        return _resolve_time(match, context.now)
 
     if sign is not None:
         raise PlaceholderError(
@@ -251,18 +356,31 @@ def _resolve_token(match: re.Match[str], context: RunContext) -> object:
         return _resolve_required(token, context.trigger, path, "the trigger payload")
     if root == "steps":
         return resolve_step(token, path, context.steps)
+    if root == "item":
+        return resolve_item(token, path, context.item)
     return _resolve_last_run(token, path, context.last_run)
 
 
-def _resolve_time(
-    root: str, sign: str | None, amount: str | None, unit: str | None, now: datetime
-) -> str:
+def _resolve_moment(match: re.Match[str], now: datetime) -> datetime:
+    """Return the instant a time token names: the root, moved by its offset, at its clock."""
     moment = now
+    unit, amount = match.group("unit"), match.group("amount")
     if unit is not None and amount is not None:
         offset = timedelta(**{_OFFSET_UNITS[unit]: int(amount)})
-        moment = now - offset if sign == "-" else now + offset
+        moment = now - offset if match.group("sign") == "-" else now + offset
+    clock = match.group("clock")
+    if clock is not None:
+        hour, minute = clock.split(":")
+        moment = moment.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
+    return moment
+
+
+def _resolve_time(match: re.Match[str], now: datetime) -> str:
     # Seconds, not microseconds: some APIs reject the longer form as not RFC 3339.
-    return moment.date().isoformat() if root == "today" else moment.isoformat(timespec="seconds")
+    # A clock makes a date a datetime: "tomorrow at nine" is an instant.
+    moment = _resolve_moment(match, now)
+    date_only = match.group("root") == "today" and match.group("clock") is None
+    return render_iso(moment, date_only=date_only)
 
 
 def _resolve_user(token: str, path: str, user: PlaybookUser) -> str:
@@ -288,7 +406,7 @@ def _resolve_user(token: str, path: str, user: PlaybookUser) -> str:
 
 
 def resolve_step(token: str, path: str, steps: Mapping[str, StepResult]) -> object:
-    """One ``$steps.<id>.<path>`` reference against the results in hand.
+    """One $steps.<id>.<path> reference against the results in hand.
 
     Public because the validator resolves the same references against the run
     that is AUTHORING the playbook, using the results that run already has. Two
@@ -308,15 +426,26 @@ def resolve_step(token: str, path: str, steps: Mapping[str, StepResult]) -> obje
     return _resolve_required(token, result.value, rest, f"step {step_id!r}'s result")
 
 
-def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> object:
-    """The previous run's value, or ``None`` when there is nothing to look back at.
+def resolve_item(token: str, path: str, item: object) -> object:
+    """Return the element a for_each step is on, or the field of it the token names."""
+    if item is NO_ITEM:
+        raise PlaceholderError(
+            message=f"{token} is only meaningful inside a for_each step",
+            why="this step does not repeat, so there is no element for $item to address",
+            fix="give the step a for_each, or address the value through $steps.<id>.<field>",
+        )
+    if not path:
+        return item
+    return _resolve_required(token, item, path, "the current for_each element")
 
-    A tool the previous run never called is deliberately not an error: the run
-    before a playbook's first replay was agentic, so a value the playbook expects
-    to carry over may simply not exist yet — and the first replay must still run.
-    A tool it DID call whose result lacks the path is: the playbook expects a
-    shape the tool no longer returns (or the result was recorded as text), and
-    calling the tool with ``None`` where a cursor belongs restarts from the top.
+
+def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> object:
+    """Return the previous run's value, or None when there is nothing to look back at.
+
+    A tool the previous run never called is not an error — the run before a
+    first replay was agentic, so the value may simply not exist yet. A tool it
+    DID call whose result lacks the path is an error: the shape no longer
+    matches what the tool returns.
     """
     tool_name, _, rest = path.partition(".")
     if tool_name not in last_run:
@@ -348,7 +477,7 @@ def _resolve_required(token: str, root: object, path: str, where: str) -> object
 
 
 def _walk(root: object, path: str) -> tuple[object, bool]:
-    """Follow a dotted path through mappings and lists. ``(value, found)``."""
+    """Follow a dotted path through mappings and lists. (value, found)."""
     current = root
     if not path:
         return current, True
@@ -364,19 +493,11 @@ def _walk(root: object, path: str) -> tuple[object, bool]:
     return current, True
 
 
-def parse_result(digest: str) -> object:
-    """A recorded result as JSON when it is JSON, and as its own text otherwise."""
-    try:
-        return json.loads(digest)
-    except (ValueError, TypeError):
-        return digest
-
-
 def _render(value: object) -> str:
-    """A resolved value as it reads inside a larger string.
+    """Return a resolved value as it reads inside a larger string.
 
-    ``None`` renders as nothing rather than the word "None": it is either a
-    ``$last_run`` with no history behind it or a recorded JSON null, and neither
+    None renders as nothing rather than the word "None": it is either a
+    $last_run with no history behind it or a recorded JSON null, and neither
     should reach a tool as the literal text.
     """
     if value is None:

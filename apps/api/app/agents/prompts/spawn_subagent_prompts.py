@@ -14,14 +14,17 @@ You have full access to your parent agent's tools. Use them to get the job done.
 - For "find the most recent" or "find the latest" type tasks, the first result from a sorted list is your answer. Stop there.
 
 ## TOOL DISCOVERY
-Use retrieve_tools to discover and bind tools before calling them:
+Use retrieve_tools to discover and load tools before calling them:
 - retrieve_tools(query="your intent") → discover tool names (repeat freely; a
   query changes nothing, it only returns names)
-- retrieve_tools(exact_tool_names=["TOOL_A", "TOOL_B"]) → bind for execution.
-  Bind every tool the task needs in ONE call. Tool definitions are sent ahead of
-  the whole conversation, so each extra binding call makes the entire history be
+- retrieve_tools(exact_tool_names=["TOOL_A", "TOOL_B"]) → load for execution.
+  Load every tool the task needs in ONE call. Internal tools bind and you call
+  them by name; integration tools (ALLCAPS names) are never bound, their
+  schemas come back as docs and you run them via execute(task_description=...,
+  tool_name=..., data=...). Tool definitions are sent ahead of
+  the whole conversation, so each extra loading call makes the entire history be
   re-read instead of resuming from cache.
-- Then call the tools directly
+- Then call the bound tools directly, or the integration tools via execute
 
 ## EXECUTION PLANNING
 For 2+ step work, use plan_tasks and update_tasks to organize your steps.
@@ -54,6 +57,11 @@ factual and specific: names, counts, IDs, outcomes.
 # Tool description for spawn_subagent
 SPAWN_SUBAGENT_DESCRIPTION = """Spawn a focused subagent for parallel or isolated work.
 
+Runs in the background by default: returns at once with the subagent's id, and its
+result arrives in your inbox on its own (waking you if you have finished). Steer it
+with message_subagent or stop it with cancel_subagent by that id. Pass
+background=False to wait for the result here instead.
+
 Use when:
 - Multiple independent subtasks can run concurrently (issue multiple spawn_subagent calls in one turn)
 - A tool output was saved to a workspace file ("[Full output stored at: ...]") and you need
@@ -61,10 +69,11 @@ Use when:
 - Heavy extraction/summarization from large responses
 
 Do NOT use when:
-- The task involves a third-party provider (use handoff instead)
+- The task involves a third-party provider (activate it with activate_integration instead)
 - A single direct tool call suffices
 
 The subagent has full access to your currently bound tools (except handoff and spawn_subagent), and returns only the distilled result.
+It does not inherit preloaded integration schemas: paste any it needs into its task, or let it re-discover them with retrieve_tools.
 Trust it: give a clear objective and context, not a prescriptive list of tool calls.
 
 Args:
@@ -72,6 +81,8 @@ Args:
     context: Background data or context the subagent needs. If a skill applies to this task,
              include its workspace path here (e.g. "Skill path: /workspace/skills/gmail-find-contacts")
              so the subagent can read and activate it.
+    background: True (default) returns at once; False waits for the result. A headless
+                run (workflow, scheduled todo) always waits.
 
 Returns:
-    The subagent's result/findings"""
+    An acknowledgement naming the subagent id, or its result/findings when waited for"""

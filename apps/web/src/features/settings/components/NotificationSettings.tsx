@@ -5,28 +5,25 @@ import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { isBotPlatform } from "@/config/botPlatforms";
-import { ChannelPriorityList } from "@/features/briefing/components/ChannelPriorityList";
 import {
   NOTIFICATION_CHANNEL_ICONS,
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_PLATFORMS,
-  type NotificationPlatform,
 } from "@/features/notification/constants";
+import { ChatChannelSettings } from "@/features/settings/components/ChatChannelSettings";
+import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
-import type { PlatformLink } from "@/types/platform";
+import type { PlatformLinks } from "@/types/platform";
 
 export default function NotificationSettings() {
-  const [platformLinks, setPlatformLinks] = useState<
-    Record<string, PlatformLink | null>
-  >({});
+  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
   // Null until the stored preferences load. There is no safe placeholder: an
   // all-true stand-in renders a channel the user switched off as enabled, and
   // toggling from that reading writes the wrong value back.
@@ -37,25 +34,12 @@ export default function NotificationSettings() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 
-  const linkedMap = useMemo(
-    () =>
-      Object.fromEntries(
-        NOTIFICATION_PLATFORMS.map((platform) => [
-          platform,
-          !!platformLinks[platform]?.platformUserId,
-        ]),
-      ) as Record<NotificationPlatform, boolean>,
-    [platformLinks],
-  );
-
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
     try {
       const [linksData, prefs] = await Promise.all([
-        apiService.get<{
-          platform_links: Record<string, PlatformLink | null>;
-        }>("/platform-links", { silent: true }),
+        api.get("/api/v1/platform-links", { silent: true }),
         NotificationsAPI.getChannelPreferences(),
       ]);
       setPlatformLinks(linksData.platform_links || {});
@@ -78,10 +62,6 @@ export default function NotificationSettings() {
       setChannelPrefs((prev) =>
         prev ? { ...prev, [channel]: enabled } : prev,
       );
-      trackEvent(ANALYTICS_EVENTS.SETTINGS_NOTIFICATIONS_TOGGLED, {
-        platform: channel,
-        enabled,
-      });
     } catch {
       toast.error(`Failed to update ${channel} notification preference`);
     } finally {
@@ -97,8 +77,13 @@ export default function NotificationSettings() {
     );
   }
 
+  const linkedPlatforms = NOTIFICATION_PLATFORMS.filter(
+    (platform) => !!platformLinks[platform]?.platformUserId,
+  );
+
   return (
     <SettingsPage>
+      {!loading && <ChatChannelSettings linkedPlatforms={linkedPlatforms} />}
       <SettingsSection description="Choose where to receive GAIA notifications.">
         {NOTIFICATION_CHANNELS.map((channel) => {
           const label = NOTIFICATION_CHANNEL_LABELS[channel];
@@ -144,16 +129,7 @@ export default function NotificationSettings() {
           );
         })}
       </SettingsSection>
-
-      <div>
-        <p className="mb-2 text-sm font-medium text-zinc-300">
-          Where your briefing lands
-        </p>
-        <p className="mb-3 text-sm text-zinc-500">
-          Your daily brief goes to the first connected channel in this order.
-        </p>
-        <ChannelPriorityList linkedMap={linkedMap} />
-      </div>
+      <QuietHoursSettings />
     </SettingsPage>
   );
 }
