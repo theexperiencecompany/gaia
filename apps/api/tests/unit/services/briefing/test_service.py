@@ -57,6 +57,7 @@ from app.models.user_models import (
 )
 from app.services.briefing import context, service
 from app.services.briefing.dormancy import DormancyState
+from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
@@ -73,7 +74,9 @@ _DAY_START = datetime(2026, 10, 12, 18, 30, tzinfo=UTC)
 _WEEK_START = datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 _EVENT = BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")
 _CHAT = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1")
-_EDITION_URL = "https://cdn.example/brief.png"
+_EDITION = HostedEditionImage(
+    display_url="https://cdn.example/f_auto/brief", chat_url="https://cdn.example/f_jpg/brief"
+)
 _BRIEF_ID = "brief_abc123"
 _ORCHESTRATED = ["inapp", "email"]
 
@@ -157,7 +160,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
             return_value=SimpleNamespace(channels=[_delivered(c) for c in _ORCHESTRATED])
         ),
         post=AsyncMock(return_value=OutboundResult.PUBLISHED),
-        host_image=AsyncMock(side_effect=lambda payload, *, render_key: _EDITION_URL),
+        host_image=AsyncMock(side_effect=lambda payload, *, render_key: _EDITION),
         consume=AsyncMock(),
         capture=MagicMock(),
         voice_prompt=MagicMock(wraps=service.build_briefing_voice_prompt),
@@ -287,9 +290,9 @@ class TestDailyBrief:
             "Overnight I finished Investor update.\n\n"
             f"Full brief: https://heygaia.io/brief/{_BRIEF_ID}"
         )
-        assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION_URL
+        assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION.display_url
         request = world.notify.await_args.args[0]
-        assert request.metadata["edition_image_url"] == _EDITION_URL
+        assert request.metadata["edition_image_url"] == _EDITION.display_url
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_DAILY
@@ -297,7 +300,11 @@ class TestDailyBrief:
         assert request.content.rich_content == payload.model_dump()
         world.host_image.assert_awaited_once()
         post = world.post.await_args.kwargs
-        assert (post["channel"], post["text"], post["image"].url) == (_CHAT, skim, _EDITION_URL)
+        assert (post["channel"], post["text"], post["image"].url) == (
+            _CHAT,
+            skim,
+            _EDITION.chat_url,
+        )
         world.set_channels.assert_awaited_once()
         assert world.set_channels.await_args.args[3] == [*_ORCHESTRATED, "telegram"]
 
@@ -806,7 +813,7 @@ class TestTheDailyRunWiring:
         assert (request.metadata["briefing_id"], request.metadata["date"]) == (_BRIEF_ID, _DATE)
         post = world.post.await_args.kwargs
         assert post["user"].user_id == _USER
-        assert (post["origin"], post["image"].filename) == ("daily brief", "gaia-daily-brief.png")
+        assert (post["origin"], post["image"].filename) == ("daily brief", "gaia-daily-brief.jpg")
 
     async def test_a_sent_brief_records_its_channels_and_reports_one_event(
         self, world: World

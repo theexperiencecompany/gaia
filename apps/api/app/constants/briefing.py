@@ -104,3 +104,18 @@ BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
     BriefingRunOutcome.BOOTSTRAP_PENDING: "Skipped: held until the user's goal is known",
     BriefingRunOutcome.WINBACK_BACKOFF: "Skipped: backing off after an unanswered winback",
 }
+
+# Every surface shows the edition at most 540 CSS px wide (email column, chat
+# bubble); 2x covers retina screens. The 2-6 MB original upload stays on the CDN,
+# and each surface is served a delivery transformation capped at this width.
+EDITION_DELIVERY_MAX_WIDTH_PX: Final[int] = 1080
+
+
+class EditionDeliveryFormat(StrEnum):
+    """Cloudinary fetch format for an edition delivery URL."""
+
+    # Negotiated per client from its Accept header (AVIF/WebP, else PNG): browsers and email.
+    AUTO = "auto"
+    # Chat platforms download the file themselves and pick photo vs document by
+    # its size, so they get one fixed, compact format.
+    JPG = "jpg"

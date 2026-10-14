@@ -10,9 +10,11 @@ its tests also prove it never rasterizes or uploads a second copy.
 from typing import Any
 from uuid import uuid4
 
+import cloudinary
 import pytest
 
 from app.config.settings import settings
+from app.constants.briefing import EditionDeliveryFormat
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
@@ -20,6 +22,8 @@ from app.constants.notifications import (
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing import edition_email
 from app.services.briefing.edition_email import (
+    HostedEditionImage,
+    edition_delivery_url,
     host_edition_image,
     is_edition_kind,
     render_edition_email,
@@ -32,6 +36,7 @@ BRIEFING_ID = "brief-1"
 BRIEF_URL = "https://app.example.com/brief/brief-1"
 UNSUBSCRIBE_URL = "https://heygaia.io/unsubscribe?t=abc"
 FRONTEND_URL = "https://app.example.com"
+CLOUD_NAME = "gaia-test"
 
 # The strip is what an image-blocked inbox actually shows, so its markup is
 # pinned verbatim — a dropped tag, a changed colour or a lost HTML entity is a
@@ -145,6 +150,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     monkeypatch.setattr(edition_email, "render_html_to_image", fake_render_html_to_image)
     monkeypatch.setattr(edition_email, "upload_file_to_cloudinary", fake_upload)
     monkeypatch.setattr(settings, "FRONTEND_URL", FRONTEND_URL)
+    monkeypatch.setattr(cloudinary.config(), "cloud_name", CLOUD_NAME)
     return h
 
 
@@ -161,7 +167,7 @@ def render(payload: BriefingPayload, **overrides: Any) -> str:
 RENDER_KEY = uuid4().hex
 
 
-async def host(payload: BriefingPayload) -> str:
+async def host(payload: BriefingPayload) -> HostedEditionImage:
     return await host_edition_image(payload, render_key=RENDER_KEY)
 
 
@@ -250,8 +256,15 @@ class TestImageAndUpload:
             {"public_id": f"briefing/editions/{RENDER_KEY}", "file_data": b"edition-png-bytes"},
         ]
 
-    async def test_hosting_returns_the_cdn_url(self, harness: Harness) -> None:
-        assert await host(make_payload()) == IMAGE_URL
+    async def test_hosting_returns_capped_delivery_urls_for_the_uploaded_original(
+        self, harness: Harness
+    ) -> None:
+        base = f"https://res.cloudinary.com/{CLOUD_NAME}/image/upload"
+
+        assert await host(make_payload()) == HostedEditionImage(
+            display_url=f"{base}/c_limit,f_auto,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
+            chat_url=f"{base}/c_limit,f_jpg,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
+        )
 
     async def test_render_failure_propagates_and_nothing_is_uploaded(
         self, harness: Harness
@@ -268,6 +281,28 @@ class TestImageAndUpload:
 
         with pytest.raises(RuntimeError, match="cloudinary 500"):
             await host(make_payload())
+
+
+@pytest.mark.unit
+class TestDeliveryUrl:
+    """The 2-6 MB original must never be what a surface downloads."""
+
+    @pytest.mark.parametrize(
+        ("fetch_format", "transformation"),
+        [
+            (EditionDeliveryFormat.AUTO, "c_limit,f_auto,q_auto,w_1080"),
+            (EditionDeliveryFormat.JPG, "c_limit,f_jpg,q_auto,w_1080"),
+        ],
+    )
+    def test_the_url_caps_width_and_compresses_without_upscaling(
+        self, harness: Harness, fetch_format: EditionDeliveryFormat, transformation: str
+    ) -> None:
+        url = edition_delivery_url("briefing/editions/k1", fetch_format)
+
+        assert url == (
+            f"https://res.cloudinary.com/{CLOUD_NAME}/image/upload/"
+            f"{transformation}/v1/briefing/editions/k1"
+        )
 
 
 @pytest.mark.unit
