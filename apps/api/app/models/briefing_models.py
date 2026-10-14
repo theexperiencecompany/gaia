@@ -181,9 +181,6 @@ class BriefingModel(UserScopedDocument):
     delivered_channels: list[str] = Field(default_factory=list)
     #: The hosted full edition render: the in-app page, the email and the short link show it.
     edition_image_url: str | None = None
-    # The brief's public heygaia.link, minted at delivery: the one URL the email
-    # image and the chat skim both link to.
-    short_url: str | None = None
     opened_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
@@ -200,7 +197,6 @@ class BriefingUpdate(BaseModel):
     payload: BriefingPayload | None = None
     delivered_channels: list[str] | None = None
     opened_at: datetime | None = None
-    short_url: str | None = None
 
 
 class BriefingListResponse(BaseModel):

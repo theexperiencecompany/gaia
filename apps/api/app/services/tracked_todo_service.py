@@ -27,7 +27,6 @@ from app.constants.todos import (
 )
 from app.db.repositories.todos import todo_repository
 from app.models.scheduler_models import DeactivationReason
-from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     Priority,
@@ -38,7 +37,6 @@ from app.models.todo_models import (
 )
 from app.services.canvas_markdown import canvas_problems, normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
-from app.services.short_link_service import get_or_create_short_link
 from app.services.storage._vfs_common import folder_name
 from app.services.todo_activity import (
     activity_line,
@@ -336,22 +334,15 @@ class TrackedTodoService:
         return result
 
     @staticmethod
-    async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> str | None:
-        """Complete a tracked todo and its open sub-todos: log it, mark done, archive label.
-
-        Returns the deliverable's heygaia.link, minted here so every completion
-        path (tool, sweep, worker, UI) hands out the same link, or None when
-        the todo does not exist.
-        """
+    async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
+        """Complete a tracked todo and its open sub-todos: log it, mark done, archive label."""
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
-            return None
+            return False
 
         # Guard against double-completion
         if doc.completed:
-            return await get_or_create_short_link(
-                user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id
-            )
+            return True
 
         # Sub-todos first, so a retry after a partial failure finds the parent still open.
         await TrackedTodoService._complete_open_sub_todos(doc, summary)
@@ -392,9 +383,7 @@ class TrackedTodoService:
 
         log.info("tracked_todo.completed", todo_id=todo_id, user_id=user_id, summary=summary)
         schedule_gaia_tasks_sync(user_id)
-        return await get_or_create_short_link(
-            user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id
-        )
+        return True
 
     @staticmethod
     async def _complete_open_sub_todos(parent: TodoDocument, summary: str) -> None:
@@ -561,10 +550,9 @@ class TrackedTodoService:
         the completion entry in activity.md carries the reason.
         """
         try:
-            link = await TrackedTodoService.complete_tracked_todo(
+            return await TrackedTodoService.complete_tracked_todo(
                 todo_id, user_id, summary=f"Auto-archived: {reason}"
             )
-            return link is not None
         except Exception as e:
             log.warning("tracked_todo.archive_failed", todo_id=todo_id, error=str(e))
             return False

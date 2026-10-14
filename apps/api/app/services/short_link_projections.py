@@ -111,12 +111,17 @@ async def _locate_session_artifact(user_id: str, target_id: str) -> _SessionArti
     """Return the owner's artifact file behind target_id, or None once it is gone.
 
     Raises JuiceFSUnavailable when workspace storage is offline — that is an
-    outage, not a missing file, and the caller must say so.
+    outage, not a missing file, and the caller must say so. A target id whose
+    conversation id is unsafe or whose path escapes the artifacts root names no
+    artifact, so it is missing too.
     """
     conversation_id, _, path = target_id.partition("/")
     if not conversation_id or not path:
         return None
-    info = await stat_artifact(user_id, conversation_id, path)
+    try:
+        info = await stat_artifact(user_id, conversation_id, path)
+    except ValueError:
+        return None
     if info is None:
         return None
     host_path = await resolve_session_path(user_id, conversation_id, "artifacts", path)

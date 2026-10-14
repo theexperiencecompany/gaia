@@ -21,6 +21,7 @@ from app.agents.workspace.paths import WORKSPACE_ROOT, runs_log_dir
 from app.constants.sandbox import ARTIFACT_MTIME_SKEW_SECONDS, BASH_MAX_TIMEOUT_SECONDS
 from app.services.storage import FsOps, fs_timer
 
+ARTIFACTS_MODULE = "app.agents.tools.coding._artifacts"
 MODULE = "app.agents.tools.coding.bash_tool"
 CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
 EXECUTE_ENV = {
@@ -360,11 +361,23 @@ class TestBashArtifactLinks:
                 )
             )
         )
-        with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=SHORT_URL)) as pub:
+        with (
+            patch(
+                f"{ARTIFACTS_MODULE}.optional_short_link", new=AsyncMock(return_value=SHORT_URL)
+            ) as mint,
+            patch(f"{ARTIFACTS_MODULE}.publish_artifact_event", new=AsyncMock()) as pub,
+        ):
             links = await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
         assert links == {"skewed.md": SHORT_URL, "new.md": SHORT_URL}
+        # Only what the run wrote is shared; listing an older file never mints for it.
+        assert [c.args[2] for c in mint.await_args_list] == ["conv1/skewed.md", "conv1/new.md"]
         # Every artifact is still published, linked or not, so its card stays live.
-        assert [c.args[2] for c in pub.await_args_list] == ["old.md", "skewed.md", "new.md"]
+        assert [c.args[1]["path"] for c in pub.await_args_list] == [
+            "old.md",
+            "skewed.md",
+            "new.md",
+        ]
+        assert "short_url" not in pub.await_args_list[0].args[1]
 
     async def test_a_file_whose_publish_failed_gets_no_link(self) -> None:
         sbx = _sbx()
@@ -385,5 +398,5 @@ class TestBashArtifactLinks:
         with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=SHORT_URL)) as pub:
             await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
         pub.assert_awaited_once_with(
-            "u1", "conv1", "notes.md", ARTIFACT_SIZE, RUN_STARTED_AT, "abc"
+            "u1", "conv1", "notes.md", ARTIFACT_SIZE, RUN_STARTED_AT, "abc", written_this_turn=True
         )

@@ -15,7 +15,6 @@ import re
 from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
-from pymongo.errors import PyMongoError
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.core.background.platform_chat import PlatformImage, post_to_platform_chat
@@ -81,16 +80,13 @@ from app.services.briefing.edition_email import host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.shuffle_bag import draw
-from app.services.briefing.skim import brief_path, build_skim
+from app.services.briefing.skim import brief_path, build_skim, full_brief_url
 from app.services.briefing.voice_check import voice_contradictions
 from app.services.canvas_markdown import deliverable_size
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
-from app.services.short_link_service import (
-    ShortLinkExhaustedError,
-    get_or_create_short_link,
-)
+from app.services.short_link_service import optional_short_link
 from app.utils.auth_utils import build_user_context
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from shared.py.analytics import UserId
@@ -209,16 +205,25 @@ _ARTIFACT_PREVIEW_CHARS = 240
 class _ArtifactFact:
     """What the voice pass balances per item.
 
-    A concrete summary it always voices, an always-available link, the deliverable size
-    as a HINT (not a verdict — a long research trail behind a one-line decision is not a
-    thing to open), and whether it is waiting on the user. The pass summarises everything
-    and links only what's genuinely a deliverable-to-open or waiting on the user.
+    A concrete summary it always voices, the deliverable size as a HINT (not a verdict —
+    a long research trail behind a one-line decision is not a thing to open), and whether
+    it is waiting on the user. The pass summarises everything and links only what's
+    genuinely a deliverable-to-open or waiting on the user.
     """
 
     snippet: str
-    link: str
     chars: int
     action: bool
+
+
+# Stands in for an item's heygaia.link in the facts the voice pass reads. Only the
+# tokens the pass actually writes into a bubble are minted (_link_voiced_items), so
+# the brief never shares a deliverable it does not link.
+_LINK_TOKEN_RE = re.compile(r"\[\[link:(\d+)\]\]")
+
+
+def _link_token(index: int) -> str:
+    return f"[[link:{index}]]"
 
 
 def _canvas_snippet(canvas: str) -> str:
@@ -235,35 +240,10 @@ def _canvas_snippet(canvas: str) -> str:
     return " ".join(lines)[:_ARTIFACT_PREVIEW_CHARS].rstrip()
 
 
-async def _artifact_link(user_id: str, todo_id: str) -> str:
-    """Return the item's heygaia.link, or "" when minting fails.
+def _gather_artifacts(work: context.TrackedWork) -> dict[str, _ArtifactFact]:
+    """Build, per tracked item, a summary and the voice pass's two signals.
 
-    The link is an optional adornment on an item the briefing can describe
-    perfectly well without it, so a Mongo hiccup or an exhausted slug namespace
-    must cost that one item its link — not cost the user the whole briefing.
-    The failure is still surfaced loudly in the run's events.
-    """
-    try:
-        return await get_or_create_short_link(
-            user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id
-        )
-    except (PyMongoError, ShortLinkExhaustedError) as exc:
-        log.warning(
-            "briefing.short_link_mint_failed",
-            user_id=user_id,
-            todo_id=todo_id,
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        return ""
-
-
-async def _gather_artifacts(user_id: str, work: context.TrackedWork) -> dict[str, _ArtifactFact]:
-    """Build, per tracked item, a summary, a heygaia.link and the voice pass's two signals.
-
-    The signals are whether the deliverable is big and whether it waits on the
-    user; the pass links only big or waiting items. A failed mint leaves an
-    empty link and the item is still briefed.
+    The signals are whether the deliverable is big and whether it waits on the user.
     """
     out: dict[str, _ArtifactFact] = {}
     blocked_ids = {d.id for d in work.blocked}
@@ -274,7 +254,6 @@ async def _gather_artifacts(user_id: str, work: context.TrackedWork) -> dict[str
         canvas = doc.canvas_content or ""
         out[todo_id] = _ArtifactFact(
             snippet=_canvas_snippet(canvas),
-            link=await _artifact_link(user_id, todo_id),
             chars=deliverable_size(canvas),
             action=todo_id in blocked_ids,
         )
@@ -317,8 +296,11 @@ async def _deliver(
     chat platform: that message is the photo, posted through post_to_platform_chat.
     """
     kind: BriefingKind = briefing.kind
-    brief_url = await get_or_create_short_link(user.id, ShortLinkTargetType.BRIEFING, briefing.id)
-    await briefing_repository.set_short_url(user.id, briefing.id, brief_url)
+    # Without a heygaia.link (mint failed) the brief still goes out, pointing at
+    # its in-app page, which its owner can always open.
+    brief_url = await optional_short_link(
+        user.id, ShortLinkTargetType.BRIEFING, briefing.id
+    ) or full_brief_url(briefing.id)
     skim_text = build_skim(payload).text(brief_url)
     channel = await resolve_chat_channel(user.id)
     chat_post = (
@@ -453,7 +435,7 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     )
 
 
-def _fact_line(item: BriefingItem, art: _ArtifactFact | None) -> str:
+def _fact_line(item: BriefingItem, art: _ArtifactFact | None, link_token: str | None) -> str:
     line = f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
     if art:
         if art.snippet:
@@ -461,8 +443,8 @@ def _fact_line(item: BriefingItem, art: _ArtifactFact | None) -> str:
         line += f" | artifact holds ~{art.chars} chars"
         if art.action:
             line += " | waiting on you"
-        if art.link:
-            line += f" | link: {art.link}"
+        if link_token:
+            line += f" | link: {link_token}"
     return line
 
 
@@ -477,6 +459,8 @@ class _Facts:
     stats: list[BriefingStat]
     block: str
     carried_ids: list[str]
+    # Link-token number -> the todo it stands for, resolved by _link_voiced_items.
+    link_targets: dict[int, str]
 
 
 def _work_stats(work: context.TrackedWork) -> list[BriefingStat]:
@@ -498,15 +482,12 @@ def _build_facts(
     """Assemble sections + stats deterministically from tracked-work state and held results.
 
     The rendered sections come from here so the brief cannot lie. Each fact gives the
-    model a summary, whether it is big or waiting on the user, and the link; the link is
-    appended only for big/waiting ones.
+    model a summary, whether it is big or waiting on the user, and a link token that
+    becomes the item's heygaia.link only if the voice pass writes it into a bubble.
     """
     built = _work_sections(work, held)
     sections, left_out = built.sections, built.left_out
-    for sec in sections:
-        for it in sec.items:
-            if it.todo_id and (art := artifacts.get(it.todo_id)) and art.link:
-                it.link = art.link
+    link_targets: dict[int, str] = {}
 
     items = [it for sec in sections for it in sec.items]
     fact_lines: list[str] = [
@@ -520,7 +501,11 @@ def _build_facts(
         fact_lines.append(f"[{sec.title}]")
         for it in sec.items:
             art = artifacts.get(it.todo_id) if it.todo_id else None
-            fact_lines.append(_fact_line(it, art))
+            token: str | None = None
+            if art and it.todo_id:
+                link_targets[len(link_targets)] = it.todo_id
+                token = _link_token(len(link_targets) - 1)
+            fact_lines.append(_fact_line(it, art, token))
     if left_out:
         fact_lines.append(
             f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
@@ -531,7 +516,40 @@ def _build_facts(
             "ran, finished, or is pending beyond what is stated here."
         )
     fact_lines.append(user_todos_note)
-    return _Facts(sections, _work_stats(work), "\n".join(fact_lines), built.carried_ids)
+    return _Facts(
+        sections, _work_stats(work), "\n".join(fact_lines), built.carried_ids, link_targets
+    )
+
+
+async def _link_voiced_items(
+    user_id: str, payload: BriefingPayload, link_targets: dict[int, str]
+) -> None:
+    """Swap each link token the voice pass wrote for its item's heygaia.link.
+
+    Only a linked item is minted, and only it carries the link on the stored brief,
+    so a forwarded brief exposes exactly the deliverables it links. A token with no
+    link behind it (unknown, sharing turned off, mint failed) is dropped from the
+    bubble; the sentence around it still reads.
+    """
+    used = {int(n) for bubble in payload.bubbles for n in _LINK_TOKEN_RE.findall(bubble)}
+    urls: dict[int, str] = {}
+    for index in sorted(used):
+        todo_id = link_targets.get(index)
+        if todo_id is None:
+            continue
+        url = await optional_short_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+        if url is not None:
+            urls[index] = url
+    linked = {link_targets[index]: url for index, url in urls.items()}
+    for section in payload.sections:
+        for item in section.items:
+            if item.todo_id in linked:
+                item.link = linked[item.todo_id]
+    payload.bubbles = [
+        _LINK_TOKEN_RE.sub(lambda m: urls.get(int(m.group(1)), ""), bubble)
+        for bubble in payload.bubbles
+    ]
+    payload.message = "\n\n".join(payload.bubbles)
 
 
 class _Voice(BaseModel):
@@ -758,7 +776,7 @@ async def run_daily_briefing(user_id: str) -> None:
 
     # Facts are assembled by code from tracked-work state; the model only voices them.
     work = await context.gather_tracked_work(user_id, since)
-    artifacts = await _gather_artifacts(user_id, work)
+    artifacts = _gather_artifacts(work)
     open_count, open_titles = await context.user_open_todo_summary(user_id)
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
@@ -798,6 +816,7 @@ async def run_daily_briefing(user_id: str) -> None:
             clock, voice, facts.sections, facts.stats, winback.is_winback
         ).model_copy(update={"calendar": calendar, "tallies": tallies}),
     )
+    await _link_voiced_items(user_id, payload, facts.link_targets)
     await _publish(
         user,
         clock,

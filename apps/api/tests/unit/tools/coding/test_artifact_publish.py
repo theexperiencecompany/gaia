@@ -11,7 +11,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from tests.helpers import captured_wide_event
 
 from app.agents.tools.coding import _artifacts
 from app.agents.tools.coding._artifacts import (
@@ -20,16 +19,14 @@ from app.agents.tools.coding._artifacts import (
     publish_artifact_write,
 )
 from app.agents.workspace.paths import INLINE_ARTIFACT_MAX_BYTES, MountRole
+from app.models.short_link_models import ShortLinkTargetType
 
 SHORT_URL = "https://heygaia.link/abcdefghijk"
 
 
 @pytest.fixture(autouse=True)
 def mint():
-    with patch(
-        "app.services.artifact_events.get_or_create_short_link",
-        AsyncMock(return_value=SHORT_URL),
-    ) as mint:
+    with patch.object(_artifacts, "optional_short_link", AsyncMock(return_value=SHORT_URL)) as mint:
         yield mint
 
 
@@ -43,7 +40,9 @@ def _capture() -> tuple[AsyncMock, list]:
 async def test_publish_artifact_builds_upsert_event_with_content_type() -> None:
     mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact("u1", "c1", "report.md", 12, 1_700_000_000.0, "hello")
+        await publish_artifact(
+            "u1", "c1", "report.md", 12, 1_700_000_000.0, "hello", written_this_turn=True
+        )
 
     assert len(events) == 1
     uid, ev = events[0]
@@ -56,25 +55,6 @@ async def test_publish_artifact_builds_upsert_event_with_content_type() -> None:
     assert ev["mtime"] == 1_700_000_000.0  # NOSONAR python:S1244
     assert ev["content_type"] == "text/markdown"
     assert ev["body"] == "hello"
-
-
-async def test_publish_artifact_never_raises_into_caller() -> None:
-    # Best-effort: a Redis failure must not break the tool.
-    mock = AsyncMock(side_effect=RuntimeError("redis down"))
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        async with captured_wide_event() as event:
-            result = await publish_artifact("u1", "c1", "x.md", 1, 1.0, None)
-
-    assert result is None
-    assert event["errors"] == [
-        {
-            "msg": "artifact publish failed",
-            "conversation_id": "c1",
-            "file_name": "x.md",
-            "error": "redis down",
-            "error_type": "RuntimeError",
-        }
-    ]
 
 
 async def test_write_path_strips_artifacts_prefix_to_relative() -> None:
@@ -173,24 +153,45 @@ async def test_write_and_bash_produce_identical_event_for_same_file() -> None:
             5,
             1_700_000_000.0,
         )
-        await publish_artifact("u1", "c1", "r.md", 5, 1_700_000_000.0, "hello")
+        await publish_artifact(
+            "u1", "c1", "r.md", 5, 1_700_000_000.0, "hello", written_this_turn=True
+        )
 
     assert events[0] == events[1], "write-path and bash-path events must be identical"
 
 
-async def test_publish_artifact_returns_the_artifacts_link() -> None:
-    """The tool hands the artifact's URL back to the agent."""
-    mock, _ = _capture()
+async def test_a_file_written_this_turn_carries_its_link(mint: AsyncMock) -> None:
+    """The tool hands the artifact's URL back to the agent, and the event carries it."""
+    mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
-        url = await publish_artifact("u1", "c1", "report.html", 12, 1.0, "<p>hi</p>")
+        url = await publish_artifact(
+            "u1", "c1", "report.html", 12, 1.0, "<p>hi</p>", written_this_turn=True
+        )
 
     assert url == SHORT_URL
+    assert events[0][1]["short_url"] == SHORT_URL
+    mint.assert_awaited_once_with("u1", ShortLinkTargetType.SESSION_ARTIFACT, "c1/report.html")
 
 
-async def test_a_failed_publish_returns_no_link() -> None:
-    mock = AsyncMock(side_effect=RuntimeError("redis down"))
+async def test_a_file_not_written_this_turn_is_published_without_a_link(mint: AsyncMock) -> None:
+    """Re-listing an untouched artifact must never share it."""
+    mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
-        assert await publish_artifact("u1", "c1", "x.md", 1, 1.0, None) is None
+        url = await publish_artifact("u1", "c1", "old.md", 1, 1.0, None, written_this_turn=False)
+
+    assert url is None
+    assert "short_url" not in events[0][1]
+    mint.assert_not_awaited()
+
+
+async def test_a_file_whose_sharing_is_off_is_published_without_a_link(mint: AsyncMock) -> None:
+    mint.return_value = None
+    mock, events = _capture()
+    with patch.object(_artifacts, "publish_artifact_event", mock):
+        url = await publish_artifact("u1", "c1", "x.md", 1, 1.0, None, written_this_turn=True)
+
+    assert url is None
+    assert "short_url" not in events[0][1]
 
 
 async def test_a_non_artifact_write_returns_no_link() -> None:

@@ -100,10 +100,6 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             scope=user_id,
         )
 
-    async def set_short_url(self, user_id: str, briefing_id: str, short_url: str) -> None:
-        """Persist the brief's heygaia.link so every surface reads the same URL."""
-        await self.update(briefing_id, user_id=user_id, update=BriefingUpdate(short_url=short_url))
-
     async def mark_opened(self, user_id: str, briefing_id: str) -> BriefingModel | None:
         """Stamp opened_at once (idempotent).
 

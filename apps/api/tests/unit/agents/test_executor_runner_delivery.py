@@ -18,6 +18,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from prometheus_client import REGISTRY
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.agents.core.background import (
@@ -398,7 +399,7 @@ class TestWorkflowResultCarriesTheRunLink:
                 workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
             ),
             patch.object(
-                rd, "get_or_create_short_link", new_callable=AsyncMock, return_value=self.RUN_URL
+                rd, "optional_short_link", new_callable=AsyncMock, return_value=self.RUN_URL
             ) as mint,
         ):
             await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
@@ -419,6 +420,36 @@ class TestWorkflowResultCarriesTheRunLink:
 
         mint.assert_not_awaited()
         assert "heygaia.link" not in deliver.await_args.kwargs["notification_text"]
+
+    async def test_a_failed_link_mint_still_delivers_the_result(self) -> None:
+        """The link is optional: a Mongo error costs the link, never the message."""
+        run = replace(_run(workflow=True), workflow_execution_id="exec-7")
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="Triaged 12 emails.",
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                workflow_completion, "deliver_result_to_platforms", new_callable=AsyncMock
+            ) as deliver,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ),
+            patch(
+                "app.services.short_link_service.short_link_repository.get_latest_for_target",
+                new_callable=AsyncMock,
+                side_effect=ServerSelectionTimeoutError("no primary"),
+            ),
+        ):
+            await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
+
+        assert deliver.await_args.kwargs["notification_text"] == "Triaged 12 emails."
+        assert save.await_args.args[0].messages[0].response == "Triaged 12 emails."
 
 
 class TestGetConversationSource:

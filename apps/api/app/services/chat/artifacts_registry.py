@@ -30,7 +30,6 @@ class ArtifactRegistryPatch(TypedDict, total=False):
     content_type: str | None
     updated_at: str
     body: str
-    short_url: str
 
 
 @CacheInvalidator(key_patterns=[CONV_ARTIFACTS_CACHE_PATTERN])
@@ -53,8 +52,6 @@ async def upsert_conversation_artifact(
     }
     if payload.get("body") is not None:
         fields["body"] = payload["body"]
-    if payload.get("short_url") is not None:
-        fields["short_url"] = payload["short_url"]
 
     if await conversation_repository.update_artifact(
         conv_id, user_id=user_id, path=path, fields=fields
@@ -67,7 +64,6 @@ async def upsert_conversation_artifact(
         "size_bytes": payload.get("size_bytes"),
         "mtime": payload.get("mtime"),
         "content_type": payload.get("content_type"),
-        "short_url": payload.get("short_url"),
         "updated_at": now_iso,
     }
     if payload.get("body") is not None:

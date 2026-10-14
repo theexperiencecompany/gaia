@@ -2463,7 +2463,9 @@ export interface paths {
         put?: never;
         /**
          * Create Short Link Route
-         * @description Mint (or return) the heygaia.link for an artifact the caller owns.
+         * @description Share an artifact the caller owns: return its heygaia.link, minting one.
+         *
+         *     Turns sharing back on for a target its owner had stopped sharing.
          */
         post: operations["short_links_create_short_link_route"];
         delete?: never;
@@ -2486,11 +2488,7 @@ export interface paths {
         get: operations["short_links_resolve_short_link_route"];
         put?: never;
         post?: never;
-        /**
-         * Revoke Short Link Route
-         * @description Revoke a short link you own; the URL goes dead immediately.
-         */
-        delete: operations["short_links_revoke_short_link_route"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2511,6 +2509,27 @@ export interface paths {
         get: operations["short_links_get_short_link_file_route"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/unshare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Sharing Route
+         * @description Stop sharing one of your artifacts: its link goes dead immediately, and GAIA
+         *     attaches no new one until you share it again. Idempotent.
+         */
+        post: operations["short_links_stop_sharing_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6164,8 +6183,6 @@ export interface components {
             mtime: number | null;
             /** Path */
             path: string;
-            /** Short Url */
-            short_url: string | null;
             /** Size Bytes */
             size_bytes: number | null;
             /** Updated At */
@@ -6739,8 +6756,6 @@ export interface components {
             /** Opened At */
             opened_at: string | null;
             payload: components["schemas"]["BriefingPayload"];
-            /** Short Url */
-            short_url: string | null;
             /** Updated At */
             updated_at: string | null;
             /** User Id */
@@ -13287,21 +13302,21 @@ export interface components {
             ask?: boolean | null;
         };
         /**
-         * ShortLinkCreateRequest
-         * @description Owner request to mint (or fetch) the link for one of their artifacts.
-         */
-        ShortLinkCreateRequest: {
-            /** Target Id */
-            target_id: string;
-            target_type: components["schemas"]["ShortLinkTargetType"];
-        };
-        /**
          * ShortLinkResponse
          * @description A minted heygaia.link URL.
          */
         ShortLinkResponse: {
             /** Url */
             url: string;
+        };
+        /**
+         * ShortLinkTargetRequest
+         * @description One of the owner's artifacts, to share (mint or fetch its link) or stop sharing.
+         */
+        ShortLinkTargetRequest: {
+            /** Target Id */
+            target_id: string;
+            target_type: components["schemas"]["ShortLinkTargetType"];
         };
         /**
          * ShortLinkTargetType
@@ -16513,8 +16528,8 @@ export type SendEmailRequest = components['schemas']['SendEmailRequest'];
 export type SendEmailResponse = components['schemas']['SendEmailResponse'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
-export type ShortLinkCreateRequest = components['schemas']['ShortLinkCreateRequest'];
 export type ShortLinkResponse = components['schemas']['ShortLinkResponse'];
+export type ShortLinkTargetRequest = components['schemas']['ShortLinkTargetRequest'];
 export type ShortLinkTargetType = components['schemas']['ShortLinkTargetType'];
 export type Skill = components['schemas']['Skill'];
 export type SkillInlineCreateRequest = components['schemas']['SkillInlineCreateRequest'];
@@ -23316,7 +23331,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ShortLinkCreateRequest"];
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
             };
         };
         responses: {
@@ -23407,53 +23422,6 @@ export interface operations {
             };
         };
     };
-    short_links_revoke_short_link_route: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     short_links_get_short_link_file_route: {
         parameters: {
             query?: never;
@@ -23510,6 +23478,55 @@ export interface operations {
             };
             /** @description Workspace storage offline */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_stop_sharing_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -260,20 +260,6 @@ class TestBriefingsMarkOpened:
         assert await repo.mark_opened(user_id, "brief_missing") is None
 
 
-class TestBriefingsShortUrl:
-    async def test_set_short_url_persists_on_the_owners_brief_only(self, repo):
-        stored = await repo.upsert_briefing(
-            "owner", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition_image_url=_IMAGE
-        )
-
-        await repo.set_short_url("attacker", stored.id, "https://heygaia.link/stolen")
-        await repo.set_short_url("owner", stored.id, "https://heygaia.link/abcdefghijk")
-
-        fetched = await repo.get(stored.id, user_id="owner")
-        assert fetched is not None
-        assert fetched.short_url == "https://heygaia.link/abcdefghijk"
-
-
 class TestBriefingsDeliveredChannels:
     async def test_set_delivered_channels(self, repo):
         user_id = "u-channels"
