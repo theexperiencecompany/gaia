@@ -83,7 +83,8 @@ def hosted_stamp_weights() -> dict[str, int]:
 def stamp_for(slug: str) -> Stamp:
     """Return the stamp skin for one city: its art key, name and air-mail phrase."""
     city: _City = _cities()[slug]
-    air = _postage()[city["country"]]["air"]
+    postage: _Postage = _postage()[city["country"]]
+    air = postage["air"]
     return {
         "id": slug,
         "label": city["name"],

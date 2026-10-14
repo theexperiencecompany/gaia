@@ -31,7 +31,9 @@ class ResendEmailProvider:
             {"idempotency_key": message.idempotency_key} if message.idempotency_key else None
         )
         # The Resend SDK is synchronous — run it in a thread to keep the event loop free.
-        response = await asyncio.to_thread(resend.Emails.send, params, options)
+        response: resend.Emails.SendResponse = await asyncio.to_thread(
+            resend.Emails.send, params, options
+        )
         # Resend's id is the only handle for tracing a delivery in its dashboard.
         log.set(resend_message_id=response["id"])
 
