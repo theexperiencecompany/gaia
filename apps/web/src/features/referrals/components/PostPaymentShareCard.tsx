@@ -34,3 +34,20 @@ export function PostPaymentReferral() {
     />
   );
 }
+
+/** The onboarding step right after the first payment; the flow's own button moves on. */
+export function OnboardingReferral() {
+  const state = useReferralMe();
+  if (state.status !== "ready") return null;
+  const { copy_variant: copyVariant } = state.me;
+  return (
+    <ReferralShareCard
+      surface="post_payment"
+      tone="glass"
+      copy={REFERRAL_COPY[copyVariant].postPayment}
+      url={state.me.share_link}
+      prices={offerPrices(state.me.offer)}
+      copyVariant={copyVariant}
+    />
+  );
+}

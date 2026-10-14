@@ -1,7 +1,7 @@
 import type { OnboardingData } from "@/features/auth/api/authApi";
 /**
- * Linear stage cursor over the fixed queue (Q1/Q2, payment, receipt, platform
- * pick, chat handoff) — forward only, never sideways. `getStage` returns the
+ * Linear stage cursor over the fixed queue (Q1/Q2, payment, receipt, gift
+ * invite, platform pick, chat handoff) — forward only, never sideways. `getStage` returns the
  * first stage not yet past; payment's "done" lives outside this state (true
  * when the backend reports the user subscribed). `isPaid` must be definitive —
  * while unknown, `useIsPaid().isPaid` is false, parking the user on payment's neutral loading state rather than skipping an unchecked gate.
@@ -67,6 +67,7 @@ export function getStage(s: OnboardingState, isPaid: boolean): Stage {
   if (!isQuestionsComplete(s)) return "questions";
   if (!isPaid) return "payment";
   if (!s.paidRevealAcked) return "paidReveal";
+  if (!s.inviteAcked) return "invite";
   if (!s.platformsConfirmed) return "platformPick";
   return "chat";
 }
@@ -75,11 +76,12 @@ const STAGE_PROGRESS: Record<Stage, number> = {
   questions: 0,
   payment: 2,
   paidReveal: 3,
-  platformPick: 4,
-  chat: 5,
+  invite: 4,
+  platformPick: 5,
+  chat: 6,
 };
 
-export const PROGRESS_TOTAL_STEPS = 5;
+export const PROGRESS_TOTAL_STEPS = 6;
 
 export function getProgress(s: OnboardingState, stage: Stage): number {
   if (s.isRestarting) return 0;
