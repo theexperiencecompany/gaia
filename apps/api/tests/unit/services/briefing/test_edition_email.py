@@ -39,7 +39,7 @@ FRONTEND_URL = "https://app.example.com"
 _SANS = "Inter,-apple-system,Helvetica,Arial,sans-serif"
 _STRIP_OPEN = (
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-    'style="max-width:640px;margin:0 auto;background:#000000;">'
+    'style="max-width:600px;margin:0 auto;background:#000000;">'
     '<tr><td align="center" style="padding:24px 24px 8px 24px;">'
     f'<a href="{BRIEF_URL}" style="display:inline-block;background:#00bbff;'
     f"color:#000000;text-decoration:none;font:600 15px/1.2 {_SANS};"
@@ -77,8 +77,8 @@ EXPECTED_EMAIL_WITHOUT_ACTIONS = (
     'style="background:#000000;">'
     '<tr><td align="center" style="padding:0;">'
     f'<a href="{BRIEF_URL}" style="text-decoration:none;">'
-    f'<img src="{IMAGE_URL}" alt="Your Friday — Three things need you." width="640" '
-    'style="display:block;width:100%;max-width:640px;height:auto;border:0;" /></a>'
+    f'<img src="{IMAGE_URL}" alt="Your Friday — Three things need you." width="600" '
+    'style="display:block;width:100%;max-width:600px;height:auto;border:0;" /></a>'
     "</td></tr></table>" + EXPECTED_STRIP_WITHOUT_ACTIONS + "</div>"
 )
 
@@ -161,8 +161,8 @@ def render(payload: BriefingPayload, **overrides: Any) -> str:
 RENDER_KEY = uuid4().hex
 
 
-async def host(payload: BriefingPayload, *, crop_to_paper: bool = False) -> str:
-    return await host_edition_image(payload, render_key=RENDER_KEY, crop_to_paper=crop_to_paper)
+async def host(payload: BriefingPayload) -> str:
+    return await host_edition_image(payload, render_key=RENDER_KEY)
 
 
 @pytest.mark.unit
@@ -218,37 +218,36 @@ class TestEditionRendering:
 
 @pytest.mark.unit
 class TestImageAndUpload:
-    async def test_image_is_rasterized_at_full_edition_width_and_retina_scale(
+    async def test_the_classic_edition_is_its_1180px_page_at_retina_scale(
         self, harness: Harness
     ) -> None:
         await host(make_payload())
 
         options = harness.image_calls[0]["options"]
-        assert options.width == 1180
-        assert options.device_scale_factor == 2
+        assert (options.width, options.device_scale_factor) == (1180, 2)
+        assert (options.clip_selector, options.trim_margin_px) == (".brief", None)
         assert options.image_format == "png"
 
-    async def test_the_chat_image_is_cropped_to_the_familys_paper(self, harness: Harness) -> None:
-        await host(make_payload(template_family="memo"), crop_to_paper=True)
-
-        assert harness.image_calls[0]["options"].clip_selector == ".t-memo__sheet"
-
-    async def test_the_email_image_keeps_the_full_composition(self, harness: Harness) -> None:
+    async def test_a_paper_on_a_desk_is_trimmed_to_an_even_margin(self, harness: Harness) -> None:
         await host(make_payload(template_family="memo"))
 
-        assert harness.image_calls[0]["options"].clip_selector is None
+        options = harness.image_calls[0]["options"]
+        assert (options.width, options.device_scale_factor) == (540, 3)
+        assert (options.clip_selector, options.trim_margin_px) == ("#root > article", 16)
+
+    async def test_a_full_bleed_family_is_its_whole_page(self, harness: Harness) -> None:
+        await host(make_payload(template_family="swiss"))
+
+        options = harness.image_calls[0]["options"]
+        assert (options.width, options.device_scale_factor) == (540, 3)
+        assert (options.clip_selector, options.trim_margin_px) == ("#root > article", None)
 
     async def test_the_hosted_path_is_the_opaque_render_key_alone(self, harness: Harness) -> None:
         """The URL goes out in emails and on public brief links: no user id, kind or date."""
         await host(make_payload(date="2026-02-03"))
-        await host(make_payload(date="2026-02-03"), crop_to_paper=True)
 
         assert harness.upload_calls == [
             {"public_id": f"briefing/editions/{RENDER_KEY}", "file_data": b"edition-png-bytes"},
-            {
-                "public_id": f"briefing/editions/{RENDER_KEY}_chat",
-                "file_data": b"edition-png-bytes",
-            },
         ]
 
     async def test_hosting_returns_the_cdn_url(self, harness: Harness) -> None:

@@ -298,24 +298,20 @@ async def _deliver(
     briefing: BriefingModel,
     payload: BriefingPayload,
     notification_kind: str,
-    render_key: str,
+    *,
+    image_url: str,
+    push: bool,
 ) -> list[str]:
-    """Deliver one brief to every channel the user has.
+    """Deliver one brief in-app and, when pushed, to email and the user's chat.
 
-    The chat image is rendered and hosted first, so a render failure leaves nothing
-    half-delivered. The orchestrator gets only in-app (plus email when wanted), never the
-    chat platform: that message is the photo, posted through post_to_platform_chat.
+    The orchestrator gets only in-app (plus email when wanted), never the chat platform:
+    that message is the edition photo, posted through post_to_platform_chat.
     """
     kind: BriefingKind = briefing.kind
     skim_text = build_skim(payload).text(full_brief_url(briefing.id))
-    channel = await resolve_chat_channel(user.id)
-    chat_post = (
-        (channel, await host_edition_image(payload, render_key=render_key, crop_to_paper=True))
-        if channel
-        else None
-    )
+    channel = await resolve_chat_channel(user.id) if push else None
     channels = [NotificationChannel.INAPP] + (
-        [NotificationChannel.EMAIL] if _wants_email(user) else []
+        [NotificationChannel.EMAIL] if push and _wants_email(user) else []
     )
     record = await notification_service.create_notification(
         NotificationRequest(
@@ -346,16 +342,15 @@ async def _deliver(
                 "kind": notification_kind,
                 "briefing_id": briefing.id,
                 "date": briefing.date,
-                "edition_image_url": briefing.edition_image_url,
+                "edition_image_url": image_url,
             },
         )
     )
     delivered = [c.channel_type for c in record.channels if c.reached_user]
-    if chat_post:
-        chat_channel, image_url = chat_post
-        result = await _post_to_chat(user, chat_channel, skim_text, image_url, kind)
+    if channel:
+        result = await _post_to_chat(user, channel, skim_text, image_url, kind)
         if result is OutboundResult.PUBLISHED:
-            delivered.append(chat_channel.source.value)
+            delivered.append(channel.source.value)
     return delivered
 
 
@@ -685,6 +680,11 @@ def _daily_payload(
     )
 
 
+def _is_empty_day(payload: BriefingPayload) -> bool:
+    """Nothing needs the user, nothing is on their calendar and nothing ran overnight."""
+    return not payload.calendar and not any(section.items for section in payload.sections)
+
+
 @dataclass(frozen=True)
 class _Edition:
     """The edition family a brief renders in, and the bag draws spent choosing it."""
@@ -705,26 +705,30 @@ async def _publish(
     kind: BriefingKind,
     payload: BriefingPayload,
     edition: _Edition,
+    *,
+    push: bool,
 ) -> BriefingModel:
     """Draw the edition, render and store the brief, deliver it and report where it went.
 
-    The full edition is rendered and hosted first, so a render failure stores and sends
-    nothing; the stored brief keeps its URL for the in-app page and the email. The
-    shuffle-bag draws (the family's and the stamp's) persist only after delivery.
+    The edition is rendered and hosted first, so a render failure stores and sends
+    nothing; the one image serves the in-app page, the email and the chat post. A brief
+    that is not pushed (push=False) goes in-app only and spends no shuffle-bag draw;
+    otherwise the draws (the family's and the stamp's) persist after delivery.
     """
     family = edition.family
     draws = [*edition.draws, *_assign_edition(user, payload, family)]
+    payload.recipient_name = user.name
     # A fresh random key per render: the hosted URL reaches emails and public links.
-    render_key = uuid4().hex
-    edition_image_url = await host_edition_image(
-        payload, render_key=render_key, crop_to_paper=False
-    )
+    edition_image_url = await host_edition_image(payload, render_key=uuid4().hex)
     briefing = await briefing_repository.upsert_briefing(
         user.id, clock.date_str, kind, payload, edition_image_url=edition_image_url
     )
-    channels = await _deliver(user, briefing, payload, _NOTIFICATION_KINDS[kind], render_key)
+    channels = await _deliver(
+        user, briefing, payload, _NOTIFICATION_KINDS[kind], image_url=edition_image_url, push=push
+    )
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
-    await _persist_draws(user.id, draws)
+    if push:
+        await _persist_draws(user.id, draws)
     capture(
         UserId(user.id),
         BriefingSent(
@@ -735,7 +739,7 @@ async def _publish(
             channel_count=len(channels),
         ),
     )
-    log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels)
+    log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels, pushed=push)
     return briefing
 
 
@@ -827,6 +831,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         BRIEFING_KIND_DAILY,
         payload,
         _Edition(family=family.member, draws=[family]),
+        # The idle ladder's goal question, warning and goodbye are messages in
+        # their own right, so they push even on an otherwise empty day.
+        push=not _is_empty_day(payload) or wind_down is not None or winback.is_winback,
     )
     if facts.carried_ids:
         await pending_brief_items_repository.consume(user_id, facts.carried_ids)
@@ -887,5 +894,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         BRIEFING_KIND_WEEKLY,
         payload,
         _Edition(family=WEEKLY_FAMILY, draws=[]),
+        push=True,
     )
     return BriefingRunOutcome.SENT
