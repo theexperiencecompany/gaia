@@ -1,11 +1,16 @@
 import type {
+  FeatureSpec,
+  FeatureStatus,
+  ProviderFeature,
+} from "@gaia/shared/api/generated";
+import type {
   CredentialProvider,
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
 import {
   isProviderConfigured,
-  runsCodeInLocalSandbox,
+  isProviderOffered,
 } from "@/features/settings/hooks/useSetupStatus";
 import {
   type CatalogProvider,
@@ -13,42 +18,12 @@ import {
 } from "@/features/settings/utils/providerCatalog";
 import type { CustomPresetKey } from "@/features/setup-wizard/utils/providerCards";
 
-/** The role a provider plays — Settings lists each role as its own section. */
-const PROVIDER_SECTIONS = [
-  {
-    key: "models",
-    title: "AI models",
-    description: "The models GAIA chats and reasons with.",
-  },
-  {
-    key: "tools",
-    title: "Search & tools",
-    description: "Web search, scraping and code execution for the agent.",
-  },
-  {
-    key: "email",
-    title: "Email",
-    description: "How GAIA sends notifications and reminders.",
-  },
-  {
-    key: "storage",
-    title: "File storage",
-    description: "Where uploaded and generated files are kept.",
-  },
-  {
-    key: "integrations",
-    title: "Integrations",
-    description: "Connections to your accounts and apps.",
-  },
-] as const;
-
-type ProviderSectionKey = (typeof PROVIDER_SECTIONS)[number]["key"];
-
 interface ProviderRow {
   key: CredentialProvider;
-  section: ProviderSectionKey;
-  /** Tavily is a tool key — no model applies. */
+  /** Only chat providers take a model. */
   showModelField: boolean;
+  /** SearXNG is reached by its address alone and takes no key. */
+  showApiKey: boolean;
   /** The settings page that owns this credential, when it is not configured here. */
   managedAt?: { href: string; label: string };
 }
@@ -58,35 +33,39 @@ export type CatalogProviderRow = CatalogProvider & ProviderRow;
 
 const llmRow = (key: CredentialProvider): ProviderRow => ({
   key,
-  section: "models",
   showModelField: true,
+  showApiKey: true,
 });
 
-const keyOnlyRow = (
-  key: CredentialProvider,
-  section: ProviderSectionKey,
-): ProviderRow => ({ key, section, showModelField: false });
+const keyOnlyRow = (key: CredentialProvider): ProviderRow => ({
+  key,
+  showModelField: false,
+  showApiKey: true,
+});
 
-// Layout only — copy, endpoint defaults and display order come from GET /setup/catalog.
+// Layout only — copy, endpoint defaults, features and display order come from GET /setup/catalog.
 const PROVIDER_ROWS: ProviderRow[] = [
   llmRow("openrouter"),
   llmRow("gemini"),
   llmRow("openai"),
   llmRow("ollama"),
   llmRow("custom"),
-  keyOnlyRow("tavily", "tools"),
+  keyOnlyRow("tavily"),
+  keyOnlyRow("exa"),
+  keyOnlyRow("brave"),
+  { key: "searxng", showModelField: false, showApiKey: false },
   {
-    ...keyOnlyRow("composio", "integrations"),
+    ...keyOnlyRow("composio"),
     managedAt: {
       href: "/settings/integrations-setup",
       label: "Open Integrations setup",
     },
   },
-  keyOnlyRow("e2b", "tools"),
-  keyOnlyRow("resend", "email"),
-  keyOnlyRow("cloudinary", "storage"),
-  keyOnlyRow("google_oauth", "integrations"),
-  keyOnlyRow("firecrawl", "tools"),
+  keyOnlyRow("e2b"),
+  keyOnlyRow("resend"),
+  keyOnlyRow("cloudinary"),
+  keyOnlyRow("google_oauth"),
+  keyOnlyRow("firecrawl"),
 ];
 
 export type CustomPresetId = CustomPresetKey | "manual";
@@ -100,35 +79,35 @@ export function resolveProviderRow(
   return { ...resolveCatalogProvider(key, catalog), ...row };
 }
 
-/** What a row's status badge reports. */
-export type ProviderRowState = "connected" | "local_sandbox" | "not_configured";
-
-/** A provider's state; E2B without a key still runs code in an opted-in local sandbox. */
-export function providerRowState(
-  status: SetupStatus | undefined,
-  key: CredentialProvider,
-): ProviderRowState {
-  if (isProviderConfigured(status, key)) return "connected";
-  if (key === "e2b" && runsCodeInLocalSandbox(status)) return "local_sandbox";
-  return "not_configured";
-}
-
-interface ProviderSectionGroup {
-  key: ProviderSectionKey;
-  title: string;
-  description: string;
+/** One feature as Settings shows it: what it runs on now and the providers that can upgrade it. */
+export interface FeatureGroup {
+  key: ProviderFeature;
+  spec: FeatureSpec;
+  status: FeatureStatus | undefined;
   rows: CatalogProviderRow[];
 }
 
-/** Rows grouped into their sections (empty ones dropped), working providers first. */
-export function groupProviderRows(
-  rows: readonly CatalogProviderRow[],
-  isWorking: (key: CredentialProvider) => boolean,
-): ProviderSectionGroup[] {
-  return PROVIDER_SECTIONS.map((section) => ({
-    ...section,
-    rows: rows
-      .filter((row) => row.section === section.key)
-      .toSorted((a, b) => Number(isWorking(b.key)) - Number(isWorking(a.key))),
-  })).filter((section) => section.rows.length > 0);
+/** The catalog's features in order, each with its offered providers, connected ones first. */
+export function groupProvidersByFeature(
+  catalog: ProviderCatalog,
+  status: SetupStatus | undefined,
+): FeatureGroup[] {
+  // The API keys features by exactly the ProviderFeature values.
+  const features = Object.entries(catalog.features) as [
+    ProviderFeature,
+    FeatureSpec,
+  ][];
+  return features.map(([key, spec]) => ({
+    key,
+    spec,
+    status: status?.features[key],
+    rows: spec.providers
+      .filter((provider) => isProviderOffered(status, provider))
+      .map((provider) => resolveProviderRow(provider, catalog))
+      .toSorted(
+        (a, b) =>
+          Number(isProviderConfigured(status, b.key)) -
+          Number(isProviderConfigured(status, a.key)),
+      ),
+  }));
 }

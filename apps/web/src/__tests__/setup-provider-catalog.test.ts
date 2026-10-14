@@ -74,6 +74,7 @@ const CATALOG: ProviderCatalog = {
       favicon_domain: "opencode.ai",
     }),
   },
+  features: {},
 };
 
 const statusWith = (configured: string[]): SetupStatus => ({
@@ -90,6 +91,7 @@ const statusWith = (configured: string[]): SetupStatus => ({
   needs_setup: true,
   wizard_dismissed: false,
   plans_seeded: true,
+  features: {},
   providers: Object.fromEntries(
     configured.map((key) => [
       key,

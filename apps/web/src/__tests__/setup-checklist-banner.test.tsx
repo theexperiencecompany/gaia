@@ -48,6 +48,7 @@ function persistedDismissedKeys(): unknown {
   return JSON.parse(raw).state?.dismissedKeys;
 }
 
+/** Providers in configured are set up; "web_search" there means search works. */
 function statusWith(configured: string[], hasAdmin: boolean): SetupStatus {
   return {
     auth_mode: "local",
@@ -55,6 +56,9 @@ function statusWith(configured: string[], hasAdmin: boolean): SetupStatus {
     providers: Object.fromEntries(
       configured.map((key) => [key, { configured: true }]),
     ),
+    features: {
+      web_search: { working: configured.includes("web_search"), in_use: [] },
+    },
   } as unknown as SetupStatus;
 }
 
@@ -74,7 +78,7 @@ afterEach(() => vi.clearAllMocks());
 
 describe("SetupChecklistBanner", () => {
   it("renders nothing once every essential is configured", () => {
-    state.status = statusWith(["openai", "tavily"], true);
+    state.status = statusWith(["openai", "web_search"], true);
     renderBanner();
     expect(screen.queryByLabelText("Dismiss setup checklist")).toBeNull();
   });

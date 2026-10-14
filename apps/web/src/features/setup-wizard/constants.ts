@@ -40,7 +40,12 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
   { key: "custom", showApiKey: true, showModel: true, hasPresets: true },
 ];
 
-export const SEARCH_PROVIDER_CARD = keyOnlyCard("tavily");
+/** Optional search upgrades; search itself already works keyless. */
+export const SEARCH_PROVIDER_CARDS: ProviderCardConfig[] = [
+  keyOnlyCard("tavily"),
+  keyOnlyCard("exa"),
+  keyOnlyCard("brave"),
+];
 
 /**
  * Tool / integration keys the wizard offers. google_oauth and cloudinary are
@@ -83,9 +88,9 @@ export const WIZARD_STEPS: WizardStepMeta[] = [
   },
   {
     id: "search",
-    title: "Add web search",
+    title: "Web search",
     subtitle:
-      "Optional. A Tavily key lets GAIA search the web for up-to-date information when answering.",
+      "Web search already works (free, via DuckDuckGo). For better results add a Tavily, Exa or Brave key.",
   },
   {
     id: "integrations",

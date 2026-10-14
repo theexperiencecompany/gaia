@@ -68,6 +68,7 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         autoComplete="email"
         isRequired
         isDisabled={isSubmitting}
+        variant="faded"
       />
       <Input
         type={isPasswordVisible ? "text" : "password"}
@@ -77,6 +78,7 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         autoComplete="current-password"
         isRequired
         isDisabled={isSubmitting}
+        variant="faded"
         endContent={
           <VisibilityToggleButton
             visible={isPasswordVisible}

@@ -44,6 +44,7 @@ const CATALOG: ProviderCatalog = {
     ]),
   ),
   custom_presets: {},
+  features: {},
 };
 
 const unset = { configured: false, env_shadowed: false, source: "unset" };
@@ -65,6 +66,7 @@ function statusWith(providers: SetupStatus["providers"] = {}): SetupStatus {
       ...Object.fromEntries(LLM_KEYS.map((key) => [key, unset])),
       ...providers,
     },
+    features: {},
     plans_seeded: false,
   } as SetupStatus;
 }
