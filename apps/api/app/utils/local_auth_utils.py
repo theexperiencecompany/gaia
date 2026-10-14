@@ -5,7 +5,7 @@ the gaia session cookie as the twin of the WorkOS sealed-session cookie.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TypedDict, cast
+from typing import NamedTuple, TypedDict, cast
 
 from jose import JWTError, jwt
 
@@ -58,13 +58,22 @@ async def issue_session_token(user_id: str, token_version: int = 0) -> str:
     return cast(str, jwt.encode(payload, secret, algorithm=JWT_ALGORITHM))
 
 
-def _decode_session(token: str, secret: str) -> SessionClaims | None:
-    """Return the claims of a validly signed, unexpired token naming a user, else None."""
+class _Session(NamedTuple):
+    """Who a verified token names, and the token version it carries."""
+
+    user_id: str
+    version: int
+
+
+def _decode_session(token: str, secret: str) -> _Session | None:
+    """Return the session of a validly signed, unexpired token naming a user, else None."""
     try:
         claims: SessionClaims = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
     except JWTError:
         return None
-    return claims if claims.get("sub") else None
+    sub = claims.get("sub")
+    # Legacy tokens without ver read as 0.
+    return _Session(str(sub), claims.get("ver", 0)) if sub else None
 
 
 async def resolve_session_token(token: str) -> str | None:
@@ -72,16 +81,14 @@ async def resolve_session_token(token: str) -> str | None:
 
     Returns the user id, or None for an invalid, expired, or revoked token.
     """
-    claims = _decode_session(token, await _session_secret())
-    if claims is None:
+    session = _decode_session(token, await _session_secret())
+    if session is None:
         return None
-    user_id = str(claims["sub"])
+    user_id = session.user_id
     # Version check — stateless JWTs are revoked by bumping
-    # auth_credentials.token_version on password change. Legacy tokens without
-    # ``ver`` are treated as 0.
-    token_ver = claims.get("ver", 0)
+    # auth_credentials.token_version on password change.
     try:
-        token_ver_int = int(token_ver)
+        token_ver_int = int(session.version)
     except (TypeError, ValueError):
         return None
     # Credential lookup is the revocation source.

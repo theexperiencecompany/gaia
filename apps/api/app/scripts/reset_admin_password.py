@@ -59,7 +59,9 @@ def main() -> None:
         sys.exit(1)
 
     client: MongoClient[dict[str, object]] = MongoClient(settings.MONGO_DB)
-    password = reset_admin_credential(client[MONGO_DATABASE_NAME]["auth_credentials"])
+    password = reset_admin_credential(
+        client[MONGO_DATABASE_NAME].get_collection("auth_credentials")
+    )
     if password is None:
         print("No admin account found — create one at /signup")
         return
