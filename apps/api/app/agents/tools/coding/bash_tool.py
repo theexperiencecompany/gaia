@@ -297,22 +297,31 @@ async def _run_bash(
             execute_env = await _build_execute_env(run, sbx)
             if background:
                 return await _run_background(sbx, run, execute_env)
-            started_at = time.time()
-            result = await _run_foreground(sbx, run, execute_env)
-            # A bash command can create artifacts many ways (cat, python, mv,
-            # curl -o, …), not just the write tool. Enumerate the session's
-            # artifacts/ from the sandbox itself (no cross-mount race) in real time.
-            if not session_id:
-                return result
-            async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                links = await _publish_artifacts(sbx, user_id, session_id, changed_since=started_at)
-            return result + artifact_links_note(links)
+            return await _run_foreground_and_publish(sbx, run, execute_env)
     except SandboxAcquisitionError as e:
         return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable ({e})", session_id)
     except Exception as e:
         # acquire_sandbox already evicted the sandbox if it died; surface it.
         log.error(f"{LogTag.SANDBOX} bash tool failed", error_type=type(e).__name__, exc_info=True)
         return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
+
+
+async def _run_foreground_and_publish(
+    sbx: object, run: _BashInvocation, envs: dict[str, str] | None
+) -> str:
+    """Run the command in the foreground, then link the session artifacts it wrote.
+
+    A bash command can create artifacts many ways (cat, python, mv, curl -o, …),
+    not just the write tool, so the session's artifacts/ is enumerated from the
+    sandbox itself (no cross-mount race) right after the run.
+    """
+    started_at = time.time()
+    result = await _run_foreground(sbx, run, envs)
+    if not run.session_id:
+        return result
+    async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
+        links = await _publish_artifacts(sbx, run.user_id, run.session_id, changed_since=started_at)
+    return result + artifact_links_note(links)
 
 
 async def _publish_artifacts(
