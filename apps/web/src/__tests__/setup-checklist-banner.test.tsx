@@ -10,7 +10,7 @@ import type {
   SetupStatus,
 } from "@/features/settings/api/providersApi";
 
-const state: { status: SetupStatus; role: string } = {
+const state: { status: SetupStatus; role: string | undefined } = {
   status: {} as SetupStatus,
   role: "admin",
 };
@@ -141,6 +141,14 @@ describe("SetupChecklistBanner", () => {
 
   it("is never shown to a member", () => {
     state.role = "member";
+    state.status = statusWith([], false);
+    renderBanner();
+
+    expect(screen.queryByText("3 setup steps left")).toBeNull();
+  });
+
+  it("stays hidden while the role is still loading", () => {
+    state.role = undefined;
     state.status = statusWith([], false);
     renderBanner();
 

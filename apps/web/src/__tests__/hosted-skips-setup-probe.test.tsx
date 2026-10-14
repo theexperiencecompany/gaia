@@ -109,6 +109,20 @@ describe("the setup queries on hosted GAIA", () => {
   });
 });
 
+describe("a self-hosted instance before its status loads", () => {
+  it("reports the self-host deployment, never GAIA Cloud's", () => {
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
+    fetchSetupStatus.mockReturnValue(new Promise(() => undefined));
+    const { result } = renderHook(() => useDeployment(), {
+      wrapper: withQueryClient(),
+    });
+
+    expect(result.current.kind).toBe("selfhost");
+    expect(result.current.bills).toBe(false);
+    expect(result.current.gaia_support).toBe(false);
+  });
+});
+
 describe("hosted server-rendered auth pages", () => {
   it("resolve WorkOS without a request or an error log", async () => {
     const fetchMock = vi.fn();

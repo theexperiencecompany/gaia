@@ -45,6 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.clearAllMocks();
 });
 
 function renderForm() {
@@ -72,12 +73,12 @@ describe("ContactForm", () => {
     expect(screen.queryByText("Submit")).toBeNull();
   });
 
-  it("keeps the support form where requests reach GAIA", async () => {
-    fetchSetupStatus.mockResolvedValue(status(true));
+  it("keeps the support form on hosted GAIA without asking for setup status", () => {
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "");
 
     renderForm();
 
-    await waitFor(() => expect(fetchSetupStatus).toHaveBeenCalled());
+    expect(fetchSetupStatus).not.toHaveBeenCalled();
     expect(screen.queryByText("Open an issue")).toBeNull();
     expect(screen.getAllByText("Request Type").length).toBeGreaterThan(0);
   });

@@ -97,12 +97,13 @@ describe("useReleases", () => {
   });
 
   it("serves the release notes on hosted GAIA, which has no setup status", async () => {
-    fetchSetupStatus.mockRejectedValue(new Error("404"));
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "");
     stubReleaseFeed();
 
     const { result } = renderHook(() => useReleases(), { wrapper });
 
     await waitFor(() => expect(result.current.releases).toHaveLength(1));
     expect(result.current.latest?.title).toBe(RELEASE.title);
+    expect(fetchSetupStatus).not.toHaveBeenCalled();
   });
 });

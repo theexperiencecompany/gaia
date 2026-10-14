@@ -36,13 +36,23 @@ const HOSTED_DEPLOYMENT: DeploymentStatus = {
   gaia_support: true,
 };
 
+/** A self-hosted instance's baseline profile (ENV=selfhost with nothing optional set). */
+const SELFHOST_DEPLOYMENT: DeploymentStatus = {
+  kind: "selfhost",
+  bills: false,
+  local_code_sandbox: false,
+  blob_store: "local",
+  gaia_support: false,
+};
+
 /**
- * What this deployment does, from GET /setup/status; a missing status (hosted
- * production, or the probe still loading) is GAIA Cloud.
+ * What this deployment does, from GET /setup/status; until it loads, the
+ * build's own profile, so hosted and self-host are each right from first paint.
  */
 export function useDeployment(): DeploymentStatus {
   const { data } = useSetupStatus();
-  return data?.deployment ?? HOSTED_DEPLOYMENT;
+  if (data) return data.deployment;
+  return isSelfhostWeb() ? SELFHOST_DEPLOYMENT : HOSTED_DEPLOYMENT;
 }
 
 export function isProviderConfigured(
