@@ -3,6 +3,7 @@ import { siteConfig } from "@/lib/seo";
 
 export type { BotPlatform };
 
+/** GAIA Cloud's bots; a self-hosted instance reaches its own through useBotLinks. */
 export const BOT_LINKS: Record<BotPlatform, string> = {
   discord: `${siteConfig.url}/discord-bot`,
   telegram: "https://t.me/heygaia_bot",
@@ -24,6 +25,8 @@ export interface BotConfig {
   description: string;
   primaryAction?: BotAction;
   secondaryAction?: BotAction;
+  /** The command that sets this bot up on a self-hosted instance that runs none yet. */
+  setupCommand?: string;
 }
 
 export const BOTS: BotConfig[] = [
@@ -106,3 +109,35 @@ export const BOTS: BotConfig[] = [
     },
   },
 ];
+
+/** The bots a self-hosted instance can run, each added with `gaia bots add`. */
+export const SELFHOST_BOT_PLATFORMS = [
+  "telegram",
+  "discord",
+  "slack",
+] as const satisfies readonly BotPlatform[];
+
+/** What each self-hosted bot's card says and does; GAIA Cloud's copy names its own bots. */
+export const SELFHOST_BOT_COPY: Record<
+  (typeof SELFHOST_BOT_PLATFORMS)[number],
+  { description: string; actionLabel: string }
+> = {
+  telegram: {
+    description:
+      "Chat with your GAIA from Telegram, one-on-one with your instance's bot.",
+    actionLabel: "Start Chatting",
+  },
+  discord: {
+    description:
+      "Add your instance's bot to a server. Use slash commands, @mention it in a channel, or DM it.",
+    actionLabel: "Add to Server",
+  },
+  slack: {
+    description:
+      "Delegate tasks, run workflows, and get answers from your instance's bot, inside Slack.",
+    actionLabel: "Open Slack",
+  },
+};
+
+export const SELFHOST_BOTS_DOCS_URL =
+  "https://docs.heygaia.io/self-hosting/bots";
