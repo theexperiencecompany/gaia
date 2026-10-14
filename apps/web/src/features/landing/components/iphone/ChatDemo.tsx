@@ -1829,7 +1829,7 @@ function SlackComposer({
           onKeyDown={composerKeyHandler(onComposerSend)}
           className={cn(
             "resize-none border-0 bg-transparent outline-none",
-            isDark ? "placeholder:text-zinc-500" : "placeholder:text-zinc-500",
+            isDark ? "placeholder:text-zinc-400" : "placeholder:text-zinc-600",
           )}
           style={{
             padding: "10px 12px",
