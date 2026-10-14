@@ -1,0 +1,47 @@
+"""The conversation artifact registry keeps each file's heygaia.link across reloads."""
+
+from unittest.mock import AsyncMock, patch
+
+from app.services.artifact_events import ArtifactEventMessage
+from app.services.chat import artifacts_registry
+
+_REPO = "app.services.chat.artifacts_registry.conversation_repository"
+
+EVENT: ArtifactEventMessage = {
+    "event": "upsert",
+    "session_id": "conv-1",
+    "path": "report.html",
+    "user_id": "507f1f77bcf86cd799439011",
+    "ts": 1.0,
+    "size_bytes": 12,
+    "mtime": 2.0,
+    "content_type": "text/html",
+    "short_url": "https://heygaia.link/abcdefghijk",
+}
+
+
+async def _upsert(update_matched: bool) -> AsyncMock:
+    with patch(_REPO) as repo:
+        repo.update_artifact = AsyncMock(return_value=update_matched)
+        repo.push_artifact = AsyncMock()
+        await artifacts_registry.upsert_conversation_artifact.__wrapped__(
+            "507f1f77bcf86cd799439011", "conv-1", EVENT
+        )
+        return repo
+
+
+class TestRegistryKeepsTheLink:
+    async def test_a_new_file_is_stored_with_its_link(self) -> None:
+        repo = await _upsert(update_matched=False)
+
+        element = repo.push_artifact.await_args.kwargs["element"]
+        assert element["path"] == "report.html"
+        assert element["short_url"] == "https://heygaia.link/abcdefghijk"
+
+    async def test_a_re_emit_refreshes_the_link_on_the_existing_entry(self) -> None:
+        repo = await _upsert(update_matched=True)
+
+        assert repo.update_artifact.await_args.kwargs["fields"]["short_url"] == (
+            "https://heygaia.link/abcdefghijk"
+        )
+        repo.push_artifact.assert_not_awaited()

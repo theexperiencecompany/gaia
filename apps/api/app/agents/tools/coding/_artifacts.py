@@ -19,7 +19,7 @@ from app.agents.workspace.paths import (
     is_inlineable_content_type,
     session_artifacts,
 )
-from app.services.artifact_events import publish_artifact_event, upsert_event
+from app.services.artifact_events import ArtifactFileEvent, publish_artifact_event, upsert_event
 from app.services.storage import ArtifactInfo
 from shared.py.wide_events import log
 
@@ -41,7 +41,7 @@ async def publish_artifact(
     it). The single owner of the event shape.
     """
     try:
-        event = await upsert_event(
+        event: ArtifactFileEvent = await upsert_event(
             user_id,
             conv_id,
             ArtifactInfo(

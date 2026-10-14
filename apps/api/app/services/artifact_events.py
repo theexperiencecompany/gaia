@@ -49,6 +49,21 @@ class ArtifactRemoveEvent(TypedDict):
 ArtifactEvent = ArtifactFileEvent | ArtifactRemoveEvent
 
 
+class ArtifactEventMessage(TypedDict):
+    """An ArtifactEvent as subscribers receive it, stamped with user_id and ts."""
+
+    event: Literal["upsert", "upload", "remove"]
+    session_id: str
+    path: str
+    user_id: str
+    ts: float
+    size_bytes: NotRequired[int]
+    mtime: NotRequired[float]
+    content_type: NotRequired[str | None]
+    body: NotRequired[str]
+    short_url: NotRequired[str]
+
+
 def artifact_channel(user_id: str) -> str:
     """Return the per-user pub/sub channel name.
 
