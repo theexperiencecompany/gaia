@@ -5,6 +5,7 @@ ObjectId). A global repository: completion is keyed by execution_id alone
 with no user in context, while history listing filters by workflow + user.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from app.db.repositories.base import MongoRepository
@@ -89,13 +90,27 @@ class WorkflowExecutionsRepository(
         return executions, total
 
     async def list_since(
-        self, user_id: str, since: datetime, *, limit: int
+        self,
+        user_id: str,
+        since: datetime,
+        *,
+        exclude_workflow_ids: Sequence[str],
+        limit: int,
     ) -> list[WorkflowExecutionDocument]:
-        """Return a user's executions started at/after since.
+        """Return a user's executions started at/after since, newest first.
 
-        Used as the briefing engine's look-back read.
+        Used as the briefing engine's look-back read, which leaves out the
+        briefing workflows' own runs via exclude_workflow_ids.
         """
-        return await self._find({"user_id": user_id, "started_at": {"$gte": since}}, limit=limit)
+        return await self._find(
+            {
+                "user_id": user_id,
+                "started_at": {"$gte": since},
+                "workflow_id": {"$nin": list(exclude_workflow_ids)},
+            },
+            sort=[("started_at", -1)],
+            limit=limit,
+        )
 
 
 workflow_executions_repository = WorkflowExecutionsRepository()

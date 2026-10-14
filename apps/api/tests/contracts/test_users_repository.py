@@ -409,8 +409,6 @@ class TestWorkerScans:
     async def test_find_stuck_personalization(self, repo, make_user, raw_collection):
         from datetime import datetime, timedelta
 
-        from bson import ObjectId
-
         cutoff = datetime.now(UTC) - timedelta(minutes=30)
         old = datetime.now(UTC) - timedelta(hours=1)
         # Stuck: pending phase, updated_at backdated past the cutoff (create()
@@ -709,13 +707,6 @@ class TestBriefingEngineState:
     def _stamped_now(stamp: datetime | None, before: datetime) -> bool:
         return stamp is not None and before <= stamp <= datetime.now(UTC)
 
-    async def test_last_active_at_reads_the_stored_stamp(self, repo, make_user):
-        seen = datetime(2026, 10, 1, 9, 30, tzinfo=UTC)
-        created = await repo.create(make_user(last_active_at=seen))
-
-        assert await repo.get_last_active_at(created.id) == seen
-        assert await repo.get_last_active_at(str(ObjectId())) is None
-
     async def test_the_bootstrap_hold_is_stamped_in_utc_then_cleared(
         self, repo, make_user, local_time_offset_from_utc
     ):
@@ -731,19 +722,31 @@ class TestBriefingEngineState:
         await repo.clear_briefing_bootstrap(created.id)
         assert (await repo.get(created.id)).briefing_bootstrap is None
 
+    async def test_a_second_hold_never_restarts_the_grace_window(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.set_briefing_bootstrap_pending(created.id)
+        first = (await repo.get(created.id)).briefing_bootstrap
+
+        await repo.set_briefing_bootstrap_pending(created.id)
+
+        assert (await repo.get(created.id)).briefing_bootstrap == first
+
     async def test_each_shuffle_bag_is_stored_and_read_on_its_own(self, repo, make_user):
         created = await repo.create(make_user())
-        assert await repo.get_briefing_bag(created.id, BriefingBag.EDITION_FAMILY) is None
+        assert (await repo.get(created.id)).briefing_shuffle_bags is None
         family = ShuffleBag(order=["gaia", "explorer"], index=1)
         city = ShuffleBag(order=["Lisbon"], index=0)
 
         await repo.set_briefing_bag(created.id, BriefingBag.EDITION_FAMILY, family)
-        assert await repo.get_briefing_bag(created.id, BriefingBag.STAMP_CITY) is None
+        assert (await repo.get(created.id)).briefing_shuffle_bags == {
+            BriefingBag.EDITION_FAMILY: family
+        }
         await repo.set_briefing_bag(created.id, BriefingBag.STAMP_CITY, city)
 
-        assert await repo.get_briefing_bag(created.id, BriefingBag.EDITION_FAMILY) == family
-        assert await repo.get_briefing_bag(created.id, BriefingBag.STAMP_CITY) == city
-        assert await repo.get_briefing_bag(str(ObjectId()), BriefingBag.STAMP_CITY) is None
+        assert (await repo.get(created.id)).briefing_shuffle_bags == {
+            BriefingBag.EDITION_FAMILY: family,
+            BriefingBag.STAMP_CITY: city,
+        }
 
     async def test_the_dormancy_ladder_counts_goes_dormant_in_utc_and_clears(
         self, repo, make_user, local_time_offset_from_utc

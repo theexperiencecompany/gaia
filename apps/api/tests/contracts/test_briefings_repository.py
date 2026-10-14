@@ -238,6 +238,21 @@ class TestBriefingsReads:
         )
         assert await repo.has_daily_briefing(user_id) is True
 
+    async def test_was_delivered_needs_a_channel_on_that_date_and_kind(self, repo):
+        user_id = "u-delivered"
+        assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_DAILY) is False
+        await repo.upsert_briefing(
+            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition_image_url=_IMAGE
+        )
+        # Stored but delivered nowhere: a retry may still send it.
+        assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_DAILY) is False
+
+        await repo.set_delivered_channels(user_id, "2026-08-06", BRIEFING_KIND_DAILY, ["inapp"])
+
+        assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_DAILY) is True
+        assert await repo.was_delivered(user_id, "2026-08-07", BRIEFING_KIND_DAILY) is False
+        assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_WEEKLY) is False
+
 
 class TestBriefingsMarkOpened:
     async def test_mark_opened_is_idempotent(self, repo):
