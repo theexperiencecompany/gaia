@@ -96,6 +96,7 @@ describe("runEnvSetup env policy", () => {
       "BOT_SESSION_TOKEN_SECRET",
       "EMAIL_UNSUBSCRIBE_SECRET",
       "SHARE_GRANT_SECRET",
+      "GAIA_BOT_API_KEY",
     ]) {
       expect(keys.has(name)).toBe(true);
       expect(content).toMatch(new RegExp(`^${name}=[0-9a-f]{64}$`, "m"));

@@ -11,6 +11,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { execa } from "execa";
+import { botService, type SelfhostBot } from "../../lib/bots.js";
 import { fetchDependencyReadiness } from "../../lib/dependency-readiness.js";
 import {
   type ComposeContainerInfo,
@@ -744,4 +745,45 @@ export function checkReleaseVersion(
     detail: `Running ${pinned}; this CLI ships ${GAIA_RELEASE_IMAGE_TAG}`,
     fix: "Run 'gaia update' to move to it (keeps volumes and .env files).",
   };
+}
+
+/** One result per enabled chat bot; a bot is optional, so a failure only warns. */
+export async function checkBots(
+  bots: readonly SelfhostBot[],
+  project: ComposeProject,
+): Promise<CheckResult[]> {
+  if (bots.length === 0) return [];
+  let containers: ComposeContainerInfo[] | null;
+  try {
+    containers = await getComposeProjectContainers(project);
+  } catch {
+    containers = null;
+  }
+  return bots.map((bot): CheckResult => {
+    const base: Pick<CheckResult, "id" | "label" | "severity"> = {
+      id: `bot-${bot}`,
+      label: `Chat bot (${bot})`,
+      severity: "warning",
+    };
+    if (!containers) {
+      return { ...base, state: "skipped", detail: "Docker daemon unreachable" };
+    }
+    const service = botService(bot);
+    const container = containers.find((c) => c.service === service);
+    if (
+      container &&
+      classifyContainerState(container.state) === "running" &&
+      container.health !== "unhealthy"
+    ) {
+      return { ...base, state: "ok", detail: container.health ?? "running" };
+    }
+    return {
+      ...base,
+      state: "fail",
+      detail: container
+        ? [container.state, container.health].filter(Boolean).join(", ")
+        : "not created",
+      fix: `A rejected or revoked token keeps the bot restarting: check 'docker compose -p ${project} logs ${service}', then rerun 'gaia bots add ${bot}' with a fresh token.`,
+    };
+  });
 }

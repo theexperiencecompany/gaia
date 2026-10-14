@@ -1,0 +1,36 @@
+# The service every self-host chat bot extends (docker-compose.bot-<platform>.yml).
+# Not a stack on its own: `gaia bots add <platform>` layers one override file
+# per enabled bot onto docker-compose.selfhost.yml, so a bot that is removed
+# drops out of the file set and `up --remove-orphans` stops it.
+#
+# apps/bots/.env is written by the CLI (0600): the platform tokens, the bot key
+# and public URL it copies from apps/api/.env on every start, and the log-hash
+# secret it generates once.
+services:
+  bot:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - path: ../../../apps/bots/.env
+        required: true
+    environment:
+      # Never contact Infisical: a self-hosted instance configures locally.
+      ENV: selfhost
+      GAIA_API_URL: http://gaia-backend:8000
+      # One port for every bot: each runs in its own container.
+      BOT_SERVER_PORT: "3200"
+    # /health answers only after the platform connection is up, so a revoked
+    # token shows as a restarting container in `gaia doctor`.
+    restart: on-failure
+    healthcheck:
+      # 127.0.0.1, not localhost: busybox resolves localhost to ::1 first.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3200/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - gaia_network

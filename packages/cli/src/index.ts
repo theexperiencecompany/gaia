@@ -3,6 +3,7 @@
 import { Command, Option } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../libs/shared/ts/src/cli/command-manifest.js";
 import { runBackupCommand } from "./commands/backup/handler.js";
+import { botsCommand } from "./commands/bots/command.js";
 import { bridgeCommand } from "./commands/bridge/command.js";
 import { connectCommand } from "./commands/connect/command.js";
 import { runDev } from "./commands/dev/handler.js";
@@ -45,6 +46,7 @@ program
   // reaches update instead of printing the CLI version.
   .enablePositionalOptions();
 
+program.addCommand(botsCommand);
 program.addCommand(bridgeCommand);
 program.addCommand(connectCommand);
 

@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import type { SelfhostBot } from "./bots.js";
 import { CLI_VERSION } from "./version.js";
 
 export const GAIA_CONFIG_DIR = path.join(os.homedir(), ".gaia");
@@ -23,6 +24,11 @@ export interface GaiaConfig {
    * and update keeps it until `gaia up --no-code-sandbox`.
    */
   codeSandbox?: boolean;
+  /**
+   * Chat bots layered on the stack (docker-compose.bot-<bot>.yml), set by
+   * `gaia bots add/remove`; every later start and update keeps them.
+   */
+  bots?: SelfhostBot[];
   createdAt: string;
   updatedAt: string;
 }

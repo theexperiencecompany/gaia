@@ -1,0 +1,11 @@
+# Opt-in Slack bot (Socket Mode: no public URL needed). `gaia bots add
+# slack --token <token>` layers this on the self-host stack.
+services:
+  bot-slack:
+    extends:
+      file: selfhost/bot.yml
+      service: bot
+    image: ghcr.io/theexperiencecompany/gaia-bot-slack:${GAIA_VERSION:-latest}
+    depends_on:
+      gaia-backend:
+        condition: service_healthy

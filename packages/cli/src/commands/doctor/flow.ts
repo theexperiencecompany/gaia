@@ -9,6 +9,7 @@
  * @module commands/doctor/flow
  */
 
+import { readConfig } from "../../lib/config.js";
 import {
   COMPOSE_PROJECT_BY_MODE,
   type ComposeProject,
@@ -23,6 +24,7 @@ import {
 } from "../../lib/service-starter.js";
 import {
   checkApiHealth,
+  checkBots,
   checkComposeContainers,
   checkDependencies,
   checkDiskHeadroom,
@@ -106,6 +108,11 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
         expected: EXPECTED_SERVICES[ctx.project],
       }),
     );
+  }
+
+  // 2b. Each enabled chat bot (self-host only).
+  if (ctx.project === COMPOSE_PROJECT_BY_MODE.selfhost) {
+    results.push(...(await checkBots(readConfig()?.bots ?? [], ctx.project)));
   }
 
   // 3. API health.

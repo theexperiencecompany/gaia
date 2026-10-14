@@ -10,6 +10,7 @@ export const CLI_COMMAND_DESCRIPTIONS = {
     "Import your browser logins into GAIA so its browser stays signed in",
   up: "One-command setup: configure, pull and start GAIA (self-host)",
   doctor: "Diagnose a GAIA install: docker, services and setup checks",
+  bots: "Run GAIA's Telegram, Discord and Slack bots on your self-hosted instance",
   backup:
     "Back up GAIA databases, storage volumes and apps/api/.env to a local directory",
   restore: "Restore GAIA databases, volumes and apps/api/.env from a backup",

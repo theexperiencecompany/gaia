@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -21,8 +24,17 @@ vi.mock("../../src/lib/docker.js", () => ({
   assertEngineSupportsCodeSandbox,
   dockerVolumeExists,
 }));
+const { writeBotsEnv } = vi.hoisted(() => ({ writeBotsEnv: vi.fn() }));
+vi.mock("../../src/lib/bots.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/bots.js")>()),
+  writeBotsEnv,
+}));
 
-import { startServices } from "../../src/lib/service-starter.js";
+import {
+  pullSelfhostImages,
+  startServices,
+  stopServices,
+} from "../../src/lib/service-starter.js";
 
 /** A child process that exits 0 on the next tick. */
 function exitingProcess(): EventEmitter {
@@ -55,6 +67,7 @@ function resetMocks(): void {
   spawn.mockReset();
   spawn.mockImplementation(exitingProcess);
   readConfig.mockReset();
+  writeBotsEnv.mockReset();
   assertEngineSupportsCodeSandbox.mockReset();
   dockerVolumeExists.mockReset();
   dockerVolumeExists.mockResolvedValue(false);
@@ -88,6 +101,71 @@ describe("startServices compose files", () => {
       "docker-compose.build.yml",
       "docker-compose.sandbox.yml",
     ]);
+  });
+});
+
+/** The -f files of the Nth docker invocation. */
+function composeFilesOfCall(call: number): string[] {
+  const args = spawn.mock.calls[call]?.[1] as string[];
+  return args.flatMap((arg, i) => (args[i - 1] === "-f" ? [arg] : []));
+}
+
+describe("self-host chat bots", () => {
+  beforeEach(resetMocks);
+
+  it("layers each saved bot's override on every start", async () => {
+    readConfig.mockReturnValue({ bots: ["telegram", "slack"] });
+
+    expect(await composeFilesForStart()).toEqual([
+      "docker-compose.selfhost.yml",
+      "docker-compose.bot-telegram.yml",
+      "docker-compose.bot-slack.yml",
+    ]);
+  });
+
+  it("re-copies the bots' env before compose reads it", async () => {
+    readConfig.mockReturnValue({ bots: ["discord"] });
+
+    await composeFilesForStart();
+
+    expect(writeBotsEnv).toHaveBeenCalledWith("/no/such/repo");
+    expect(writeBotsEnv.mock.invocationCallOrder[0]).toBeLessThan(
+      spawn.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it("touches no bot env when no bot is enabled", async () => {
+    readConfig.mockReturnValue({});
+
+    await composeFilesForStart();
+
+    expect(writeBotsEnv).not.toHaveBeenCalled();
+  });
+
+  it("pulls the enabled bots' images with the app images on update", async () => {
+    readConfig.mockReturnValue({ bots: ["telegram"] });
+
+    await pullSelfhostImages("/no/such/repo", "v1.2.3");
+
+    expect(composeFilesOfCall(0)).toContain("docker-compose.bot-telegram.yml");
+    expect(spawn.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining(["pull", "gaia-backend", "bot-telegram"]),
+    );
+  });
+
+  it("stops the bots with the stack", async () => {
+    readConfig.mockReturnValue({ bots: ["slack"] });
+    const repo = mkdtempSync(path.join(tmpdir(), "gaia-stop-"));
+    mkdirSync(path.join(repo, "apps", "api"), { recursive: true });
+    writeFileSync(
+      path.join(repo, "apps", "api", ".env"),
+      "SETUP_MODE=selfhost\n",
+    );
+
+    await stopServices(repo);
+    rmSync(repo, { recursive: true, force: true });
+
+    expect(composeFilesOfCall(0)).toContain("docker-compose.bot-slack.yml");
   });
 });
 

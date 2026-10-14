@@ -14,6 +14,7 @@ vi.mock("../../src/lib/version.js", () => ({
 import {
   areServicesRunning,
   checkApiHealth,
+  checkBots,
   checkComposeContainers,
   checkDiskHeadroom,
   checkDockerDaemon,
@@ -494,6 +495,53 @@ describe("checkComposeContainers", () => {
     });
 
     expect(result.state).toBe("skipped");
+  });
+});
+
+describe("checkBots", () => {
+  it("reports nothing when no bot is enabled", async () => {
+    expect(await checkBots([], "gaia-selfhost")).toEqual([]);
+    expect(mockedExeca).not.toHaveBeenCalled();
+  });
+
+  it("warns per bot: healthy passes, a restarting or absent bot fails", async () => {
+    const stdout = [
+      "bot-telegram|running|Up 2 minutes (healthy)",
+      "bot-discord|restarting|Restarting (1) 5 seconds ago",
+    ].join("\n");
+    mockedExeca.mockResolvedValueOnce({ stdout } as Awaited<ResultPromise>);
+
+    const results = await checkBots(
+      ["telegram", "discord", "slack"],
+      "gaia-selfhost",
+    );
+
+    expect(results.map((r) => [r.id, r.state, r.severity])).toEqual([
+      ["bot-telegram", "ok", "warning"],
+      ["bot-discord", "fail", "warning"],
+      ["bot-slack", "fail", "warning"],
+    ]);
+    expect(results[1]?.fix).toContain("logs bot-discord");
+    expect(results[2]?.detail).toBe("not created");
+  });
+
+  it("fails a running bot whose healthcheck is failing", async () => {
+    mockedExeca.mockResolvedValueOnce({
+      stdout: "bot-slack|running|Up 3 minutes (unhealthy)",
+    } as Awaited<ResultPromise>);
+
+    const [result] = await checkBots(["slack"], "gaia-selfhost");
+
+    expect(result?.state).toBe("fail");
+    expect(result?.detail).toBe("running, unhealthy");
+  });
+
+  it("skips every bot when the daemon is down", async () => {
+    mockedExeca.mockRejectedValueOnce(new Error("daemon down"));
+
+    const results = await checkBots(["telegram"], "gaia-selfhost");
+
+    expect(results.map((r) => r.state)).toEqual(["skipped"]);
   });
 });
 
