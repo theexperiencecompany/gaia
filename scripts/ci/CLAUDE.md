@@ -18,7 +18,8 @@ lane without grepping the workflow first.
 | Running the Python suite | `pytest.sh` | `slices`, `slice`, `flake-gate`, `regression-proof` |
 | Is the suite strong enough | `mutation.sh` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch` |
-| What this PR changed | `changes.sh` | `files`, `py-source`, `docker-inputs` |
+| What this PR changed | `changes.sh` | `base`, `files`, `py-source`, `docker-inputs`, `selfhost-inputs` |
+| The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `playwright-pin`, `alert-rule-tools`, `evlog` |
 | Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `doc-comments` |
 | The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
