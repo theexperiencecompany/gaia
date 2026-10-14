@@ -12,6 +12,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.user_models import UserDocument
 from app.services.oauth.oauth_service import check_multiple_integrations_status
+from app.services.platform_link_service import linked_platforms_of
 
 _TODOS_IN_USE_THRESHOLD = 5
 
@@ -53,8 +54,7 @@ async def has_workflow(user: UserDocument) -> bool:
 # Async without await is intentional: uniform SKIP_PREDICATES interface (see module docstring).
 async def linked_platform(user: UserDocument) -> bool:  # NOSONAR python:S7503
     """Return True once the user linked any chat platform (WhatsApp/Telegram/Slack/Discord)."""
-    links = user.platform_links or {}
-    return any(isinstance(link, dict) and link.get("id") for link in links.values())
+    return bool(linked_platforms_of(user))
 
 
 SKIP_PREDICATES: Mapping[str, Callable[[UserDocument], Awaitable[bool]]] = {
