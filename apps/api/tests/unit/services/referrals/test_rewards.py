@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from dodopayments import NotFoundError
 import httpx
+from pymongo.errors import PyMongoError
 import pytest
 import time_machine
 
@@ -707,6 +708,27 @@ class TestTheNewsReachesEveryChannel:
             error_type="ConnectionError",
         )
         seams.announced.assert_not_awaited()
+
+    async def test_a_failed_announcement_stamp_neither_fails_the_payment_nor_skips_the_email(
+        self, seams: Seams
+    ) -> None:
+        seams.notify.return_value = _record(("telegram", NotificationStatus.DELIVERED, False))
+        seams.announced.side_effect = PyMongoError("mongo down")
+
+        await record_friend_payment(_payment())
+
+        seams.email.assert_awaited_once()
+        assert seams.announced.await_args_list == [
+            call(REFERRER.id, ReferralNudge.REWARD_DM),
+            call(REFERRER.id, ReferralNudge.REWARD_EMAIL),
+        ]
+        seams.log.error.assert_any_call(
+            "Referral reward announcement was not recorded",
+            user_id=REFERRER.id,
+            nudge=ReferralNudge.REWARD_DM.value,
+            error="mongo down",
+            error_type="PyMongoError",
+        )
 
     async def test_a_note_delivered_on_a_chat_platform_starts_the_week(self, seams: Seams) -> None:
         seams.notify.return_value = _record(
