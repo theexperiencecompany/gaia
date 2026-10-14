@@ -20,9 +20,11 @@ from app.services.email import (
     send_referral_reward_email,
     send_welcome_email,
 )
+from app.services.email.models import EmailMessage, ReferralInviteEmail
 from app.services.email.senders import (
     LIMIT_EMAIL_WINDOW,
     send_limit_reached_email,
+    send_referral_invite_email,
     send_workflows_paused_email,
 )
 from tests.helpers import captured_wide_event
@@ -443,7 +445,7 @@ class TestSendReferralRewardEmail:
     @patch(f"{SENDERS}.build_unsubscribe_url", return_value="https://heygaia.io/unsub")
     @patch(f"{SENDERS}.send_email")
     async def test_the_real_template_tells_who_joined_and_when_the_bill_moves(
-        self, mock_send, _mock_url, _mock_headers
+        self, mock_send, mock_url, mock_headers
     ) -> None:
         await send_referral_reward_email(
             ReferralRewardEmail(
@@ -465,3 +467,66 @@ class TestSendReferralRewardEmail:
         assert "Your next bill moves to Dec 14. Enjoy the free month." in message.html
         assert f"{settings.FRONTEND_URL}/settings/referrals" in message.html
         assert "https://heygaia.io/unsub" in message.html
+        assert "Hey Aryan," in message.html
+        assert "Share with another friend" in message.html
+        mock_url.assert_called_once_with(SENDER_USER_ID)
+        mock_headers.assert_called_once_with(SENDER_USER_ID)
+
+
+class TestSendReferralInviteEmail:
+    INVITE = ReferralInviteEmail(
+        to="priya@example.com",
+        referrer_name="Aryan",
+        referrer_email="aryan@example.com",
+        referrer_picture="https://p/aryan.png",
+        price_line="$15/month for your first 2 months",
+        regular_price_line="$30/month",
+        invite_link="https://heygaia.io/invite/aryan-k7f2",
+        unsubscribe_url="https://api.heygaia.io/api/v1/referrals/unsubscribe/tok",
+    )
+
+    @patch(f"{SENDERS}.send_email")
+    @patch(f"{SENDERS}.render_email_template", return_value="<h1>Gift</h1>")
+    async def test_the_invite_comes_from_gaia_under_the_referrers_name_and_replies_to_them(
+        self, mock_render, mock_send
+    ):
+        await send_referral_invite_email(self.INVITE)
+
+        mock_render.assert_called_once_with(
+            "referral_invite.html",
+            referrer_name="Aryan",
+            referrer_picture="https://p/aryan.png",
+            price_line="$15/month for your first 2 months",
+            regular_price_line="$30/month",
+            cta_url="https://heygaia.io/invite/aryan-k7f2",
+            cta_label="Open your gift",
+            unsubscribe_url="https://api.heygaia.io/api/v1/referrals/unsubscribe/tok",
+        )
+        mock_send.assert_awaited_once_with(
+            EmailMessage(
+                sender="Aryan via GAIA <invites@heygaia.io>",
+                to=["priya@example.com"],
+                subject="Aryan sent you a gift!",
+                html="<h1>Gift</h1>",
+                reply_to="aryan@example.com",
+                headers={
+                    "List-Unsubscribe": "<https://api.heygaia.io/api/v1/referrals/unsubscribe/tok>",
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                },
+            )
+        )
+
+    @patch(f"{SENDERS}.send_email")
+    async def test_the_rendered_invite_links_the_gift_and_the_opt_out(self, mock_send):
+        await send_referral_invite_email(self.INVITE)
+
+        html = mock_send.call_args.args[0].html
+        assert "https://heygaia.io/invite/aryan-k7f2" in html
+        assert "https://api.heygaia.io/api/v1/referrals/unsubscribe/tok" in html
+        assert "$15/month for your first 2 months" in html
+
+    @patch(f"{SENDERS}.send_email", side_effect=RuntimeError("provider refused"))
+    @patch(f"{SENDERS}.render_email_template", return_value="<h1>Gift</h1>")
+    async def test_a_refused_invite_raises(self, mock_render, mock_send):
+        with pytest.raises(RuntimeError, match="provider refused"):
+            await send_referral_invite_email(self.INVITE)

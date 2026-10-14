@@ -20,12 +20,13 @@ export function useChatCardNudge(turnId: string, enabled: boolean) {
     retry: false,
     refetchOnWindowFocus: false,
   });
-  const dismissal = useMutation({ mutationFn: referralsApi.dismissChatCard });
+  // Hidden straight away and never refetched: a refetch would claim the week again.
+  const dismissal = useMutation({
+    mutationFn: referralsApi.dismissChatCard,
+    onMutate: () => {
+      queryClient.setQueryData(chatCardKey(turnId), { show: false });
+    },
+  });
 
-  const dismiss = () => {
-    queryClient.setQueryData(chatCardKey(turnId), { show: false });
-    dismissal.mutate();
-  };
-
-  return { show: claim.data?.show === true, dismiss };
+  return { show: claim.data?.show === true, dismiss: () => dismissal.mutate() };
 }

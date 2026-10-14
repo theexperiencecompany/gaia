@@ -43,7 +43,8 @@ def first_name_of(user: UserDocument) -> str | None:
 
 
 def _code_name(first_name: str | None) -> str:
-    ascii_name = unicodedata.normalize("NFKD", first_name or "").encode("ascii", "ignore").decode()
+    decomposed = unicodedata.normalize("NFKD", first_name or "")
+    ascii_name = "".join(char for char in decomposed if char.isascii())
     letters = _NOT_A_LETTER.sub("", ascii_name.lower())[:CODE_NAME_MAX_LENGTH]
     return letters or CODE_NAME_FALLBACK
 
@@ -81,6 +82,5 @@ async def ensure_code(user: UserDocument) -> str:
     raise AppError(
         message="Could not create a referral code",
         why=f"{CODE_MINT_ATTEMPTS} random suffixes in a row were already taken",
-        status_code=500,
         meta={"user_id": user.id},
     )

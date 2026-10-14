@@ -70,6 +70,19 @@ class TestRelease:
         assert ReferralNudge.WEEK_ONE_DM not in state.sent_at
         assert await _claim(repo, ReferralNudge.WEEK_ONE_DM, once=True)
 
+    async def test_a_released_repeat_restores_the_nudges_previous_stamp(self, repo):
+        earlier = NOW - timedelta(days=10)
+        await _claim(repo, ReferralNudge.CHAT_CARD, at=earlier)
+        before = await repo.get("u1")
+        await _claim(repo, ReferralNudge.CHAT_CARD)
+
+        await repo.release("u1", ReferralNudge.CHAT_CARD, NOW, prior=before)
+
+        state = await repo.get("u1")
+        assert state is not None
+        assert state.last_nudged_at == earlier
+        assert state.sent_at == {ReferralNudge.CHAT_CARD: earlier}
+
     async def test_releasing_a_first_ever_claim_leaves_no_window(self, repo):
         await _claim(repo)
         await repo.release("u1", ReferralNudge.CHAT_CARD, NOW, prior=None)
@@ -113,3 +126,8 @@ class TestDismiss:
         third = await repo.record_dismissal("u1", NOW + PAUSE, dismissals_to_pause=2, pause=PAUSE)
         assert third.dismissals == 1
         assert third.paused_until == NOW + PAUSE
+
+
+def test_a_state_that_vanished_mid_update_fails_loudly() -> None:
+    with pytest.raises(RuntimeError, match="^referral nudge state for u1 vanished mid-update$"):
+        ReferralNudgesRepository._require(None, "u1")

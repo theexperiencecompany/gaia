@@ -56,7 +56,11 @@ function OgPreview({ copyVariant }: PreviewProps) {
           {/* biome-ignore lint/performance/noImgElement: previews a dynamic dev route, next/image would re-encode it. */}
           <img
             src={`/dev/referrals/og?copy=${copyVariant}&fixture=${key}`}
-            alt={`Invite OG image, ${key}`}
+            alt={
+              key === "photo"
+                ? "Invite link preview with the referrer's picture"
+                : "Invite link preview without a picture"
+            }
             width={1200}
             height={630}
             className="h-auto w-full max-w-[1200px] rounded-2xl"

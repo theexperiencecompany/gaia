@@ -142,7 +142,6 @@ def _set_first_touch_cookie(
         max_age=int(ATTRIBUTION_WINDOW.total_seconds()),
         httponly=True,
         secure=settings.ENV == "production",
-        samesite="lax",
     )
     return True
 

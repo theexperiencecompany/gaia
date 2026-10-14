@@ -3,6 +3,7 @@
 import type { ReferralCopyVariant } from "@shared/api/generated";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { randomUnit } from "@/lib/random";
 import { referralsApi } from "../api/referralsApi";
 import { LIVE_LANDING_VARIANTS } from "../referralCopy";
 
@@ -15,7 +16,7 @@ function pickLandingVariant(): ReferralCopyVariant {
   if (known) return known;
   const picked =
     LIVE_LANDING_VARIANTS[
-      Math.floor(Math.random() * LIVE_LANDING_VARIANTS.length)
+      Math.floor(randomUnit() * LIVE_LANDING_VARIANTS.length)
     ];
   localStorage.setItem(LANDING_VARIANT_KEY, picked);
   return picked;

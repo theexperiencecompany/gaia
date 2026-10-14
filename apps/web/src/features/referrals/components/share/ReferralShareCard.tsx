@@ -33,7 +33,8 @@ interface ReferralShareCardProps {
   url: string;
   prices: OfferPrices;
   copyVariant: ReferralCopyVariant;
-  onDismiss: () => void;
+  /** Omitted where the surrounding flow owns moving on, so the card has no close button. */
+  onDismiss?: () => void;
 }
 
 /** One quiet line, the gift, one way to send it. */
@@ -68,17 +69,19 @@ export function ReferralShareCard({
     <section className={`relative flex flex-col gap-4 ${classes.outer}`}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-medium text-zinc-200">{title}</h2>
-        <Button
-          isIconOnly
-          aria-label={REFERRAL_UI_COPY.maybeLater}
-          variant="light"
-          size="sm"
-          radius="full"
-          className="-mr-1.5 text-zinc-500"
-          onPress={onDismiss}
-        >
-          <CancelIcon width={14} height={14} />
-        </Button>
+        {onDismiss && (
+          <Button
+            isIconOnly
+            aria-label={REFERRAL_UI_COPY.maybeLater}
+            variant="light"
+            size="sm"
+            radius="full"
+            className="-mr-1.5 text-zinc-500"
+            onPress={onDismiss}
+          >
+            <CancelIcon width={14} height={14} />
+          </Button>
+        )}
       </div>
       <div className={`flex items-center gap-3 ${classes.inner}`}>
         <GiftIcon width={20} height={20} className="shrink-0 text-zinc-400" />

@@ -44,13 +44,12 @@ class ReferralNudgesRepository(
         ]
         if once:
             conditions.append({_sent_field(nudge): {"$exists": False}})
+        free = {"user_id": user_id, "$and": conditions}
+        take = {"$set": {"last_nudged_at": now, _sent_field(nudge): now}}
         try:
-            return await self._apply_raw_update(
-                {"user_id": user_id, "$and": conditions},
-                {"$set": {"last_nudged_at": now, _sent_field(nudge): now}},
-                scope=REPO_GLOBAL_SCOPE,
-                upsert=True,
-            )
+            # pragma: no mutate start — cache_policy is None, so scope keys nothing
+            return await self._apply_raw_update(free, take, scope=REPO_GLOBAL_SCOPE, upsert=True)
+            # pragma: no mutate end
         except DuplicateKeyError:
             # The row exists and refused the filter: the slot is taken.
             return None
@@ -68,45 +67,48 @@ class ReferralNudgesRepository(
         restored: dict[str, object] = {"last_nudged_at": prior.last_nudged_at if prior else None}
         restore: dict[str, dict[str, object]] = {"$set": restored}
         if prior_sent is None:
+            # pragma: no mutate start — $unset ignores the value
             restore["$unset"] = {_sent_field(nudge): ""}
+            # pragma: no mutate end
         else:
             restored[_sent_field(nudge)] = prior_sent
+        ours = {"user_id": user_id, _sent_field(nudge): claimed_at}
+        # pragma: no mutate start — cache_policy is None, so scope and doc_id key nothing
         await self._apply_raw_update_unfetched(
-            {"user_id": user_id, _sent_field(nudge): claimed_at},
-            restore,
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
+            ours, restore, scope=REPO_GLOBAL_SCOPE, doc_id=user_id
         )
+        # pragma: no mutate end
 
     async def stamp(self, user_id: str, nudge: ReferralNudge, now: datetime) -> None:
         """Record a message that is never held back, starting a new window from it."""
+        mine = {"user_id": user_id}
+        stamped = {"$set": {"last_nudged_at": now, _sent_field(nudge): now}}
+        # pragma: no mutate start — cache_policy is None, so scope and doc_id key nothing
         await self._apply_raw_update_unfetched(
-            {"user_id": user_id},
-            {"$set": {"last_nudged_at": now, _sent_field(nudge): now}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
-            upsert=True,
+            mine, stamped, scope=REPO_GLOBAL_SCOPE, doc_id=user_id, upsert=True
         )
+        # pragma: no mutate end
 
     async def record_dismissal(
         self, user_id: str, now: datetime, *, dismissals_to_pause: int, pause: timedelta
     ) -> ReferralNudgeStateDocument:
         """Count a dismissed nudge; the one that reaches dismissals_to_pause pauses every nudge and restarts the count."""
-        counted = await self._apply_raw_update(
-            {"user_id": user_id},
-            {"$inc": {"dismissals": 1}},
-            scope=REPO_GLOBAL_SCOPE,
-            upsert=True,
-        )
-        if counted is None or counted.dismissals < dismissals_to_pause:
-            return self._require(counted, user_id)
-        paused = await self._apply_raw_update(
-            {"user_id": user_id, "dismissals": {"$gte": dismissals_to_pause}},
-            {"$set": {"dismissals": 0, "paused_until": now + pause}},
-            scope=REPO_GLOBAL_SCOPE,
-        )
-        # A concurrent dismissal already took the pause; read what it left.
-        return self._require(paused or await self.get(user_id), user_id)
+        mine = {"user_id": user_id}
+        one_more = {"$inc": {"dismissals": 1}}
+        # pragma: no mutate start — cache_policy is None, so scope keys nothing
+        counted = await self._apply_raw_update(mine, one_more, scope=REPO_GLOBAL_SCOPE, upsert=True)
+        # pragma: no mutate end
+        state = self._require(counted, user_id)  # pragma: no mutate — upsert always returns a row
+        if state.dismissals < dismissals_to_pause:
+            return state
+        due = {"user_id": user_id, "dismissals": {"$gte": dismissals_to_pause}}
+        paused = {"$set": {"dismissals": 0, "paused_until": now + pause}}
+        # pragma: no mutate start — cache_policy is None, so scope and doc_id key nothing
+        await self._apply_raw_update_unfetched(due, paused, scope=REPO_GLOBAL_SCOPE, doc_id=user_id)
+        # pragma: no mutate end
+        # Read back rather than trust the update: a concurrent dismissal may have taken the pause.
+        latest = await self.get(user_id)
+        return self._require(latest, user_id)  # pragma: no mutate — the row exists
 
     @staticmethod
     def _require(

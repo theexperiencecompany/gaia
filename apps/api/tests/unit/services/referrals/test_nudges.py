@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.referrals import NUDGE_CAP_WINDOW, NUDGE_PAUSE, ReferralNudge
+from app.constants.referrals import (
+    NUDGE_CAP_WINDOW,
+    NUDGE_DISMISSALS_TO_PAUSE,
+    NUDGE_PAUSE,
+    ReferralNudge,
+)
 from app.models.referral_models import ReferralNudgeStateDocument
 from app.services.referrals.nudges import dismiss_nudge, record_announcement, send_pitch
 from shared.py.analytics import UserId
@@ -24,6 +29,8 @@ class Seams:
     subscribed: AsyncMock
     capture: MagicMock
     deliver: AsyncMock
+    clock: MagicMock
+    log: MagicMock
 
 
 @pytest.fixture
@@ -41,9 +48,10 @@ def seams() -> Iterator[Seams]:
         ) as subscribed,
         patch(f"{MODULE}.capture") as capture,
         patch(f"{MODULE}.datetime") as clock,
+        patch(f"{MODULE}.log") as log,
     ):
         clock.now.return_value = NOW
-        yield Seams(repo, subscribed, capture, AsyncMock(return_value=True))
+        yield Seams(repo, subscribed, capture, AsyncMock(return_value=True), clock, log)
 
 
 class TestSendPitch:
@@ -57,6 +65,16 @@ class TestSendPitch:
         seams.capture.assert_called_once_with(
             UserId(USER_ID), ReferralNudgeSent(nudge=ReferralNudge.CHAT_CARD.value)
         )
+        seams.subscribed.assert_awaited_once_with(USER_ID)
+        seams.repo.get.assert_awaited_once_with(USER_ID)
+        seams.log.set_ns.assert_called_once_with("referral", nudge="chat_card", nudge_sent=True)
+
+    async def test_the_claim_is_stamped_at_mongos_millisecond_precision(self, seams: Seams) -> None:
+        seams.clock.now.return_value = NOW.replace(microsecond=123_456)
+
+        await send_pitch(USER_ID, ReferralNudge.CHAT_CARD, seams.deliver)
+
+        assert seams.repo.claim.await_args.args[2] == NOW.replace(microsecond=123_000)
 
     async def test_a_once_only_pitch_claims_as_once_only(self, seams: Seams) -> None:
         await send_pitch(USER_ID, ReferralNudge.WEEK_ONE_DM, seams.deliver)
@@ -68,6 +86,9 @@ class TestSendPitch:
         assert await send_pitch(USER_ID, ReferralNudge.CHAT_CARD, seams.deliver) is False
         seams.deliver.assert_not_awaited()
         seams.capture.assert_not_called()
+        seams.log.set_ns.assert_called_once_with(
+            "referral", nudge="chat_card", nudge_skipped="capped"
+        )
 
     async def test_a_user_without_a_subscription_is_never_pitched(self, seams: Seams) -> None:
         seams.subscribed.return_value = None
@@ -75,6 +96,9 @@ class TestSendPitch:
         assert await send_pitch(USER_ID, ReferralNudge.NURTURE_EMAIL, seams.deliver) is False
         seams.repo.claim.assert_not_awaited()
         seams.deliver.assert_not_awaited()
+        seams.log.set_ns.assert_called_once_with(
+            "referral", nudge="nurture_email", nudge_skipped="not_subscribed"
+        )
 
     async def test_a_pitch_that_did_not_go_out_gives_the_week_back(self, seams: Seams) -> None:
         prior = ReferralNudgeStateDocument(user_id=USER_ID, last_nudged_at=NOW - timedelta(days=9))
@@ -86,13 +110,20 @@ class TestSendPitch:
             USER_ID, ReferralNudge.WEEK_ONE_DM, NOW, prior=prior
         )
         seams.capture.assert_not_called()
+        seams.log.set_ns.assert_called_once_with(
+            "referral", nudge="week_one_dm", nudge_skipped="undelivered"
+        )
 
     async def test_a_failed_delivery_gives_the_week_back_and_raises(self, seams: Seams) -> None:
+        prior = ReferralNudgeStateDocument(user_id=USER_ID, last_nudged_at=NOW - timedelta(days=9))
+        seams.repo.get.return_value = prior
         seams.deliver.side_effect = RuntimeError("provider down")
 
         with pytest.raises(RuntimeError, match="provider down"):
             await send_pitch(USER_ID, ReferralNudge.NURTURE_EMAIL, seams.deliver)
-        seams.repo.release.assert_awaited_once()
+        seams.repo.release.assert_awaited_once_with(
+            USER_ID, ReferralNudge.NURTURE_EMAIL, NOW, prior=prior
+        )
         seams.capture.assert_not_called()
 
     async def test_a_reward_note_is_not_a_pitch(self, seams: Seams) -> None:
@@ -126,10 +157,22 @@ class TestDismissNudge:
         )
 
         assert await dismiss_nudge(USER_ID, ReferralNudge.CHAT_CARD) is paused
+        seams.repo.record_dismissal.assert_awaited_once_with(
+            USER_ID, NOW, dismissals_to_pause=NUDGE_DISMISSALS_TO_PAUSE, pause=NUDGE_PAUSE
+        )
         seams.capture.assert_called_once_with(
             UserId(USER_ID),
             ReferralNudgeDismissed(nudge=ReferralNudge.CHAT_CARD.value, paused=paused),
         )
+        seams.log.set_ns.assert_called_once_with(
+            "referral", nudge="chat_card", nudge_dismissed=True, nudges_paused=paused
+        )
+
+    async def test_a_pause_ending_this_instant_is_not_a_pause(self, seams: Seams) -> None:
+        seams.repo.record_dismissal = AsyncMock(
+            return_value=ReferralNudgeStateDocument(user_id=USER_ID, paused_until=NOW)
+        )
+        assert await dismiss_nudge(USER_ID, ReferralNudge.CHAT_CARD) is False
 
     async def test_an_old_pause_is_not_this_dismissals_pause(self, seams: Seams) -> None:
         seams.repo.record_dismissal = AsyncMock(
