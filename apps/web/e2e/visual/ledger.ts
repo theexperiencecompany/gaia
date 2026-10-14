@@ -21,6 +21,8 @@ interface Transform {
   files: Set<string>;
 }
 
+const byText = (a: string, b: string) => a.localeCompare(b);
+
 const COLOR =
   "(?:zinc|slate|gray|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|primary)";
 // Tailwind utility families only, so prose like "self-hosted" inside a string never counts.
@@ -161,7 +163,7 @@ function buildLedger(hunks: Hunk[]): Map<string, Map<string, Transform>> {
         record(
           ledger,
           family,
-          `${tokens.sort().join(" ")} → ${counterpart.sort().join(" ")}`,
+          `${tokens.sort(byText).join(" ")} → ${counterpart.sort(byText).join(" ")}`,
           hunk.file,
         );
         addedFamilies.delete(family);
@@ -173,7 +175,7 @@ function buildLedger(hunks: Hunk[]): Map<string, Map<string, Transform>> {
       record(
         ledger,
         "class → prop",
-        `${orphanRemoved.sort().join(" ")} → ${props.sort().join(" ")}`,
+        `${orphanRemoved.sort(byText).join(" ")} → ${props.sort(byText).join(" ")}`,
         hunk.file,
       );
     } else {

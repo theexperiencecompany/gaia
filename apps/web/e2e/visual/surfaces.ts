@@ -41,7 +41,7 @@ function staticRoutes(routeGroup: string): string[] {
     }
   };
   walk(root);
-  return routes.sort();
+  return routes.sort((a, b) => a.localeCompare(b));
 }
 
 function toId(group: SurfaceGroup, path: string): string {
