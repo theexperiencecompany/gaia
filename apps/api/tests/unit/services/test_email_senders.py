@@ -5,6 +5,7 @@ Tests cover:
 """
 
 from datetime import UTC, datetime, timedelta
+from email.utils import getaddresses
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -489,6 +490,20 @@ class TestSendReferralInviteEmail:
         assert "https://heygaia.io/invite/aryan-k7f2" in html
         assert "https://api.heygaia.io/api/v1/referrals/unsubscribe/tok" in html
         assert "$15/month for your first 2 months" in html
+
+    @pytest.mark.parametrize(
+        "referrer_name", ["aryan@example.com", "Lee, Sam", "Dr. Ana", 'x <evil@y.com> "q"']
+    )
+    @patch(f"{SENDERS}.send_email")
+    async def test_a_name_with_specials_still_sends_from_gaias_invite_address(
+        self, mock_send, referrer_name
+    ):
+        await send_referral_invite_email(
+            self.INVITE.model_copy(update={"referrer_name": referrer_name})
+        )
+
+        sender = mock_send.call_args.args[0].sender
+        assert getaddresses([sender]) == [(f"{referrer_name} via GAIA", "invites@heygaia.io")]
 
     @patch(f"{SENDERS}.send_email", side_effect=RuntimeError("provider refused"))
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>Gift</h1>")

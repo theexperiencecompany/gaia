@@ -1,16 +1,19 @@
 """Invite emails: each address judged on its own, sent through Gmail or GAIA's domain, opted out by link."""
 
+import asyncio
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fakeredis.aioredis import FakeRedis
 import pytest
 import time_machine
 
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.referrals import (
+    INVITE_BATCH_MAX,
     INVITE_CEILING_FIX,
     INVITE_CEILING_MESSAGE,
     INVITE_CEILING_WHY,
@@ -18,6 +21,7 @@ from app.constants.referrals import (
     INVITE_NO_SENDER_EMAIL_MESSAGE,
     INVITE_NO_SENDER_EMAIL_WHY,
     INVITE_PROVIDER_REFUSED_WHY,
+    INVITE_QUOTA_KEY_TEMPLATE,
     INVITE_SEND_FAILED_FIX,
     INVITE_SEND_FAILED_MESSAGE,
     INVITE_SEND_FAILED_WHY,
@@ -47,13 +51,13 @@ from tests.factories import make_pro_plans
 
 INVITES = "app.services.referrals.invites"
 NOW = datetime(2026, 10, 14, 15, 45, 37, 123456, tzinfo=UTC)
-DAY_START = datetime(2026, 10, 14, tzinfo=UTC)
 SENDER = UserDocument(
     id="64a0000000000000000000a1",
     first_name="Aryan",
     email="aryan@example.com",
     picture="https://p/aryan.png",
 )
+QUOTA_KEY = INVITE_QUOTA_KEY_TEMPLATE.format(user_id=SENDER.id, day="2026-10-14")
 CODE = "aryan-k7f2"
 INTRO = "$15/month for your first 2 months"
 REGULAR = "$30/month"
@@ -63,7 +67,7 @@ REGULAR = "$30/month"
 class Seams:
     load_user: AsyncMock
     suppressed_among: AsyncMock
-    count_sent_since: AsyncMock
+    quota: FakeRedis
     claim: AsyncMock
     release: AsyncMock
     gmail_connected: AsyncMock
@@ -75,7 +79,7 @@ class Seams:
 
 
 @pytest.fixture
-def seams() -> Iterator[Seams]:
+def seams(fake_redis: FakeRedis) -> Iterator[Seams]:
     with (
         time_machine.travel(NOW, tick=False),
         patch(f"{INVITES}.load_user", AsyncMock(return_value=SENDER)) as load_user,
@@ -83,9 +87,6 @@ def seams() -> Iterator[Seams]:
             f"{INVITES}.email_suppression_repository.suppressed_among",
             AsyncMock(return_value=set()),
         ) as suppressed_among,
-        patch(
-            f"{INVITES}.referral_invite_repository.count_sent_since", AsyncMock(return_value=0)
-        ) as count_sent_since,
         patch(
             f"{INVITES}.referral_invite_repository.claim",
             AsyncMock(
@@ -109,7 +110,7 @@ def seams() -> Iterator[Seams]:
         yield Seams(
             load_user,
             suppressed_among,
-            count_sent_since,
+            fake_redis,
             claim,
             release,
             gmail,
@@ -180,7 +181,7 @@ class TestEachAddressIsJudgedOnItsOwn:
         seams.suppressed_among.assert_awaited_once_with(
             ["aryan@example.com", "opted@example.com", "known@example.com", "priya@example.com"]
         )
-        seams.count_sent_since.assert_awaited_once_with(SENDER.id, DAY_START)
+        assert await seams.quota.get(QUOTA_KEY) == "1"
         assert [c.args[0].recipient_email for c in seams.claim.await_args_list] == [
             "known@example.com",
             "priya@example.com",
@@ -206,14 +207,14 @@ class TestEachAddressIsJudgedOnItsOwn:
 
 class TestTheDailyCeiling:
     async def test_a_batch_reaching_exactly_the_ceiling_is_sent(self, seams: Seams) -> None:
-        seams.count_sent_since.return_value = INVITE_DAILY_SEND_CEILING - 1
+        await seams.quota.set(QUOTA_KEY, INVITE_DAILY_SEND_CEILING - 1)
 
         response = await send_invites(SENDER.id, _request("priya@example.com"))
 
         assert _statuses(response) == [("priya@example.com", ReferralInviteStatus.SENT)]
 
     async def test_a_batch_past_the_ceiling_sends_nothing(self, seams: Seams) -> None:
-        seams.count_sent_since.return_value = INVITE_DAILY_SEND_CEILING - 1
+        await seams.quota.set(QUOTA_KEY, INVITE_DAILY_SEND_CEILING - 1)
 
         with pytest.raises(AppError) as refused:
             await send_invites(SENDER.id, _request("priya@example.com", "sam@example.com"))
@@ -229,7 +230,7 @@ class TestTheDailyCeiling:
         seams.claim.assert_not_awaited()
 
     async def test_the_senders_own_and_opted_out_addresses_do_not_count(self, seams: Seams) -> None:
-        seams.count_sent_since.return_value = INVITE_DAILY_SEND_CEILING - 1
+        await seams.quota.set(QUOTA_KEY, INVITE_DAILY_SEND_CEILING - 1)
         seams.suppressed_among.return_value = {"opted@example.com"}
 
         response = await send_invites(
@@ -237,6 +238,33 @@ class TestTheDailyCeiling:
         )
 
         assert _statuses(response)[-1] == ("priya@example.com", ReferralInviteStatus.SENT)
+
+    async def test_concurrent_batches_never_send_past_the_ceiling_together(
+        self, seams: Seams
+    ) -> None:
+        async def connected_after_a_yield(*_: object) -> bool:
+            await asyncio.sleep(0)
+            return False
+
+        seams.gmail_connected.side_effect = connected_after_a_yield
+        batches = [
+            _request(*(f"friend{b}-{i}@example.com" for i in range(INVITE_BATCH_MAX)))
+            for b in range(5)
+        ]
+
+        outcomes = await asyncio.gather(
+            *(send_invites(SENDER.id, batch) for batch in batches), return_exceptions=True
+        )
+
+        sent = sum(
+            r.status is ReferralInviteStatus.SENT
+            for outcome in outcomes
+            if not isinstance(outcome, BaseException)
+            for r in outcome.results
+        )
+        assert sent == INVITE_DAILY_SEND_CEILING
+        refused = [o for o in outcomes if isinstance(o, AppError)]
+        assert [o.status_code for o in refused] == [429]
 
 
 class TestFromGaiasDomain:
@@ -298,6 +326,7 @@ class TestFromGaiasDomain:
         assert isinstance(failed.value.__cause__, ConnectionError)
         seams.release.assert_awaited_once_with("claim-priya@example.com")
         seams.capture.assert_not_called()
+        assert await seams.quota.get(QUOTA_KEY) == "0"
 
 
 class TestFromTheSendersGmail:

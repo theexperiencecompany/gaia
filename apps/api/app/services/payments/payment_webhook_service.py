@@ -31,7 +31,7 @@ from app.services.payments.subscription_events import (
 )
 from app.services.referrals.rewards import record_friend_payment
 from app.utils.money import to_major_units
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.billing import PaymentFailed, PaymentSucceeded
 from shared.py.wide_events import log
 
@@ -301,6 +301,11 @@ class PaymentWebhookService:
                 amount_charged_pre_tax=revenue.amount_charged_pre_tax,
                 currency_charged=revenue.currency_charged,
                 amount_usd_pre_tax=revenue.amount_usd_pre_tax,
+            ),
+            # Dodo redelivers a webhook whose handler failed later on (e.g. the referral reward).
+            dedupe=Dedupe(
+                key=payment_data.payment_id,
+                occurred_at=datetime.fromisoformat(payment_data.created_at),
             ),
         )
 
