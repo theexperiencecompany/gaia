@@ -7,6 +7,7 @@ import { ConfigureProviderModal } from "@/features/settings/components/providers
 import { ProviderSettingsRow } from "@/features/settings/components/providers/ProviderSettingsRow";
 import {
   groupProviderRows,
+  providerRowState,
   resolveProviderRow,
 } from "@/features/settings/components/providers/providerRows";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
@@ -49,8 +50,9 @@ export function ProvidersSettings() {
 
   const editingRow = displayRows.find((r) => r.key === editingKey) ?? null;
 
-  const sections = groupProviderRows(displayRows, (key) =>
-    isProviderConfigured(status, key),
+  const sections = groupProviderRows(
+    displayRows,
+    (key) => providerRowState(status, key) !== "not_configured",
   );
 
   return (
@@ -71,7 +73,7 @@ export function ProvidersSettings() {
             <ProviderSettingsRow
               key={row.key}
               row={row}
-              configured={isProviderConfigured(status, row.key)}
+              state={providerRowState(status, row.key)}
               overridesEnv={savedCredentialOverridesEnv(status, row.key)}
               isDisabled={isLoadingConfigs}
               onConfigure={() => setEditingKey(row.key)}

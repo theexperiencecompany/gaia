@@ -57,6 +57,16 @@ export function savedCredentialOverridesEnv(
   return status?.providers?.[key]?.env_shadowed === true;
 }
 
+/** Whether no E2B key is saved yet code still runs, in the opt-in local sandbox. */
+export function runsCodeInLocalSandbox(
+  status: SetupStatus | undefined,
+): boolean {
+  return (
+    status?.deployment.local_code_sandbox === true &&
+    !isProviderConfigured(status, "e2b")
+  );
+}
+
 /**
  * Whether Settings offers a provider's card. Cloudinary does nothing unless
  * the instance stores files there (BLOB_STORE=cloudinary).

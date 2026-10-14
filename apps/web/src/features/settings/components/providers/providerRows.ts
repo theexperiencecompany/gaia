@@ -1,7 +1,12 @@
 import type {
   CredentialProvider,
   ProviderCatalog,
+  SetupStatus,
 } from "@/features/settings/api/providersApi";
+import {
+  isProviderConfigured,
+  runsCodeInLocalSandbox,
+} from "@/features/settings/hooks/useSetupStatus";
 import type { CustomPresetKey } from "@/features/setup-wizard/utils/providerCards";
 
 /** The role a provider plays — Settings lists each role as its own section. */
@@ -208,6 +213,19 @@ export function resolveProviderRow(
   };
 }
 
+/** What a row's status badge reports. */
+export type ProviderRowState = "connected" | "local_sandbox" | "not_configured";
+
+/** A provider's state; E2B without a key still runs code in an opted-in local sandbox. */
+export function providerRowState(
+  status: SetupStatus | undefined,
+  key: CredentialProvider,
+): ProviderRowState {
+  if (isProviderConfigured(status, key)) return "connected";
+  if (key === "e2b" && runsCodeInLocalSandbox(status)) return "local_sandbox";
+  return "not_configured";
+}
+
 export interface ProviderSectionGroup {
   key: ProviderSectionKey;
   title: string;
@@ -218,14 +236,12 @@ export interface ProviderSectionGroup {
 /** Rows grouped into their sections (empty ones dropped), working providers first. */
 export function groupProviderRows(
   rows: readonly CatalogProviderRow[],
-  isConfigured: (key: CredentialProvider) => boolean,
+  isWorking: (key: CredentialProvider) => boolean,
 ): ProviderSectionGroup[] {
   return PROVIDER_SECTIONS.map((section) => ({
     ...section,
     rows: rows
       .filter((row) => row.section === section.key)
-      .toSorted(
-        (a, b) => Number(isConfigured(b.key)) - Number(isConfigured(a.key)),
-      ),
+      .toSorted((a, b) => Number(isWorking(b.key)) - Number(isWorking(a.key))),
   })).filter((section) => section.rows.length > 0);
 }

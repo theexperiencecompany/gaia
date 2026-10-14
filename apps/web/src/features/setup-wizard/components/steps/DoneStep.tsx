@@ -17,6 +17,7 @@ import type {
 import {
   isAnyLlmConfigured,
   isProviderConfigured,
+  runsCodeInLocalSandbox,
 } from "@/features/settings/hooks/useSetupStatus";
 import {
   LLM_PROVIDER_CARDS,
@@ -60,7 +61,7 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
   const capabilityReady = (requires: StarterPrompt["requires"]): boolean => {
     if (!requires) return true;
     if (requires === "sandbox")
-      return toolConfigured("e2b") || status.deployment.local_code_sandbox;
+      return toolConfigured("e2b") || runsCodeInLocalSandbox(status);
     if (requires === "inbox") return toolConfigured("composio");
     return isProviderConfigured(status, requires);
   };

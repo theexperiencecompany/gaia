@@ -2,7 +2,7 @@
 /** Settings lists providers by role, working ones first, and leaves Composio to Integrations setup. */
 
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ProviderCatalog,
   SetupStatus,
@@ -42,7 +42,9 @@ const catalog: ProviderCatalog = {
 
 const configured = new Set(["openai", "firecrawl"]);
 
-const status = {
+let status: SetupStatus;
+
+const BASE_STATUS = {
   auth_mode: "local",
   has_admin_account: true,
   registration_policy: "invite_only",
@@ -98,6 +100,10 @@ const rowLabels = (title: string) =>
     .map((label) => label.textContent);
 
 describe("ProvidersSettings", () => {
+  beforeEach(() => {
+    status = BASE_STATUS;
+  });
+
   it("groups providers by role instead of one unlabelled list", () => {
     render(<ProvidersSettings />);
 
@@ -130,6 +136,22 @@ describe("ProvidersSettings", () => {
     // Composio links out and Cloudinary isn't offered without its blob store.
     expect(screen.getAllByRole("button", { name: "Configure" })).toHaveLength(
       CATALOG_ORDER.length - 2,
+    );
+  });
+
+  it("reports the local code sandbox on the E2B row when no E2B key is set", () => {
+    status = {
+      ...BASE_STATUS,
+      deployment: { ...BASE_STATUS.deployment, local_code_sandbox: true },
+    };
+    render(<ProvidersSettings />);
+
+    const tools = section("Search & tools");
+    expect(tools.getByText("Local sandbox active")).toBeTruthy();
+    // Only Tavily is left unconfigured: Firecrawl has a key, E2B runs locally.
+    expect(tools.getAllByText("Not configured")).toHaveLength(1);
+    expect(rowLabels("Search & tools").slice(0, 2)).toEqual(
+      expect.arrayContaining(["E2B Sandbox", "Firecrawl"]),
     );
   });
 });
