@@ -9,16 +9,15 @@ import { NotificationIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
-import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { track } from "@/lib/analytics";
 import {
   type ModalConfig,
-  type ModalProps,
   NotificationStatus,
 } from "../../../types/features/notificationTypes";
 import { NotificationCard } from "./NotificationCard";
 import { NotificationConnectBanner } from "./NotificationConnectBanner";
+import { NotificationModalHost } from "./NotificationModalHost";
 import { NotificationsEmptyState } from "./NotificationsEmptyState";
 import { UnreadCountChip } from "./UnreadCountChip";
 
@@ -32,8 +31,6 @@ export function NotificationCenter({
   const [activeTab, setActiveTab] = useState<"unread" | "all">("unread");
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
-  // `props` is untyped on the wire; the component name is what makes it an EmailPreview payload.
-  const modalProps = modalConfig?.props as ModalProps | undefined;
   const router = useRouter();
 
   const notificationOptions = useMemo(
@@ -196,19 +193,11 @@ export function NotificationCenter({
         </PopoverContent>
       </Popover>
 
-      {modalConfig?.component === "EmailPreviewModal" && modalProps && (
-        <EmailPreviewModal
-          isOpen={true}
-          onClose={() => setModalConfig(null)}
-          subject={modalProps.subject || ""}
-          body={modalProps.body || ""}
-          recipients={modalProps.recipients || []}
-          mode={modalProps.mode === "view" ? "view" : "edit"}
-          onEmailSent={refetch}
-          notificationId={modalProps.notificationId}
-          actionId={modalProps.actionId}
-        />
-      )}
+      <NotificationModalHost
+        config={modalConfig}
+        onClose={() => setModalConfig(null)}
+        onEmailSent={refetch}
+      />
     </div>
   );
 }

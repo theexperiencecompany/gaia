@@ -1,5 +1,6 @@
 "use client";
 
+import { ONE_CLICK_WORKFLOW_DELIVERY } from "@gaia/shared";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
@@ -14,7 +15,6 @@ import type {
   TriggerConfigDraft,
   Workflow,
 } from "@/types/features/workflowTypes";
-import { ONE_CLICK_WORKFLOW_DELIVERY } from "../../constants/delivery";
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
 
 interface UseWorkflowCardActionsParams {
