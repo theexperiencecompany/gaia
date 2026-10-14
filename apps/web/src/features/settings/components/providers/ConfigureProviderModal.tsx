@@ -43,8 +43,6 @@ export function ConfigureProviderModal({
   // Leaving the field empty keeps it: the backend merges a partial save.
   const storedKeyHint = stored?.api_key_hint;
   const showPresetChips = row.key === "custom";
-  const awaitingPassingTest =
-    row.connectionTestable && form.testResult?.ok !== true;
   const presetChips: ReadonlyArray<{ id: CustomPresetId; label: string }> = [
     ...presets.map((p) => ({ id: p.key, label: p.label })),
     { id: "manual", label: "Manual" },
@@ -120,10 +118,11 @@ export function ConfigureProviderModal({
                 keyUrl={row.key_url}
               />
             )}
-            {awaitingPassingTest && (
-              <p className="text-xs text-zinc-500">
-                Run Test first — Save unlocks after a passing test.
-              </p>
+            {form.error && (
+              <ProviderTestResultNotice
+                result={{ ok: false, detail: form.error, models: [] }}
+                keyUrl={row.key_url}
+              />
             )}
           </ModalBody>
           <ModalFooter>
@@ -160,12 +159,12 @@ export function ConfigureProviderModal({
               color="primary"
               size="sm"
               isLoading={form.isSaving}
-              isDisabled={form.isTesting || awaitingPassingTest}
+              isDisabled={form.isTesting}
               onPress={() => {
                 void form.save();
               }}
             >
-              Save
+              {row.connectionTestable ? "Test & Save" : "Save"}
             </Button>
           </ModalFooter>
         </ModalContent>

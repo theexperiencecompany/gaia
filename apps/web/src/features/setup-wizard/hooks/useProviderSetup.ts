@@ -2,67 +2,34 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
-  extractProviderError,
   getProviderErrorHint,
   type ProviderConfigBody,
-  providersApi,
 } from "@/features/settings/api/providersApi";
+import { useProviderConnect } from "@/features/settings/hooks/useProviderConnect";
 import type { CustomPreset, ProviderCard } from "../utils/providerCards";
 
-export type ProviderSetupPhase = "saving" | "testing";
-
-export interface ProviderTestOutcome {
-  ok: boolean;
-  detail: string;
-  modelCount: number;
-}
-
 /**
- * State + connect flow for one provider card. Credentials are tested via the
- * test endpoint's body before anything is stored; untestable providers
- * (Tavily) skip straight to saving. The base URL starts at the catalog
- * default; the model stays empty (the backend runs its catalog default) unless
- * the user types one or picks a Custom preset.
+ * Draft credentials for one wizard provider card, connected through the shared
+ * flow. The base URL starts at the catalog default; the model stays empty (the
+ * backend runs its catalog default) unless the user types one or picks a preset.
  */
 export function useProviderSetup(config: ProviderCard, onSaved: () => void) {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(config.base_url);
   const [model, setModel] = useState("");
   const [preset, setPreset] = useState<CustomPreset | null>(null);
-  const [phase, setPhase] = useState<ProviderSetupPhase | null>(null);
-  const [outcome, setOutcome] = useState<ProviderTestOutcome | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const isBusy = phase !== null;
-
-  /** A new attempt invalidates whatever the previous attempt reported. */
-  const resetResult = useCallback(() => {
-    setOutcome(null);
-    setError(null);
-  }, []);
-
-  const updateApiKey = useCallback(
-    (value: string) => {
-      setApiKey(value);
-      resetResult();
-    },
-    [resetResult],
+  const { isBusy, outcome, error, reset, connect } = useProviderConnect(
+    config.key,
+    { connectionTestable: config.connectionTestable, onSaved },
   );
 
-  const updateBaseUrl = useCallback(
-    (value: string) => {
-      setBaseUrl(value);
-      resetResult();
+  // A new attempt invalidates whatever the previous attempt reported.
+  const edit = useCallback(
+    (setter: (value: string) => void) => (value: string) => {
+      setter(value);
+      reset();
     },
-    [resetResult],
-  );
-
-  const updateModel = useCallback(
-    (value: string) => {
-      setModel(value);
-      resetResult();
-    },
-    [resetResult],
+    [reset],
   );
 
   const applyPreset = useCallback(
@@ -70,9 +37,9 @@ export function useProviderSetup(config: ProviderCard, onSaved: () => void) {
       setPreset(selected);
       setBaseUrl(selected ? selected.base_url : config.base_url);
       setModel(selected ? selected.default_model : "");
-      resetResult();
+      reset();
     },
-    [config.base_url, resetResult],
+    [config.base_url, reset],
   );
 
   const body = useMemo((): ProviderConfigBody => {
@@ -84,70 +51,27 @@ export function useProviderSetup(config: ProviderCard, onSaved: () => void) {
     return result;
   }, [apiKey, baseUrl, model, preset]);
 
-  const connect = useCallback(async () => {
-    resetResult();
-    try {
-      if (config.connectionTestable) {
-        setPhase("testing");
-        const test = await providersApi.testProvider(config.key, body);
-        if (!test.ok) {
-          // Red pill with the probe's detail — and nothing persisted.
-          setOutcome({
-            ok: false,
-            detail: test.detail,
-            modelCount: test.models?.length ?? 0,
-          });
-          return;
-        }
-        setOutcome({
-          ok: true,
-          detail: test.detail,
-          modelCount: test.models?.length ?? 0,
-        });
-      }
-      setPhase("saving");
-      await providersApi.upsertProvider(config.key, body);
-      if (!config.connectionTestable) {
-        setOutcome({ ok: true, detail: "Saved", modelCount: 0 });
-      }
-      // Clear the pasted key so a re-opened card never shows stale secret
-      // material; the stored credential is server-side from here on.
-      setApiKey("");
-      onSaved();
-    } catch (err) {
-      // Thrown only when the test probe or the persist call itself fails
-      // (network, 5xx) — nothing was stored, so say exactly that.
-      setError(
-        extractProviderError(err) ??
-          "Couldn't reach GAIA to save — check your connection and try again. Your key wasn't stored.",
-      );
-    } finally {
-      setPhase(null);
-    }
-  }, [config.key, config.connectionTestable, body, onSaved, resetResult]);
+  const save = useCallback(async () => {
+    // A stored key never lingers in the card; the server holds it from here on.
+    if (await connect(body)) setApiKey("");
+  }, [connect, body]);
 
-  const errorHint = error ? getProviderErrorHint(error, config.key_url) : null;
-  const outcomeHint =
-    outcome && !outcome.ok
-      ? getProviderErrorHint(outcome.detail, config.key_url)
-      : null;
-  const hint = errorHint ?? outcomeHint;
+  const failure = error ?? (outcome && !outcome.ok ? outcome.detail : null);
+  const hint = failure ? getProviderErrorHint(failure, config.key_url) : null;
 
   return {
     apiKey,
-    setApiKey: updateApiKey,
+    setApiKey: edit(setApiKey),
     baseUrl,
-    setBaseUrl: updateBaseUrl,
+    setBaseUrl: edit(setBaseUrl),
     model,
-    setModel: updateModel,
+    setModel: edit(setModel),
     preset,
     applyPreset,
     isBusy,
     outcome,
     error,
     hint,
-    errorHint,
-    outcomeHint,
-    connect,
+    connect: save,
   };
 }

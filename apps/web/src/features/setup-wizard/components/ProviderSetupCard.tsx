@@ -1,35 +1,23 @@
 /**
  * One provider card inside the setup wizard: brand favicon, credential
  * inputs (per provider shape), preset chips for OpenAI-compatible endpoints,
- * and an inline connect flow that probes then persists the credential,
- * rendering the result (Connected · N models, Saved, or the failure detail)
- * in place. Providers the backend cannot probe (Tavily) save directly.
+ * and the shared connect flow (probe, then store), rendering the result
+ * (Connected · N models, Saved, or the failure detail) in place. Providers
+ * the backend cannot probe (Tavily) save directly.
  */
 
 "use client";
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Link } from "@heroui/link";
-import {
-  Alert01Icon,
-  KeyIcon,
-  McpServerIcon,
-  SquareArrowUpRight02Icon,
-  Tick02Icon,
-} from "@icons";
+import { KeyIcon, McpServerIcon } from "@icons";
 import Image from "next/image";
-import { useState } from "react";
-import CopyButton from "@/components/ui/CopyButton";
-import {
-  extractProviderError,
-  getProviderErrorHint,
-  providerFaviconUrl,
-  providersApi,
-} from "@/features/settings/api/providersApi";
+import { providerFaviconUrl } from "@/features/settings/api/providersApi";
 import { ProviderApiKeyInput } from "@/features/settings/components/providers/ProviderApiKeyInput";
 import { useProviderSetup } from "../hooks/useProviderSetup";
 import type { CustomPreset, ProviderCard } from "../utils/providerCards";
+import { OllamaOneClick } from "./OllamaOneClick";
+import { ProviderOutcomeLine } from "./ProviderOutcomeLine";
 
 interface ProviderSetupCardProps {
   config: ProviderCard;
@@ -133,7 +121,7 @@ export function ProviderSetupCard({
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <OutcomeLine
+        <ProviderOutcomeLine
           outcome={outcome}
           error={error}
           hint={hint}
@@ -152,186 +140,6 @@ export function ProviderSetupCard({
         </Button>
       </div>
     </div>
-  );
-}
-
-function OllamaOneClick({
-  config,
-  parentBusy,
-  onSaved,
-}: {
-  config: ProviderCard;
-  parentBusy: boolean;
-  onSaved: () => void;
-}) {
-  const [ollamaBusy, setOllamaBusy] = useState(false);
-  const [ollamaOutcome, setOllamaOutcome] =
-    useState<ReturnType<typeof useProviderSetup>["outcome"]>(null);
-  const [ollamaError, setOllamaError] = useState<string | null>(null);
-  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-
-  const handleOllamaOneClick = async () => {
-    setOllamaBusy(true);
-    setOllamaOutcome(null);
-    setOllamaError(null);
-    setOllamaModels([]);
-    const body = {
-      base_url: config.base_url,
-      model: config.default_model,
-    };
-    try {
-      // Probe first, save second: an unreachable endpoint must not flip the
-      // wizard to "ready".
-      const test = await providersApi.testProvider("ollama", body);
-      if (!test.ok) {
-        setOllamaOutcome({
-          ok: false,
-          detail: test.detail,
-          modelCount: test.models?.length ?? 0,
-        });
-        return;
-      }
-      await providersApi.upsertProvider("ollama", body);
-      setOllamaModels(test.models ?? []);
-      setOllamaOutcome({
-        ok: true,
-        detail: test.detail,
-        modelCount: test.models?.length ?? 0,
-      });
-      onSaved();
-    } catch (err) {
-      setOllamaError(
-        extractProviderError(err) ??
-          "Couldn't reach GAIA to save — check your connection and try again. Your key wasn't stored.",
-      );
-    } finally {
-      setOllamaBusy(false);
-    }
-  };
-
-  const hint = (() => {
-    if (ollamaError) return getProviderErrorHint(ollamaError, config.key_url);
-    if (ollamaOutcome && !ollamaOutcome.ok)
-      return getProviderErrorHint(ollamaOutcome.detail, config.key_url);
-    if (ollamaOutcome?.ok && ollamaModels.length > 0) {
-      const wanted = config.default_model;
-      const pulled = ollamaModels.some(
-        (m) =>
-          m === wanted || m.endsWith(`:${wanted}`) || wanted.endsWith(`:${m}`),
-      );
-      if (!pulled)
-        return (
-          `Connected, but ${wanted} isn't pulled yet — ` +
-          `run ollama pull ${wanted}, then chat.`
-        );
-    }
-    return null;
-  })();
-
-  return (
-    <div className="mb-3 rounded-xl bg-zinc-900 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-zinc-100">
-            Quick setup — local Ollama
-          </p>
-          <p className="text-xs text-zinc-500">
-            Free, no API key needed. One click to use your local model.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          color="primary"
-          variant="flat"
-          isLoading={ollamaBusy}
-          isDisabled={ollamaBusy || parentBusy}
-          onPress={handleOllamaOneClick}
-        >
-          Use local Ollama
-        </Button>
-      </div>
-      <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-        Requires Ollama running on your host —{" "}
-        <Link
-          href="https://ollama.com"
-          isExternal
-          size="sm"
-          className="text-xs"
-        >
-          ollama.com <SquareArrowUpRight02Icon size={10} />
-        </Link>
-      </p>
-      <div className="mt-2 flex items-center gap-2 rounded-xl bg-zinc-800 py-1 pr-1 pl-3">
-        <code className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-300">
-          ollama pull {config.default_model} && ollama serve
-        </code>
-        <CopyButton
-          textToCopy={`ollama pull ${config.default_model} && ollama serve`}
-          variant="light"
-          size="sm"
-          className="shrink-0 text-zinc-400"
-        />
-      </div>
-      {(ollamaOutcome || ollamaError) && (
-        <div className="mt-2">
-          <OutcomeLine
-            outcome={ollamaOutcome}
-            error={ollamaError}
-            hint={hint}
-            savedLabel="Saved"
-            showModelCount={false}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OutcomeLine({
-  outcome,
-  error,
-  hint,
-  savedLabel,
-  showModelCount,
-}: {
-  outcome: ReturnType<typeof useProviderSetup>["outcome"];
-  error: string | null;
-  hint?: string | null;
-  /** Label for a successful outcome — probed providers connect, others save. */
-  savedLabel: string;
-  showModelCount: boolean;
-}) {
-  const failure =
-    error ?? (outcome && !outcome.ok ? outcome.detail || "Test failed" : null);
-  if (failure) {
-    return (
-      <div className="flex min-w-0 flex-col gap-1">
-        <span
-          title={failure}
-          className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400"
-        >
-          <Alert01Icon height={14} className="shrink-0" />
-          <span className="truncate">{failure}</span>
-        </span>
-        {hint && (
-          <span className="text-xs leading-relaxed text-zinc-500">{hint}</span>
-        )}
-      </div>
-    );
-  }
-  if (!outcome) return null;
-  const countLabel =
-    showModelCount && outcome.modelCount > 0
-      ? ` · ${outcome.modelCount} models`
-      : "";
-  return (
-    <span className="flex min-w-0 items-center gap-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs text-emerald-400">
-      <Tick02Icon height={14} className="shrink-0" />
-      <span className="truncate">
-        {savedLabel}
-        {countLabel}
-      </span>
-    </span>
   );
 }
 
