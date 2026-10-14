@@ -51,6 +51,13 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             query["kind"] = kind
         return await self._find(query, sort=[("created_at", -1)], limit=limit)
 
+    async def list_stamped(self, user_id: str) -> list[BriefingModel]:
+        """Return the briefs that carried an Air Mail city stamp, oldest first."""
+        return await self._find(
+            {"user_id": user_id, "payload.stamp_city": {"$ne": None}},
+            sort=[("date", 1)],
+        )
+
     async def has_daily_briefing(self, user_id: str) -> bool:
         """Whether the user has ever received a daily briefing (first-briefing gate)."""
         return await self._count({"user_id": user_id, "kind": BRIEFING_KIND_DAILY}) > 0

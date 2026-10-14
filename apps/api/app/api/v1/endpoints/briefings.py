@@ -1,4 +1,4 @@
-"""Briefing read endpoints: the archive, and one brief opened on its own page."""
+"""Briefing read endpoints: the archive, the Postmarks stamp collection, and one brief."""
 
 from typing import Annotated
 
@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingListResponse, BriefingModel
+from app.models.briefing_models import BriefingListResponse, BriefingModel, PostmarksResponse
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.briefing.postmarks import collected_postmarks
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.briefings import BriefingOpened
+from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/briefings", tags=["Briefings"])
@@ -26,6 +27,20 @@ async def list_briefings(
     log.set(user={"id": user_id}, briefing={"operation": "list", "limit": limit})
     briefings = await briefing_repository.list_recent(user_id, limit=limit)
     return BriefingListResponse(briefings=briefings)
+
+
+@router.get("/postmarks")
+async def get_postmarks(
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> PostmarksResponse:
+    """The Air Mail city stamps the user has collected, each linked to its brief."""
+    user_id = user.user_id
+    log.set(user={"id": user_id}, briefing={"operation": "postmarks"})
+    postmarks = await collected_postmarks(user_id)
+    collected = len(postmarks.postmarks)
+    log.set_ns("briefing", postmarks_collected=collected)
+    capture(UserId(user_id), BriefingPostmarksViewed(collected=collected, total=postmarks.total))
+    return postmarks
 
 
 @router.get("/{briefing_id}")

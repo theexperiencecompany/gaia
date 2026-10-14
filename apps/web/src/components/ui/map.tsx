@@ -22,6 +22,15 @@ import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 
+// maplibre-gl 6 resolves its tile worker next to its own module URL, which a
+// bundled chunk does not serve, so vector and GeoJSON sources silently never
+// load. Upstream mapcn's fix: the worker from unpkg, pinned to this version.
+if (typeof window !== "undefined" && !MapLibreGL.getWorkerUrl()) {
+  MapLibreGL.setWorkerUrl(
+    `https://unpkg.com/maplibre-gl@${MapLibreGL.getVersion()}/dist/maplibre-gl-worker.mjs`,
+  );
+}
+
 const defaultStyles = {
   dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",

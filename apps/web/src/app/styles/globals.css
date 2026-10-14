@@ -688,6 +688,15 @@
   .maplibregl-popup-tip {
     @apply hidden!;
   }
+  .maplibregl-ctrl-attrib {
+    @apply bg-zinc-900/70! text-zinc-500!;
+  }
+  .maplibregl-ctrl-attrib a {
+    @apply text-zinc-400!;
+  }
+  .maplibregl-ctrl-attrib-button {
+    @apply invert opacity-60;
+  }
 }
 
 /* --- Non-critical component styles (from globals.css) --- */

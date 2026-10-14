@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { PostmarksSettings } from "@/features/briefing";
 import AccountSettings from "@/features/settings/components/AccountSettings";
 import BrowserSettings from "@/features/settings/components/BrowserSettings";
 import DesktopSettings from "@/features/settings/components/DesktopSettings";
@@ -46,6 +47,7 @@ const SECTION_PANELS: Record<
   memory: () => <MemorySettings />,
   skills: () => <SkillsSettings />,
   notifications: () => <NotificationSettings />,
+  postmarks: () => <PostmarksSettings />,
   devices: () => <DevicesSettings />,
   browser: () => <BrowserSettings />,
   experimental: () => <ExperimentalFeaturesSettings />,
