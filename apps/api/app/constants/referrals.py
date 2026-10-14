@@ -161,7 +161,12 @@ AUTOMATED_DOMAIN_MARKERS = (
     "resource.calendar.google.com",
     "lists.",
     "list.",
+    "unsubscribe",
 )
+
+# A mailbox whose local part holds every word of the user's full name is another of theirs.
+SELF_NAME_MIN_WORDS = 2
+SELF_NAME_MIN_WORD_LENGTH = 3
 
 # ---- Locks -------------------------------------------------------------------
 

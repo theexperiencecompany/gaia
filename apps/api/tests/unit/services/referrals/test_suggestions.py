@@ -256,6 +256,8 @@ async def test_nothing_connected_suggests_nobody(sources) -> None:
         ("teamlead.ana@corp.com", False),
         # The domain is what follows the last @; a quoted local part may hold one.
         ('"team@no-reply"@example.com', True),
+        ("32.mrtvgqtl@unsubscribe2.customer.io", True),
+        ("bounces+123@em.mailer.com", True),
     ],
 )
 def test_robots_and_lists_are_recognised(address: str, automated: bool) -> None:
@@ -318,3 +320,45 @@ async def test_without_gmail_no_send_as_aliases_are_read(sources) -> None:
     await suggest_invitees(ME.id)
 
     sources.gmail_tool.assert_not_awaited()
+
+
+async def test_a_mailbox_named_after_the_user_is_their_own(sources) -> None:
+    named = ME.model_copy(update={"name": "Aryan Randeriya"})
+    sources.load_user.return_value = named
+    sources.connected.return_value = {"gmail": True}
+    sources.mail.return_value = GmailMessagesResponse(
+        messages=[
+            _sent("aryan.k.randeriya@gmail.com, randeriya.family@gmail.com"),
+            _sent("Aryan Shah <aryan@corp.com>"),
+        ]
+    )
+
+    response = await suggest_invitees(named.id)
+
+    assert [s.email for s in response.suggestions] == [
+        "randeriya.family@gmail.com",
+        "aryan@corp.com",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("name", "address", "own"),
+    [
+        ("Ana Lee", "ana.lee.home@gmail.com", True),
+        ("Ana Lee", "ana@corp.com", False),
+        ("Aryan", "aryan@corp.com", False),
+        ("Al Bo", "al.bo@corp.com", False),
+        (None, "me.too@corp.com", False),
+    ],
+)
+async def test_only_a_full_name_match_marks_a_mailbox_as_the_users(
+    sources, name: str | None, address: str, own: bool
+) -> None:
+    named = ME.model_copy(update={"name": name})
+    sources.load_user.return_value = named
+    sources.connected.return_value = {"gmail": True}
+    sources.mail.return_value = GmailMessagesResponse(messages=[_sent(address)])
+
+    response = await suggest_invitees(named.id)
+
+    assert [s.email for s in response.suggestions] == ([] if own else [address])
