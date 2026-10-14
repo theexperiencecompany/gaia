@@ -12,7 +12,7 @@ const SETUP_STATUS_QUERY_KEY = ["setup", "status"] as const;
 
 /**
  * Instance setup status (public endpoint). Single shared react-query cache
- * entry for every consumer — the setup wizard, the checklist card, the
+ * entry for every consumer — the setup wizard, the setup checklist banner, the
  * settings menu/sidebar and the providers settings page.
  */
 export function useSetupStatus() {
