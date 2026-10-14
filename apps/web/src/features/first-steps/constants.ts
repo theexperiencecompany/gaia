@@ -14,11 +14,13 @@ export const FIRST_STEPS_QUERY_KEY = ["first-steps"] as const;
  * completed in another tab or on a bot shows up without a reload. */
 export const FIRST_STEPS_POLL_INTERVAL_MS = 60_000;
 
-/** Routes where the floating widget must stay hidden: the onboarding wizard,
- * and the dashboard, which already shows the full-width card. */
-export const FIRST_STEPS_WIDGET_HIDDEN_PATHS: readonly string[] = [
+/** Route trees where the floating widget must stay hidden: the onboarding
+ * wizard, the dashboard (which shows the full-width card), and settings, whose
+ * full-width rows would sit under the panel. */
+export const FIRST_STEPS_WIDGET_HIDDEN_ROUTES: readonly string[] = [
   "/onboarding",
   "/dashboard",
+  "/settings",
 ];
 
 export const SAY_HI_PROMPT = "What can you do for me?";

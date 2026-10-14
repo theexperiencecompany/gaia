@@ -150,4 +150,20 @@ describe("FirstStepsWidget", () => {
     await waitFor(() => expect(fetchFirstSteps).toHaveBeenCalled());
     expect(screen.queryByText("First steps")).toBeNull();
   });
+
+  it("never covers a settings page, whose rows end at the panel's corner", async () => {
+    pathname = "/settings/providers";
+    renderWidget();
+
+    // Settled, not merely requested: a still-loading panel renders nothing either.
+    await waitFor(() =>
+      expect(
+        queryClient
+          .getQueryCache()
+          .getAll()
+          .map((query) => query.state.status),
+      ).toEqual(["success"]),
+    );
+    expect(screen.queryByText("First steps")).toBeNull();
+  });
 });
