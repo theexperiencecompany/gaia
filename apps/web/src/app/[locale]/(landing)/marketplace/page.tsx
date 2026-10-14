@@ -2,10 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { marketplaceFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
-  generateFAQSchema,
   generateItemListSchema,
   generatePageMetadata,
   generateWebPageSchema,
@@ -89,13 +87,11 @@ export default function MarketplacePage() {
     "Product",
   );
 
-  const faqSchema = generateFAQSchema(marketplaceFAQs);
-
   return (
     <>
-      <JsonLd
-        data={[webPageSchema, breadcrumbSchema, itemListSchema, faqSchema]}
-      />
+      {/* No FAQPage schema here: this list page renders no visible FAQs,
+          and FAQ rich results require the questions to be on the page. */}
+      <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
       <Suspense>
         <IntegrationsPageClient />
       </Suspense>

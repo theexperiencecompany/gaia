@@ -19,6 +19,7 @@ import {
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 import { IntegrationDetailClient } from "./client";
+import { getIntegrationFAQs } from "./faqs";
 
 export const revalidate = 60;
 
@@ -294,6 +295,7 @@ export default async function IntegrationPage({ params }: Props) {
     `Automate ${integration.name} with GAIA AI assistant. Connect ${integration.name} to your AI-powered workflow with ${integration.toolCount || 0} available tools.`,
     pageUrl,
     breadcrumbItems,
+    integration.publishedAt ?? undefined,
   );
 
   const integrationSchema = {
@@ -342,29 +344,9 @@ export default async function IntegrationPage({ params }: Props) {
     ],
   );
 
-  const toolsText =
-    integration.toolCount > 0
-      ? `all ${integration.toolCount} ${integration.name} tools`
-      : `the available ${integration.name} tools`;
-
-  const faqSchema = generateFAQSchema([
-    {
-      question: `How do I connect ${integration.name} to GAIA?`,
-      answer: `Connecting ${integration.name} to GAIA takes under two minutes. Open the GAIA Marketplace, find the ${integration.name} integration, and click "Add to your GAIA". Depending on the integration type, you will be redirected to an OAuth consent screen or asked to paste a bearer token. Once authorised, GAIA immediately gains access to all ${integration.name} tools.`,
-    },
-    {
-      question: `Is the ${integration.name} integration free?`,
-      answer: `Community integrations like ${integration.name} are included with every GAIA plan at no extra charge — connect it, run automations, and use all available tools as part of your subscription. Paid plans unlock higher usage limits and advanced workflow features.`,
-    },
-    {
-      question: `What can GAIA do with ${integration.name}?`,
-      answer: `GAIA exposes ${toolsText} to its AI agent, meaning you can perform any ${categoryLabel.toLowerCase()} action supported by ${integration.name} by describing it in plain English. GAIA can also combine ${integration.name} with other connected integrations to build cross-tool automations.`,
-    },
-    {
-      question: `Does GAIA's ${integration.name} integration work on mobile?`,
-      answer: `Absolutely. GAIA runs on web, desktop (macOS and Windows), and mobile (iOS and Android). Your ${integration.name} integration is available across all platforms with your account.`,
-    },
-  ]);
+  // Same source as the visible accordion in IntegrationRichContent —
+  // the FAQ rich snippet must match what visitors actually see.
+  const faqSchema = generateFAQSchema(getIntegrationFAQs(integration));
 
   const comparisonSlug = comparison ? slug : undefined;
 
