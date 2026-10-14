@@ -679,9 +679,7 @@ def get_settings() -> Settings:
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")
     _ensure_infisical_loaded()
     try:
-        # pydantic-settings fills MONGO_DB and REDIS_URL from the environment;
-        # mypy only sees the constructor's required-argument signature.
-        settings_obj = Settings()  # type: ignore[call-arg]
+        settings_obj = Settings()  # type: ignore[call-arg]  # pydantic-settings fills MONGO_DB/REDIS_URL from env; mypy sees only the init signature
     except Exception as e:
         log.error(
             f"{LogTag.STARTUP} Error initializing settings",
