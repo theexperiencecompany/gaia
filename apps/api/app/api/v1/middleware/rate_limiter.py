@@ -1,6 +1,7 @@
 """The application-wide rate limiter and the middleware that applies it."""
 
 from collections.abc import Callable
+import hmac
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, iter_route_contexts
@@ -13,6 +14,8 @@ from starlette.responses import Response
 from starlette.routing import Match
 from starlette.types import Scope
 
+from app.config.settings import settings
+from app.constants.http import VIEWER_IP_HEADER, VIEWER_IP_PROOF_HEADER
 from app.db.redis import redis_cache
 
 # Redis-backed, not slowapi's in-memory default: every replica has to count
@@ -23,6 +26,22 @@ limiter = Limiter(
     default_limits=["120/minute"],
     storage_uri=redis_cache.redis_url,
 )
+
+
+def short_link_viewer_key(request: Request) -> str:
+    """Return the short-link rate-limit key: the viewer the web server names, else the peer.
+
+    The viewer header counts only beside a proof matching SHORTLINK_VIEWER_IP_SECRET,
+    so a spoofed one buys no fresh budget; the peer address is honest only because
+    uvicorn takes X-Forwarded-For solely from FORWARDED_ALLOW_IPS (API Dockerfile).
+    """
+    secret = settings.SHORTLINK_VIEWER_IP_SECRET
+    presented = request.headers.get(VIEWER_IP_PROOF_HEADER)
+    viewer_ip = request.headers.get(VIEWER_IP_HEADER)
+    if secret and presented and viewer_ip and hmac.compare_digest(presented, secret):
+        return viewer_ip
+    remote: str = get_remote_address(request)
+    return remote
 
 
 def find_route_handler(app: FastAPI, scope: Scope) -> Callable[..., object] | None:
