@@ -197,7 +197,9 @@ NUDGES = "app.services.referrals.nudges"
 
 
 class TestChatCardNudge:
-    async def test_the_card_shows_when_the_weeks_slot_is_free(self, client: AsyncClient) -> None:
+    async def test_the_card_shows_when_the_weeks_slot_is_free(
+        self, client: AsyncClient, route_log: MagicMock
+    ) -> None:
         with (
             patch(
                 f"{NUDGES}.subscription_repository.get_active_for_user",
@@ -212,10 +214,14 @@ class TestChatCardNudge:
 
         assert response.status_code == 200
         assert response.json() == {"show": True}
-        assert repo.claim.call_args.args[1] is ReferralNudge.CHAT_CARD
+        assert repo.claim.call_args.args[:2] == (FAKE_USER.user_id, ReferralNudge.CHAT_CARD)
+        route_log.set.assert_called_once_with(
+            user={"id": FAKE_USER.user_id}, referral={"operation": "chat_card"}
+        )
+        route_log.set_ns.assert_called_once_with("referral", chat_card_shown=True)
 
     async def test_the_card_stays_hidden_once_this_weeks_nudge_went_out(
-        self, client: AsyncClient
+        self, client: AsyncClient, route_log: MagicMock
     ) -> None:
         with (
             patch(
@@ -231,9 +237,10 @@ class TestChatCardNudge:
 
         assert response.json() == {"show": False}
         capture.assert_not_called()
+        route_log.set_ns.assert_called_once_with("referral", chat_card_shown=False)
 
     async def test_dismissing_the_card_reports_whether_it_paused_nudges(
-        self, client: AsyncClient
+        self, client: AsyncClient, route_log: MagicMock
     ) -> None:
         state = ReferralNudgeStateDocument(
             user_id="u", paused_until=datetime.now(UTC) + timedelta(days=30)
@@ -247,3 +254,8 @@ class TestChatCardNudge:
 
         assert response.status_code == 200
         assert response.json() == {"paused": True}
+        assert repo.record_dismissal.await_args.args[0] == FAKE_USER.user_id
+        route_log.set.assert_called_once_with(
+            user={"id": FAKE_USER.user_id}, referral={"operation": "chat_card_dismissal"}
+        )
+        route_log.set_ns.assert_called_once_with("referral", nudges_paused=True)

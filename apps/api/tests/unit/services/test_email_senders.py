@@ -445,7 +445,7 @@ class TestSendReferralRewardEmail:
     @patch(f"{SENDERS}.build_unsubscribe_url", return_value="https://heygaia.io/unsub")
     @patch(f"{SENDERS}.send_email")
     async def test_the_real_template_tells_who_joined_and_when_the_bill_moves(
-        self, mock_send, _mock_url, _mock_headers
+        self, mock_send, mock_url, mock_headers
     ) -> None:
         await send_referral_reward_email(
             ReferralRewardEmail(
@@ -467,6 +467,10 @@ class TestSendReferralRewardEmail:
         assert "Your next bill moves to Dec 14. Enjoy the free month." in message.html
         assert f"{settings.FRONTEND_URL}/settings/referrals" in message.html
         assert "https://heygaia.io/unsub" in message.html
+        assert "Hey Aryan," in message.html
+        assert "Share with another friend" in message.html
+        mock_url.assert_called_once_with(SENDER_USER_ID)
+        mock_headers.assert_called_once_with(SENDER_USER_ID)
 
 
 class TestSendReferralInviteEmail:

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { randomUnit } from "@/lib/random";
 import type { MessageType } from "@/types/features/convoTypes";
 
 /**
@@ -26,7 +27,7 @@ export function useFinishedTurn(
     if (!justFinished) return;
     const last = messages.at(-1);
     if (last?.type !== "bot" || !last.message_id) return;
-    if (Math.random() >= chance) return;
+    if (randomUnit() >= chance) return;
     setFinished({ conversationId, turnId: last.message_id });
   }, [isBusy, messages, conversationId, chance]);
 

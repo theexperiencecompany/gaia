@@ -330,10 +330,11 @@ class TestProcessUser:
             ) as mock_record,
             patch("app.services.nurture.service.capture"),
         ):
-            assert await _process_user(self._user(), NOW) is True
+            user = self._user()
+            assert await _process_user(user, NOW) is True
 
         assert pitch.await_args.args[:2] == (USER_ID, ReferralNudge.NURTURE_EMAIL)
-        mock_send.assert_awaited_once()
+        mock_send.assert_awaited_once_with(user, step)
         mock_record.assert_awaited_once_with(
             USER_ID, "share_gaia", NOW, status=NurtureStepStatus.SENT
         )

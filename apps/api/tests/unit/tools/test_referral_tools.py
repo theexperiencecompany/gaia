@@ -4,8 +4,9 @@ The outputs are matched exactly on purpose: they are the tools' contract with
 the model, and the price and link in them must be the live ones.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -59,6 +60,12 @@ def _clean_wide_event() -> None:
     log.reset()
 
 
+@pytest.fixture
+def tool_log() -> Iterator[MagicMock]:
+    with patch(f"{MODULE}.log") as mock_log:
+        yield mock_log
+
+
 def _cfg(source: str = "web") -> dict[str, dict[str, str]]:
     return {"configurable": {"user_id": USER_ID, "conversation_source": source}}
 
@@ -98,9 +105,17 @@ NO_LINK_TEXT = (
 
 
 class TestGetReferralLink:
-    async def test_the_link_comes_with_the_live_gift_and_a_message_to_share(self) -> None:
-        with patch(f"{MODULE}.get_referral_overview", _overview_returning(_overview())):
+    async def test_the_link_comes_with_the_live_gift_and_a_message_to_share(
+        self, tool_log: MagicMock
+    ) -> None:
+        overview = _overview_returning(_overview())
+        with patch(f"{MODULE}.get_referral_overview", overview):
             result = await get_referral_link.coroutine(config=_cfg())
+
+        overview.assert_awaited_once_with(USER_ID)
+        tool_log.set.assert_called_once_with(
+            tool={"name": "get_referral_link"}, referral={"operation": "agent_link"}
+        )
 
         assert result == (
             f"Invite link: {LINK}\n"
@@ -111,9 +126,11 @@ class TestGetReferralLink:
             f"{SHARE_TEXT}"
         )
 
-    async def test_a_user_without_a_subscription_has_no_link(self) -> None:
+    async def test_a_user_without_a_subscription_has_no_link(self, tool_log: MagicMock) -> None:
         with patch(f"{MODULE}.get_referral_overview", NOT_SUBSCRIBED):
             assert await get_referral_link.coroutine(config=_cfg()) == NO_LINK_TEXT
+
+        tool_log.set_ns.assert_called_once_with("referral", has_link=False)
 
     async def test_any_other_failure_is_not_mistaken_for_no_subscription(self) -> None:
         broken = AsyncMock(side_effect=AppError(message="User not found", status_code=404))
@@ -125,7 +142,7 @@ class TestGetReferralLink:
 
 
 class TestGetReferralStatus:
-    async def test_months_friends_and_the_next_bill(self) -> None:
+    async def test_months_friends_and_the_next_bill(self, tool_log: MagicMock) -> None:
         overview = _overview(
             months_earned=3,
             months_applied=2,
@@ -138,9 +155,15 @@ class TestGetReferralStatus:
                 ReferredFriend(first_name=None, status=ReferredFriendStatus.JOINED, joined_at=NOW),
             ],
         )
-        with patch(f"{MODULE}.get_referral_overview", _overview_returning(overview)):
+        reader = _overview_returning(overview)
+        with patch(f"{MODULE}.get_referral_overview", reader):
             result = await get_referral_status.coroutine(config=_cfg())
 
+        reader.assert_awaited_once_with(USER_ID)
+        tool_log.set.assert_called_once_with(
+            tool={"name": "get_referral_status"}, referral={"operation": "agent_status"}
+        )
+        tool_log.set_ns.assert_called_once_with("referral", friends=2, months_earned=3)
         assert result == (
             "Free months earned: 3 (2 already added to the billing date, "
             "1 saved for when they subscribe again)\n"
@@ -167,7 +190,7 @@ class TestGetReferralStatus:
 
 
 class TestSuggestInvitees:
-    async def test_each_suggestion_carries_its_reason(self) -> None:
+    async def test_each_suggestion_carries_its_reason(self, tool_log: MagicMock) -> None:
         response = ReferralSuggestionsResponse(
             suggestions=[
                 ReferralSuggestion(
@@ -181,9 +204,14 @@ class TestSuggestInvitees:
                 ),
             ]
         )
-        with patch(f"{MODULE}.compute_suggestions", AsyncMock(return_value=response)):
+        compute = AsyncMock(return_value=response)
+        with patch(f"{MODULE}.compute_suggestions", compute):
             result = await suggest_invitees.coroutine(config=_cfg())
 
+        compute.assert_awaited_once_with(USER_ID)
+        tool_log.set.assert_called_once_with(
+            tool={"name": "suggest_invitees"}, referral={"operation": "agent_suggestions"}
+        )
         assert result == (
             "People to invite (2), from the last 90 days:\n"
             "  - Priya Shah <priya@example.com>: met 6 times\n"
@@ -202,7 +230,9 @@ class TestSuggestInvitees:
 
 
 class TestSendReferralInvite:
-    async def test_on_the_web_each_address_reports_its_own_outcome(self) -> None:
+    async def test_on_the_web_each_address_reports_its_own_outcome(
+        self, tool_log: MagicMock
+    ) -> None:
         sent = AsyncMock(
             return_value=ReferralInviteResponse(
                 results=[
@@ -235,6 +265,10 @@ class TestSendReferralInvite:
         sent.assert_awaited_once_with(
             USER_ID, ReferralInviteRequest(emails=emails, surface=ReferralInviteSurface.AGENT)
         )
+        tool_log.set.assert_called_once_with(
+            tool={"name": "send_referral_invite"},
+            referral={"operation": "agent_invite", "requested": 5, "forward_only": False},
+        )
         assert result == (
             "priya@example.com: sent\n"
             "bob@example.com: already invited by this user, not sent again\n"
@@ -259,17 +293,25 @@ class TestSendReferralInvite:
         assert result == "Nothing was sent: You've sent a lot of invites today. Try again tomorrow"
 
     @pytest.mark.parametrize("source", ["whatsapp", "imessage", "telegram"])
-    async def test_on_a_chat_platform_it_hands_back_a_message_to_forward(self, source: str) -> None:
+    async def test_on_a_chat_platform_it_hands_back_a_message_to_forward(
+        self, source: str, tool_log: MagicMock
+    ) -> None:
         send = AsyncMock()
+        reader = _overview_returning(_overview())
         with (
             patch(f"{MODULE}.send_invites", send),
-            patch(f"{MODULE}.get_referral_overview", _overview_returning(_overview())),
+            patch(f"{MODULE}.get_referral_overview", reader),
         ):
             result = await send_referral_invite.coroutine(
                 config=_cfg(source), emails=["priya@example.com"], friend_name="Priya"
             )
 
         send.assert_not_awaited()
+        reader.assert_awaited_once_with(USER_ID)
+        tool_log.set.assert_called_once_with(
+            tool={"name": "send_referral_invite"},
+            referral={"operation": "agent_invite", "requested": 1, "forward_only": True},
+        )
         assert result == (
             "Nothing was emailed: on a chat platform the user forwards the invite themselves. "
             "Relay this exactly:\n"
