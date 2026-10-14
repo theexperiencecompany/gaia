@@ -8,7 +8,6 @@ never read. Writes invalidate locally and publish so other pods rebuild too.
 """
 
 from collections.abc import Callable
-import importlib
 import json
 from time import monotonic
 from typing import NamedTuple, TypedDict
@@ -108,6 +107,16 @@ def is_usable(provider: str, config: ProviderConfig | None) -> bool:
         return False
     complete = _ENV_COMPLETIONS.get(provider)
     return complete is None or complete(config) is not None
+
+
+# Pod-local caches built from resolved configs in modules that import this one,
+# so they register here instead of being imported back.
+_local_invalidation_hooks: list[Callable[[], None]] = []
+
+
+def on_local_invalidation(hook: Callable[[], None]) -> None:
+    """Run hook on every pod-local invalidation, local save or remote update alike."""
+    _local_invalidation_hooks.append(hook)
 
 
 # provider → (cached-at monotonic, resolved config). Entries may hold None-ish
@@ -243,10 +252,8 @@ def invalidate_locally(provider: str) -> None:
                 name=registry_key,
             )
 
-    # Function-level import breaks a real cycle: the client module consumes
-    # this module at import time, so a top-level import would close the loop.
-    client_module = importlib.import_module("app.agents.llm.client")
-    client_module.reset_aux_llm_caches()
+    for hook in _local_invalidation_hooks:
+        hook()
 
 
 async def invalidate(provider: str) -> None:

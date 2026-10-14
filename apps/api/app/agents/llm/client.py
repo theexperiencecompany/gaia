@@ -104,6 +104,7 @@ from app.services.llm_metering import (
 )
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
+    on_local_invalidation,
     resolve,
     resolved_config,
     resolved_configs,
@@ -944,6 +945,9 @@ def reset_aux_llm_caches() -> None:
     _build_openai_wire_one_shot.cache_clear()
     _runtime_configs.clear()
     _schedule_runtime_config_refresh()
+
+
+on_local_invalidation(reset_aux_llm_caches)
 
 
 def _stamp_fallback(result: _ResultT, model: str) -> _ResultT:

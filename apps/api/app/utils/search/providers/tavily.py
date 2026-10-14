@@ -4,23 +4,17 @@ Uniquely returns an LLM-ready answer and inline images alongside results.
 """
 
 import asyncio
-import importlib
-from typing import TYPE_CHECKING, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 from tavily import TavilyClient
 
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
+    resolve,
     resolved_config,
 )
 from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import SearchProvider
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from app.services.providers.provider_credentials_service import ProviderConfig
 
 
 class _TavilyResult(BaseModel):
@@ -79,14 +73,7 @@ class TavilyProvider(SearchProvider):
         return bool(config and config.get("api_key"))
 
     async def _active_api_key(self) -> str | None:
-        """Return the key this search should run with, resolved fresh.
-
-        The service's 60s TTL keeps this off Mongo in steady state. Lazily
-        imported through the module to match the LLM client's cycle-avoidance
-        pattern.
-        """
-        service = importlib.import_module("app.services.providers.provider_credentials_service")
-        resolve = cast("Callable[[str], Awaitable[ProviderConfig | None]]", service.resolve)
+        """Return the key this search should run with; the service's 60s TTL keeps it off Mongo."""
         config: ProviderConfig | None = await resolve(self.name)
         return config.get("api_key") if config else None
 

@@ -124,13 +124,11 @@ def clean_state(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _stub_aux_llm_reset(monkeypatch):
-    """Stub reset_aux_llm_caches so invalidation paths run the full fan-out.
+    """Drop the registered invalidation hooks so no test rebuilds real LLM clients.
 
-    invalidate() lazily imports it from client.py (A3's surface); stubbing it in
-    every test keeps those paths independent of that landing. Tests asserting on
-    the call override this with their own recorder (aux_cache_calls).
+    Tests asserting on the hook run override this with their own recorder (aux_cache_calls).
     """
-    monkeypatch.setattr("app.agents.llm.client.reset_aux_llm_caches", lambda: None, raising=False)
+    monkeypatch.setattr(service_module, "_local_invalidation_hooks", [])
 
 
 @pytest.fixture
@@ -171,12 +169,17 @@ def registry_reset_calls(monkeypatch) -> list[str]:
 
 @pytest.fixture
 def aux_cache_calls(monkeypatch) -> list[int]:
-    """Record reset_aux_llm_caches() calls on the real client module (A3 provides it)."""
+    """Record every pod-local invalidation hook run."""
     calls: list[int] = []
-    monkeypatch.setattr(
-        "app.agents.llm.client.reset_aux_llm_caches", lambda: calls.append(1), raising=False
-    )
+    monkeypatch.setattr(service_module, "_local_invalidation_hooks", [lambda: calls.append(1)])
     return calls
+
+
+def test_the_llm_client_rebuilds_its_caches_on_every_invalidation(monkeypatch) -> None:
+    from app.agents.llm import client
+
+    monkeypatch.undo()  # see the real hook list, not the autouse stub
+    assert client.reset_aux_llm_caches in service_module._local_invalidation_hooks
 
 
 @pytest.fixture
