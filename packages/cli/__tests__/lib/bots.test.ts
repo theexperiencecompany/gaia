@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BOT_ENV_KEYS,
   botComposeFile,
+  botContainerState,
   SELFHOST_BOTS,
   updateApiEnv,
   writeBotsEnv,
@@ -145,5 +146,38 @@ describe("botComposeFile", () => {
         statSync(path.join(dockerDir, botComposeFile(bot))),
       ).not.toThrow();
     }
+  });
+});
+
+describe("botContainerState", () => {
+  it("is healthy only once the healthcheck passes", () => {
+    expect(
+      botContainerState("slack", [
+        { service: "bot-slack", state: "running", health: "healthy" },
+      ]),
+    ).toEqual({ health: "healthy", detail: "running, healthy" });
+    expect(
+      botContainerState("slack", [
+        { service: "bot-slack", state: "running", health: "health: starting" },
+      ]).health,
+    ).toBe("starting");
+  });
+
+  it("fails a restarting, unhealthy or missing bot, never another bot's container", () => {
+    expect(
+      botContainerState("slack", [
+        { service: "bot-slack", state: "restarting" },
+      ]).health,
+    ).toBe("failing");
+    expect(
+      botContainerState("slack", [
+        { service: "bot-slack", state: "running", health: "unhealthy" },
+      ]).health,
+    ).toBe("failing");
+    expect(
+      botContainerState("slack", [
+        { service: "bot-telegram", state: "running", health: "healthy" },
+      ]),
+    ).toEqual({ health: "failing", detail: "not created" });
   });
 });

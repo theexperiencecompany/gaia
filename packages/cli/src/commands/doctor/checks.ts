@@ -11,7 +11,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { execa } from "execa";
-import { botService, type SelfhostBot } from "../../lib/bots.js";
+import {
+  botContainerState,
+  botService,
+  type SelfhostBot,
+} from "../../lib/bots.js";
 import { fetchDependencyReadiness } from "../../lib/dependency-readiness.js";
 import {
   type ComposeContainerInfo,
@@ -768,22 +772,13 @@ export async function checkBots(
     if (!containers) {
       return { ...base, state: "skipped", detail: "Docker daemon unreachable" };
     }
-    const service = botService(bot);
-    const container = containers.find((c) => c.service === service);
-    if (
-      container &&
-      classifyContainerState(container.state) === "running" &&
-      container.health !== "unhealthy"
-    ) {
-      return { ...base, state: "ok", detail: container.health ?? "running" };
-    }
+    const { health, detail } = botContainerState(bot, containers);
+    if (health !== "failing") return { ...base, state: "ok", detail };
     return {
       ...base,
       state: "fail",
-      detail: container
-        ? [container.state, container.health].filter(Boolean).join(", ")
-        : "not created",
-      fix: `A rejected or revoked token keeps the bot restarting: check 'docker compose -p ${project} logs ${service}', then rerun 'gaia bots add ${bot}' with a fresh token.`,
+      detail,
+      fix: `A rejected or revoked token keeps the bot restarting: check 'docker compose -p ${project} logs ${botService(bot)}', then rerun 'gaia bots add ${bot}' with a fresh token.`,
     };
   });
 }

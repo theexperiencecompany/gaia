@@ -22,6 +22,7 @@ export const botsCommand = new Command("bots")
     "after",
     `
 Examples:
+  gaia bots add telegram          (asks for the token from @BotFather)
   gaia bots add telegram --token <token from @BotFather>
   gaia bots add discord --token <bot token>
   gaia bots add slack --token xoxb-... --app-token xapp-... --signing-secret <secret>
@@ -31,7 +32,7 @@ Examples:
 botsCommand
   .command("add")
   .description(
-    "Check the bot's credentials, save them and start the bot with GAIA",
+    "Check the bot's credentials (asked for when not passed), save them and start the bot",
   )
   .addArgument(platformArgument())
   .option("--token <token>", "Bot token (Slack: the xoxb- bot user token)")

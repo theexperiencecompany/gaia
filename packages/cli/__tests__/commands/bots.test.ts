@@ -1,0 +1,179 @@
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
+import { execa } from "execa";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GaiaConfig } from "../../src/lib/config.js";
+
+const {
+  askSecret,
+  config,
+  detectSetupMode,
+  findInstallRoot,
+  isInteractive,
+  runSelfhostOneOff,
+  startServices,
+} = vi.hoisted(() => ({
+  askSecret: vi.fn(),
+  config: { current: null as Partial<GaiaConfig> | null },
+  detectSetupMode: vi.fn(),
+  findInstallRoot: vi.fn(),
+  isInteractive: vi.fn(),
+  runSelfhostOneOff: vi.fn(),
+  startServices: vi.fn(),
+}));
+vi.mock("execa", () => ({ execa: vi.fn() }));
+vi.mock("../../src/lib/service-starter.js", () => ({
+  detectSetupMode,
+  findInstallRoot,
+  runSelfhostOneOff,
+  startServices,
+}));
+vi.mock("../../src/lib/config.js", () => ({
+  readConfig: () => config.current,
+  updateConfig: (partial: Partial<GaiaConfig>) => {
+    config.current = { ...config.current, ...partial };
+  },
+}));
+vi.mock("../../src/lib/non-tty.js", () => ({ isInteractive }));
+vi.mock("../../src/lib/prompt.js", () => ({ askSecret }));
+// Each poll moves the clock by the interval instead of sleeping.
+vi.mock("../../src/lib/flow-utils.js", () => ({
+  delay: async (ms: number) => {
+    vi.setSystemTime(Date.now() + ms);
+  },
+}));
+
+import { runBotsAdd } from "../../src/commands/bots/handler.js";
+import { parseEnvFileValues } from "../../src/lib/env-writer.js";
+
+const mockedExeca = vi.mocked(execa);
+const TOKEN = "123:telegram-token"; // pragma: allowlist secret
+
+const API_ENV = [
+  "FRONTEND_URL=https://gaia.example.com",
+  "RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/", // pragma: allowlist secret
+].join("\n");
+
+let repo: string;
+
+function readEnv(app: "api" | "bots"): Record<string, string> {
+  return parseEnvFileValues(
+    readFileSync(path.join(repo, "apps", app, ".env"), "utf-8"),
+  );
+}
+
+/** `docker ps` answers with each listed bot-telegram status line in turn, then the last one forever. */
+function botContainerStatuses(...statuses: string[]): void {
+  let call = 0;
+  mockedExeca.mockImplementation((() => {
+    const status = statuses[Math.min(call++, statuses.length - 1)];
+    return Promise.resolve({ stdout: `bot-telegram|${status}` });
+  }) as unknown as typeof execa);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  repo = mkdtempSync(path.join(tmpdir(), "gaia-bots-add-"));
+  mkdirSync(path.join(repo, "apps", "api"), { recursive: true });
+  mkdirSync(path.join(repo, "apps", "bots"), { recursive: true });
+  writeFileSync(path.join(repo, "apps", "api", ".env"), API_ENV);
+  config.current = null;
+  findInstallRoot.mockReturnValue(repo);
+  detectSetupMode.mockResolvedValue("selfhost");
+  isInteractive.mockReturnValue(true);
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      json: async () => ({ ok: true, result: { username: "my_gaia_bot" } }),
+    })),
+  );
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  rmSync(repo, { recursive: true, force: true });
+});
+
+describe("gaia bots add", () => {
+  it("asks for a missing token, starts the bot and waits until it is healthy", async () => {
+    askSecret.mockResolvedValue(TOKEN);
+    botContainerStatuses(
+      "running|Up 5 seconds (health: starting)",
+      "running|Up 30 seconds (healthy)",
+    );
+
+    await runBotsAdd("telegram", {});
+
+    expect(askSecret).toHaveBeenCalledWith("Telegram bot token");
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
+      `https://api.telegram.org/bot${TOKEN}/getMe`,
+    );
+    expect(config.current?.bots).toEqual(["telegram"]);
+    expect(startServices).toHaveBeenCalledOnce();
+    expect(runSelfhostOneOff).toHaveBeenCalledWith(repo, "bot-telegram", [
+      "node",
+      "dist/set-commands.js",
+    ]);
+    expect(mockedExeca).toHaveBeenCalledTimes(2);
+  });
+
+  it("generates the bot key into an install that has none and shares it with the bot", async () => {
+    botContainerStatuses("running|Up 30 seconds (healthy)");
+
+    await runBotsAdd("telegram", { token: TOKEN });
+
+    const apiEnv = readEnv("api");
+    const botsEnv = readEnv("bots");
+    expect(apiEnv.GAIA_BOT_API_KEY).toMatch(/^[0-9a-f]{64}$/);
+    expect(botsEnv.GAIA_BOT_API_KEY).toBe(apiEnv.GAIA_BOT_API_KEY);
+    expect(botsEnv.TELEGRAM_BOT_TOKEN).toBe(TOKEN);
+    expect(apiEnv.TELEGRAM_BOT_USERNAME).toBe("my_gaia_bot");
+  });
+
+  it("names the flag and where to get the token when there is no terminal to ask in", async () => {
+    isInteractive.mockReturnValue(false);
+
+    await expect(runBotsAdd("telegram", {})).rejects.toThrow(
+      /Missing --token\. .*@BotFather/,
+    );
+    expect(askSecret).not.toHaveBeenCalled();
+    expect(startServices).not.toHaveBeenCalled();
+    expect(config.current).toBeNull();
+  });
+
+  it("asks for every Slack credential not passed as a flag", async () => {
+    isInteractive.mockReturnValue(false);
+
+    await expect(runBotsAdd("slack", { token: "xoxb-1" })).rejects.toThrow(
+      "Missing --app-token",
+    );
+  });
+
+  it("fails with the way to the logs when the bot never becomes healthy", async () => {
+    botContainerStatuses("restarting|Restarting (1) 4 seconds ago");
+
+    await expect(runBotsAdd("telegram", { token: TOKEN })).rejects.toThrow(
+      "did not come up (restarting). See why with 'docker compose -p gaia-selfhost logs bot-telegram'",
+    );
+  });
+
+  it("refuses a machine without a self-host install before asking for anything", async () => {
+    detectSetupMode.mockResolvedValue("developer");
+
+    await expect(runBotsAdd("telegram", {})).rejects.toThrow(
+      "No self-host GAIA install found",
+    );
+    expect(askSecret).not.toHaveBeenCalled();
+  });
+});

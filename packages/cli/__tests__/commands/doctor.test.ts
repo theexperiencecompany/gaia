@@ -529,8 +529,20 @@ describe("checkBots", () => {
       ["bot-discord", "fail", "warning"],
       ["bot-slack", "fail", "warning"],
     ]);
+    expect(results[0]?.detail).toBe("running, healthy");
     expect(results[1]?.fix).toContain("logs bot-discord");
     expect(results[2]?.detail).toBe("not created");
+  });
+
+  it("passes a bot that is still connecting to its platform", async () => {
+    mockedExeca.mockResolvedValueOnce({
+      stdout: "bot-telegram|running|Up 5 seconds (health: starting)",
+    } as Awaited<ResultPromise>);
+
+    const [result] = await checkBots(["telegram"], "gaia-selfhost");
+
+    expect(result?.state).toBe("ok");
+    expect(result?.detail).toBe("running, health: starting");
   });
 
   it("fails a running bot whose healthcheck is failing", async () => {

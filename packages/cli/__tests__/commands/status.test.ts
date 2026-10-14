@@ -1,11 +1,16 @@
 import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findInstallRoot, detectSetupMode } = vi.hoisted(() => ({
+const { findInstallRoot, detectSetupMode, readConfig } = vi.hoisted(() => ({
   findInstallRoot: vi.fn(),
   detectSetupMode: vi.fn(),
+  readConfig: vi.fn(),
 }));
 vi.mock("execa", () => ({ execa: vi.fn() }));
+vi.mock("../../src/lib/config.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  readConfig,
+}));
 vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   findInstallRoot,
@@ -32,6 +37,7 @@ const READY = {
 beforeEach(() => {
   vi.clearAllMocks();
   findInstallRoot.mockReturnValue("/no/such/install");
+  readConfig.mockReturnValue(null);
   detectSetupMode.mockResolvedValue("selfhost");
   mockedExeca.mockImplementation(((_cmd: string, args: string[]) =>
     Promise.resolve({
@@ -59,6 +65,29 @@ describe("gaia status on a self-host install", () => {
     expect(store.currentState.status).toBe("4/4 containers running");
     expect(store.currentState.data.checkedAt).toEqual(expect.any(String));
     expect(store.currentState.data.refreshable).toBe(true);
+  });
+
+  it("lists an enabled bot whose container was never created as not running", async () => {
+    readConfig.mockReturnValue({ bots: ["telegram", "slack"] });
+    mockedExeca.mockImplementation(((_cmd: string, args: string[]) =>
+      Promise.resolve({
+        stdout: args.includes("ps")
+          ? `${SELFHOST_CONTAINERS}\nbot-telegram|running|Up 1 minute (healthy)`
+          : "",
+      })) as unknown as typeof execa);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => READY })),
+    );
+    const store = new CLIStore();
+
+    await runStatusChecks(store);
+
+    expect(store.currentState.data.docker.containers.slice(-2)).toEqual([
+      { name: "bot-telegram", status: "running", health: "healthy" },
+      { name: "bot-slack", status: "not_found" },
+    ]);
+    expect(store.currentState.status).toBe("5/6 containers running");
   });
 
   it("probes nothing when the install is not configured", async () => {

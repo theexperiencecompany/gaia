@@ -11,6 +11,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ComposeContainerInfo } from "./docker.js";
 import { parseEnvFileValues, writeEnvFile } from "./env-writer.js";
 import {
   collectMachineSecrets,
@@ -45,6 +46,31 @@ export function isSelfhostBot(value: string): value is SelfhostBot {
 /** The compose service a bot runs as. */
 export function botService(bot: SelfhostBot): string {
   return `bot-${bot}`;
+}
+
+/** Where a bot's container stands: serving, still connecting, or broken / absent. */
+export type BotHealth = "healthy" | "starting" | "failing";
+
+export interface BotContainerState {
+  health: BotHealth;
+  /** Docker's own words, e.g. "running, healthy" or "not created". */
+  detail: string;
+}
+
+/** Judge a bot's container; its healthcheck passes only once the platform connection is up. */
+export function botContainerState(
+  bot: SelfhostBot,
+  containers: readonly ComposeContainerInfo[],
+): BotContainerState {
+  const container = containers.find((c) => c.service === botService(bot));
+  if (!container) return { health: "failing", detail: "not created" };
+  const detail = [container.state, container.health].filter(Boolean).join(", ");
+  if (container.state !== "running" || container.health === "unhealthy") {
+    return { health: "failing", detail };
+  }
+  const healthy =
+    container.health === undefined || container.health === "healthy";
+  return { health: healthy ? "healthy" : "starting", detail };
 }
 
 /** The compose override (in infra/docker) that adds a bot to the stack. */

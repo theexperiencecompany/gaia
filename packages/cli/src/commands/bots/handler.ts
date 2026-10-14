@@ -12,6 +12,7 @@ import {
 } from "../../lib/bot-tokens.js";
 import {
   BOT_ENV_KEYS,
+  botContainerState,
   botService,
   type EnvChange,
   type SelfhostBot,
@@ -24,6 +25,9 @@ import {
   getComposeProjectContainers,
 } from "../../lib/docker.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import { delay } from "../../lib/flow-utils.js";
+import { isInteractive } from "../../lib/non-tty.js";
+import { askSecret } from "../../lib/prompt.js";
 import {
   detectSetupMode,
   findInstallRoot,
@@ -40,11 +44,62 @@ const COMMAND_REGISTRATION: Partial<Record<SelfhostBot, string[]>> = {
   telegram: ["node", "dist/set-commands.js"],
 };
 
+/** The bot healthcheck runs every 30s, so a healthy bot shows within ~30s of starting. */
+const BOT_START_TIMEOUT_MS = 120_000;
+const BOT_POLL_INTERVAL_MS = 3_000;
+
 export interface BotCredentials {
   token?: string;
   appToken?: string;
   signingSecret?: string;
 }
+
+interface CredentialPrompt {
+  key: keyof BotCredentials;
+  flag: string;
+  label: string;
+  /** Where to find the value, shown before prompting for it. */
+  hint: string;
+}
+
+const CREDENTIAL_PROMPTS: Record<SelfhostBot, readonly CredentialPrompt[]> = {
+  telegram: [
+    {
+      key: "token",
+      flag: "--token",
+      label: "Telegram bot token",
+      hint: "In Telegram, message @BotFather, send /newbot and copy the token it replies with.",
+    },
+  ],
+  discord: [
+    {
+      key: "token",
+      flag: "--token",
+      label: "Discord bot token",
+      hint: "At https://discord.com/developers/applications open your app > Bot > Reset Token. Turn on Message Content Intent on the same page.",
+    },
+  ],
+  slack: [
+    {
+      key: "token",
+      flag: "--token",
+      label: "Slack bot token (xoxb-)",
+      hint: "At https://api.slack.com/apps open your app > OAuth & Permissions > Bot User OAuth Token.",
+    },
+    {
+      key: "appToken",
+      flag: "--app-token",
+      label: "Slack app-level token (xapp-)",
+      hint: "Turn on Socket Mode, then Basic Information > App-Level Tokens: create one with the connections:write scope.",
+    },
+    {
+      key: "signingSecret",
+      flag: "--signing-secret",
+      label: "Slack signing secret",
+      hint: "Basic Information > App Credentials > Signing Secret.",
+    },
+  ],
+};
 
 function out(line = ""): void {
   process.stdout.write(`${line}\n`);
@@ -53,6 +108,25 @@ function out(line = ""): void {
 function requireOption(value: string | undefined, flag: string): string {
   if (!value) throw new Error(`Missing ${flag}.`);
   return value;
+}
+
+/** Fill each credential not passed as a flag by prompting, or name the flag when there is no terminal. */
+async function resolveCredentials(
+  bot: SelfhostBot,
+  given: BotCredentials,
+): Promise<BotCredentials> {
+  const resolved: BotCredentials = { ...given };
+  for (const prompt of CREDENTIAL_PROMPTS[bot]) {
+    if (resolved[prompt.key]) continue;
+    if (!isInteractive()) {
+      throw new Error(`Missing ${prompt.flag}. ${prompt.hint}`);
+    }
+    out(prompt.hint);
+    const value = await askSecret(prompt.label);
+    if (!value) throw new Error(`No ${prompt.label} entered.`);
+    resolved[prompt.key] = value;
+  }
+  return resolved;
 }
 
 /** The self-host install to change; bots run only alongside its compose stack. */
@@ -115,6 +189,25 @@ async function verifyCredentials(
   };
 }
 
+/** Poll the bot's container until its healthcheck passes, i.e. it is connected to its platform. */
+async function waitForBotHealthy(bot: SelfhostBot): Promise<void> {
+  const project = COMPOSE_PROJECT_BY_MODE.selfhost;
+  const deadline = Date.now() + BOT_START_TIMEOUT_MS;
+  for (;;) {
+    const state = botContainerState(
+      bot,
+      await getComposeProjectContainers(project),
+    );
+    if (state.health === "healthy") return;
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `The ${bot} bot did not come up (${state.detail}). See why with 'docker compose -p ${project} logs ${botService(bot)}'; 'gaia bots remove ${bot}' undoes the setup.`,
+      );
+    }
+    await delay(BOT_POLL_INTERVAL_MS);
+  }
+}
+
 /** Recreate the stack with the saved bot set; removed bots stop as orphans. */
 async function restartStack(repoPath: string): Promise<void> {
   await startServices(
@@ -132,8 +225,9 @@ export async function runBotsAdd(
   credentials: BotCredentials,
 ): Promise<void> {
   const repoPath = await requireSelfhostInstall();
+  const resolved = await resolveCredentials(bot, credentials);
   out(`Checking the ${bot} credentials...`);
-  const verified = await verifyCredentials(bot, credentials);
+  const verified = await verifyCredentials(bot, resolved);
 
   writeBotsEnv(repoPath, { set: verified.botsEnv });
   if (verified.apiEnv) updateApiEnv(repoPath, verified.apiEnv);
@@ -147,6 +241,8 @@ export async function runBotsAdd(
     await runSelfhostOneOff(repoPath, botService(bot), registration);
   }
 
+  out(`Waiting for the ${bot} bot to connect...`);
+  await waitForBotHealthy(bot);
   out(`The ${bot} bot is running.`);
   for (const step of verified.nextSteps) out(step);
 }
@@ -172,7 +268,7 @@ export async function runBotsList(): Promise<void> {
   const enabled = readConfig()?.bots ?? [];
   if (enabled.length === 0) {
     out(
-      "No chat bots enabled. Add one with: gaia bots add <telegram|discord|slack> --token <token>",
+      "No chat bots enabled. Add one with: gaia bots add <telegram|discord|slack>",
     );
     return;
   }
@@ -180,10 +276,6 @@ export async function runBotsList(): Promise<void> {
     COMPOSE_PROJECT_BY_MODE.selfhost,
   );
   for (const bot of enabled) {
-    const container = containers.find((c) => c.service === botService(bot));
-    const state = container
-      ? [container.state, container.health].filter(Boolean).join(", ")
-      : "not created";
-    out(`  ${bot.padEnd(10)}${state}`);
+    out(`  ${bot.padEnd(10)}${botContainerState(bot, containers).detail}`);
   }
 }
