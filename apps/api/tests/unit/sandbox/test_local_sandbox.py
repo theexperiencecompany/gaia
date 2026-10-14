@@ -200,6 +200,9 @@ async def test_run_executes_through_a_login_shell_and_returns_the_result(
         "docker",
         "exec",
         "gaia-sandbox-u1",
+        "timeout",
+        "--signal=KILL",
+        "60s",
         "/bin/bash",
         "-l",
         "-c",
@@ -241,7 +244,44 @@ async def test_stream_callbacks_receive_decoded_output_chunks(
     assert "".join(seen["e"]) == "err!"
 
 
-async def test_a_timed_out_command_kills_its_process_group_and_raises_timeout(
+async def test_the_timeout_is_enforced_inside_the_container_where_it_kills_the_command(
+    recorder: SpawnRecorder,
+) -> None:
+    # Killing the host `docker exec` client leaves the command running in the
+    # container; coreutils timeout in the container kills its process group.
+    recorder._responses = [FakeProcess(returncode=0)]
+    await _sandbox().commands.run("make build", timeout=300)
+    argv = recorder.argv()
+    assert argv[argv.index("gaia-sandbox-u1") + 1 :] == [
+        "timeout",
+        "--signal=KILL",
+        "300s",
+        "/bin/bash",
+        "-l",
+        "-c",
+        "make build",
+    ]
+
+
+async def test_a_command_the_in_container_timeout_killed_raises_timeout(
+    recorder: SpawnRecorder,
+) -> None:
+    recorder._responses = [FakeProcess(returncode=137, wait_delay=0.06)]
+    with pytest.raises(TimeoutException, match="timeout"):
+        await _sandbox().commands.run("sleep forever", timeout=0.05)
+
+
+async def test_a_sigkill_before_the_deadline_is_an_exit_not_a_timeout(
+    recorder: SpawnRecorder,
+) -> None:
+    # e.g. the kernel OOM killer: the command died, but not of our deadline.
+    recorder._responses = [FakeProcess(stderr=b"Killed", returncode=137)]
+    with pytest.raises(CommandExitException) as caught:
+        await _sandbox().commands.run("python hog.py", timeout=60)
+    assert caught.value.exit_code == 137
+
+
+async def test_an_unresponsive_exec_client_is_killed_after_the_grace_period(
     recorder: SpawnRecorder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     proc = FakeProcess(hang=True, wait_delay=0.0)
@@ -252,20 +292,22 @@ async def test_a_timed_out_command_kills_its_process_group_and_raises_timeout(
         proc.kill()
 
     monkeypatch.setattr(local_sandbox, "_kill_process_group", fake_kill)
+    monkeypatch.setattr(local_sandbox, "LOCAL_SANDBOX_EXEC_TIMEOUT_GRACE_SECONDS", 0.05)
     recorder._responses = [proc]
     started = asyncio.get_running_loop().time()
     with pytest.raises(TimeoutException):
         await _sandbox().commands.run("sleep forever", timeout=0.05)
     elapsed = asyncio.get_running_loop().time() - started
-    assert killed_pids == [4242], "the whole process group must be SIGKILLed"
+    assert killed_pids == [4242], "the exec client's process group must be SIGKILLed"
     assert proc.killed
-    assert elapsed < 2, "timeout must fire at the deadline, not wait on pipes"
+    assert elapsed < 2, "the host backstop must fire, not wait on pipes"
 
 
 async def test_zero_timeout_disables_the_deadline(recorder: SpawnRecorder) -> None:
     recorder._responses = [FakeProcess(stdout=b"done", returncode=0)]
     result = await _sandbox().commands.run("slow but finite", timeout=0)
     assert result.stdout == "done"
+    assert "timeout" not in recorder.argv()
 
 
 async def test_background_true_is_rejected_loudly_not_faked(

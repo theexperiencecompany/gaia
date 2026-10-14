@@ -78,6 +78,13 @@ LEGACY_LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
 LOCAL_SANDBOX_LAYOUT_LABEL = "gaia.sandbox.layout"
 LOCAL_SANDBOX_LAYOUT = "per-user-subpath-v1"
 
+# Extra seconds the host waits past a command's in-container `timeout` before
+# killing the docker exec client itself, covering daemon round-trip latency.
+LOCAL_SANDBOX_EXEC_TIMEOUT_GRACE_SECONDS = 10
+
+# Exit status of a command coreutils `timeout --signal=KILL` killed (128 + 9).
+LOCAL_SANDBOX_KILLED_EXIT_CODE = 137
+
 
 # Workspace mountpoint inside local sandbox containers. Must equal
 # WORKSPACE_ROOT (app.agents.workspace.paths) — the tools address files under
