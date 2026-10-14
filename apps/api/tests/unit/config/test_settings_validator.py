@@ -12,6 +12,8 @@ from typing import NamedTuple
 
 import pytest
 
+from app.config.capability_requirements import unused_keys
+from app.config.deployment import DeploymentKind, baseline_profile
 from app.config.settings import CommonSettings
 from app.config.settings_validator import SettingsGroup, SettingsValidator
 from tests.helpers import captured_wide_event
@@ -121,6 +123,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         None,
         None,
+        False,
     ),
     _ExpectedGroup(
         "Speech Processing",
@@ -181,6 +184,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://docs.llamaindex.ai/",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Resend Email Service",
@@ -201,6 +205,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://openweathermap.org/api",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Composio Integration",
@@ -221,6 +226,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://e2b.dev/docs",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Browser Host",
@@ -307,7 +313,9 @@ def test_predefined_group_fields_match_exactly(expected: _ExpectedGroup) -> None
     assert group.keys == expected.keys
     assert group.description == expected.description
     assert group.affected_features == expected.affected_features
-    assert group.required_in_prod == expected.required_in_prod
+    assert (
+        group.required_in(baseline_profile(DeploymentKind.PRODUCTION)) == expected.required_in_prod
+    )
     assert group.all_required == expected.all_required
     assert group.docs_url == expected.docs_url
     assert group.alternative_group == expected.alternative_group
@@ -332,7 +340,7 @@ def test_an_unconfigured_posthog_reports_every_posthog_setting() -> None:
 async def test_missing_posthog_is_not_warned_about_in_production() -> None:
     """Analytics is optional in production — a missing token must not raise a CRITICAL on every boot, while a genuinely required group still does."""
     validator = SettingsValidator()
-    validator.configure(show_warnings=True, is_production=True)
+    validator.configure(show_warnings=True, profile=baseline_profile(DeploymentKind.PRODUCTION))
     validator.validate_settings(SimpleNamespace())
 
     async with captured_wide_event() as event:
@@ -345,7 +353,7 @@ async def test_missing_posthog_is_not_warned_about_in_production() -> None:
 
 async def test_missing_posthog_is_warned_about_outside_production() -> None:
     validator = SettingsValidator()
-    validator.configure(show_warnings=True, is_production=False)
+    validator.configure(show_warnings=True, profile=baseline_profile(DeploymentKind.DEVELOPMENT))
     validator.validate_settings(SimpleNamespace())
 
     async with captured_wide_event() as event:
@@ -385,7 +393,7 @@ def test_an_unconfigured_share_secret_is_reported_missing() -> None:
 async def test_a_missing_share_secret_names_what_it_breaks() -> None:
     """The warning is all an operator gets: without the affected-features line it says a key is missing but not that file attachments stop working."""
     validator = SettingsValidator()
-    validator.configure(show_warnings=True, is_production=False)
+    validator.configure(show_warnings=True, profile=baseline_profile(DeploymentKind.DEVELOPMENT))
     validator.validate_settings(SimpleNamespace())
 
     async with captured_wide_event() as event:
@@ -396,3 +404,35 @@ async def test_a_missing_share_secret_names_what_it_breaks() -> None:
     assert warnings[0]["missing_keys"] == ["SHARE_GRANT_SECRET"]
     assert "attachments" in warnings[0]["affected_features"].lower()
     assert "Composio" in warnings[0]["affected_features"]
+
+
+@pytest.mark.parametrize(
+    "group_name", ["WorkOS Authentication", "Dodo Payments", "Cloudinary Media Storage"]
+)
+def test_a_group_whose_capability_is_off_is_never_reported_missing(group_name: str) -> None:
+    """A self-hosted instance signs in locally, bills nothing and keeps files on disk."""
+    validator = SettingsValidator()
+    validator.configure(show_warnings=True, profile=baseline_profile(DeploymentKind.SELFHOST))
+
+    missing = validator.validate_settings(SimpleNamespace())
+
+    assert _missing_keys(missing, group_name) is None
+
+
+def test_production_still_reports_a_missing_workos_group() -> None:
+    missing = SettingsValidator().validate_settings(SimpleNamespace())
+
+    assert _missing_keys(missing, "WorkOS Authentication") is not None
+
+
+def test_self_host_setup_never_prompts_for_a_key_its_profile_cannot_use() -> None:
+    selfhost = baseline_profile(DeploymentKind.SELFHOST)
+    unused = unused_keys(selfhost)
+
+    prompted_but_unused = [
+        group.name
+        for group in SettingsValidator().groups
+        if group.selfhost_setup and unused.issuperset(group.keys)
+    ]
+
+    assert prompted_but_unused == []

@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-// Vendored schema generated from apps/api settings by `mise run cli:schema`
-// (apps/api/scripts/dump_config_schema.py). Committed so the CLI never needs
-// a host Python installation.
+// Vendored schema generated from apps/api's settings groups and capability
+// table by `mise cli:schema`. Committed so the CLI never needs a host Python
+// installation; CI's api-schema lane fails when it drifts.
 import vendoredSchema from "./api-config-schema.generated.json";
 import type {
   EnvCategory,
@@ -74,8 +74,8 @@ export function getDefaultValue(
  * the module-level import.
  */
 export function loadVendoredSchema(): EnvCategory[] {
-  // The JSON infers `defaultValue: string | null`; the EnvVar contract treats
-  // absent/null uniformly as "no default", so cast through unknown.
+  // The JSON infers `docsUrl: string | null`; the contract treats absent and
+  // null alike as "none", so cast through unknown.
   return structuredClone(vendoredSchema) as unknown as EnvCategory[];
 }
 

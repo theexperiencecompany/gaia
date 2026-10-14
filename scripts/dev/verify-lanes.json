@@ -67,6 +67,15 @@
       "command": "node scripts/ci/checks.mjs analytics-catalog"
     },
     {
+      "name": "cli-config-schema",
+      "ci_job": "api-schema",
+      "scope": "^apps/api/app/config/|^apps/api/scripts/dump_config_schema\\.py$|^packages/cli/src/lib/api-config-schema\\.generated\\.json$|^scripts/ci/checks\\.mjs$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["uv", "node"],
+      "command": "node scripts/ci/checks.mjs cli-config-schema"
+    },
+    {
       "name": "analytics-check",
       "ci_job": "analytics-check",
       "scope": "^libs/shared/py/analytics/catalog/|^libs/shared/ts/src/analytics/generated/|^config/posthog/|^scripts/ci/analytics\\.py$",

@@ -791,11 +791,6 @@ class DevelopmentSettings(CommonSettings):
     EVAL_USER_NAME: str | None = None
 
     # ----------------------------------------------
-    # Environment Configuration
-    # ----------------------------------------------
-    ENV: Literal["production", "development"] = "development"
-
-    # ----------------------------------------------
     # Debug Config
     # ----------------------------------------------
     DEBUG_EMAIL_PROCESSING: bool = False
@@ -861,8 +856,6 @@ class SelfHostSettings(ProductionSettings):
     credentials store instead of env.
     """
 
-    ENV: Literal["production", "development", "selfhost"] = "selfhost"
-
     # --- LLM / AI providers (runtime-configurable; see provider_credentials_service)
     OPENROUTER_API_KEY: str | None = None
     GOOGLE_API_KEY: str | None = None
@@ -919,10 +912,7 @@ class SelfHostSettings(ProductionSettings):
     LLAMA_INDEX_KEY: str | None = None
     GAIA_BACKEND_URL: str | None = None
 
-    # --- Telemetry and public share links
-    # Relaxed here: a self-hosted instance sends no product telemetry and
-    # serves no public share links without a share secret.
-    POSTHOG_API_KEY: str | None = None
+    # --- Public share links: none are served without a share secret
     SHARE_GRANT_SECRET: str | None = None
 
 
@@ -1081,8 +1071,7 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
 
         # Validate settings after full initialization
         settings_validator.configure(
-            settings_obj.SHOW_MISSING_KEY_WARNINGS,
-            is_production=settings_obj.deployment.kind is DeploymentKind.PRODUCTION,
+            settings_obj.SHOW_MISSING_KEY_WARNINGS, settings_obj.deployment
         )
 
         settings_validator.validate_settings(settings_obj)

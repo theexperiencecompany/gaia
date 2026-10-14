@@ -82,6 +82,17 @@ class DeploymentProfile:
     dev_tools: bool
 
 
+def baseline_profile(kind: DeploymentKind) -> DeploymentProfile:
+    """Return the profile a kind boots with when nothing optional is set (self-host signs in locally)."""
+    return deployment_profile(
+        kind,
+        "local" if kind is DeploymentKind.SELFHOST else "workos",
+        unlimited_usage=False,
+        local_code_sandbox=False,
+        blob_store=None,
+    )
+
+
 _TRUSTED_ORIGINS = {
     DeploymentKind.PRODUCTION: OriginPolicy.GAIA_CLOUD,
     DeploymentKind.DEVELOPMENT: OriginPolicy.LOCAL_DEVELOPMENT,

@@ -2,8 +2,8 @@
  * Machine-local secrets for self-hosted instances.
  *
  * A self-host install must boot with AGENT_SECRET / BOT_SESSION_TOKEN_SECRET /
- * EMAIL_UNSUBSCRIBE_SECRET set, but asking users to invent three random
- * strings is hostile UX. The CLI generates them once (crypto.randomBytes,
+ * EMAIL_UNSUBSCRIBE_SECRET set, and file sharing needs SHARE_GRANT_SECRET, but
+ * asking users to invent random strings is hostile UX. The CLI generates them once (crypto.randomBytes,
  * hex-encoded, openssl-rand-hex-32 equivalent) and merges them into
  * apps/api/.env with merge-don't-clobber semantics: values already present in
  * an existing .env are kept untouched, only missing ones are generated.
@@ -23,6 +23,7 @@ const MACHINE_SECRET_VARS = [
   "AGENT_SECRET",
   "BOT_SESSION_TOKEN_SECRET",
   "EMAIL_UNSUBSCRIBE_SECRET",
+  "SHARE_GRANT_SECRET",
 ] as const;
 
 /** Keeps the credential-encryption key out of the database it protects. */

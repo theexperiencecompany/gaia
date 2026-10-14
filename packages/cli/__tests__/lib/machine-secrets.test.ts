@@ -49,6 +49,7 @@ describe("collectMachineSecrets", () => {
       "BOT_SESSION_TOKEN_SECRET",
       "EMAIL_UNSUBSCRIBE_SECRET",
       "INSTANCE_SECRET",
+      "SHARE_GRANT_SECRET",
     ]);
     for (const value of Object.values(secrets)) {
       expect(value).toMatch(/^[0-9a-f]{64}$/);
@@ -60,6 +61,7 @@ describe("collectMachineSecrets", () => {
       "ENV=selfhost",
       "AGENT_SECRET=existing-agent-secret",
       "BOT_SESSION_TOKEN_SECRET=existing-bot-secret",
+      "SHARE_GRANT_SECRET=existing-share-secret",
     ].join("\n");
 
     const secrets = collectMachineSecrets(existing);
@@ -77,11 +79,12 @@ describe("collectMachineSecrets", () => {
   it("treats blank values as missing and completes them", () => {
     const existing = 'AGENT_SECRET=\nBOT_SESSION_TOKEN_SECRET=""\n';
     const secrets = collectMachineSecrets(existing);
-    // Both blank entries count as missing; the third was never present.
+    // Both blank entries count as missing; the others were never present.
     expect(Object.keys(secrets).sort()).toEqual([
       "AGENT_SECRET",
       "BOT_SESSION_TOKEN_SECRET",
       "EMAIL_UNSUBSCRIBE_SECRET",
+      "SHARE_GRANT_SECRET",
     ]);
   });
 });
