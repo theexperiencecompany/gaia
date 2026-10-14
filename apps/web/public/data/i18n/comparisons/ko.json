@@ -10788,5 +10788,480 @@
         "answer": "Yes. GAIA has a free tier with proactive AI features. You can also self-host GAIA for free with full data ownership, which is particularly valuable for teams with privacy or compliance requirements that Zoom's cloud processing does not satisfy."
       }
     ]
+  },
+  "instinct": {
+    "name": "Instinct",
+    "tagline": "심부름을 문자로 넘기기",
+    "description": "Instinct는 SMS로 여행과 심부름을 처리합니다. GAIA는 같은 문자 습관에 이메일과 캘린더와 도구를 아우르는 기억을 더합니다.",
+    "metaTitle": "GAIA와 Instinct 비교. AI 기반과 SMS 대행",
+    "metaDescription": "문자로 돕는 일에서 GAIA와 Instinct를 비교합니다. Instinct는 SMS로 심부름하고 GAIA는 이메일, 캘린더, 열린 기억을 더합니다. 어울리는 경우와 시작 방법도 비교합니다.",
+    "keywords": [
+      "GAIA Instinct 비교",
+      "Instinct GAIA",
+      "Instinct SMS 비교",
+      "Instinct AI 후기"
+    ],
+    "intro": "Instinct가 잘하는 것은 하나, 심부름을 문자로 넘기는 일입니다. 여행이나 부탁을 보내면 오가는 과정을 맡습니다. GAIA는 그 습관을 존중하고 WhatsApp과 Telegram에서도 맞습니다. 차이는 문자 둘레에서 일어납니다. GAIA는 받은함을 읽고 캘린더를 보며 내 일하는 방식을 기억하므로 심부름이 생활의 다른 부분과 이어집니다.",
+    "rows": [
+      {
+        "competitor": "문자로 여행 예약과 심부름을 진행합니다",
+        "feature": "방향",
+        "gaia": "이메일, 캘린더, 할 일, 대화에서 움직이는 생산성 OS"
+      },
+      {
+        "competitor": "SMS와 WhatsApp 대화",
+        "feature": "접점",
+        "gaia": "웹, 데스크톱, 모바일에 WhatsApp과 Telegram 봇 추가"
+      },
+      {
+        "competitor": "눈앞의 심부름에 집중. 받은함은 안 봅니다",
+        "feature": "이메일과 일정",
+        "gaia": "Gmail을 읽고 구글 캘린더를 관리하며 요청마다 둘을 잇습니다"
+      },
+      {
+        "competitor": "문자의 흐름 안에 있는 기록",
+        "feature": "기억",
+        "gaia": "모든 도구에서 습관을 배우는 그래프 기반 메모리"
+      },
+      {
+        "competitor": "대기 순번제의 닫힌 제품",
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스이며 셀프호스팅 가능. 무료 티어 포함"
+      },
+      {
+        "competitor": "보내고 끝. 설정 없음",
+        "feature": "시작 방법",
+        "gaia": "도구를 연결하면 어디서든 문자든 음성든 글로든"
+      }
+    ],
+    "gaiaAdvantages": [
+      "웹뿐 아니라 WhatsApp과 Telegram에서 GAIA에 문자를 보낼 수 있습니다",
+      "요청에 움직이기 전에 이메일과 캘린더를 읽습니다",
+      "주를 넘어 맥락을 갖고 가는 그래프 기반 메모리",
+      "하나의 문자 통로가 아닌 50개 이상의 연동",
+      "오픈소스에 무료 티어. Docker로 셀프호스팅 가능"
+    ],
+    "competitorAdvantages": [
+      "문자를 보낼 수 있으면 쓸 수 있습니다. 그만큼 쉽습니다",
+      "여행과 심부름에 집중해서 경험이 흐트러지지 않습니다"
+    ],
+    "verdict": "여행이나 심부름을 문자로 넘기는 일이 전부라면 Instinct를 고릅니다. 같은 문자 습관에 받은함도 캘린더도 버릇도 아는 조수를 곁들이고 싶다면 GAIA를 고릅니다.",
+    "faqs": [
+      {
+        "answer": "그렇습니다. GAIA는 웹에 더해 WhatsApp과 Telegram에서 돌아가니 같은 방식으로 문자로 맡길 수 있습니다. 다른 점은 움직일 때 이메일과 캘린더도 함께 본다는 것입니다.",
+        "question": "Instinct처럼 GAIA에 문자로 맡길 수 있나요."
+      },
+      {
+        "answer": "문자로 한 번의 심부름을 넘기는 속도는 Instinct가 빠릅니다. 일정이나 받은함이나 할 일에 닿는 심부름은 GAIA가 낫습니다. 맥락을 이미 쥐고 있기 때문입니다.",
+        "question": "Instinct가 나은 경우는 언제인가요."
+      }
+    ]
+  },
+  "openai-dots": {
+    "name": "OpenAI Dots",
+    "tagline": "대화 안의 가벼운 일",
+    "description": "OpenAI Dots는 가벼운 일을 위한 얇은 대행 화면입니다. GAIA는 기억과 도구가 필요한 일을 위한 온전한 조수입니다.",
+    "metaTitle": "GAIA와 OpenAI Dots 비교. 전체 OS와 가벼운 대행",
+    "metaDescription": "GAIA와 OpenAI Dots를 비교합니다. Dots는 가벼운 일의 얇은 화면이고 GAIA는 기억과 도구와 선제 행동을 더합니다. 어울리는 일과 시작 방법도 비교합니다.",
+    "keywords": [
+      "GAIA OpenAI Dots 비교",
+      "OpenAI Dots GAIA",
+      "OpenAI Dots 비교"
+    ],
+    "intro": "Dots는 OpenAI의 빠른 차선입니다. 대화 안의 가벼운 일, 무거운 설정 없음. 정말 편하고, 거기까지이기도 합니다. 어제의 맥락이나 받은함이나 캘린더가 필요한 일이 되는 순간 얇은 화면에는 설 터전이 없습니다. GAIA는 바로 그 일을 위해 만들어졌습니다. 내 일하는 방식을 기억하고 사는 도구에 연결되며, 답마다가 아닌 날마다 끝까지 합니다.",
+    "rows": [
+      {
+        "competitor": "대화 화면 안의 가벼운 일",
+        "feature": "방향",
+        "gaia": "기억과 도구와 후속 조치를 갖춘 생산성 OS"
+      },
+      {
+        "competitor": "백지로 시작. 일을 넘기는 기억 없음",
+        "feature": "기억",
+        "gaia": "닿을 때마다 자라는 그래프 기반 메모리"
+      },
+      {
+        "competitor": "대화 화면이 내주는 범위에 한정",
+        "feature": "연동",
+        "gaia": "이메일, 캘린더, 할 일, 대화의 50개 이상 연동"
+      },
+      {
+        "competitor": "부르면 답함",
+        "feature": "선제 대응",
+        "gaia": "도구를 지켜보고 묻기 전에 움직임"
+      },
+      {
+        "competitor": "닫힌 제품. 2026년 현재 아직 변화 중",
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스에 길은 공개. 무료 티어 포함"
+      },
+      {
+        "competitor": "설정 없음. 대화 안에 삶",
+        "feature": "시작 방법",
+        "gaia": "도구를 연결하면 웹, 모바일, 연락 앱에서 쓰기"
+      }
+    ],
+    "gaiaAdvantages": [
+      "일마다 쌓이는 영속 그래프 기반 메모리",
+      "이메일, 캘린더, 할 일, 대화의 50개 이상 연동",
+      "묻기 전에 움직이는 선제 대응 방식",
+      "오픈소스이며 Docker로 셀프호스팅 가능",
+      "하나의 대화가 아닌 WhatsApp과 Telegram에서 움직임"
+    ],
+    "competitorAdvantages": [
+      "이미 쓰는 대화 안에서 가볍게 맡기는 가장 빠른 길",
+      "OpenAI 제품이라 모델이 자라면 함께 자랍니다"
+    ],
+    "verdict": "대화 안에서 가장 빠른 답이 좋다면 OpenAI Dots를 고릅니다. 기억이나 도구나 한 번의 답 너머의 후속 조치가 필요한 일이라면 GAIA를 고릅니다.",
+    "faqs": [
+      {
+        "answer": "가벼운 대행은 한 번의 일을 회차를 넘기는 기억 없이 처리합니다. 온전한 조수는 맥락을 갖고 도구에 연결되며 묻기 전에 움직입니다.",
+        "question": "Dots와 온전한 어시스턴트의 차이는 무엇인가요."
+      },
+      {
+        "answer": "2026년 현재 이 화면은 아직 바뀌는 중입니다. GAIA는 오픈소스이며 셀프호스팅할 수 있어 길이 공개되고 데이터는 어느 경우든 내 관리 아래에 남습니다.",
+        "question": "OpenAI Dots는 아직 바뀌나요."
+      }
+    ]
+  },
+  "dot-app": {
+    "name": "Dot",
+    "tagline": "이어지는 동안의 동행",
+    "description": "Dot은 2025년 10월에 종료된 닫힌 iOS 동행 앱이었습니다. GAIA는 기존 사용자들이 옮겨 가는 열린 어시스턴트입니다.",
+    "metaTitle": "GAIA와 Dot 비교. 열린 조수와 닫힌 앱",
+    "metaDescription": "종료 이후의 GAIA와 Dot을 비교합니다. Dot은 닫힌 iOS 동행 앱이었고 GAIA는 기억이 행동하는 열린 어시스턴트입니다. 기존 사용자의 옮길 곳도 비교합니다.",
+    "keywords": [
+      "GAIA Dot 비교",
+      "Dot GAIA",
+      "Dot 앱 비교",
+      "Dot AI 종료"
+    ],
+    "intro": "Dot은 이어지는 동안은 사랑스러웠습니다. 아이폰 속 동행이 대화를 기억해 줍니다. 그러다 2025년 10월이 왔고 사라졌습니다. 주인이 하나뿐인 닫힌 앱의 위험이 바로 그것입니다. GAIA는 사람들이 좋아한 부분, 시간과 함께 자라는 기억을 남기고 위험을 덜어냅니다. 오픈소스라서 문을 닫을 수 없고, 추억에 잠기는 데서 끝나지 않고 이메일과 캘린더와 할 일 속에서 기억을 일하게 합니다.",
+    "rows": [
+      {
+        "competitor": "닫힌 iOS 동행 앱. 2025년 10월 종료",
+        "feature": "상태",
+        "gaia": "개발이 이어지는 오픈소스 어시스턴트. 무료 티어 포함"
+      },
+      {
+        "competitor": "지난 대화를 기억했지만 말하는 것밖에 못 함",
+        "feature": "기억",
+        "gaia": "도구 안에서 실제 행동을 낳는 그래프 기반 메모리"
+      },
+      {
+        "competitor": "대화만. 도구 연결 없음",
+        "feature": "하는 일",
+        "gaia": "이메일 초안 작성, 일정 등록, 할 일 관리, 워크플로 실행"
+      },
+      {
+        "competitor": "아이폰만",
+        "feature": "지원 환경",
+        "gaia": "웹, 데스크톱, 모바일에 WhatsApp과 Telegram 추가"
+      },
+      {
+        "competitor": "한 회사의 서버. 정하면 사라짐",
+        "feature": "데이터 관리",
+        "gaia": "Docker로 셀프호스팅 가능. 데이터는 내 것"
+      },
+      {
+        "competitor": "없음. 이미 멈춤",
+        "feature": "시작 방법",
+        "gaia": "무료로 가입하고 Gmail과 캘린더를 연결한 뒤 맡기기 시작"
+      }
+    ],
+    "gaiaAdvantages": [
+      "종료된 앱이 아닌 개발이 이어지는 살아 있는 제품",
+      "대화와 연결된 도구를 아우르는 기억",
+      "기억을 행동으로 바꿈. 초안을 쓰고 일정을 잡고 할 일을 만듭니다",
+      "오픈소스이며 Docker로 셀프호스팅 가능",
+      "50개 이상의 연동을 갖춘 무료 티어"
+    ],
+    "competitorAdvantages": [
+      "이어지는 동안은 지난 대화를 기억하는 따뜻한 동행 느낌",
+      "배울 것 없음. 말을 거는 아이폰 앱일 뿐"
+    ],
+    "verdict": "Dot은 사라졌으니 승패는 없습니다. Dot이 주던 이어지는 관계가 그립다면 GAIA가 열린 터에서 다시 쌓습니다. 자라는 기억, 따르는 행동, 종료 걱정 없음입니다.",
+    "faqs": [
+      {
+        "answer": "Dot은 2025년 10월에 종료되어 앱이 멈췄습니다. 기존 사용자에게는 살아 있는 제품과 진짜 기억이 필요합니다.",
+        "question": "Dot은 왜 종료되었나요."
+      },
+      {
+        "answer": "GAIA는 오픈소스이며 셀프호스팅할 수 있어 어떤 회사 결정으로도 빼앗기지 않습니다. 데이터와 워크플로는 계속 내 관리 아래에 있습니다.",
+        "question": "GAIA도 Dot처럼 종료될 수 있나요."
+      }
+    ]
+  },
+  "friend-pendant": {
+    "name": "Friend",
+    "tagline": "하루에 동행하는",
+    "description": "Friend는 249달러짜리 동행 펜던트입니다. GAIA는 받은함을 비우고 일정을 챙기는 온전한 어시스턴트입니다.",
+    "metaTitle": "GAIA와 Friend 비교. 일하는 조수와 펜던트",
+    "metaDescription": "GAIA와 Friend 펜던트를 비교합니다. Friend는 249달러의 동행이고 GAIA는 일을 처리하는 오픈소스 어시스턴트입니다. 어울리는 사람과 시작 방법도 비교합니다.",
+    "keywords": [
+      "GAIA Friend 비교",
+      "Friend GAIA",
+      "Friend 펜던트 비교",
+      "Friend AI 후기"
+    ],
+    "intro": "Friend는 동행합니다. 249달러 펜던트가 하루를 듣고 함께한 사람처럼 문자를 보냅니다. 진짜 위로이며 제품의 전부이기도 합니다. 답이 필요한 이메일, 옮겨야 할 회의, 해야 할 일이 나오면 Friend는 내가 하는 모습을 지켜봅니다. GAIA는 나머지 절반입니다. 받은함을 읽고 캘린더를 챙기며 50개가 넘는 도구에서 후속 조치를 합니다. 동행은 반갑습니다. 끝난 하루가 더 반갑습니다.",
+    "rows": [
+      {
+        "competitor": "듣고 문자로 답하는 249달러 펜던트",
+        "feature": "방향",
+        "gaia": "디지털 생활 전체에서 행동하는 생산성 OS"
+      },
+      {
+        "competitor": "문자로 나누는 동행과 대화",
+        "feature": "하는 일",
+        "gaia": "이메일 정리, 캘린더 관리, 할 일과 워크플로"
+      },
+      {
+        "competitor": "들었기에 하루를 압니다",
+        "feature": "맥락",
+        "gaia": "이메일, 캘린더, 할 일, 대화를 잇는 그래프 기반 메모리"
+      },
+      {
+        "competitor": "도구 연결 없음. 하는 사람은 나",
+        "feature": "연동",
+        "gaia": "Gmail, Slack, Notion, Linear 포함 50개 이상의 연동"
+      },
+      {
+        "competitor": "닫힌 하드웨어와 소프트웨어",
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스이며 셀프호스팅 가능. 무료 티어 포함"
+      },
+      {
+        "competitor": "펜던트를 사고 착용하고 말을 겁니다",
+        "feature": "시작 방법",
+        "gaia": "무료로 가입하고 도구를 연결한 뒤 맡기기 시작"
+      }
+    ],
+    "gaiaAdvantages": [
+      "하루를 대화로 풀어 놓는 대신 받은함을 비웁니다",
+      "캘린더와 할 일과 후속 조치를 끝까지 챙깁니다",
+      "이미 쓰는 도구와 50개 이상의 연동",
+      "오픈소스에 무료 티어. 249달러 기계는 필요 없습니다",
+      "먼저 움직임. 두 번 묻기 전에 맥락으로 행동합니다"
+    ],
+    "competitorAdvantages": [
+      "늘 함께함. 하루를 나는 대로 들음",
+      "앱이 아닌 친구처럼 문자로 다정하게 대함"
+    ],
+    "verdict": "늘 곁에서 듣고 대화하는 동행이 좋다면 Friend를 고릅니다. 일이 처리되길 원한다면 GAIA를 고릅니다. 받은함 정리, 캘린더 관리, 끝나는 할 일입니다.",
+    "faqs": [
+      {
+        "answer": "아닙니다. Friend는 듣고 문자로 대화할 뿐 이메일이나 캘린더나 할 일 도구와 연결되지 않습니다. 아무것도 처리되지 않습니다.",
+        "question": "Friend가 일이나 이메일을 처리하나요."
+      },
+      {
+        "answer": "Friend 펜던트는 249달러입니다. GAIA에는 무료 티어가 있고 유료 플랜은 월 정액이며 살 하드웨어가 없습니다.",
+        "question": "Friend는 얼마인가요."
+      }
+    ]
+  },
+  "omi": {
+    "name": "OMI",
+    "tagline": "하루를 위한 열린 기록",
+    "description": "OMI는 기억하기 위한 열린 펜던트입니다. GAIA는 열린 자세를 공유하고 이메일과 캘린더의 행동을 더합니다.",
+    "metaTitle": "GAIA와 OMI 비교. AI 기반과 열린 펜던트",
+    "metaDescription": "GAIA와 OMI 펜던트를 비교합니다. OMI는 대화를 기억하는 열린 기록이고 GAIA는 모든 도구에서 움직이는 열린 행동을 더합니다. 개방성의 차이도 비교합니다.",
+    "keywords": [
+      "GAIA OMI 비교",
+      "OMI GAIA",
+      "OMI 펜던트 비교",
+      "OMI AI 후기"
+    ],
+    "intro": "OMI는 인정할 만한 제품입니다. 닫힌 마이크 분야에서 오픈소스 펜던트는 용기가 있습니다. 듣고 기록해서 하루를 나중에 찾아볼 수 있게 합니다. 하지만 기억하는 데서 멈춥니다. 다시 외워서 받은함을 비운 사람은 한 명도 없습니다. GAIA는 OMI의 열린 가치를 공유하고 일을 끝까지 합니다. 맥락을 가져와 움직이고 후속 조치를 쓰고 할 일을 만들며 회의를 옮깁니다. 열린 제품 둘, 문제의 다른 절반씩입니다.",
+    "rows": [
+      {
+        "competitor": "소리를 주워 기억하는 오픈소스 펜던트",
+        "feature": "방향",
+        "gaia": "기억하고 움직이는 오픈소스 생산성 OS"
+      },
+      {
+        "competitor": "말한 내용의 찾아볼 수 있는 기록",
+        "feature": "기억",
+        "gaia": "할 일, 이메일, 일정과 잇는 그래프 기반 메모리"
+      },
+      {
+        "competitor": "기억만. 이메일도 일정도 할 일 행동 없음",
+        "feature": "하는 일",
+        "gaia": "초안을 쓰고 일정을 잡고 할 일을 만들며 여러 단계 흐름을 돌립니다"
+      },
+      {
+        "competitor": "매일 펜던트를 차고 다녀야 함",
+        "feature": "기계",
+        "gaia": "기계 없음. 웹, 데스크톱, 모바일, 연락 앱"
+      },
+      {
+        "competitor": "오픈소스. 기계는 129달러부터 179달러",
+        "feature": "개방성과 가격",
+        "gaia": "오픈소스이며 셀프호스팅 가능. 무료 티어 포함"
+      },
+      {
+        "competitor": "사서 매일 차고 나중에 찾기",
+        "feature": "시작 방법",
+        "gaia": "무료로 가입하고 도구를 연결한 뒤 어디서든 맡기기"
+      }
+    ],
+    "gaiaAdvantages": [
+      "주운 맥락을 이메일 초안과 할 일로 바꿉니다",
+      "기억만이 아닌 깊은 이메일과 일정 자동화",
+      "익숙한 도구와 50개 이상의 연동",
+      "묻기를 기다리지 않고 알리고 움직이는 선제 대응",
+      "무료 티어. 기계를 살 필요 없음"
+    ],
+    "competitorAdvantages": [
+      "진짜 오픈소스. 펌웨어까지 들여다볼 수 있습니다",
+      "부담 없는 시작. 기계는 129달러부터 179달러"
+    ],
+    "verdict": "대화의 열린 몸에 차는 기록이 좋다면 OMI를 고릅니다. 맥락을 끝난 일로 바꾸는 열린 소프트웨어가 좋다면 GAIA를 고릅니다.",
+    "faqs": [
+      {
+        "answer": "그렇습니다. 둘 다 완전한 오픈소스입니다. GAIA는 Docker로 셀프호스팅할 수 있고 OMI는 살펴보고 직접 돌릴 수 있게 코드를 공개합니다.",
+        "question": "GAIA와 OMI가 둘 다 오픈소스인가요."
+      },
+      {
+        "answer": "아닙니다. GAIA는 손에 있는 전화와 컴퓨터로 돕니다. 웹, 데스크톱, 모바일, 연락 앱입니다. 몸에 차는 기계는 필요 없습니다.",
+        "question": "GAIA에 OMI 기계가 필요한가요."
+      }
+    ]
+  },
+  "gemini-assistant": {
+    "name": "Gemini Assistant",
+    "tagline": "음성으로 다루는 전화",
+    "description": "Gemini Assistant는 안드로이드폰을 음성으로 다룹니다. GAIA는 이메일, 캘린더, 할 일의 업무를 챙깁니다.",
+    "metaTitle": "GAIA와 Gemini Assistant 비교. OS와 폰 AI",
+    "metaDescription": "GAIA와 Gemini Assistant를 비교합니다. Gemini는 안드로이드를 음성으로 다루고 GAIA는 이메일과 캘린더 업무를 챙깁니다. 어울리는 일과 시작 방법도 비교합니다.",
+    "keywords": [
+      "GAIA Gemini Assistant 비교",
+      "Gemini Assistant GAIA",
+      "Gemini 어시스턴트 비교",
+      "안드로이드 Gemini 후기"
+    ],
+    "intro": "Gemini Assistant는 전화 업무에 강합니다. 엄마에게 전화, 타이머, 음악, 가벼운 질문. 누구도 의심하지 않습니다. 당황은 업무를 맡길 때 시작됩니다. 받은함은 못 읽고 회의 준비는 못 하며 Slack과 Notion과 이메일을 넘나드는 진행 관리는 안 됩니다. GAIA는 그 틈에 있습니다. 전화 조수가 전화를 지키는 옆에서 50개가 넘는 도구로 하루를 챙깁니다.",
+    "rows": [
+      {
+        "competitor": "안드로이드폰 내장 음성 어시스턴트",
+        "feature": "방향",
+        "gaia": "하루 전체를 위한 생산성 OS"
+      },
+      {
+        "competitor": "통화, 타이머, 음악, 설정, 짧은 답",
+        "feature": "하는 일",
+        "gaia": "이메일 정리, 사전 자료, 할 일, 일정, 워크플로"
+      },
+      {
+        "competitor": "받은함도 업무 맥락도 없음",
+        "feature": "업무 맥락",
+        "gaia": "Gmail과 캘린더를 읽고 요청마다 둘을 잇습니다"
+      },
+      {
+        "competitor": "대화가 끝나면 잊습니다",
+        "feature": "기억",
+        "gaia": "주와 도구를 아우르는 영속 그래프 기반 메모리"
+      },
+      {
+        "competitor": "안드로이드폰만",
+        "feature": "지원 환경",
+        "gaia": "웹, 데스크톱, 모바일, WhatsApp, Telegram, Slack, Discord"
+      },
+      {
+        "competitor": "닫혀 있고 구글 계정에 묶입니다",
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스이며 셀프호스팅 가능. 무료 티어 포함"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Gmail을 정리하고 내 말투로 답 초안을 씁니다",
+      "회의 전에 배경 자료를 준비합니다",
+      "도구 전체에서 할 일을 만들고 챙깁니다",
+      "한 마디가 아닌 주 단위로 기억하는 그래프 기반 메모리",
+      "오픈소스에 무료 티어. 어떤 기기에서도 씁니다"
+    ],
+    "competitorAdvantages": [
+      "안드로이드폰에 이미 들어 있음. 기기 일에는 설정이 필요 없습니다",
+      "음성 통화, 타이머, 음악, 기기 설정에 강합니다"
+    ],
+    "verdict": "잘하는 전화 업무는 Gemini Assistant에 남깁니다. 업무는 GAIA에 맡깁니다. 받은함도 캘린더도 할 일도, 하나의 앱에 안 담기는 전부입니다.",
+    "faqs": [
+      {
+        "answer": "아닙니다. Gemini Assistant는 음성으로 기기 일을 처리합니다. 받은함 정리도 회의 준비도 도구를 넘나드는 관리도 못 합니다.",
+        "question": "Gemini Assistant가 이메일을 관리할 수 있나요."
+      },
+      {
+        "answer": "통화와 타이머와 기기 조작은 Gemini Assistant에 남깁니다. 앱을 넘나드는 일, 받은함도 일정도 할 일도 후속 조치도 GAIA에 넘깁니다.",
+        "question": "Gemini Assistant를 GAIA로 바꿔야 하나요."
+      }
+    ]
+  },
+  "siri": {
+    "name": "Siri",
+    "tagline": "음성에 의한 짧은 명령",
+    "description": "Siri는 애플 기기에서 짧은 음성 명령을 처리합니다. GAIA는 하루 전체를 챙기는 선제 대응 어시스턴트입니다.",
+    "metaTitle": "GAIA와 Siri 비교. 진짜 조수와 음성 AI",
+    "metaDescription": "업무에서 GAIA와 Siri를 비교합니다. Siri는 짧은 음성 명령을 처리하고 GAIA는 받은함, 캘린더, 할 일을 관리합니다. 어울리는 일과 시작 방법도 비교합니다.",
+    "keywords": [
+      "GAIA Siri 비교",
+      "Siri GAIA",
+      "Siri 비교",
+      "업무용 Siri"
+    ],
+    "intro": "Siri는 음성 조수의 기대를 만들고 거기에 머물렀습니다. 타이머, 통화, 날씨, 짧은 질문은 즉시에 확실합니다. 단계가 둘 이상이면 영역 밖입니다. 하루는 거의 다단계입니다. 답이 필요한 이메일, 준비가 필요한 회의, 네 가지 도구에 흩어진 할 일. GAIA는 그 층을 위해 만들어졌습니다. 도구에 연결되고 버릇을 기억하며 Siri가 시도하지 않은 후속 조치를 합니다.",
+    "rows": [
+      {
+        "competitor": "아이폰, 아이패드, 맥 내장 음성 명령",
+        "feature": "방향",
+        "gaia": "모든 도구에서 먼저 움직이는 생산성 OS"
+      },
+      {
+        "competitor": "타이머, 통화, 메시지, 짧은 질문",
+        "feature": "하는 일",
+        "gaia": "이메일 정리, 사전 자료, 일정, 할 일, 워크플로"
+      },
+      {
+        "competitor": "한 번의 명령, 후속 조치 없음",
+        "feature": "다단계 업무",
+        "gaia": "도구를 넘나드는 다단계 업무를 짜서 진행합니다"
+      },
+      {
+        "competitor": "대화를 넘기는 기억 없음",
+        "feature": "기억",
+        "gaia": "버릇을 시간과 함께 배우는 그래프 기반 메모리"
+      },
+      {
+        "competitor": "애플 기기만",
+        "feature": "지원 환경",
+        "gaia": "웹, 데스크톱, 모바일, WhatsApp, Telegram, Slack, Discord"
+      },
+      {
+        "competitor": "닫혀 있고 길은 애플이 정합니다",
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스이며 Docker로 셀프호스팅 가능"
+      }
+    ],
+    "gaiaAdvantages": [
+      "묻기 전에 받은함을 정리하고 답을 씁니다",
+      "회의 전에 전체 맥락으로 사전 자료를 냅니다",
+      "50개가 넘는 도구에서 할 일과 후속 조치를 관리합니다",
+      "그래프 기반 메모리로 버릇을 기억합니다",
+      "오픈소스에 무료 티어. 모든 환경에서"
+    ],
+    "competitorAdvantages": [
+      "모든 애플 기기에 들어 있음. 설정이 필요 없습니다",
+      "타이머, 통화, 메시지, 짧은 상식에 즉시 답합니다"
+    ],
+    "verdict": "애플 기기에서의 즉각적인 일은 Siri에 남깁니다. 진짜 하루는 GAIA에 맡깁니다. 받은함도 캘린더도 할 일도, 쌓이는 기억도입니다.",
+    "faqs": [
+      {
+        "answer": "아닙니다. Siri는 받은함을 못 읽고 회의를 준비 못 하며 도구를 넘나드는 할 일 관리를 못 합니다. 그 일에는 GAIA 같은 연결된 조수가 필요합니다.",
+        "question": "Siri가 일정과 이메일을 관리할 수 있나요."
+      },
+      {
+        "answer": "기기 명령과 짧은 질문은 Siri에 남깁니다. 받은함 정리, 캘린더 관리, 사전 자료, 후속 조치는 GAIA에 맡깁니다.",
+        "question": "Siri를 GAIA로 바꿔야 하나요."
+      }
+    ]
   }
 }

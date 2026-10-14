@@ -10788,5 +10788,480 @@
         "answer": "Yes. GAIA has a free tier with proactive AI features. You can also self-host GAIA for free with full data ownership, which is particularly valuable for teams with privacy or compliance requirements that Zoom's cloud processing does not satisfy."
       }
     ]
+  },
+  "instinct": {
+    "name": "Instinct",
+    "tagline": "Confiez une course par texto",
+    "description": "Instinct gère voyages et courses par SMS. GAIA reprend la même habitude du texto et ajoute e-mails, calendrier et mémoire entre outils.",
+    "metaTitle": "GAIA vs Instinct : OS IA complet vs agent SMS",
+    "metaDescription": "Comparez GAIA et Instinct pour l'aide par texto. Instinct fait les courses par SMS, GAIA ajoute e-mails, agenda et mémoire ouverte.",
+    "keywords": [
+      "GAIA vs Instinct",
+      "Instinct vs GAIA",
+      "Comparatif Instinct SMS",
+      "Avis Instinct IA"
+    ],
+    "intro": "Instinct a réussi une chose : confier une course par texto. Vous lui écrivez pour un voyage ou une tâche, et il gère les allers-retours. GAIA respecte cette habitude et vous accueille aussi dans WhatsApp et Telegram. La différence, c'est ce qui se passe autour du texto. GAIA lit votre boîte mail, vérifie votre calendrier et se souvient de votre façon de travailler, pour que la course se relie au reste de votre vie au lieu de flotter toute seule.",
+    "rows": [
+      {
+        "competitor": "Gère voyages et courses par messages texte",
+        "feature": "Approche",
+        "gaia": "OS de productivité complet qui agit sur e-mails, calendrier, tâches et chat"
+      },
+      {
+        "competitor": "Conversations par SMS et WhatsApp",
+        "feature": "Interface",
+        "gaia": "Web, bureau, mobile, plus bots WhatsApp et Telegram"
+      },
+      {
+        "competitor": "Centré sur la course du moment, sans accès à la boîte mail",
+        "feature": "E-mails et calendrier",
+        "gaia": "Lit Gmail, gère Google Calendar, relie les deux à chaque demande"
+      },
+      {
+        "competitor": "Historique de conversation dans le fil de texto",
+        "feature": "Mémoire",
+        "gaia": "Mémoire en graphe qui apprend vos habitudes dans tous les outils"
+      },
+      {
+        "competitor": "Produit fermé déployé sur liste d'attente",
+        "feature": "Ouverture",
+        "gaia": "Entièrement open source, auto-hébergeable, avec un niveau gratuit"
+      },
+      {
+        "competitor": "Écrivez et c'est parti, rien à régler",
+        "feature": "Prise en main",
+        "gaia": "Connectez vos outils une fois, puis écrivez, parlez ou tapez depuis partout"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Écrivez à GAIA dans WhatsApp et Telegram, pas seulement sur le web",
+      "Lit vos e-mails et votre calendrier avant d'agir sur une demande",
+      "Mémoire en graphe qui porte le contexte sur des semaines",
+      "Plus de 50 intégrations au lieu d'un seul canal de texto",
+      "Open source avec un niveau gratuit, auto-hébergeable avec Docker"
+    ],
+    "competitorAdvantages": [
+      "Simplissime : si vous savez envoyer un texto, vous savez utiliser Instinct",
+      "Centré sur voyages et courses, donc une expérience qui reste nette"
+    ],
+    "verdict": "Choisissez Instinct si tout votre besoin tient dans un voyage ou une course confiés par texto. Choisissez GAIA si vous voulez la même habitude du texto adossée à un assistant qui connaît déjà votre boîte mail, votre calendrier et vos habitudes.",
+    "faqs": [
+      {
+        "answer": "Oui. GAIA marche dans WhatsApp et Telegram comme sur le web, donc vous lui écrivez des tâches de la même façon. La différence, c'est que GAIA voit aussi vos e-mails et votre calendrier quand il agit.",
+        "question": "Puis-je écrire à GAIA comme j'écris à Instinct ?"
+      },
+      {
+        "answer": "Instinct est le passage le plus rapide pour une course isolée par texto. GAIA est le meilleur choix quand la course touche votre agenda, votre boîte mail ou vos tâches, parce qu'il a déjà ce contexte.",
+        "question": "Quand Instinct est-il le meilleur choix ?"
+      }
+    ]
+  },
+  "openai-dots": {
+    "name": "OpenAI Dots",
+    "tagline": "Des tâches rapides dans le chat",
+    "description": "OpenAI Dots est une surface d'agent légère pour les tâches rapides. GAIA est l'assistant complet pour le travail qui demande mémoire et outils.",
+    "metaTitle": "GAIA vs OpenAI Dots : OS complet vs agent léger",
+    "metaDescription": "Comparez GAIA et OpenAI Dots. Dots est une surface légère pour tâches rapides, GAIA ajoute mémoire, outils et action proactive.",
+    "keywords": [
+      "GAIA vs OpenAI Dots",
+      "OpenAI Dots vs GAIA",
+      "Comparatif OpenAI Dots"
+    ],
+    "intro": "Dots est la voie rapide d'OpenAI : des tâches vite faites dans le chat, sans installation lourde. C'est vraiment utile, et c'est aussi là que ça s'arrête. Dès qu'une tâche a besoin du contexte d'hier, de votre boîte mail ou de votre calendrier, une surface légère n'a rien sur quoi s'appuyer. GAIA est construit pour ce travail-là. Il se souvient de votre façon d'opérer, se connecte aux outils où vous vivez et assure le suivi sur des jours, pas seulement des répliques.",
+    "rows": [
+      {
+        "competitor": "Tâches rapides traitées dans la surface du chat",
+        "feature": "Approche",
+        "gaia": "OS de productivité complet avec mémoire, outils et suivi"
+      },
+      {
+        "competitor": "Repart de zéro, aucune mémoire entre les tâches",
+        "feature": "Mémoire",
+        "gaia": "Mémoire en graphe qui grandit à chaque interaction"
+      },
+      {
+        "competitor": "Limité à ce que la surface du chat expose",
+        "feature": "Intégrations",
+        "gaia": "Plus de 50 intégrations e-mails, calendrier, tâches et chat"
+      },
+      {
+        "competitor": "Répond quand vous le sollicitez",
+        "feature": "Proactivité",
+        "gaia": "Surveille vos outils et agit avant que vous demandiez"
+      },
+      {
+        "competitor": "Produit fermé, encore en évolution en 2026",
+        "feature": "Ouverture",
+        "gaia": "Entièrement open source avec feuille de route publique et niveau gratuit"
+      },
+      {
+        "competitor": "Rien à régler, il vit dans le chat",
+        "feature": "Prise en main",
+        "gaia": "Connectez vos outils une fois, puis utilisez depuis web, mobile ou messagerie"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Mémoire persistante en graphe dans chaque tâche",
+      "Plus de 50 intégrations e-mails, calendrier, tâches et chat",
+      "Comportement proactif qui agit avant que vous demandiez",
+      "Open source et auto-hébergeable avec Docker",
+      "Marche dans WhatsApp et Telegram, pas dans un seul chat"
+    ],
+    "competitorAdvantages": [
+      "Le chemin le plus rapide pour une tâche vite faite dans le chat que vous utilisez déjà",
+      "Soutenu par OpenAI, donc il progresse avec leurs modèles"
+    ],
+    "verdict": "Choisissez OpenAI Dots pour la réponse la plus rapide dans un chat. Choisissez GAIA quand la tâche demande de la mémoire, vos outils ou un suivi au-delà d'une seule réponse.",
+    "faqs": [
+      {
+        "answer": "Un agent léger traite une tâche rapide sans mémoire entre les sessions. Un assistant complet garde le contexte, se connecte à vos outils et agit avant que vous demandiez.",
+        "question": "Quelle est la différence entre Dots et un assistant complet ?"
+      },
+      {
+        "answer": "En 2026 la surface évolue encore. GAIA est open source et auto-hébergeable, donc sa feuille de route est publique et vos données restent sous votre contrôle dans tous les cas.",
+        "question": "Est-ce qu'OpenAI Dots change encore ?"
+      }
+    ]
+  },
+  "dot-app": {
+    "name": "Dot",
+    "tagline": "Un compagnon, le temps que ça a duré",
+    "description": "Dot était une appli compagnon fermée sur iOS, arrêtée en octobre 2025. GAIA est l'assistant ouvert vers qui ses anciens utilisateurs migrent.",
+    "metaTitle": "GAIA vs Dot : assistant ouvert vs appli fermée",
+    "metaDescription": "Comparez GAIA et Dot après la fermeture. Dot était un compagnon iOS fermé, GAIA un assistant ouvert dont la mémoire agit.",
+    "keywords": [
+      "GAIA vs Dot",
+      "Dot vs GAIA",
+      "Comparatif appli Dot",
+      "Fermeture Dot IA"
+    ],
+    "intro": "Dot était charmant tant que ça durait : un compagnon sur votre iPhone qui se souvenait de vos discussions. Puis octobre 2025 est arrivé et tout a disparu. C'est le risque d'une appli fermée avec un seul propriétaire. GAIA garde ce que les gens aimaient, une mémoire qui grandit avec le temps, et supprime le risque. Il est open source, donc on ne peut pas vous le fermer au nez, et il met la mémoire au travail dans vos e-mails, votre calendrier et vos tâches au lieu de se contenter de souvenirs.",
+    "rows": [
+      {
+        "competitor": "Appli compagnon iOS fermée, arrêtée en octobre 2025",
+        "feature": "Statut",
+        "gaia": "Assistant open source en développement actif, avec un niveau gratuit"
+      },
+      {
+        "competitor": "Se souvenait des discussions passées, pouvait seulement en parler",
+        "feature": "Mémoire",
+        "gaia": "Mémoire en graphe qui produit des actions réelles dans vos outils"
+      },
+      {
+        "competitor": "Conversation uniquement, aucune connexion aux outils",
+        "feature": "Ce qu'il fait",
+        "gaia": "Rédige des e-mails, planifie des événements, gère les tâches, exécute des flux"
+      },
+      {
+        "competitor": "iPhone uniquement",
+        "feature": "Plateformes",
+        "gaia": "Web, bureau, mobile, plus WhatsApp et Telegram"
+      },
+      {
+        "competitor": "Les serveurs d'une entreprise, partis quand ils l'ont décidé",
+        "feature": "Contrôle des données",
+        "gaia": "Auto-hébergeable avec Docker, vos données restent à vous"
+      },
+      {
+        "competitor": "Rien, l'appli ne fonctionne plus",
+        "feature": "Prise en main",
+        "gaia": "Inscrivez-vous gratis, connectez Gmail et Calendar, commencez à déléguer"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Un produit vivant en développement actif, pas une appli arrêtée",
+      "Une mémoire qui couvre les conversations et vos outils connectés",
+      "Transforme la mémoire en actes : brouillons, planification, création de tâches",
+      "Open source et auto-hébergeable avec Docker",
+      "Niveau gratuit avec plus de 50 intégrations"
+    ],
+    "competitorAdvantages": [
+      "Un vrai côté compagnon chaleureux avec le souvenir des discussions passées, le temps que ça a duré",
+      "Aucune prise en main : juste une appli iPhone qui parlait"
+    ],
+    "verdict": "Dot n'existe plus, il n'y a donc pas de match à gagner. Si la relation suivie qu'offrait Dot vous manque, GAIA la reconstruit sur un terrain ouvert : une mémoire qui grandit, des actes qui suivent, et aucun risque de fermeture.",
+    "faqs": [
+      {
+        "answer": "Dot a fermé en octobre 2025. L'appli a cessé de fonctionner, donc ses anciens utilisateurs ont besoin d'un produit vivant avec une vraie mémoire.",
+        "question": "Pourquoi Dot a fermé ?"
+      },
+      {
+        "answer": "GAIA est open source et auto-hébergeable, donc aucune décision d'entreprise ne peut vous le retirer. Vos données et vos flux de travail restent sous votre contrôle.",
+        "question": "Est-ce que GAIA peut fermer comme Dot ?"
+      }
+    ]
+  },
+  "friend-pendant": {
+    "name": "Friend",
+    "tagline": "De la compagnie pour votre journée",
+    "description": "Friend est un pendentif à 249 $ qui tient compagnie. GAIA est l'assistant complet qui vide votre boîte mail et tient votre agenda.",
+    "metaTitle": "GAIA vs Friend : vrai assistant vs pendentif",
+    "metaDescription": "Comparez GAIA et le pendentif Friend. Friend est une compagnie à 249 $, GAIA un assistant open source qui fait le travail.",
+    "keywords": [
+      "GAIA vs Friend",
+      "Friend vs GAIA",
+      "Comparatif pendentif Friend",
+      "Avis Friend IA"
+    ],
+    "intro": "Friend tient compagnie. Le pendentif à 249 $ écoute votre journée et vous écrit comme quelqu'un qui était là. C'est un vrai réconfort, et c'est aussi tout le produit. Quand un e-mail attend une réponse, une réunion doit bouger ou une tâche doit se faire, Friend vous regarde le faire. GAIA est l'autre moitié : un assistant qui lit votre boîte mail, gère votre calendrier et assure le suivi dans plus de 50 outils. La compagnie, c'est agréable. Une journée bouclée, c'est mieux.",
+    "rows": [
+      {
+        "competitor": "Pendentif à 249 $ qui écoute et vous répond par texte",
+        "feature": "Approche",
+        "gaia": "OS de productivité complet qui agit dans votre vie numérique"
+      },
+      {
+        "competitor": "Compagnie et conversation par texte",
+        "feature": "Ce qu'il fait",
+        "gaia": "Tri des e-mails, gestion du calendrier, tâches et flux de travail"
+      },
+      {
+        "competitor": "Connaît votre journée parce qu'il l'a entendue",
+        "feature": "Contexte",
+        "gaia": "Mémoire en graphe sur e-mails, calendrier, tâches et discussions"
+      },
+      {
+        "competitor": "Aucune connexion aux outils, c'est vous qui faites tout",
+        "feature": "Intégrations",
+        "gaia": "Plus de 50 intégrations dont Gmail, Slack, Notion, Linear"
+      },
+      {
+        "competitor": "Matériel et logiciel fermés",
+        "feature": "Ouverture",
+        "gaia": "Entièrement open source, auto-hébergeable, avec un niveau gratuit"
+      },
+      {
+        "competitor": "Achetez le pendentif, portez-le, écrivez-lui",
+        "feature": "Prise en main",
+        "gaia": "Inscrivez-vous gratis, connectez vos outils, commencez à déléguer"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Vide votre boîte mail au lieu de discuter de votre journée",
+      "Gère calendrier, tâches et suivis de bout en bout",
+      "Plus de 50 intégrations avec les outils que vous utilisez déjà",
+      "Open source avec un niveau gratuit, sans matériel à 249 $",
+      "Proactif : agit selon le contexte sans qu'on lui demande deux fois"
+    ],
+    "competitorAdvantages": [
+      "Toujours avec vous, il entend votre journée au fil de l'eau",
+      "Un côté personnel : il vous écrit comme un ami, pas comme une appli"
+    ],
+    "verdict": "Choisissez Friend si vous voulez un compagnon toujours présent qui écoute et discute. Choisissez GAIA si vous voulez que le travail soit fait : boîte triée, calendrier tenu, tâches bouclées.",
+    "faqs": [
+      {
+        "answer": "Non. Friend écoute et discute par texte. Il ne se connecte ni aux e-mails, ni au calendrier, ni aux outils de tâches, donc rien ne se fait sans vous.",
+        "question": "Est-ce que Friend gère les tâches ou les e-mails ?"
+      },
+      {
+        "answer": "Le pendentif Friend coûte 249 $. GAIA propose un niveau gratuit, et son offre payante est un forfait mensuel fixe, sans matériel à acheter.",
+        "question": "Combien coûte Friend ?"
+      }
+    ]
+  },
+  "omi": {
+    "name": "OMI",
+    "tagline": "Le rappel ouvert pour votre journée",
+    "description": "OMI est un pendentif ouvert pour se souvenir. GAIA partage la même éthique ouverte et ajoute l'action sur e-mails et calendrier.",
+    "metaTitle": "GAIA vs OMI : OS IA vs pendentif ouvert",
+    "metaDescription": "Comparez GAIA et le pendentif OMI. OMI est le rappel ouvert des conversations, GAIA ajoute l'action ouverte dans vos outils.",
+    "keywords": [
+      "GAIA vs OMI",
+      "OMI vs GAIA",
+      "Comparatif pendentif OMI",
+      "Avis OMI IA"
+    ],
+    "intro": "OMI mérite d'être salué : un pendentif open source dans une catégorie de micros fermés, c'est un produit courageux. Il écoute, enregistre et rend votre journée consultable. Mais le rappel est là où ça s'arrête. Personne n'a jamais vidé sa boîte mail en s'en souvenant mieux. GAIA partage les valeurs open source d'OMI et finit le travail : il prend le contexte et agit, rédige le suivi, crée la tâche, déplace la réunion. Deux produits ouverts, deux moitiés différentes du problème.",
+    "rows": [
+      {
+        "competitor": "Pendentif open source qui capte et rappelle l'audio",
+        "feature": "Approche",
+        "gaia": "OS de productivité open source qui se souvient puis agit"
+      },
+      {
+        "competitor": "Trace consultable de ce qui s'est dit",
+        "feature": "Mémoire",
+        "gaia": "Mémoire en graphe liée aux tâches, e-mails et événements"
+      },
+      {
+        "competitor": "Rappel uniquement : aucune action e-mail, calendrier ou tâche",
+        "feature": "Ce qu'il fait",
+        "gaia": "Rédige, planifie, crée des tâches, exécute des flux en plusieurs étapes"
+      },
+      {
+        "competitor": "Exige de porter le pendentif chaque jour",
+        "feature": "Matériel",
+        "gaia": "Aucun matériel : web, bureau, mobile et applis de messagerie"
+      },
+      {
+        "competitor": "Open source, matériel de 129 $ à 179 $",
+        "feature": "Ouverture et prix",
+        "gaia": "Open source et auto-hébergeable, avec un niveau gratuit"
+      },
+      {
+        "competitor": "Achetez le matériel, portez-le au quotidien, cherchez après",
+        "feature": "Prise en main",
+        "gaia": "Inscrivez-vous gratis, connectez vos outils, déléguez de partout"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Transforme le contexte capté en e-mails rédigés et tâches créées",
+      "Automatisation poussée de Gmail et Calendar, pas juste du rappel",
+      "Plus de 50 intégrations dans vos outils actuels",
+      "Proactif : signale et agit sans attendre qu'on l'interroge",
+      "Niveau gratuit, aucun achat de matériel"
+    ],
+    "competitorAdvantages": [
+      "Vraiment open source, inspectable jusqu'au firmware",
+      "Entrée abordable : matériel de 129 $ à 179 $"
+    ],
+    "verdict": "Choisissez OMI si vous voulez un enregistrement ouvert et portable de vos conversations. Choisissez GAIA si vous voulez un logiciel ouvert qui transforme le contexte en travail terminé.",
+    "faqs": [
+      {
+        "answer": "Oui. Les deux sont entièrement open source. GAIA est auto-hébergeable avec Docker, et OMI publie son code pour inspection et auto-hébergement.",
+        "question": "Est-ce que GAIA et OMI sont open source ?"
+      },
+      {
+        "answer": "Non. GAIA marche avec le téléphone et le portable que vous avez déjà, sur le web, le bureau, le mobile et les applis de messagerie. Aucun wearable requis.",
+        "question": "Faut-il le matériel OMI pour utiliser GAIA ?"
+      }
+    ]
+  },
+  "gemini-assistant": {
+    "name": "Gemini Assistant",
+    "tagline": "Votre téléphone, à la voix",
+    "description": "Gemini Assistant pilote votre téléphone Android à la voix. GAIA pilote votre travail dans les e-mails, le calendrier et les tâches.",
+    "metaTitle": "GAIA vs Gemini Assistant : OS vs IA de téléphone",
+    "metaDescription": "Comparez GAIA et Gemini Assistant. Gemini pilote votre Android à la voix, GAIA pilote votre travail via e-mails et agenda.",
+    "keywords": [
+      "GAIA vs Gemini Assistant",
+      "Gemini Assistant vs GAIA",
+      "Comparatif assistant Gemini",
+      "Avis assistant Android Gemini"
+    ],
+    "intro": "Gemini Assistant est bon pour les tâches de téléphone : appeler maman, mettre un minuteur, lancer de la musique, répondre à une question rapide. Personne ne le conteste. La confusion commence quand on attend de lui des tâches de travail. Il ne peut pas lire votre boîte mail, vous briefer avant une réunion ni faire avancer un projet entre Slack, Notion et les e-mails. GAIA vit dans cet écart. Il gère la journée de travail dans plus de 50 outils pendant que votre assistant de téléphone continue de gérer le téléphone.",
+    "rows": [
+      {
+        "competitor": "Assistant vocal intégré aux téléphones Android",
+        "feature": "Approche",
+        "gaia": "OS de productivité complet pour toute votre journée de travail"
+      },
+      {
+        "competitor": "Appels, minuteurs, musique, réglages, réponses rapides",
+        "feature": "Ce qu'il fait",
+        "gaia": "Tri des e-mails, briefings, tâches, planification, flux de travail"
+      },
+      {
+        "competitor": "Aucun contexte de boîte mail ni de projet",
+        "feature": "Contexte de travail",
+        "gaia": "Lit Gmail et Calendar, relie les deux à chaque tâche"
+      },
+      {
+        "competitor": "Oublie chaque conversation dès qu'elle se termine",
+        "feature": "Mémoire",
+        "gaia": "Mémoire persistante en graphe sur des semaines et des outils"
+      },
+      {
+        "competitor": "Téléphones Android uniquement",
+        "feature": "Plateformes",
+        "gaia": "Web, bureau, mobile, WhatsApp, Telegram, Slack, Discord"
+      },
+      {
+        "competitor": "Fermé, lié à votre compte Google",
+        "feature": "Ouverture",
+        "gaia": "Entièrement open source, auto-hébergeable, avec un niveau gratuit"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Trie Gmail et rédige des réponses avec votre voix",
+      "Prépare des briefings avant chaque réunion",
+      "Crée et suit les tâches dans vos outils",
+      "Mémoire en graphe qui couvre des semaines, pas des répliques",
+      "Open source avec un niveau gratuit, sur tout appareil"
+    ],
+    "competitorAdvantages": [
+      "Déjà sur votre téléphone Android, zéro réglage pour les tâches de l'appareil",
+      "Excellent pour les appels vocaux, minuteurs, musique et réglages"
+    ],
+    "verdict": "Gardez Gemini Assistant pour les tâches de téléphone qu'il fait bien. Choisissez GAIA pour le travail : boîte mail, calendrier, tâches et tout ce qui dépasse une seule appli.",
+    "faqs": [
+      {
+        "answer": "Non. Gemini Assistant gère les tâches de l'appareil à la voix. Il ne trie pas les boîtes mail, ne prépare pas les réunions et ne suit pas les projets entre outils.",
+        "question": "Est-ce que Gemini Assistant peut gérer mes e-mails ?"
+      },
+      {
+        "answer": "Gardez Gemini Assistant pour les appels, les minuteurs et le pilotage du téléphone. Confiez à GAIA le travail qui traverse les applis : boîte mail, agenda, tâches et suivi.",
+        "question": "Faut-il remplacer Gemini Assistant par GAIA ?"
+      }
+    ]
+  },
+  "siri": {
+    "name": "Siri",
+    "tagline": "Des commandes rapides, à la voix",
+    "description": "Siri gère les commandes vocales rapides sur appareils Apple. GAIA est l'assistant proactif qui gère toute votre journée de travail.",
+    "metaTitle": "GAIA vs Siri : vrai assistant vs IA vocale",
+    "metaDescription": "Comparez GAIA et Siri pour le travail. Siri donne des commandes vocales rapides, GAIA gère boîte mail, agenda et tâches.",
+    "keywords": [
+      "GAIA vs Siri",
+      "Siri vs GAIA",
+      "Comparatif Siri",
+      "Siri pour la productivité"
+    ],
+    "intro": "Siri a fixé les attentes des assistants vocaux puis en est restée là. Minuteurs, appels, météo, questions rapides : instantané et fiable. Tout ce qui dépasse une étape : ce n'est pas son travail. Votre journée de travail est presque entièrement multi-étapes. Des e-mails qui attendent des réponses, des réunions à préparer, des tâches éparpillées dans quatre outils. GAIA a été construit pour cette couche-là. Il se connecte à vos outils, se souvient de vos habitudes et assure le suivi que Siri n'a jamais tenté.",
+    "rows": [
+      {
+        "competitor": "Commandes vocales intégrées sur iPhone, iPad et Mac",
+        "feature": "Approche",
+        "gaia": "OS de productivité proactif dans tous vos outils"
+      },
+      {
+        "competitor": "Minuteurs, appels, messages, questions rapides",
+        "feature": "Ce qu'il fait",
+        "gaia": "Tri des e-mails, briefings, planification, tâches, flux de travail"
+      },
+      {
+        "competitor": "Commandes isolées, aucun suivi",
+        "feature": "Travail en plusieurs étapes",
+        "gaia": "Planifie et exécute le travail en plusieurs étapes entre outils"
+      },
+      {
+        "competitor": "Aucune mémoire entre les conversations",
+        "feature": "Mémoire",
+        "gaia": "Mémoire en graphe qui apprend vos habitudes avec le temps"
+      },
+      {
+        "competitor": "Appareils Apple uniquement",
+        "feature": "Plateformes",
+        "gaia": "Web, bureau, mobile, WhatsApp, Telegram, Slack, Discord"
+      },
+      {
+        "competitor": "Fermé, Apple décide de la feuille de route",
+        "feature": "Ouverture",
+        "gaia": "Entièrement open source et auto-hébergeable avec Docker"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Trie votre boîte mail et rédige des réponses avant que vous demandiez",
+      "Vous briefe avant les réunions avec le contexte complet",
+      "Gère tâches et suivis dans plus de 50 outils",
+      "Se souvient de vos habitudes grâce à la mémoire en graphe",
+      "Open source avec un niveau gratuit, sur chaque plateforme"
+    ],
+    "competitorAdvantages": [
+      "Sur chaque appareil Apple sans aucun réglage",
+      "Instantané pour minuteurs, appels, messages et infos rapides"
+    ],
+    "verdict": "Gardez Siri pour ce qu'il fait instantanément sur vos appareils Apple. Choisissez GAIA pour la vraie journée de travail : boîte mail, calendrier, tâches et une mémoire qui s'accumule.",
+    "faqs": [
+      {
+        "answer": "Non. Siri ne peut pas lire votre boîte mail, préparer des réunions ni gérer des tâches entre outils. Ces tâches demandent un assistant connecté comme GAIA.",
+        "question": "Est-ce que Siri peut gérer mon agenda et mes e-mails ?"
+      },
+      {
+        "answer": "Gardez Siri pour les commandes de l'appareil et les questions rapides. Utilisez GAIA pour le tri de la boîte mail, la gestion du calendrier, les briefings et le suivi.",
+        "question": "Faut-il remplacer Siri par GAIA ?"
+      }
+    ]
   }
 }
