@@ -15,6 +15,7 @@ import Image from "next/image";
 import { useEffect } from "react";
 import { Drawer } from "vaul";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,19 +59,14 @@ function AiOptionDropdown({
     <div className="relative">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="flat"
-            color="primary"
-            className="text-sm font-normal"
-            size="sm"
-          >
+          <ShadcnButton variant="primarySoft" size="sm" className="text-sm">
             <div className="flex flex-row gap-1">
               <BrushIcon width={20} height={20} />
               <span className="font-medium">{label}:</span>{" "}
               <span>{selectedLabel}</span>
               <ArrowDown01Icon width={20} />
             </div>
-          </Button>
+          </ShadcnButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="border-none">
           {options.map((option) => (

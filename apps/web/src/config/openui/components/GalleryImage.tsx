@@ -1,12 +1,15 @@
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { useParams } from "next/navigation";
+import type { CSSProperties } from "react";
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 
 export function GalleryImage({
   img,
+  aspectRatio = "3/2",
 }: {
   img: { src: string; alt?: string; caption?: string };
+  aspectRatio?: string;
 }) {
   const params = useParams<{ id?: string }>();
   const src = resolveArtifactSrc(img.src, params?.id) ?? img.src;
@@ -14,17 +17,17 @@ export function GalleryImage({
     <m.div
       whileHover={{ scale: 1.02 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
-      className="relative flex items-center justify-center overflow-hidden rounded-xl bg-zinc-900"
+      className="relative aspect-(--ar) cursor-pointer overflow-hidden rounded-xl"
+      style={{ "--ar": aspectRatio } as CSSProperties}
     >
       {/* Remote LLM-provided URLs can't be allow-listed as remotePatterns,
           so the Next.js optimizer is bypassed with `unoptimized`. */}
       <Image
         src={src}
         alt={img.alt ?? ""}
-        width={600}
-        height={400}
+        fill
         sizes="(max-width: 768px) 50vw, 33vw"
-        className="h-auto max-h-[320px] w-auto max-w-full rounded-xl object-contain"
+        className="object-cover"
         unoptimized
       />
       {img.caption && (

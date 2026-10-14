@@ -23,6 +23,11 @@ export const buttonVariants = cva(
           "rounded-full border-none bg-zinc-700 fill-zinc-400 text-zinc-400 shadow-xs hover:bg-zinc-600/90",
         composerActive:
           "rounded-full border-none bg-primary/20 fill-zinc-400 text-primary shadow-xs hover:bg-primary/40",
+        // Tinted primary pill (mail compose's AI options trigger).
+        primarySoft:
+          "border-none bg-primary/25 font-normal text-primary outline-hidden ring-0 hover:bg-primary/12",
+        // Translucent round control over imagery (weather card settings).
+        frosted: "rounded-full bg-white/10 text-white hover:bg-white/20",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

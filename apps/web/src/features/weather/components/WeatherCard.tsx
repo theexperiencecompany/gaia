@@ -1,5 +1,4 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
 import {
   CloudAngledRainIcon,
@@ -21,6 +20,7 @@ import {
 import type React from "react";
 import { useMemo, useState } from "react";
 import { CloudFogIcon } from "@/components/shared/icons";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -464,15 +464,14 @@ function WeatherLocationHeader({
       <div className="flex items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              isIconOnly
-              size="sm"
+            <ShadcnButton
+              variant="frosted"
+              size="icon"
               aria-label="Temperature settings"
-              variant="flat"
-              className="h-8 w-8 text-white"
+              className="size-8 p-1"
             >
               <ThermometerWarmIcon className="h-5 w-5" />
-            </Button>
+            </ShadcnButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
             <DropdownMenuLabel>Temperature Unit</DropdownMenuLabel>
