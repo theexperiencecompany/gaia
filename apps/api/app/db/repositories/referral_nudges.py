@@ -65,13 +65,12 @@ class ReferralNudgesRepository(
     ) -> None:
         """Hand back a claim whose message never went out, restoring the state from before it."""
         prior_sent = prior.sent_at.get(nudge) if prior else None
-        restore: dict[str, dict[str, object]] = {
-            "$set": {"last_nudged_at": prior.last_nudged_at if prior else None}
-        }
+        restored: dict[str, object] = {"last_nudged_at": prior.last_nudged_at if prior else None}
+        restore: dict[str, dict[str, object]] = {"$set": restored}
         if prior_sent is None:
             restore["$unset"] = {_sent_field(nudge): ""}
         else:
-            restore["$set"][_sent_field(nudge)] = prior_sent
+            restored[_sent_field(nudge)] = prior_sent
         await self._apply_raw_update_unfetched(
             {"user_id": user_id, _sent_field(nudge): claimed_at},
             restore,
