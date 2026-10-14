@@ -254,9 +254,11 @@ export function generateOrganizationSchema(): WithContext<Organization> {
     sameAs: [
       siteConfig.links.twitter,
       siteConfig.links.github,
+      "https://github.com/theexperiencecompany/gaia",
       siteConfig.links.linkedin,
       siteConfig.links.youtube,
       siteConfig.links.discord,
+      siteConfig.links.whatsapp,
       siteConfig.url,
       "https://docs.heygaia.io",
     ],
