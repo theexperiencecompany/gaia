@@ -73,9 +73,15 @@ class _Tally:
             self.names[identity] = name
 
 
+def _local_and_domain(address: str) -> tuple[str, str]:
+    """Split at the last @: a quoted local part may hold one, the domain never does."""
+    local, _, domain = address.lower().rpartition("@")
+    return local, domain
+
+
 def is_automated(address: str) -> bool:
     """Whether an address is a robot or a list rather than a person someone would invite."""
-    local, _, domain = address.lower().rpartition("@")
+    local, domain = _local_and_domain(address)
     return (
         any(marker in local for marker in AUTOMATED_LOCAL_PART_MARKERS)
         or not ROLE_LOCAL_PART_WORDS.isdisjoint(_LOCAL_PART_WORDS.split(local))
@@ -131,12 +137,12 @@ async def _send_as_addresses(user_id: str) -> list[str]:
 
 def _named_after(address: str, name: str | None) -> bool:
     """Whether an address's local part holds every word of the user's full name."""
-    words = [
-        w for w in _NAME_WORDS.split((name or "").lower()) if len(w) >= SELF_NAME_MIN_WORD_LENGTH
-    ]
+    if name is None:
+        return False
+    words = [w for w in _NAME_WORDS.split(name.lower()) if len(w) >= SELF_NAME_MIN_WORD_LENGTH]
     if len(words) < SELF_NAME_MIN_WORDS:
         return False
-    local = address.lower().rpartition("@")[0]
+    local, _ = _local_and_domain(address)
     return all(word in local for word in words)
 
 
