@@ -13,7 +13,7 @@ export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
   calendar?: BriefingEvent[];
 };
 
-type BriefingItem = BriefingEditionPayload["sections"][number]["items"][number];
+type EditionItem = BriefingEditionPayload["sections"][number]["items"][number];
 
 export interface BriefingEditionProps {
   payload: BriefingEditionPayload;
@@ -25,12 +25,12 @@ export interface BriefingEditionProps {
 const EDITION_WIDTH = 1180;
 const EDITION_HEIGHT = 1480;
 
-function itemHref(item: BriefingItem): string | null {
+function itemHref(item: EditionItem): string | null {
   if (item.link) return item.link;
   return item.todo_id ? `/todos?todoId=${item.todo_id}` : null;
 }
 
-function ItemRow({ item }: { item: BriefingItem }) {
+function ItemRow({ item }: { item: EditionItem }) {
   const href = itemHref(item);
   if (!href) {
     return <p className="text-sm font-medium text-zinc-200">{item.text}</p>;

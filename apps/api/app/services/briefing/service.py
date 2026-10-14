@@ -660,9 +660,6 @@ def _daily_payload(
     sections: list[BriefingSection],
     stats: list[BriefingStat],
     is_winback: bool,
-    *,
-    calendar: list[BriefingEvent],
-    tallies: BriefingTallies,
 ) -> BriefingPayload:
     return BriefingPayload(
         kicker="THE MORNING BRIEF",
@@ -678,8 +675,6 @@ def _daily_payload(
         bubbles=voice.bubbles,
         # Single-string rendering for the in-app body / email fallback.
         message="\n\n".join(voice.bubbles),
-        calendar=calendar,
-        tallies=tallies,
     )
 
 
@@ -779,21 +774,14 @@ async def run_daily_briefing(user_id: str) -> None:
         is_first_briefing=is_first,
         wind_down=wind_down,
     )
+    tallies = BriefingTallies(done_by_you=len(completed.user), done_by_gaia=len(completed.gaia))
     payload = await _voice_checked_against_items(
         build_user_context(user, auth_provider=None),
         clock,
         prompt,
         lambda voice: _daily_payload(
-            clock,
-            voice,
-            facts.sections,
-            facts.stats,
-            winback.is_winback,
-            calendar=calendar,
-            tallies=BriefingTallies(
-                done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
-            ),
-        ),
+            clock, voice, facts.sections, facts.stats, winback.is_winback
+        ).model_copy(update={"calendar": calendar, "tallies": tallies}),
     )
     await _assign_edition(
         user_id,
