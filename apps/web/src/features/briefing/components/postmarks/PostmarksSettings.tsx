@@ -61,9 +61,7 @@ function PostmarksCollection({ collection }: PostmarksCollectionProps) {
       </section>
       <section className="flex flex-col gap-4">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Collection
-          </h2>
+          <h2 className="text-lg font-medium text-zinc-100">Collection</h2>
           <p className="text-sm text-zinc-500 tabular-nums">
             <span className="font-medium text-zinc-100">
               {postmarks.length}
