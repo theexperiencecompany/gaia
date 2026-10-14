@@ -116,6 +116,44 @@ AUTOMATED_LOCAL_PART_MARKERS = (
     "receipts",
     "calendar-notification",
 )
+# A local part with one of these as a whole word (split on - . _ +) is a team
+# or company inbox: deals@, compliance-team@, aws-activate@.
+ROLE_LOCAL_PART_WORDS = frozenset(
+    {
+        "startups",
+        "deals",
+        "compliance",
+        "team",
+        "support",
+        "help",
+        "hello",
+        "info",
+        "sales",
+        "billing",
+        "admin",
+        "contact",
+        "partners",
+        "partnerships",
+        "activate",
+        "careers",
+        "jobs",
+        "press",
+        "marketing",
+        "accounts",
+        "finance",
+        "legal",
+        "security",
+        "community",
+        "feedback",
+        "invoices",
+        "orders",
+    }
+)
+LOCAL_PART_WORD_SEPARATORS = r"[-._+]"
+# Gmail's send-as list: the mailbox's own address and every alias it sends from.
+GMAIL_LIST_SEND_AS_TOOL = "GMAIL_LIST_SEND_AS"
+SEND_AS_READ_FAILED_MESSAGE = "We couldn't read your Gmail addresses"
+SEND_AS_READ_FAILED_WHY = "Gmail refused the send-as list, so your own aliases can't be left out"
 # Mailing-list and group hosts: an address there is a list, not a person.
 AUTOMATED_DOMAIN_MARKERS = (
     "googlegroups.com",
