@@ -484,7 +484,6 @@ class TestCreateReferralIndexes:
             ],
             "referral_invites": [
                 (([("sender_user_id", 1), ("recipient_email", 1)],), {"unique": True}),
-                (([("sender_user_id", 1), ("sent_at", -1)],), {}),
             ],
             "email_suppressions": [(("email",), {"unique": True})],
             "referral_nudges": [(("user_id",), {"unique": True})],
