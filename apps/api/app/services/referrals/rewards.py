@@ -27,6 +27,7 @@ from app.constants.referrals import (
     REWARD_LOCK_LEASE_S,
     REWARD_LOCK_MAX_HOLD_S,
     REWARD_LOCK_RENEW_S,
+    REWARD_LOCK_UNAVAILABLE,
     REWARD_LOCK_WAIT_S,
     REWARD_MONTHS_PER_FRIEND,
     ReferralNudge,
@@ -170,9 +171,7 @@ async def deliver_rewards(
     )
     async with lease.hold() as held:
         if not held:
-            raise RuntimeError(
-                "could not take the referral reward lease (Redis unavailable or contended)"
-            )
+            raise RuntimeError(REWARD_LOCK_UNAVAILABLE)
         return [await _deliver(referral) for referral in referrals]
 
 
