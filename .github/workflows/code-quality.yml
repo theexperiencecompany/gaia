@@ -421,6 +421,11 @@ jobs:
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'shadcn-lint') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or jscpd must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.changes.outputs.base_ref }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
