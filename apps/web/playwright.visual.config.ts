@@ -14,8 +14,12 @@ if (!OUT_DIR || !BASE_URL) {
   );
 }
 
+// VISUAL_GREP narrows a run to some surfaces, e.g. '\bapp /' for the signed-in routes only.
+const GREP = process.env.VISUAL_GREP;
+
 export default defineConfig({
   testDir: "./e2e/visual",
+  grep: GREP ? new RegExp(GREP) : undefined,
   snapshotPathTemplate: `${OUT_DIR}/baseline/{arg}{ext}`,
   outputDir: `${OUT_DIR}/results`,
   fullyParallel: true,

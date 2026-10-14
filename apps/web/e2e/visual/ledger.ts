@@ -102,16 +102,29 @@ function parseHunks(diff: string): Hunk[] {
 }
 
 const SPACING_FAMILIES = new Set(["padding", "margin", "gap", "space"]);
+// Classes that cancel a component default; dropping one brings the default back.
+const RESET =
+  /^(?:border|shadow|outline|ring)-(?:none|0)$|^(?:border|bg)-transparent$/;
+
+const isSpacing = (token: string): boolean =>
+  SPACING_FAMILIES.has(familyOf(token));
+const isReset = (token: string): boolean =>
+  RESET.test(token.replace(/^.*:/, "").replace(/^!|!$/g, ""));
+
+interface Dropped {
+  at: string;
+  tokens: string[];
+}
 
 /**
- * Hunks that drop spacing with nothing spacing-shaped added back: the way a
- * restyle fix silently collapses a layout (a header loses its padding).
+ * Hunks that drop classes of one kind with none of that kind added back: how a
+ * restyle fix silently collapses a layout (a header loses its padding) or
+ * revives a default (a removed border-none brings the sidebar's border back).
  */
-function droppedSpacing(hunks: Hunk[]): { at: string; tokens: string[] }[] {
+function dropped(hunks: Hunk[], isKind: (token: string) => boolean): Dropped[] {
   return hunks.flatMap((hunk) => {
-    const isSpacing = (token: string) => SPACING_FAMILIES.has(familyOf(token));
-    const dropped = subtract(hunk.removed, hunk.added).filter(isSpacing);
-    const restored = subtract(hunk.added, hunk.removed).some(isSpacing);
+    const dropped = subtract(hunk.removed, hunk.added).filter(isKind);
+    const restored = subtract(hunk.added, hunk.removed).some(isKind);
     return dropped.length > 0 && !restored
       ? [{ at: `${hunk.file}:${hunk.line}`, tokens: dropped }]
       : [];
@@ -181,7 +194,8 @@ function render(
   ledger: Map<string, Map<string, Transform>>,
   baseRef: string,
   fileCount: number,
-  dropped: { at: string; tokens: string[] }[],
+  spacing: Dropped[],
+  resets: Dropped[],
 ): string {
   const families = [...ledger].sort(([, a], [, b]) => sum(b) - sum(a));
   const lines = [
@@ -189,9 +203,15 @@ function render(
     "",
     `${fileCount} styled files changed. Each row is one before → after swap inside a diff hunk; "files" is how many files make it.`,
     "",
-    `## Spacing dropped with no replacement (${dropped.length}) — check each`,
+    `## Spacing dropped with no replacement (${spacing.length}) — check each`,
     "",
-    ...dropped.map(
+    ...spacing.map(
+      ({ at, tokens }) => `- \`${at}\` lost \`${tokens.join(" ")}\``,
+    ),
+    "",
+    `## Resets dropped, a component default may reappear (${resets.length}) — check each`,
+    "",
+    ...resets.map(
       ({ at, tokens }) => `- \`${at}\` lost \`${tokens.join(" ")}\``,
     ),
     "",
@@ -250,7 +270,13 @@ const styledFiles = new Set(
 );
 writeFileSync(
   join(outDir, "ledger.md"),
-  render(ledger, baseRef, styledFiles.size, droppedSpacing(hunks)),
+  render(
+    ledger,
+    baseRef,
+    styledFiles.size,
+    dropped(hunks, isSpacing),
+    dropped(hunks, isReset),
+  ),
 );
 console.info(
   `ledger: ${styledFiles.size} styled files, ${ledger.size} families → ${join(outDir, "ledger.md")}`,

@@ -6,6 +6,7 @@
 # Base renders from a throwaway worktree, head from this checkout; both are
 # driven by HEAD's spec so they walk the same surface list (e2e/visual/surfaces.ts).
 # --app adds the authenticated (main) routes and needs `mise dev --sim` running.
+# VISUAL_GREP=<regex> captures only matching surfaces, e.g. VISUAL_GREP='\bapp /' (titles are "<group> <path>").
 # Output: $VISUAL_OUT (default .context/visual-diff) — summary.md, ledger.md
 # (every class/prop swap the diff makes), composites/, report/ (Playwright HTML
 # report with side-by-side and slider views).
