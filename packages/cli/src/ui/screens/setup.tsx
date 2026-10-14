@@ -1,7 +1,6 @@
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useEffect, useState } from "react";
 import { localApiUrl } from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 
@@ -15,6 +14,7 @@ import {
 } from "../components/shared-steps.js";
 import { THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
+import { useCLIState } from "../use-cli-state.js";
 import {
   AlternativeGroupSelectionStep,
   DependencyInstallStep,
@@ -26,15 +26,7 @@ import {
 } from "./init.js";
 
 export const SetupScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
-  const [state, setState] = useState(store.currentState);
-
-  useEffect(() => {
-    const update = () => setState({ ...store.currentState });
-    store.on("change", update);
-    return () => {
-      store.off("change", update);
-    };
-  }, [store]);
+  const state = useCLIState(store);
 
   useInput((_input, key) => {
     if ((key.return || key.escape) && state.error) {

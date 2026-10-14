@@ -15,8 +15,7 @@ import { Spinner } from "@heroui/spinner";
 import { Alert01Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { useEffect, useState } from "react";
-import { useLoginModalActions } from "@/features/auth/hooks/useLoginModal";
+import { useState } from "react";
 import type {
   ProviderCatalog,
   SetupStatus,
@@ -28,12 +27,9 @@ import {
   useSetupStatus,
 } from "@/features/settings/hooks/useSetupStatus";
 import { ACCOUNT_STEP, WIZARD_STEPS, type WizardStepMeta } from "../constants";
-import { AccountStep } from "./steps/AccountStep";
-import { DoneStep } from "./steps/DoneStep";
-import { IntegrationsStep } from "./steps/IntegrationsStep";
-import { ProviderStep } from "./steps/ProviderStep";
-import { SearchStep } from "./steps/SearchStep";
+import { useAccountStepGate } from "../hooks/useAccountStepGate";
 import { WizardFooter } from "./WizardFooter";
+import { WizardStepContent } from "./WizardStepContent";
 import { WizardStepper } from "./WizardStepper";
 
 const WALLPAPER_STYLE = {
@@ -74,32 +70,10 @@ export function SetupWizard() {
   const { data: status, isLoading, isError, refetch } = useSetupStatus();
   const catalogQuery = useProviderCatalog();
   const catalog = catalogQuery.data;
-  const { suppressModal, unsuppressModal } = useLoginModalActions();
+  const needsAccountStep = useAccountStepGate(status);
   const [stepIndex, setStepIndex] = useState(0);
   // The step whose Continue was pressed before its objective was met.
   const [blockedStepId, setBlockedStepId] = useState<string | null>(null);
-
-  // Whether the wizard leads with account creation — captured from the FIRST
-  // status load so the step list can't shift underneath the stepper once the
-  // account exists (creating it flips has_admin_account mid-wizard).
-  const [needsAccountStep, setNeedsAccountStep] = useState<boolean | null>(
-    null,
-  );
-
-  if (status && needsAccountStep === null) {
-    setNeedsAccountStep(
-      status.auth_mode === "local" && !status.has_admin_account,
-    );
-  }
-
-  // While the wizard owns authentication (its own signup form below), the
-  // global login modal must stay out of the way: its only action redirects
-  // to WorkOS OAuth, which does not exist on self-host instances.
-  useEffect(() => {
-    if (!needsAccountStep) return;
-    suppressModal();
-    return () => unsuppressModal();
-  }, [needsAccountStep, suppressModal, unsuppressModal]);
 
   const steps =
     needsAccountStep === true ? [ACCOUNT_STEP, ...WIZARD_STEPS] : WIZARD_STEPS;
@@ -146,7 +120,6 @@ export function SetupWizard() {
 
   const goNext = () => setStepIndex((i) => Math.min(i + 1, lastStepIndex));
   const goBack = () => setStepIndex((i) => Math.max(i - 1, 0));
-  const refreshStatus = () => void refetch();
 
   // Derived from the same objective check above, and only after an attempt:
   // a warning before the user has done anything reads as an error.
@@ -198,41 +171,13 @@ export function SetupWizard() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
             >
-              {step.id === "account" && (
-                <AccountStep
-                  onCreated={() => {
-                    refreshStatus();
-                    goNext();
-                  }}
-                />
-              )}
-              {step.id === "provider" && (
-                <ProviderStep
-                  status={status}
-                  catalog={catalog}
-                  // Return the refetch promise (not void) so Ollama one-click
-                  // can advance after it settles.
-                  onSaved={() => refetch()}
-                  onNext={goNext}
-                />
-              )}
-              {step.id === "search" && (
-                <SearchStep
-                  status={status}
-                  catalog={catalog}
-                  onSaved={refreshStatus}
-                />
-              )}
-              {step.id === "integrations" && (
-                <IntegrationsStep
-                  status={status}
-                  catalog={catalog}
-                  onSaved={refreshStatus}
-                />
-              )}
-              {step.id === "done" && (
-                <DoneStep status={status} catalog={catalog} />
-              )}
+              <WizardStepContent
+                stepId={step.id}
+                status={status}
+                catalog={catalog}
+                refetchStatus={refetch}
+                onNext={goNext}
+              />
             </m.div>
           </AnimatePresence>
 

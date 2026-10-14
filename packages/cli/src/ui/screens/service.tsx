@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Header } from "../components/Header.js";
 import { THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
+import { useCLIState } from "../use-cli-state.js";
 
 const LOG_HEIGHT = 8;
 
@@ -70,15 +71,7 @@ interface ServiceScreenProps {
 }
 
 export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
-  const [state, setState] = useState(store.currentState);
-
-  useEffect(() => {
-    const update = () => setState({ ...store.currentState });
-    store.on("change", update);
-    return () => {
-      store.off("change", update);
-    };
-  }, [store]);
+  const state = useCLIState(store);
 
   useInput((_input, key) => {
     if (

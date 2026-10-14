@@ -23,6 +23,7 @@ import {
 } from "../components/shared-steps.js";
 import { THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
+import { useCLIState } from "../use-cli-state.js";
 
 /**
  * Props for the WelcomeStep component.
@@ -1211,15 +1212,7 @@ export const EnvConfigStep: React.FC<{
 };
 
 export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
-  const [state, setState] = useState(store.currentState);
-
-  useEffect(() => {
-    const update = () => setState({ ...store.currentState });
-    store.on("change", update);
-    return () => {
-      store.off("change", update);
-    };
-  }, [store]);
+  const state = useCLIState(store);
 
   useInput((_input, key) => {
     if ((key.return || key.escape) && state.error) {

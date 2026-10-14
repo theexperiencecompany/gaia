@@ -11,20 +11,13 @@ import type { ServiceStatus } from "../../lib/healthcheck.js";
 import { Header } from "../components/Header.js";
 import { THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
+import { useCLIState } from "../use-cli-state.js";
 
 export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
-  const [state, setState] = useState(store.currentState);
+  const state = useCLIState(store);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
   const readiness = state.data.readiness as DependencyReadiness | undefined;
-
-  useEffect(() => {
-    const update = () => setState({ ...store.currentState });
-    store.on("change", update);
-    return () => {
-      store.off("change", update);
-    };
-  }, [store]);
 
   useEffect(() => {
     setIsRefreshing(false);

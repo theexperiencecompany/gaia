@@ -7,7 +7,6 @@
 
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useEffect, useState } from "react";
 import { Shell } from "../../ui/components/Shell.js";
 import {
   DockerInstallConfirmStep,
@@ -19,7 +18,8 @@ import {
 } from "../../ui/components/shared-steps.js";
 import { THEME_COLOR } from "../../ui/constants.js";
 import { DependencyInstallStep } from "../../ui/screens/init.js";
-import type { CLIStore } from "../../ui/store.js";
+import type { CLIState, CLIStore } from "../../ui/store.js";
+import { useCLIState } from "../../ui/use-cli-state.js";
 import { codeSandboxSummary, upHeadline } from "./flow.js";
 
 const BUILD_WAIT_HINT =
@@ -135,16 +135,73 @@ const UpFinishedStep: React.FC<{
   );
 };
 
-export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
-  const [state, setState] = useState(store.currentState);
+/** The Docker-install and port-conflict prompts, the only input gaia up asks for. */
+const UpPromptStep: React.FC<{ state: CLIState; store: CLIStore }> = ({
+  state,
+  store,
+}) => {
+  switch (state.inputRequest?.id) {
+    case "docker_install_confirm":
+      return (
+        <DockerInstallConfirmStep
+          onConfirm={() => store.submitInput("install")}
+          onDecline={() => store.submitInput("decline")}
+        />
+      );
+    case "port_conflicts":
+      return state.data.portConflicts ? (
+        <PortConflictStep
+          portResults={state.data.portConflicts}
+          onAccept={() => store.submitInput("accept")}
+          onAbort={() => store.submitInput("abort")}
+        />
+      ) : null;
+    default:
+      return null;
+  }
+};
 
-  useEffect(() => {
-    const update = () => setState({ ...store.currentState });
-    store.on("change", update);
-    return () => {
-      store.off("change", update);
-    };
-  }, [store]);
+/** Image build and container start progress, shown until the instance is up. */
+const UpStartStep: React.FC<{ state: CLIState }> = ({ state }) => {
+  const phase = state.data.dependencyPhase || "";
+  const starting =
+    (state.step === "Project Setup" || state.step === "Finished") &&
+    !state.data.finished &&
+    phase !== "";
+  if (!starting) return null;
+  return (
+    <DependencyInstallStep
+      title="Starting GAIA"
+      phase={phase}
+      progress={state.data.dependencyProgress || 0}
+      isComplete={state.data.dependencyComplete || false}
+      logs={state.data.dependencyLogs}
+      hint={
+        phase.toLowerCase().includes("building") ? BUILD_WAIT_HINT : undefined
+      }
+    />
+  );
+};
+
+/** The finish summary, once gaia up has nothing left to do. */
+const UpSummaryStep: React.FC<{ state: CLIState }> = ({ state }) => {
+  if (state.step !== "Finished" || !state.data.finished) return null;
+  const noStart = state.data.upNoStart === true;
+  return (
+    <UpFinishedStep
+      webUrl={state.data.upWebUrl}
+      reachableUrls={state.data.upReachableUrls}
+      apiUrl={state.data.upApiUrl}
+      noStart={noStart}
+      stillStarting={!noStart && state.data.upStillStarting === true}
+      customProviderNote={state.data.customProviderNote === true}
+      codeSandbox={state.data.upCodeSandbox === true}
+    />
+  );
+};
+
+export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
+  const state = useCLIState(store);
 
   useInput((_input, key) => {
     if ((key.return || key.escape) && state.error) {
@@ -152,11 +209,7 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
     }
   });
 
-  const dependencyPhase = state.data.dependencyPhase || "";
-  const showDependencyStep =
-    (state.step === "Project Setup" || state.step === "Finished") &&
-    !state.data.finished &&
-    dependencyPhase !== "";
+  const idle = !state.inputRequest;
 
   return (
     <Shell status={state.status} step={state.step}>
@@ -164,23 +217,9 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         <SystemChecksStep checks={state.data.checks} />
       )}
 
-      {state.inputRequest?.id === "docker_install_confirm" && (
-        <DockerInstallConfirmStep
-          onConfirm={() => store.submitInput("install")}
-          onDecline={() => store.submitInput("decline")}
-        />
-      )}
+      <UpPromptStep state={state} store={store} />
 
-      {state.inputRequest?.id === "port_conflicts" &&
-        state.data.portConflicts && (
-          <PortConflictStep
-            portResults={state.data.portConflicts}
-            onAccept={() => store.submitInput("accept")}
-            onAbort={() => store.submitInput("abort")}
-          />
-        )}
-
-      {state.step === "Repository Setup" && !state.inputRequest && (
+      {state.step === "Repository Setup" && idle && (
         <RepositoryProgressStep
           title="Setting Up Repository"
           progress={state.data.repoProgress}
@@ -188,38 +227,13 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         />
       )}
 
-      {state.step === "Environment Setup" && !state.inputRequest && (
+      {state.step === "Environment Setup" && idle && (
         <EnvSetupSpinnerStep status={state.status} />
       )}
 
-      {showDependencyStep && (
-        <DependencyInstallStep
-          title="Starting GAIA"
-          phase={dependencyPhase}
-          progress={state.data.dependencyProgress || 0}
-          isComplete={state.data.dependencyComplete || false}
-          logs={state.data.dependencyLogs}
-          hint={
-            dependencyPhase.toLowerCase().includes("building")
-              ? BUILD_WAIT_HINT
-              : undefined
-          }
-        />
-      )}
+      <UpStartStep state={state} />
 
-      {state.step === "Finished" && state.data.finished && (
-        <UpFinishedStep
-          webUrl={state.data.upWebUrl}
-          reachableUrls={state.data.upReachableUrls}
-          apiUrl={state.data.upApiUrl}
-          noStart={state.data.upNoStart === true}
-          stillStarting={
-            state.data.upNoStart !== true && state.data.upStillStarting === true
-          }
-          customProviderNote={state.data.customProviderNote === true}
-          codeSandbox={state.data.upCodeSandbox === true}
-        />
-      )}
+      <UpSummaryStep state={state} />
 
       {state.error && <ErrorStep message={state.error.message} />}
     </Shell>
