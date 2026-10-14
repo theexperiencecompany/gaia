@@ -504,6 +504,7 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
             {
                 "dodo_subscription_id": data.subscription_id,
                 "user_id": user_id,
+                "dodo_customer_id": data.customer.customer_id,
                 "product_id": data.product_id,
                 "status": SubscriptionStatus.ACTIVE.value,
                 "quantity": data.quantity,
@@ -585,7 +586,12 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
     # Matching on the id alone would let this older patch land on top of it.
     if not await subscription_repository.apply_update_by_dodo_id(
         data.subscription_id,
-        changes.model_copy(update={"last_event_at": event.occurred_at}),
+        changes.model_copy(
+            update={
+                "last_event_at": event.occurred_at,
+                "dodo_customer_id": data.customer.customer_id,
+            }
+        ),
         if_not_newer_than=event.occurred_at,
     ):
         log.warning(
