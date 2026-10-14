@@ -96,6 +96,7 @@ const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/privacy", freq: "monthly", priority: 0.5 },
   { path: "/thanks", freq: "monthly", priority: 0.4 },
   { path: "/open-source-ai-assistant", freq: "monthly", priority: 0.9 },
+  { path: "/best-ai-assistant", freq: "monthly", priority: 0.9 },
   { path: "/ai-chief-of-staff", freq: "monthly", priority: 0.9 },
   { path: "/inbox-zero-ai", freq: "monthly", priority: 0.9 },
 ];
