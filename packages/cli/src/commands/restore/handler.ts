@@ -4,7 +4,13 @@
  * @module commands/restore/handler
  */
 
-import { getRestoreCommands, resolveRestoreFiles, runRestore } from "./flow.js";
+import {
+  getRestoreCommands,
+  type RestoreOptions,
+  resolveRestoreFiles,
+  restoreWarnings,
+  runRestore,
+} from "./flow.js";
 
 function out(line = ""): void {
   process.stdout.write(`${line}\n`);
@@ -17,22 +23,26 @@ export async function runRestoreCommand(
   options: {
     mongo?: string;
     postgres?: string;
+    env?: string;
     from?: string;
     dryRun?: boolean;
   } = {},
 ): Promise<void> {
+  const restoreOptions: RestoreOptions = {
+    mongoFile: options.mongo,
+    postgresFile: options.postgres,
+    apiEnvFile: options.env,
+    fromDir: options.from,
+  };
+  const resolved = resolveRestoreFiles(restoreOptions);
+  for (const warning of restoreWarnings(resolved))
+    errOut(`Warning: ${warning}`);
+
   if (options.dryRun) {
-    const cmds = getRestoreCommands(
-      resolveRestoreFiles({
-        mongoFile: options.mongo,
-        postgresFile: options.postgres,
-        fromDir: options.from,
-        dryRun: true,
-      }),
-    );
+    const cmds = getRestoreCommands(resolved);
     if (cmds.length === 0) {
       out(
-        "No backup files resolved. Use --from <dir> or --mongo/--postgres <file>.",
+        "No backup files resolved. Use --from <dir> or --mongo/--postgres/--env <file>.",
       );
       return;
     }
@@ -43,13 +53,8 @@ export async function runRestoreCommand(
 
   try {
     out("Starting GAIA restore...");
-    const result = await runRestore(
-      {
-        mongoFile: options.mongo,
-        postgresFile: options.postgres,
-        fromDir: options.from,
-      },
-      (message) => out(`  ${message}`),
+    const result = await runRestore(restoreOptions, (message) =>
+      out(`  ${message}`),
     );
     if (result.apiEnvFile)
       out(`Restored apps/api/.env from ${result.apiEnvFile}`);

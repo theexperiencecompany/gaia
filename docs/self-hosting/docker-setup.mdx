@@ -473,9 +473,12 @@ gaia backup --dry-run                # print the exact docker commands without r
 
 # Restore — picks the newest backup run in a directory, or pass explicit files:
 gaia restore --from backups          # restores every file of the newest run, e.g. mongo-2026-08-27T09-30-00Z.gz
-gaia restore --mongo backups/mongo-2026-08-27T09-30-00Z.gz --postgres backups/postgres-2026-08-27T09-30-00Z.sql
+gaia restore --mongo backups/mongo-2026-08-27T09-30-00Z.gz --postgres backups/postgres-2026-08-27T09-30-00Z.sql \
+  --env backups/api-env-2026-08-27T09-30-00Z.env
 gaia restore --dry-run --from backups # preview restore commands
 ```
+
+`gaia restore` puts `apps/api/.env` back first and restarts the stack afterwards. That file holds `INSTANCE_SECRET`, the key the stored provider credentials are encrypted under: a Mongo dump restored under a different secret leaves them undecryptable. `--from` restores it automatically; with explicit `--mongo`, pass the same run's `api-env-<stamp>.env` with `--env` (without it, the restore warns and keeps this install's current secret).
 
 Each run's files share one UTC stamp (`YYYY-MM-DDTHH-MM-SSZ`), so a second backup the same day never overwrites the first, and a run that fails part-way leaves no files behind.
 
@@ -486,6 +489,7 @@ mkdir -p backups
 STAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
 docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
 docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$STAMP.sql
+install -m 600 ../../apps/api/.env backups/api-env-$STAMP.env
 ```
 
 See the collapsed sections below for consistent-snapshot variants, ChromaDB/RabbitMQ, and restore steps.

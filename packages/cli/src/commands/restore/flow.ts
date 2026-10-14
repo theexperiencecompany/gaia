@@ -30,6 +30,8 @@ import {
 export interface RestoreOptions {
   mongoFile?: string;
   postgresFile?: string;
+  /** The backup's apps/api/.env; its INSTANCE_SECRET decrypts the Mongo dump's credentials. */
+  apiEnvFile?: string;
   fromDir?: string;
   dryRun?: boolean;
 }
@@ -56,15 +58,25 @@ export function resolveRestoreFiles(
     return {
       mongoFile: options.mongoFile ?? present(files.mongoFile),
       postgresFile: options.postgresFile ?? present(files.postgresFile),
-      apiEnvFile: present(files.apiEnvFile),
+      apiEnvFile: options.apiEnvFile ?? present(files.apiEnvFile),
       volumeFiles: files.volumeFiles.filter((v) => fs.existsSync(v.file)),
     };
   }
   return {
     mongoFile: options.mongoFile,
     postgresFile: options.postgresFile,
+    apiEnvFile: options.apiEnvFile,
     volumeFiles: [],
   };
+}
+
+/** What a restore of these files cannot guarantee, said before it runs. */
+export function restoreWarnings(files: ResolvedRestoreFiles): string[] {
+  if (!files.mongoFile || files.apiEnvFile) return [];
+  return [
+    "Restoring MongoDB without the backup's apps/api/.env: the stored provider credentials decrypt only under the INSTANCE_SECRET they were saved with. " +
+      "If this install's apps/api/.env is not the one the dump was taken with, they will not decrypt. Pass the backup's api-env-<stamp>.env with --env, or restore with --from <dir>.",
+  ];
 }
 
 export function getRestoreCommands(files: ResolvedRestoreFiles): string[] {
@@ -124,6 +136,8 @@ export async function runRestore(
     );
   }
 
+  if (apiEnvFile && !fs.existsSync(apiEnvFile))
+    throw new Error(`apps/api/.env backup not found: ${apiEnvFile}`);
   if (mongoFile && !fs.existsSync(mongoFile))
     throw new Error(`Mongo backup not found: ${mongoFile}`);
   if (postgresFile && !fs.existsSync(postgresFile))
