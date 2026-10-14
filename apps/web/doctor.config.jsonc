@@ -55,10 +55,10 @@
       // Custom Next.js image loader wired via next.config.mjs
       // images.loaderFile (Cloudflare builds).
       { "files": ["**/image-loader.ts"], "rules": ["deslop/unused-file"] },
-      // styles/hero.ts default export loads via `@plugin "./hero.ts"` in
+      // styles/hero.mjs default export loads via `@plugin "./hero.mjs"` in
       // globals.css — a Tailwind plugin load the import graph cannot see.
       {
-        "files": ["src/app/styles/hero.ts"],
+        "files": ["src/app/styles/hero.mjs"],
         "rules": ["deslop/unused-export"]
       },
       // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompt.ts and the

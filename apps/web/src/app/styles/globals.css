@@ -23,7 +23,7 @@
 @source "../../../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
-@plugin "./hero.ts";
+@plugin "./hero.mjs";
 @plugin "tailwindcss-animate";
 
 /* GAIA overrides for adopted react-ui components — same @layer openui as the
