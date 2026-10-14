@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 
 from app.models.health_models import DegradedHealthResponse, HealthResponse
 from app.utils.general_utils import get_project_info
+from shared.py.logging import env_context
 
 router = APIRouter(tags=["Health"])
 
@@ -84,6 +85,7 @@ async def health_check(response: Response) -> HealthResponse | DegradedHealthRes
         version=project_info["version"],
         description=project_info["description"],
         environment=settings.ENV,
+        commit=env_context().commit,
         event_loop_lag_ms=round(lag_ms, 2),
     )
 
