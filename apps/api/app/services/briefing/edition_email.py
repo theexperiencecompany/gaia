@@ -155,20 +155,19 @@ async def render_edition_png(payload: BriefingPayload, *, crop_to_paper: bool) -
 
 
 async def host_edition_image(
-    payload: BriefingPayload, *, user_id: str, kind: str, crop_to_paper: bool
+    payload: BriefingPayload, *, render_key: str, crop_to_paper: bool
 ) -> str:
-    """Render the edition and host it on the CDN; returns the image URL.
+    """Render the edition and host it on the CDN under render_key; returns the image URL.
 
-    One public id per user, kind, date and crop, uploaded with overwrite, so a re-run
-    replaces the same asset.
+    The URL goes out in emails and on public brief links, so its path is the caller's
+    random key alone, never the user, kind or date.
     """
     image = await render_edition_png(payload, crop_to_paper=crop_to_paper)
     crop = "_chat" if crop_to_paper else ""
-    public_id = f"briefing/editions/{user_id}/{kind}_{payload.date}{crop}"
+    public_id = f"briefing/editions/{render_key}{crop}"
     image_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
     log.debug(
         "briefing.edition_image.hosted",
-        kind=kind,
         crop_to_paper=crop_to_paper,
         image_bytes=len(image),
         url=image_url,

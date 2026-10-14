@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import re
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -121,7 +122,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> World:
         ),
         post=AsyncMock(return_value=OutboundResult.PUBLISHED),
         host_image=AsyncMock(
-            side_effect=lambda payload, *, user_id, kind, crop_to_paper: (
+            side_effect=lambda payload, *, render_key, crop_to_paper: (
                 _IMAGE_URL if crop_to_paper else _EDITION_URL
             )
         ),
@@ -259,6 +260,17 @@ class TestDailyBrief:
         assert [c.kwargs["crop_to_paper"] for c in world.host_image.await_args_list] == [False]
         world.post.assert_not_awaited()
         assert world.set_channels.await_args.args[3] == _ORCHESTRATED
+
+    async def test_every_render_is_hosted_under_one_fresh_opaque_key(self, world: World) -> None:
+        """The image URL goes out in emails and public links, so it names no user, kind or date."""
+        await service.run_daily_briefing(_USER)
+        await service.run_daily_briefing(_USER)
+
+        keys = [c.kwargs["render_key"] for c in world.host_image.await_args_list]
+        first_run, second_run = keys[:2], keys[2:]
+        assert first_run[0] == first_run[1] and second_run[0] == second_run[1]
+        assert first_run[0] != second_run[0]
+        assert re.fullmatch(r"[0-9a-f]{32}", first_run[0])
 
     async def test_email_is_left_out_when_the_user_turned_it_off(self, world: World) -> None:
         world.user = UserDocument(

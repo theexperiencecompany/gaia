@@ -296,6 +296,7 @@ async def _deliver(
     briefing: BriefingModel,
     payload: BriefingPayload,
     notification_kind: str,
+    render_key: str,
 ) -> list[str]:
     """Deliver one brief to every channel the user has.
 
@@ -307,7 +308,7 @@ async def _deliver(
     skim = build_skim(payload, full_brief_url(briefing.id))
     channel = await resolve_chat_channel(user.id)
     image_url = (
-        await host_edition_image(payload, user_id=user.id, kind=kind, crop_to_paper=True)
+        await host_edition_image(payload, render_key=render_key, crop_to_paper=True)
         if channel
         else None
     )
@@ -690,13 +691,15 @@ async def _publish(
     The full edition is rendered and hosted first, so a render failure stores and sends
     nothing; the stored brief keeps its URL for the in-app page and the email.
     """
+    # A fresh random key per render: the hosted URL reaches emails and public links.
+    render_key = uuid4().hex
     edition_image_url = await host_edition_image(
-        payload, user_id=user.id, kind=kind, crop_to_paper=False
+        payload, render_key=render_key, crop_to_paper=False
     )
     briefing = await briefing_repository.upsert_briefing(
         user.id, clock.date_str, kind, payload, edition_image_url=edition_image_url
     )
-    channels = await _deliver(user, briefing, payload, notification_kind)
+    channels = await _deliver(user, briefing, payload, notification_kind, render_key)
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     capture(
         UserId(user.id),
