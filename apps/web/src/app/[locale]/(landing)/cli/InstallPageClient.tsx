@@ -19,6 +19,7 @@ import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
+import { copyText } from "@/lib/clipboard";
 
 function InlineCode({ children }: { children: ReactNode }) {
   return (
@@ -33,7 +34,7 @@ function CodeBlock({ code }: { code: string }) {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(code);
+      await copyText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {

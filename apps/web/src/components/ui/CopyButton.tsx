@@ -3,6 +3,7 @@
 import { Button, type ButtonProps } from "@heroui/button";
 import { CheckmarkCircle01Icon, Copy01Icon } from "@icons";
 import { useState } from "react";
+import { copyText } from "@/lib/clipboard";
 
 interface CopyButtonProps {
   textToCopy: string;
@@ -33,7 +34,7 @@ export default function CopyButton({
     } else {
       // Otherwise use internal logic
       try {
-        await navigator.clipboard.writeText(textToCopy);
+        await copyText(textToCopy);
         setInternalCopied(true);
         setTimeout(() => setInternalCopied(false), 2000);
       } catch (err) {

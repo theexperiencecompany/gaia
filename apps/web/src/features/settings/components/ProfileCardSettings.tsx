@@ -18,6 +18,7 @@ import {
 } from "@/features/onboarding/api/holoCardApi";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { track } from "@/lib/analytics";
+import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 
 export default function ProfileCardSettings() {
@@ -43,11 +44,11 @@ export default function ProfileCardSettings() {
     fetchData();
   }, []);
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     const holoCardId = holoCardData?.holo_card_id;
     if (!holoCardId) return;
     const url = `${window.location.origin}/profile/${holoCardId}`;
-    navigator.clipboard.writeText(url);
+    await copyText(url);
     track("profile:link_copied", { holo_card_id: holoCardId });
     toast.success("Profile link copied to clipboard!");
   };

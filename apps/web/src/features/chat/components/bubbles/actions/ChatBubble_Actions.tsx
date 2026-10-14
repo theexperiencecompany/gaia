@@ -10,6 +10,7 @@ import {
 } from "@icons";
 import { useParams } from "next/navigation";
 import { chatApi } from "@/features/chat/api/chatApi";
+import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 import { syncSingleConversation } from "@/services/syncService";
 import { useReplyToMessage } from "@/stores/composerStore";
@@ -47,10 +48,10 @@ export default function ChatBubble_Actions({
     });
   };
 
-  const copyToClipboard = () => {
+  const copyToClipboard = async () => {
     // Remove NEW_MESSAGE_BREAK tokens for cleaner copy
     const cleanText = text.replace(/<NEW_MESSAGE_BREAK>/g, "\n\n");
-    navigator.clipboard.writeText(cleanText);
+    await copyText(cleanText);
     toast.info("Copied to clipboard", {
       description: `${cleanText.slice(0, 30)}...`,
     });

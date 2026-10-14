@@ -14,8 +14,8 @@ import { BearerTokenModal } from "@/features/integrations/components/BearerToken
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import type { Integration } from "@/features/integrations/types";
+import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
-
 import { ConnectedActions } from "./ConnectedActions";
 import { NotConnectedActions } from "./NotConnectedActions";
 
@@ -287,7 +287,7 @@ export function IntegrationActions({
 
   const handleShare = async () => {
     try {
-      await navigator.clipboard.writeText(
+      await copyText(
         `${window.location.origin}/marketplace/${integration.slug}`,
       );
       toast.success("Link copied to clipboard!");

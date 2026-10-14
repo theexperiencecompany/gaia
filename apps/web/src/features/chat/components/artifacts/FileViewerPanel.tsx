@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState, type WheelEvent } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
+import { copyText } from "@/lib/clipboard";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 interface FileViewerPanelProps {
@@ -282,7 +283,7 @@ export default function FileViewerPanel({
     if (content === null) return;
 
     try {
-      await navigator.clipboard.writeText(content);
+      await copyText(content);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
