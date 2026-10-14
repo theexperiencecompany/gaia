@@ -55,7 +55,6 @@ apps/api/app/agents/tools/workflow_tool.py	TB002	deferred-until=2026-11-08; the 
 apps/api/app/agents/workspace/offload.py	TB001
 apps/api/app/agents/workspace/offload.py	TB002
 apps/api/app/api/v1/endpoints/device_ws.py	TB002
-apps/api/app/api/v1/endpoints/health.py	TB002
 apps/api/app/api/v1/endpoints/platform_auth.py	TB001
 apps/api/app/api/v1/endpoints/platform_auth.py	TB002
 apps/api/app/config/token_repository.py	TB001
