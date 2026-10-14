@@ -140,7 +140,11 @@ export default function TodoListPage({
   filterTodos,
 }: TodoListPageProps) {
   const { selectedTodoId, selectTodo, clearSelection } = useUrlTodoSelection();
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // State, not a ref: attaching the element must re-render TodoList so its
+  // virtualizer subscribes; a ref attaches after the child's layout effect.
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
+    null,
+  );
 
   // Deep-link fallback: a task opened via ?todoId= may be missing from the
   // loaded (filtered/paginated) list, so fetch it by id to still open the
@@ -277,7 +281,7 @@ export default function TodoListPage({
         clearSelection={clearSelection}
       />
       <div
-        ref={scrollContainerRef}
+        ref={setScrollElement}
         className="w-full flex-1 overflow-y-auto px-4"
       >
         <TodoList
@@ -288,7 +292,7 @@ export default function TodoListPage({
           onTodoClick={handleTodoClick}
           onRefresh={refresh}
           onPrefetchWorkflow={handlePrefetchWorkflow}
-          scrollContainerRef={scrollContainerRef}
+          scrollElement={scrollElement}
           timezone={user?.timezone}
         />
       </div>

@@ -1,3 +1,8 @@
+import { toast } from "@/lib/toast";
+
+const COPY_FAILED_MESSAGE =
+  "Couldn't copy to the clipboard. Select the text and copy it manually.";
+
 /** How a copy request ended: on the clipboard, or selected for the user to copy. */
 export type CopyOutcome = "copied" | "selected";
 
@@ -48,6 +53,18 @@ export async function copyText(text: string): Promise<void> {
   if (await writeWithClipboardApi(text)) return;
   if (!copyWithSelection(text)) {
     throw new Error("The browser refused to copy to the clipboard");
+  }
+}
+
+/** Copy text, telling the user when the browser refused; true when it landed on the clipboard. */
+export async function copyWithFeedback(text: string): Promise<boolean> {
+  try {
+    await copyText(text);
+    return true;
+  } catch (error) {
+    console.error("Copy to clipboard failed:", error);
+    toast.error(COPY_FAILED_MESSAGE);
+    return false;
   }
 }
 

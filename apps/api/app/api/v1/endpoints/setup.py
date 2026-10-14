@@ -36,6 +36,7 @@ from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
     LLM_PROVIDER_PRIORITY,
     PRESETS,
+    CredentialProviderName,
     CredentialSource,
     ProviderPreset,
 )
@@ -50,6 +51,7 @@ from app.services.providers.provider_credentials_service import (
     resolve as resolve_provider_config,
     upsert as upsert_provider_config,
 )
+from app.services.setup_wizard_service import dismiss_setup_wizard, is_setup_wizard_dismissed
 from app.services.startup_validation import is_payment_setup
 from app.utils.url_safety import assert_public_http_url, assert_safe_url_shape
 from shared.py.wide_events import log
@@ -130,6 +132,9 @@ class SetupStatusResponse(BaseModel):
         description="Who may sign up once the administrator exists"
     )
     needs_setup: bool = Field(description="Whether an LLM lane still has to be configured")
+    wizard_dismissed: bool = Field(
+        description="Whether the administrator skipped the wizard, which then stops opening itself"
+    )
     deployment: DeploymentStatus = Field(description="What this deployment does")
     providers: dict[str, ProviderConfiguredState] = Field(
         description="Readiness per credential-store provider"
@@ -156,7 +161,7 @@ class ProviderCatalogResponse(BaseModel):
 class MaskedProvider(BaseModel):
     """One row of ``GET /setup/providers`` — a credential with the key masked."""
 
-    provider: str = Field(description="Provider name")
+    provider: CredentialProviderName = Field(description="Provider name")
     configured: bool = Field(description="Whether a credential resolves for this provider")
     base_url: str | None = Field(None, description="Configured endpoint, if any")
     model: str | None = Field(None, description="Configured model, if any")
@@ -167,6 +172,12 @@ class MaskedProvider(BaseModel):
 
 class ProviderListResponse(BaseModel):
     providers: dict[str, MaskedProvider] = Field(description="Masked view per provider")
+
+
+class SetupWizardResponse(BaseModel):
+    """`POST /setup/wizard/dismiss` — the wizard state after the call."""
+
+    wizard_dismissed: bool = Field(description="Whether the wizard stops opening itself")
 
 
 class ProviderTestResponse(BaseModel):
@@ -218,6 +229,7 @@ async def get_setup_status() -> SetupStatusResponse:
         has_admin_account=has_admin_account,
         registration_policy=await get_registration_policy(),
         needs_setup=_needs_setup(has_admin_account, configured),
+        wizard_dismissed=await is_setup_wizard_dismissed(),
         deployment=DeploymentStatus(
             kind=settings.deployment.kind,
             bills=settings.deployment.bills,
@@ -270,6 +282,16 @@ def _needs_setup(has_admin_account: bool, configured: dict[str, bool]) -> bool:
     return settings.deployment.local_auth and not has_admin_account
 
 
+@router.post("/wizard/dismiss")
+async def dismiss_wizard(
+    user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
+) -> SetupWizardResponse:
+    """Stop the setup wizard opening itself; the chat setup banner nudges instead."""
+    log.set(user={"id": user.user_id}, operation="setup_wizard_dismiss")
+    await dismiss_setup_wizard()
+    return SetupWizardResponse(wizard_dismissed=True)
+
+
 @router.get("/providers")
 async def list_providers(
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
@@ -284,7 +306,7 @@ async def list_providers(
         config: ProviderConfig | None = await resolve_provider_config(provider)
         api_key = config.get("api_key") if config else None
         masked[provider] = MaskedProvider(
-            provider=provider,
+            provider=CredentialProviderName(provider),
             configured=config is not None,
             base_url=config.get("base_url") if config else None,
             model=config.get("model") if config else None,

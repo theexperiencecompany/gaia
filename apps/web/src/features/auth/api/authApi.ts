@@ -1,11 +1,10 @@
-import { toErrorEnvelope } from "@shared/api";
+import { ApiError } from "@shared/api";
 import type {
   AuthenticatedUserResponse,
   OnboardingPreferences,
   OnboardingRequest,
   OnboardingStatusResponse,
 } from "@shared/api/generated";
-import { localAuthApi } from "@/lib/api/localAuth";
 import {
   type ApiBody,
   api,
@@ -30,38 +29,41 @@ export function getLocalAuthError(error: unknown): {
   errorCode?: string;
   message?: string;
 } {
-  const response = (
-    error as { response?: { status?: number; data?: unknown } } | undefined
-  )?.response;
-  const envelope = toErrorEnvelope(response?.data);
+  if (!(error instanceof ApiError)) return {};
   return {
-    status: response?.status,
-    errorCode: envelope?.code ?? undefined,
-    message: envelope?.message ?? undefined,
+    status: error.status,
+    errorCode: error.code,
+    message: error.envelope?.message ?? undefined,
   };
 }
 
-// Local-auth calls delegate to lib/api/localAuth: those paths mount only under
-// AUTH_MODE=local, so the generated contract omits them.
 export const authApi = {
   // Fetch current user info
   fetchUserInfo: () => api.get("/api/v1/user/me", { silent: true }),
 
-  // Local (self-host) email/password login.
+  // Local (self-host) sign-in and sign-up render their failures inline.
   localLogin: (email: string, password: string) =>
-    localAuthApi.login(email, password, {}),
+    api.post("/api/v1/auth/login", {
+      body: { email, password },
+      silent: true,
+    }),
 
   localSignup: (
     name: string | undefined,
     email: string,
     password: string,
     invite: string | undefined,
-  ) => localAuthApi.signup(name, email, password, invite, {}),
+  ) =>
+    api.post("/api/v1/auth/signup", {
+      // The backend treats an empty/absent name identically; never send "".
+      body: { name: name?.trim() || undefined, email, password, invite },
+      silent: true,
+    }),
 
-  // Wrong current password 401s as invalid_credentials, never toasted — the
-  // caller extracts it with getLocalAuthError and renders it inline.
+  // A 401 (wrong current password) is never toasted; the caller renders it.
   changePassword: (currentPassword: string, newPassword: string) =>
-    localAuthApi.changePassword(currentPassword, newPassword, {
+    api.patch("/api/v1/auth/password", {
+      body: { current_password: currentPassword, new_password: newPassword },
       successMessage: "Password updated successfully",
     }),
 

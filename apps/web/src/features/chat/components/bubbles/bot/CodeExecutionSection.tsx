@@ -5,7 +5,7 @@ import type React from "react";
 import { useState } from "react";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
-import { copyText } from "@/lib/clipboard";
+import { copyWithFeedback } from "@/lib/clipboard";
 import type { CodeData } from "@/types/features/toolDataTypes";
 import CodeExecutionOutput from "./CodeExecutionOutput";
 
@@ -26,7 +26,7 @@ const createCopyHandler = (
   setCopied: (value: boolean) => void,
 ) => {
   return async () => {
-    await copyText(text);
+    if (!(await copyWithFeedback(text))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

@@ -116,6 +116,7 @@ class TestStatus:
             "has_admin_account",
             "registration_policy",
             "needs_setup",
+            "wizard_dismissed",
             "deployment",
             "providers",
             "plans_seeded",
@@ -306,6 +307,32 @@ class TestStatus:
         seed_state.plans_seeded = False
         body = (await client.get(f"{API}/status")).json()
         assert body["plans_seeded"] is False
+
+
+class TestSetupWizardDismissal:
+    async def test_wizard_is_owed_until_the_admin_dismisses_it(
+        self, client: AsyncClient, anon_client: AsyncClient
+    ) -> None:
+        assert (await anon_client.get(f"{API}/status")).json()["wizard_dismissed"] is False
+
+        resp = await client.post(f"{API}/wizard/dismiss")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"wizard_dismissed": True}
+        assert (await anon_client.get(f"{API}/status")).json()["wizard_dismissed"] is True
+
+    async def test_a_member_cannot_dismiss_the_wizard(
+        self, nonadmin_client: AsyncClient, anon_client: AsyncClient
+    ) -> None:
+        resp = await nonadmin_client.post(f"{API}/wizard/dismiss")
+
+        assert resp.status_code == 403
+        assert (await anon_client.get(f"{API}/status")).json()["wizard_dismissed"] is False
+
+    async def test_dismissal_leaves_needs_setup_to_the_providers(self, client: AsyncClient) -> None:
+        await client.post(f"{API}/wizard/dismiss")
+
+        assert (await client.get(f"{API}/status")).json()["needs_setup"] is True
 
 
 class TestProviderCatalog:

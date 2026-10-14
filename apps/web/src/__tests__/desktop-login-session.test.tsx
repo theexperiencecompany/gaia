@@ -14,9 +14,6 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 vi.mock("next/image", () => ({ default: () => null }));
-vi.mock("@/features/landing/components/hero/HeroImage", () => ({
-  default: () => null,
-}));
 vi.mock("@/hooks/useElectron", () => ({
   useElectron: () => ({
     isElectron: true,
@@ -46,5 +43,17 @@ describe("DesktopLoginClient", () => {
     render(<DesktopLoginClient isSelfHosted={false} />);
 
     await waitFor(() => expect(redirect).toHaveBeenCalledWith("/c", "replace"));
+  });
+
+  it("keeps the hosted page's black backdrop and card shape", () => {
+    fetchUserInfo.mockReturnValueOnce(new Promise(() => undefined));
+
+    const { container, getByRole } = render(
+      <DesktopLoginClient isSelfHosted={false} />,
+    );
+
+    expect(container.firstElementChild?.className).toContain("bg-black");
+    const heading = getByRole("heading", { name: "Welcome to GAIA Desktop" });
+    expect(heading.closest(".rounded-4xl")).not.toBeNull();
   });
 });

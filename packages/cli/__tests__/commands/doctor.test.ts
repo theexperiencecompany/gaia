@@ -143,6 +143,7 @@ describe("evaluateSetupReadiness", () => {
       {
         auth_mode: "workos",
         needs_setup: true,
+        wizard_dismissed: false,
         plans_seeded: false,
         has_admin_account: false,
         registration_policy: "invite_only",
@@ -178,6 +179,7 @@ describe("evaluateSetupReadiness", () => {
       {
         auth_mode: "workos",
         needs_setup: false,
+        wizard_dismissed: false,
         plans_seeded: true,
         has_admin_account: true,
         registration_policy: "invite_only",
@@ -204,6 +206,7 @@ describe("evaluateSetupReadiness", () => {
       {
         auth_mode: "local",
         needs_setup: false,
+        wizard_dismissed: false,
         plans_seeded: true,
         has_admin_account: true,
         registration_policy: "invite_only",
@@ -238,6 +241,7 @@ describe("evaluateSetupReadiness", () => {
       {
         auth_mode: "local",
         needs_setup: true,
+        wizard_dismissed: false,
         plans_seeded: true,
         has_admin_account: true,
         registration_policy: "invite_only",
@@ -265,6 +269,7 @@ describe("evaluateSetupReadiness", () => {
       {
         auth_mode: "local",
         needs_setup: false,
+        wizard_dismissed: false,
         plans_seeded: true,
         has_admin_account: true,
         registration_policy: "invite_only",
@@ -296,6 +301,7 @@ describe("evaluateSetupReadiness", () => {
       {
         auth_mode: "workos",
         needs_setup: false,
+        wizard_dismissed: false,
         plans_seeded: false,
         has_admin_account: true,
         registration_policy: "invite_only",
@@ -325,6 +331,7 @@ describe("evaluateSetupReadiness", () => {
     const status = {
       auth_mode: "local" as const,
       needs_setup: false,
+      wizard_dismissed: false,
       plans_seeded: false,
       has_admin_account: true,
       registration_policy: "invite_only" as const,
@@ -360,6 +367,7 @@ describe("evaluateSetupReadiness", () => {
       {
         auth_mode: "local",
         needs_setup: true,
+        wizard_dismissed: false,
         plans_seeded: true,
         has_admin_account: false,
         registration_policy: "invite_only",
@@ -607,6 +615,7 @@ describe("checkSetupReadiness", () => {
     stubSetupEndpoints({
       auth_mode: "local",
       needs_setup: true,
+      wizard_dismissed: false,
       plans_seeded: false,
       has_admin_account: false,
       registration_policy: "invite_only",
@@ -637,6 +646,7 @@ describe("checkSetupReadiness", () => {
     stubSetupEndpoints({
       auth_mode: "workos",
       needs_setup: true,
+      wizard_dismissed: false,
       plans_seeded: false,
       has_admin_account: true,
       registration_policy: "invite_only",
@@ -671,6 +681,7 @@ describe("checkSetupReadiness", () => {
     stubSetupEndpoints({
       auth_mode: "workos",
       needs_setup: false,
+      wizard_dismissed: false,
       plans_seeded: true,
       has_admin_account: true,
       registration_policy: "invite_only",
@@ -702,6 +713,7 @@ describe("checkSetupReadiness", () => {
     stubSetupEndpoints({
       auth_mode: "local",
       needs_setup: false,
+      wizard_dismissed: false,
       plans_seeded: true,
       has_admin_account: true,
       registration_policy: "invite_only",
@@ -732,6 +744,7 @@ describe("checkSetupReadiness", () => {
     stubSetupEndpoints({
       auth_mode: "local",
       needs_setup: false,
+      wizard_dismissed: false,
       plans_seeded: true,
       has_admin_account: true,
       registration_policy: "invite_only",

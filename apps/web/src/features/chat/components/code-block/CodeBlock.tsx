@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import type React from "react";
 import { type ReactNode, useEffect, useState } from "react";
-import { copyText } from "@/lib/clipboard";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { useActiveLoading } from "@/stores/streamStore";
 import CopyButton from "./CopyButton";
 import DownloadButton from "./DownloadButton";
@@ -56,7 +56,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   }, [isLoading]);
 
   const handleCopy = async () => {
-    await copyText(String(children).replace(/\n$/, ""));
+    if (!(await copyWithFeedback(String(children).replace(/\n$/, "")))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 4000);
   };

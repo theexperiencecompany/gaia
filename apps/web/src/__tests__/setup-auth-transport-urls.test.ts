@@ -6,34 +6,36 @@
  * as `/api/v1/api/v1setup/status`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiauth, apiBaseUrl } from "@/lib/api/client";
-import { localAuthApi } from "@/lib/api/localAuth";
-import { setupTransport } from "@/lib/api/setupTransport";
+import { authApi } from "@/features/auth/api/authApi";
+import { providersApi } from "@/features/settings/api/providersApi";
+import { apiauth, apiOrigin } from "@/lib/api/client";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** The URL axios would request for the url argument of the first call. */
-function requestedUrl(spy: { mock: { calls: unknown[][] } }): string {
-  const url = spy.mock.calls[0]?.[0] as string;
-  return apiauth.getUri({ url });
-}
-
 describe("setup and local-auth transport URLs", () => {
-  it("puts /setup under the API base", async () => {
-    const spy = vi.spyOn(apiauth, "get").mockResolvedValue({ data: {} });
+  it("reads setup status through the typed client at /setup/status", async () => {
+    const spy = vi
+      .spyOn(apiauth, "request")
+      .mockResolvedValue({ status: 200, data: {}, headers: {} });
 
-    await setupTransport.get("status");
+    await providersApi.fetchSetupStatus();
 
-    expect(requestedUrl(spy)).toBe(`${apiBaseUrl}/setup/status`);
+    expect(spy.mock.calls[0]?.[0]?.url).toBe(
+      `${apiOrigin}/api/v1/setup/status`,
+    );
   });
 
-  it("puts /auth under the API base", async () => {
-    const spy = vi.spyOn(apiauth, "post").mockResolvedValue({ data: {} });
+  it("signs in through the typed client at /auth/login", async () => {
+    const spy = vi
+      .spyOn(apiauth, "request")
+      .mockResolvedValue({ status: 200, data: { user: {} }, headers: {} });
 
-    await localAuthApi.login("a@example.com", "x", { silent: true });
+    await authApi.localLogin("a@example.com", "x");
 
-    expect(requestedUrl(spy)).toBe(`${apiBaseUrl}/auth/login`);
+    const config = spy.mock.calls[0]?.[0];
+    expect(config?.method).toBe("POST");
+    expect(config?.url).toBe(`${apiOrigin}/api/v1/auth/login`);
   });
 });

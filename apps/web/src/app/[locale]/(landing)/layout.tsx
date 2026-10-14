@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import LandingLayoutShell from "@/components/layouts/LandingLayoutShell";
-import { isSelfhostWeb } from "@/features/auth/api/serverSetupStatusApi";
+import { isSelfhostWeb } from "@/lib/selfhost";
 
 export default function LocaleLandingLayout({
   children,

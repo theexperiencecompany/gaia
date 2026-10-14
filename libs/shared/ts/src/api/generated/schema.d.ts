@@ -4651,6 +4651,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup/wizard/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Wizard
+         * @description Stop the setup wizard opening itself; the chat setup banner nudges instead.
+         */
+        post: operations["setup_dismiss_wizard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/skills": {
         parameters: {
             query?: never;
@@ -8259,6 +8279,12 @@ export interface components {
             trigger_config: components["schemas"]["TriggerConfig"];
         };
         /**
+         * CredentialProviderName
+         * @description A provider the credential store can hold, in display order.
+         * @enum {string}
+         */
+        CredentialProviderName: "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "google_oauth" | "firecrawl";
+        /**
          * CredentialSource
          * @description Where a provider's active credential comes from: a saved one wins over env.
          * @enum {string}
@@ -10403,11 +10429,8 @@ export interface components {
              * @description Configured model, if any
              */
             model?: string | null;
-            /**
-             * Provider
-             * @description Provider name
-             */
-            provider: string;
+            /** @description Provider name */
+            provider: components["schemas"]["CredentialProviderName"];
         };
         /**
          * MCPConfigDetail
@@ -13642,6 +13665,22 @@ export interface components {
             };
             /** @description Who may sign up once the administrator exists */
             registration_policy: components["schemas"]["RegistrationPolicy"];
+            /**
+             * Wizard Dismissed
+             * @description Whether the administrator skipped the wizard, which then stops opening itself
+             */
+            wizard_dismissed: boolean;
+        };
+        /**
+         * SetupWizardResponse
+         * @description `POST /setup/wizard/dismiss` — the wizard state after the call.
+         */
+        SetupWizardResponse: {
+            /**
+             * Wizard Dismissed
+             * @description Whether the wizard stops opening itself
+             */
+            wizard_dismissed: boolean;
         };
         /**
          * SignupRequest
@@ -16567,6 +16606,7 @@ export type CreateSubscriptionRequest = components['schemas']['CreateSubscriptio
 export type CreateSubscriptionResponse = components['schemas']['CreateSubscriptionResponse'];
 export type CreateWorkflowFromTodoRequest = components['schemas']['CreateWorkflowFromTodoRequest'];
 export type CreateWorkflowRequest = components['schemas']['CreateWorkflowRequest'];
+export type CredentialProviderName = components['schemas']['CredentialProviderName'];
 export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
@@ -16869,6 +16909,7 @@ export type SendEmailResponse = components['schemas']['SendEmailResponse'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
+export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
 export type SignupRequest = components['schemas']['SignupRequest'];
 export type Skill = components['schemas']['Skill'];
 export type SkillInlineCreateRequest = components['schemas']['SkillInlineCreateRequest'];
@@ -29285,6 +29326,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupStatusResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_dismiss_wizard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupWizardResponse"];
                 };
             };
             /** @description Unprocessable Entity */

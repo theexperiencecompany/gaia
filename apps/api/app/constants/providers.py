@@ -274,27 +274,33 @@ PRESETS: dict[str, ProviderPreset] = {
     },
 }
 
+
 # Credential-store providers. "custom" covers OpenCode/Nous/any OpenAI-compatible
 # gateway (its UI card exposes the preset chips); "tavily" is a tool key, not an LLM.
-CREDENTIAL_PROVIDERS: tuple[str, ...] = (
-    "openrouter",
-    "gemini",
-    "ollama",
-    "custom",
-    "tavily",
-    "composio",
-    "e2b",
-    "openai",
-    "resend",
-    "cloudinary",
-    "google_oauth",
-    "firecrawl",
-)
+class CredentialProviderName(StrEnum):
+    """A provider the credential store can hold, in display order."""
+
+    OPENROUTER = "openrouter"
+    GEMINI = "gemini"
+    OLLAMA = "ollama"
+    CUSTOM = "custom"
+    TAVILY = "tavily"
+    COMPOSIO = "composio"
+    E2B = "e2b"
+    OPENAI = "openai"
+    RESEND = "resend"
+    CLOUDINARY = "cloudinary"
+    GOOGLE_OAUTH = "google_oauth"
+    FIRECRAWL = "firecrawl"
+
+
+CREDENTIAL_PROVIDERS: tuple[str, ...] = tuple(p.value for p in CredentialProviderName)
 
 FAVICON_URL_TEMPLATE = "https://www.google.com/s2/favicons?domain={domain}&sz=128"
 
 __all__ = [
     "CREDENTIAL_PROVIDERS",
+    "CredentialProviderName",
     "FAVICON_URL_TEMPLATE",
     "HOSTED_COMMS_ONLY_PROVIDERS",
     "HOSTED_ONE_SHOT_PROVIDERS",

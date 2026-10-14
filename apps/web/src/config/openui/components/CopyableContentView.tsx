@@ -2,7 +2,7 @@ import { Button } from "@heroui/react";
 import { CheckmarkCircle02Icon, Copy01Icon } from "@icons";
 import React from "react";
 import type { z } from "zod";
-import { copyText } from "@/lib/clipboard";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { ToolCard } from "../primitives/ToolCard";
 import type { copyableContentSchema } from "../promptSpecs";
@@ -22,7 +22,8 @@ export function CopyableContentView(
   );
 
   const copy = React.useCallback(() => {
-    void copyText(props.content).then(() => {
+    void copyWithFeedback(props.content).then((copied) => {
+      if (!copied) return;
       setCopied(true);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => setCopied(false), 1800);

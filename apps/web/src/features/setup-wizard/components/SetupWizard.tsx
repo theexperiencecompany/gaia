@@ -16,9 +16,10 @@ import { Alert01Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
-import type {
-  ProviderCatalog,
-  SetupStatus,
+import {
+  type ProviderCatalog,
+  providersApi,
+  type SetupStatus,
 } from "@/features/settings/api/providersApi";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import {
@@ -127,6 +128,18 @@ export function SetupWizard() {
     if (stepObjectiveMet) goNext();
     else setBlockedStepId(step.id);
   };
+  // Skipping the provider unmet is the admin opting out: the wizard stops
+  // reopening and the chat setup banner nudges instead.
+  const skip = async () => {
+    if (step.id === "provider" && !stepObjectiveMet) {
+      try {
+        await providersApi.dismissSetupWizard();
+      } catch {
+        return; // the API client already toasted; stay on the step
+      }
+    }
+    goNext();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-primary-bg backdrop-blur-2xl">
@@ -183,7 +196,7 @@ export function SetupWizard() {
               onContinue={tryContinue}
               // The account step has no skip: without its session every
               // later wizard write would bounce off auth.
-              onSkip={step.id === "account" ? null : goNext}
+              onSkip={step.id === "account" ? null : skip}
               continueReason={continueReason}
             />
           )}

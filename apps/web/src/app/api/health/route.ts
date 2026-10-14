@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSelfhostWeb } from "@/lib/selfhost";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,8 @@ const HEALTH_TIMEOUT_MS = 5000;
  *
  * 503 for `api_down` or `api_unconfigured` (no absolute API base URL);
  * `setup_required` is 200 so LB checks stay healthy during the first-run
- * wizard. Infra health is the API's `GET /health` — the web has no DB clients.
+ * wizard; hosted GAIA has no setup surface, so it stops at reachability.
+ * Infra health is the API's `GET /health` — the web has no DB clients.
  */
 export async function GET() {
   const apiBase = getServerApiBaseUrl();
@@ -40,6 +42,10 @@ export async function GET() {
     }
   } catch {
     return NextResponse.json({ status: "api_down" }, { status: 503 });
+  }
+
+  if (!isSelfhostWeb()) {
+    return NextResponse.json({ status: "ok" }, { status: 200 });
   }
 
   // 2) API is up — is setup complete?

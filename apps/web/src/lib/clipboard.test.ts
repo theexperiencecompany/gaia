@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { copyText } from "@/lib/clipboard";
+import { copyText, copyWithFeedback } from "@/lib/clipboard";
+
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock("@/lib/toast", () => ({ toast: { error: toastError } }));
 
 function withoutClipboardApi() {
   vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
@@ -67,5 +70,25 @@ describe("copyText", () => {
     document.execCommand = vi.fn(() => false);
 
     await expect(copyText("x")).rejects.toThrow(/refused/);
+  });
+});
+
+describe("copyWithFeedback", () => {
+  it("tells the user when nothing could be copied", async () => {
+    toastError.mockClear();
+    withoutClipboardApi();
+    document.execCommand = vi.fn(() => false);
+
+    expect(await copyWithFeedback("x")).toBe(false);
+    expect(toastError).toHaveBeenCalledOnce();
+  });
+
+  it("reports success without a toast", async () => {
+    toastError.mockClear();
+    withoutClipboardApi();
+    document.execCommand = vi.fn(() => true);
+
+    expect(await copyWithFeedback("x")).toBe(true);
+    expect(toastError).not.toHaveBeenCalled();
   });
 });

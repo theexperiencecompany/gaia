@@ -1,11 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
-  extractProviderError,
-  getProviderErrorHint,
   type ProviderConfigBody,
-  type ProviderTestResult,
   providersApi,
   type StoredProviderConfig,
 } from "@/features/settings/api/providersApi";
@@ -13,6 +10,7 @@ import type {
   CatalogProviderRow,
   CustomPresetId,
 } from "@/features/settings/components/providers/providerRows";
+import { useProviderConnect } from "@/features/settings/hooks/useProviderConnect";
 import type { CustomPreset } from "@/features/setup-wizard/utils/providerCards";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
@@ -25,8 +23,8 @@ interface UseConfigureProviderArgs {
 }
 
 /**
- * Draft state and actions for one provider's configure dialog. Seeded once
- * from what is stored, since upsert replaces the whole config; the caller
+ * Draft state and actions for one provider's configure dialog, connected
+ * through the shared flow. Seeded once from what is stored; the caller
  * remounts per provider. The catalog model stays a placeholder: storing it
  * would pin it past a default change.
  */
@@ -47,19 +45,24 @@ export function useConfigureProvider({
   const [preset, setPreset] = useState<CustomPresetId>(
     () => presets.find((p) => p.base_url === stored?.base_url)?.key ?? "manual",
   );
-  const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
+  const handleSaved = useCallback(() => {
+    toast.success(`${row.label} connected`);
+    onSaved();
+  }, [row.label, onSaved]);
+  const connection = useProviderConnect(row.key, {
+    connectionTestable: row.connectionTestable,
+    onSaved: handleSaved,
+  });
 
-  // Any edit invalidates a previous test: Save unlocks only for what was tested.
+  // Any edit invalidates a previous result.
   const editField = (setter: (value: string) => void) => (value: string) => {
     setter(value);
-    setTestResult(null);
+    connection.reset();
   };
 
   const selectPreset = (id: CustomPresetId) => {
     setPreset(id);
-    setTestResult(null);
+    connection.reset();
     if (id === "manual") return;
     const match = presets.find((p) => p.key === id);
     if (!match) return;
@@ -76,23 +79,7 @@ export function useConfigureProvider({
     return body;
   };
 
-  const save = async () => {
-    setIsSaving(true);
-    try {
-      await providersApi.upsertProvider(row.key, buildBody());
-      toast.success(`${row.label} connected`);
-      onSaved();
-    } catch (err: unknown) {
-      const detail = extractProviderError(err);
-      const hint = detail ? getProviderErrorHint(detail, row.key_url) : null;
-      const message = hint
-        ? `${detail} — ${hint}`
-        : (detail ?? `Failed to save ${row.label}`);
-      toast.error(message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const save = () => connection.connect(buildBody());
 
   const remove = async () => {
     const confirmed = await confirm({
@@ -112,19 +99,7 @@ export function useConfigureProvider({
     }
   };
 
-  const test = async () => {
-    setIsTesting(true);
-    setTestResult(null);
-    try {
-      setTestResult(await providersApi.testProvider(row.key, buildBody()));
-    } catch (err: unknown) {
-      const detail =
-        extractProviderError(err) ?? "Could not reach GAIA to run the test.";
-      setTestResult({ ok: false, detail, models: [] });
-    } finally {
-      setIsTesting(false);
-    }
-  };
+  const test = () => connection.test(buildBody());
 
   return {
     apiKey,
@@ -135,9 +110,10 @@ export function useConfigureProvider({
     setModel: editField(setModel),
     preset,
     selectPreset,
-    isSaving,
-    isTesting,
-    testResult,
+    isSaving: connection.phase === "saving",
+    isTesting: connection.phase === "testing",
+    testResult: connection.outcome,
+    error: connection.error,
     save,
     remove,
     test,

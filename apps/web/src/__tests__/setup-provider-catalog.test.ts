@@ -88,6 +88,7 @@ const statusWith = (configured: string[]): SetupStatus => ({
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: true,
+  wizard_dismissed: false,
   plans_seeded: true,
   providers: Object.fromEntries(
     configured.map((key) => [

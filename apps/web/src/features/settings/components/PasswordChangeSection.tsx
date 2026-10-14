@@ -102,13 +102,6 @@ export function PasswordChangeSection() {
           minLength={MIN_PASSWORD_LENGTH}
           isRequired
           isDisabled={isSubmitting}
-          endContent={
-            <VisibilityToggleButton
-              visible={arePasswordsVisible}
-              onToggle={() => setArePasswordsVisible((v) => !v)}
-              subject="passwords"
-            />
-          }
         />
         <Input
           type={arePasswordsVisible ? "text" : "password"}
@@ -118,13 +111,6 @@ export function PasswordChangeSection() {
           autoComplete="new-password"
           isRequired
           isDisabled={isSubmitting}
-          endContent={
-            <VisibilityToggleButton
-              visible={arePasswordsVisible}
-              onToggle={() => setArePasswordsVisible((v) => !v)}
-              subject="passwords"
-            />
-          }
         />
 
         {error && (
