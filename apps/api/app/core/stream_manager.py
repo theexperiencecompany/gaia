@@ -274,7 +274,7 @@ class StreamManager:
         final SSE frame; a normal chunk returns (False, None) so the caller
         yields it and keeps reading.
         """
-        data = entry.get("data", "")
+        data = entry.get("data")
         if data == STREAM_DONE_SIGNAL:
             log.debug(f"{LogTag.STARTUP} Stream completed successfully", stream_id=stream_id)
             return True, None

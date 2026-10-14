@@ -1419,7 +1419,6 @@ async def _stream_messages(
             if abandoned is not None:
                 # The client already shows the failed attempt's text; retract it
                 # before the retry streams the reply again.
-                state.released_text.pop(abandoned, None)
                 yield message_boundary_frame(abandoned, discarded=True)
             state.message_texts[message_id] = state.message_texts.get(message_id, "") + held_text
             if visible := _stream_visible_text(state, message_id):
