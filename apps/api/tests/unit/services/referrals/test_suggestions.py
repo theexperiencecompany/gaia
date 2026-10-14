@@ -9,12 +9,15 @@ import pytest
 import time_machine
 
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
+from app.constants.referrals import SEND_AS_READ_FAILED_MESSAGE, SEND_AS_READ_FAILED_WHY
 from app.models.calendar_models import GoogleCalendarEventResource
-from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
+from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary, GmailToolResult
 from app.models.referral_models import ReferralSuggestionReason
 from app.models.user_models import UserDocument
 from app.services.mail.mail_service import MessageFetchOptions
 from app.services.referrals.suggestions import is_automated, suggest_invitees
+from app.utils.errors import AppError
 
 MODULE = "app.services.referrals.suggestions"
 ME = UserDocument(id="64abc123def4567890abcdef", email="me@example.com", first_name="Me")
@@ -80,6 +83,11 @@ def sources() -> Iterator[SimpleNamespace]:
             f"{MODULE}.user_repository.registered_emails",
             AsyncMock(return_value={"existing@example.com"}),
         ) as registered,
+        patch(f"{MODULE}.get_account_record", AsyncMock(return_value=None)) as accounts,
+        patch(
+            f"{MODULE}.invoke_gmail_tool",
+            AsyncMock(return_value=GmailToolResult(successful=True, data={"sendAs": []})),
+        ) as gmail_tool,
     ):
         yield SimpleNamespace(
             load_user=load_user,
@@ -89,6 +97,8 @@ def sources() -> Iterator[SimpleNamespace]:
             invited=invited,
             suppressed=suppressed,
             registered=registered,
+            accounts=accounts,
+            gmail_tool=gmail_tool,
         )
 
 
@@ -237,9 +247,74 @@ async def test_nothing_connected_suggests_nobody(sources) -> None:
         ("team@googlegroups.com", True),
         ("priya@example.com", False),
         ("ann.support.lead@corp.com", True),
+        ("startups@openrouter.ai", True),
+        ("deals@hustlefund.vc", True),
+        ("compliance-team@openphone.co", True),
+        ("aws-activate@amazon.com", True),
+        ("hello+eu@brand.io", True),
+        ("will@m3ga.life", False),
+        ("teamlead.ana@corp.com", False),
         # The domain is what follows the last @; a quoted local part may hold one.
         ('"team@no-reply"@example.com', True),
     ],
 )
 def test_robots_and_lists_are_recognised(address: str, automated: bool) -> None:
     assert is_automated(address) is automated
+
+
+async def test_the_users_other_mailboxes_and_send_as_aliases_are_never_suggested(
+    sources,
+) -> None:
+    sources.connected.return_value = {"gmail": True}
+    sources.mail.return_value = GmailMessagesResponse(
+        messages=[
+            _sent("me@work.example, Me <me.personal@gmail.com>, alias@me.example, me@example.com"),
+            _sent("lee@example.com"),
+        ]
+    )
+    sources.accounts.return_value = UserIntegrationDocument(
+        user_id=ME.id,
+        integration_id="gmail",
+        accounts=[
+            IntegrationAccount(
+                id="a1",
+                connected_account_id="ca_1",
+                identity={"email": "Me.Personal@gmail.com"},
+                label="Me.Personal@gmail.com",
+            ),
+            IntegrationAccount(id="a2", connected_account_id="ca_2", identity={}, label="unnamed"),
+        ],
+    )
+    sources.gmail_tool.return_value = GmailToolResult(
+        successful=True,
+        data={"sendAs": [{"sendAsEmail": "me@work.example"}, {"sendAsEmail": "Alias@me.example"}]},
+    )
+
+    response = await suggest_invitees(ME.id)
+
+    assert [s.email for s in response.suggestions] == ["lee@example.com"]
+    sources.accounts.assert_awaited_once_with(ME.id, "gmail")
+    sources.gmail_tool.assert_awaited_once_with(ME.id, "GMAIL_LIST_SEND_AS", {"user_id": "me"})
+
+
+async def test_a_refused_send_as_read_fails_loudly(sources) -> None:
+    sources.connected.return_value = {"gmail": True}
+    sources.gmail_tool.return_value = GmailToolResult(successful=False, error="scope missing")
+
+    with pytest.raises(AppError) as refused:
+        await suggest_invitees(ME.id)
+
+    assert refused.value.status_code == 502
+    assert refused.value.to_dict() == {
+        "message": SEND_AS_READ_FAILED_MESSAGE,
+        "why": SEND_AS_READ_FAILED_WHY,
+        "provider_error": "scope missing",
+    }
+
+
+async def test_without_gmail_no_send_as_aliases_are_read(sources) -> None:
+    sources.connected.return_value = {"googlecalendar": True}
+
+    await suggest_invitees(ME.id)
+
+    sources.gmail_tool.assert_not_awaited()
