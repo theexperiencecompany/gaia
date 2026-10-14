@@ -1,23 +1,33 @@
 """post_to_platform_chat: save, send, and remember one proactive message in the user's DM."""
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
+import time_machine
 
 from app.agents.core.background import platform_chat
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
+from app.constants.notifications import (
+    DEFERRED_CHAT_MESSAGE_JOB_PREFIX,
+    DEFERRED_CHAT_MESSAGE_TASK,
+    ProactiveMessageClass,
+)
 from app.models.chat_models import ConversationSource
-from app.models.user_models import AuthenticatedUser
+from app.models.notification.notification_models import QuietHours
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
 
 USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 CHANNEL = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-7")
 TEXT = f"Invoice overdue.{NEW_MESSAGE_BREAKER}Chase them?"
+NOON_UTC = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
+NIGHT_UTC = datetime(2026, 10, 14, 23, 30, tzinfo=UTC)
+AWAKE_USER = UserDocument(timezone="UTC")
 
 
 @dataclass
@@ -43,9 +53,16 @@ async def _post(result: OutboundResult) -> _Posted:
         patch.object(platform_chat, "publish_outbound_message", publish),
         patch.object(platform_chat, "record_platform_delivery", record),
         patch.object(platform_chat, "log") as log,
+        # Noon on a UTC clock: outside the default 22-8 quiet hours.
+        patch.object(platform_chat.user_repository, "get", AsyncMock(return_value=AWAKE_USER)),
+        time_machine.travel(NOON_UTC, tick=False),
     ):
         returned = await platform_chat.post_to_platform_chat(
-            user=USER, channel=CHANNEL, text=TEXT, origin="notification from ai_agent"
+            user=USER,
+            channel=CHANNEL,
+            text=TEXT,
+            origin="notification from ai_agent",
+            message_class=ProactiveMessageClass.ROUTINE,
         )
     return _Posted(session, save, publish, record, log, returned)
 
@@ -118,3 +135,88 @@ async def test_a_failed_publish_is_logged_as_an_error() -> None:
     posted.log.error.assert_called_once()
     assert posted.log.error.call_args.args == (f"{LogTag.AGENT} proactive platform publish failed",)
     assert posted.log.error.call_args.kwargs["bubbles"] == 2
+
+
+class TestQuietHours:
+    """The chokepoint holds a message inside the user's window for a job at its end."""
+
+    async def _post_at(
+        self,
+        now: datetime,
+        message_class: ProactiveMessageClass,
+        user: UserDocument | None = AWAKE_USER,
+    ) -> tuple[OutboundResult, AsyncMock, AsyncMock]:
+        enqueue = AsyncMock()
+        publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
+        with (
+            patch.object(platform_chat.user_repository, "get", AsyncMock(return_value=user)),
+            patch.object(platform_chat, "enqueue_worker_job", enqueue),
+            patch.object(platform_chat.RedisPoolManager, "get_pool", AsyncMock()),
+            patch.object(
+                platform_chat.BotService, "get_or_create_session", AsyncMock(return_value="dm")
+            ),
+            patch.object(platform_chat, "update_messages", AsyncMock()),
+            patch.object(platform_chat, "publish_outbound_message", publish),
+            patch.object(platform_chat, "record_platform_delivery", AsyncMock()),
+            time_machine.travel(now, tick=False),
+        ):
+            result = await platform_chat.post_to_platform_chat(
+                user=USER, channel=CHANNEL, text=TEXT, origin="origin", message_class=message_class
+            )
+        return result, enqueue, publish
+
+    async def test_a_routine_message_in_the_window_is_scheduled_for_its_end(self) -> None:
+        result, enqueue, publish = await self._post_at(NIGHT_UTC, ProactiveMessageClass.ROUTINE)
+
+        assert result is OutboundResult.DEFERRED
+        publish.assert_not_awaited()
+        (_pool, task, message) = enqueue.await_args.args
+        assert task == DEFERRED_CHAT_MESSAGE_TASK
+        assert message == platform_chat.DeferredChatMessage(
+            user_id="user-1",
+            source=ConversationSource.TELEGRAM,
+            platform_user_id="tg-7",
+            text=TEXT,
+            origin="origin",
+            message_class=ProactiveMessageClass.ROUTINE,
+        )
+        assert enqueue.await_args.kwargs["_defer_until"] == datetime(2026, 10, 15, 8, tzinfo=UTC)
+        assert enqueue.await_args.kwargs["_job_id"].startswith(DEFERRED_CHAT_MESSAGE_JOB_PREFIX)
+
+    async def test_the_users_own_window_and_clock_decide(self) -> None:
+        # 12:00 UTC is 17:30 in Kolkata, inside a 17-19 window that ends 13:30 UTC.
+        user = UserDocument(
+            timezone="Asia/Kolkata", quiet_hours=QuietHours(start_hour=17, end_hour=19)
+        )
+        result, enqueue, _ = await self._post_at(NOON_UTC, ProactiveMessageClass.ROUTINE, user)
+
+        assert result is OutboundResult.DEFERRED
+        assert enqueue.await_args.kwargs["_defer_until"] == datetime(
+            2026, 10, 14, 13, 30, tzinfo=UTC
+        )
+
+    async def test_a_user_timed_reminder_is_sent_inside_the_window(self) -> None:
+        result, enqueue, publish = await self._post_at(NIGHT_UTC, ProactiveMessageClass.USER_TIMED)
+
+        assert result is OutboundResult.PUBLISHED
+        publish.assert_awaited_once()
+        enqueue.assert_not_awaited()
+
+    async def test_outside_the_window_it_is_sent_now(self) -> None:
+        result, enqueue, publish = await self._post_at(NOON_UTC, ProactiveMessageClass.ROUTINE)
+
+        assert result is OutboundResult.PUBLISHED
+        publish.assert_awaited_once()
+        enqueue.assert_not_awaited()
+
+    async def test_the_same_message_twice_in_one_window_is_one_job(self) -> None:
+        _, first, _ = await self._post_at(NIGHT_UTC, ProactiveMessageClass.ROUTINE)
+        _, second, _ = await self._post_at(
+            NIGHT_UTC + timedelta(minutes=20), ProactiveMessageClass.ROUTINE
+        )
+
+        assert first.await_args.kwargs["_job_id"] == second.await_args.kwargs["_job_id"]
+
+    async def test_an_unknown_user_fails_loudly(self) -> None:
+        with pytest.raises(LookupError):
+            await self._post_at(NIGHT_UTC, ProactiveMessageClass.ROUTINE, user=None)

@@ -61,11 +61,27 @@ DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
     NotificationChannel.DISCORD,
 )
 
-# The default quiet hours, on the user's own clock: 22:00 to 08:00. Proactive
-# pushes (a mail-woken inbox desk alert, a stale-todo nudge) hold during it.
-# The user overrides it in notification settings (users.quiet_hours).
+# The default quiet hours, on the user's own clock: 22:00 to 08:00. A proactive
+# chat message sent inside them is held until they end (app/services/delivery/
+# quiet_hours.py). The user overrides it in notification settings (users.quiet_hours).
 DEFAULT_QUIET_HOURS_START = 22
 DEFAULT_QUIET_HOURS_END = 8
+
+
+class ProactiveMessageClass(StrEnum):
+    """What a message GAIA sends on its own initiative is, which decides if quiet hours hold it."""
+
+    #: GAIA's own news (a workflow result, a todo run's report, a nudge, a
+    #: notification): held until the user's quiet hours end.
+    ROUTINE = "routine"
+    #: A reminder the user set for this time: it arrives when they asked, quiet hours or not.
+    USER_TIMED = "user_timed"
+
+
+# ARQ task that delivers a proactive chat message held for quiet hours, and the
+# prefix of its per-message job id.
+DEFERRED_CHAT_MESSAGE_TASK = "deliver_deferred_chat_message"
+DEFERRED_CHAT_MESSAGE_JOB_PREFIX = "deferred-chat-message:"
 
 # In-app route a notification action redirects to. Shared so the memory-backfill
 # and Gmail-personalization notifications can't drift onto different pages.

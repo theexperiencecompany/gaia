@@ -10,6 +10,7 @@ import stackprinter
 # CustomTool user_id-injection patch never loads here.
 from app.config.sentry import init_sentry
 from app.constants.email import SIGNUP_EMAIL_TASK
+from app.constants.notifications import DEFERRED_CHAT_MESSAGE_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
 from app.constants.todos import (
@@ -46,6 +47,7 @@ from app.workers.tasks import (
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
 )
+from app.workers.tasks.deferred_chat_tasks import deliver_deferred_chat_message
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.inbox_desk_tasks import (
@@ -128,6 +130,10 @@ _finish_tracked_todo_run = func(
     name=TODO_RUN_FINISH_TASK,
     max_tries=TODO_RUN_FINISH_MAX_TRIES,
 )
+# Named from the constant post_to_platform_chat schedules quiet-hours deliveries by.
+_deliver_deferred_chat_message = func(
+    arq_task(deliver_deferred_chat_message), name=DEFERRED_CHAT_MESSAGE_TASK
+)
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
     arq_task(sync_workflows_for_subscription_state),
@@ -159,6 +165,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _execute_tracked_todo,
     _resume_tracked_todo,
     _finish_tracked_todo_run,
+    _deliver_deferred_chat_message,
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,

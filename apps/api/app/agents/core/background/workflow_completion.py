@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.models.brief_models import PendingBriefItemDocument
@@ -46,6 +47,7 @@ async def deliver_workflow_completion(user: AuthenticatedUser, run: CompletedWor
             user_id=user.user_id,
             notification_text=run.text,
             origin=run.origin,
+            message_class=ProactiveMessageClass.ROUTINE,
         )
         await send_workflow_completion_notification(
             workflow_id=run.workflow_id,
