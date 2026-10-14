@@ -377,7 +377,10 @@ export {
   SUBSCRIPTION_REQUIRED_CODE,
   WorkflowStatus,
 } from "./types";
-export { NOTIFICATION_CHANNELS } from "./types/notification";
+export {
+  EMAIL_CHANNEL_DESCRIPTION,
+  NOTIFICATION_CHANNELS,
+} from "./types/notification";
 export type {
   ApprovalSettlement,
   ArgsPreviewRow,

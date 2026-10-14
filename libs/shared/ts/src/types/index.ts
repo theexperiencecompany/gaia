@@ -46,6 +46,7 @@ export type {
   QuietHours,
 } from "./notification";
 export {
+  EMAIL_CHANNEL_DESCRIPTION,
   NOTIFICATION_CHANNELS,
   NotificationActionStyle,
   NotificationActionType,

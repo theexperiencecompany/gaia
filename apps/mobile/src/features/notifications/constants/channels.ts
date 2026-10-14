@@ -1,3 +1,4 @@
+import { EMAIL_CHANNEL_DESCRIPTION } from "@gaia/shared";
 import type { ChannelPlatform } from "@gaia/shared/types";
 import type { AnyIcon } from "@/components/icons";
 import {
@@ -73,7 +74,7 @@ export const NOTIFICATION_CHANNEL_META: Record<
   },
   email: {
     name: "Email",
-    description: "Receive alerts at your account email",
+    description: EMAIL_CHANNEL_DESCRIPTION,
     icon: Mail01Icon,
     iconColor: "#00bbff",
     iconBg: "rgba(0,187,255,0.15)",
