@@ -35,8 +35,8 @@ def _brief(brief_id: str, date: str, stamp_city: str) -> BriefingModel:
 async def test_each_city_counts_once_on_the_day_it_first_arrived() -> None:
     briefs = [
         _brief("brief_1", "2026-09-01", "tokyo"),
+        _brief("brief_3", "2026-09-02", "tokyo"),
         _brief("brief_2", "2026-09-04", "lima"),
-        _brief("brief_3", "2026-12-20", "tokyo"),
     ]
     with patch(
         f"{MODULE}.briefing_repository.list_stamped", AsyncMock(return_value=briefs)
