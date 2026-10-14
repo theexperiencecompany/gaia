@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime
 
 from fastapi import BackgroundTasks, HTTPException
+from pymongo.errors import PyMongoError
 from workos.types.user_management.authentication_response import AuthenticationMethod
 
 from app.constants.email import SIGNUP_EMAIL_ENQUEUE_TIMEOUT_SECONDS
@@ -181,7 +182,17 @@ async def store_user_info(
         )
     )
     if referral is not None:
-        await attribute_signup(created.id, referral)
+        # The account already exists: a raise here would turn the next login into a
+        # returning user's and skip every signup step below.
+        try:
+            await attribute_signup(created.id, referral)
+        except PyMongoError as e:
+            log.error(
+                f"{LogTag.OAUTH} Referral attribution failed; signup continues without it",
+                user={"id": created.id},
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     if not external_side_effects:
         return created.id, True
