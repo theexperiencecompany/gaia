@@ -10,7 +10,7 @@ import {
 import type { CustomPresetKey } from "@/features/setup-wizard/utils/providerCards";
 
 /** The role a provider plays — Settings lists each role as its own section. */
-export const PROVIDER_SECTIONS = [
+const PROVIDER_SECTIONS = [
   {
     key: "models",
     title: "AI models",
@@ -226,7 +226,7 @@ export function providerRowState(
   return "not_configured";
 }
 
-export interface ProviderSectionGroup {
+interface ProviderSectionGroup {
   key: ProviderSectionKey;
   title: string;
   description: string;
