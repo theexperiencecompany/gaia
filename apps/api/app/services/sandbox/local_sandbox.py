@@ -44,12 +44,18 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
     LOCAL_SANDBOX_CONTAINER_PREFIX,
+    LOCAL_SANDBOX_CPUS,
     LOCAL_SANDBOX_EXEC_TIMEOUT_GRACE_SECONDS,
     LOCAL_SANDBOX_HOME,
     LOCAL_SANDBOX_IMAGE,
     LOCAL_SANDBOX_KILLED_EXIT_CODE,
     LOCAL_SANDBOX_LAYOUT,
     LOCAL_SANDBOX_LAYOUT_LABEL,
+    LOCAL_SANDBOX_MEMORY_LIMIT,
+    LOCAL_SANDBOX_MEMORY_SWAP_LIMIT,
+    LOCAL_SANDBOX_NETWORK,
+    LOCAL_SANDBOX_NETWORK_ICC_OPTION,
+    LOCAL_SANDBOX_PIDS_LIMIT,
     LOCAL_SANDBOX_START_TIMEOUT_SECONDS,
     LOCAL_SANDBOX_WORKSPACE_MOUNT,
     SELFHOST_WORKSPACE_VOLUME,
@@ -77,6 +83,9 @@ __all__ = [
 
 # Marker in coreutils' error output that maps to e2b's NotFoundException.
 _NOT_FOUND_MARKER = "No such file or directory"
+
+# Docker daemon wording when the sandbox network was created by an earlier start.
+_NETWORK_EXISTS_MARKER = "already exists"
 
 # Docker daemon wording for an absent container. Older daemons say
 # "No such object"; current ones name the object type.
@@ -310,8 +319,25 @@ class LocalDockerSandbox:
         await ensure_user_skills_dir(self.user_id)
         await asyncio.to_thread(_make_mount_sources, self.user_id)
 
+    async def _ensure_network(self) -> None:
+        """Create the isolated sandbox bridge network unless an earlier start did."""
+        rc, _, stderr = await self._run_docker(
+            "network",
+            "create",
+            "--driver",
+            "bridge",
+            "--opt",
+            LOCAL_SANDBOX_NETWORK_ICC_OPTION,
+            LOCAL_SANDBOX_NETWORK,
+        )
+        if rc != 0 and _NETWORK_EXISTS_MARKER not in stderr:
+            raise LocalSandboxError(
+                f"docker network create failed for {LOCAL_SANDBOX_NETWORK}: {stderr.strip()}"
+            )
+
     async def _create_container(self) -> tuple[int, str]:
         await self._prepare_workspace()
+        await self._ensure_network()
         mount_args = [
             arg
             for mount in _workspace_mounts(self.user_id)
@@ -327,6 +353,20 @@ class LocalDockerSandbox:
             "--label",
             f"{LOCAL_SANDBOX_LAYOUT_LABEL}={LOCAL_SANDBOX_LAYOUT}",
             *mount_args,
+            "--network",
+            LOCAL_SANDBOX_NETWORK,
+            "--memory",
+            LOCAL_SANDBOX_MEMORY_LIMIT,
+            "--memory-swap",
+            LOCAL_SANDBOX_MEMORY_SWAP_LIMIT,
+            "--pids-limit",
+            str(LOCAL_SANDBOX_PIDS_LIMIT),
+            "--cpus",
+            LOCAL_SANDBOX_CPUS,
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
             # Same uid as the API, so files either side creates stay writable by both.
             "--user",
             f"{os.getuid()}:{os.getgid()}",

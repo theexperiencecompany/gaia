@@ -524,6 +524,7 @@ async def _create(recorder: SpawnRecorder, user_id: str) -> list[str]:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
         FakeProcess(returncode=0),
+        FakeProcess(returncode=0),
         _inspect_response(),
     ]
     await _sandbox(user_id).ensure_started()
@@ -601,6 +602,76 @@ async def test_the_sandbox_runs_as_the_api_user_so_both_can_write_the_workspace(
     assert run[-3:] == ["python:3.12-slim", "sleep", "infinity"]
 
 
+def _flag(run: list[str], flag: str) -> str:
+    return run[run.index(flag) + 1]
+
+
+async def test_the_sandbox_is_capped_so_one_user_cannot_starve_the_host(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    run = await _create(recorder, "userB")
+
+    assert _flag(run, "--memory") == "2g"
+    assert _flag(run, "--memory-swap") == "2g", "swap equal to memory means no swap"
+    assert _flag(run, "--pids-limit") == "512"
+    assert _flag(run, "--cpus") == "2"
+    assert _flag(run, "--cap-drop") == "ALL"
+    assert _flag(run, "--security-opt") == "no-new-privileges"
+
+
+async def test_the_sandbox_joins_an_isolated_network_not_the_datastores_network(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    run = await _create(recorder, "userB")
+
+    assert _flag(run, "--network") == "gaia-sandbox"
+    network_create = next(argv for argv in recorder.argvs if argv[1:3] == ["network", "create"])
+    assert network_create[-1] == "gaia-sandbox"
+    assert _flag(network_create, "--driver") == "bridge"
+    assert _flag(network_create, "--opt") == "com.docker.network.bridge.enable_icc=false"
+    assert recorder.argvs.index(network_create) < recorder.argvs.index(run)
+
+
+async def test_an_existing_sandbox_network_is_reused(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    recorder._responses = [
+        FakeProcess(stderr=b"No such object", returncode=1),
+        FakeProcess(stderr=b"Error: network with name gaia-sandbox already exists", returncode=1),
+        FakeProcess(returncode=0),
+        _inspect_response(),
+    ]
+    await _sandbox("userB").ensure_started()
+    assert recorder.argv(2)[:2] == ["docker", "run"]
+
+
+async def test_a_failed_network_create_stops_the_sandbox_from_starting(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    recorder._responses = [
+        FakeProcess(stderr=b"No such object", returncode=1),
+        FakeProcess(stderr=b"permission denied", returncode=1),
+    ]
+    with pytest.raises(LocalSandboxError, match="permission denied"):
+        await _sandbox("userB").ensure_started()
+    assert not any(argv[:2] == ["docker", "run"] for argv in recorder.argvs)
+
+
+async def test_a_container_from_before_the_limits_is_replaced_not_restarted(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    recorder._responses = [
+        _inspect_response("true per-user-subpath-v1"),
+        FakeProcess(returncode=0),
+        FakeProcess(returncode=0),
+        FakeProcess(returncode=0),
+        _inspect_response(),
+    ]
+    await _sandbox("userB").ensure_started()
+    assert recorder.argv(1)[:3] == ["docker", "rm", "-f"]
+    assert not any(argv[:2] == ["docker", "start"] for argv in recorder.argvs)
+
+
 async def test_a_container_from_the_shared_volume_era_is_replaced_not_restarted(
     recorder: SpawnRecorder, workspace_root: Path
 ) -> None:
@@ -608,12 +679,13 @@ async def test_a_container_from_the_shared_volume_era_is_replaced_not_restarted(
         _inspect_response("true "),
         FakeProcess(returncode=0),
         FakeProcess(returncode=0),
+        FakeProcess(returncode=0),
         _inspect_response(),
     ]
     await _sandbox("userB").ensure_started()
 
     assert recorder.argv(1)[:3] == ["docker", "rm", "-f"]
-    assert recorder.argv(2)[:2] == ["docker", "run"]
+    assert recorder.argv(3)[:2] == ["docker", "run"]
     assert not any(argv[:2] == ["docker", "start"] for argv in recorder.argvs)
 
 
@@ -642,6 +714,7 @@ async def test_ensure_started_surfaces_a_failed_create(
 ) -> None:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
+        FakeProcess(returncode=0),
         FakeProcess(stderr=b"daemon unreachable", returncode=125),
     ]
     with pytest.raises(LocalSandboxError, match="daemon unreachable"):
@@ -653,6 +726,7 @@ async def test_ensure_started_fails_if_the_container_never_runs(
 ) -> None:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
+        FakeProcess(returncode=0),
         FakeProcess(returncode=0),
         FakeProcess(stderr=b"No such object", returncode=1),
     ]

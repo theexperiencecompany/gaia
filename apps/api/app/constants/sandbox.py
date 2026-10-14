@@ -73,10 +73,24 @@ SELFHOST_WORKSPACE_VOLUME = "gaia-selfhost_workspace"
 # the one-shot legacy migration still reads it.
 LEGACY_LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
 
-# Container label recording the mount layout a sandbox was created with, so a
-# container from an older layout is replaced instead of restarted as-is.
+# Container label recording the mount layout and run spec a sandbox was created
+# with, so a container from an older one is replaced instead of restarted as-is.
+# v2: resource limits, dropped capabilities and the isolated sandbox network.
 LOCAL_SANDBOX_LAYOUT_LABEL = "gaia.sandbox.layout"
-LOCAL_SANDBOX_LAYOUT = "per-user-subpath-v1"
+LOCAL_SANDBOX_LAYOUT = "per-user-subpath-v2"
+
+# Per-container ceilings, so one user's runaway build or fork bomb cannot starve
+# the API and datastores sharing the host. Swap equals memory: no swap at all.
+LOCAL_SANDBOX_MEMORY_LIMIT = "2g"
+LOCAL_SANDBOX_MEMORY_SWAP_LIMIT = LOCAL_SANDBOX_MEMORY_LIMIT
+LOCAL_SANDBOX_PIDS_LIMIT = 512
+LOCAL_SANDBOX_CPUS = "2"
+
+# Dedicated bridge for sandbox containers: internet egress (pip/npm installs)
+# but no route to gaia_network's datastores, and inter-container traffic off so
+# one user's sandbox cannot reach another's.
+LOCAL_SANDBOX_NETWORK = "gaia-sandbox"
+LOCAL_SANDBOX_NETWORK_ICC_OPTION = "com.docker.network.bridge.enable_icc=false"
 
 # Extra seconds the host waits past a command's in-container `timeout` before
 # killing the docker exec client itself, covering daemon round-trip latency.
