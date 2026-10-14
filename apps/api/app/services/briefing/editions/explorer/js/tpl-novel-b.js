@@ -452,7 +452,7 @@
             (it.note
               ? `<span class="t-librarycard__note">${esc(it.note)}</span>`
               : "");
-          const due = { cls: "", body: lcStamp("s-return", it.tag, ri) };
+          const due = { cls: "", body: it.tag ? lcStamp("s-return", it.tag, ri) : "" };
           const row = lcRow(dateStamp(), item, due, ri);
           ri++;
           return row;

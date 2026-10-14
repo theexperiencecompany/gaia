@@ -30,7 +30,7 @@ from app.models.briefing_models import (
     BriefingWeekDay,
 )
 from app.models.calendar_models import GoogleCalendarEventResource
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.models.user_models import UserDocument
 from app.services.briefing import dormancy
 from app.services.calendar_service import get_calendar_events
@@ -159,12 +159,18 @@ async def format_goal_block(user_id: str, user: UserDocument) -> tuple[str, bool
 
 
 async def gather_tracked_work(user_id: str, since: datetime) -> TrackedWork:
-    """GAIA's tracked todos: completed since the cutoff, plus every open one by state."""
+    """GAIA's tracked todos: completed since the cutoff, plus every open one by state.
+
+    The inbox desk itself is left out: it is always open, and the brief reports it
+    through its findings (its thread and proposal sub-todos) instead.
+    """
     work = TrackedWork()
     for doc in await todo_repository.list_completed_since(user_id, since=since):
         if is_gaia_tracked(doc):
             work.completed.append(doc)
     for doc in await todo_repository.list_active_tracked(user_id, limit=_TRACKED_WORK_LIMIT):
+        if doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK:
+            continue
         if FAILED_LABEL in doc.labels:
             work.failed.append(doc)
         elif NEEDS_USER_LABELS.intersection(doc.labels):

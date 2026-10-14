@@ -14,6 +14,7 @@ Run: uv run python -m scripts.provision_daily_briefings [--dry-run]
 import asyncio
 import sys
 
+from app.core.provider_registration import register_lazy_providers
 from app.db.repositories.users import user_repository
 from app.services.briefing.rollout import provision_existing_user
 from shared.py.analytics.catalog.attribution import Trigger
@@ -21,6 +22,8 @@ from shared.py.analytics.context import analytics_context, worker_context
 
 
 async def rollout(dry_run: bool) -> None:
+    # No app lifespan here: register the providers capture() and provisioning read.
+    register_lazy_providers("main_app")
     user_ids = await user_repository.list_all_ids()
     total = len(user_ids)
     print(f"users to roll out: {total}")

@@ -47,7 +47,9 @@ into the design.
 The fix is minimal, surgical null guards at those exact call sites —
 `if (!t24) return "";`, `it.t24 || ""`, `note ? ... : ""` — matching
 whichever placeholder convention the same template already used elsewhere
-for a missing value (`"EOD"`, `"&mdash;"`, or an empty string).
+for a missing value (`"EOD"`, `"&mdash;"`, or an empty string). The same
+guard covers an empty overnight tag in `librarycard`, which drew an empty
+stamp box beside an untagged held result (2026-10-14).
 
 ### 2. Content-slot hardcoding (SonarCloud S930)
 

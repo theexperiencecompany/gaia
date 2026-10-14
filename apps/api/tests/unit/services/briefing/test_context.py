@@ -24,7 +24,7 @@ from app.constants.todos import (
 )
 from app.models.briefing_models import BriefingModel, BriefingPayload
 from app.models.calendar_models import GoogleCalendarEventResource
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.briefing import context
 
@@ -180,6 +180,29 @@ class TestTrackedWork:
 
         assert [d.id for d in work.blocked] == ["n1", "a1"]
         assert [d.id for d in work.running] == ["w1"]
+
+    async def test_the_inbox_desk_is_reported_through_its_findings_not_as_work(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        desk = _todo("d1", "Inbox desk", GAIA_TRACKED_LABEL)
+        desk.external_ref = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        monkeypatch.setattr(
+            context.todo_repository, "list_completed_since", AsyncMock(return_value=[])
+        )
+        monkeypatch.setattr(
+            context.todo_repository,
+            "list_active_tracked",
+            AsyncMock(
+                return_value=[
+                    desk,
+                    _todo("n1", "Priya · pitch deck", GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL),
+                ]
+            ),
+        )
+
+        work = await context.gather_tracked_work(_USER, datetime.now(UTC))
+
+        assert ([d.id for d in work.blocked], work.running) == (["n1"], [])
 
     async def test_open_todo_summary_counts_all_and_names_five(
         self, monkeypatch: pytest.MonkeyPatch

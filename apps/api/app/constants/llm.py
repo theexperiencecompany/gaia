@@ -331,6 +331,8 @@ COMMS_MODEL_NAME = "gpt-5.6-luna"
 # Chat completions reject function tools with any other effort, and comms always binds tools.
 COMMS_REASONING_EFFORT = "none"
 OPENAI_MAX_OUTPUT_TOKENS = 16_000
+# OpenAI rejects a longer prompt_cache_key with a 400 (string_above_max_length).
+OPENAI_PROMPT_CACHE_KEY_MAX_CHARS = 64
 
 # Per-plan model policy (hardcoded; not user-selectable). Both tiers run the SAME
 # model today, so the pro monthly-budget degrade in resolve_lane has nothing to

@@ -38,7 +38,7 @@ function ItemRow({ item }: { item: BriefingItem }) {
   return (
     <Link
       href={href}
-      className="text-sm font-medium text-zinc-200 hover:text-zinc-50"
+      className="block text-sm font-medium text-zinc-200 hover:text-zinc-50"
     >
       {item.text}
     </Link>
