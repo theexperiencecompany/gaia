@@ -685,23 +685,35 @@ def _daily_payload(
     )
 
 
+@dataclass(frozen=True)
+class _Edition:
+    """The edition family a brief renders in, and the bag draws spent choosing it."""
+
+    family: str
+    draws: list[_BagDraw]
+
+
+_NOTIFICATION_KINDS: dict[BriefingKind, str] = {
+    BRIEFING_KIND_DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
+    BRIEFING_KIND_WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
+}
+
+
 async def _publish(
     user: UserDocument,
     clock: UserClock,
     kind: BriefingKind,
     payload: BriefingPayload,
-    notification_kind: str,
-    family: str,
-    draws: list[_BagDraw],
+    edition: _Edition,
 ) -> BriefingModel:
     """Draw the edition, render and store the brief, deliver it and report where it went.
 
     The full edition is rendered and hosted first, so a render failure stores and sends
     nothing; the stored brief keeps its URL for the in-app page and the email. The
-    shuffle-bag draws (the family's, passed in, and the stamp's) persist only after
-    delivery.
+    shuffle-bag draws (the family's and the stamp's) persist only after delivery.
     """
-    draws = [*draws, *_assign_edition(user, payload, family)]
+    family = edition.family
+    draws = [*edition.draws, *_assign_edition(user, payload, family)]
     # A fresh random key per render: the hosted URL reaches emails and public links.
     render_key = uuid4().hex
     edition_image_url = await host_edition_image(
@@ -710,7 +722,7 @@ async def _publish(
     briefing = await briefing_repository.upsert_briefing(
         user.id, clock.date_str, kind, payload, edition_image_url=edition_image_url
     )
-    channels = await _deliver(user, briefing, payload, notification_kind, render_key)
+    channels = await _deliver(user, briefing, payload, _NOTIFICATION_KINDS[kind], render_key)
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     await _persist_draws(user.id, draws)
     capture(
@@ -814,9 +826,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         clock,
         BRIEFING_KIND_DAILY,
         payload,
-        NOTIFICATION_KIND_BRIEFING_DAILY,
-        family.member,
-        [family],
+        _Edition(family=family.member, draws=[family]),
     )
     if facts.carried_ids:
         await pending_brief_items_repository.consume(user_id, facts.carried_ids)
@@ -876,8 +886,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         clock,
         BRIEFING_KIND_WEEKLY,
         payload,
-        NOTIFICATION_KIND_BRIEFING_WEEKLY,
-        WEEKLY_FAMILY,
-        [],
+        _Edition(family=WEEKLY_FAMILY, draws=[]),
     )
     return BriefingRunOutcome.SENT
