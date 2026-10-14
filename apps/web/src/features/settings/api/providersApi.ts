@@ -1,35 +1,32 @@
 import type {
+  CredentialProviderName,
+  MaskedProvider,
   ProviderCatalogResponse,
-  ProviderListResponse,
+  ProviderCredentialBody,
+  ProviderTestResponse,
   SetupStatusResponse,
 } from "@gaia/shared/api/generated";
-import {
-  type CredentialProvider,
-  type ProviderConfigBody,
-  type ProviderTestResult,
-  type StoredProviderConfig,
-  setupTransport,
-} from "@/lib/api/setupTransport";
 import { api } from "@/lib/api/typed";
 
-export type {
-  CredentialProvider,
-  ProviderConfigBody,
-  ProviderTestResult,
-  StoredProviderConfig,
-};
 // Wire shapes as the API serves them — aliases, never re-declarations, so the
 // generator stays the single source of truth.
 export type SetupStatus = SetupStatusResponse;
 export type ProviderCatalog = ProviderCatalogResponse;
+export type CredentialProvider = CredentialProviderName;
+export type ProviderConfigBody = ProviderCredentialBody;
+export type ProviderTestResult = ProviderTestResponse;
+export type StoredProviderConfig = MaskedProvider;
 
+const PROVIDER_PATH = "/api/v1/setup/providers/{provider}";
+
+// Background reads stay silent; writes and probes render their errors inline.
 class ProvidersApiService {
   fetchSetupStatus(): Promise<SetupStatus> {
-    return setupTransport.get<SetupStatus>("status");
+    return api.get("/api/v1/setup/status", { silent: true });
   }
 
   fetchCatalog(): Promise<ProviderCatalog> {
-    return setupTransport.get<ProviderCatalog>("catalog");
+    return api.get("/api/v1/setup/catalog", { silent: true });
   }
 
   /** Stop the setup wizard opening itself for the admin. */
@@ -37,8 +34,8 @@ class ProvidersApiService {
     return api.post("/api/v1/setup/wizard/dismiss");
   }
 
-  async listProviders(): Promise<ProviderListResponse["providers"]> {
-    const listing = await setupTransport.get<ProviderListResponse>("providers");
+  async listProviders() {
+    const listing = await api.get("/api/v1/setup/providers", { silent: true });
     return listing.providers;
   }
 
@@ -46,21 +43,22 @@ class ProvidersApiService {
     provider: CredentialProvider,
     body: ProviderConfigBody,
   ): Promise<void> {
-    await setupTransport.put(`providers/${provider}`, body);
+    await api.put(PROVIDER_PATH, { path: { provider }, body, silent: true });
   }
 
-  deleteProvider(provider: CredentialProvider): Promise<void> {
-    return setupTransport.delete(`providers/${provider}`);
+  async deleteProvider(provider: CredentialProvider): Promise<void> {
+    await api.delete(PROVIDER_PATH, { path: { provider }, silent: true });
   }
 
   testProvider(
     provider: CredentialProvider,
-    body?: ProviderConfigBody,
+    body: ProviderConfigBody = {},
   ): Promise<ProviderTestResult> {
-    return setupTransport.post<ProviderTestResult>(
-      `providers/${provider}/test`,
-      body ?? {},
-    );
+    return api.post("/api/v1/setup/providers/{provider}/test", {
+      path: { provider },
+      body,
+      silent: true,
+    });
   }
 }
 
@@ -102,23 +100,7 @@ export function getProviderErrorHint(
   return null;
 }
 
-/** Pull a human-readable message out of an axios/backend error. */
+/** The API's own words for a failed setup call (the error envelope's message). */
 export function extractProviderError(err: unknown): string | undefined {
-  if (typeof err === "object" && err !== null) {
-    const data = (err as { response?: { data?: unknown } }).response?.data;
-    if (typeof data === "object" && data !== null) {
-      const record = data as Record<string, unknown>;
-      if (typeof record.detail === "string") return record.detail;
-      if (
-        typeof record.detail === "object" &&
-        record.detail !== null &&
-        typeof (record.detail as Record<string, unknown>).message === "string"
-      ) {
-        return (record.detail as Record<string, unknown>).message as string;
-      }
-      if (typeof record.message === "string") return record.message;
-    }
-    if (err instanceof Error && err.message) return err.message;
-  }
-  return undefined;
+  return err instanceof Error && err.message ? err.message : undefined;
 }

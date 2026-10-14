@@ -4593,6 +4593,25 @@
         "title": "CreateWorkflowRequest",
         "type": "object"
       },
+      "CredentialProviderName": {
+        "description": "A provider the credential store can hold, in display order.",
+        "enum": [
+          "openrouter",
+          "gemini",
+          "ollama",
+          "custom",
+          "tavily",
+          "composio",
+          "e2b",
+          "openai",
+          "resend",
+          "cloudinary",
+          "google_oauth",
+          "firecrawl"
+        ],
+        "title": "CredentialProviderName",
+        "type": "string"
+      },
       "CredentialSource": {
         "description": "Where a provider's active credential comes from: a saved one wins over env.",
         "enum": [
@@ -9214,9 +9233,8 @@
             "title": "Model"
           },
           "provider": {
-            "description": "Provider name",
-            "title": "Provider",
-            "type": "string"
+            "$ref": "#/components/schemas/CredentialProviderName",
+            "description": "Provider name"
           }
         },
         "required": [

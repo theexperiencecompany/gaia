@@ -1,6 +1,6 @@
+import { ApiError } from "@shared/api";
 import type { SetupStatusResponse } from "@shared/api/generated";
 import { describe, expect, it } from "vitest";
-
 import { getLocalAuthError } from "@/features/auth/api/authApi";
 import { resolveSignupMode } from "@/features/auth/utils/signupMode";
 import { isSettingsSectionAllowed } from "@/features/settings/config/settingsConfig";
@@ -78,12 +78,10 @@ describe("isSettingsSectionAllowed", () => {
 
 describe("getLocalAuthError", () => {
   it("reads the code and message from the API's error envelope", () => {
-    const error = {
-      response: {
-        status: 403,
-        data: { code: "registration_closed", message: "Closed" },
-      },
-    };
+    const error = ApiError.fromBody(403, {
+      code: "registration_closed",
+      message: "Closed",
+    });
     expect(getLocalAuthError(error)).toEqual({
       status: 403,
       errorCode: "registration_closed",
@@ -92,7 +90,7 @@ describe("getLocalAuthError", () => {
   });
 
   it("returns only the status for a body that is not an envelope", () => {
-    const error = { response: { status: 502, data: "<html>" } };
+    const error = ApiError.fromBody(502, "<html>");
     expect(getLocalAuthError(error)).toEqual({
       status: 502,
       errorCode: undefined,

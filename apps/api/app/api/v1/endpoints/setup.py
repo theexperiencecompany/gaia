@@ -36,6 +36,7 @@ from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
     LLM_PROVIDER_PRIORITY,
     PRESETS,
+    CredentialProviderName,
     CredentialSource,
     ProviderPreset,
 )
@@ -160,7 +161,7 @@ class ProviderCatalogResponse(BaseModel):
 class MaskedProvider(BaseModel):
     """One row of ``GET /setup/providers`` — a credential with the key masked."""
 
-    provider: str = Field(description="Provider name")
+    provider: CredentialProviderName = Field(description="Provider name")
     configured: bool = Field(description="Whether a credential resolves for this provider")
     base_url: str | None = Field(None, description="Configured endpoint, if any")
     model: str | None = Field(None, description="Configured model, if any")
@@ -305,7 +306,7 @@ async def list_providers(
         config: ProviderConfig | None = await resolve_provider_config(provider)
         api_key = config.get("api_key") if config else None
         masked[provider] = MaskedProvider(
-            provider=provider,
+            provider=CredentialProviderName(provider),
             configured=config is not None,
             base_url=config.get("base_url") if config else None,
             model=config.get("model") if config else None,

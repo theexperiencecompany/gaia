@@ -8279,6 +8279,12 @@ export interface components {
             trigger_config: components["schemas"]["TriggerConfig"];
         };
         /**
+         * CredentialProviderName
+         * @description A provider the credential store can hold, in display order.
+         * @enum {string}
+         */
+        CredentialProviderName: "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "google_oauth" | "firecrawl";
+        /**
          * CredentialSource
          * @description Where a provider's active credential comes from: a saved one wins over env.
          * @enum {string}
@@ -10423,11 +10429,8 @@ export interface components {
              * @description Configured model, if any
              */
             model?: string | null;
-            /**
-             * Provider
-             * @description Provider name
-             */
-            provider: string;
+            /** @description Provider name */
+            provider: components["schemas"]["CredentialProviderName"];
         };
         /**
          * MCPConfigDetail
@@ -16603,6 +16606,7 @@ export type CreateSubscriptionRequest = components['schemas']['CreateSubscriptio
 export type CreateSubscriptionResponse = components['schemas']['CreateSubscriptionResponse'];
 export type CreateWorkflowFromTodoRequest = components['schemas']['CreateWorkflowFromTodoRequest'];
 export type CreateWorkflowRequest = components['schemas']['CreateWorkflowRequest'];
+export type CredentialProviderName = components['schemas']['CredentialProviderName'];
 export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
