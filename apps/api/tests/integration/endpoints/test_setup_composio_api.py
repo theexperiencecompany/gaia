@@ -17,7 +17,8 @@ import app.services.composio.auth_config_resolver as resolver
 import app.services.composio.auth_config_setup as setup_service
 from app.services.providers.provider_credentials_service import ProviderConfig
 from shared.py.analytics.catalog.integrations import IntegrationInstanceSetupSaved
-from tests.integration.endpoints.conftest import API
+from shared.py.wide_events import log
+from tests.integration.endpoints.conftest import API, FAKE_USER_ID
 
 COMPOSIO = f"{API}/composio"
 
@@ -173,3 +174,21 @@ async def test_only_the_instance_admin_may_read_or_save(
     )
     assert put.status_code == 403
     assert seams.store.values == {}
+
+
+async def test_saving_auth_configs_leaves_an_audit_record_naming_the_integrations(
+    client: AsyncClient, seams: SimpleNamespace
+) -> None:
+    log.reset()
+    try:
+        resp = await client.put(
+            f"{COMPOSIO}/auth-configs", json={"auth_configs": {"gmail": "ac_mine_gmail"}}
+        )
+        assert resp.status_code == 200
+        [entry] = log.get()["audit"]
+    finally:
+        log.reset()
+
+    assert entry["actor"] == FAKE_USER_ID
+    assert entry["integrations"] == ["gmail"]
+    assert "ac_mine_gmail" not in str(entry)

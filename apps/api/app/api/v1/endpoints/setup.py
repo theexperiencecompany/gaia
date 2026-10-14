@@ -345,6 +345,12 @@ async def put_provider(
         preset=preset,
     )
     await invalidate_provider_cache(provider)
+    log.audit(
+        "provider credential saved",
+        actor=user.user_id,
+        provider=provider,
+        api_key_changed=body.api_key is not None,
+    )
     return {"ok": True}
 
 
@@ -360,6 +366,7 @@ async def remove_provider(
     _ensure_known_provider(provider)
     await delete_provider_config(provider)
     await invalidate_provider_cache(provider)
+    log.audit("provider credential removed", actor=user.user_id, provider=provider)
     return {"ok": True}
 
 

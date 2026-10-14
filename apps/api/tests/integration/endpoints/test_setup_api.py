@@ -467,6 +467,31 @@ class TestUpsertProvider:
         assert _requires("/providers/{provider}", get_current_user)
 
 
+class TestProviderAudit:
+    async def test_saving_a_credential_is_audited_without_the_key(
+        self, client: AsyncClient
+    ) -> None:
+        log.reset()
+        try:
+            await client.put(f"{API}/providers/gemini", json={"api_key": SECRET_KEY})
+            [entry] = log.get()["audit"]
+        finally:
+            log.reset()
+
+        assert (entry["actor"], entry["provider"]) == (FAKE_USER_ID, "gemini")
+        assert SECRET_KEY not in str(entry)
+
+    async def test_removing_a_credential_is_audited(self, client: AsyncClient) -> None:
+        log.reset()
+        try:
+            await client.delete(f"{API}/providers/gemini")
+            [entry] = log.get()["audit"]
+        finally:
+            log.reset()
+
+        assert (entry["actor"], entry["provider"]) == (FAKE_USER_ID, "gemini")
+
+
 class TestDeleteProvider:
     async def test_delete_removes_credential_and_invalidates(self, client: AsyncClient) -> None:
         await provider_service.upsert("ollama", base_url="http://localhost:11434")
