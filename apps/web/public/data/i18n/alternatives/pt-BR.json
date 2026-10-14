@@ -3626,5 +3626,557 @@
         "answer": "Yes. GAIA combines automatic knowledge capture with task management, email triage, and calendar coordination — covering the PKM role Roam fills plus the active productivity management that Roam doesn't attempt."
       }
     ]
+  },
+  "instinct": {
+    "name": "Instinct",
+    "tagline": "Recados por texto são bons. Contexto fixa.",
+    "metaTitle": "Melhor alternativa a Instinct: IA SMS aberta",
+    "metaDescription": "Precisa de alternativa a Instinct com mais alcance? GAIA responde em WhatsApp e Telegram, e soma ajuda aberta de e-mail e agenda.",
+    "keywords": [
+      "alternativa instinct",
+      "alternativa instinct ia",
+      "alternativa sms instinct",
+      "alternativa grátis instinct",
+      "alternativa open source instinct",
+      "substituto instinct ia",
+      "alternativa instinct 2026"
+    ],
+    "painPoints": [
+      "Instinct leva um recado por vez por texto, sem ver sua caixa nem sua agenda",
+      "Acesso de era de lista de espera que segue mudando",
+      "Viagens e recados cobertos, mas triagem de caixa e agenda vivem noutro lugar",
+      "Produto fechado sem opção auto-hospedada nem roteiro público",
+      "O contexto zera por conversa em vez de crescer por semanas"
+    ],
+    "whyPeopleLook": "Instinct prova que escrever um recado ganha de abrir um app. Mas usuários superam o canal único: o recado ainda precisa de checagens de agenda, contexto de caixa e acompanhamento que um fio de texto não vê. Quem busca alternativa a Instinct quer o mesmo hábito de escrever com um assistente que já conhece sua agenda e sua caixa.",
+    "gaiaReplaces": [
+      "Pedidos de viagem e recados que hoje escreve para Instinct",
+      "Copiar detalhes de reservas para sua agenda à mão",
+      "Acompanhar recados entre apps separados",
+      "Guardar contexto de viagens na cabeça em vez do assistente"
+    ],
+    "gaiaAdvantages": [
+      "Escreva para GAIA em WhatsApp e Telegram, o mesmo hábito que já tem",
+      "Lê e-mail e agenda antes de agir, então recados cabem na agenda",
+      "Memória em grafo que carrega contexto por semanas e meses",
+      "Mais de 50 integrações em vez de um canal só de texto",
+      "Open source com plano grátis, auto-hospedável com Docker"
+    ],
+    "migrationSteps": [
+      "Liste os recados que escreve para Instinct: viagens, reservas, lembretes",
+      "Conecte Gmail e Google Agenda para dar agenda e caixa a GAIA",
+      "Escreva para GAIA em WhatsApp ou Telegram seu próximo recado",
+      "Veja como GAIA conecta o recado à sua agenda e siga delegando"
+    ],
+    "faqs": [
+      {
+        "answer": "GAIA funciona em WhatsApp e Telegram além da web. Você escreve tarefas igual, e ele vê seu e-mail e sua agenda ao agir.",
+        "question": "Posso escrever para GAIA como escrevo para Instinct?"
+      },
+      {
+        "answer": "GAIA tem plano grátis, e Pro é fixo de ${{PRO_MONTHLY_PRICE}}/mês. Sem medição por tarefa e sem hardware para comprar.",
+        "question": "Quanto custa GAIA?"
+      },
+      {
+        "answer": "Conecte Gmail e Google Agenda primeiro para GAIA ter contexto. Depois some Slack, Notion ou sua ferramenta de tarefas. A maioria delega o primeiro recado em minutos.",
+        "question": "Como migro de Instinct para GAIA?"
+      }
+    ]
+  },
+  "openai-dots": {
+    "name": "OpenAI Dots",
+    "tagline": "A via rápida é ótima até precisar de memória.",
+    "metaTitle": "Melhor alternativa a OpenAI Dots: SO de IA total",
+    "metaDescription": "Precisa de mais que um agente leve? GAIA é a alternativa aberta a OpenAI Dots com memória, mais de 50 ferramentas e ação proativa.",
+    "keywords": [
+      "alternativa openai dots",
+      "substituto openai dots",
+      "alternativa dots ia",
+      "alternativa agente leve ia",
+      "substituto openai dots app",
+      "alternativa open source dots"
+    ],
+    "painPoints": [
+      "Dots começa do zero cada vez, sem memória entre tarefas",
+      "Limitado ao que a superfície do chat expõe, sem conexão profunda",
+      "Não alcança sua caixa nem sua agenda para agir com contexto",
+      "Fechado e ainda evolui, então capacidades mudam",
+      "Só respostas rápidas: o acompanhamento é seu trabalho"
+    ],
+    "whyPeopleLook": "Dots é perfeito até a tarefa precisar de contexto. Usuários batem no muro quando um pedido rápido depende de um fio de e-mail, um evento de agenda ou uma decisão semanal, nada do que Dots vê. Quem busca alternativa a OpenAI Dots quer a mesma velocidade com memória: um assistente que lembra, conecta ferramentas e termina o trabalho.",
+    "gaiaReplaces": [
+      "Tarefas rápidas que queriam lembrar o contexto semanal",
+      "Trabalho que cruza e-mail mais agenda mais tarefas",
+      "Acompanhamentos que precisam ser feitos, não só respondidos",
+      "Automações que você reconstrói do zero cada vez"
+    ],
+    "gaiaAdvantages": [
+      "Memória persistente que acumula a cada tarefa",
+      "Mais de 50 integrações de e-mail, agenda, tarefas e chat",
+      "Conduta proativa em vez de pedir e esperar",
+      "Totalmente open source e auto-hospedável com Docker",
+      "Funciona em WhatsApp e Telegram, não numa superfície só"
+    ],
+    "migrationSteps": [
+      "Anote quais tarefas de Dots seguem pedindo contexto que Dots não vê",
+      "Conecte Gmail e Agenda para dar esse contexto faltante a GAIA",
+      "Reconstrua seu pedido repetido de Dots como fluxo de GAIA",
+      "Deixe GAIA rodar de forma proativa em vez de pedir cada vez"
+    ],
+    "faqs": [
+      {
+        "answer": "Um agente leve faz tarefas rápidas avulsas sem memória. GAIA carrega contexto entre tarefas, conecta mais de 50 ferramentas e age antes de pedirem.",
+        "question": "Como GAIA difere de OpenAI Dots?"
+      },
+      {
+        "answer": "GAIA tem plano grátis, e Pro é fixo de ${{PRO_MONTHLY_PRICE}}/mês. GAIA auto-hospedado não tem medição por tarefa.",
+        "question": "Quanto custa GAIA?"
+      },
+      {
+        "answer": "Comece com Gmail e Agenda para contexto, depois some Slack ou sua ferramenta de tarefas. A memória de GAIA começa a crescer desde o primeiro dia conectado.",
+        "question": "Como mudo para GAIA?"
+      }
+    ]
+  },
+  "dot-app": {
+    "name": "Dot",
+    "tagline": "A companhia foi. O hábito pode ficar.",
+    "metaTitle": "Melhor alternativa a Dot desde o encerramento",
+    "metaDescription": "Dot encerrou em outubro de 2025. GAIA é a alternativa aberta a Dot, com memória que age em e-mail, agenda e tarefas. Veja quando vale a pena migrar.",
+    "keywords": [
+      "alternativa dot app",
+      "substituto dot ia",
+      "alternativa encerramento dot",
+      "ex usuários dot",
+      "alternativa companhia dot",
+      "melhor substituto dot app"
+    ],
+    "painPoints": [
+      "Dot encerrou em outubro de 2025, o app não funciona",
+      "Produto fechado sem voto nem rota de exportação",
+      "Só companhia: conversava mas nunca tocava e-mail nem tarefas",
+      "Só iPhone, sem web, desktop ou mensageiros",
+      "Toda a memória morava nos servidores deles e foi junto"
+    ],
+    "whyPeopleLook": "Usuários de Dot perderam mais que um app: perderam um hábito diário e uma memória de conversas passadas. O encerramento ensinou a lição real, que é reconstruir em terreno que ninguém pode puxar. Quem busca alternativa a Dot quer a companhia de volta mais a garantia de que não some de novo, e é exatamente o que open source dá.",
+    "gaiaReplaces": [
+      "Conversas diárias de check-in que você tinha com Dot",
+      "Lembrar contexto entre conversas",
+      "Acompanhar o que você mencionou de passagem",
+      "O hábito de companhia que Dot criou"
+    ],
+    "gaiaAdvantages": [
+      "Produto vivo em desenvolvimento ativo, com roteiro público",
+      "Memória que abrange conversas e todas as ferramentas conectadas",
+      "Age sobre a memória: redige, agenda e gerencia tarefas",
+      "Open source e auto-hospedável, à prova de fechamento por desenho",
+      "Plano grátis com mais de 50 integrações"
+    ],
+    "migrationSteps": [
+      "Anote para que usava Dot: conversas, memória, rotina",
+      "Cadastre-se grátis em GAIA e conte sobre você numa mensagem",
+      "Conecte Gmail e Agenda para dar ferramentas à memória",
+      "Reconstrua seu check-in diário de Dot como briefing de GAIA"
+    ],
+    "faqs": [
+      {
+        "answer": "Dot encerrou em outubro de 2025 e o app parou. Ex-usuários precisam de um produto vivo, idealmente que ninguém possa fechar.",
+        "question": "Por que preciso de alternativa a Dot?"
+      },
+      {
+        "answer": "GAIA é totalmente open source e auto-hospedável com Docker. Nenhuma decisão empresarial tira isso de você.",
+        "question": "GAIA pode encerrar como Dot?"
+      },
+      {
+        "answer": "Sim. GAIA lembra suas preferências e histórico em conversas e ferramentas, e age sobre essa memória em vez de só conversar.",
+        "question": "GAIA lembra de mim como Dot?"
+      }
+    ]
+  },
+  "friend-pendant": {
+    "name": "Friend",
+    "tagline": "Fique a companhia. Some a capacidade.",
+    "metaTitle": "Melhor alternativa a Friend: assistente que age",
+    "metaDescription": "Quer mais que companhia de US$ 249? GAIA é a alternativa aberta a Friend que zera caixa, agenda e tarefas para você. Veja quando vale a pena migrar.",
+    "keywords": [
+      "alternativa pingente friend",
+      "alternativa friend ia",
+      "alternativa vestível friend",
+      "substituto friend ia",
+      "melhor substituto pingente friend",
+      "alternativa companhia friend"
+    ],
+    "painPoints": [
+      "US$ 249 compram companhia, não capacidade: nada se resolve",
+      "Sem conexão de e-mail, agenda nem tarefas",
+      "Hardware e software fechados sem rota auto-hospedada",
+      "Microfone sempre ativo na nuvem de outra empresa",
+      "O contexto fica no chat em vez de virar trabalho feito"
+    ],
+    "whyPeopleLook": "Friend é honesto sobre o que é: companhia. A decepção chega pela terceira semana, quando usuários notam que o pingente sabe do dia corrido e não faz nada sobre. Quem busca alternativa a Friend quer a mesma sensação de presença ligada a entrega real: um assistente que ouve o dentista e agenda.",
+    "gaiaReplaces": [
+      "Lembrar tudo você depois que Friend conversa do tema",
+      "Copiar planos de textos para sua agenda à mão",
+      "Trabalho de caixa e tarefas que Friend não toca",
+      "Pagar US$ 249 por companhia sem capacidade"
+    ],
+    "gaiaAdvantages": [
+      "Zera sua caixa em vez de conversar sobre seu dia",
+      "Cuida de agenda, tarefas e acompanhamentos de ponta a ponta",
+      "Mais de 50 integrações com ferramentas que você já usa",
+      "Open source com plano grátis, sem hardware para comprar",
+      "Age de forma proativa em vez de esperar pedirem"
+    ],
+    "migrationSteps": [
+      "Fique com Friend para companhia se gosta; GAIA substitui a carga",
+      "Conecte Gmail e Agenda para GAIA ver o que Friend só ouve",
+      "Conte a GAIA suas rotinas semanais uma vez para ele rodar",
+      "Confira o primeiro briefing matinal e deixe rodar"
+    ],
+    "faqs": [
+      {
+        "answer": "Não. Friend ouve e conversa por texto mas não conecta e-mail, agenda nem tarefas. GAIA faz o trabalho em mais de 50 ferramentas.",
+        "question": "Friend faz algum trabalho real?"
+      },
+      {
+        "answer": "O pingente Friend custa US$ 249 mais seu tempo fazendo tudo você. GAIA tem plano grátis, e Pro é fixo de ${{PRO_MONTHLY_PRICE}}/mês.",
+        "question": "O que economizo saindo de Friend?"
+      },
+      {
+        "answer": "GAIA lê seu e-mail, cuida da sua agenda e cria tarefas. Vira o contexto de que Friend só conversa em trabalho concluído.",
+        "question": "O que ganho migrando para GAIA?"
+      }
+    ]
+  },
+  "omi": {
+    "name": "OMI",
+    "tagline": "Lembrança aberta é meio serviço. GAIA faz o resto.",
+    "metaTitle": "Melhor alternativa a OMI: IA aberta que age",
+    "metaDescription": "Gosta da ética aberta de OMI mas precisa de ação? GAIA é a alternativa aberta a OMI que vira contexto lembrado em trabalho feito.",
+    "keywords": [
+      "alternativa omi",
+      "alternativa omi ia",
+      "alternativa pingente omi",
+      "alternativa pingente aberto",
+      "substituto vestível omi",
+      "melhor alternativa omi"
+    ],
+    "painPoints": [
+      "Lembrança sem ação: OMI lembra, você ainda faz tudo",
+      "Sem automação de e-mail nem agenda",
+      "Exige usar hardware dedicado todo dia",
+      "A qualidade de captura depende de microfone e ruído",
+      "Software aberto preso a uma compra de hardware igual"
+    ],
+    "whyPeopleLook": "OMI atrai justo o público certo: gente que quer tecnologia aberta que pode auditar. O vão é o que passa após lembrar. Um registro consultável da conversa de terça não redige o acompanhamento de quarta. Quem busca alternativa a OMI divide os valores open source e quer a metade que falta: ação em e-mail, agenda e tarefas.",
+    "gaiaReplaces": [
+      "Agir à mão sobre conversas que OMI lembra",
+      "Copiar resultados de reuniões para tarefas à mão",
+      "Trocar de apps para seguir contexto lembrado",
+      "Usar hardware para o que o software pode fazer"
+    ],
+    "gaiaAdvantages": [
+      "Converte contexto lembrado em e-mails redigidos e tarefas criadas",
+      "Automação profunda de Gmail e Agenda que OMI não tenta",
+      "Mais de 50 integrações nas suas ferramentas atuais",
+      "Mostra proativa sem esperar perguntarem",
+      "Plano grátis sem compra de hardware"
+    ],
+    "migrationSteps": [
+      "Fique com OMI para captura se ama o pingente",
+      "Conecte Gmail, Agenda e sua ferramenta de tarefas a GAIA",
+      "Aponte GAIA para as mesmas reuniões que OMI grava",
+      "Deixe GAIA redigir acompanhamentos e tarefas desse contexto"
+    ],
+    "faqs": [
+      {
+        "answer": "OMI lembra o que foi dito. GAIA lembra e depois age: redige e-mails, cria tarefas e agenda eventos desse contexto.",
+        "question": "Como GAIA difere de OMI?"
+      },
+      {
+        "answer": "Ambos são totalmente open source. GAIA é auto-hospedável com Docker com plano grátis, e OMI publica seu código para auditoria.",
+        "question": "Ambos são mesmo open source?"
+      },
+      {
+        "answer": "Sem hardware. GAIA roda em web, desktop, celular e mensageiros com o telefone e o laptop que você já tem.",
+        "question": "Preciso comprar hardware para GAIA?"
+      }
+    ]
+  },
+  "gemini-assistant": {
+    "name": "Gemini Assistant",
+    "tagline": "Seu assistente de telefone fica. Seu trabalho recebe ajuda.",
+    "metaTitle": "Melhor alternativa a Gemini Assistant: IA total",
+    "metaDescription": "Superou limites de voz de telefone? GAIA é a alternativa aberta a Gemini Assistant para caixa, agenda, tarefas e briefings.",
+    "keywords": [
+      "alternativa gemini assistant",
+      "trocar gemini android",
+      "alternativa telefone gemini",
+      "substituto gemini assistant",
+      "alternativa voz gemini assistant",
+      "melhor substituto gemini assistant"
+    ],
+    "painPoints": [
+      "Feito para tarefas do aparelho, não de trabalho: sem contexto de caixa nem projetos",
+      "Esquece tudo entre sessões de voz",
+      "Não alcança Slack, Notion, Linear nem suas ferramentas de tarefas",
+      "Fechado e só Android, preso à sua conta Google",
+      "Pedidos de várias etapas quebram após o primeiro"
+    ],
+    "whyPeopleLook": "Ninguém larga seu assistente de telefone; supera. O padrão é sempre o mesmo: timers e chamadas vão bem, depois você pede para preparar para reunião ou zerar sua caixa e ele olha em branco. Quem busca alternativa a Gemini Assistant quer uma segunda camada para o trabalho: memória, ferramentas e acompanhamento que um controle remoto de voz nunca foi feito para dar.",
+    "gaiaReplaces": [
+      "Ler cada e-mail você depois que Gemini não lê nenhum",
+      "Preparar reuniões sem briefing",
+      "Acompanhar tarefas entre apps à mão",
+      "Repetir contexto cada vez que pede ajuda"
+    ],
+    "gaiaAdvantages": [
+      "Tria Gmail e redige respostas na sua voz",
+      "Informa você antes de reuniões com todo o contexto",
+      "Cria e acompanha tarefas em todas as suas ferramentas",
+      "Memória que abrange semanas, não turnos de voz",
+      "Open source com plano grátis, em cada plataforma"
+    ],
+    "migrationSteps": [
+      "Fique com Gemini Assistant para chamadas, timers e controle do aparelho",
+      "Conecte Gmail e Agenda a GAIA para a camada de trabalho",
+      "Peça a GAIA seu primeiro briefing matinal amanhã",
+      "Mova um fluxo repetido, como preparar reuniões, para GAIA"
+    ],
+    "faqs": [
+      {
+        "answer": "Não. Cuida de tarefas do aparelho por voz. Triagem de caixa, preparo de reuniões e projetos entre ferramentas precisam de um assistente conectado como GAIA.",
+        "question": "Gemini Assistant faz tarefas reais de trabalho?"
+      },
+      {
+        "answer": "GAIA tem plano grátis, e Pro é fixo de ${{PRO_MONTHLY_PRICE}}/mês. Funciona em qualquer aparelho, não só Android.",
+        "question": "Quanto custa GAIA?"
+      },
+      {
+        "answer": "Fique com Gemini Assistant para chamadas e timers. Conecte Gmail e Agenda a GAIA para a camada de trabalho, e use cada um onde ganha.",
+        "question": "Devo largar Gemini Assistant?"
+      }
+    ]
+  },
+  "siri": {
+    "name": "Siri",
+    "tagline": "Siri roda seu aparelho. GAIA roda seu dia.",
+    "metaTitle": "Melhor alternativa a Siri: IA que faz o trabalho",
+    "metaDescription": "Precisa de mais que comandos de voz? GAIA é a alternativa aberta a Siri que gerencia caixa, agenda e tarefas para você. Veja quando vale a pena.",
+    "keywords": [
+      "alternativa siri",
+      "melhor alternativa siri",
+      "substituto siri",
+      "trocar siri",
+      "alternativa siri iphone",
+      "app substituto siri"
+    ],
+    "painPoints": [
+      "Só comandos avulsos: tudo de várias etapas quebra",
+      "Sem memória entre conversas, nunca",
+      "Não pode entrar no seu e-mail nem ferramentas de projeto",
+      "Só Apple com roteiro que não vê nem molda",
+      "Ótima em timers, inútil em terças"
+    ],
+    "whyPeopleLook": "Todos amam Siri o primeiro mês e perdoam os cem seguintes. O teto nunca se move: sem memória, sem ferramentas, sem acompanhamento. Quem busca alternativa a Siri não está bravo com Apple; só tem trabalhos que Siri não toca. Querem a mesma sensação de falar normal ligada a um assistente que de verdade termina as coisas.",
+    "gaiaReplaces": [
+      "Triar cada e-mail à mão que Siri não pode ler",
+      "Entrar em reuniões com zero preparo",
+      "Acompanhar tarefas entre apps na cabeça",
+      "Se repetir para um assistente sem memória"
+    ],
+    "gaiaAdvantages": [
+      "Tria sua caixa e redige respostas antes de pedirem",
+      "Informa você antes de cada reunião com todo o contexto",
+      "Gerencia tarefas e acompanhamentos em mais de 50 ferramentas",
+      "Lembra seus padrões com memória em grafo",
+      "Open source com plano grátis, em todas as plataformas"
+    ],
+    "migrationSteps": [
+      "Fique com Siri para timers, chamadas e comandos do aparelho",
+      "Conecte Gmail e Agenda a GAIA para a camada de trabalho",
+      "Peça a GAIA para informar você antes da próxima reunião",
+      "Mova a triagem de caixa para GAIA e recupere suas manhãs"
+    ],
+    "faqs": [
+      {
+        "answer": "Não. Siri cuida de comandos do aparelho e perguntas rápidas. Caixa, gestão de agenda e trabalho entre ferramentas precisam de GAIA.",
+        "question": "Siri cuida da minha jornada?"
+      },
+      {
+        "answer": "GAIA tem plano grátis, e Pro é fixo de ${{PRO_MONTHLY_PRICE}}/mês. Funciona em aparelhos Apple e em todo o resto.",
+        "question": "Quanto custa GAIA?"
+      },
+      {
+        "answer": "Fique com Siri para timers e chamadas. Conecte Gmail e Agenda a GAIA, peça um briefing matinal e sinta a diferença num dia.",
+        "question": "Como começo com GAIA junto a Siri?"
+      }
+    ]
+  },
+  "openclaw": {
+    "name": "OpenClaw",
+    "tagline": "O poder sem a lição.",
+    "metaTitle": "Melhor alternativa a OpenClaw: ajuda IA sem montar",
+    "metaDescription": "Quer poder OpenClaw sem a montagem? GAIA é a alternativa aberta a OpenClaw que funciona desde o dia um, com plano grátis.",
+    "keywords": [
+      "alternativa openclaw",
+      "substituto openclaw",
+      "substituto openclaw app",
+      "alternativa sem código openclaw",
+      "melhor alternativa openclaw",
+      "alternativa moltbot",
+      "alternativa clawdbot"
+    ],
+    "painPoints": [
+      "Marco, não produto: tudo precisa ser construído primeiro",
+      "Exige montagem técnica e manutenção contínua",
+      "Sem ajuda proativa até você configurar",
+      "Conectar cada ferramenta é mais trabalho sob medida",
+      "Feito para desenvolvedores, não para gente com caixas"
+    ],
+    "whyPeopleLook": "OpenClaw é genuinamente impressionante, e genuinamente um segundo trabalho. Usuários amam a ideia e cansam da manutenção: cada integração é um projeto, cada automação precisa de depuração, e a caixa ainda enche enquanto mantém scripts. Quem busca alternativa a OpenClaw quer a mesma energia de automação aberta com zero lição: conecta ferramentas, descreve resultados, pronto.",
+    "gaiaReplaces": [
+      "Automações OpenClaw sob medida que mantém à mão",
+      "Código grudante que conecta ferramentas que OpenClaw não cobre",
+      "Depurar scripts quando uma automação quebra",
+      "Explicar seu monte para outro do time"
+    ],
+    "gaiaAdvantages": [
+      "Funciona já sem código nem configuração",
+      "Proativo em e-mail, agenda e notificações",
+      "Mais de 50 integrações prontas em vez de conectores DIY",
+      "Memória em grafo que aprende sem montagem",
+      "Plano grátis com construção de fluxos em palavras simples"
+    ],
+    "migrationSteps": [
+      "Liste as automações OpenClaw de que depende todo dia",
+      "Conecte as mesmas ferramentas a GAIA com suas mais de 50 integrações",
+      "Descreva cada fluxo em palavras simples e deixe GAIA montar",
+      "Desligue os scripts que já não mantém"
+    ],
+    "faqs": [
+      {
+        "answer": "OpenClaw é um marco sobre o que você constrói; GAIA é um assistente que você usa. Se quer configurar automações em código, OpenClaw calha. Se quer ajuda hoje, GAIA dá.",
+        "question": "Como GAIA difere de OpenClaw?"
+      },
+      {
+        "answer": "GAIA tem plano grátis, e Pro é fixo de ${{PRO_MONTHLY_PRICE}}/mês. GAIA auto-hospedado não tem medição por rodada.",
+        "question": "Quanto custa GAIA?"
+      },
+      {
+        "answer": "Inventarie as automações OpenClaw que de verdade usa, conecte as mesmas ferramentas a GAIA e descreva cada fluxo em palavras simples. GAIA as reconstrói sem código.",
+        "question": "Como movo meu monte OpenClaw para GAIA?"
+      }
+    ]
+  },
+  "poke": {
+    "name": "Poke",
+    "tagline": "Mesmo hábito de mensageiro, assistente mais profundo.",
+    "metaTitle": "Melhor alternativa a Poke: IA SMS aberta",
+    "metaDescription": "Precisa de alternativa a Poke com mais alcance? GAIA escreve em WhatsApp e Telegram e soma poder aberto de e-mail e agenda.",
+    "keywords": [
+      "alternativa poke",
+      "alternativa poke ia",
+      "substituto poke app",
+      "alternativa assistente poke",
+      "melhor alternativa poke",
+      "substituto open source poke"
+    ],
+    "painPoints": [
+      "Foco estreito de canal com pouca profundidade de ferramentas",
+      "Histórico básico de conversa em vez de memória real",
+      "Plataforma fechada após a aquisição da Cognition",
+      "Sem opção auto-hospedada para times com olho em privacidade",
+      "E-mail e agenda ficam fora do alcance"
+    ],
+    "whyPeopleLook": "Poke acertou a interface: fale com um assistente onde já conversa. Interaction Company construiu algo que agradou, e a aquisição da Cognition em julho de 2026 levantou a pergunta óbvia de para onde vai. Quem busca alternativa a Poke quer o hábito de mensageiro em terreno aberto: mesma facilidade de WhatsApp, mais profundidade de e-mail, memória real e código que pode auditar.",
+    "gaiaReplaces": [
+      "Rotinas Poke que precisam de contexto de caixa para andar",
+      "Pontes manuais de respostas Poke para e-mail e tarefas",
+      "Repetir contexto que Poke não retém",
+      "Fluxos entre ferramentas que Poke não alcança"
+    ],
+    "gaiaAdvantages": [
+      "Mesmo hábito de mensageiro mais apps de web e desktop",
+      "Lê e-mail e agenda antes de agir em pedidos",
+      "Memória em grafo que acumula por semanas",
+      "Mais de 50 integrações em vez de canais estreitos",
+      "Open source e auto-hospedável com Docker"
+    ],
+    "migrationSteps": [
+      "Liste as rotinas Poke que mais usa cada semana",
+      "Conecte Gmail, Agenda e sua ferramenta de tarefas a GAIA",
+      "Mova primeiro a rotina mais dependente de e-mail",
+      "Escreva para GAIA em WhatsApp ou Telegram desde então"
+    ],
+    "faqs": [
+      {
+        "answer": "Poke funciona por mensageiros, e GAIA também: WhatsApp e Telegram mais web, desktop e celular. Você mantém o hábito e ganha ferramentas.",
+        "question": "Ainda posso escrever para meu assistente?"
+      },
+      {
+        "answer": "GAIA tem plano grátis, e Pro é fixo de ${{PRO_MONTHLY_PRICE}}/mês. GAIA auto-hospedado não tem medição de uso.",
+        "question": "Quanto custa GAIA?"
+      },
+      {
+        "answer": "Conecte Gmail, Agenda e sua ferramenta de tarefas primeiro. Depois mova uma rotina Poke por vez, começando pela que toca e-mail.",
+        "question": "Como troco de Poke para GAIA?"
+      }
+    ]
+  },
+  "chatgpt-atlas": {
+    "name": "ChatGPT Atlas",
+    "tagline": "Abandonado por um encerramento? Reconstrua em terreno aberto.",
+    "metaTitle": "Melhor alternativa ao ChatGPT Atlas após fechar",
+    "metaDescription": "Atlas encerrou em agosto de 2026. GAIA é a alternativa aberta ao Atlas: à prova de encerramento, com e-mail e agenda automáticos.",
+    "keywords": [
+      "alternativa chatgpt atlas",
+      "substituto atlas ia",
+      "alternativa encerramento atlas",
+      "ex usuários atlas",
+      "melhor substituto atlas ia",
+      "atlas encerrou e agora"
+    ],
+    "painPoints": [
+      "Encerrou em agosto de 2026: o produto sumiu",
+      "Roteiro fechado sem aviso útil para agir",
+      "Hábitos e contexto criados dentro de Atlas evaporaram",
+      "Sem rota de exportação pensada para saída suave",
+      "Confiança nos planos de IA de uma empresa, quebrada"
+    ],
+    "whyPeopleLook": "Usuários de Atlas não fizeram nada errado e perderam a configuração mesmo assim. Essa é toda a história de agosto de 2026. Quem busca alternativa a ChatGPT Atlas não está comparando preço; está se recuperando. Querem duas coisas: a camada de ajuda de volta rápido e a garantia de que ninguém tira de novo. Open source é essa garantia.",
+    "gaiaReplaces": [
+      "Rotinas diárias de ajuda que Atlas cuidava",
+      "Contexto e hábitos criados dentro de Atlas",
+      "Fluxos que morreram com o encerramento",
+      "Confiança posta no roteiro fechado de um produto"
+    ],
+    "gaiaAdvantages": [
+      "Produto vivo com desenvolvimento ativo e plano grátis",
+      "Open source e auto-hospedável: à prova de encerramento",
+      "Automação de e-mail, agenda e tarefas num lugar",
+      "Memória em grafo que reconstrói seu contexto rápido",
+      "Mais de 50 integrações cobrindo o que Atlas tocava"
+    ],
+    "migrationSteps": [
+      "Exporte tudo que ainda alcança do Atlas",
+      "Cadastre-se grátis em GAIA e conecte Gmail e Agenda",
+      "Descreva as rotinas que Atlas cuidava para você",
+      "Auto-hospede com Docker depois se quiser controle total"
+    ],
+    "faqs": [
+      {
+        "answer": "ChatGPT Atlas encerrou em agosto de 2026. Usuários precisam exportar seus dados e migrar para um produto vivo.",
+        "question": "O que aconteceu com ChatGPT Atlas?"
+      },
+      {
+        "answer": "GAIA é totalmente open source e auto-hospedável, então nenhum encerramento tira isso de você. Cobre e-mail, agenda, tarefas e memória em mais de 50 ferramentas.",
+        "question": "O que substitui ChatGPT Atlas?"
+      },
+      {
+        "question": "Quão rápido reconstruo meu ambiente em GAIA?",
+        "answer": "Conecte Gmail e Agenda primeiro, depois sua ferramenta de tarefas. GAIA reconstrói a camada de ajuda dos seus dados reais num dia."
+      }
+    ]
   }
 }
