@@ -671,7 +671,6 @@ class TestPreviousActionsContext:
             in llm.await_args.args[1][1].content
         )
 
-    @pytest.mark.regression
     async def test_a_failing_lookup_yields_no_actions_and_an_error(
         self, previous_actions_lookup: AsyncMock
     ) -> None:
