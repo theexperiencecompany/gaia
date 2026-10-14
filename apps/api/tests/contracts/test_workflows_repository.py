@@ -634,6 +634,32 @@ class TestWorkflowsPublishAndWrites:
         unpublished = await repo.unpublish(wf.id)
         assert unpublished is not None and unpublished.is_public is False
 
+    async def test_store_delivery_migrates_only_records_without_one(self, repo, raw_collection):
+        silent_id, legacy_default_id = _uid("wf"), _uid("wf")
+        base = _workflow().model_dump(by_alias=True, exclude={"delivery"})
+        await raw_collection.insert_many(
+            [
+                {**base, "_id": silent_id, "notify_on_completion": False},
+                {**base, "_id": legacy_default_id},
+            ]
+        )
+        modern = await repo.create(_workflow(delivery=WorkflowDelivery.BRIEF))
+
+        pending = {wf.id: wf.delivery for wf in await repo.find_without_stored_delivery()}
+        assert pending == {
+            silent_id: WorkflowDelivery.SILENT,
+            legacy_default_id: WorkflowDelivery.NOW,
+        }
+
+        assert await repo.store_delivery(silent_id, WorkflowDelivery.SILENT)
+        raw = await raw_collection.find_one({"_id": silent_id})
+        assert raw["delivery"] == "silent"
+        assert "notify_on_completion" not in raw
+        # A record that already has a delivery is never overwritten.
+        assert not await repo.store_delivery(modern.id, WorkflowDelivery.NOW)
+        assert (await raw_collection.find_one({"_id": modern.id}))["delivery"] == "brief"
+        assert [wf.id for wf in await repo.find_without_stored_delivery()] == [legacy_default_id]
+
     async def test_backfill_public_slug_races(self, repo):
         wf = await repo.create(_workflow(is_public=True, slug=None))
         slug = _uid("slug")
