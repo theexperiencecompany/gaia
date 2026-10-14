@@ -676,7 +676,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """
         matched = await self._apply_raw_update_unfetched(
             {"_id": workflow_id, "delivery": {"$exists": False}},
-            {"$set": {"delivery": delivery.value}, "$unset": {"notify_on_completion": ""}},
+            {
+                "$set": {"delivery": delivery.value},
+                # $unset ignores the value: "" is only the conventional placeholder.
+                "$unset": {"notify_on_completion": ""},  # pragma: no mutate
+            },
             scope=REPO_GLOBAL_SCOPE,
             doc_id=workflow_id,
         )
