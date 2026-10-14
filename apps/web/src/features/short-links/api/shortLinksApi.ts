@@ -7,8 +7,9 @@ const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(
 );
 
 /**
- * Mint (or fetch) the heygaia.link for an artifact the signed-in user owns.
- * Idempotent server-side: the same target always returns the same link.
+ * Share an artifact the signed-in user owns: its heygaia.link, minted on first
+ * use. The same target returns the same link until sharing is stopped; sharing
+ * again after that turns it back on with a new link.
  */
 export async function createShortLink(
   targetType: ShortLinkTargetType,
@@ -19,6 +20,20 @@ export async function createShortLink(
     errorMessage: "Couldn't create a link",
   });
   return url;
+}
+
+/**
+ * Stop sharing an artifact: its link stops opening at once, and GAIA attaches
+ * no new link to it until the owner shares it again.
+ */
+export async function stopSharingShortLink(
+  targetType: ShortLinkTargetType,
+  targetId: string,
+): Promise<void> {
+  await api.post("/api/v1/l/unshare", {
+    body: { target_type: targetType, target_id: targetId },
+    errorMessage: "Couldn't stop sharing",
+  });
 }
 
 /** Browser URL of the raw file behind a session-artifact slug. */

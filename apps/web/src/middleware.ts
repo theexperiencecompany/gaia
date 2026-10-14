@@ -32,6 +32,11 @@ function isTranslatedRoute(pathname: string): boolean {
   );
 }
 
+// Paths next-intl must never rewrite. Checked in code, after the short-link host
+// check: the matcher cannot see the host, so excluding them there also dropped
+// every heygaia.link slug that happens to start with one of these words.
+const INTL_BYPASS_PATH = /^\/(api|connect|_vercel|sitemap|ingest)/;
+
 const intlMiddleware = createMiddleware(routing);
 
 const intlMiddlewareDefaultOnly = createMiddleware({
@@ -51,6 +56,10 @@ export default function middleware(request: NextRequest) {
     return NextResponse.redirect(target, 307);
   }
 
+  if (INTL_BYPASS_PATH.test(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
   if (isTranslatedRoute(request.nextUrl.pathname)) {
     return intlMiddleware(request);
   }
@@ -65,7 +74,7 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // `connect` (src/app/connect) is a locale-invariant page with its own
-  // analytics-free layout; next-intl must not rewrite it into the [locale] tree.
-  matcher: ["/((?!api|connect|_next|_vercel|sitemap|ingest|.*\\..*).*)", "/"],
+  // Only build assets and files are skipped here; INTL_BYPASS_PATH covers the
+  // rest in code (`connect` is a locale-invariant page with its own layout).
+  matcher: ["/((?!_next|.*\\..*).*)", "/"],
 };

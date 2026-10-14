@@ -17,12 +17,9 @@ vi.mock("next/headers", () => ({
         : undefined,
   }),
 }));
-// The matcher is plain config; the next-intl handler it would wrap needs Next's server runtime.
-vi.mock("next-intl/middleware", () => ({ default: () => () => undefined }));
 
 import { GET } from "@/app/connect/[code]/route";
 import ConnectLinkPage from "@/app/connect/page";
-import { config } from "@/middleware";
 
 const API_BASE = "https://api.example.test/api/v1/";
 
@@ -76,16 +73,5 @@ describe("ConnectLinkPage", () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
 
     await expect(ConnectLinkPage()).rejects.toThrow("NEXT_PUBLIC_API_BASE_URL");
-  });
-});
-
-describe("middleware matcher", () => {
-  const matches = (path: string) =>
-    config.matcher.some((pattern) => new RegExp(`^${pattern}$`).test(path));
-
-  it("leaves /connect to its own analytics-free layout instead of the locale tree", () => {
-    expect(matches("/connect/c0de")).toBe(false);
-    expect(matches("/connect")).toBe(false);
-    expect(matches("/integrations")).toBe(true);
   });
 });

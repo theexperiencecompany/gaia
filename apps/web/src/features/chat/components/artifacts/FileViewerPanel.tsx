@@ -8,7 +8,6 @@ import {
   Copy01Icon,
   Download01Icon,
   File01Icon,
-  Link01Icon,
 } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import { useCallback, useEffect, useState, type WheelEvent } from "react";
@@ -20,7 +19,8 @@ import {
 import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
 import { getExtension } from "@/features/chat/utils/fileExtension";
-import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
+import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
+import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 interface FileViewerPanelProps {
@@ -30,8 +30,6 @@ interface FileViewerPanelProps {
   contentType: string;
   sizeBytes?: number;
   inlineBody?: string;
-  /** The artifact's heygaia.link, when it was minted with the file. */
-  shortUrl?: string;
 }
 
 export default function FileViewerPanel({
@@ -41,7 +39,6 @@ export default function FileViewerPanel({
   contentType,
   sizeBytes,
   inlineBody,
-  shortUrl,
 }: FileViewerPanelProps) {
   const isImage = contentType.startsWith("image/");
   const isPdf = contentType === "application/pdf";
@@ -165,17 +162,10 @@ export default function FileViewerPanel({
         ) : null}
 
         <div className="flex items-center gap-0.5">
-          {shortUrl && (
-            <Button
-              isIconOnly
-              size="sm"
-              variant="light"
-              onPress={() => copyShortLink(shortUrl)}
-              aria-label="Copy public link"
-            >
-              <Link01Icon size={16} />
-            </Button>
-          )}
+          <ShareLinkControls
+            targetType="session_artifact"
+            targetId={sessionArtifactTargetId(conversationId, path)}
+          />
           <Button
             isIconOnly
             size="sm"

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useMemo } from "react";
 import { ChevronRight } from "@/components/shared/icons";
-import { ShareLinkButton } from "@/features/short-links/components/ShareLinkButton";
+import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 
 import { useWorkflowExecutions } from "../hooks/useWorkflowExecutions";
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";
@@ -104,17 +104,10 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
       </div>
       <div className="flex items-center gap-2">
         {execution.status !== "running" && (
-          // The row itself opens the run's chat; sharing must not also do that.
-          <span
-            role="presentation"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <ShareLinkButton
-              targetType="workflow_run"
-              targetId={execution.execution_id}
-            />
-          </span>
+          <ShareLinkControls
+            targetType="workflow_run"
+            targetId={execution.execution_id}
+          />
         )}
         <span className="text-xs text-zinc-500">
           {relativeLabel ??
