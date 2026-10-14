@@ -7178,6 +7178,11 @@
       "HealthResponse": {
         "description": "``GET /health`` (and its ping/root aliases) when the API is serving normally.",
         "properties": {
+          "commit": {
+            "description": "Short sha the image was built from; 'local' outside one",
+            "title": "Commit",
+            "type": "string"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -7220,6 +7225,7 @@
           "version",
           "description",
           "environment",
+          "commit",
           "event_loop_lag_ms"
         ],
         "title": "HealthResponse",

@@ -60,12 +60,17 @@ COPY --from=builder /peers/ ./
 COPY scripts/docker-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Stamped on every log line and served on /health as `commit` (logger.ts
+# resolveCommit); the deploy workflow checks it against the deployed image.
+ARG GIT_COMMIT_SHA=""
+
 # ENV is the Infisical environment slug the bots loader reads. Pin it here so a
 # deployed container never falls back to the loader's development default;
 # docker-compose.prod.yml sets it again per service, this covers everything else.
 ENV NODE_ENV=production \
     ENV=production \
-    BOT_NAME=${BOT_NAME}
+    BOT_NAME=${BOT_NAME} \
+    GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 USER node
 
