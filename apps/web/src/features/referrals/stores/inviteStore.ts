@@ -63,7 +63,7 @@ export const useInviteStore = create<InviteStore>()(
           const status = await send(email, surface);
           setPhase(email, { phase: "done", status }, "invite/done");
         } catch {
-          // apiService already toasted and reported the failure; free the button for a retry.
+          // The API client already toasted and reported the failure; free the button for a retry.
           set(
             (state) => {
               const { [email]: _failed, ...rest } = state.invites;
