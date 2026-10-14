@@ -4,10 +4,11 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Copy01Icon, UserAdd01Icon } from "@icons";
 import type { InviteResponse } from "@shared/api/generated";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { inviteLink } from "@/features/settings/hooks/useMembers";
+import { copyFieldText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 import { formatRelativeDate } from "@/utils/date/dateUtils";
 
@@ -19,12 +20,15 @@ interface InviteLinksSectionProps {
   revokingInviteId: string | null | undefined;
 }
 
-async function copyLink(link: string) {
-  try {
-    await navigator.clipboard.writeText(link);
-    toast.success("Invite link copied");
-  } catch {
+async function copyLink(field: HTMLInputElement | null) {
+  if (!field) {
     toast.error("Could not copy. Select the link and copy it yourself.");
+    return;
+  }
+  if ((await copyFieldText(field)) === "copied") {
+    toast.success("Invite link copied");
+  } else {
+    toast.info("Link selected. Press Ctrl+C (Cmd+C on a Mac) to copy it.");
   }
 }
 
@@ -36,13 +40,9 @@ export function InviteLinksSection({
   revokingInviteId,
 }: InviteLinksSectionProps) {
   const [newLink, setNewLink] = useState<string | null>(null);
+  const linkField = useRef<HTMLInputElement>(null);
 
-  const create = () =>
-    onCreate((token) => {
-      const link = inviteLink(token);
-      setNewLink(link);
-      void copyLink(link);
-    });
+  const create = () => onCreate((token) => setNewLink(inviteLink(token)));
 
   return (
     <SettingsSection
@@ -66,6 +66,7 @@ export function InviteLinksSection({
       {newLink && (
         <div className="px-4 py-3.5">
           <Input
+            ref={linkField}
             aria-label="New invite link"
             value={newLink}
             isReadOnly
@@ -76,7 +77,7 @@ export function InviteLinksSection({
                 size="sm"
                 variant="light"
                 aria-label="Copy invite link"
-                onPress={() => void copyLink(newLink)}
+                onPress={() => void copyLink(linkField.current)}
               >
                 <Copy01Icon width={16} height={16} />
               </Button>
