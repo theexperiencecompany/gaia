@@ -15,6 +15,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from dodopayments import NotFoundError
 import pendulum
 
 from app.constants.notifications import CHANNEL_TYPE_INAPP
@@ -75,17 +76,32 @@ async def _payer_user_id(payment: DodoPaymentData) -> str | None:
     return user.id if user else None
 
 
+async def _legacy_customer_id(dodo_subscription_id: str) -> str | None:
+    """Ask Dodo whose a pre-recording subscription is; None when Dodo no longer has it."""
+    try:
+        remote = await asyncio.to_thread(
+            payment_service.client.subscriptions.retrieve, dodo_subscription_id
+        )
+    except NotFoundError:
+        log.warning(
+            "referral self-check skipped a subscription Dodo no longer has",
+            subscription_id=dodo_subscription_id,
+        )
+        return None
+    return remote.customer.customer_id
+
+
 async def _referrer_customer_ids(referrer_user_id: str) -> set[str]:
     """Return the Dodo customer ids behind every subscription the referrer ever had."""
-    dodo_ids = [
+    subscriptions = await subscription_repository.list_for_user(referrer_user_id)
+    stored = {sub.dodo_customer_id for sub in subscriptions if sub.dodo_customer_id}
+    legacy = [
         sub.dodo_subscription_id
-        for sub in await subscription_repository.list_for_user(referrer_user_id)
-        if sub.dodo_subscription_id
+        for sub in subscriptions
+        if not sub.dodo_customer_id and sub.dodo_subscription_id
     ]
-    remote = await asyncio.gather(
-        *(asyncio.to_thread(payment_service.client.subscriptions.retrieve, sid) for sid in dodo_ids)
-    )
-    return {sub.customer.customer_id for sub in remote}
+    fetched = await asyncio.gather(*(_legacy_customer_id(sid) for sid in legacy))
+    return stored | {customer for customer in fetched if customer}
 
 
 async def _is_self_referral(referral: ReferralDocument, payment: DodoPaymentData) -> bool:
