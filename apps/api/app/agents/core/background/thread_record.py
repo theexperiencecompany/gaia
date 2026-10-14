@@ -6,10 +6,23 @@ appended to the thread that turn reads. Kept apart from the narrator so the
 delivery paths that write here do not pull in the agent stack.
 """
 
+import hashlib
+from uuid import uuid4
+
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
+from app.agents.core.background.executor_queue import break_holder_lock, try_acquire_lock
 from app.agents.core.graph_manager import GraphManager
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
+from app.constants.notifications import (
+    PROACTIVE_RECORD_JOB_PREFIX,
+    PROACTIVE_RECORD_LOCK_HOLDER,
+    PROACTIVE_RECORD_RETRY_DELAY,
+    PROACTIVE_RECORD_TASK,
+)
+from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 
@@ -18,10 +31,57 @@ async def record_platform_delivery(conversation_id: str, text: str) -> None:
 
     Bot-delivered workflow results bypass the graph, but the next bot turn
     reads history from the checkpoint; without this write GAIA has no memory
-    of results it just delivered. Best-effort: the message is already sent.
+    of results it just delivered. While a run or an interrupt holds the thread
+    the write is handed to a retrying job instead of racing it.
     """
-    if text.strip():
+    if not text.strip():
+        return
+    try:
+        recorded = await try_record_platform_delivery(conversation_id, text)
+    except Exception as e:  # the message is already sent: the retrying job below takes over
+        log.warning(
+            f"{LogTag.AGENT} Recording a delivered message failed; retrying in a job",
+            conversation_id=conversation_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        recorded = False
+    if not recorded:
+        await enqueue_worker_job(
+            await RedisPoolManager.get_pool(),
+            PROACTIVE_RECORD_TASK,
+            conversation_id,
+            text,
+            _job_id=_record_job_id(conversation_id, text),
+            _defer_by=PROACTIVE_RECORD_RETRY_DELAY,
+        )
+
+
+async def try_record_platform_delivery(conversation_id: str, text: str) -> bool:
+    """Write text under the conversation's executor lock; False when a run or interrupt holds it.
+
+    Taking the same lock a run takes serialises the write against executor
+    runs, and a pending interrupt (an approval the run is parked on) must find
+    its checkpoint exactly as it left it when it resumes.
+    """
+    holder = f"{PROACTIVE_RECORD_LOCK_HOLDER}:{uuid4()}"
+    if not await try_acquire_lock(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}", holder):
+        return False
+    try:
+        comms_graph = await GraphManager.get_graph("comms_agent")
+        state = await comms_graph.aget_state({"configurable": {"thread_id": conversation_id}})
+        if any(task.interrupts for task in state.tasks):
+            return False
         await _append_to_thread(conversation_id, [AIMessage(content=text)])
+        return True
+    finally:
+        await break_holder_lock(conversation_id, holder)
+
+
+def _record_job_id(conversation_id: str, text: str) -> str:
+    """One retry job per conversation and message, however many times it is handed over."""
+    digest = hashlib.sha256(f"{conversation_id}|{text}".encode()).hexdigest()[:32]
+    return f"{PROACTIVE_RECORD_JOB_PREFIX}{digest}"
 
 
 async def record_exchange_in_thread(conversation_id: str, user_message: str, reply: str) -> None:

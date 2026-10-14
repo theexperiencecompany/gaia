@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.notifications import NotificationChannel
+from app.constants.notifications import NotificationChannel, ProactiveMessageClass
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -207,6 +207,7 @@ class TestExternalPlatformTransform:
             content = await DiscordChannelAdapter().transform(request)
         assert content.text == "**My Title**\nMy body"
         assert content.origin == f"notification from {request.source.value}"
+        assert content.message_class is request.message_class
 
     async def test_standard_message_without_title(self) -> None:
         request = _make_request(title="", body="just body")
@@ -252,6 +253,14 @@ EXTERNAL = "app.utils.notification.channels.external"
 
 
 @pytest.mark.asyncio
+def _payload(text: str) -> ExternalPayload:
+    return ExternalPayload(
+        text=text,
+        origin="notification from ai_agent",
+        message_class=ProactiveMessageClass.ROUTINE,
+    )
+
+
 class TestExternalPlatformDeliver:
     async def test_deliver_posts_into_the_linked_dm_and_maps_success(self) -> None:
         with (
@@ -262,9 +271,7 @@ class TestExternalPlatformDeliver:
                 return_value=OutboundResult.PUBLISHED,
             ) as post,
         ):
-            status = await DiscordChannelAdapter().deliver(
-                ExternalPayload(text="hello", origin="notification from ai_agent"), "user-1"
-            )
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
 
         kwargs = post.await_args.kwargs
         assert kwargs["user"].user_id == "user-1"
@@ -272,6 +279,7 @@ class TestExternalPlatformDeliver:
             source=ConversationSource.DISCORD, platform_user_id="dc-7"
         )
         assert (kwargs["text"], kwargs["origin"]) == ("hello", "notification from ai_agent")
+        assert kwargs["message_class"] is ProactiveMessageClass.ROUTINE
         assert status.status == NotificationStatus.DELIVERED
         assert status.skipped is False
 
@@ -283,9 +291,7 @@ class TestExternalPlatformDeliver:
             ) as get,
             patch(f"{EXTERNAL}.post_to_platform_chat", new_callable=AsyncMock) as post,
         ):
-            status = await DiscordChannelAdapter().deliver(
-                ExternalPayload(text="hello", origin="notification from ai_agent"), "user-1"
-            )
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
 
         get.assert_awaited_once_with("user-1")
         post.assert_not_awaited()
@@ -295,13 +301,26 @@ class TestExternalPlatformDeliver:
 
     async def test_blank_text_is_skipped_without_a_lookup(self) -> None:
         with patch(f"{EXTERNAL}.user_repository.get", new_callable=AsyncMock) as get:
-            status = await DiscordChannelAdapter().deliver(
-                ExternalPayload(text="  ", origin="notification from ai_agent"), "user-1"
-            )
+            status = await DiscordChannelAdapter().deliver(_payload("  "), "user-1")
 
         get.assert_not_awaited()
         assert status.skipped is True
         assert status.error_message == "discord: nothing to publish"
+
+    async def test_a_message_held_for_quiet_hours_is_pending_not_failed(self) -> None:
+        with (
+            patch(f"{EXTERNAL}.user_repository.get", AsyncMock(return_value=LINKED_USER)),
+            patch(
+                f"{EXTERNAL}.post_to_platform_chat",
+                new_callable=AsyncMock,
+                return_value=OutboundResult.DEFERRED,
+            ),
+        ):
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
+
+        assert status.status == NotificationStatus.PENDING
+        assert status.skipped is False
+        assert status.error_message is None
 
     async def test_deliver_maps_skipped_to_skipped(self) -> None:
         with (
@@ -312,9 +331,7 @@ class TestExternalPlatformDeliver:
                 return_value=OutboundResult.SKIPPED,
             ),
         ):
-            status = await DiscordChannelAdapter().deliver(
-                ExternalPayload(text="hello", origin="notification from ai_agent"), "user-1"
-            )
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
         assert status.status == NotificationStatus.FAILED
         assert status.skipped is True
 
@@ -329,9 +346,7 @@ class TestExternalPlatformDeliver:
                 return_value=OutboundResult.FAILED,
             ),
         ):
-            status = await DiscordChannelAdapter().deliver(
-                ExternalPayload(text="hello", origin="notification from ai_agent"), "user-1"
-            )
+            status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
         assert status.status == NotificationStatus.FAILED
         assert status.skipped is False
 

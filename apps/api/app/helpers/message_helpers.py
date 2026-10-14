@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Literal, TypedDict, cast
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER
 from app.agents.prompts.onboarding_prompts import (
@@ -25,6 +25,7 @@ from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.users import user_repository
+from app.models.legacy_delivery import LEGACY_RUN_NOTIFY_KEY, delivery_from_legacy_flag
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -172,6 +173,14 @@ class WorkflowTriggerContext(BaseModel):
     triggered_at: str = "Unknown"
     # Provider payload of a trigger-fired run: open shape, read via _event_accounts.
     trigger_data: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_notify_flag_is_a_delivery(cls, data: object) -> object:
+        """Map the old notify flag a context queued before delivery modes carries."""
+        return delivery_from_legacy_flag(
+            data, flag_key=LEGACY_RUN_NOTIFY_KEY, delivery_key="workflow_delivery"
+        )
 
 
 async def format_workflow_execution_message(

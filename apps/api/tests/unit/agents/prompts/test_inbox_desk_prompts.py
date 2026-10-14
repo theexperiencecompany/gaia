@@ -314,8 +314,12 @@ def test_a_mail_woken_run_alerts_only_for_what_cannot_wait_for_the_briefing() ->
         "with only the Needs you items you "
         "opened this run and the events you added or proposed for today or tomorrow"
     ) in alert
-    assert "or during the user's quiet hours, it is only that nothing is new" in alert
-    assert "it is only that nothing is new, and the next briefing carries the rest" in alert
+    assert (
+        "with neither, it is only that nothing is new, and the next briefing carries the rest"
+        in alert
+    )
+    # Quiet hours are the delivery chokepoint's to enforce, not the desk's.
+    assert "quiet hours" not in alert
 
 
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:

@@ -15,6 +15,7 @@ or propagates to the caller — the result is already persisted to the conversat
 
 from app.agents.core.background.platform_chat import post_to_platform_chat
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
 from app.services.delivery.chat_channel import resolve_chat_channel
@@ -28,13 +29,15 @@ async def deliver_result_to_platforms(
     user_id: str,
     notification_text: str,
     origin: str,
+    message_class: ProactiveMessageClass,
     exclude_source: ConversationSource | None = None,
 ) -> ConversationSource | None:
     """Deliver a proactive result to the user's ONE preferred messaging platform.
 
     The platform is the first in their chat-channel order that is linked and
     enabled; exclude_source skips one that already received the result.
-    Best-effort: returns the platform that got it, or None when nothing was sent.
+    Best-effort: returns the platform that has it (posted, or scheduled for the
+    end of the user's quiet hours), or None when nothing was sent.
     """
     if not notification_text.strip():
         return None
@@ -49,7 +52,11 @@ async def deliver_result_to_platforms(
 
     try:
         result = await post_to_platform_chat(
-            user=user, channel=channel, text=notification_text, origin=f"result of {origin}"
+            user=user,
+            channel=channel,
+            text=notification_text,
+            origin=f"result of {origin}",
+            message_class=message_class,
         )
     except Exception as e:  # best-effort: the result is already in its own conversation
         log.error(
@@ -58,4 +65,5 @@ async def deliver_result_to_platforms(
             error=str(e),
         )
         return None
-    return channel.source if result is OutboundResult.PUBLISHED else None
+    accepted = result in (OutboundResult.PUBLISHED, OutboundResult.DEFERRED)
+    return channel.source if accepted else None

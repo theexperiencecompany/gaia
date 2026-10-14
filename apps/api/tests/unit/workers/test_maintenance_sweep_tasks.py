@@ -4,8 +4,7 @@ The cron that keeps tracked todos honest: expired todos get a health-check
 agent pass (archive/notify), overdue todos get an individual notification,
 dormant todos get re-queued or bundled into a digest. The backoff escalation
 (_register_notification) is the load-bearing part — a stuck todo must stop
-nagging once the schedule is exhausted, and the daytime gate must keep
-notifications out of the user's night.
+nagging once the schedule is exhausted.
 """
 
 from collections.abc import Iterator
@@ -23,10 +22,8 @@ from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, TodoActivityEvent
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
-    QuietHours,
 )
 from app.models.todo_models import TodoDocument
-from app.models.user_models import UserDocument
 from app.workers.tasks.maintenance_sweep_tasks import (
     DORMANT_DAYS,
     NOTIFICATION_BACKOFF_DAYS,
@@ -42,12 +39,10 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     _is_dormant,
     _normalize_all_canvases,
     _notify_overdue,
-    _outside_quiet_hours,
     _register_notification,
     _send_user_dormant_digest,
     maintenance_sweep_tracked_todos,
 )
-from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.maintenance_sweep_tasks"
 
@@ -84,7 +79,6 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
     defaults = {
         "list": [_doc()],
         "migration": [],
-        "daytime": True,
         "canvas": "",
         "health": "NEEDS_ATTENTION: nothing to do",
     }
@@ -94,7 +88,6 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         "list": AsyncMock(return_value=defaults["list"]),
         "migration_finder": AsyncMock(return_value=defaults["migration"]),
         "get_pool": AsyncMock(return_value=pool),
-        "daytime": AsyncMock(return_value=defaults["daytime"]),
         "canvas": AsyncMock(return_value=defaults["canvas"]),
         "health": AsyncMock(return_value=defaults["health"]),
         "archive": AsyncMock(),
@@ -113,7 +106,6 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
             create=True,
         ),
         patch(f"{MODULE}.RedisPoolManager.get_pool", mocks["get_pool"]),
-        patch(f"{MODULE}._outside_quiet_hours", mocks["daytime"]),
         patch(f"{MODULE}._read_canvas", mocks["canvas"]),
         patch(f"{MODULE}._health_check_verdict", mocks["health"]),
         patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", mocks["archive"]),
@@ -519,83 +511,6 @@ class TestRegisterNotification:
         pool.set.assert_awaited_once_with(
             "gaia_maintenance_notified:todo-1", "1", ex=NOTIFICATION_MUTE_DAYS * SECONDS_PER_DAY
         )
-
-
-# ---------------------------------------------------------------------------
-# _outside_quiet_hours — quiet-hours gate
-# ---------------------------------------------------------------------------
-
-
-class TestOutsideQuietHours:
-    async def test_utc_noon_is_outside_the_default_window(self):
-        with patch(
-            f"{MODULE}.get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
-        ):
-            assert await _outside_quiet_hours("user-1", NOW, {}) is True
-
-    async def test_utc_3am_is_inside_the_default_window(self):
-        night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
-        with patch(
-            f"{MODULE}.get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
-        ):
-            assert await _outside_quiet_hours("user-1", night, {}) is False
-
-    async def test_local_timezone_wins(self):
-        night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
-        with patch(
-            f"{MODULE}.get_user_by_id", AsyncMock(return_value=UserDocument(timezone="Asia/Tokyo"))
-        ):
-            assert await _outside_quiet_hours("user-1", night, {}) is True
-
-    async def test_the_users_own_window_replaces_the_default(self):
-        """Noon UTC is outside the default window but inside a user's 11-14 quiet hours."""
-        user = UserDocument(timezone="UTC", quiet_hours=QuietHours(start_hour=11, end_hour=14))
-        with patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value=user)):
-            assert await _outside_quiet_hours("user-1", NOW, {}) is False
-
-    async def test_result_is_cached_per_sweep(self):
-        lookup = AsyncMock(return_value=UserDocument(timezone="UTC"))
-        cache: dict[str, bool] = {}
-        with patch(f"{MODULE}.get_user_by_id", lookup):
-            first = await _outside_quiet_hours("user-1", NOW, cache)
-            second = await _outside_quiet_hours("user-1", NOW, cache)
-
-        assert first == second
-        lookup.assert_awaited_once()
-
-    async def test_user_lookup_failure_falls_back_to_the_default_window_on_utc(self):
-        night = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
-        with patch(f"{MODULE}.get_user_by_id", AsyncMock(side_effect=Exception("mongo down"))):
-            async with captured_wide_event() as event:
-                result = await _outside_quiet_hours("user-1", night, {})
-        assert result is False
-        assert {
-            "msg": "maintenance_sweep.user_lookup_failed",
-            "user_id": "user-1",
-            "error": "mongo down",
-        } in event["warnings"]
-
-
-@pytest.mark.unit
-class TestEveryTierWaitsOutTheOwnersQuietHours:
-    async def test_each_tier_asks_once_per_todo_with_one_shared_sweep_cache(self) -> None:
-        todos = [
-            _doc(id="exp-1", expires_at=datetime.now(UTC) - timedelta(hours=1)),
-            _doc(id="due-1", due_date=datetime.now(UTC) - timedelta(days=2)),
-            _doc(id="dor-1", updated_at=datetime.now(UTC) - timedelta(days=10)),
-        ]
-        with _sweep(list=todos, daytime=False) as (_p, mocks):
-            await maintenance_sweep_tracked_todos({})
-
-        calls = mocks["daytime"].await_args_list
-        assert len(calls) == 3
-        caches = {id(call.args[2]) for call in calls}
-        assert len(caches) == 1
-        for call in calls:
-            user_id, now, cache = call.args
-            assert user_id == "user-1"
-            assert isinstance(now, datetime)
-            assert cache == {}
 
 
 # ---------------------------------------------------------------------------
@@ -1147,15 +1062,6 @@ class TestOverdueTier:
             user_id="user-1",
             error_type="RuntimeError",
         )
-
-    async def test_the_night_gate_defers_an_overdue_todo(self) -> None:
-        with _sweep(list=[self._overdue("due-1")], daytime=False) as (_p, mocks):
-            summary = await maintenance_sweep_tracked_todos({})
-
-        assert (
-            summary == "archived:0 notified_expired:0 notified_overdue:0 requeued:0 digest_items:0"
-        )
-        mocks["notify"].assert_not_awaited()
 
 
 @pytest.mark.unit

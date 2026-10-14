@@ -2,10 +2,10 @@
 
 import type { QuietHours } from "@gaia/shared/types";
 import { Select, SelectItem } from "@heroui/select";
+import { formatHour12 } from "@shared/utils";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useQuietHoursSettings } from "@/features/settings/hooks/useQuietHoursSettings";
-import { formatHour12 } from "@/utils/date/hours";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
