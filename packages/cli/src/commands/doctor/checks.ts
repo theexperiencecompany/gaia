@@ -593,66 +593,72 @@ export function parseMemInfoAvailableBytes(content: string): number | null {
   return null;
 }
 
-async function getAvailableMemoryBytes(): Promise<number | null> {
-  const platform = os.platform();
-  if (platform === "linux") {
-    try {
-      const content = fs.readFileSync("/proc/meminfo", "utf-8");
-      const parsed = parseMemInfoAvailableBytes(content);
-      if (parsed !== null) return parsed;
-    } catch {
-      // fall through to os.freemem fallback
-    }
-    try {
-      return os.freemem();
-    } catch {
-      return null;
-    }
+/** Approximate available bytes from `vm_stat` output as free + inactive + speculative pages. */
+function parseVmStatAvailableBytes(stdout: string): number | null {
+  // vm_stat header: "Mach Virtual Memory Statistics: (page size of 16384 bytes)"
+  const pageSizeMatch = stdout.match(/page size of (\d+) bytes/);
+  const pageSize = pageSizeMatch?.[1] ? Number(pageSizeMatch[1]) : 4096;
+  const freeMatch = stdout.match(/Pages free:\s+(\d+)/);
+  const inactiveMatch = stdout.match(/Pages inactive:\s+(\d+)/);
+  const speculativeMatch = stdout.match(/Pages speculative:\s+(\d+)/);
+  if (!(freeMatch || inactiveMatch || speculativeMatch)) return null;
+  const pages = (match: RegExpMatchArray | null): number =>
+    match ? Number(match[1]) : 0;
+  const free = pages(freeMatch);
+  const inactive = pages(inactiveMatch);
+  if (
+    !Number.isFinite(free) ||
+    !Number.isFinite(inactive) ||
+    !Number.isFinite(pageSize) ||
+    pageSize <= 0
+  ) {
+    return null;
   }
-  if (platform === "darwin") {
-    try {
-      const { stdout } = await execa("vm_stat", []);
-      // vm_stat header: "Mach Virtual Memory Statistics: (page size of 16384 bytes)"
-      const pageSizeMatch = stdout.match(/page size of (\d+) bytes/);
-      const pageSize = pageSizeMatch?.[1] ? Number(pageSizeMatch[1]) : 4096;
-      // Approximate available as free + inactive + speculative pages.
-      const freeMatch = stdout.match(/Pages free:\s+(\d+)/);
-      const inactiveMatch = stdout.match(/Pages inactive:\s+(\d+)/);
-      const speculativeMatch = stdout.match(/Pages speculative:\s+(\d+)/);
-      if (freeMatch || inactiveMatch || speculativeMatch) {
-        const free = freeMatch ? Number(freeMatch[1]) : 0;
-        const inactive = inactiveMatch ? Number(inactiveMatch[1]) : 0;
-        const speculative = speculativeMatch ? Number(speculativeMatch[1]) : 0;
-        if (
-          Number.isFinite(free) &&
-          Number.isFinite(inactive) &&
-          Number.isFinite(pageSize) &&
-          pageSize > 0
-        ) {
-          return (free + inactive + speculative) * pageSize;
-        }
-      }
-    } catch {
-      // fall through to sysctl
-    }
-    try {
-      const { stdout } = await execa("sysctl", ["-n", "hw.memsize"]);
-      const total = Number(stdout.trim());
-      if (Number.isFinite(total) && total > 0) return total;
-    } catch {
-      // fall through
-    }
-    try {
-      return os.totalmem();
-    } catch {
-      return null;
-    }
-  }
+  return (free + inactive + pages(speculativeMatch)) * pageSize;
+}
+
+function readOsMemory(read: () => number): number | null {
   try {
-    return os.freemem();
+    return read();
   } catch {
     return null;
   }
+}
+
+function getLinuxAvailableMemoryBytes(): number | null {
+  try {
+    const content = fs.readFileSync("/proc/meminfo", "utf-8");
+    const parsed = parseMemInfoAvailableBytes(content);
+    if (parsed !== null) return parsed;
+  } catch {
+    // fall through to os.freemem fallback
+  }
+  return readOsMemory(() => os.freemem());
+}
+
+async function getDarwinAvailableMemoryBytes(): Promise<number | null> {
+  try {
+    const { stdout } = await execa("vm_stat", []);
+    const parsed = parseVmStatAvailableBytes(stdout);
+    if (parsed !== null) return parsed;
+  } catch {
+    // fall through to sysctl
+  }
+  try {
+    const { stdout } = await execa("sysctl", ["-n", "hw.memsize"]);
+    const total = Number(stdout.trim());
+    if (Number.isFinite(total) && total > 0) return total;
+  } catch {
+    // fall through to os.totalmem
+  }
+  return readOsMemory(() => os.totalmem());
+}
+
+async function getAvailableMemoryBytes(): Promise<number | null> {
+  const platform = os.platform();
+  if (platform === "linux") return getLinuxAvailableMemoryBytes();
+  if (platform === "darwin") return getDarwinAvailableMemoryBytes();
+  return readOsMemory(() => os.freemem());
 }
 
 export async function checkMemoryHeadroom(): Promise<CheckResult> {
