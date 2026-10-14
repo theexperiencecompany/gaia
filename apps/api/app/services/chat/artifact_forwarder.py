@@ -319,6 +319,9 @@ class ArtifactForwarder:
                     path=path,
                     filename=path.rsplit("/", 1)[-1],
                     content_type=payload.get("content_type"),
+                    # The bot user never sees the web card, so the file message
+                    # itself carries the public link minted with the event.
+                    caption=payload.get("short_url"),
                 ),
             )
         )

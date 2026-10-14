@@ -8,7 +8,7 @@ from typing import Annotated
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.tools.coding._artifacts import publish_artifact_write
+from app.agents.tools.coding._artifacts import artifact_links_note, publish_artifact_write
 from app.agents.tools.coding._context import (
     atomic_write,
     canonical_path,
@@ -89,8 +89,9 @@ async def write(
     # publish to the artifacts channel. The chat stream's forwarder relays it as
     # an SSE `artifact_data` chunk *during the active turn*, so the card renders
     # immediately — no polling, no dependence on the sandbox-side watcher.
-    await publish_artifact_write(
+    short_url = await publish_artifact_write(
         user_id, role, role_conv, abs_path, content, len(encoded), real_mtime
     )
+    links = {abs_path.rsplit("/", 1)[-1]: short_url} if short_url else {}
 
-    return f"Wrote {len(encoded)} bytes to {abs_path}"
+    return f"Wrote {len(encoded)} bytes to {abs_path}{artifact_links_note(links)}"

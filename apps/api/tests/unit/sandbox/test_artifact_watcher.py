@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 from e2b import AsyncSandbox
 import pytest
@@ -84,6 +85,15 @@ def stat_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(aw, "stat_artifact", stat)
 
 
+@pytest.fixture(autouse=True)
+def mint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each upsert mints the artifact's heygaia.link; the store is not under test."""
+    monkeypatch.setattr(
+        "app.services.artifact_events.get_or_create_short_link",
+        AsyncMock(return_value="https://heygaia.link/abcdefghijk"),
+    )
+
+
 @pytest.fixture
 def upserts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     """Record every upsert_event construction, including invalid ones.
@@ -95,9 +105,9 @@ def upserts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     calls: list[tuple[str, Any]] = []
     real = aw.upsert_event
 
-    def record(session_id: str, art: Any, **kw: Any) -> dict[str, Any]:
+    async def record(user_id: str, session_id: str, art: Any, **kw: Any) -> dict[str, Any]:
         calls.append((session_id, art))
-        return real(session_id, art, **kw)
+        return await real(user_id, session_id, art, **kw)
 
     monkeypatch.setattr(aw, "upsert_event", record)
     return calls

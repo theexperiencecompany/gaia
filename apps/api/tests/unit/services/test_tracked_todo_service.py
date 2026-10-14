@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
@@ -64,6 +65,9 @@ def mock_repo():
         yield m
 
 
+SHORT_URL = "https://heygaia.link/abcdefghijk"
+
+
 @pytest.fixture
 def mock_deps():
     with (
@@ -77,6 +81,11 @@ def mock_deps():
         patch(f"{_MOD}.write_canvas", new_callable=AsyncMock) as m_write,
         patch(f"{_MOD}.append_log", new_callable=AsyncMock) as m_append_log,
         patch(f"{_MOD}.teardown_subscriptions", new_callable=AsyncMock) as m_teardown,
+        patch(
+            f"{_MOD}.get_or_create_short_link",
+            new_callable=AsyncMock,
+            return_value=SHORT_URL,
+        ) as m_mint,
     ):
         yield SimpleNamespace(
             create=m_create,
@@ -89,6 +98,7 @@ def mock_deps():
             write=m_write,
             append_log=m_append_log,
             teardown=m_teardown,
+            mint=m_mint,
         )
 
 
@@ -141,22 +151,27 @@ class TestCreateTrackedTodo:
 
 class TestCompleteTrackedTodo:
     async def test_false_for_missing_todo(self, mock_repo, mock_deps):
-        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is False
+        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is None
         mock_deps.append_log.assert_not_awaited()
 
     async def test_idempotent_for_already_completed(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _todo_doc(completed=True)
 
-        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is True
+        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") == SHORT_URL
         mock_deps.append_log.assert_not_awaited()
         mock_repo.update.assert_not_awaited()
 
     async def test_appends_log_marks_completed_and_archives_path(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _todo_doc()
 
-        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "Wrapped it up")
+        url = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "Wrapped it up")
 
-        assert ok is True
+        # The deliverable's link is minted the moment the work is done, so the
+        # completing agent can hand it to the user.
+        assert url == SHORT_URL
+        mock_deps.mint.assert_awaited_once_with(
+            USER_ID, ShortLinkTargetType.TODO_DELIVERABLE, TODO_ID
+        )
         log_entry = mock_deps.append_log.await_args.args[2]
         assert "[COMPLETED]" in log_entry
         assert "Wrapped it up" in log_entry
@@ -191,9 +206,9 @@ class TestCompleteTrackedTodo:
         never None, and never a label derived from the wrong id."""
         mock_repo.get.return_value = _todo_doc(vfs_path=None)
 
-        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+        url = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
 
-        assert ok is True
+        assert url == SHORT_URL
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
 
@@ -204,9 +219,9 @@ class TestCompleteTrackedTodo:
         persisted back on completion — the derived archive label replaces it."""
         mock_repo.get.return_value = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
 
-        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+        url = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
 
-        assert ok is True
+        assert url == SHORT_URL
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
 

@@ -570,7 +570,7 @@ class TestCompleteTrackedTodo:
         with patch(
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
             new_callable=AsyncMock,
-            return_value=False,
+            return_value=None,
         ):
             result = await complete_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", summary="done"
@@ -581,12 +581,14 @@ class TestCompleteTrackedTodo:
         with patch(
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
             new_callable=AsyncMock,
-            return_value=True,
+            return_value="https://heygaia.link/abcdefghijk",
         ):
             result = await complete_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", summary="done"
             )
         assert "completed and archived" in result
+        # The agent reads its own tool result, so the link must be in it.
+        assert "https://heygaia.link/abcdefghijk" in result
 
 
 # ---------------------------------------------------------------------------

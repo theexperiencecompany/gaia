@@ -6,7 +6,7 @@ import { Link01Icon } from "@icons";
 import { useState } from "react";
 
 import { createShortLink } from "@/features/short-links/api/shortLinksApi";
-import { toast } from "@/lib/toast";
+import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
 import type { ShortLinkTargetType } from "@/types/features/shortLinkTypes";
 
 interface ShareLinkButtonProps {
@@ -15,8 +15,8 @@ interface ShareLinkButtonProps {
 }
 
 /**
- * Copies the artifact's public heygaia.link to the clipboard, minting it on
- * first use. Anyone with the link can open it, so the toast says so.
+ * Copies the public heygaia.link of an artifact that was not handed one when
+ * it was produced (a past workflow run), minting it on first use.
  */
 export function ShareLinkButton({
   targetType,
@@ -27,11 +27,7 @@ export function ShareLinkButton({
   const handlePress = async () => {
     setIsLoading(true);
     try {
-      const url = await createShortLink(targetType, targetId);
-      await navigator.clipboard.writeText(url);
-      toast.success("Link copied", {
-        description: "Anyone with this link can view it.",
-      });
+      await copyShortLink(await createShortLink(targetType, targetId));
     } finally {
       setIsLoading(false);
     }

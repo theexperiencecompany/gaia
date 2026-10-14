@@ -10,7 +10,7 @@ can't drift between the three.
 
 from __future__ import annotations
 
-import contextlib
+from collections.abc import Mapping
 
 from app.agents.workspace.paths import (
     INLINE_ARTIFACT_MAX_BYTES,
@@ -21,6 +21,7 @@ from app.agents.workspace.paths import (
 )
 from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.storage import ArtifactInfo
+from shared.py.wide_events import log
 
 
 async def publish_artifact(
@@ -30,27 +31,50 @@ async def publish_artifact(
     size_bytes: int,
     mtime: float,
     inline_body: str | None,
-) -> None:
-    """Publish one artifact upsert event. Best-effort; never raises into a tool.
+) -> str | None:
+    """Publish one artifact upsert event and return the artifact's heygaia.link.
 
-    ``rel`` is the path relative to the session's ``artifacts/`` root; ``mtime``
-    must be the real post-write value (the ``(event, path, size_bytes, mtime)``
-    dedup signature depends on it). The single owner of the event shape.
+    Best-effort: a failure is logged and returns ``None`` rather than failing
+    the tool, whose write has already landed. ``rel`` is the path relative to
+    the session's ``artifacts/`` root; ``mtime`` must be the real post-write
+    value (the ``(event, path, size_bytes, mtime)`` dedup signature depends on
+    it). The single owner of the event shape.
     """
-    with contextlib.suppress(Exception):
-        await publish_artifact_event(
+    try:
+        event = await upsert_event(
             user_id,
-            upsert_event(
-                conv_id,
-                ArtifactInfo(
-                    path=rel,
-                    size_bytes=size_bytes,
-                    mtime=mtime,
-                    content_type=detect_content_type(rel),
-                ),
-                body=inline_body,
+            conv_id,
+            ArtifactInfo(
+                path=rel,
+                size_bytes=size_bytes,
+                mtime=mtime,
+                content_type=detect_content_type(rel),
             ),
+            body=inline_body,
         )
+        await publish_artifact_event(user_id, event)
+    except Exception as e:
+        log.error(
+            "artifact publish failed",
+            conversation_id=conv_id,
+            file_name=rel,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+    return event.get("short_url")
+
+
+def artifact_links_note(links: Mapping[str, str]) -> str:
+    """The tool-result footer that hands the agent each artifact's public link,
+    so it shares a URL the user can open rather than a sandbox path."""
+    if not links:
+        return ""
+    lines = "\n".join(f"- {name}: {url}" for name, url in links.items())
+    return (
+        "\n\nPublic link (anyone with it can open; give it to the user when "
+        f"you hand the file over):\n{lines}"
+    )
 
 
 async def publish_artifact_write(
@@ -61,15 +85,16 @@ async def publish_artifact_write(
     content: str,
     size_bytes: int,
     mtime: float,
-) -> None:
-    """Publish an artifact upsert when a write/edit lands under ``artifacts/``.
+) -> str | None:
+    """Publish an artifact upsert when a write/edit lands under ``artifacts/``
+    and return its heygaia.link.
 
-    No-op for non-artifact paths. The tool already holds the written ``content``
+    No-op (``None``) for non-artifact paths. The tool already holds the written ``content``
     as a string, so the inline body is decided here and the rest is delegated to
     :func:`publish_artifact`.
     """
     if role != MountRole.ARTIFACTS or not role_conv:
-        return
+        return None
     artifacts_root = session_artifacts(role_conv) + "/"
     rel = (
         abs_path[len(artifacts_root) :]
@@ -82,4 +107,4 @@ async def publish_artifact_write(
         and is_inlineable_content_type(detect_content_type(rel))
         else None
     )
-    await publish_artifact(user_id, role_conv, rel, size_bytes, mtime, inline_body)
+    return await publish_artifact(user_id, role_conv, rel, size_bytes, mtime, inline_body)

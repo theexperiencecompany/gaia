@@ -34,6 +34,9 @@ class ArtifactRegistryEntry(TypedDict):
     content_type: str | None
     updated_at: str
     body: NotRequired[str]
+    # The artifact's heygaia.link, so a reloaded card shows the same link the
+    # live one did. Absent on user uploads and on entries from before links.
+    short_url: NotRequired[str | None]
 
 
 class ArtifactRegistryPatch(TypedDict, total=False):
@@ -45,6 +48,7 @@ class ArtifactRegistryPatch(TypedDict, total=False):
     content_type: str | None
     updated_at: str
     body: str
+    short_url: str
 
 
 @CacheInvalidator(key_patterns=[CONV_ARTIFACTS_CACHE_PATTERN])
@@ -69,6 +73,8 @@ async def upsert_conversation_artifact(user_id: str, conv_id: str, payload: dict
     }
     if payload.get("body") is not None:
         fields["body"] = payload["body"]
+    if payload.get("short_url") is not None:
+        fields["short_url"] = payload["short_url"]
 
     if await conversation_repository.update_artifact(
         conv_id, user_id=user_id, path=path, fields=fields

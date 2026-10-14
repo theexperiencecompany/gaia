@@ -17,6 +17,9 @@ import time
 from typing import Literal, NotRequired, TypedDict
 
 from app.db.redis import redis_cache
+from app.models.short_link_models import ShortLinkTargetType
+from app.services.short_link_projections import session_artifact_target_id
+from app.services.short_link_service import get_or_create_short_link
 from app.services.storage import ArtifactInfo, ensure_safe_path_id
 
 ARTIFACT_CHANNEL_PREFIX = "artifacts:"
@@ -32,6 +35,9 @@ class ArtifactFileEvent(TypedDict):
     mtime: float
     content_type: str | None
     body: NotRequired[str]
+    # The artifact's public heygaia.link. Agent-produced files (`upsert`) always
+    # carry it; user uploads never do — they are the user's own files.
+    short_url: NotRequired[str]
 
 
 class ArtifactRemoveEvent(TypedDict):
@@ -58,10 +64,15 @@ def artifact_channel(user_id: str) -> str:
     return f"{ARTIFACT_CHANNEL_PREFIX}{user_id}"
 
 
-def upsert_event(
-    session_id: str, info: ArtifactInfo, *, body: str | None = None
+async def upsert_event(
+    user_id: str, session_id: str, info: ArtifactInfo, *, body: str | None = None
 ) -> ArtifactFileEvent:
     """An `artifacts/` file was created or changed.
+
+    The file's heygaia.link is minted here, the one place every agent-produced
+    artifact passes through, so the chat card, the bot message and the agent's
+    own tool result all read the same URL off this event. Minting is
+    idempotent, so a re-emit of the same file returns the same link.
 
     `body` is the UTF-8 file contents inlined for small textual artifacts —
     callers must enforce the size/type rule (see paths.is_inlineable_content_type
@@ -76,6 +87,11 @@ def upsert_event(
         "size_bytes": info.size_bytes,
         "mtime": info.mtime,
         "content_type": info.content_type,
+        "short_url": await get_or_create_short_link(
+            user_id,
+            ShortLinkTargetType.SESSION_ARTIFACT,
+            session_artifact_target_id(session_id, info.path),
+        ),
     }
     if body is not None:
         payload["body"] = body

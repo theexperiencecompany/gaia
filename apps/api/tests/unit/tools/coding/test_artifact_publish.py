@@ -10,9 +10,26 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app.agents.tools.coding import _artifacts
-from app.agents.tools.coding._artifacts import publish_artifact, publish_artifact_write
+from app.agents.tools.coding._artifacts import (
+    artifact_links_note,
+    publish_artifact,
+    publish_artifact_write,
+)
 from app.agents.workspace.paths import INLINE_ARTIFACT_MAX_BYTES, MountRole
+
+SHORT_URL = "https://heygaia.link/abcdefghijk"
+
+
+@pytest.fixture(autouse=True)
+def mint():
+    with patch(
+        "app.services.artifact_events.get_or_create_short_link",
+        AsyncMock(return_value=SHORT_URL),
+    ) as mint:
+        yield mint
 
 
 def _capture() -> tuple[AsyncMock, list]:
@@ -146,3 +163,35 @@ async def test_write_and_bash_produce_identical_event_for_same_file() -> None:
         await publish_artifact("u1", "c1", "r.md", 5, 1_700_000_000.0, "hello")
 
     assert events[0] == events[1], "write-path and bash-path events must be identical"
+
+
+async def test_publish_artifact_returns_the_artifacts_link() -> None:
+    """The tool hands this URL back to the agent, so it can say "here's the
+    report: heygaia.link/..." instead of a sandbox path the user can't open."""
+    mock, _ = _capture()
+    with patch.object(_artifacts, "publish_artifact_event", mock):
+        url = await publish_artifact("u1", "c1", "report.html", 12, 1.0, "<p>hi</p>")
+
+    assert url == SHORT_URL
+
+
+async def test_a_failed_publish_returns_no_link() -> None:
+    mock = AsyncMock(side_effect=RuntimeError("redis down"))
+    with patch.object(_artifacts, "publish_artifact_event", mock):
+        assert await publish_artifact("u1", "c1", "x.md", 1, 1.0, None) is None
+
+
+async def test_a_non_artifact_write_returns_no_link() -> None:
+    url = await publish_artifact_write(
+        "u1", MountRole.SCRATCH, "c1", "/workspace/sessions/c1/scratch/x", "d", 1, 1.0
+    )
+    assert url is None
+
+
+def test_the_links_note_names_each_file_and_its_link() -> None:
+    note = artifact_links_note({"report.html": SHORT_URL})
+    assert "report.html" in note and SHORT_URL in note
+
+
+def test_no_links_means_no_note() -> None:
+    assert artifact_links_note({}) == ""

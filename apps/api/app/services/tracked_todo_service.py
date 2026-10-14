@@ -16,8 +16,10 @@ from datetime import UTC, datetime
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse, TodoUpdate
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
+from app.services.short_link_service import get_or_create_short_link
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
@@ -178,15 +180,20 @@ class TrackedTodoService:
         return result
 
     @staticmethod
-    async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
-        """Complete a tracked todo: append completion to log, mark done, archive label."""
+    async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> str | None:
+        """Complete a tracked todo: append completion to log, mark done, archive
+        label. Returns the deliverable's heygaia.link, minted here so every
+        completion path (tool, sweep, worker, UI) hands out the same link, or
+        ``None`` when the todo does not exist."""
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
-            return False
+            return None
 
         # Guard against double-completion
         if doc.completed:
-            return True
+            return await get_or_create_short_link(
+                user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id
+            )
 
         now = datetime.now(UTC)
 
@@ -217,7 +224,9 @@ class TrackedTodoService:
 
         log.info("tracked_todo.completed", todo_id=todo_id, user_id=user_id, summary=summary)
         schedule_gaia_tasks_sync(user_id)
-        return True
+        return await get_or_create_short_link(
+            user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id
+        )
 
     @staticmethod
     async def get_active_tracked_summary(user_id: str, active_todo_id: str | None = None) -> str:
@@ -349,9 +358,10 @@ class TrackedTodoService:
                 "auto_archived",
                 f"Archived by maintenance sweep: {reason}",
             )
-            return await TrackedTodoService.complete_tracked_todo(
+            link = await TrackedTodoService.complete_tracked_todo(
                 todo_id, user_id, summary=f"Auto-archived: {reason}"
             )
+            return link is not None
         except Exception as e:
             log.warning("tracked_todo.archive_failed", todo_id=todo_id, error=str(e))
             return False

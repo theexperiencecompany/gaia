@@ -7,6 +7,7 @@ import type React from "react";
 import { useCallback, useMemo } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
+import { ShortLinkRow } from "@/features/short-links/components/ShortLinkRow";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useConversationArtifacts } from "@/stores/chatStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
@@ -130,12 +131,14 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
         contentType={contentType}
         sizeBytes={artifact.size_bytes}
         inlineBody={artifact.body}
+        shortUrl={artifact.short_url ?? undefined}
       />,
     );
     open(shouldUseSheet ? "sheet" : "artifact");
   }, [
     artifact.body,
     artifact.path,
+    artifact.short_url,
     artifact.size_bytes,
     contentType,
     conversationId,
@@ -190,6 +193,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
               <p className="text-xs text-zinc-400/90">
                 {formatFileSize(artifact.size_bytes)} · Click to open
               </p>
+              {artifact.short_url && <ShortLinkRow url={artifact.short_url} />}
             </div>
           </div>
 

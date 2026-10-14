@@ -778,12 +778,15 @@ async def complete_tracked_todo(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    success = await tracked_todo_service.complete_tracked_todo(
+    short_url = await tracked_todo_service.complete_tracked_todo(
         todo_id=todo_id, user_id=user_id, summary=summary
     )
-    if not success:
+    if short_url is None:
         return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
-    return f"Tracked todo {todo_id} completed and archived."
+    return (
+        f"Tracked todo {todo_id} completed and archived. Public link to the result "
+        f"(anyone with it can open; share it when you tell the user it's done): {short_url}"
+    )
 
 
 @tool

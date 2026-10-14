@@ -273,7 +273,9 @@ class ArtifactWatcher:
                 info = await stat_artifact(self.user_id, conv, rel)
                 if info is None:
                     return
-                await publish_artifact_event(self.user_id, upsert_event(conv, info))
+                await publish_artifact_event(
+                    self.user_id, await upsert_event(self.user_id, conv, info)
+                )
             except JuiceFSUnavailable:
                 return
             except Exception as e:
@@ -428,7 +430,9 @@ class ArtifactWatcher:
                 if info.inode:
                     self._inode_conv[info.inode] = conv
                 if prev.get(info.path) != (info.size_bytes, info.mtime):
-                    await publish_artifact_event(self.user_id, upsert_event(conv, info))
+                    await publish_artifact_event(
+                        self.user_id, await upsert_event(self.user_id, conv, info)
+                    )
             for gone in prev.keys() - current.keys():
                 await publish_artifact_event(self.user_id, remove_event(conv, gone))
             self._snapshots[conv] = current

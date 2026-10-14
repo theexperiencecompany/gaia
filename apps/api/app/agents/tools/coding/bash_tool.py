@@ -15,7 +15,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from prometheus_client import Counter
 
-from app.agents.tools.coding._artifacts import publish_artifact
+from app.agents.tools.coding._artifacts import artifact_links_note, publish_artifact
 from app.agents.tools.coding._context import (
     get_session_id,
     get_user_id,
@@ -34,6 +34,7 @@ from app.agents.workspace.paths import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
+    ARTIFACT_MTIME_SKEW_SECONDS,
     BASH_DEFAULT_TIMEOUT_SECONDS,
     BASH_MAX_COMMAND_LENGTH,
     BASH_MAX_TIMEOUT_SECONDS,
@@ -215,6 +216,7 @@ async def bash(
                     await sbx.files.make_dir(cwd)
             if background:
                 return await _run_background(sbx, run_id, command, cwd, session_id)
+            started_at = time.time()
             result = await _run_foreground(sbx, run_id, command, cwd, timeout, session_id)
             # A bash command can create artifacts any number of ways (cat,
             # python, mv, curl -o, …), not just the write tool. Enumerate the
@@ -224,7 +226,10 @@ async def bash(
             # this turn. De-duped downstream by (session_id, path).
             if session_id:
                 async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                    await _publish_artifacts(sbx, user_id, session_id)
+                    links = await _publish_artifacts(
+                        sbx, user_id, session_id, changed_since=started_at
+                    )
+                return result + artifact_links_note(links)
             return result
     except SandboxAcquisitionError as e:
         return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable ({e})", session_id)
@@ -235,9 +240,16 @@ async def bash(
         return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
 
 
-async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:
+async def _publish_artifacts(
+    sbx: object, user_id: str, session_id: str, *, changed_since: float
+) -> dict[str, str]:
     """Enumerate the session's ``artifacts/`` in the sandbox and push each
     file as a real-time artifact event (covers cat/python/mv/curl, etc.).
+
+    Returns the heygaia.link of every artifact this command wrote (mtime at or
+    after ``changed_since``, less ``ARTIFACT_MTIME_SKEW_SECONDS`` for clock
+    drift between host and sandbox), so the tool result hands the agent links
+    for what it just made rather than for every file in the session.
 
     Implementation note: this used to be N+1 sandbox round-trips (one ``find``
     plus one ``base64`` per artifact). For a turn that writes 5 artifacts that
@@ -265,10 +277,11 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
         f'  printf "\\0"'
         f"' {{}} \\; 2>/dev/null"
     )
+    links: dict[str, str] = {}
     try:
         res = await sbx.commands.run(enumerate_cmd, timeout=15)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
     except Exception:
-        return
+        return links
 
     stdout = getattr(res, "stdout", "") or ""
     fields = stdout.split("\0")
@@ -292,7 +305,10 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             mtime = time.time()
         inline_body = _decode_inline(body_b64, size_bytes, detect_content_type(rel))
         # Same shared publisher write/edit use — one owner of the event shape.
-        await publish_artifact(user_id, session_id, rel, size_bytes, mtime, inline_body)
+        short_url = await publish_artifact(user_id, session_id, rel, size_bytes, mtime, inline_body)
+        if short_url and mtime >= changed_since - ARTIFACT_MTIME_SKEW_SECONDS:
+            links[rel] = short_url
+    return links
 
 
 def _decode_inline(body_b64: str, size_bytes: int, content_type: str | None) -> str | None:

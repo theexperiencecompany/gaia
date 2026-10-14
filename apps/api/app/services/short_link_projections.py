@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.agents.workspace.paths import INLINE_ARTIFACT_MAX_BYTES, is_inlineable_content_type
+from app.agents.workspace.paths import is_inlineable_content_type
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
@@ -34,6 +34,17 @@ from app.services.storage import ArtifactInfo, resolve_session_path, stat_artifa
 from app.services.todos.canvas_deliverable import project_canvas_deliverable
 
 _DEFAULT_CONTENT_TYPE = "application/octet-stream"
+# Text files up to this size ship in the public view so the page renders them
+# directly — an HTML report as a live page in a sandboxed frame, not a download.
+# Larger than the chat's inline cap: a shared report is opened on purpose.
+PUBLIC_TEXT_MAX_BYTES = 2 * 1024 * 1024
+
+
+def session_artifact_target_id(conversation_id: str, path: str) -> str:
+    """A session artifact has no id of its own: it is the file at ``path`` under
+    one conversation's ``artifacts/``. Conversation ids are path-safe (no ``/``),
+    so the first ``/`` is always the separator ``_locate_session_artifact`` splits on."""
+    return f"{conversation_id}/{path}"
 
 
 async def _project_todo(user_id: str, target_id: str) -> PublicTodoDeliverable | None:
@@ -111,10 +122,7 @@ async def _project_session_artifact(user_id: str, target_id: str) -> PublicSessi
         return None
     info = located.info
     content: str | None = None
-    if (
-        is_inlineable_content_type(info.content_type)
-        and info.size_bytes <= INLINE_ARTIFACT_MAX_BYTES
-    ):
+    if is_inlineable_content_type(info.content_type) and info.size_bytes <= PUBLIC_TEXT_MAX_BYTES:
         content = await asyncio.to_thread(
             located.host_path.read_text, encoding="utf-8", errors="replace"
         )

@@ -130,6 +130,8 @@ export interface ArtifactData {
   size_bytes: number;
   mtime?: number;
   content_type?: string | null;
+  /** Public heygaia.link minted when the agent produced the file; absent on uploads. */
+  short_url?: string | null;
   /**
    * UTF-8 file contents inlined when small + textual. When present, the
    * preview renders instantly without a follow-up fetch and survives reload

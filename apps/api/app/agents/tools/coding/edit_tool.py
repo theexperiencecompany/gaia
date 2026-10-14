@@ -10,7 +10,7 @@ from e2b import AsyncSandbox, NotFoundException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.tools.coding._artifacts import publish_artifact_write
+from app.agents.tools.coding._artifacts import artifact_links_note, publish_artifact_write
 from app.agents.tools.coding._context import (
     atomic_write,
     canonical_path,
@@ -174,7 +174,7 @@ async def _do_edit(
 
     # Surface the edit live in chat when it lands under artifacts/ — same path
     # the write tool takes, so an edited artifact card updates during the turn.
-    await publish_artifact_write(
+    short_url = await publish_artifact_write(
         target.user_id,
         target.role,
         target.role_conv,
@@ -184,7 +184,9 @@ async def _do_edit(
         real_mtime,
     )
 
+    links = {target.abs_path.rsplit("/", 1)[-1]: short_url} if short_url else {}
     return (
         f"Edited {target.abs_path} ({occurrences if replace_all else 1} "
         f"occurrence{'s' if (replace_all and occurrences > 1) else ''} replaced)"
+        f"{artifact_links_note(links)}"
     )

@@ -7,7 +7,7 @@ methods directly with a seam mocked to actually raise, proving the surrounding
 except block is reached and swallows the failure instead of propagating it.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from app.services.chat.artifact_forwarder import ArtifactForwarder
 from app.utils.artifact_utils import build_artifact_ref_entry
@@ -99,3 +99,32 @@ class TestWarmCacheIsBestEffort:
             await forwarder._warm_cache("report.pdf")  # must not raise
 
         mock_log.debug.assert_called_once()
+
+
+class TestBotDeliveryCarriesTheLink:
+    async def test_a_bot_file_carries_the_artifacts_heygaia_link(self) -> None:
+        """A bot user never sees the web card, so the file message itself must
+        carry the public link."""
+        forwarder = ArtifactForwarder(
+            user_id="user-1",
+            conversation_id="conv-1",
+            stream_id="stream-1",
+            bot_message_id="bot-msg-1",
+            source="telegram",
+        )
+        payload = {
+            "event": "upsert",
+            "path": "report.html",
+            "content_type": "text/html",
+            "short_url": "https://heygaia.link/abcdefghijk",
+        }
+        with (
+            patch(
+                "app.services.chat.artifact_forwarder.publish_outbound_file", new=Mock()
+            ) as publish,
+            patch("app.services.chat.artifact_forwarder.spawn_background_task"),
+        ):
+            forwarder._maybe_deliver_to_bot(payload, "report.html", "upsert")
+
+        attachment = publish.call_args.kwargs["attachment"]
+        assert attachment.caption == "https://heygaia.link/abcdefghijk"
