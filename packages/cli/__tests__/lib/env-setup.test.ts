@@ -185,6 +185,53 @@ describe("runEnvSetup env policy", () => {
     }
   });
 
+  it("a rerun keeps every value the user edited in apps/api/.env", async () => {
+    const repo = makeRepo();
+    await runEnvSetup(makeHeadlessStore(), repo, "selfhost", undefined, {
+      domain: "gaia.example.com",
+    });
+    const envPath = path.join(repo, "apps", "api", ".env");
+    writeFileSync(
+      envPath,
+      readApiEnv(repo)
+        .replace(/^MONGO_DB=.*$/m, "MONGO_DB=mongodb://my-mongo:27017/mine")
+        .replace(/^AUTH_MODE=.*$/m, "AUTH_MODE=workos"),
+    );
+
+    await runEnvSetup(makeHeadlessStore(), repo, "selfhost");
+
+    const content = readApiEnv(repo);
+    expect(content).toMatch(/^MONGO_DB=mongodb:\/\/my-mongo:27017\/mine$/m);
+    expect(content).toMatch(/^AUTH_MODE=workos$/m);
+    expect(content).toMatch(/^HOST=https:\/\/gaia\.example\.com$/m);
+    expect(content).toMatch(/^SETUP_MODE=selfhost$/m);
+  });
+
+  it("a rerun's explicit flag still replaces the stored value", async () => {
+    const repo = makeRepo();
+    await runEnvSetup(makeHeadlessStore(), repo, "selfhost", undefined, {
+      domain: "old.example.com",
+    });
+
+    await runEnvSetup(makeHeadlessStore(), repo, "selfhost", undefined, {
+      domain: "new.example.com",
+    });
+
+    expect(readApiEnv(repo)).toMatch(/^HOST=https:\/\/new\.example\.com$/m);
+  });
+
+  it("switching mode takes the new mode's infra addresses", async () => {
+    const repo = makeRepo();
+    await runEnvSetup(makeHeadlessStore(), repo, "developer");
+
+    await runEnvSetup(makeHeadlessStore(), repo, "selfhost");
+
+    const content = readApiEnv(repo);
+    expect(content).toMatch(/^MONGO_DB=mongodb:\/\/mongo:27017\/gaia$/m);
+    expect(content).toMatch(/^ENV=selfhost$/m);
+    expect(content).toMatch(/^SETUP_MODE=selfhost$/m);
+  });
+
   it("serves selfhost from one origin: proxy profile on, API on the web port", async () => {
     const repo = makeRepo();
     await runEnvSetup(makeHeadlessStore(), repo, "selfhost", { 3000: 4000 });

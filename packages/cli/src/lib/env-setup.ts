@@ -6,6 +6,7 @@ import { getDockerSocketGid } from "./docker.js";
 import * as envParser from "./env-parser.js";
 import * as envWriter from "./env-writer.js";
 import { collectMachineSecrets } from "./machine-secrets.js";
+import { apiEnvPath, detectSetupMode } from "./service-starter.js";
 
 const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
@@ -46,38 +47,33 @@ export async function runEnvSetup(
   const envMethod = await store.waitForInput("env_method");
   store.updateData("envMethod", envMethod);
 
-  const envValues: Record<string, string> = {};
-
   // ENV policy: self-host instances run as the first-class selfhost tier with
   // local email/password auth; developer checkouts keep development (WorkOS).
-  envValues["ENV"] = setupMode === "selfhost" ? "selfhost" : "development";
+  const defaults: Record<string, string> = {
+    ENV: setupMode === "selfhost" ? "selfhost" : "development",
+  };
   if (setupMode === "selfhost") {
-    envValues["AUTH_MODE"] = "local";
+    defaults["AUTH_MODE"] = "local";
   }
-
-  const infraVars = envParser.getInfrastructureVariables();
-  for (const varName of infraVars) {
+  for (const varName of envParser.getInfrastructureVariables()) {
     const defaultVal = envParser.getDefaultValue(varName, setupMode);
     if (defaultVal) {
-      envValues[varName] = defaultVal;
+      defaults[varName] = defaultVal;
     }
   }
+  Object.assign(defaults, envParser.getDeploymentDefaults(setupMode));
 
-  // Add deployment defaults (HOST, FRONTEND_URL, GAIA_BACKEND_URL, SETUP_MODE)
-  const deploymentDefaults = envParser.getDeploymentDefaults(setupMode);
-  for (const [key, value] of Object.entries(deploymentDefaults)) {
-    envValues[key] = value;
-  }
+  // What this run was told: flags and wizard answers.
+  const answers: Record<string, string> = {};
   if (options?.domain) {
     // Links in emails and OAuth callbacks must name the public origin.
-    envValues["HOST"] = `https://${options.domain}`;
-    envValues["FRONTEND_URL"] = `https://${options.domain}`;
+    answers["HOST"] = `https://${options.domain}`;
+    answers["FRONTEND_URL"] = `https://${options.domain}`;
   }
-
-  applyLlmFlagAnswers(envValues, options);
+  applyLlmFlagAnswers(answers, options);
 
   if (envMethod === "infisical") {
-    await collectInfisicalEnv(store, envValues);
+    await collectInfisicalEnv(store, answers);
     store.setStatus(
       "Infisical credentials saved. Ensure your Infisical project contains all required variables.",
     );
@@ -86,35 +82,25 @@ export async function runEnvSetup(
     // The schema is vendored (see env-parser.loadVendoredSchema), so manual
     // collection never depends on a host Python install. Load failures
     // propagate — the caller surfaces them.
-    await collectManualEnv(store, envValues, setupMode);
+    await collectManualEnv(store, answers, setupMode);
   }
 
+  const existingEnv = fs.existsSync(apiEnvPath(repoPath))
+    ? fs.readFileSync(apiEnvPath(repoPath), "utf-8")
+    : null;
+  const envValues = mergeEnvLayers({
+    defaults,
+    existing: envWriter.parseEnvFileValues(existingEnv),
+    existingMode: await detectSetupMode(repoPath),
+    answers,
+    setupMode,
+  });
   if (portOverrides) {
     envParser.applyPortOverrides(envValues, portOverrides, setupMode);
   }
-
-  // Merge-don't-clobber with existing apps/api/.env: carry forward prior values
-  // this run didn't recompute; machine secrets generate only for still-missing
-  // members (writeEnvFile keeps .bak backups).
-  const apiEnvPath = path.join(repoPath, "apps", "api", ".env");
-  const existingEnv = fs.existsSync(apiEnvPath)
-    ? fs.readFileSync(apiEnvPath, "utf-8")
-    : null;
-  if (existingEnv) {
-    for (const [name, value] of Object.entries(
-      envWriter.parseEnvFileValues(existingEnv),
-    )) {
-      if (!(name in envValues)) {
-        envValues[name] = value;
-      }
-    }
-  }
   if (setupMode === "selfhost") {
-    for (const [name, value] of Object.entries(
-      collectMachineSecrets(existingEnv),
-    )) {
-      envValues[name] = value;
-    }
+    // Generated only for still-missing secrets; existing ones are kept.
+    Object.assign(envValues, collectMachineSecrets(existingEnv));
   }
 
   try {
@@ -131,6 +117,29 @@ export async function runEnvSetup(
     return;
   }
   await delay(1000);
+}
+
+/**
+ * Layer one setup run's values: a rerun of the same mode keeps every value the
+ * user edited in apps/api/.env over the computed defaults, and only this run's
+ * flags and answers replace them. Switching mode takes the new mode's defaults
+ * (the old mode's infra addresses would not resolve). SETUP_MODE is the CLI's.
+ */
+export function mergeEnvLayers(layers: {
+  defaults: Record<string, string>;
+  existing: Record<string, string>;
+  existingMode: envParser.SetupMode | null;
+  answers: Record<string, string>;
+  setupMode: envParser.SetupMode;
+}): Record<string, string> {
+  const { defaults, existing, existingMode, answers, setupMode } = layers;
+  const sameMode = existingMode === setupMode;
+  return {
+    ...(sameMode ? defaults : existing),
+    ...(sameMode ? existing : defaults),
+    ...answers,
+    SETUP_MODE: setupMode,
+  };
 }
 
 /**

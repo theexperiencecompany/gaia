@@ -7,7 +7,6 @@ import {
   getCoreVariables,
   getDefaultValue,
   getDeploymentDefaults,
-  getDeploymentVariables,
   getInfrastructureVariables,
   getWebInfrastructureDefaults,
   isCategorySatisfied,
@@ -98,8 +97,6 @@ describe("getDefaultValue", () => {
     expect(getDefaultValue("FRONTEND_URL", "developer")).toBe(
       "http://localhost:3000",
     );
-    expect(getDefaultValue("SETUP_MODE", "selfhost")).toBe("selfhost");
-    expect(getDefaultValue("SETUP_MODE", "developer")).toBe("developer");
   });
 
   it("returns undefined for unknown variables", () => {
@@ -219,7 +216,7 @@ describe("applyModeDefaults", () => {
 });
 
 // ---------------------------------------------------------------------------
-// getInfrastructureVariables / getDeploymentVariables
+// getInfrastructureVariables
 // ---------------------------------------------------------------------------
 describe("getInfrastructureVariables", () => {
   it("returns correct variable names", () => {
@@ -231,17 +228,6 @@ describe("getInfrastructureVariables", () => {
     expect(vars).toContain("CHROMADB_PORT");
     expect(vars).toContain("RABBITMQ_URL");
     expect(vars).toHaveLength(6);
-  });
-});
-
-describe("getDeploymentVariables", () => {
-  it("returns correct variable names", () => {
-    const vars = getDeploymentVariables();
-    expect(vars).toContain("HOST");
-    expect(vars).toContain("FRONTEND_URL");
-    expect(vars).toContain("GAIA_BACKEND_URL");
-    expect(vars).toContain("SETUP_MODE");
-    expect(vars).toHaveLength(4);
   });
 });
 
@@ -263,13 +249,11 @@ describe("getDeploymentDefaults", () => {
 
   it("returns selfhost deployment defaults", () => {
     const defaults = getDeploymentDefaults("selfhost");
-    expect(defaults.SETUP_MODE).toBe("selfhost");
     expect(defaults.GAIA_BACKEND_URL).toBe("http://gaia-backend:8000"); // NOSONAR — internal Docker network URL, not a public endpoint
   });
 
   it("returns developer deployment defaults", () => {
     const defaults = getDeploymentDefaults("developer");
-    expect(defaults.SETUP_MODE).toBe("developer");
     expect(defaults.GAIA_BACKEND_URL).toBe("http://host.docker.internal:8000"); // NOSONAR — internal Docker network URL, not a public endpoint
   });
 });

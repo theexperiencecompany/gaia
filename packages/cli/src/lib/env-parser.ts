@@ -43,20 +43,17 @@ const INFRASTRUCTURE_DEFAULTS: Record<SetupMode, Record<string, string>> = {
 
 // Deployment / routing URLs — not infrastructure, users may want to customize.
 // GAIA_BACKEND_URL is voice-agent-only (how the voice container reaches the API).
-// SETUP_MODE is a marker for robust mode detection (replaces fragile string matching).
 const DEPLOYMENT_DEFAULTS: Record<SetupMode, Record<string, string>> = {
   // Self-host is one origin: the proxy serves the app and /api/v1 together.
   selfhost: {
     HOST: "http://localhost:3000",
     FRONTEND_URL: "http://localhost:3000",
     GAIA_BACKEND_URL: "http://gaia-backend:8000",
-    SETUP_MODE: "selfhost",
   },
   developer: {
     HOST: "http://localhost:8000",
     FRONTEND_URL: "http://localhost:3000",
     GAIA_BACKEND_URL: "http://host.docker.internal:8000",
-    SETUP_MODE: "developer",
   },
 };
 
@@ -197,10 +194,6 @@ export function applyModeDefaults(
 
 export function getInfrastructureVariables(): string[] {
   return Object.keys(INFRASTRUCTURE_DEFAULTS.selfhost);
-}
-
-export function getDeploymentVariables(): string[] {
-  return Object.keys(DEPLOYMENT_DEFAULTS.selfhost);
 }
 
 export function getDeploymentDefaults(mode: SetupMode): Record<string, string> {
