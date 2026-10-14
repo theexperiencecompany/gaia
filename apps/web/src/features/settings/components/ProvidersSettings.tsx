@@ -14,6 +14,7 @@ import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog
 import { useProviderConfigs } from "@/features/settings/hooks/useProviderConfigs";
 import {
   isProviderOffered,
+  savedCredentialOverridesEnv,
   useSetupStatus,
 } from "@/features/settings/hooks/useSetupStatus";
 import { customPresetsFromCatalog } from "@/features/setup-wizard/utils/providerCards";
@@ -79,7 +80,11 @@ export function ProvidersSettings() {
             <SettingsRow
               key={row.key}
               label={row.label}
-              description={row.description}
+              description={
+                savedCredentialOverridesEnv(status, row.key)
+                  ? `${row.description} Your saved key overrides a different one set in the environment.`
+                  : row.description
+              }
               icon={<ProviderFavicon domain={row.faviconDomain} />}
             >
               <div className="flex items-center gap-3">

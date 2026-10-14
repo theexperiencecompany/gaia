@@ -40,13 +40,12 @@ from app.constants.providers import (
     ProviderPreset,
 )
 from app.db.repositories.local_credentials import local_credentials_repository
-from app.db.repositories.provider_credentials import provider_credentials_repository
 from app.models.user_models import AuthenticatedUser
 from app.services.members_service import get_registration_policy
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     delete as delete_provider_config,
-    env_config,
+    inspect_credential,
     invalidate as invalidate_provider_cache,
     resolve as resolve_provider_config,
     upsert as upsert_provider_config,
@@ -100,6 +99,9 @@ class ProviderConfiguredState(BaseModel):
     configured: bool = Field(description="Whether a usable credential or env fallback exists")
     source: CredentialSource = Field(
         description="Where the active credential comes from; a saved one overrides env"
+    )
+    env_shadowed: bool = Field(
+        description="Whether the environment sets a different credential the saved one overrides"
     )
 
 
@@ -209,8 +211,8 @@ async def get_setup_status() -> SetupStatusResponse:
     """
     log.set(operation="setup_status", auth_mode=settings.AUTH_MODE)
     has_admin_account = await local_credentials_repository.admin_exists()
-    sources = {p: await _credential_source(p) for p in CREDENTIAL_PROVIDERS}
-    configured = {p: source is not CredentialSource.UNSET for p, source in sources.items()}
+    resolutions = {p: await inspect_credential(p) for p in CREDENTIAL_PROVIDERS}
+    configured = {p: r.source is not CredentialSource.UNSET for p, r in resolutions.items()}
     return SetupStatusResponse(
         auth_mode=settings.AUTH_MODE,
         has_admin_account=has_admin_account,
@@ -224,8 +226,10 @@ async def get_setup_status() -> SetupStatusResponse:
             gaia_support=settings.deployment.gaia_support,
         ),
         providers={
-            p: ProviderConfiguredState(configured=configured[p], source=source)
-            for p, source in sources.items()
+            p: ProviderConfiguredState(
+                configured=configured[p], source=r.source, env_shadowed=r.shadows_env
+            )
+            for p, r in resolutions.items()
         },
         plans_seeded=await is_payment_setup(),
     )
@@ -256,27 +260,6 @@ async def get_provider_catalog() -> ProviderCatalogResponse:
         custom_presets={name: PRESETS[name] for name in ("opencode", "nous")},
         llm_provider_keys=list(_LLM_PROVIDER_KEYS),
     )
-
-
-async def stored_credential_exists(provider: str) -> bool:
-    """Module-level seam (tests rebind it): is a credential stored for this?"""
-    return await provider_credentials_repository.exists(provider)
-
-
-async def _credential_source(provider: str) -> CredentialSource:
-    """Return where provider's active credential comes from; UNSET when it cannot serve a request.
-
-    Env fallbacks count only when the env var was EXPLICITLY set — Ollama's
-    OLLAMA_BASE_URL has a code default, and counting it made brand-new
-    instances report needs_setup=false with no working LLM.
-    """
-    if await stored_credential_exists(provider):
-        return CredentialSource.STORED
-    # Env-fallback semantics live in ONE place (the credential service) so
-    # this endpoint can never disagree with what the LLM/search layers resolve.
-    if env_config(provider) is not None:
-        return CredentialSource.ENV
-    return CredentialSource.UNSET
 
 
 def _needs_setup(has_admin_account: bool, configured: dict[str, bool]) -> bool:

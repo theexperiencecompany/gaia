@@ -15,17 +15,21 @@ from cryptography.fernet import Fernet
 import pytest
 
 from app.config.settings import settings
+from app.constants.providers import CredentialSource
 from app.core.lazy_loader import providers as provider_registry
 from app.db.redis import redis_cache
 import app.services.providers.provider_credentials_service as service_module
 from app.services.providers.provider_credentials_service import (
     RUNTIME_CONFIG_CHANNEL,
+    CredentialResolution,
     delete,
+    inspect_credential,
     invalidate,
     resolve,
     upsert,
 )
 from app.services.runtime.secrets_store import fernet_key_from
+from tests.helpers import captured_wide_event
 
 INSTANCE_SECRET = "test-instance-secret"
 
@@ -570,3 +574,61 @@ class TestValidation:
         with pytest.raises(ValueError):
             await delete(provider)
         assert repo.delete_calls == []
+
+
+# ---------------------------------------------------------------------------
+# inspect_credential — where the active credential comes from
+# ---------------------------------------------------------------------------
+
+
+class TestInspectCredential:
+    async def test_a_stored_key_over_a_different_env_key_is_flagged(
+        self, repo, fixed_secret
+    ) -> None:
+        settings.GOOGLE_API_KEY = "env-key"
+        await upsert("gemini", api_key="saved-key")
+
+        async with captured_wide_event() as event:
+            resolution = await inspect_credential("gemini")
+
+        assert resolution.source is CredentialSource.STORED
+        assert resolution.shadows_env is True
+        assert [w["provider"] for w in event["warnings"]] == ["gemini"]
+
+    async def test_a_stored_key_equal_to_the_env_key_is_not_flagged(
+        self, repo, fixed_secret
+    ) -> None:
+        settings.GOOGLE_API_KEY = "same-key"
+        await upsert("gemini", api_key="same-key")
+
+        resolution = await inspect_credential("gemini")
+
+        assert resolution == CredentialResolution(
+            config=resolution.config, source=CredentialSource.STORED, shadows_env=False
+        )
+
+    async def test_an_undecryptable_row_reports_the_env_key_that_actually_serves(
+        self, repo, fixed_secret
+    ) -> None:
+        settings.GOOGLE_API_KEY = "env-key"
+        repo.ciphertexts["gemini"] = "not-a-fernet-token"
+
+        resolution = await inspect_credential("gemini")
+
+        assert resolution.source is CredentialSource.ENV
+        assert resolution.config is not None and resolution.config["api_key"] == "env-key"
+
+    async def test_without_runtime_credentials_the_store_is_never_reported(
+        self, repo, fixed_secret, monkeypatch
+    ) -> None:
+        settings.GOOGLE_API_KEY = "env-key"
+        await upsert("gemini", api_key="saved-key")
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        repo.find_calls = 0
+
+        resolution = await inspect_credential("gemini")
+
+        assert resolution.source is CredentialSource.ENV
+        assert resolution.shadows_env is False
+        assert repo.find_calls == 0

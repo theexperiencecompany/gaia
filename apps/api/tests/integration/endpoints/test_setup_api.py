@@ -142,7 +142,9 @@ class TestStatus:
             "google_oauth",
             "firecrawl",
         }
-        assert all(set(v) == {"configured", "source"} for v in body["providers"].values())
+        assert all(
+            set(v) == {"configured", "source", "env_shadowed"} for v in body["providers"].values()
+        )
 
     @pytest.mark.parametrize("blob_store", list(BlobStoreKind))
     async def test_status_reports_the_instances_blob_store(
@@ -263,7 +265,11 @@ class TestStatus:
     ) -> None:
         monkeypatch.setattr(settings, "GOOGLE_API_KEY", "env-key")
         body = (await client.get(f"{API}/status")).json()
-        assert body["providers"]["gemini"] == {"configured": True, "source": "env"}
+        assert body["providers"]["gemini"] == {
+            "configured": True,
+            "source": "env",
+            "env_shadowed": False,
+        }
 
     async def test_a_saved_credential_reports_it_overrides_env(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -276,14 +282,22 @@ class TestStatus:
             "preset": None,
         }
         body = (await client.get(f"{API}/status")).json()
-        assert body["providers"]["gemini"] == {"configured": True, "source": "stored"}
+        assert body["providers"]["gemini"] == {
+            "configured": True,
+            "source": "stored",
+            "env_shadowed": True,
+        }
 
     async def test_an_unconfigured_provider_reports_unset(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", None)
         body = (await client.get(f"{API}/status")).json()
-        assert body["providers"]["firecrawl"] == {"configured": False, "source": "unset"}
+        assert body["providers"]["firecrawl"] == {
+            "configured": False,
+            "source": "unset",
+            "env_shadowed": False,
+        }
 
     async def test_seed_flags_surfaced(self, client: AsyncClient) -> None:
         body = (await client.get(f"{API}/status")).json()

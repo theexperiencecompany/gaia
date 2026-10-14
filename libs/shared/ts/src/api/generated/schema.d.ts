@@ -12580,6 +12580,11 @@ export interface components {
              * @description Whether a usable credential or env fallback exists
              */
             configured: boolean;
+            /**
+             * Env Shadowed
+             * @description Whether the environment sets a different credential the saved one overrides
+             */
+            env_shadowed: boolean;
             /** @description Where the active credential comes from; a saved one overrides env */
             source: components["schemas"]["CredentialSource"];
         };

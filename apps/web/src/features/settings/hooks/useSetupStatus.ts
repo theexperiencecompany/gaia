@@ -49,6 +49,14 @@ export function isProviderConfigured(
   return status?.providers?.[key]?.configured === true;
 }
 
+/** Whether a saved credential overrides a different one set in the environment. */
+export function savedCredentialOverridesEnv(
+  status: SetupStatus | undefined,
+  key: CredentialProvider,
+): boolean {
+  return status?.providers?.[key]?.env_shadowed === true;
+}
+
 /**
  * Whether Settings offers a provider's card. Cloudinary does nothing unless
  * the instance stores files there (BLOB_STORE=cloudinary).

@@ -28,6 +28,7 @@ vi.mock("@/features/settings/api/providersApi", async (importOriginal) => {
 import {
   isAnyLlmConfigured,
   isProviderOffered,
+  savedCredentialOverridesEnv,
 } from "@/features/settings/hooks/useSetupStatus";
 import { useProviderSetup } from "@/features/setup-wizard/hooks/useProviderSetup";
 import {
@@ -84,7 +85,7 @@ const statusWith = (configured: string[]): SetupStatus => ({
   providers: Object.fromEntries(
     configured.map((key) => [
       key,
-      { configured: true, source: "stored" as const },
+      { configured: true, source: "stored" as const, env_shadowed: false },
     ]),
   ),
 });
@@ -196,6 +197,18 @@ describe("useProviderSetup", () => {
       defaultModel: "",
       presets: [],
     });
+  });
+});
+
+describe("savedCredentialOverridesEnv", () => {
+  it("is true only when the status flags a hidden env value", () => {
+    const status = statusWith(["gemini"]);
+    expect(savedCredentialOverridesEnv(status, "gemini")).toBe(false);
+
+    const gemini = status.providers.gemini;
+    if (!gemini) throw new Error("gemini is configured in the fixture");
+    status.providers.gemini = { ...gemini, env_shadowed: true };
+    expect(savedCredentialOverridesEnv(status, "gemini")).toBe(true);
   });
 });
 

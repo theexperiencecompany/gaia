@@ -13562,6 +13562,11 @@
             "title": "Configured",
             "type": "boolean"
           },
+          "env_shadowed": {
+            "description": "Whether the environment sets a different credential the saved one overrides",
+            "title": "Env Shadowed",
+            "type": "boolean"
+          },
           "source": {
             "$ref": "#/components/schemas/CredentialSource",
             "description": "Where the active credential comes from; a saved one overrides env"
@@ -13569,7 +13574,8 @@
         },
         "required": [
           "configured",
-          "source"
+          "source",
+          "env_shadowed"
         ],
         "title": "ProviderConfiguredState",
         "type": "object"

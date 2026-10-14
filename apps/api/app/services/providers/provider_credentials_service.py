@@ -11,13 +11,13 @@ import importlib
 import json
 import os
 from time import monotonic
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.providers import CREDENTIAL_PROVIDERS
+from app.constants.providers import CREDENTIAL_PROVIDERS, CredentialSource
 from app.core.lazy_loader import providers
 from app.db.redis import redis_cache
 from app.db.repositories.provider_credentials import provider_credentials_repository
@@ -50,6 +50,15 @@ class ProviderConfig(TypedDict):
     base_url: str | None
     model: str | None
     preset: str | None  # e.g. "opencode" | "nous"
+
+
+class CredentialResolution(NamedTuple):
+    """Which credential serves a provider and where it comes from."""
+
+    config: ProviderConfig | None
+    source: CredentialSource
+    # A stored credential is active while the environment sets a different one.
+    shadows_env: bool
 
 
 # provider → (cached-at monotonic, resolved config). Entries may hold None-ish
@@ -87,23 +96,44 @@ async def resolve(provider: str) -> ProviderConfig | None:
     if hit:
         return cached
 
-    doc = await provider_credentials_repository.find_by_provider(provider)
-    if doc is not None:
-        config = await _decrypt_config(doc.data_encrypted)
-        if config is not None:
-            _cache_put(provider, config)
-            resolved_configs[provider] = config
-            return config
-        # Undecryptable (instance secret rotated): logged loudly above; fall
-        # through so env still works instead of bricking the provider.
-
-    fallback = env_config(provider)
-    if fallback is not None or provider in CREDENTIAL_PROVIDERS:
+    config = (await inspect_credential(provider)).config
+    if config is not None or provider in CREDENTIAL_PROVIDERS:
         # Cache known providers' outcomes (including unconfigured), so repeated
         # resolves don't hammer Mongo; unknown names return immediately.
-        _cache_put(provider, fallback)
-    resolved_configs[provider] = fallback
-    return fallback
+        _cache_put(provider, config)
+    resolved_configs[provider] = config
+    return config
+
+
+async def inspect_credential(provider: str) -> CredentialResolution:
+    """Read, uncached, which credential serves the provider; warn when a stored one hides env.
+
+    An undecryptable stored row (instance secret rotated) is logged where it is
+    decrypted and falls through, so env still serves instead of bricking the provider.
+    """
+    from_env = env_config(provider)
+    if settings.deployment.runtime_credentials:
+        doc = await provider_credentials_repository.find_by_provider(provider)
+        stored = await _decrypt_config(doc.data_encrypted) if doc is not None else None
+        if stored is not None:
+            shadows_env = from_env is not None and _credential_of(from_env) != _credential_of(
+                stored
+            )
+            if shadows_env:
+                log.warning(
+                    f"{LogTag.API} A stored provider credential overrides a different env value",
+                    provider=provider,
+                    fix="delete the stored credential in Settings to use the env value, "
+                    "or remove the env value",
+                )
+            return CredentialResolution(stored, CredentialSource.STORED, shadows_env)
+    source = CredentialSource.UNSET if from_env is None else CredentialSource.ENV
+    return CredentialResolution(from_env, source, shadows_env=False)
+
+
+def _credential_of(config: ProviderConfig) -> tuple[str | None, str | None]:
+    """Return the part of a config that names an account: its key and endpoint."""
+    return config["api_key"], config["base_url"]
 
 
 async def upsert(

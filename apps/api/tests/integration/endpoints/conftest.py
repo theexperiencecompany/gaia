@@ -19,10 +19,15 @@ from app.api.v1.endpoints.setup import router as setup_router
 from app.api.v1.endpoints.setup_composio import router as setup_composio_router
 from app.config.settings import settings
 from app.constants.auth import InstanceRole, RegistrationPolicy
+from app.constants.providers import CredentialSource
 from app.core.exception_handlers import register_exception_handlers
 from app.models.auth_models import LocalCredentialDocument
 from app.models.user_models import AuthenticatedUser
-from app.services.providers.provider_credentials_service import ProviderConfig
+from app.services.providers.provider_credentials_service import (
+    CredentialResolution,
+    ProviderConfig,
+    env_config,
+)
 
 FAKE_USER_ID = "65f0c0ffee0000000000a001"
 NON_ADMIN_USER_ID = "65f0c0ffee0000000000a002"
@@ -42,9 +47,14 @@ class FakeProviderService:
     async def resolve(self, provider: str) -> ProviderConfig | None:
         return self.configs.get(provider)
 
-    async def stored_exists(self, provider: str) -> bool:
-        """Mirrors the repo's existence probe for the status endpoint."""
-        return provider in self.configs
+    async def inspect(self, provider: str) -> CredentialResolution:
+        """Mirrors the real precedence: a saved config wins over the environment."""
+        from_env = env_config(provider)
+        if stored := self.configs.get(provider):
+            shadows_env = from_env is not None and from_env["api_key"] != stored["api_key"]
+            return CredentialResolution(stored, CredentialSource.STORED, shadows_env)
+        source = CredentialSource.UNSET if from_env is None else CredentialSource.ENV
+        return CredentialResolution(from_env, source, shadows_env=False)
 
     async def upsert(
         self,
@@ -124,7 +134,7 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     the suite independent of the local dot-env file.
     """
     monkeypatch.setattr(setup_module, "resolve_provider_config", provider_service.resolve)
-    monkeypatch.setattr(setup_module, "stored_credential_exists", provider_service.stored_exists)
+    monkeypatch.setattr(setup_module, "inspect_credential", provider_service.inspect)
     monkeypatch.setattr(setup_module, "upsert_provider_config", provider_service.upsert)
     monkeypatch.setattr(setup_module, "delete_provider_config", provider_service.delete)
     monkeypatch.setattr(setup_module, "invalidate_provider_cache", provider_service.invalidate)
