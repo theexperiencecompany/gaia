@@ -76,6 +76,7 @@ export {
   BOT_MEDIA_LIMITS,
   extensionForMime,
   friendlyMediaError,
+  isLegibleAsPhoto,
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,

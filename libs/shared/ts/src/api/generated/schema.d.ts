@@ -6806,6 +6806,11 @@ export interface components {
              * @enum {string}
              */
             mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            /**
+             * Recipient Name
+             * @description The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.
+             */
+            recipient_name: string | null;
             /** Sections */
             sections: components["schemas"]["BriefingSection"][];
             /**

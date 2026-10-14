@@ -11,7 +11,7 @@ text, so pre-escaping here would double-encode entities.
 
 from datetime import date, datetime
 import re
-from typing import NotRequired, TypedDict
+from typing import TypedDict
 
 from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
 from app.models.briefing_models import (
@@ -24,9 +24,6 @@ from app.models.briefing_models import (
     BriefingWeek,
 )
 from app.services.briefing.editions.stamps import Stamp, stamp_for
-
-# The asset key of the edition's artwork, in assets.json and credits.json alike.
-ART_ASSET_KEY = "ART1"
 
 _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 _MONTHS = [
@@ -74,48 +71,6 @@ _IMPERATIVE_VERBS = {
     "respond",
 }
 
-# Families that read ``ed.headline`` in their own title slot (see
-# explorer/README.md, "Brief fields the fixture lacked"); every other family
-# has one text slot, the deck, and it carries the headline.
-_TITLE_SLOT_FAMILIES = frozenset({"memo", "postal", "broadsheet"})
-
-# An unused fixed slot: the em dash is the vendored set's own mark for a missing
-# value (see explorer/README.md, "Null guards"). The slot carries no time, tag or
-# verb, so a template never labels an empty row ("EOD", "REVIEW").
-_EMPTY_SLOT_LABEL = "—"
-_EMPTY_TODAY: "ExplorerTodayItem" = {
-    "time": None,
-    "t24": None,
-    "label": _EMPTY_SLOT_LABEL,
-    "note": None,
-    "tag": "",
-    "empty": True,
-}
-_EMPTY_OVERNIGHT: "ExplorerOvernightItem" = {
-    "t24": None,
-    "label": _EMPTY_SLOT_LABEL,
-    "note": None,
-    "tag": "",
-    "empty": True,
-}
-_EMPTY_DECISION: "ExplorerDecisionItem" = {
-    "verb": "",
-    "label": _EMPTY_SLOT_LABEL,
-    "note": None,
-    "empty": True,
-}
-
-# Families that read fixed (today, overnight, decisions) item slots; handed fewer, the
-# page script throws and the raster is blank, so build_ed pads these buckets.
-# tests/integration/test_edition_families_render.py fails if this table falls behind.
-_FIXED_SLOTS: dict[str, tuple[int, int, int]] = {
-    "boardingpass": (3, 3, 2),
-    "metromap": (3, 3, 2),
-    "menu": (3, 3, 0),
-    "invoice": (3, 3, 0),
-    "almanac": (2, 0, 0),
-}
-
 
 class ExplorerTodayItem(TypedDict):
     """One content.today row, keyed exactly as the vendored JS reads it."""
@@ -125,8 +80,6 @@ class ExplorerTodayItem(TypedDict):
     label: str
     note: str | None
     tag: str
-    #: A fixed-slot family's unused slot, drawn as a bare dash with no label.
-    empty: NotRequired[bool]
 
 
 class ExplorerOvernightItem(TypedDict):
@@ -134,14 +87,12 @@ class ExplorerOvernightItem(TypedDict):
     label: str
     note: str | None
     tag: str
-    empty: NotRequired[bool]
 
 
 class ExplorerDecisionItem(TypedDict):
     verb: str
     label: str
     note: str | None
-    empty: NotRequired[bool]
 
 
 class ExplorerStats(TypedDict):
@@ -158,14 +109,16 @@ class ExplorerContent(TypedDict):
     today: list[ExplorerTodayItem]
     overnight: list[ExplorerOvernightItem]
     decisions: list[ExplorerDecisionItem]
-    stats: ExplorerStats
+    stats: ExplorerStats | None
 
 
 class ExplorerArt(TypedDict):
+    """The painting the edition hangs (editions/artworks.py), its image a data URI."""
+
     src: str
     title: str
     artist: str
-    year: int
+    year: str
     medium: str
 
 
@@ -188,6 +141,13 @@ class ExplorerWeek(TypedDict):
     ahead: list[ExplorerAheadItem]
 
 
+class ExplorerRecipient(TypedDict):
+    """Who the edition is addressed to: the full name and the first name."""
+
+    name: str
+    first: str
+
+
 class ExplorerEdition(TypedDict):
     """The exact ed shape the templates render against.
 
@@ -204,8 +164,10 @@ class ExplorerEdition(TypedDict):
     editionNo: int
     time: str
     time24: str
-    headline: str
+    #: The brief's headline: every family's one display line.
     deck: str
+    #: None when the payload carries no name; the templates then address "you".
+    recipient: ExplorerRecipient | None
     content: ExplorerContent
     week: ExplorerWeek | None
     stamp: Stamp | None
@@ -219,23 +181,16 @@ def build_ed(
     edition_no: int,
     generated_local: str,
     assets: dict[str, str],
-    art_credit: str,
+    art: ExplorerArt,
     family: str,
 ) -> ExplorerEdition:
     """Build the vendored templates' ed object from a briefing payload.
 
     generated_local (e.g. "6:02 AM"); empty uses the payload's generated_at. assets maps
-    asset key to data URI. family picks the headline slot and pads fixed-slot families.
+    asset key to image URL. family decides whether ed carries the week or a stamp.
     """
     date_parts = _date_parts(payload.date)
     today, overnight, decisions = _build_buckets(payload.sections, payload.calendar)
-    min_today, min_overnight, min_decisions = _FIXED_SLOTS.get(family, (0, 0, 0))
-    today += [_EMPTY_TODAY] * (min_today - len(today))
-    overnight += [_EMPTY_OVERNIGHT] * (min_overnight - len(overnight))
-    decisions += [_EMPTY_DECISION] * (min_decisions - len(decisions))
-    art_title, art_artist = _split_credit(art_credit)
-    headline = payload.headline
-    lede = payload.lede
     generated = generated_local or payload.generated_at or ""
 
     return {
@@ -249,8 +204,8 @@ def build_ed(
         "editionNo": edition_no,
         "time": generated,
         "time24": _time24(generated),
-        "headline": headline,
-        "deck": lede if family in _TITLE_SLOT_FAMILIES else headline,
+        "deck": payload.headline,
+        "recipient": _build_recipient(payload.recipient_name),
         "content": {
             "today": today,
             "overnight": overnight,
@@ -259,13 +214,7 @@ def build_ed(
         },
         "week": _build_week(payload.week) if family == WEEKLY_FAMILY else None,
         "stamp": _build_stamp(payload.stamp_city) if family == POSTAL_FAMILY else None,
-        "art": {
-            "src": assets.get(ART_ASSET_KEY, ""),
-            "title": art_title,
-            "artist": art_artist,
-            "year": 1889,
-            "medium": "oil on canvas",
-        },
+        "art": art,
         "assets": assets,
     }
 
@@ -319,14 +268,6 @@ def _split_time_prefix(text: str) -> tuple[str | None, str]:
     if not match:
         return None, text
     return _time24(match.group(1)), match.group(2)
-
-
-def _split_credit(credit: str) -> tuple[str, str]:
-    """Split "Title — Artist" into (title, artist)."""
-    parts = credit.split("—", 1)
-    if len(parts) == 2:
-        return parts[0].strip(), parts[1].strip()
-    return credit.strip(), ""
 
 
 def _decision_verb(text: str) -> tuple[str, str]:
@@ -397,14 +338,16 @@ def _positive(value: int) -> int | None:
     return value if value > 0 else None
 
 
-def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats:
-    """Build the figures from the payload's tallies.
+def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats | None:
+    """Build the figures from the payload's tallies; None when no figure is known.
 
     Mail handled and focus time have no source yet, so they are always None and their
-    slots render nothing.
+    slots render nothing. With no figure at all, a family drops its stats block.
     """
     you = tallies.done_by_you if tallies else 0
     gaia = tallies.done_by_gaia if tallies else 0
+    if you + gaia <= 0:
+        return None
     return {
         "done": _positive(you + gaia),
         "you": _positive(you),
@@ -412,6 +355,11 @@ def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats:
         "mail": None,
         "focus": None,
     }
+
+
+def _build_recipient(name: str | None) -> ExplorerRecipient | None:
+    full = " ".join((name or "").split())
+    return {"name": full, "first": full.split(" ", 1)[0]} if full else None
 
 
 def _build_week(week: BriefingWeek | None) -> ExplorerWeek | None:

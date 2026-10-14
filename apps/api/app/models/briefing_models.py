@@ -133,6 +133,13 @@ class BriefingPayload(BaseModel):
             "this brief carried. The Postmarks page reads it."
         ),
     )
+    recipient_name: str | None = Field(
+        default=None,
+        description=(
+            "The user's name as the edition addresses them (an envelope, a memo's "
+            "TO: line); None when unknown or on legacy rows."
+        ),
+    )
     generated_at: str | None = Field(
         default=None, description='User-local generation time, e.g. "6:02 AM".'
     )

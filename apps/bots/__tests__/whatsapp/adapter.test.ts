@@ -53,12 +53,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mockSendText = vi.fn();
 const mockMarkRead = vi.fn();
 const mockSendReaction = vi.fn();
+const mockSendImage = vi.fn();
+const mockSendDocument = vi.fn();
+const mockMediaUpload = vi.fn();
 const mockWaClientInstance = {
   messages: {
     sendText: mockSendText,
     markRead: mockMarkRead,
     sendReaction: mockSendReaction,
+    sendImage: mockSendImage,
+    sendDocument: mockSendDocument,
   },
+  media: { upload: mockMediaUpload },
 };
 
 vi.mock("@kapso/whatsapp-cloud-api", () => ({
@@ -118,6 +124,7 @@ vi.mock("@gaia/shared/bots", async () => {
       extractSubcommandArgs: vi.fn(real.extractSubcommandArgs),
       friendlyMediaError: vi.fn(real.friendlyMediaError),
       unsupportedMediaMessage: vi.fn(real.unsupportedMediaMessage),
+      isLegibleAsPhoto: vi.fn(real.isLegibleAsPhoto),
     },
     defaultRichMarkdown: "*GAIA Help*\nUse /gaia to chat",
   });
@@ -129,12 +136,14 @@ vi.mock("@gaia/shared/bots", async () => {
 
 import {
   handleStreamingChat,
+  type OutboundFile,
   type ReactionOutcome,
   richMessageToMarkdown,
 } from "@gaia/shared/bots";
 // From source, not the mocked barrel: GaiaApiError is the error class the real
 // redeemLinkCode branches on, so a stub would prove nothing about the failure path.
 import { GaiaApiError } from "../../../../libs/shared/ts/src/bots/api";
+import { pngHeader } from "../shared/helpers/png";
 
 /** A real-shaped one-tap link code: 22 urlsafe-base64 characters. */
 const LINK_CODE = "Ab3-_xY9zQ1234567890wE";
@@ -956,6 +965,55 @@ describe("WhatsAppAdapter - reactToMessage", () => {
 
     expect(attached).toBe("attach_failed");
     expect(mockSendText).not.toHaveBeenCalled();
+  });
+});
+
+describe("WhatsAppAdapter - sendOutboundFile", () => {
+  type FileSender = {
+    sendOutboundFile: (
+      destinationId: string,
+      file: OutboundFile,
+      isChannel: boolean,
+    ) => Promise<void>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMediaUpload.mockResolvedValue({ id: "media-1" });
+  });
+
+  const send = (data: Buffer) => {
+    const adapter = makeAdapter();
+    (adapter as unknown as { analytics: { capture: () => void } }).analytics = {
+      capture: vi.fn(),
+    };
+    return (adapter as unknown as FileSender).sendOutboundFile(
+      "15551234567",
+      { data, mime: "image/png", filename: "brief.png", caption: "Morning" },
+      false,
+    );
+  };
+
+  it("sends a tall render as a document so WhatsApp keeps it legible", async () => {
+    await send(pngHeader(1620, 5000));
+
+    expect(mockSendImage).not.toHaveBeenCalled();
+    expect(mockSendDocument).toHaveBeenCalledWith({
+      phoneNumberId: "test-phone-id",
+      to: "+15551234567",
+      document: { id: "media-1", filename: "brief.png", caption: "Morning" },
+    });
+  });
+
+  it("sends an ordinary image as an image message", async () => {
+    await send(pngHeader(1080, 1350));
+
+    expect(mockSendDocument).not.toHaveBeenCalled();
+    expect(mockSendImage).toHaveBeenCalledWith({
+      phoneNumberId: "test-phone-id",
+      to: "+15551234567",
+      image: { id: "media-1", caption: "Morning" },
+    });
   });
 });
 

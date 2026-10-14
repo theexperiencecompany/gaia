@@ -9,9 +9,10 @@ from datetime import date
 from html import escape
 from pathlib import Path
 
-# The raster viewport every edition targets; each renderer's page is exactly
-# this width.
+# The classic edition's raster viewport; its page is exactly this width.
 CANVAS_PX = 1180
+# The explorer families' portrait canvas (explorer/README.md), exported at 3x.
+EXPLORER_CANVAS_PX = 540
 
 FONTS_DIR = Path(__file__).parent / "fonts"
 
