@@ -208,6 +208,9 @@ REWARD_LOCK_RENEW_S = 20
 REWARD_LOCK_WAIT_S = 30
 # A banked batch makes two Dodo calls per month; ten minutes covers far more months than anyone banks.
 REWARD_LOCK_MAX_HOLD_S = 600
+REWARD_LOCK_UNAVAILABLE = (
+    "could not take the referral reward lease (Redis unavailable or contended)"
+)
 
 # ---- Worker ------------------------------------------------------------------
 
