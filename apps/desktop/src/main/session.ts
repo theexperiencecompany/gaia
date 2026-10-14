@@ -12,11 +12,23 @@
 
 import { session } from "electron";
 import { getApiOrigin, isApiOriginSecure } from "./api-origin";
+import { getDesktopSettings } from "./settings";
 
 /** Name of the WorkOS session cookie the app authenticates with. The bridge
  * logout hook watches this same cookie on `session.defaultSession` to detect
  * sign-out, so both sites key off one constant rather than a magic string. */
 export const WOS_SESSION_COOKIE = "wos_session";
+
+/** Session cookie a self-hosted server's email/password sign-in sets
+ * (LOCAL_SESSION_COOKIE in apps/api/app/utils/local_auth_utils.py). */
+export const LOCAL_SESSION_COOKIE = "gaia_session";
+
+/** The cookie that holds the signed-in session for the server this app uses. */
+export function getSessionCookieName(): string {
+  return getDesktopSettings().selfHostOrigin
+    ? LOCAL_SESSION_COOKIE
+    : WOS_SESSION_COOKIE;
+}
 
 /**
  * Install a `webRequest.onHeadersReceived` filter that rewrites
@@ -29,6 +41,9 @@ export const WOS_SESSION_COOKIE = "wos_session";
  * Should be called once during startup, after `app.ready`.
  */
 export function fixSessionCookies(): void {
+  // A self-hosted window loads the server's own origin, so its session cookie
+  // is first-party and its SameSite=Lax persists as-is.
+  if (getDesktopSettings().selfHostOrigin) return;
   if (!isApiOriginSecure()) return;
 
   const apiOrigin = getApiOrigin();

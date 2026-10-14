@@ -37,6 +37,7 @@ import { registerIpcHandlers } from "./ipc";
 import { registerPopupShortcut } from "./popup-shortcut";
 import { registerLinuxDevProtocol, registerProtocol } from "./protocol";
 import { startNextServer, stopNextServer } from "./server";
+import { loadServerForm } from "./server-switch";
 import { fixSessionCookies } from "./session";
 import { getDesktopSettings } from "./settings";
 import {
@@ -200,6 +201,15 @@ function openMainSurface(): void {
   bootMainSurface();
 }
 
+/** Bring up the main window on the bundled server form, from the tray's
+ * "Change Server…". */
+function openServerForm(): void {
+  openMainSurface();
+  const win = getMainWindow();
+  if (!win || win.isDestroyed()) return;
+  loadServerForm(win, "choose", () => serverStarted).catch(console.error);
+}
+
 /** If this Mac is paired and auto-start is on, bring the tunnel up on launch so
  * the device comes back online without a manual toggle. */
 async function maybeAutoStartBridge(): Promise<void> {
@@ -290,7 +300,10 @@ if (!gotTheLock) {
     // Always-on bridge surfaces: the tray, the login item mirrored from the
     // stored preference, and (when paired + enabled) an auto-started tunnel —
     // all independent of whether a window is shown.
-    createBridgeTray(openMainSurface);
+    createBridgeTray({
+      onOpen: openMainSurface,
+      onChangeServer: openServerForm,
+    });
     applyLaunchAtLogin(getDesktopSettings().launchAtLogin);
     void maybeAutoStartBridge();
 

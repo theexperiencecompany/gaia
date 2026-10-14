@@ -1,34 +1,62 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
+import type { DesktopServerFormReason } from "@shared/desktop-tools";
 import Image from "next/image";
 import { RedirectType, redirect, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, ShieldAlertIcon } from "@/components/shared/icons";
+import { ArrowUpRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { authApi } from "@/features/auth/api/authApi";
 import { useElectron } from "@/hooks/useElectron";
 import { track } from "@/lib/analytics";
+import { getElectronAPI } from "@/lib/electron/api";
+import { SelfHostServerForm } from "./self-host-server-form";
 
 interface DesktopLoginClientProps {
-  /** True when the backing instance runs AUTH_MODE=local (self-host), which
-   * has no WorkOS OAuth routes for the browser handoff to hit. */
+  /** True when a self-hosted server (AUTH_MODE=local) serves this page: the
+   * desktop app loaded the server itself, which signs in at its own /login. */
   isSelfHosted: boolean;
+  /** Why the desktop app opened this page on its server form (tray or a
+   * failed server load), or null for a normal launch. */
+  serverFormReason: DesktopServerFormReason | null;
 }
 
 /**
  * Desktop Login Page
  *
- * A polished, centered login page for the desktop app.
- * Opens system browser for OAuth and waits for deep link callback.
- * Located in (landing) to avoid sidebar layout.
+ * A polished, centered login page for the desktop app. On GAIA Cloud it opens
+ * the system browser for OAuth and waits for the deep link callback, and offers
+ * connecting to a self-hosted server instead. Located in (landing) to avoid
+ * sidebar layout.
  */
-export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
+export function DesktopLoginClient({
+  isSelfHosted,
+  serverFormReason,
+}: DesktopLoginClientProps) {
   const { isElectron, openExternal, signalReady } = useElectron();
   const router = useRouter();
   const [status, setStatus] = useState<
-    "ready" | "opened" | "waiting" | "redirecting" | "error"
+    "ready" | "opened" | "waiting" | "redirecting" | "signed-out" | "error"
   >("ready");
+  const [showServerForm, setShowServerForm] = useState(
+    serverFormReason !== null,
+  );
+  const [selfHostOrigin, setSelfHostOrigin] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isSelfHosted) return;
+    let cancelled = false;
+    getElectronAPI()
+      ?.getDesktopSettings()
+      .then(({ settings }) => {
+        if (!cancelled) setSelfHostOrigin(settings.selfHostOrigin);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSelfHosted]);
 
   // Redirect to normal login if not in Electron (after brief check)
   useEffect(() => {
@@ -45,9 +73,13 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
 
   // A persisted session (either auth mode) skips the login screen. The splash
   // stays up until something signals ready: on success that is /c's
-  // ElectronRouteGuard, on failure here — this page has no guard.
+  // ElectronRouteGuard, on failure here. A requested server form never skips.
   useEffect(() => {
     if (!isElectron) return;
+    if (serverFormReason !== null) {
+      signalReady();
+      return;
+    }
     let cancelled = false;
     authApi
       .fetchUserInfo()
@@ -55,12 +87,14 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
         if (!cancelled) setStatus("redirecting");
       })
       .catch(() => {
-        if (!cancelled) signalReady();
+        if (cancelled) return;
+        signalReady();
+        if (isSelfHosted) setStatus("signed-out");
       });
     return () => {
       cancelled = true;
     };
-  }, [isElectron, signalReady]);
+  }, [isElectron, isSelfHosted, serverFormReason, signalReady]);
 
   // Listen for the main process signalling it's about to navigate to /c
   useEffect(() => {
@@ -75,6 +109,9 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
   // navigating to the app.
   if (status === "redirecting") {
     redirect("/c", RedirectType.replace);
+  }
+  if (status === "signed-out") {
+    redirect("/login", RedirectType.replace);
   }
 
   const handleOpenLogin = () => {
@@ -125,24 +162,14 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
           </p>
 
           {isSelfHosted ? (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-500/20">
-                <ShieldAlertIcon
-                  className="h-6 w-6 text-zinc-300"
-                  aria-hidden="true"
-                />
-              </div>
-              <div className="text-center">
-                <p className="font-medium text-white">
-                  Sign in through your browser
-                </p>
-                <p className="mt-1 text-sm text-zinc-400">
-                  Self-hosted instances currently support browser access only.
-                  Open your GAIA instance&apos;s web address in a browser to
-                  sign in.
-                </p>
-              </div>
+            <div className="flex justify-center py-4">
+              <Spinner color="primary" />
             </div>
+          ) : selfHostOrigin ? (
+            <SelfHostServerForm
+              currentOrigin={selfHostOrigin}
+              unreachable={serverFormReason === "unreachable"}
+            />
           ) : (
             <>
               {status === "ready" && (
@@ -219,6 +246,25 @@ export function DesktopLoginClient({ isSelfHosted }: DesktopLoginClientProps) {
                   </button>
                 </div>
               )}
+
+              <div className="mt-6 flex w-full justify-center">
+                {showServerForm ? (
+                  <SelfHostServerForm
+                    currentOrigin={null}
+                    unreachable={false}
+                  />
+                ) : (
+                  <Button
+                    variant="light"
+                    size="sm"
+                    radius="full"
+                    className="text-zinc-400"
+                    onPress={() => setShowServerForm(true)}
+                  >
+                    Use my own server
+                  </Button>
+                )}
+              </div>
             </>
           )}
         </div>

@@ -17,10 +17,15 @@ import { join } from "node:path";
 import { app, BrowserWindow, type Event, screen, shell } from "electron";
 import { getApiOrigin } from "../api-origin";
 import { getServerUrl } from "../server";
+import { loadServerForm } from "../server-switch";
+import { getDesktopSettings } from "../settings";
 import { loadAppRoute } from "./load-url";
 import { MAIN_NORMAL_WIDTH, resolveNormalBounds } from "./loader-geometry";
 import { classifyNavigation } from "./navigation-policy";
 import { closeSplashWindow, getLoaderBounds } from "./splash";
+
+/** Chromium's net::ERR_ABORTED: a load superseded by another navigation, not a failure. */
+const ERR_ABORTED = -3;
 
 /**
  * Guard top-level navigation of the main window. The renderer shares the
@@ -29,9 +34,8 @@ import { closeSplashWindow, getLoaderBounds } from "./splash";
  * known-good origins (web server + API origin).
  */
 function guardNavigation(event: Event, url: string): void {
-  // Web server (dev or embedded prod) and API origin are the only
-  // origins that may drive the main window — reuse the exact helpers the
-  // loader and cookie logic use so this can never drift from them.
+  // Only the bundled web server and the API origin (a self-hosted server's own
+  // origin) may drive the window; the loader's helpers keep these in sync.
   const allowedOrigins = new Set([
     new URL(getServerUrl()).origin,
     new URL(getApiOrigin()).origin,
@@ -158,6 +162,23 @@ export async function createMainWindow(
   mainWindow.webContents.on("will-attach-webview", (event) => {
     event.preventDefault();
   });
+
+  // A self-hosted server that is down would leave a blank window; show the
+  // bundled server form instead so the user can retry or switch servers.
+  const win = mainWindow;
+  win.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const { selfHostOrigin } = getDesktopSettings();
+      if (!isMainFrame || !selfHostOrigin || errorCode === ERR_ABORTED) return;
+      if (!validatedURL.startsWith(`${selfHostOrigin}/`)) return;
+      console.error(
+        `[Main] Self-hosted server failed to load (${errorDescription}):`,
+        validatedURL,
+      );
+      loadServerForm(win, "unreachable", serverReady).catch(console.error);
+    },
+  );
 
   loadAppRoute(mainWindow, "/desktop-login", serverReady).catch(console.error);
 }

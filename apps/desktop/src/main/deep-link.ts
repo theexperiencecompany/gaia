@@ -15,6 +15,7 @@ import { type BrowserWindow, session } from "electron";
 import { IPC } from "../ipc-channels";
 import { getApiOrigin, isApiOriginSecure } from "./api-origin";
 import { getServerUrl } from "./server";
+import { getDesktopSettings } from "./settings";
 
 /** Pause after storing the session cookie so the renderer's redirect
  * spinner paints before the main window navigates away. */
@@ -36,6 +37,14 @@ export async function handleDeepLink(
 
     if (urlObj.hostname !== "auth" || urlObj.pathname !== "/callback") return;
     if (!mainWindow || mainWindow.isDestroyed()) return;
+    // The browser handoff is GAIA Cloud's WorkOS sign-in; a self-hosted server
+    // signs in inside the window, so a stray callback must not touch its session.
+    if (getDesktopSettings().selfHostOrigin) {
+      console.log(
+        "[Main] Ignoring GAIA Cloud auth callback on a self-host server",
+      );
+      return;
+    }
 
     const token = urlObj.searchParams.get("token");
     const error = urlObj.searchParams.get("error");

@@ -2,9 +2,10 @@
  * Window URL Loading Module
  *
  * Shared helper for navigating any BrowserWindow to a route on the
- * app's web server once that server is reachable. In development it
- * polls the external dev server on `localhost:3000`; in production it
- * polls the embedded Next.js server via the `serverReady` callback.
+ * app's web server: a chosen self-hosted server directly, otherwise the
+ * bundled web app once it is reachable. In development that polls the
+ * external dev server on `localhost:3000`; in production it polls the
+ * embedded Next.js server via the `serverReady` callback.
  *
  * @module windows/load-url
  */
@@ -18,6 +19,7 @@ import {
   isProductionServer,
   setWindowRoute,
 } from "../server-config";
+import { getDesktopSettings } from "../settings";
 
 /** Delay between readiness polls, in milliseconds. */
 const POLL_INTERVAL_MS = 100;
@@ -67,12 +69,31 @@ async function loadRoute(
 }
 
 /**
- * Navigate `win` to `path` on the app web server once it is reachable
+ * Navigate `win` to `path` on the server this app uses: the self-hosted
+ * server when one is chosen (its web app always matches its API), else the
+ * bundled web app via {@link loadBundledRoute}.
+ */
+export async function loadAppRoute(
+  win: BrowserWindow,
+  path: string,
+  serverReady: () => boolean,
+): Promise<void> {
+  const { selfHostOrigin } = getDesktopSettings();
+  if (!selfHostOrigin) {
+    await loadBundledRoute(win, path, serverReady);
+    return;
+  }
+  setWindowRoute(win, path);
+  await loadRoute(win, selfHostOrigin, path);
+}
+
+/**
+ * Navigate `win` to `path` on the bundled web app once it is reachable
  * (`serverReady` is ignored in dev). Resolves either way; if the server never
  * becomes ready within the polling budget, navigation is attempted as a
  * best-effort fallback.
  */
-export async function loadAppRoute(
+export async function loadBundledRoute(
   win: BrowserWindow,
   path: string,
   serverReady: () => boolean,
