@@ -22,17 +22,15 @@ class Skim:
     headline: str
     asks: list[str]
     overnight: str | None
-    link: str
 
-    @property
-    def text(self) -> str:
-        """The full skim, paragraph per block, as the chat caption sends it."""
+    def text(self, link: str) -> str:
+        """Return the full skim, paragraph per block, ending on link, as the chat caption."""
         blocks = [self.headline]
         if self.asks:
             blocks.append("\n".join(f"• {ask}" for ask in self.asks))
         if self.overnight:
             blocks.append(self.overnight)
-        blocks.append(f"Full brief: {self.link}")
+        blocks.append(f"Full brief: {link}")
         return _PARAGRAPH.join(blocks)
 
     @property
@@ -70,7 +68,7 @@ def brief_path(briefing_id: str) -> str:
     return f"/brief/{briefing_id}"
 
 
-def build_skim(payload: BriefingPayload, link: str) -> Skim:
+def build_skim(payload: BriefingPayload) -> Skim:
     items = [item for section in payload.sections for item in section.items]
     asks = [_ask(i) for i in items if i.kind in _ASK_KINDS or i.kind == "failed"]
     return Skim(
@@ -81,5 +79,4 @@ def build_skim(payload: BriefingPayload, link: str) -> Skim:
             [i.text for i in items if i.kind == "gaia"],
             _WEEK_PERIOD if payload.mood == "weekly" else _DAY_PERIOD,
         ),
-        link=link,
     )

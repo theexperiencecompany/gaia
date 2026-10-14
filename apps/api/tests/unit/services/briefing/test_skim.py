@@ -37,11 +37,10 @@ class TestBuildSkim:
                     ("Investor update", "lookback"),
                     ("Q4 hiring plan", "gaia"),
                 ]
-            ),
-            _LINK,
+            )
         )
 
-        assert skim.text == (
+        assert skim.text(_LINK) == (
             "Two replies need you before your 11:00.\n\n"
             "• Approve the Priya reply\n"
             "• Retry: Sync Stripe invoices\n\n"
@@ -50,14 +49,14 @@ class TestBuildSkim:
         )
 
     def test_at_most_three_asks(self) -> None:
-        skim = build_skim(_payload([(f"Ask {i}", "you") for i in range(6)]), _LINK)
+        skim = build_skim(_payload([(f"Ask {i}", "you") for i in range(6)]))
 
         assert skim.asks == [f"Ask {i}" for i in range(MAX_SKIM_ASKS)]
 
     def test_a_quiet_day_is_the_headline_and_the_link(self) -> None:
-        skim = build_skim(_payload([]), _LINK)
+        skim = build_skim(_payload([]))
 
-        assert skim.text == f"Two replies need you before your 11:00.\n\nFull brief: {_LINK}"
+        assert skim.text(_LINK) == f"Two replies need you before your 11:00.\n\nFull brief: {_LINK}"
         assert skim.preheader == ""
 
     @pytest.mark.parametrize(
@@ -76,14 +75,14 @@ class TestBuildSkim:
     ) -> None:
         items = [(t, "lookback") for t in done] + [(t, "gaia") for t in running]
 
-        assert build_skim(_payload(items), _LINK).overnight == sentence
+        assert build_skim(_payload(items)).overnight == sentence
 
     def test_the_weekly_recap_speaks_of_the_week(self) -> None:
-        skim = build_skim(_payload([("Deck", "lookback")], mood="weekly"), _LINK)
+        skim = build_skim(_payload([("Deck", "lookback")], mood="weekly"))
 
         assert skim.overnight == "This week I finished Deck."
 
     def test_preheader_is_the_asks_and_overnight_on_one_line(self) -> None:
-        skim = build_skim(_payload([("Pick a slot", "you"), ("Deck", "lookback")]), _LINK)
+        skim = build_skim(_payload([("Pick a slot", "you"), ("Deck", "lookback")]))
 
         assert skim.preheader == "Pick a slot · Overnight I finished Deck."

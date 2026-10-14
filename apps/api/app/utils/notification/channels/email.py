@@ -144,7 +144,7 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
 
 def _render_briefing(briefing: BriefingEmail, title: str, unsubscribe_url: str) -> tuple[str, str]:
     """Return (subject, html) for a briefing: its stored edition image and skim preheader."""
-    skim = build_skim(briefing.payload, briefing.brief_url)
+    skim = build_skim(briefing.payload)
     html = render_edition_email(
         briefing.payload,
         image_url=briefing.edition_image_url,
