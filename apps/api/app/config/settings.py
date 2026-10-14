@@ -37,13 +37,10 @@ from shared.py.wide_events import log
 load_dotenv()
 
 
-class _AuthModeSelection(TypedDict, total=False):
-    """The sibling fields the WorkOS validator reads off ValidationInfo.data.
+class _DeploymentSelection(TypedDict, total=False):
+    """The fields validators read off pydantic's plain field-name-to-value mapping."""
 
-    Pydantic hands validators a plain mapping of field name to value; the only
-    key read is AUTH_MODE, so that is the declared contract.
-    """
-
+    ENV: str
     AUTH_MODE: str
 
 
@@ -106,7 +103,7 @@ class Settings(BrowserHostSettings):
     def _require_workos_credentials_when_selected(
         cls, v: str | None, info: ValidationInfo
     ) -> str | None:
-        selection: _AuthModeSelection = cast(_AuthModeSelection, info.data)
+        selection: _DeploymentSelection = cast(_DeploymentSelection, info.data)
         if selection.get("AUTH_MODE") == "workos" and not v:
             raise ValueError(f"{info.field_name} is required when AUTH_MODE=workos")
         return v
@@ -598,12 +595,13 @@ class Settings(BrowserHostSettings):
     @classmethod
     def _selfhost_signs_in_locally_by_default(cls, data: object) -> object:
         """Default AUTH_MODE to local under ENV=selfhost; WorkOS would leave no way to sign in."""
-        if not isinstance(data, dict) or data.get("AUTH_MODE"):
+        if not isinstance(data, dict):
             return data
-        if data.get("ENV") == DeploymentKind.SELFHOST:
-            log.info(f"{LogTag.STARTUP} AUTH_MODE unset under ENV=selfhost - defaulting to local")
-            return {**data, "AUTH_MODE": "local"}
-        return data
+        selection: _DeploymentSelection = cast(_DeploymentSelection, data)
+        if selection.get("AUTH_MODE") or selection.get("ENV") != DeploymentKind.SELFHOST:
+            return data
+        log.info(f"{LogTag.STARTUP} AUTH_MODE unset under ENV=selfhost - defaulting to local")
+        return {**data, "AUTH_MODE": "local"}
 
     @model_validator(mode="after")
     def _refuse_what_the_deployment_must_not_run(self) -> Self:
