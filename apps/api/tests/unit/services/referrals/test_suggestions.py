@@ -256,6 +256,7 @@ async def test_nothing_connected_suggests_nobody(sources) -> None:
         ("teamlead.ana@corp.com", False),
         # The domain is what follows the last @; a quoted local part may hold one.
         ('"team@no-reply"@example.com', True),
+        ('"x@lists.y"@person.com', False),
         ("32.mrtvgqtl@unsubscribe2.customer.io", True),
         ("bounces+123@em.mailer.com", True),
     ],
