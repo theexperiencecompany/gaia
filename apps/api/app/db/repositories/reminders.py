@@ -15,7 +15,13 @@ from typing import Any
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
-from app.models.reminder_models import ReminderDocument, ReminderStatus, ReminderUpdate
+from app.models.reminder_models import (
+    ACTIVE_REMINDER_STATUSES,
+    ReminderDocument,
+    ReminderStatus,
+    ReminderUpdate,
+    StaticReminderPayload,
+)
 from app.models.scheduler_models import DeactivationReason
 from app.utils.occurrence import occurrence_window
 
@@ -65,6 +71,25 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
     async def find_scheduled_for_user(self, user_id: str) -> list[ReminderDocument]:
         """Return every reminder of a user that is armed to fire."""
         return await self._find({"user_id": user_id, "status": ReminderStatus.SCHEDULED.value})
+
+    async def find_active_twin(
+        self,
+        user_id: str,
+        payload: StaticReminderPayload,
+        repeat: str | None,
+        scheduled_at: datetime,
+    ) -> ReminderDocument | None:
+        """Return the user's still-active reminder with this exact text and schedule, if any."""
+        return await self._find_one(
+            {
+                "user_id": user_id,
+                "payload.title": payload.title,
+                "payload.body": payload.body,
+                "repeat": repeat,
+                "scheduled_at": scheduled_at,
+                "status": {"$in": [s.value for s in ACTIVE_REMINDER_STATUSES]},
+            }
+        )
 
     async def find_paused_for_reason(
         self, user_id: str, reason: DeactivationReason

@@ -30,3 +30,5 @@ FEATURE_KILLED = "FEATURE_KILLED"
 
 # 404 — a self-hosted instance sends no support request to GAIA's support team.
 GAIA_SUPPORT_UNAVAILABLE = "gaia_support_unavailable"
+# 404 — the conversation does not exist or belongs to another user (never told apart).
+CONVERSATION_NOT_FOUND = "CONVERSATION_NOT_FOUND"

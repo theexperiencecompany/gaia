@@ -131,7 +131,8 @@ class TodosRunResultDelivered(ServerEvent):
     """A tracked todo's run result reached, or failed to reach, the user's chat app."""
 
     event: ClassVar[str] = "todos:run_result_delivered"
-    budget_per_user_day: ClassVar[int] = 10
+    # One per run, like trigger_fired: an hourly tracked todo alone delivers 12+ a day.
+    budget_per_user_day: ClassVar[int] = 50
 
     outcome: Identifier
     delivered: bool
