@@ -17,8 +17,8 @@ from shared.py.wide_events import log
 LOCAL_SESSION_COOKIE = "gaia_session"
 SESSION_TTL_SECONDS = 30 * 24 * 3600
 
-# Cached once per process because the sync verify path cannot await Mongo;
-# tests reset this attribute directly.
+# Cached once per process so a request does not await Mongo for it; tests
+# reset this attribute directly.
 _resolved_secret: str | None = None
 
 
@@ -58,24 +58,13 @@ async def issue_session_token(user_id: str, token_version: int = 0) -> str:
     return cast(str, jwt.encode(payload, secret, algorithm=JWT_ALGORITHM))
 
 
-def verify_session_token(token: str) -> str | None:
-    """Return the subject of a valid unexpired token, else None.
-
-    Raises when the secret was never resolved, since returning None there
-    would silently log every user out after each restart.
-    """
-    if _resolved_secret is None:
-        raise RuntimeError(
-            "local session secret not resolved — await resolve_session_token() "
-            "before calling verify_session_token()"
-        )
+def _decode_session(token: str, secret: str) -> SessionClaims | None:
+    """Return the claims of a validly signed, unexpired token naming a user, else None."""
     try:
-        payload = jwt.decode(token, _resolved_secret, algorithms=[JWT_ALGORITHM])
+        claims: SessionClaims = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
     except JWTError:
         return None
-    claims: SessionClaims = payload
-    sub = claims.get("sub")
-    return str(sub) if sub else None
+    return claims if claims.get("sub") else None
 
 
 async def resolve_session_token(token: str) -> str | None:
@@ -83,18 +72,13 @@ async def resolve_session_token(token: str) -> str | None:
 
     Returns the user id, or None for an invalid, expired, or revoked token.
     """
-    await _session_secret()
-    user_id = verify_session_token(token)
-    if user_id is None:
+    claims = _decode_session(token, await _session_secret())
+    if claims is None:
         return None
+    user_id = str(claims["sub"])
     # Version check — stateless JWTs are revoked by bumping
     # auth_credentials.token_version on password change. Legacy tokens without
     # ``ver`` are treated as 0.
-    try:
-        payload = jwt.decode(token, _resolved_secret, algorithms=[JWT_ALGORITHM])
-    except JWTError:
-        return None
-    claims: SessionClaims = payload
     token_ver = claims.get("ver", 0)
     try:
         token_ver_int = int(token_ver)

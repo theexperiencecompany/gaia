@@ -38,7 +38,6 @@ from app.models.user_models import UserDocument
 from app.utils.local_auth_utils import (
     issue_session_token,
     resolve_session_token,
-    verify_session_token,
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceMemberJoined
@@ -429,7 +428,7 @@ class TestSignup:
         assert body["user"]["role"] == "admin"
         assert credential_store.store[created.id].slot == ADMIN_CREDENTIAL_SLOT
 
-        assert verify_session_token(response.cookies["gaia_session"]) == created.id
+        assert await resolve_session_token(response.cookies["gaia_session"]) == created.id
 
     async def test_second_signup_is_403_registration_closed(
         self, patched_repos, credential_store, settings_store, _instance_secret
@@ -652,7 +651,7 @@ class TestMemberSignup:
         member = patched_repos.by_email["kid@gaia.dev"]
         assert member.role is InstanceRole.MEMBER
         assert credential_store.store[member.id].slot is None
-        assert verify_session_token(response.cookies["gaia_session"]) == member.id
+        assert await resolve_session_token(response.cookies["gaia_session"]) == member.id
         redeemed = invite_store.invites[invite.id]
         assert redeemed.used_at is not None
         assert redeemed.used_by == member.id
@@ -802,7 +801,7 @@ class TestLogin:
 
         assert response.status_code == 200, response.text
         assert response.json()["user"]["email"] == "admin@gaia.dev"
-        assert verify_session_token(response.cookies["gaia_session"]) == admin.id
+        assert await resolve_session_token(response.cookies["gaia_session"]) == admin.id
 
     async def test_wrong_password_is_401_invalid_credentials(self, admin, _instance_secret):
         app = _build_router_app()
@@ -1280,7 +1279,7 @@ class TestSessionTokens:
     async def test_roundtrip_returns_user_id(self, _instance_secret):
         user_id = str(uuid4())
         token = await issue_session_token(user_id)
-        assert verify_session_token(token) == user_id
+        assert await resolve_session_token(token) == user_id
 
     async def test_expired_token_rejected(self, _instance_secret):
         expired = jwt.encode(
@@ -1288,13 +1287,13 @@ class TestSessionTokens:
             TEST_SECRET,
             algorithm=JWT_ALGORITHM,
         )
-        assert verify_session_token(expired) is None
+        assert await resolve_session_token(expired) is None
 
     async def test_tampered_signature_rejected(self, _instance_secret):
         token = await issue_session_token("u1")
         head, payload, sig = token.split(".")
         tampered = f"{head}.{payload}.{'0' if sig[0] != '0' else '1'}{sig[1:]}"
-        assert verify_session_token(tampered) is None
+        assert await resolve_session_token(tampered) is None
 
     async def test_wrong_key_rejected(self, _instance_secret):
         foreign = jwt.encode(
@@ -1302,15 +1301,23 @@ class TestSessionTokens:
             "a-completely-different-secret",
             algorithm=JWT_ALGORITHM,
         )
-        assert verify_session_token(foreign) is None
+        assert await resolve_session_token(foreign) is None
 
-    async def test_verify_before_secret_resolution_fails_loud(self, monkeypatch):
-        """Raise on a cold secret cache; a skipped resolve must not look like a bad session."""
+    async def test_resolving_a_session_decodes_the_token_once(self, _instance_secret, monkeypatch):
         from app.utils import local_auth_utils
 
-        monkeypatch.setattr(local_auth_utils, "_resolved_secret", None)
-        with pytest.raises(RuntimeError, match="secret"):
-            local_auth_utils.verify_session_token("anything")
+        token = await issue_session_token("u-once")
+        real_decode = local_auth_utils.jwt.decode
+        decodes: list[str] = []
+
+        def counting_decode(*args, **kwargs):
+            decodes.append(args[0])
+            return real_decode(*args, **kwargs)
+
+        monkeypatch.setattr(local_auth_utils.jwt, "decode", counting_decode)
+
+        assert await resolve_session_token(token) == "u-once"
+        assert decodes == [token]
 
     async def test_resolve_session_token_warms_secret_then_verifies(
         self, _instance_secret, monkeypatch
