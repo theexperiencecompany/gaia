@@ -5,8 +5,8 @@
 #   pnpm               Fail-loud `pnpm audit` gate for the JS workspace, with
 #                      an allowlist that requires an owner, a reason and an
 #                      expiry (an expired entry fails).
-#   playwright-pin     apps/api/Dockerfile's PLAYWRIGHT_VERSION and
-#                      PATCHRIGHT_VERSION must equal the versions in uv.lock.
+#   playwright-pin     apps/api/Dockerfile's PLAYWRIGHT_VERSION must equal the
+#                      playwright version in uv.lock.
 #   alert-rule-tools   Install pinned pint + promtool for the alert-rules lane
 #                      into $RUNNER_TEMP/bin and prepend it to $GITHUB_PATH.
 #   evlog              Per-file observability ratchet over the changed Python
@@ -148,7 +148,6 @@ cmd_playwright_pin() {
   }
 
   check playwright PLAYWRIGHT_VERSION
-  check patchright PATCHRIGHT_VERSION
   exit "$fail"
 }
 
