@@ -2050,10 +2050,26 @@ jobs:
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
+      # The loop alert is one live insight, so only a master merge moves it to a new
+      # catalog; a PR is held to master's catalog, or every open PR fails while any
+      # catalog change waits to merge.
+      - name: Sync the loop alert to the merged catalog
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+        run: python3 scripts/ci/analytics.py sync-loop-alert --apply
+      - name: Read the catalog the live loop alert is synced to
+        if: github.event_name == 'pull_request'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$DEFAULT_BRANCH"
+          git show FETCH_HEAD:libs/shared/ts/src/analytics/generated/analytics-catalog.json > "$RUNNER_TEMP/live-catalog.json"
       - name: Check PostHog insights, settings and actions against the catalog
         env:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
-        run: python3 scripts/ci/analytics.py check
+          LOOP_CATALOG: ${{ github.event_name == 'pull_request' && format('{0}/live-catalog.json', runner.temp) || '' }}
+        run: python3 scripts/ci/analytics.py check ${LOOP_CATALOG:+--loop-catalog "$LOOP_CATALOG"}
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict

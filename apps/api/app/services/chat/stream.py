@@ -911,10 +911,10 @@ async def _handle_stream_error(
     stream_id: str,
     error: Exception,
 ) -> str:
-    """Publish the error, flag the stream as failed, and return the user-facing message.
+    """Fail the stream with the user-facing message and return it.
 
-    Order matters: set_error publishes the STREAM_ERROR_SIGNAL which breaks
-    the subscriber loop, so the error chunk must go on the wire first.
+    set_error is the one sender: its terminal signal reaches every subscriber as
+    the error frame, so publishing a frame here as well showed the client two.
     """
     log.error(f"{LogTag.CHAT} Background stream error for", stream_id=stream_id, error=error)
     if isinstance(error, GraphRecursionError):
@@ -925,9 +925,6 @@ async def _handle_stream_error(
         user_error = str(error).strip() or GENERIC_TURN_ERROR.format(
             error_type=type(error).__name__
         )
-    await stream_manager.publish_chunk(
-        stream_id, f"data: {json.dumps(ErrorFrame(error=user_error).model_dump())}\n\n"
-    )
     await stream_manager.set_error(stream_id, user_error)
     return user_error
 
