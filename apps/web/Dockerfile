@@ -56,6 +56,9 @@ COPY . .
 
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+# This image is the self-host package: the flag is inlined at build time so
+# server and browser agree with no runtime probe (see src/lib/selfhost.ts).
+ENV NEXT_PUBLIC_GAIA_SELFHOST=true
 
 WORKDIR /app/apps/web
 # Bound the Node heap for the production build. Next.js fans static rendering

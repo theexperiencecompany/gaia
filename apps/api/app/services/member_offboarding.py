@@ -9,6 +9,7 @@ removal finishes what an earlier one left.
 from collections.abc import Awaitable, Callable
 from functools import partial
 
+from app.constants.error_codes import MEMBER_OFFBOARDING_INCOMPLETE
 from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -17,18 +18,10 @@ from app.models.todo_models import TodoUpdate
 from app.services.platform_link_service import PlatformLinkService, disconnect_platform_account
 from app.services.reminder_service import reminder_scheduler
 from app.services.workflow.service import WorkflowService
+from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 _REASON = DeactivationReason.MEMBER_REMOVED
-
-
-class MemberOffboardingIncomplete(Exception):
-    """Some of a removed member's automation is still live; removing them again retries it."""
-
-    def __init__(self, user_id: str, failed: list[str]) -> None:
-        super().__init__(f"{len(failed)} item(s) still run for removed member {user_id}")
-        self.user_id = user_id
-        self.failed = failed
 
 
 async def stop_acting_for_removed_member(user_id: str) -> None:
@@ -80,4 +73,11 @@ async def stop_acting_for_removed_member(user_id: str) -> None:
             )
     log.set(member_offboarding={"stopped": len(steps) - len(failed), "failed": len(failed)})
     if failed:
-        raise MemberOffboardingIncomplete(user_id, failed)
+        raise AppError(
+            message="The member was removed, but some of their automation is still running",
+            why=f"Could not stop: {', '.join(failed)}",
+            fix="Remove the member again; each removal retries whatever is still running",
+            status_code=503,
+            code=MEMBER_OFFBOARDING_INCOMPLETE,
+            meta={"user_id": user_id, "failed": failed},
+        )

@@ -19,6 +19,10 @@ from app.constants.integrations import ComposioAuthConfigSource
 from app.constants.log_tags import LogTag
 from app.db.repositories.instance_settings import instance_settings_repository
 from app.models.oauth_models import OAuthIntegration
+from app.services.runtime.config_updates import (
+    COMPOSIO_AUTH_CONFIGS_SCOPE,
+    publish_config_update,
+)
 from shared.py.wide_events import log
 
 AUTH_CONFIGS_SETTING_KEY = "composio_auth_configs"
@@ -97,6 +101,7 @@ async def save_auth_configs(auth_configs: dict[str, str]) -> None:
     cleaned = {integration_id: ac.strip() for integration_id, ac in auth_configs.items()}
     await instance_settings_repository.set_value(AUTH_CONFIGS_SETTING_KEY, dict(cleaned))
     invalidate_auth_config_cache()
+    await publish_config_update(COMPOSIO_AUTH_CONFIGS_SCOPE)
     log.info(
         f"{LogTag.COMPOSIO} Composio auth configs saved",
         integration_count=len(cleaned),
@@ -104,7 +109,7 @@ async def save_auth_configs(auth_configs: dict[str, str]) -> None:
 
 
 def invalidate_auth_config_cache() -> None:
-    """Drop this pod's cached stored set so the next resolve re-reads it."""
+    """Drop this pod's cached stored set so the next resolve re-reads it; other pods via the subscriber."""
     global _cache
     _cache = None
 

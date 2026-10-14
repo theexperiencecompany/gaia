@@ -5,7 +5,7 @@ import type { SetupStatusResponse } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchSetupStatus = vi.fn<() => Promise<SetupStatusResponse>>();
 
@@ -40,6 +40,7 @@ const SELFHOST_STATUS: SetupStatusResponse = {
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
+  wizard_dismissed: false,
   plans_seeded: false,
   providers: {},
 };
@@ -58,7 +59,12 @@ function stubReleaseFeed(): void {
   );
 }
 
+beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
+});
+
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   fetchSetupStatus.mockReset();
 });
@@ -91,12 +97,13 @@ describe("useReleases", () => {
   });
 
   it("serves the release notes on hosted GAIA, which has no setup status", async () => {
-    fetchSetupStatus.mockRejectedValue(new Error("404"));
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "");
     stubReleaseFeed();
 
     const { result } = renderHook(() => useReleases(), { wrapper });
 
     await waitFor(() => expect(result.current.releases).toHaveLength(1));
     expect(result.current.latest?.title).toBe(RELEASE.title);
+    expect(fetchSetupStatus).not.toHaveBeenCalled();
   });
 });

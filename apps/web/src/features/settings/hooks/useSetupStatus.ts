@@ -8,23 +8,26 @@ import {
   providersApi,
   type SetupStatus,
 } from "@/features/settings/api/providersApi";
+import { isSelfhostWeb } from "@/lib/selfhost";
 
 const SETUP_STATUS_QUERY_KEY = ["setup", "status"] as const;
 
 /**
  * Instance setup status (public endpoint). Single shared react-query cache
  * entry for every consumer — the setup wizard, the setup checklist banner, the
- * settings menu/sidebar and the providers settings page.
+ * settings menu/sidebar and the providers settings page. Never fetched on
+ * hosted GAIA, which mounts no /setup routes.
  */
 export function useSetupStatus() {
   return useQuery<SetupStatus>({
     queryKey: SETUP_STATUS_QUERY_KEY,
     queryFn: () => providersApi.fetchSetupStatus(),
     staleTime: 30_000,
+    enabled: isSelfhostWeb(),
   });
 }
 
-/** GAIA Cloud's profile: hosted production never serves /setup/status. */
+/** GAIA Cloud's profile; hosted GAIA never serves /setup/status. */
 const HOSTED_DEPLOYMENT: DeploymentStatus = {
   kind: "production",
   bills: true,
@@ -33,13 +36,23 @@ const HOSTED_DEPLOYMENT: DeploymentStatus = {
   gaia_support: true,
 };
 
+/** A self-hosted instance's baseline profile (ENV=selfhost with nothing optional set). */
+const SELFHOST_DEPLOYMENT: DeploymentStatus = {
+  kind: "selfhost",
+  bills: false,
+  local_code_sandbox: false,
+  blob_store: "local",
+  gaia_support: false,
+};
+
 /**
- * What this deployment does, from GET /setup/status; a missing status (hosted
- * production, or the probe still loading) is GAIA Cloud.
+ * What this deployment does, from GET /setup/status; until it loads, the
+ * build's own profile, so hosted and self-host are each right from first paint.
  */
 export function useDeployment(): DeploymentStatus {
   const { data } = useSetupStatus();
-  return data?.deployment ?? HOSTED_DEPLOYMENT;
+  if (data) return data.deployment;
+  return isSelfhostWeb() ? SELFHOST_DEPLOYMENT : HOSTED_DEPLOYMENT;
 }
 
 export function isProviderConfigured(

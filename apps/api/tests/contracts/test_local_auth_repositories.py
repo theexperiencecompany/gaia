@@ -144,9 +144,10 @@ class TestInvites:
         await repo.create(self._invite("h1", expires_in=timedelta(days=1)))
         now = datetime.now(UTC)
 
-        first = await repo.redeem("h1", now)
+        first = await repo.redeem("h1", now, "member")
         assert first is not None and first.used_at is not None
-        assert await repo.redeem("h1", now) is None
+        assert first.used_by == "member"
+        assert await repo.redeem("h1", now, "member") is None
 
     async def test_finding_a_live_invite_does_not_spend_it(self, repo):
         await repo.create(self._invite("peek", expires_in=timedelta(days=1)))
@@ -156,13 +157,13 @@ class TestInvites:
         found = await repo.find_redeemable("peek", now)
         assert found is not None and found.used_at is None
         assert await repo.find_redeemable("stale", now) is None
-        assert await repo.redeem("peek", now) is not None
+        assert await repo.redeem("peek", now, "member") is not None
         assert await repo.find_redeemable("peek", now) is None
 
     async def test_racing_redemptions_admit_one(self, repo):
         await repo.create(self._invite("race", expires_in=timedelta(days=1)))
         now = datetime.now(UTC)
-        outcomes = await asyncio.gather(*(repo.redeem("race", now) for _ in range(5)))
+        outcomes = await asyncio.gather(*(repo.redeem("race", now, "member") for _ in range(5)))
         assert sum(o is not None for o in outcomes) == 1
 
     async def test_expired_and_revoked_invites_cannot_be_redeemed(self, repo):
@@ -172,8 +173,8 @@ class TestInvites:
 
         assert await repo.revoke(live.id, now) is True
         assert await repo.revoke(live.id, now) is False
-        assert await repo.redeem("old", now) is None
-        assert await repo.redeem("live", now) is None
+        assert await repo.redeem("old", now, "member") is None
+        assert await repo.redeem("live", now, "member") is None
 
     async def test_pending_lists_only_redeemable_invites(self, repo):
         await repo.create(self._invite("expired", expires_in=timedelta(seconds=-1)))
@@ -181,14 +182,14 @@ class TestInvites:
         revoked = await repo.create(self._invite("revoked", expires_in=timedelta(days=1)))
         pending = await repo.create(self._invite("pending", expires_in=timedelta(days=1)))
         now = datetime.now(UTC)
-        await repo.redeem("used", now)
+        await repo.redeem("used", now, "member")
         await repo.revoke(revoked.id, now)
 
         assert [i.id for i in await repo.list_pending(now)] == [pending.id]
 
     async def test_a_used_invite_cannot_be_revoked(self, repo):
         invite = await repo.create(self._invite("h", expires_in=timedelta(days=1)))
-        await repo.redeem("h", datetime.now(UTC))
+        await repo.redeem("h", datetime.now(UTC), "member")
         assert await repo.revoke(invite.id, datetime.now(UTC)) is False
         assert await repo.revoke("not-an-object-id", datetime.now(UTC)) is False
 

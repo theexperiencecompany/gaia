@@ -13,6 +13,7 @@ import type { SetupStatus } from "@/features/settings/api/providersApi";
 import { providersApi } from "@/features/settings/api/providersApi";
 import { usePathname, useRouter } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
+import { isSelfhostWeb } from "@/lib/selfhost";
 
 // Routes where login modal should NOT be dismissable (main app routes that require auth)
 const NON_DISMISSABLE_ROUTE_PREFIXES = [
@@ -42,11 +43,11 @@ export default function LoginModal() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Local auth has no WorkOS routes, so route Sign in to /login. Plain state
-  // + effect (modal mounts above QueryClientProvider). Resolved once per
-  // session — auth mode cannot change without a restart.
+  // Local auth has no WorkOS routes, so Sign in goes to /login. Plain state +
+  // effect (mounted above QueryClientProvider), resolved once per session;
+  // hosted GAIA is always WorkOS and has no setup surface to ask.
   const [authMode, setAuthMode] = useState<SetupStatus["auth_mode"] | null>(
-    null,
+    () => (isSelfhostWeb() ? null : "workos"),
   );
 
   useEffect(() => {

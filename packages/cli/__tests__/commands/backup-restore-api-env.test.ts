@@ -10,6 +10,7 @@ import {
   getRestoreCommands,
   resolveRestoreFiles,
   restoreApiEnv,
+  restoreWarnings,
 } from "../../src/commands/restore/flow.js";
 
 const ORIGINAL_SECRET =
@@ -84,5 +85,26 @@ describe("backup and restore carry the key the stored credentials need", () => {
         volumeFiles: [],
       })[0],
     ).toBe("install -m 600 /b/api-env-2026-10-14.env ../../apps/api/.env");
+  });
+
+  it("explicit dump files restore the backed-up apps/api/.env given with --env", () => {
+    const resolved = resolveRestoreFiles({
+      mongoFile: "/b/mongo.gz",
+      apiEnvFile: "/b/api-env.env",
+    });
+
+    expect(resolved.apiEnvFile).toBe("/b/api-env.env");
+    expect(getRestoreCommands(resolved)[0]).toBe(
+      "install -m 600 /b/api-env.env ../../apps/api/.env",
+    );
+    expect(restoreWarnings(resolved)).toEqual([]);
+  });
+
+  it("a Mongo restore without the backup's apps/api/.env warns that credentials may not decrypt", () => {
+    const resolved = resolveRestoreFiles({ mongoFile: "/b/mongo.gz" });
+
+    expect(restoreWarnings(resolved).join("\n")).toMatch(
+      /INSTANCE_SECRET[\s\S]*--env/,
+    );
   });
 });

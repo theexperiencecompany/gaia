@@ -4,7 +4,7 @@
 import type { SetupStatusResponse } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchSetupStatus = vi.fn<() => Promise<SetupStatusResponse>>();
 
@@ -34,8 +34,18 @@ const status = (gaia_support: boolean): SetupStatusResponse => ({
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
+  wizard_dismissed: false,
   plans_seeded: true,
   providers: {},
+});
+
+beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.clearAllMocks();
 });
 
 function renderForm() {
@@ -63,12 +73,12 @@ describe("ContactForm", () => {
     expect(screen.queryByText("Submit")).toBeNull();
   });
 
-  it("keeps the support form where requests reach GAIA", async () => {
-    fetchSetupStatus.mockResolvedValue(status(true));
+  it("keeps the support form on hosted GAIA without asking for setup status", () => {
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "");
 
     renderForm();
 
-    await waitFor(() => expect(fetchSetupStatus).toHaveBeenCalled());
+    expect(fetchSetupStatus).not.toHaveBeenCalled();
     expect(screen.queryByText("Open an issue")).toBeNull();
     expect(screen.getAllByText("Request Type").length).toBeGreaterThan(0);
   });

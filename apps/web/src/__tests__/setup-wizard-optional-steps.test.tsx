@@ -45,6 +45,11 @@ vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
     refetch: vi.fn(),
   }),
 }));
+vi.mock("@/features/settings/api/providersApi", () => ({
+  providersApi: {
+    dismissSetupWizard: async () => ({ wizard_dismissed: true }),
+  },
+}));
 vi.mock("@/features/setup-wizard/components/steps/ProviderStep", () => ({
   ProviderStep: () => <div>provider step</div>,
 }));
@@ -60,10 +65,10 @@ import { SetupWizard } from "@/features/setup-wizard/components/SetupWizard";
 const continueButton = () => screen.getByRole("button", { name: /continue/i });
 
 describe("SetupWizard optional steps", () => {
-  it("moves on from web search with no key entered", () => {
+  it("moves on from web search with no key entered", async () => {
     render(<SetupWizard />);
     fireEvent.click(screen.getByRole("button", { name: /skip for now/i }));
-    expect(screen.getByText("search step")).toBeTruthy();
+    expect(await screen.findByText("search step")).toBeTruthy();
 
     fireEvent.click(continueButton());
 

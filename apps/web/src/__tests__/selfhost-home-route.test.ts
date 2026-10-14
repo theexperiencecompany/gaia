@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Outside a Next request scope connection() throws; the page's render is not under test.
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  connection: async () => undefined,
+}));
+
 import { selfhostHomeRedirect } from "@/features/auth/api/selfhostHomeRedirect";
 import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 
@@ -9,6 +15,7 @@ const SETUP_STATUS = {
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
+  wizard_dismissed: false,
   deployment: {
     kind: "selfhost",
     bills: false,
@@ -52,13 +59,25 @@ afterEach(() => {
 
 describe("/ on a self-hosted instance", () => {
   beforeEach(() => {
-    vi.stubEnv("GAIA_SELFHOST", "true");
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
   });
 
   it("goes to the setup wizard while setup is needed", async () => {
     stubSetupStatus({ needs_setup: true, has_admin_account: false });
 
     expect(await homeTarget()).toBe("/setup");
+  });
+
+  it("does not trap a signed-in visitor once an admin exists", async () => {
+    stubSetupStatus({ needs_setup: true });
+
+    expect(await homeTarget("wos_session=abc")).toBe("/c");
+  });
+
+  it("goes to the app with a local-auth session", async () => {
+    stubSetupStatus();
+
+    expect(await homeTarget("gaia_session=abc")).toBe("/c");
   });
 
   it("goes to login when signed out", async () => {
@@ -85,6 +104,7 @@ describe("/ on hosted GAIA", () => {
 
 describe("the auth mode server-rendered auth pages use", () => {
   it("is the API's, whatever a stale AUTH_MODE in the web env says", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
     vi.stubEnv("AUTH_MODE", "local");
     stubSetupStatus({ auth_mode: "workos" });
 

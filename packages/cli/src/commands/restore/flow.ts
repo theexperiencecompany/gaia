@@ -11,22 +11,27 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
+import { backupFileSet, latestBackupStamp } from "../../lib/backup-files.js";
 import { isDockerRunning } from "../../lib/docker.js";
-import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
-import { apiEnvPath, findInstallRoot } from "../../lib/service-starter.js";
 import {
-  VOLUME_BACKUPS,
+  copyEnvFileOwnerOnly,
+  readDockerComposePortOverrides,
+} from "../../lib/env-writer.js";
+import {
+  apiEnvPath,
+  findInstallRoot,
+  startServices,
+} from "../../lib/service-starter.js";
+import {
   type VolumeFile,
   volumeRestoreScript,
 } from "../../lib/volume-backups.js";
-import {
-  API_ENV_BACKUP_PREFIX,
-  API_ENV_BACKUP_SUFFIX,
-} from "../backup/flow.js";
 
 export interface RestoreOptions {
   mongoFile?: string;
   postgresFile?: string;
+  /** The backup's apps/api/.env; its INSTANCE_SECRET decrypts the Mongo dump's credentials. */
+  apiEnvFile?: string;
   fromDir?: string;
   dryRun?: boolean;
 }
@@ -43,31 +48,35 @@ export function resolveRestoreFiles(
 ): ResolvedRestoreFiles {
   if (options.fromDir) {
     const dir = path.resolve(options.fromDir);
-    // Pick most recent matching file when a directory is given.
-    const pickLatest = (prefix: string, suffix: string): string | undefined => {
-      if (!fs.existsSync(dir)) return undefined;
-      const candidates = fs
-        .readdirSync(dir)
-        .filter((f) => f.startsWith(prefix) && f.endsWith(suffix))
-        .map((f) => path.join(dir, f))
-        .sort();
-      return candidates.at(-1);
-    };
+    const stamp = latestBackupStamp(dir);
+    if (!stamp) return { volumeFiles: [] };
+    // Every file of the newest run, and only that run: mixing runs would
+    // pair a dump with another run's files or INSTANCE_SECRET.
+    const files = backupFileSet(dir, stamp);
+    const present = (file: string): string | undefined =>
+      fs.existsSync(file) ? file : undefined;
     return {
-      mongoFile: options.mongoFile ?? pickLatest("mongo-", ".gz"),
-      postgresFile: options.postgresFile ?? pickLatest("postgres-", ".sql"),
-      apiEnvFile: pickLatest(API_ENV_BACKUP_PREFIX, API_ENV_BACKUP_SUFFIX),
-      volumeFiles: VOLUME_BACKUPS.flatMap((v) => {
-        const file = pickLatest(`${v.fileSuffix}-`, ".tar.gz");
-        return file ? [{ volume: v.volume, label: v.label, file }] : [];
-      }),
+      mongoFile: options.mongoFile ?? present(files.mongoFile),
+      postgresFile: options.postgresFile ?? present(files.postgresFile),
+      apiEnvFile: options.apiEnvFile ?? present(files.apiEnvFile),
+      volumeFiles: files.volumeFiles.filter((v) => fs.existsSync(v.file)),
     };
   }
   return {
     mongoFile: options.mongoFile,
     postgresFile: options.postgresFile,
+    apiEnvFile: options.apiEnvFile,
     volumeFiles: [],
   };
+}
+
+/** What a restore of these files cannot guarantee, said before it runs. */
+export function restoreWarnings(files: ResolvedRestoreFiles): string[] {
+  if (!files.mongoFile || files.apiEnvFile) return [];
+  return [
+    "Restoring MongoDB without the backup's apps/api/.env: the stored provider credentials decrypt only under the INSTANCE_SECRET they were saved with. " +
+      "If this install's apps/api/.env is not the one the dump was taken with, they will not decrypt. Pass the backup's api-env-<stamp>.env with --env, or restore with --from <dir>.",
+  ];
 }
 
 export function getRestoreCommands(files: ResolvedRestoreFiles): string[] {
@@ -98,7 +107,8 @@ export function getRestoreCommands(files: ResolvedRestoreFiles): string[] {
 }
 
 export async function runRestore(
-  options: RestoreOptions = {},
+  options: RestoreOptions,
+  onStatus: (message: string) => void,
 ): Promise<ResolvedRestoreFiles & { commands: string[] }> {
   const repoPath = findInstallRoot();
   if (!repoPath) {
@@ -121,11 +131,13 @@ export async function runRestore(
         "No backup files specified.",
         "Use --mongo <file> --postgres <file> or --from <backup-dir> containing mongo-*.gz and postgres-*.sql.",
         "Example: gaia restore --from backups",
-        "Example: gaia restore --mongo backups/mongo-2026-08-27.gz --postgres backups/postgres-2026-08-27.sql",
+        "Example: gaia restore --mongo backups/mongo-2026-08-27T09-30-00Z.gz --postgres backups/postgres-2026-08-27T09-30-00Z.sql",
       ].join("\n"),
     );
   }
 
+  if (apiEnvFile && !fs.existsSync(apiEnvFile))
+    throw new Error(`apps/api/.env backup not found: ${apiEnvFile}`);
   if (mongoFile && !fs.existsSync(mongoFile))
     throw new Error(`Mongo backup not found: ${mongoFile}`);
   if (postgresFile && !fs.existsSync(postgresFile))
@@ -256,6 +268,18 @@ export async function runRestore(
       throw new Error(`${label} restore failed: ${(e as Error).message}`);
     }
   }
+
+  // The `gaia start` path: the same compose files (the code sandbox included),
+  // and compose recreates every container whose env files changed.
+  onStatus(
+    "Restarting services so they load the restored data and settings...",
+  );
+  await startServices(
+    repoPath,
+    "selfhost",
+    onStatus,
+    readDockerComposePortOverrides(repoPath),
+  );
 
   return { ...resolved, commands };
 }

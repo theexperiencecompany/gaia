@@ -1,14 +1,16 @@
 import type { SetupStatusResponse } from "@gaia/shared/api/generated";
+import { connection } from "next/server";
 
+import { isSelfhostWeb } from "@/lib/selfhost";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 /**
  * Server-side `GET /setup/status` via the SSR base URL (internal → public).
- * `cache: "no-store"` keeps auth-mode switching live on every visit.
- * Returns null when unconfigured or unreachable so callers fall back
- * to the WorkOS redirect.
+ * Null on hosted GAIA, which mounts no /setup routes, and when unconfigured
+ * or unreachable so callers fall back to the WorkOS redirect.
  */
 export async function getSetupStatusServer(): Promise<SetupStatusResponse | null> {
+  if (!isSelfhostWeb()) return null;
   const apiBaseUrl = getServerApiBaseUrl();
   if (!apiBaseUrl) {
     console.error(
@@ -36,20 +38,14 @@ export async function getSetupStatusServer(): Promise<SetupStatusResponse | null
 
 /**
  * Resolve the instance auth mode for server-rendered auth pages from the
- * API's `GET /setup/status`; an unreachable probe resolves to "workos".
+ * API's `GET /setup/status`; hosted GAIA and an unreachable probe resolve to
+ * "workos". A self-host page reads it per request, never at build time.
  */
 export async function resolveInstanceAuthMode(): Promise<
   SetupStatusResponse["auth_mode"]
 > {
+  if (!isSelfhostWeb()) return "workos";
+  await connection();
   const setupStatus = await getSetupStatusServer();
   return setupStatus?.auth_mode ?? "workos";
-}
-
-/**
- * Whether this web server fronts a self-hosted instance: the self-host compose
- * and deploy templates set GAIA_SELFHOST=true, hosted GAIA never does. Never
- * touches the network; what the instance does comes from GET /setup/status.
- */
-export function isSelfhostWeb(): boolean {
-  return process.env.GAIA_SELFHOST === "true";
 }

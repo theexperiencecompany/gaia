@@ -180,6 +180,24 @@ def test_real_deployments_fail_fast(kind: DeploymentKind) -> None:
     assert profile.fail_fast is True
 
 
+@pytest.mark.parametrize(
+    ("kind", "refuses"),
+    [
+        (DeploymentKind.SELFHOST, True),
+        (DeploymentKind.PRODUCTION, False),
+        (DeploymentKind.DEVELOPMENT, False),
+    ],
+)
+def test_only_selfhost_refuses_to_boot_with_a_required_key_unset(
+    kind: DeploymentKind, refuses: bool
+) -> None:
+    profile = deployment_profile(
+        kind, "workos", unlimited_usage=False, local_code_sandbox=False, blob_store=None
+    )
+
+    assert profile.requires_complete_config is refuses
+
+
 def test_development_tolerates_missing_configuration() -> None:
     profile = deployment_profile(
         DeploymentKind.DEVELOPMENT,

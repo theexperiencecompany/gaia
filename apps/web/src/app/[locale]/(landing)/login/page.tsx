@@ -7,10 +7,6 @@ import { LoginForm } from "@/features/auth/components/LoginForm";
 import { apiBaseUrl } from "@/lib/api/client";
 import { generatePageMetadata } from "@/lib/seo";
 
-// Mode-switching depends on live instance state (setup/status):
-// this page can never be prerendered at build time.
-export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = generatePageMetadata({
   title: "Login",
   description:

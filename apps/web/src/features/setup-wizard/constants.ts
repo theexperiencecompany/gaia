@@ -5,7 +5,7 @@
  */
 
 import type { Transition } from "motion/react";
-import type { CredentialProvider } from "@/lib/api/setupTransport";
+import type { CredentialProvider } from "@/features/settings/api/providersApi";
 
 const EASE_OUT_QUART: [number, number, number, number] = [0.19, 1, 0.22, 1];
 

@@ -21,7 +21,7 @@ lane without grepping the workflow first.
 | What this PR changed | `changes.sh` | `base`, `files`, `py-source`, `docker-inputs`, `selfhost-inputs` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `playwright-pin`, `alert-rule-tools`, `evlog` |
-| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `doc-comments` |
+| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `doc-comments` |
 | The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `mirror-previous-gate`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `connect-cross-check`, `connect-binaries`, `disable-cf-builds` |

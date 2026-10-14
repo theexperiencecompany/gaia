@@ -44,10 +44,18 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
     LOCAL_SANDBOX_CONTAINER_PREFIX,
+    LOCAL_SANDBOX_CPUS,
+    LOCAL_SANDBOX_EXEC_TIMEOUT_GRACE_SECONDS,
     LOCAL_SANDBOX_HOME,
     LOCAL_SANDBOX_IMAGE,
+    LOCAL_SANDBOX_KILLED_EXIT_CODE,
     LOCAL_SANDBOX_LAYOUT,
     LOCAL_SANDBOX_LAYOUT_LABEL,
+    LOCAL_SANDBOX_MEMORY_LIMIT,
+    LOCAL_SANDBOX_MEMORY_SWAP_LIMIT,
+    LOCAL_SANDBOX_NETWORK,
+    LOCAL_SANDBOX_NETWORK_ICC_OPTION,
+    LOCAL_SANDBOX_PIDS_LIMIT,
     LOCAL_SANDBOX_START_TIMEOUT_SECONDS,
     LOCAL_SANDBOX_WORKSPACE_MOUNT,
     SELFHOST_WORKSPACE_VOLUME,
@@ -75,6 +83,9 @@ __all__ = [
 
 # Marker in coreutils' error output that maps to e2b's NotFoundException.
 _NOT_FOUND_MARKER = "No such file or directory"
+
+# Docker daemon wording when the sandbox network was created by an earlier start.
+_NETWORK_EXISTS_MARKER = "already exists"
 
 # Docker daemon wording for an absent container. Older daemons say
 # "No such object"; current ones name the object type.
@@ -308,8 +319,25 @@ class LocalDockerSandbox:
         await ensure_user_skills_dir(self.user_id)
         await asyncio.to_thread(_make_mount_sources, self.user_id)
 
+    async def _ensure_network(self) -> None:
+        """Create the isolated sandbox bridge network unless an earlier start did."""
+        rc, _, stderr = await self._run_docker(
+            "network",
+            "create",
+            "--driver",
+            "bridge",
+            "--opt",
+            LOCAL_SANDBOX_NETWORK_ICC_OPTION,
+            LOCAL_SANDBOX_NETWORK,
+        )
+        if rc != 0 and _NETWORK_EXISTS_MARKER not in stderr:
+            raise LocalSandboxError(
+                f"docker network create failed for {LOCAL_SANDBOX_NETWORK}: {stderr.strip()}"
+            )
+
     async def _create_container(self) -> tuple[int, str]:
         await self._prepare_workspace()
+        await self._ensure_network()
         mount_args = [
             arg
             for mount in _workspace_mounts(self.user_id)
@@ -325,6 +353,20 @@ class LocalDockerSandbox:
             "--label",
             f"{LOCAL_SANDBOX_LAYOUT_LABEL}={LOCAL_SANDBOX_LAYOUT}",
             *mount_args,
+            "--network",
+            LOCAL_SANDBOX_NETWORK,
+            "--memory",
+            LOCAL_SANDBOX_MEMORY_LIMIT,
+            "--memory-swap",
+            LOCAL_SANDBOX_MEMORY_SWAP_LIMIT,
+            "--pids-limit",
+            str(LOCAL_SANDBOX_PIDS_LIMIT),
+            "--cpus",
+            LOCAL_SANDBOX_CPUS,
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
             # Same uid as the API, so files either side creates stay writable by both.
             "--user",
             f"{os.getuid()}:{os.getgid()}",
@@ -476,20 +518,24 @@ class LocalDockerSandbox:
     ) -> CommandResult:
         """Run a command in the container through a login shell.
 
-        Non-zero exits raise CommandExitException with captured output; exceeding
-        the timeout kills the process group and raises TimeoutException.
+        Non-zero exits raise CommandExitException with captured output. The
+        timeout is enforced inside the container, where killing the command's
+        process group actually stops it; exceeding it raises TimeoutException.
         """
         if background:
             raise NotImplementedError(
                 "commands.run(background=True) is not supported by the local "
                 "sandbox; detach inside the command itself (nohup … &)"
             )
+        deadline = timeout if timeout and timeout > 0 else None
         # e2b runs commands through a login shell (`bash -l -c`) so profile
         # environment is present — mirror it exactly.
-        argv = [
-            "docker",
-            *await self._exec_argv(["/bin/bash", "-l", "-c", cmd], user=user, envs=envs, cwd=cwd),
-        ]
+        shell = ["/bin/bash", "-l", "-c", cmd]
+        if deadline is not None:
+            shell = ["timeout", "--signal=KILL", f"{deadline}s", *shell]
+        argv = ["docker", *await self._exec_argv(shell, user=user, envs=envs, cwd=cwd)]
+        loop = asyncio.get_running_loop()
+        started = loop.time()
         proc = await _spawn_process(argv)
         assert proc.stdout is not None and proc.stderr is not None
 
@@ -512,23 +558,34 @@ class LocalDockerSandbox:
             asyncio.create_task(pump(proc.stderr, stderr_parts, on_stderr)),
         ]
         waiter = asyncio.create_task(proc.wait())
-        deadline = timeout if timeout and timeout > 0 else None
-        _, pending = await asyncio.wait({*pumps, waiter}, timeout=deadline)
+        host_deadline = (
+            deadline + LOCAL_SANDBOX_EXEC_TIMEOUT_GRACE_SECONDS if deadline is not None else None
+        )
+        _, pending = await asyncio.wait({*pumps, waiter}, timeout=host_deadline)
         if pending:
-            # Deadline hit: SIGKILL the session leader's group so children of
-            # the shell die too, then drain before raising.
+            # The in-container timeout should already have fired; the daemon is
+            # unresponsive, so drop the exec client rather than hang the agent.
             _kill_process_group(proc.pid)
             await proc.wait()
             await asyncio.gather(*pumps, return_exceptions=True)
             waiter.cancel()
             raise TimeoutException(
-                f"command exceeded its {timeout}s timeout and was killed: {cmd[:200]}"
+                f"command exceeded its {timeout}s timeout and docker exec stopped responding: "
+                f"{cmd[:200]}"
             )
 
         await asyncio.gather(*pumps)
         exit_code = waiter.result()
         stdout_str = "".join(stdout_parts)
         stderr_str = "".join(stderr_parts)
+        if (
+            deadline is not None
+            and exit_code == LOCAL_SANDBOX_KILLED_EXIT_CODE
+            and loop.time() - started >= deadline
+        ):
+            raise TimeoutException(
+                f"command exceeded its {timeout}s timeout and was killed: {cmd[:200]}"
+            )
         if exit_code != 0:
             raise CommandExitException(
                 stderr=stderr_str, stdout=stdout_str, exit_code=exit_code, error=None

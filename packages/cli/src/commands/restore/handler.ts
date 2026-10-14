@@ -4,7 +4,13 @@
  * @module commands/restore/handler
  */
 
-import { getRestoreCommands, resolveRestoreFiles, runRestore } from "./flow.js";
+import {
+  getRestoreCommands,
+  type RestoreOptions,
+  resolveRestoreFiles,
+  restoreWarnings,
+  runRestore,
+} from "./flow.js";
 
 function out(line = ""): void {
   process.stdout.write(`${line}\n`);
@@ -17,22 +23,26 @@ export async function runRestoreCommand(
   options: {
     mongo?: string;
     postgres?: string;
+    env?: string;
     from?: string;
     dryRun?: boolean;
   } = {},
 ): Promise<void> {
+  const restoreOptions: RestoreOptions = {
+    mongoFile: options.mongo,
+    postgresFile: options.postgres,
+    apiEnvFile: options.env,
+    fromDir: options.from,
+  };
+  const resolved = resolveRestoreFiles(restoreOptions);
+  for (const warning of restoreWarnings(resolved))
+    errOut(`Warning: ${warning}`);
+
   if (options.dryRun) {
-    const cmds = getRestoreCommands(
-      resolveRestoreFiles({
-        mongoFile: options.mongo,
-        postgresFile: options.postgres,
-        fromDir: options.from,
-        dryRun: true,
-      }),
-    );
+    const cmds = getRestoreCommands(resolved);
     if (cmds.length === 0) {
       out(
-        "No backup files resolved. Use --from <dir> or --mongo/--postgres <file>.",
+        "No backup files resolved. Use --from <dir> or --mongo/--postgres/--env <file>.",
       );
       return;
     }
@@ -43,11 +53,9 @@ export async function runRestoreCommand(
 
   try {
     out("Starting GAIA restore...");
-    const result = await runRestore({
-      mongoFile: options.mongo,
-      postgresFile: options.postgres,
-      fromDir: options.from,
-    });
+    const result = await runRestore(restoreOptions, (message) =>
+      out(`  ${message}`),
+    );
     if (result.apiEnvFile)
       out(`Restored apps/api/.env from ${result.apiEnvFile}`);
     if (result.mongoFile) out(`Restored MongoDB from ${result.mongoFile}`);
@@ -56,7 +64,7 @@ export async function runRestoreCommand(
     for (const { label, file } of result.volumeFiles)
       out(`Restored ${label} from ${file}`);
     out(
-      "Restore complete. Recreate the app containers so they load the restored settings: docker compose -f infra/docker/docker-compose.selfhost.yml up -d --force-recreate gaia-backend arq_worker",
+      "Restore complete. Run 'gaia doctor' to confirm every dependency is ready.",
     );
   } catch (e) {
     errOut((e as Error).message);

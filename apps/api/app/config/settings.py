@@ -113,9 +113,9 @@ class Settings(BrowserHostSettings):
     # sessions and derives Fernet keys for stored provider credentials.
     INSTANCE_SECRET: str | None = None
 
-    # Ollama endpoint as seen from THIS process. Inside Docker the host is
-    # reached via the special host-gateway DNS name; native runs use localhost.
-    OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
+    # Ollama endpoint as seen from THIS process; unset means no Ollama lane.
+    # Inside Docker the host is http://host.docker.internal:11434.
+    OLLAMA_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Environment & Deployment
@@ -605,7 +605,7 @@ class Settings(BrowserHostSettings):
 
     @model_validator(mode="after")
     def _refuse_what_the_deployment_must_not_run(self) -> Self:
-        """Refuse a real deployment that sets a development override or lacks a required key.
+        """Refuse a real deployment that sets a development override, or a self-host missing a required key.
 
         Raises RuntimeError rather than ValueError so pydantic does not fold a
         boot refusal into a field ValidationError. Building the profile refuses
@@ -630,7 +630,7 @@ class Settings(BrowserHostSettings):
             ):
                 # A ValueError: a malformed value, reported as a field error.
                 raise ValueError("DODO_PAYMENTS_BASE_URL must use https:// in production")
-        if profile.fail_fast:
+        if profile.requires_complete_config:
             missing = sorted(key for key in required_keys(profile) if getattr(self, key) is None)
             if missing:
                 raise RuntimeError(

@@ -63,8 +63,8 @@ export function SetupChecklistBanner({
 }: SetupChecklistBannerProps = {}) {
   const { data: status } = useSetupStatus();
   const { data: catalog } = useProviderCatalog();
-  // Instance setup is the admin's job; a member could not act on any item.
-  const isMember = useCurrentUser().role === "member";
+  // Instance setup is the admin's job; nobody else (or an unknown role) sees it.
+  const isAdmin = useCurrentUser().role === "admin";
   const dismissedKeys = useSetupChecklistStore((s) => s.dismissedKeys);
   const dismiss = useSetupChecklistStore((s) => s.dismiss);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -75,7 +75,7 @@ export function SetupChecklistBanner({
   );
 
   if (
-    isMember ||
+    !isAdmin ||
     items.length === 0 ||
     isChecklistDismissed(items, dismissedKeys)
   )

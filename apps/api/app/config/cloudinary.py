@@ -8,10 +8,9 @@ strategy) instead of configuring the global client with holes.
 
 import cloudinary
 
-from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.services.providers.provider_credentials_service import (
-    ProviderConfig,
+    cloudinary_account,
     resolved_config,
 )
 from app.utils.errors import AppError
@@ -36,20 +35,17 @@ def init_cloudinary() -> None:
     env-only. Raises ProviderNotConfiguredError unless all three resolve; the
     WARN strategy warns once and retries on next access.
     """
-    config: ProviderConfig | None = resolved_config("cloudinary")
-    api_key = config["api_key"] if config else None
-    cloud_name = settings.CLOUDINARY_CLOUD_NAME
-    api_secret = settings.CLOUDINARY_API_SECRET
-    if not (cloud_name and api_key and api_secret):
+    account = cloudinary_account(resolved_config("cloudinary"))
+    if account is None:
         raise ProviderNotConfiguredError(
             "Cloudinary is not fully configured: cloud name, API key, and "
             "API secret are all required (a stored credential carries only "
             "the API key today; cloud name and secret come from env)"
         )
     cloudinary.config(
-        cloud_name=cloud_name,
-        api_key=api_key,
-        api_secret=api_secret,
+        cloud_name=account.cloud_name,
+        api_key=account.api_key,
+        api_secret=account.api_secret,
     )
 
 

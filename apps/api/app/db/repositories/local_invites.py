@@ -39,10 +39,14 @@ class LocalInvitesRepository(MongoRepository[LocalInviteDocument, LocalInviteUpd
         """Look up a live invite without spending it; None when unknown, used, revoked or expired."""
         return await self._find_one(_redeemable(token_hash, now))
 
-    async def redeem(self, token_hash: str, now: datetime) -> LocalInviteDocument | None:
-        """Atomically mark a live invite used; None when unknown, used, revoked or expired."""
+    async def redeem(
+        self, token_hash: str, now: datetime, used_by: str
+    ) -> LocalInviteDocument | None:
+        """Atomically mark a live invite used by an account; None when unknown, used, revoked or expired."""
         return await self._apply_raw_update(
-            _redeemable(token_hash, now), {"$set": {"used_at": now}}, scope=REPO_GLOBAL_SCOPE
+            _redeemable(token_hash, now),
+            {"$set": {"used_at": now, "used_by": used_by}},
+            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def revoke(self, invite_id: str, now: datetime) -> bool:

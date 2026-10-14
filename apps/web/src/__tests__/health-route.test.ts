@@ -21,7 +21,22 @@ describe("GET /api/health", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("reports ok on hosted GAIA without asking for setup status", async () => {
+    vi.stubEnv("API_BASE_URL_INTERNAL", "https://api.heygaia.io/api/v1/");
+    const fetchSpy = vi.fn(async (_url: string) => new Response("ok"));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await GET();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: "ok" });
+    expect(fetchSpy.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.heygaia.io/api/v1/health",
+    ]);
+  });
+
   it("probes the internal API base", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
     vi.stubEnv("API_BASE_URL_INTERNAL", "http://gaia-backend:8000/api/v1/");
     const fetchSpy = vi.fn(async (url: string) =>
       url.endsWith("/setup/status")

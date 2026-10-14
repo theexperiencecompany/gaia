@@ -14,7 +14,7 @@ import pytest
 
 from app.core import runtime_config_subscriber as subscriber_module
 from app.db.redis import redis_cache
-from app.services.providers.provider_credentials_service import RUNTIME_CONFIG_CHANNEL
+from app.services.runtime.config_updates import RUNTIME_CONFIG_CHANNEL
 
 
 class FakePubSub:
@@ -104,12 +104,18 @@ async def test_non_dict_payload_is_ignored(applied: list[str]) -> None:
     assert applied == []
 
 
-def test_parse_provider_strips_prefix() -> None:
-    assert subscriber_module._parse_provider('{"scope": "provider:tavily"}') == "tavily"
+async def test_a_composio_auth_config_save_on_another_pod_drops_this_pods_set(
+    applied: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dropped: list[int] = []
+    monkeypatch.setattr(
+        subscriber_module, "invalidate_auth_config_cache", lambda: dropped.append(1)
+    )
 
+    await subscriber_module._apply_update(json.dumps({"scope": "composio_auth_configs"}))
 
-def test_parse_provider_handles_bytes() -> None:
-    assert subscriber_module._parse_provider(b'{"scope": "provider:ollama"}') == "ollama"
+    assert dropped == [1]
+    assert applied == []
 
 
 # ---------------------------------------------------------------------------

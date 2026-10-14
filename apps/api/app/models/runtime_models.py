@@ -53,3 +53,9 @@ class ProviderCredentialUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data_encrypted: str | None = None
+
+
+class SetupWizardSetting(BaseModel):
+    """The setup wizard's progress as stored under instance_settings key setup."""
+
+    dismissed: bool = False

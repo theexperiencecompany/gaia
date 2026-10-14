@@ -32,14 +32,12 @@ from app.models.auth_models import (
     LocalCredentialDocument,
     LocalCredentialUpdate,
     LocalInviteDocument,
-    LocalInviteUpdate,
 )
 from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import UserDocument
 from app.utils.local_auth_utils import (
     issue_session_token,
     resolve_session_token,
-    verify_session_token,
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceMemberJoined
@@ -189,6 +187,14 @@ def credential_store():
         await asyncio.sleep(0)
         return admin_slot_taken()
 
+    async def delete(doc_id: str) -> bool:
+        await asyncio.sleep(0)
+        doc = next((c for c in store.values() if c.id == doc_id), None)
+        if doc is None:
+            return False
+        del store[doc.user_id]
+        return True
+
     holder = MagicMock()
     holder.store = store
     holder.get_by_user_id = AsyncMock(side_effect=get_by_user_id)
@@ -196,6 +202,7 @@ def credential_store():
     holder.try_create = AsyncMock(side_effect=try_create)
     holder.update = AsyncMock(side_effect=update)
     holder.admin_exists = AsyncMock(side_effect=admin_exists)
+    holder.delete = AsyncMock(side_effect=delete)
     return holder
 
 
@@ -228,19 +235,15 @@ class InviteStore:
             None,
         )
 
-    async def redeem(self, token_hash: str, now: datetime) -> LocalInviteDocument | None:
+    async def redeem(
+        self, token_hash: str, now: datetime, used_by: str
+    ) -> LocalInviteDocument | None:
         await asyncio.sleep(0)
         invite = await self.find_redeemable(token_hash, now)
         if invite is None:
             return None
-        self.invites[invite.id] = invite.model_copy(update={"used_at": now})
+        self.invites[invite.id] = invite.model_copy(update={"used_at": now, "used_by": used_by})
         return self.invites[invite.id]
-
-    async def update(self, invite_id: str, update: LocalInviteUpdate) -> LocalInviteDocument:
-        self.invites[invite_id] = self.invites[invite_id].model_copy(
-            update=update.model_dump(exclude_unset=True)
-        )
-        return self.invites[invite_id]
 
 
 class SettingsStore:
@@ -263,7 +266,6 @@ def invite_store(monkeypatch) -> InviteStore:
         members_service.local_invites_repository, "find_redeemable", store.find_redeemable
     )
     monkeypatch.setattr(members_service.local_invites_repository, "redeem", store.redeem)
-    monkeypatch.setattr(members_service.local_invites_repository, "update", store.update)
     return store
 
 
@@ -318,6 +320,7 @@ def patched_repos(directory, credential_store, monkeypatch):
         patch.object(real_creds, "try_create", credential_store.try_create),
         patch.object(real_creds, "update", credential_store.update),
         patch.object(real_creds, "admin_exists", credential_store.admin_exists),
+        patch.object(real_creds, "delete", credential_store.delete),
     ):
         yield directory
 
@@ -425,7 +428,7 @@ class TestSignup:
         assert body["user"]["role"] == "admin"
         assert credential_store.store[created.id].slot == ADMIN_CREDENTIAL_SLOT
 
-        assert verify_session_token(response.cookies["gaia_session"]) == created.id
+        assert await resolve_session_token(response.cookies["gaia_session"]) == created.id
 
     async def test_second_signup_is_403_registration_closed(
         self, patched_repos, credential_store, settings_store, _instance_secret
@@ -648,7 +651,7 @@ class TestMemberSignup:
         member = patched_repos.by_email["kid@gaia.dev"]
         assert member.role is InstanceRole.MEMBER
         assert credential_store.store[member.id].slot is None
-        assert verify_session_token(response.cookies["gaia_session"]) == member.id
+        assert await resolve_session_token(response.cookies["gaia_session"]) == member.id
         redeemed = invite_store.invites[invite.id]
         assert redeemed.used_at is not None
         assert redeemed.used_by == member.id
@@ -713,6 +716,35 @@ class TestMemberSignup:
         assert response.status_code == 403
         assert response.json()["code"] == "invite_invalid"
 
+    async def test_a_failed_credential_write_leaves_no_account_and_keeps_the_invite(
+        self, patched_repos, credential_store, invite_store, settings_store, _instance_secret
+    ):
+        invite = invite_store.add("retry-me")
+        credential_store.create.side_effect = RuntimeError("mongo write failed")
+
+        response = await _signup("kid@gaia.dev", invite="retry-me")
+
+        assert response.status_code == 500
+        assert "kid@gaia.dev" not in patched_repos.by_email
+        assert invite_store.invites[invite.id].used_at is None
+        assert all(c.slot == ADMIN_CREDENTIAL_SLOT for c in credential_store.store.values())
+
+    async def test_racing_signups_on_one_invite_leave_one_account_and_no_orphans(
+        self, patched_repos, credential_store, invite_store, settings_store, _instance_secret
+    ):
+        invite_store.add("contested")
+
+        responses = await asyncio.gather(
+            _signup("first@gaia.dev", invite="contested"),
+            _signup("second@gaia.dev", invite="contested"),
+        )
+
+        assert sorted(r.status_code for r in responses) == [201, 403]
+        members = [u for u in patched_repos.by_email.values() if u.role is InstanceRole.MEMBER]
+        assert len(members) == 1
+        member_credentials = [c for c in credential_store.store.values() if c.slot is None]
+        assert [c.user_id for c in member_credentials] == [members[0].id]
+
 
 @pytest.mark.integration
 class TestRemovedMember:
@@ -769,7 +801,7 @@ class TestLogin:
 
         assert response.status_code == 200, response.text
         assert response.json()["user"]["email"] == "admin@gaia.dev"
-        assert verify_session_token(response.cookies["gaia_session"]) == admin.id
+        assert await resolve_session_token(response.cookies["gaia_session"]) == admin.id
 
     async def test_wrong_password_is_401_invalid_credentials(self, admin, _instance_secret):
         app = _build_router_app()
@@ -1107,26 +1139,6 @@ class TestChangePassword:
         assert update_arg.token_version == 1  # bumped from 0 → 1
 
 
-# ---------------------------------------------------------------------------
-# Logout
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestLogout:
-    async def test_logout_clears_cookie_and_reports_local_mode(self, _instance_secret):
-        app = _build_router_app()
-        client = await _client(app)
-        async with client:
-            response = await client.post("/api/v1/auth/logout")
-
-        assert response.status_code == 200
-        assert response.json() == {"mode": "local"}
-        cleared = response.headers["set-cookie"]
-        assert "gaia_session=" in cleared
-        assert "Max-Age=0" in cleared or "Expires=Thu, 01 Jan 1970" in cleared
-
-
 def _build_user_route_app() -> FastAPI:
     """Build an app carrying the real user router behind the real middleware.
 
@@ -1139,6 +1151,12 @@ def _build_user_route_app() -> FastAPI:
     app.include_router(user_router, prefix="/api/v1/user", tags=["User"])
     app.add_middleware(WorkOSAuthMiddleware, workos_client=MagicMock())
     return app
+
+
+def test_local_auth_has_no_second_logout_route():
+    from app.api.v1.endpoints.auth_local import router as auth_router
+
+    assert "/logout" not in {getattr(route, "path", None) for route in auth_router.routes}
 
 
 @pytest.mark.integration
@@ -1232,14 +1250,17 @@ class TestSessionCookies:
         assert "Secure" in tls.headers.get("set-cookie", "")
 
     async def test_cleared_cookie_keeps_flags_in_non_production(
-        self, _instance_secret, monkeypatch
+        self, patched_repos, credential_store, _instance_secret, monkeypatch
     ):
         """Mirror the set-cookie attributes on the deletion cookie, minus Secure on LAN http."""
         monkeypatch.setattr(settings, "ENV", "selfhost")
-        app = _build_router_app()
-        client = await _client(app)
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        admin = seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+        token = await issue_session_token(admin.id)
+        client = await _client(_build_user_route_app())
         async with client:
-            response = await client.post("/api/v1/auth/logout")
+            client.cookies.set("gaia_session", token)
+            response = await client.post("/api/v1/user/logout")
 
         cleared = response.headers["set-cookie"]
         assert "HttpOnly" in cleared
@@ -1258,7 +1279,7 @@ class TestSessionTokens:
     async def test_roundtrip_returns_user_id(self, _instance_secret):
         user_id = str(uuid4())
         token = await issue_session_token(user_id)
-        assert verify_session_token(token) == user_id
+        assert await resolve_session_token(token) == user_id
 
     async def test_expired_token_rejected(self, _instance_secret):
         expired = jwt.encode(
@@ -1266,13 +1287,13 @@ class TestSessionTokens:
             TEST_SECRET,
             algorithm=JWT_ALGORITHM,
         )
-        assert verify_session_token(expired) is None
+        assert await resolve_session_token(expired) is None
 
     async def test_tampered_signature_rejected(self, _instance_secret):
         token = await issue_session_token("u1")
         head, payload, sig = token.split(".")
         tampered = f"{head}.{payload}.{'0' if sig[0] != '0' else '1'}{sig[1:]}"
-        assert verify_session_token(tampered) is None
+        assert await resolve_session_token(tampered) is None
 
     async def test_wrong_key_rejected(self, _instance_secret):
         foreign = jwt.encode(
@@ -1280,15 +1301,23 @@ class TestSessionTokens:
             "a-completely-different-secret",
             algorithm=JWT_ALGORITHM,
         )
-        assert verify_session_token(foreign) is None
+        assert await resolve_session_token(foreign) is None
 
-    async def test_verify_before_secret_resolution_fails_loud(self, monkeypatch):
-        """Raise on a cold secret cache; a skipped resolve must not look like a bad session."""
+    async def test_resolving_a_session_decodes_the_token_once(self, _instance_secret, monkeypatch):
         from app.utils import local_auth_utils
 
-        monkeypatch.setattr(local_auth_utils, "_resolved_secret", None)
-        with pytest.raises(RuntimeError, match="secret"):
-            local_auth_utils.verify_session_token("anything")
+        token = await issue_session_token("u-once")
+        real_decode = local_auth_utils.jwt.decode
+        decodes: list[str] = []
+
+        def counting_decode(*args, **kwargs):
+            decodes.append(args[0])
+            return real_decode(*args, **kwargs)
+
+        monkeypatch.setattr(local_auth_utils.jwt, "decode", counting_decode)
+
+        assert await resolve_session_token(token) == "u-once"
+        assert decodes == [token]
 
     async def test_resolve_session_token_warms_secret_then_verifies(
         self, _instance_secret, monkeypatch

@@ -48,9 +48,9 @@ export async function runBackupCommand(
     out(`MongoDB dump: ${result.mongoFile}`);
     out(`PostgreSQL dump: ${result.postgresFile}`);
     out(`API settings (apps/api/.env): ${result.apiEnvFile}`);
-    for (const { label, file } of result.volumeFiles ?? [])
+    for (const { label, file } of result.volumeFiles)
       out(`${label} archive: ${file}`);
-    if (result.warnings?.length) {
+    if (result.warnings.length) {
       for (const w of result.warnings) out(`Note: ${w}`);
     }
     out("");
@@ -69,7 +69,7 @@ export async function runBackupCommand(
     out(
       `  docker compose -f infra/docker/docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < ${result.mongoFile}`,
     );
-    for (const { volume, file } of result.volumeFiles ?? []) {
+    for (const { volume, file } of result.volumeFiles) {
       out(
         `  docker run --rm -v ${volume}:/data -v $(dirname ${file}):/backups alpine sh -c "${volumeRestoreScript(path.basename(file))}"`,
       );

@@ -18,6 +18,9 @@ INVITE_INVALID = "invite_invalid"
 # 409 — an instance administrator account cannot be removed.
 CANNOT_REMOVE_ADMIN = "cannot_remove_admin"
 
+# 503 — a removed member's automation could not all be stopped; removing again retries.
+MEMBER_OFFBOARDING_INCOMPLETE = "member_offboarding_incomplete"
+
 # 401 — the bot request's X-Bot-API-Key is missing or wrong (bot misconfigured).
 BOT_API_KEY_INVALID = "BOT_API_KEY_INVALID"
 

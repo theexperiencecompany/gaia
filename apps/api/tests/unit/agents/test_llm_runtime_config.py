@@ -86,12 +86,7 @@ class _FakeChatOpenAI:
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch):
-    """Blank credentials and isolate module-level state between tests.
-
-    OLLAMA_BASE_URL is removed from os.environ (not just settings): the env
-    fallback reads the explicit var only, so an ambient value on a developer
-    machine would leak a lane into every test here.
-    """
+    """Blank credentials and isolate module-level state between tests."""
     # Runtime-stored credentials only exist on a self-hosted instance.
     monkeypatch.setattr(client_module.settings, "ENV", "selfhost")
     monkeypatch.setattr(client_module.settings, "AUTH_MODE", "local")
@@ -100,7 +95,7 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(client_module.settings, "OPENROUTER_BASE_URL", None, raising=False)
     monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None, raising=False)
     monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", None, raising=False)
-    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.setattr(client_module.settings, "OLLAMA_BASE_URL", None)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_API_KEY", None, raising=False)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_BASE_URL", None, raising=False)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_MODEL", None, raising=False)
@@ -146,9 +141,9 @@ class TestOllamaInit:
         assert cast(Any, instance).profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
 
     def test_explicit_env_var_builds_expected_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Take the keyless lane env source from the explicit OLLAMA_BASE_URL env var."""
+        """Take the keyless lane env source from OLLAMA_BASE_URL."""
         monkeypatch.setattr(client_module, "ChatOpenAI", _FakeChatOpenAI)
-        monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11500")
+        monkeypatch.setattr(client_module.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:11500")
         _FakeChatOpenAI.calls.clear()
 
         init_ollama_llm().loader_func()
@@ -157,15 +152,8 @@ class TestOllamaInit:
         assert kwargs["base_url"] == "http://127.0.0.1:11500/v1"
         assert kwargs["model"] == "llama3.2"
 
-    def test_code_default_url_is_not_a_configuration_source(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Reject the settings default URL as a source; only an explicitly set env var counts."""
-        monkeypatch.setattr(
-            client_module.settings, "OLLAMA_BASE_URL", "http://host.docker.internal:11434"
-        )
-        # _hermetic already removed the env var.
-
+    def test_an_unset_endpoint_is_not_a_configuration_source(self) -> None:
+        """No Ollama lane until an endpoint is set; a guessed default dies on connect."""
         with pytest.raises(LLMNotConfiguredError):
             init_ollama_llm().loader_func()
         assert client_module.resolved_config(LLMProviderName.OLLAMA) is None
@@ -200,7 +188,7 @@ class TestActionableMissingConfig:
 
     def test_ollama_with_explicit_env_is_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Ollama is keyless: an explicitly-set endpoint env var satisfies it."""
-        monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+        monkeypatch.setattr(client_module.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")
         init_ollama_llm().loader_func()
 
 
@@ -299,7 +287,7 @@ class TestAvailableProviders:
     def test_explicit_ollama_env_makes_it_available(
         self, registry: dict[str, object], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+        monkeypatch.setattr(client_module.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
         available = _get_available_providers()
 

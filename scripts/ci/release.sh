@@ -15,8 +15,9 @@
 #                        must then be published even when nx sees api/web
 #                        unaffected. Writes required=true|false.
 #   pin-selfhost-release Wait for the release commit's gaia + gaia-web :<sha>
-#                        images and tag them v<CLI version>, the pair that CLI
-#                        release's `gaia update` pins.
+#                        images and main.yml's quality gate on it, then tag
+#                        them v<CLI version>, the pair that CLI release's
+#                        `gaia update` pins.
 #   connect-cross-check  Cross-compile tools/gaia-connect for every published
 #                        target and discard the result — the pre-merge proof
 #                        that a release build cannot fail on a target the
@@ -36,6 +37,7 @@
 #   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION, SHA (required).
 #   cli-release-images    GITHUB_OUTPUT; full history (HEAD^ must exist).
 #   pin-selfhost-release  VERSION, SHA (required; HEAD must be SHA);
+#                         GH_TOKEN (actions:read), GITHUB_REPOSITORY;
 #                         PIN_WAIT_SECONDS (default 1800), PIN_POLL_SECONDS
 #                         (default 30). Needs a GHCR login.
 #   connect-cross-check   none.
@@ -418,6 +420,31 @@ cmd_cli_release_images() {
 # timeout fails loud instead of falling back to whatever :latest is. Nothing is
 # tagged until both exist, so a timeout never leaves half a pair. Idempotent:
 # an existing v<version> tag is kept, because an install may already run it.
+# main.yml's quality-gate verdict across the push runs on <sha>: passed when
+# any run's gate succeeded, failed when every run's gate finished otherwise,
+# pending while one is still running or no run exists yet.
+main_quality_gate() {
+  local sha="$1"
+  local api="repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}/actions"
+  local run_ids run_id state verdict=pending finished=0 running=0
+  # Called inside $(...), where errexit does not reach: every gh call returns
+  # its own failure so the caller can die on it.
+  run_ids=$(gh api "$api/workflows/main.yml/runs?head_sha=$sha&event=push" --jq '.workflow_runs[].id') || return 1
+  for run_id in $run_ids; do
+    state=$(gh api "$api/runs/$run_id/jobs?filter=latest&per_page=100" \
+      --jq '.jobs[] | select(.name == "quality-gate") | "\(.status) \(.conclusion)"') || return 1
+    case "$state" in
+      "completed success") verdict=passed ;;
+      completed\ *) finished=1 ;;
+      *) running=1 ;;
+    esac
+  done
+  if [[ "$verdict" != passed ]] && ((finished == 1 && running == 0)); then
+    verdict=failed
+  fi
+  echo "$verdict"
+}
+
 cmd_pin_selfhost_release() {
 
   : "${VERSION:?VERSION is required}"
@@ -440,8 +467,10 @@ cmd_pin_selfhost_release() {
     fi
   done
 
+  # build.yml publishes :<sha> before main.yml's quality gate has judged the
+  # commit, so the images alone do not say the release commit is green.
   local deadline=$((SECONDS + wait_seconds))
-  local missing
+  local missing gate
   while :; do
     missing=()
     for repo in ${pending[@]+"${pending[@]}"}; do
@@ -449,11 +478,17 @@ cmd_pin_selfhost_release() {
         missing+=("$GHCR_NAMESPACE/$repo:$SHA")
       fi
     done
-    ((${#missing[@]} == 0)) && break
+    gate=$(main_quality_gate "$SHA") ||
+      ci_die "could not read main.yml's runs for $SHA from the Actions API (GH_TOKEN needs actions:read)."
+    if [[ "$gate" == failed ]]; then
+      ci_die "main.yml's quality gate failed on $SHA; a release commit must pass it. Fix master and cut the release from a green commit."
+    fi
+    [[ "$gate" == passed ]] && ((${#missing[@]} == 0)) && break
     if ((SECONDS >= deadline)); then
+      [[ "$gate" == passed ]] || ci_die "Timed out after ${wait_seconds}s waiting for main.yml's quality gate to pass on $SHA (a run cancelled by a newer master push needs a re-run: gh run rerun <id>), then re-dispatch this publish."
       ci_die "Timed out after ${wait_seconds}s waiting for ${missing[*]}. build.yml publishes them for the release commit: re-run the master run for $SHA, then re-dispatch this publish."
     fi
-    echo "Waiting for ${missing[*]}"
+    echo "Waiting for: quality gate ${gate}${missing[*]:+, ${missing[*]}}"
     sleep "$poll_seconds"
   done
 

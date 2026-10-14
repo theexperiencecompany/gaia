@@ -12,9 +12,6 @@ vi.mock("../../src/lib/version.js", () => ({
   get GAIA_RELEASE_IMAGE_TAG() {
     return `v${release.version}`;
   },
-  get CLI_RELEASE_GIT_TAG() {
-    return `cli-v${release.version}`;
-  },
 }));
 
 import { readPinnedGaiaVersion } from "../../src/lib/env-writer.js";
