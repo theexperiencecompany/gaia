@@ -28,11 +28,7 @@ from app.models.auth_models import (
     SignupRequest,
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.members_service import (
-    admit_member,
-    ensure_invite_redeemable,
-    record_member_joined,
-)
+from app.services.members_service import admit_member, redeem_admission
 from app.utils.auth_utils import build_user_context, session_cookie_secure
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
@@ -139,21 +135,20 @@ def _registration_closed(email: str) -> Never:
     )
 
 
-async def _delete_user_best_effort(user_id: str) -> None:
-    """Remove the user row this request created moments ago after losing the
-    registration claim race.
+async def _discard_partial_account(user_id: str, credential_id: str | None) -> None:
+    """Remove the rows a failed signup created so its email stays free to sign up with.
 
-    Best-effort deliberately: the rejection itself is already decided by Mongo,
-    so a transient cleanup failure must not mask the correct 403 with a 500 —
-    it logs loudly instead (same posture as users.touch_last_active). The row
-    is unreachable garbage either way: its id was never returned and no session
-    was issued for it.
+    Best-effort deliberately: the signup's own failure is the response, so a
+    cleanup failure logs loudly instead of masking it. The rows are unreachable
+    either way: no session was issued for them.
     """
     try:
+        if credential_id is not None:
+            await local_credentials_repository.delete(credential_id)
         await user_repository.delete(user_id)
     except Exception as exc:
         log.warning(
-            "signup-race compensating user delete failed",
+            "signup compensating account delete failed",
             user={"id": user_id},
             error=str(exc),
             error_type=type(exc).__name__,
@@ -182,9 +177,9 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     log.set(operation="local_signup", email=email, client_ip=_client_ip(request))
 
     admin_exists = await local_credentials_repository.admin_exists()
-    if admin_exists and body.invite is not None:
-        # A spent link must read as spent, not as closed, whoever presents it.
-        await ensure_invite_redeemable(body.invite)
+    # Decided before the email check: a spent link must read as spent, not as
+    # closed, whoever presents it. Nothing is spent until the account exists.
+    admission = await admit_member(body.invite) if admin_exists else None
 
     if await user_repository.get_by_email(email) is not None:
         # Email already belongs to an existing identity. Attaching a credential
@@ -222,19 +217,28 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
         if credential is None:
             # Lost the race — another concurrent signup holds the admin slot now.
             # Remove the user row this request just created so no orphan remains.
-            await _delete_user_best_effort(user.id)
+            await _discard_partial_account(user.id, None)
             _registration_closed(email)
     else:
-        admission = await admit_member(body.invite)
         if admission is None:
             _registration_closed(email)
         user = await user_repository.create(
             UserDocument(email=email, name=name, role=InstanceRole.MEMBER)
         )
-        credential = await local_credentials_repository.create(
-            LocalCredentialDocument(user_id=user.id, password_hash=password_hash)
-        )
-        await record_member_joined(admission, user.id)
+        # The invite is spent last, so any failure before it leaves the invite live
+        # and, with these rows removed, the email free for a retry.
+        try:
+            credential = await local_credentials_repository.create(
+                LocalCredentialDocument(user_id=user.id, password_hash=password_hash)
+            )
+        except Exception:
+            await _discard_partial_account(user.id, None)
+            raise
+        try:
+            await redeem_admission(admission, user.id)
+        except Exception:
+            await _discard_partial_account(user.id, credential.id)
+            raise
 
     token = await issue_session_token(user.id, credential.token_version)
     log.audit("account created", actor=user.id, mode="local", role=user.role)
