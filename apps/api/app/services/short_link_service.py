@@ -6,12 +6,19 @@ from Telegram, WhatsApp and email, where the viewer is never signed in. Anyone
 holding a link can open it until the owner revokes it. What it serves is always
 the target type's safe projection (app/services/short_link_projections.py),
 never the stored document.
+
+Two ways a link comes to exist, with one rule between them: sharing is the
+owner's call. share_short_link is the owner asking for a link (the copy-link
+control) and always yields one. optional_short_link is GAIA attaching a link
+to something it hands over (a file it wrote, a finished todo, a workflow result,
+a brief); it never re-shares a target the owner turned sharing off for, and a
+failure to mint costs only the link, never the message carrying it.
 """
 
 from pathlib import Path
 import secrets
 
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from app.config.settings import settings
 from app.db.repositories.short_links import (
@@ -22,6 +29,7 @@ from app.db.repositories.short_links import (
 from app.models.short_link_models import PublicShortLinkView, ShortLink, ShortLinkTargetType
 from app.services.analytics_service import capture
 from app.services.short_link_projections import project_target, session_artifact_file
+from app.utils.log_identifiers import hash_short_link_slug
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.short_links import (
     ShortLinkCreated,
@@ -54,14 +62,12 @@ def _build_url(slug: str) -> str:
     return f"{settings.SHORTLINK_BASE_URL}/{slug}"
 
 
-async def get_or_create_short_link(
-    user_id: str, target_type: ShortLinkTargetType, target_id: str
-) -> str:
-    """Return the heygaia.link URL for a target user_id owns, minting it once.
+async def share_short_link(user_id: str, target_type: ShortLinkTargetType, target_id: str) -> str:
+    """Return the target's live link, minting one when none is live.
 
-    Idempotent per (user_id, target_type, target_id); a revoked link stays dead and the
-    next mint draws a fresh slug. Callers pass targets they already hold; the
-    public mint endpoint proves ownership first.
+    Called directly it is the owner sharing (callers prove ownership first), the
+    only path that re-enables a target they stopped sharing. Idempotent: racing
+    callers all get the one live link, so a revoke never leaves a second alive.
     """
     existing = await short_link_repository.get_live_for_target(user_id, target_type, target_id)
     if existing:
@@ -109,6 +115,38 @@ async def get_or_create_short_link(
     )
 
 
+async def optional_short_link(
+    user_id: str, target_type: ShortLinkTargetType, target_id: str
+) -> str | None:
+    """Return the link GAIA attaches to something it hands the owner, or None.
+
+    None when the owner stopped sharing the target (their newest link is revoked;
+    that sticks until they share it themselves) or when minting fails — a Mongo
+    error or exhausted namespace is an error event and costs only the link.
+    """
+    try:
+        latest = await short_link_repository.get_latest_for_target(user_id, target_type, target_id)
+        if latest is not None and latest.revoked:
+            log.info(
+                "short_link.sharing_disabled",
+                user_id=user_id,
+                target_type=target_type.value,
+            )
+            return None
+        if latest is not None:
+            return _build_url(latest.slug)
+        return await share_short_link(user_id, target_type, target_id)
+    except (PyMongoError, ShortLinkExhaustedError) as exc:
+        log.error(
+            "short_link.mint_failed",
+            user_id=user_id,
+            target_type=target_type.value,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return None
+
+
 async def _resolve_live_link(slug: str) -> ShortLink | None:
     """Return the link behind slug; None when unknown or revoked."""
     link = await short_link_repository.get_by_slug(slug)
@@ -145,9 +183,18 @@ async def get_public_file(slug: str) -> Path | None:
     return await session_artifact_file(link.user_id, link.target_id)
 
 
-async def revoke_short_link(user_id: str, slug: str) -> bool:
-    """Owner revocation: the URL goes dead immediately. False if not the owner's."""
-    revoked = await short_link_repository.revoke(user_id, slug)
+async def stop_sharing(user_id: str, target_type: ShortLinkTargetType, target_id: str) -> bool:
+    """Turn sharing off for a target on its owner's behalf: its live link dies at once.
+
+    The revoked link stays on record as the target's newest, which is what
+    stops optional_short_link from handing out a fresh one. Idempotent; False
+    when the target had no live link to revoke.
+    """
+    live = await short_link_repository.get_live_for_target(user_id, target_type, target_id)
+    if live is None:
+        return False
+    revoked = await short_link_repository.revoke(user_id, live.slug)
     if revoked:
+        log.set(short_link={"slug_hash": hash_short_link_slug(live.slug)})
         capture(UserId(user_id), ShortLinkRevoked())
     return revoked

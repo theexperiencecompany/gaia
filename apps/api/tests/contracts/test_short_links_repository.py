@@ -8,6 +8,7 @@ test_conversations_repository.py.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 import uuid
 
 from pymongo.errors import DuplicateKeyError
@@ -167,6 +168,49 @@ class TestShortLinksMintingIdempotency:
             "user-1", ShortLinkTargetType.BRIEFING, "same-id"
         )
         assert found is not None and found.slug == other.slug
+
+
+class TestShortLinksLatestForTarget:
+    """The newest link tells whether the owner shares a target, stopped, or never started."""
+
+    async def test_none_when_never_shared(self, indexed_repo):
+        assert (
+            await indexed_repo.get_latest_for_target(
+                "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1"
+            )
+            is None
+        )
+
+    async def test_a_revoked_link_stays_the_newest_after_stopping(self, indexed_repo, make_doc):
+        live = await indexed_repo.create(make_doc(target_id="t1"))
+        await indexed_repo.revoke("user-1", live.slug)
+
+        latest = await indexed_repo.get_latest_for_target(
+            "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1"
+        )
+
+        assert latest is not None and latest.slug == live.slug and latest.revoked
+
+    async def test_re_sharing_makes_the_fresh_live_link_the_newest(self, indexed_repo, make_doc):
+        old = make_doc(target_id="t1", revoked=True)
+        old.created_at = datetime(2026, 1, 1, tzinfo=UTC)
+        await indexed_repo.create(old)
+        fresh = await indexed_repo.create(make_doc(target_id="t1"))
+
+        latest = await indexed_repo.get_latest_for_target(
+            "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1"
+        )
+
+        assert latest is not None and latest.slug == fresh.slug and not latest.revoked
+
+    async def test_another_owners_link_is_never_the_latest(self, indexed_repo, make_doc):
+        await indexed_repo.create(make_doc(user_id="someone-else", target_id="t1", revoked=True))
+        assert (
+            await indexed_repo.get_latest_for_target(
+                "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1"
+            )
+            is None
+        )
 
 
 class TestShortLinksRevoke:

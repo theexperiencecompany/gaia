@@ -1110,19 +1110,28 @@ def _said(kind: str, minutes: int, text: str = "hi") -> MessageModel:
     return MessageModel(type=kind, response=text, date=_at(minutes))
 
 
-class TestUserMessageSince:
+class TestLatestUserMessageSince:
     async def test_a_user_message_at_the_cutoff_counts(self, repo):
         user_id = _uid()
         await repo.create(_doc(user_id=user_id, messages=[_said("user", 0)]))
 
-        assert await repo.has_user_message_since(user_id, _SINCE) is True
+        assert await repo.latest_user_message_since(user_id, _SINCE) == _SINCE
 
     async def test_only_the_users_own_later_messages_count(self, repo):
         user_id = _uid()
         await repo.create(_doc(user_id=user_id, messages=[_said("user", -1), _said("bot", 5)]))
         await repo.create(_doc(messages=[_said("user", 5)]))
 
-        assert await repo.has_user_message_since(user_id, _SINCE) is False
+        assert await repo.latest_user_message_since(user_id, _SINCE) is None
+
+    async def test_the_newest_message_across_conversations_wins(self, repo):
+        user_id = _uid()
+        await repo.create(_doc(user_id=user_id, messages=[_said("user", 3), _said("user", 1)]))
+        await repo.create(_doc(user_id=user_id, messages=[_said("user", 7), _said("bot", 9)]))
+
+        latest = await repo.latest_user_message_since(user_id, _SINCE)
+
+        assert latest == _SINCE + timedelta(minutes=7)
 
     async def test_a_cutoff_in_another_timezone_is_compared_in_utc(self, repo):
         user_id = _uid()
@@ -1130,9 +1139,9 @@ class TestUserMessageSince:
         new_york = timezone(timedelta(hours=-5))
 
         with local_timezone("Asia/Kolkata"):
-            found = await repo.has_user_message_since(user_id, _SINCE.astimezone(new_york))
+            found = await repo.latest_user_message_since(user_id, _SINCE.astimezone(new_york))
 
-        assert found is True
+        assert found == _SINCE + timedelta(minutes=1)
 
 
 class TestBotRepliesSince:

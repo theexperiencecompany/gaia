@@ -1,8 +1,12 @@
 """The idle ladder state the daily run reads off the user document."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
+
+import pytest
 
 from app.models.user_models import BriefingDormancy, UserDocument
+from app.services.briefing import dormancy
 from app.services.briefing.dormancy import DormancyState, state_from_user
 
 
@@ -31,3 +35,43 @@ class TestStateFromUser:
 
         assert state.dormant_since is not None
         assert state.dormant_since.utcoffset() == since.utcoffset()
+
+
+_SINCE = datetime(2026, 10, 13, 8, tzinfo=UTC)
+
+
+class TestLatestActivitySince:
+    """Last activity comes off the loaded user plus one conversation read — no user re-read."""
+
+    async def test_the_newer_of_the_web_stamp_and_the_last_message_wins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        messages = AsyncMock(return_value=_SINCE + timedelta(hours=3))
+        monkeypatch.setattr(dormancy.conversation_repository, "latest_user_message_since", messages)
+        user = UserDocument(id="u1", last_active_at=datetime(2026, 10, 13, 9))  # naive = UTC
+
+        assert await dormancy.latest_activity_since(user, _SINCE) == _SINCE + timedelta(hours=3)
+        messages.assert_awaited_once_with("u1", _SINCE)
+
+    async def test_a_web_stamp_before_the_cutoff_is_no_activity(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            dormancy.conversation_repository,
+            "latest_user_message_since",
+            AsyncMock(return_value=None),
+        )
+        user = UserDocument(id="u1", last_active_at=_SINCE - timedelta(seconds=1))
+
+        assert await dormancy.latest_activity_since(user, _SINCE) is None
+
+    async def test_a_web_stamp_at_the_cutoff_counts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            dormancy.conversation_repository,
+            "latest_user_message_since",
+            AsyncMock(return_value=None),
+        )
+
+        user = UserDocument(id="u1", last_active_at=_SINCE)
+
+        assert await dormancy.latest_activity_since(user, _SINCE) == _SINCE

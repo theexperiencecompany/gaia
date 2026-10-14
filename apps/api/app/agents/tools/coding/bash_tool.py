@@ -332,8 +332,8 @@ async def _publish_artifacts(
 
     Returns the heygaia.link of every artifact this command wrote (mtime at or
     after ``changed_since``, less ``ARTIFACT_MTIME_SKEW_SECONDS`` for clock
-    drift between host and sandbox), so the tool result hands the agent links
-    for what it just made rather than for every file in the session.
+    drift between host and sandbox). Only those are linked — the other files
+    publish without one — so a command never shares every file in the session.
 
     Implementation note: this used to be N+1 sandbox round-trips (one ``find``
     plus one ``base64`` per artifact). For a turn that writes 5 artifacts that
@@ -385,8 +385,16 @@ async def _publish_artifacts(
             mtime = time.time()
         inline_body = _decode_inline(body_b64, size_bytes, detect_content_type(rel))
         # Same shared publisher write/edit use — one owner of the event shape.
-        short_url = await publish_artifact(user_id, session_id, rel, size_bytes, mtime, inline_body)
-        if short_url and mtime >= changed_since - ARTIFACT_MTIME_SKEW_SECONDS:
+        short_url = await publish_artifact(
+            user_id,
+            session_id,
+            rel,
+            size_bytes,
+            mtime,
+            inline_body,
+            written_this_turn=mtime >= changed_since - ARTIFACT_MTIME_SKEW_SECONDS,
+        )
+        if short_url:
             links[rel] = short_url
     return links
 

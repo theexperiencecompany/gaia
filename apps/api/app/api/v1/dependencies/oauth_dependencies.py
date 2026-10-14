@@ -7,8 +7,8 @@ from app.config.settings import settings
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
-from app.db.repositories.users import user_repository
-from app.models.user_models import AuthenticatedUser, UserUpdate
+from app.models.user_models import AuthenticatedUser
+from app.services.user_timezone import set_user_timezone
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -21,7 +21,7 @@ from shared.py.wide_events import log, spawn_logged_task
 async def _backfill_user_timezone(user_id: str, tz: str) -> None:
     """Fire-and-forget write-through of the browser-reported timezone."""
     try:
-        await user_repository.update(user_id, UserUpdate(timezone=tz))
+        await set_user_timezone(user_id, tz)
         log.info(
             f"{LogTag.OAUTH} Backfilled user.timezone from x-timezone header",
             user_id=user_id,

@@ -1,4 +1,8 @@
-"""The conversation artifact registry keeps each file's heygaia.link across reloads."""
+"""The conversation artifact registry never stores a file's heygaia.link.
+
+A stored copy goes stale the moment the owner stops sharing, and a reloaded card
+would show a dead link; the short_links collection is the one source of truth.
+"""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -31,8 +35,8 @@ async def _upsert(update_matched: bool) -> AsyncMock:
         return repo
 
 
-class TestRegistryKeepsTheLink:
-    async def test_a_new_file_is_stored_with_its_link(self) -> None:
+class TestRegistryNeverStoresTheLink:
+    async def test_a_new_file_is_stored_without_its_link(self) -> None:
         repo = await _upsert(update_matched=False)
 
         element = dict(repo.push_artifact.await_args.kwargs["element"])
@@ -42,13 +46,10 @@ class TestRegistryKeepsTheLink:
             "size_bytes": 12,
             "mtime": 2.0,
             "content_type": "text/html",
-            "short_url": "https://heygaia.link/abcdefghijk",
         }
 
-    async def test_a_re_emit_refreshes_the_link_on_the_existing_entry(self) -> None:
+    async def test_a_re_emit_writes_no_link_onto_the_existing_entry(self) -> None:
         repo = await _upsert(update_matched=True)
 
-        assert repo.update_artifact.await_args.kwargs["fields"]["short_url"] == (
-            "https://heygaia.link/abcdefghijk"
-        )
+        assert "short_url" not in repo.update_artifact.await_args.kwargs["fields"]
         repo.push_artifact.assert_not_awaited()

@@ -146,8 +146,8 @@ PublicShortLinkView = Annotated[
 ]
 
 
-class ShortLinkCreateRequest(BaseModel):
-    """Owner request to mint (or fetch) the link for one of their artifacts."""
+class ShortLinkTargetRequest(BaseModel):
+    """One of the owner's artifacts, to share (mint or fetch its link) or stop sharing."""
 
     model_config = ConfigDict(extra="forbid")
 

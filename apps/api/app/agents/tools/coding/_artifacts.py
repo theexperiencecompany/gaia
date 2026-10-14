@@ -19,9 +19,11 @@ from app.agents.workspace.paths import (
     is_inlineable_content_type,
     session_artifacts,
 )
-from app.services.artifact_events import ArtifactFileEvent, publish_artifact_event, upsert_event
+from app.models.short_link_models import ShortLinkTargetType
+from app.services.artifact_events import publish_artifact_event, upsert_event
+from app.services.short_link_projections import session_artifact_target_id
+from app.services.short_link_service import optional_short_link
 from app.services.storage import ArtifactInfo
-from shared.py.wide_events import log
 
 
 async def publish_artifact(
@@ -31,38 +33,42 @@ async def publish_artifact(
     size_bytes: int,
     mtime: float,
     inline_body: str | None,
+    *,
+    written_this_turn: bool,
 ) -> str | None:
-    """Publish one artifact upsert event and return the artifact's heygaia.link.
+    """Publish one artifact upsert event; return the heygaia.link it carries.
 
-    Best-effort: a failure is logged and returns ``None`` rather than failing
-    the tool, whose write has already landed. ``rel`` is the path relative to
-    the session's ``artifacts/`` root; ``mtime`` must be the real post-write
-    value (the ``(event, path, size_bytes, mtime)`` dedup signature depends on
-    it). The single owner of the event shape.
+    Only a file the tool wrote this turn gets a link — the one the agent hands
+    the user with it. A file merely re-listed (bash's enumeration of an
+    unchanged artifact) publishes without one, so listing a workspace never
+    shares it. None as well when the owner stopped sharing the file or the
+    mint failed (``optional_short_link``). ``rel`` is the path relative to the
+    session's ``artifacts/`` root; ``mtime`` must be the real post-write value
+    (the ``(event, path, size_bytes, mtime)`` dedup signature depends on it).
+    The single owner of the event shape.
     """
-    try:
-        event: ArtifactFileEvent = await upsert_event(
+    short_url = (
+        await optional_short_link(
             user_id,
-            conv_id,
-            ArtifactInfo(
-                path=rel,
-                size_bytes=size_bytes,
-                mtime=mtime,
-                content_type=detect_content_type(rel),
-            ),
-            body=inline_body,
+            ShortLinkTargetType.SESSION_ARTIFACT,
+            session_artifact_target_id(conv_id, rel),
         )
-        await publish_artifact_event(user_id, event)
-    except Exception as e:
-        log.error(
-            "artifact publish failed",
-            conversation_id=conv_id,
-            file_name=rel,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return None
-    return event.get("short_url")
+        if written_this_turn
+        else None
+    )
+    event = upsert_event(
+        conv_id,
+        ArtifactInfo(
+            path=rel,
+            size_bytes=size_bytes,
+            mtime=mtime,
+            content_type=detect_content_type(rel),
+        ),
+        body=inline_body,
+        short_url=short_url,
+    )
+    await publish_artifact_event(user_id, event)
+    return short_url
 
 
 def artifact_links_note(links: Mapping[str, str]) -> str:
@@ -107,4 +113,6 @@ async def publish_artifact_write(
         and is_inlineable_content_type(detect_content_type(rel))
         else None
     )
-    return await publish_artifact(user_id, role_conv, rel, size_bytes, mtime, inline_body)
+    return await publish_artifact(
+        user_id, role_conv, rel, size_bytes, mtime, inline_body, written_this_turn=True
+    )

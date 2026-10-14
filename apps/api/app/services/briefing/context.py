@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
+    BRIEFING_RHYTHM_WORKFLOW_KEYS,
     WEEK_LIST_LIMIT,
     WINBACK_THRESHOLD,
 )
@@ -19,6 +20,7 @@ from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, NEEDS_USER_LAB
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
+from app.db.repositories.workflows import workflow_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.briefing_models import (
@@ -35,10 +37,11 @@ from app.models.user_models import UserDocument
 from app.services.briefing import dormancy
 from app.services.calendar_service import get_calendar_events
 from app.services.integrations.user_integrations import get_connected_integration_ids
-from shared.py.wide_events import log
 
 # Open tracked todos the brief reports on (in progress / waiting on the user / failed).
 _TRACKED_WORK_LIMIT = 20
+# Background workflow runs the look-back lists, newest first.
+_LOOKBACK_EXECUTIONS_LIMIT = 20
 
 
 @dataclass
@@ -134,17 +137,13 @@ async def format_goal_block(user_id: str, user: UserDocument) -> tuple[str, bool
     focus = (user.onboarding.focus if user.onboarding else "").strip()
     lines = [f"Stated goal: {focus}"] if has_meaningful_focus(focus) else []
 
-    try:
-        result = await memory_engine.recall(
-            user_id, "what is the user currently working on and their goals", limit=5
-        )
-        for entry in result.memories:
-            line = f"- {entry_to_note(entry).strip()}"
-            if line != "- " and line not in lines:
-                lines.append(line)
-    except Exception as exc:
-        # Memory recall is best-effort context, not a hard dependency of the run.
-        log.warning("briefing.goal_block_recall_failed", user_id=user_id, error=str(exc))
+    result = await memory_engine.recall(
+        user_id, "what is the user currently working on and their goals", limit=5
+    )
+    for entry in result.memories:
+        line = f"- {entry_to_note(entry).strip()}"
+        if line != "- " and line not in lines:
+            lines.append(line)
 
     if not lines:
         return (
@@ -198,7 +197,15 @@ async def format_lookback_block(
     user_id: str, yesterday_payload: BriefingPayload | None, since: datetime
 ) -> str:
     completed = await gather_completed_since(user_id, since)
-    executions = await workflow_executions_repository.list_since(user_id, since, limit=20)
+    briefing_workflows = await workflow_repository.find_system_workflows(
+        user_id, BRIEFING_RHYTHM_WORKFLOW_KEYS
+    )
+    executions = await workflow_executions_repository.list_since(
+        user_id,
+        since,
+        exclude_workflow_ids=[w.id for w in briefing_workflows],
+        limit=_LOOKBACK_EXECUTIONS_LIMIT,
+    )
 
     parts: list[str] = []
     if yesterday_payload:
@@ -229,28 +236,30 @@ async def format_lookback_block(
     return "\n\n".join(parts)
 
 
-async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
+def _aware(moment: datetime) -> datetime:
+    """Mongo returns naive UTC datetimes; normalize before comparing."""
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+async def compute_winback_state(user: UserDocument, recent: int = 10) -> WinbackState:
     """Count consecutive most-recent daily briefings the user never acknowledged.
 
     Acknowledged means opened, or the user was active since it went out. A todo
     completing is NOT an ack: GAIA completes its own todos, so winback would never fire.
-    The loop breaks at the first acknowledged briefing.
+    The loop breaks at the first acknowledged briefing. The user's last activity is
+    read once, from the oldest brief's send time, and compared against every brief.
     """
     briefings = await briefing_repository.list_recent(
-        user_id, limit=recent, kind=BRIEFING_KIND_DAILY
+        user.id, limit=recent, kind=BRIEFING_KIND_DAILY
     )
     if not briefings:
         return WinbackState(unacknowledged=0, last_was_winback=False)
 
+    last_active = await dormancy.latest_activity_since(user, _aware(briefings[-1].created_at))
     unacknowledged = 0
     for briefing in briefings:
-        created_at = briefing.created_at
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=UTC)
-        acknowledged = briefing.opened_at is not None or await dormancy.reactivation_signal_since(
-            user_id, created_at
-        )
-        if acknowledged:
+        active_since = last_active is not None and last_active >= _aware(briefing.created_at)
+        if briefing.opened_at is not None or active_since:
             break
         unacknowledged += 1
 
@@ -297,31 +306,35 @@ async def gather_calendar(
     return sorted(events, key=lambda e: (e.date, e.start or ""))
 
 
-async def gather_week(user_id: str, clock: UserClock) -> BriefingWeek:
-    """Collect this week's Monday-to-Sunday completions, by owner and day.
+def week_start_utc(clock: UserClock) -> datetime:
+    """Return this week's Monday, local midnight, in UTC: the weekly digest's window start."""
+    return day_start_utc(clock, days_ago=clock.now_local.weekday())
+
+
+async def gather_week(user_id: str, clock: UserClock, completed: CompletedWork) -> BriefingWeek:
+    """Lay this week's completions (gathered since week_start_utc) out by owner and day.
 
     Also includes the calendar for the seven days ahead.
     """
     monday = clock.now_local.date() - timedelta(days=clock.now_local.weekday())
-    since = datetime.combine(monday, time.min, tzinfo=clock.tz).astimezone(UTC)
     days = [BriefingWeekDay(you=0, gaia=0) for _ in range(7)]
     shipped: list[str] = []
     handled: list[str] = []
-    for doc in reversed(await todo_repository.list_completed_since(user_id, since=since)):
-        if doc.completed_at is None:
-            continue
-        completed_at = doc.completed_at
-        if completed_at.tzinfo is None:
-            completed_at = completed_at.replace(tzinfo=UTC)
-        index = (completed_at.astimezone(clock.tz).date() - monday).days
-        if not 0 <= index < len(days):
-            continue
-        if is_gaia_tracked(doc):
-            days[index].gaia += 1
-            handled.append(doc.title)
-        else:
-            days[index].you += 1
-            shipped.append(doc.title)
+    for docs, titles, by_gaia in (
+        (completed.gaia, handled, True),
+        (completed.user, shipped, False),
+    ):
+        for doc in reversed(docs):
+            if doc.completed_at is None:
+                continue
+            index = (_aware(doc.completed_at).astimezone(clock.tz).date() - monday).days
+            if not 0 <= index < len(days):
+                continue
+            if by_gaia:
+                days[index].gaia += 1
+            else:
+                days[index].you += 1
+            titles.append(doc.title)
     ahead = await gather_calendar(user_id, clock, days=7, days_ahead=1)
     return BriefingWeek(
         days=days,

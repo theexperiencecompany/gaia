@@ -830,13 +830,21 @@ class TestQuietHoursEndpoints:
         assert response.json() == {"message": "User not found"}
 
     async def test_an_update_is_stored_echoed_and_reported(self, client: AsyncClient) -> None:
+        sentinel_user = UserDocument(
+            id=FAKE_USER_ID, quiet_hours=QuietHours(start_hour=23, end_hour=7)
+        )
         with (
             patch(
                 "app.api.v1.endpoints.notification.user_repository.set_quiet_hours",
                 new_callable=AsyncMock,
             ) as store,
             patch(
-                "app.api.v1.endpoints.notification.resync_daily_briefing_schedule",
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=sentinel_user,
+            ),
+            patch(
+                "app.api.v1.endpoints.notification.resync_briefing_schedules",
                 new_callable=AsyncMock,
             ) as move_brief,
             patch(ANALYTICS_PATCH) as capture,
@@ -853,7 +861,7 @@ class TestQuietHoursEndpoints:
         assert response.status_code == 200
         assert response.json() == {"start_hour": 23, "end_hour": 7}
         store.assert_awaited_once_with(FAKE_USER_ID, QuietHours(start_hour=23, end_hour=7))
-        move_brief.assert_awaited_once_with(FAKE_USER_ID, QuietHours(start_hour=23, end_hour=7))
+        move_brief.assert_awaited_once_with(sentinel_user)
         capture.assert_called_once_with(
             UserId(FAKE_USER_ID), SettingsQuietHoursUpdated(start_hour=23, end_hour=7)
         )

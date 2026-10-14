@@ -577,17 +577,6 @@
             "title": "Path",
             "type": "string"
           },
-          "short_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Short Url"
-          },
           "size_bytes": {
             "anyOf": [
               {
@@ -610,8 +599,7 @@
           "mtime",
           "content_type",
           "updated_at",
-          "body",
-          "short_url"
+          "body"
         ],
         "title": "ArtifactRegistryEntry",
         "type": "object"
@@ -2007,17 +1995,6 @@
           "payload": {
             "$ref": "#/components/schemas/BriefingPayload"
           },
-          "short_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Short Url"
-          },
           "updated_at": {
             "anyOf": [
               {
@@ -2043,7 +2020,6 @@
           "payload",
           "delivered_channels",
           "edition_image_url",
-          "short_url",
           "opened_at",
           "created_at",
           "updated_at"
@@ -7703,6 +7679,11 @@
       "HealthResponse": {
         "description": "``GET /health`` (and its ping/root aliases) when the API is serving normally.",
         "properties": {
+          "commit": {
+            "description": "Short sha the image was built from; 'local' outside one",
+            "title": "Commit",
+            "type": "string"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -7745,6 +7726,7 @@
           "version",
           "description",
           "environment",
+          "commit",
           "event_loop_lag_ms"
         ],
         "title": "HealthResponse",
@@ -15998,9 +15980,23 @@
         "title": "SetToolOverrideRequest",
         "type": "object"
       },
-      "ShortLinkCreateRequest": {
+      "ShortLinkResponse": {
+        "description": "A minted heygaia.link URL.",
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "ShortLinkResponse",
+        "type": "object"
+      },
+      "ShortLinkTargetRequest": {
         "additionalProperties": false,
-        "description": "Owner request to mint (or fetch) the link for one of their artifacts.",
+        "description": "One of the owner's artifacts, to share (mint or fetch its link) or stop sharing.",
         "properties": {
           "target_id": {
             "minLength": 1,
@@ -16015,21 +16011,7 @@
           "target_type",
           "target_id"
         ],
-        "title": "ShortLinkCreateRequest",
-        "type": "object"
-      },
-      "ShortLinkResponse": {
-        "description": "A minted heygaia.link URL.",
-        "properties": {
-          "url": {
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url"
-        ],
-        "title": "ShortLinkResponse",
+        "title": "ShortLinkTargetRequest",
         "type": "object"
       },
       "ShortLinkTargetType": {
@@ -30327,13 +30309,13 @@
     },
     "/api/v1/l": {
       "post": {
-        "description": "Mint (or return) the heygaia.link for an artifact the caller owns.",
+        "description": "Share an artifact the caller owns: return its heygaia.link, minting one.\n\nTurns sharing back on for a target its owner had stopped sharing.",
         "operationId": "short_links_create_short_link_route",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ShortLinkCreateRequest"
+                "$ref": "#/components/schemas/ShortLinkTargetRequest"
               }
             }
           },
@@ -30387,21 +30369,20 @@
         ]
       }
     },
-    "/api/v1/l/{slug}": {
-      "delete": {
-        "description": "Revoke a short link you own; the URL goes dead immediately.",
-        "operationId": "short_links_revoke_short_link_route",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "slug",
-            "required": true,
-            "schema": {
-              "title": "Slug",
-              "type": "string"
+    "/api/v1/l/unshare": {
+      "post": {
+        "description": "Stop sharing one of your artifacts: its link goes dead immediately, and GAIA\nattaches no new one until you share it again. Idempotent.",
+        "operationId": "short_links_stop_sharing_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortLinkTargetRequest"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -30437,11 +30418,13 @@
             "description": "Server Error"
           }
         },
-        "summary": "Revoke Short Link Route",
+        "summary": "Stop Sharing Route",
         "tags": [
           "Short Links"
         ]
-      },
+      }
+    },
+    "/api/v1/l/{slug}": {
       "get": {
         "description": "Resolve a capability slug to its target's public view. No auth.",
         "operationId": "short_links_resolve_short_link_route",

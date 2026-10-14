@@ -9,7 +9,8 @@ import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
 import { getExtension } from "@/features/chat/utils/fileExtension";
-import { ShortLinkRow } from "@/features/short-links/components/ShortLinkRow";
+import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
+import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useConversationArtifacts } from "@/stores/chatStore";
 import type { RightSidebarMode } from "@/stores/layoutStore.types";
@@ -139,7 +140,6 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
         contentType={contentType}
         sizeBytes={artifact.size_bytes}
         inlineBody={artifact.body}
-        shortUrl={artifact.short_url ?? undefined}
       />
     </RightSidebarPanel>
   );
@@ -191,13 +191,17 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
                 <p className="text-xs text-zinc-400/90">
                   {formatFileSize(artifact.size_bytes)} · Click to open
                 </p>
-                {artifact.short_url && (
-                  <ShortLinkRow url={artifact.short_url} />
-                )}
               </div>
             </div>
 
             <div className="flex items-center gap-2">
+              <ShareLinkControls
+                targetType="session_artifact"
+                targetId={sessionArtifactTargetId(
+                  conversationId,
+                  artifact.path,
+                )}
+              />
               <Button
                 size="sm"
                 variant="flat"

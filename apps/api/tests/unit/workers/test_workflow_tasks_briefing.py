@@ -11,8 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.briefing import (
+    BRIEFING_RUN_SUMMARIES,
     DAILY_BRIEFING_WORKFLOW_KEY,
     WEEKLY_DIGEST_WORKFLOW_KEY,
+    BriefingRunOutcome,
 )
 from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import (
@@ -59,8 +61,8 @@ class _Pipelines:
     """The two briefing entry points, each replaced by a stub."""
 
     def __init__(self) -> None:
-        self.daily = AsyncMock()
-        self.weekly = AsyncMock()
+        self.daily = AsyncMock(return_value=BriefingRunOutcome.SENT)
+        self.weekly = AsyncMock(return_value=BriefingRunOutcome.SENT)
 
     def patches(self) -> list:
         return [
@@ -170,6 +172,18 @@ class TestTheFireTakesTheBriefingPath:
             "conversation_id": None,
             "trace": [],
         }
+
+    async def test_a_skipped_briefing_says_why_instead_of_claiming_delivery(
+        self, pipelines: _Pipelines
+    ) -> None:
+        pipelines.daily.return_value = BriefingRunOutcome.DORMANT
+        harness = _FireHarness(_briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY))
+
+        await _fire(harness, pipelines)
+
+        summary = harness.complete_execution.await_args.kwargs["summary"]
+        assert summary == BRIEFING_RUN_SUMMARIES[BriefingRunOutcome.DORMANT]
+        assert summary != BRIEFING_SUMMARY
 
     async def test_an_ordinary_workflow_still_runs_the_chat_turn(
         self, pipelines: _Pipelines

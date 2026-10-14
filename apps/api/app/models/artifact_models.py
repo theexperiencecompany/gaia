@@ -20,6 +20,3 @@ class ArtifactRegistryEntry(TypedDict):
     content_type: str | None
     updated_at: str
     body: NotRequired[str]
-    # The artifact's heygaia.link, so a reloaded card shows the same link the
-    # live one did. Absent on user uploads and on entries from before links.
-    short_url: NotRequired[str | None]

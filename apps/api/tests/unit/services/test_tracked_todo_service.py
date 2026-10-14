@@ -22,7 +22,6 @@ from app.constants.todos import (
 )
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.scheduler_models import DeactivationReason
-from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -103,9 +102,6 @@ def mock_repo():
         yield m
 
 
-SHORT_URL = "https://heygaia.link/abcdefghijk"
-
-
 @pytest.fixture
 def mock_deps():
     with (
@@ -120,11 +116,6 @@ def mock_deps():
         patch(f"{_MOD}.append_activity", new_callable=AsyncMock, create=True) as m_append_activity,
         patch(f"{_MOD}.append_log", new_callable=AsyncMock) as m_append_log,
         patch(f"{_MOD}.teardown_subscriptions", new_callable=AsyncMock) as m_teardown,
-        patch(
-            f"{_MOD}.get_or_create_short_link",
-            new_callable=AsyncMock,
-            return_value=SHORT_URL,
-        ) as m_mint,
         patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as m_record,
     ):
         yield SimpleNamespace(
@@ -136,7 +127,6 @@ def mock_deps():
             append_activity=m_append_activity,
             append_log=m_append_log,
             teardown=m_teardown,
-            mint=m_mint,
             record=m_record,
         )
 
@@ -873,28 +863,22 @@ class TestStartingCanvas:
 
 class TestCompleteTrackedTodo:
     async def test_false_for_missing_todo(self, mock_repo, mock_deps):
-        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is None
+        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is False
         mock_deps.record.assert_not_awaited()
 
     async def test_idempotent_for_already_completed(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _todo_doc(completed=True)
 
-        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") == SHORT_URL
-        mock_deps.mint.assert_awaited_once_with(
-            USER_ID, ShortLinkTargetType.TODO_DELIVERABLE, TODO_ID
-        )
+        assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is True
         mock_deps.record.assert_not_awaited()
         mock_repo.update.assert_not_awaited()
 
     async def test_appends_log_marks_completed_and_archives_path(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _todo_doc()
 
-        url = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "Wrapped it up")
+        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "Wrapped it up")
 
-        # The deliverable's link is minted the moment the work is done, so the
-        # completing agent can hand it to the user.
-        assert url == SHORT_URL
-        mock_deps.mint.assert_awaited_with(USER_ID, ShortLinkTargetType.TODO_DELIVERABLE, TODO_ID)
+        assert ok is True
         mock_deps.record.assert_awaited_once_with(
             TODO_ID, USER_ID, TodoActivityEvent.COMPLETED, "Wrapped it up"
         )
@@ -928,9 +912,9 @@ class TestCompleteTrackedTodo:
         """A doc with no stored label must get the derived /workspace-scoped one — never None, never derived from the wrong id."""
         mock_repo.get.return_value = _todo_doc(vfs_path=None)
 
-        url = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
 
-        assert url == SHORT_URL
+        assert ok is True
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
 
@@ -940,9 +924,9 @@ class TestCompleteTrackedTodo:
         """A doc still storing the host-side /users/<uid> label must not have it persisted back on completion."""
         mock_repo.get.return_value = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
 
-        url = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
 
-        assert url == SHORT_URL
+        assert ok is True
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
 

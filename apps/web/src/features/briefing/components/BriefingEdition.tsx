@@ -25,9 +25,13 @@ export interface BriefingEditionProps {
 const EDITION_WIDTH = 1180;
 const EDITION_HEIGHT = 1480;
 
+/**
+ * The owner's copy carries todo_id and opens the in-app todo; the public copy
+ * a heygaia.link serves has no todo_id, only the link the brief shared.
+ */
 function itemHref(item: EditionItem): string | null {
-  if (item.link) return item.link;
-  return item.todo_id ? `/todos?todoId=${item.todo_id}` : null;
+  if (item.todo_id) return `/todos?todoId=${item.todo_id}`;
+  return item.link ?? null;
 }
 
 function ItemRow({ item }: { item: EditionItem }) {
@@ -58,10 +62,6 @@ function ItemGroup({
       <div className="space-y-2">{children}</div>
     </section>
   );
-}
-
-function sectionTitle(title: string): string {
-  return title.charAt(0) + title.slice(1).toLowerCase();
 }
 
 /** One brief: the day's rendered edition, then its real items as a tappable list. */
@@ -99,7 +99,7 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
           </ItemGroup>
         )}
         {payload.sections.map((section) => (
-          <ItemGroup key={section.title} title={sectionTitle(section.title)}>
+          <ItemGroup key={section.title} title={section.title}>
             {section.items.map((item) => (
               <ItemRow key={item.todo_id ?? item.text} item={item} />
             ))}

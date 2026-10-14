@@ -70,7 +70,7 @@ from app.services.platform_message_service import (
     deliver_reaction_to_platform,
     is_bot_platform,
 )
-from app.services.short_link_service import get_or_create_short_link
+from app.services.short_link_service import optional_short_link
 from app.services.workflow.notifications import send_workflow_failure_notification
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -250,16 +250,20 @@ async def deliver_message_to_conversation(
 
 
 async def _workflow_run_link_line(run: ExecutorRun) -> str:
-    """Return the run's heygaia.link as a closing line, or "" when it has no execution.
+    """Return the run's heygaia.link as a closing line, or "" without one.
 
+    "" when the run has no execution, the owner stopped sharing it, or the mint
+    failed — the result message is delivered either way (optional_short_link).
     Minted here because delivery runs before complete_execution; the public page
     shows the run's real status, so an early open reads as running.
     """
     if not (run.workflow_id and run.workflow_execution_id):
         return ""
-    url = await get_or_create_short_link(
+    url = await optional_short_link(
         run.user.user_id, ShortLinkTargetType.WORKFLOW_RUN, run.workflow_execution_id
     )
+    if url is None:
+        return ""
     return f"\n\n[Open this run]({url})"
 
 

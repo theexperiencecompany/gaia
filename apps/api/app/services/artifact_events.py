@@ -17,9 +17,6 @@ import time
 from typing import Literal, NotRequired, TypedDict
 
 from app.db.redis import redis_cache
-from app.models.short_link_models import ShortLinkTargetType
-from app.services.short_link_projections import session_artifact_target_id
-from app.services.short_link_service import get_or_create_short_link
 from app.services.storage import ArtifactInfo, ensure_safe_path_id
 
 ARTIFACT_CHANNEL_PREFIX = "artifacts:"
@@ -35,8 +32,9 @@ class ArtifactFileEvent(TypedDict):
     mtime: float
     content_type: str | None
     body: NotRequired[str]
-    # The artifact's public heygaia.link. Agent-produced files (`upsert`) always
-    # carry it; user uploads never do — they are the user's own files.
+    # The artifact's public heygaia.link, present only when the tool that wrote
+    # the file this turn attached one. Watcher rescans and user uploads never
+    # carry it — the owner shares those from the file card.
     short_url: NotRequired[str]
 
 
@@ -76,14 +74,18 @@ def artifact_channel(user_id: str) -> str:
     return f"{ARTIFACT_CHANNEL_PREFIX}{user_id}"
 
 
-async def upsert_event(
-    user_id: str, session_id: str, info: ArtifactInfo, *, body: str | None = None
+def upsert_event(
+    session_id: str,
+    info: ArtifactInfo,
+    *,
+    body: str | None = None,
+    short_url: str | None = None,
 ) -> ArtifactFileEvent:
-    """Return an artifacts/ file-created-or-changed event carrying the file's heygaia.link.
+    """Return an artifacts/ file-created-or-changed event.
 
-    Every agent-produced file passes through here, so the chat card, bot message
-    and tool result all read one idempotently minted URL. body inlines small
-    text files (callers enforce the inline rule); omitted for large or binary.
+    body inlines small text files (callers enforce the inline rule); omitted
+    for large or binary. short_url is the heygaia.link the writing tool
+    attached; this builder never mints one.
     """
     payload: ArtifactFileEvent = {
         "event": "upsert",
@@ -92,14 +94,11 @@ async def upsert_event(
         "size_bytes": info.size_bytes,
         "mtime": info.mtime,
         "content_type": info.content_type,
-        "short_url": await get_or_create_short_link(
-            user_id,
-            ShortLinkTargetType.SESSION_ARTIFACT,
-            session_artifact_target_id(session_id, info.path),
-        ),
     }
     if body is not None:
         payload["body"] = body
+    if short_url is not None:
+        payload["short_url"] = short_url
     return payload
 
 

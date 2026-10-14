@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
@@ -40,21 +39,6 @@ const PREVIEW_COPY: Record<
 };
 
 /**
- * Names the viewer to the API, whose resolver limit is per client IP. Without
- * it every server render arrives from this server's own address, so all
- * viewers share one budget and a burst of opens turns into 429 errors.
- * `cf-connecting-ip` is set by Cloudflare; self-hosted proxies set the first
- * `x-forwarded-for` hop.
- */
-async function viewerForwardingHeaders(): Promise<Record<string, string>> {
-  const incoming = await headers();
-  const viewerIp =
-    incoming.get("cf-connecting-ip") ??
-    incoming.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return viewerIp ? { "X-Forwarded-For": viewerIp } : {};
-}
-
-/**
  * The public view behind a slug, fetched on the server with no caching —
  * the owner can revoke a link at any moment. `null` means unknown, revoked or
  * deleted (the API answers 404 for all three); any other failure throws.
@@ -68,11 +52,12 @@ const fetchPublicView = cache(
     }
     const response = await fetch(
       `${apiBaseUrl}/l/${encodeURIComponent(slug)}`,
-      { cache: "no-store", headers: await viewerForwardingHeaders() },
+      { cache: "no-store" },
     );
     if (response.status === 404) return null;
     if (!response.ok) {
-      throw new Error(`Short link ${slug} failed with ${response.status}`);
+      // Never the slug: it is a working link, and this message reaches Sentry.
+      throw new Error(`Short link resolve failed with ${response.status}`);
     }
     return (await response.json()) as PublicShortLinkView;
   },

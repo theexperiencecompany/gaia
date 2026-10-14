@@ -62,6 +62,24 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         """Whether the user has ever received a daily briefing (first-briefing gate)."""
         return await self._count({"user_id": user_id, "kind": BRIEFING_KIND_DAILY}) > 0
 
+    async def was_delivered(self, user_id: str, date: str, kind: BriefingKind) -> bool:
+        """Whether the (user, date, kind) brief already reached at least one channel.
+
+        A brief stored but delivered nowhere (its run failed mid-delivery) does not
+        count, so a retry can still send it.
+        """
+        return (
+            await self._count(
+                {
+                    "user_id": user_id,
+                    "date": date,
+                    "kind": kind,
+                    "delivered_channels.0": {"$exists": True},
+                }
+            )
+            > 0
+        )
+
     # ----------------------------------------------------------------- writes
 
     async def upsert_briefing(
@@ -106,10 +124,6 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             {"$set": {"delivered_channels": channels}},
             scope=user_id,
         )
-
-    async def set_short_url(self, user_id: str, briefing_id: str, short_url: str) -> None:
-        """Persist the brief's heygaia.link so every surface reads the same URL."""
-        await self.update(briefing_id, user_id=user_id, update=BriefingUpdate(short_url=short_url))
 
     async def mark_opened(self, user_id: str, briefing_id: str) -> BriefingModel | None:
         """Stamp opened_at once (idempotent).

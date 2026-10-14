@@ -75,6 +75,11 @@ def _entries_batch(*entries: tuple[str, str]) -> XReadBatch:
     return [(EVENTS_KEY, [(entry_id, {"data": data}) for entry_id, data in entries])]
 
 
+def _error_entry_batch(entry_id: str, error: str) -> XReadBatch:
+    """Build the XREAD batch for the ERROR control entry set_error appends, message included."""
+    return [(EVENTS_KEY, [(entry_id, {"data": STREAM_ERROR_SIGNAL, "error": error})])]
+
+
 def _stream_client(xread_batches: list[XReadBatch] | None = None) -> MagicMock:
     """Mock redis.asyncio client exposing the Streams commands StreamManager uses."""
     client = MagicMock()
@@ -462,51 +467,34 @@ class TestSubscribeStream:
 
         assert chunks == ["id: 1-0\ndata: chunk1\n\n", "data: [DONE]\n\n"]
 
-    async def test_error_signal_yields_error_json(self) -> None:
-        client = _stream_client([_entries_batch(("1-0", STREAM_ERROR_SIGNAL))])
-        mock_get = AsyncMock(return_value=_progress_dict(error="Something failed"))
+    async def test_error_signal_yields_the_error_its_entry_carries(self) -> None:
+        client = _stream_client([_error_entry_batch("1-0", "Something failed")])
 
-        with self._patch_redis(client, get=mock_get):
+        with self._patch_redis(client):
             chunks = await self._collect()
 
         assert chunks == ['data: {"error": "Something failed"}\n\n']
 
-    async def test_error_signal_with_no_progress_uses_default(self) -> None:
+    async def test_error_signal_without_a_message_uses_default(self) -> None:
         client = _stream_client([_entries_batch(("1-0", STREAM_ERROR_SIGNAL))])
-        mock_get = AsyncMock(return_value=None)
 
-        with self._patch_redis(client, get=mock_get):
+        with self._patch_redis(client):
             chunks = await self._collect()
 
         payload = json.loads(chunks[0].removeprefix("data: ").strip())
         assert payload["error"] == "An unexpected error occurred"
 
-    async def test_error_signal_defaults_when_progress_lacks_error_key(self) -> None:
-        # Progress exists but carries no `error` key: the `.get` default (a distinct
-        # code path from the no-progress branch above) must supply the message.
-        client = _stream_client([_entries_batch(("1-0", STREAM_ERROR_SIGNAL))])
-        mock_get = AsyncMock(return_value={"conversation_id": "c"})
-
-        with self._patch_redis(client, get=mock_get):
-            chunks = await self._collect()
-
-        assert chunks == ['data: {"error": "An unexpected error occurred"}\n\n']
-
-    async def test_error_signal_reads_progress_for_this_stream_and_logs_it(self) -> None:
-        # The error frame is built from THIS stream's progress, and the failure is
-        # recorded on the wide event — a mutant that reads another stream (or None)
-        # would serve the wrong error or crash.
-        client = _stream_client([_entries_batch(("1-0", STREAM_ERROR_SIGNAL))])
+    async def test_error_signal_never_depends_on_progress_and_is_logged(self) -> None:
+        """Progress can expire mid-turn, so the frame comes from the entry alone; the failure lands on the wide event."""
+        client = _stream_client([_error_entry_batch("1-0", "x")])
         with (
             self._patch_redis(client),
-            patch.object(
-                StreamManager, "get_progress", new=AsyncMock(return_value={"error": "x"})
-            ) as get_progress,
+            patch.object(StreamManager, "get_progress", new=AsyncMock()) as get_progress,
         ):
             async with captured_wide_event() as event:
                 _ = [chunk async for chunk in StreamManager.subscribe_stream("sid-9")]
 
-        get_progress.assert_awaited_once_with("sid-9")
+        get_progress.assert_not_awaited()
         (error,) = [e for e in event["errors"] if "Stream encountered" in e["msg"]]
         assert error["msg"] == f"{LogTag.STARTUP} Stream encountered an error"
         assert error["stream_id"] == "sid-9"
@@ -910,7 +898,7 @@ class TestSetError:
 
         self.mock_redis_client.xadd.assert_awaited_once_with(
             EVENTS_KEY,
-            {"data": STREAM_ERROR_SIGNAL},
+            {"data": STREAM_ERROR_SIGNAL, "error": "kaboom"},
             maxlen=STREAM_EVENTS_MAXLEN,
             approximate=True,
         )

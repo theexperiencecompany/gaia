@@ -4862,13 +4862,21 @@
               "/todos",
               "/integrations",
               "/workflows",
+              "/briefings",
               "/c"
             ],
             "title": "Destination",
             "type": "string"
           },
           "label": {
-            "enum": ["Home", "Tasks", "Integrations", "Workflows", "Chats"],
+            "enum": [
+              "Home",
+              "Tasks",
+              "Integrations",
+              "Workflows",
+              "Briefings",
+              "Chats"
+            ],
             "title": "Label",
             "type": "string"
           }

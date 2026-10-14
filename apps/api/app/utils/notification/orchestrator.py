@@ -145,11 +145,7 @@ class NotificationOrchestrator:
 
             # Compute overall status: DELIVERED only if at least one channel
             # actually succeeded (i.e. not failed and not skipped).
-            delivered_channels = [
-                s
-                for s in channel_statuses
-                if s.status == NotificationStatus.DELIVERED and not s.skipped
-            ]
+            delivered_channels = [s for s in channel_statuses if s.reached_user]
             overall_status = (
                 NotificationStatus.DELIVERED if delivered_channels else NotificationStatus.FAILED
             )

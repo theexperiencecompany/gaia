@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.short_link_models import ShortLinkTargetType
 from app.services.artifact_events import (
     artifact_channel,
     publish_artifact_event,
@@ -51,17 +50,9 @@ class TestArtifactChannel:
 SHORT_URL = "https://heygaia.link/abcdefghijk"
 
 
-@pytest.fixture
-def mint():
-    with patch(f"{_MOD}.get_or_create_short_link", AsyncMock(return_value=SHORT_URL)) as mint:
-        yield mint
-
-
 class TestUpsertEvent:
-    async def test_exact_shape_without_body(self, mint):
-        info = _artifact_info()
-
-        event = await upsert_event(USER_ID, SESSION_ID, info)
+    def test_exact_shape_without_body_or_link(self):
+        event = upsert_event(SESSION_ID, _artifact_info())
 
         assert event == {
             "event": "upsert",
@@ -70,24 +61,20 @@ class TestUpsertEvent:
             "size_bytes": 12,
             "mtime": 1234.5,
             "content_type": "text/markdown",
-            "short_url": SHORT_URL,
         }
 
-    async def test_the_artifact_link_is_minted_for_this_session_file(self, mint):
-        """The event is where the link is minted, since every surface reads it from there."""
-        await upsert_event(USER_ID, SESSION_ID, _artifact_info())
+    def test_the_link_the_writing_tool_attached_is_carried(self):
+        event = upsert_event(SESSION_ID, _artifact_info(), short_url=SHORT_URL)
 
-        mint.assert_awaited_once_with(
-            USER_ID, ShortLinkTargetType.SESSION_ARTIFACT, f"{SESSION_ID}/artifacts/notes.md"
-        )
+        assert event["short_url"] == SHORT_URL
 
-    async def test_body_inlined_when_provided(self, mint):
-        event = await upsert_event(USER_ID, SESSION_ID, _artifact_info(), body="hello")
+    def test_body_inlined_when_provided(self):
+        event = upsert_event(SESSION_ID, _artifact_info(), body="hello")
 
         assert event["body"] == "hello"
 
-    async def test_no_body_key_when_omitted(self, mint):
-        event = await upsert_event(USER_ID, SESSION_ID, _artifact_info())
+    def test_no_body_key_when_omitted(self):
+        event = upsert_event(SESSION_ID, _artifact_info())
 
         assert "body" not in event
 

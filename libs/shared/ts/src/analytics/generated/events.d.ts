@@ -1058,8 +1058,8 @@ export interface EventProperties {
     "href": "/pricing" | "https://docs.heygaia.io";
   };
   "navigation:sidebar_clicked": {
-    "destination": "/dashboard" | "/todos" | "/integrations" | "/workflows" | "/c";
-    "label": "Home" | "Tasks" | "Integrations" | "Workflows" | "Chats";
+    "destination": "/dashboard" | "/todos" | "/integrations" | "/workflows" | "/briefings" | "/c";
+    "label": "Home" | "Tasks" | "Integrations" | "Workflows" | "Briefings" | "Chats";
   };
   "notes:created": {
     "actor": "user" | "agent";

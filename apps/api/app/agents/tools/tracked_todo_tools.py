@@ -35,6 +35,7 @@ from app.constants.todos import (
 )
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import get_user_id, read_agent_configurable
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -47,6 +48,7 @@ from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
 )
+from app.services.short_link_service import optional_short_link
 from app.services.todo_activity import agent_actor, record_field_changes
 from app.services.todos.account_refs import owned_gmail_thread_ref, watched_account_id
 from app.services.todos.errors import (
@@ -394,11 +396,16 @@ async def complete_tracked_todo(
             "then complete it."
         )
 
-    short_url = await tracked_todo_service.complete_tracked_todo(
+    success = await tracked_todo_service.complete_tracked_todo(
         todo_id=todo_id, user_id=user_id, summary=summary
     )
-    if short_url is None:
+    if not success:
         return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
+    # Linked here, not in the service: this is the one completion path that hands
+    # the result to the user. Sweeps, sub-todo cascades and the UI share nothing.
+    short_url = await optional_short_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+    if short_url is None:
+        return f"Tracked todo {todo_id} completed and archived."
     return (
         f"Tracked todo {todo_id} completed and archived. Public link to the result "
         f"(anyone with it can open; share it when you tell the user it's done): {short_url}"

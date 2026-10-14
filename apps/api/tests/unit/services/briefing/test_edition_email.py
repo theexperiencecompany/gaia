@@ -7,12 +7,12 @@ than the edition template's markup. The email wraps an already-hosted image, so
 its tests also prove it never rasterizes or uploads a second copy.
 """
 
-from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
 import pytest
 
+from app.config.settings import settings
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
@@ -143,7 +143,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     monkeypatch.setattr(edition_email, "renderer_for", fake_renderer_for)
     monkeypatch.setattr(edition_email, "render_html_to_image", fake_render_html_to_image)
     monkeypatch.setattr(edition_email, "upload_file_to_cloudinary", fake_upload)
-    monkeypatch.setattr(edition_email, "settings", SimpleNamespace(FRONTEND_URL=FRONTEND_URL))
+    monkeypatch.setattr(settings, "FRONTEND_URL", FRONTEND_URL)
     return h
 
 
@@ -205,15 +205,14 @@ class TestEditionRendering:
 
         assert harness.render_calls[0]["edition_no"] == 1
 
-    async def test_unparseable_date_falls_back_to_edition_one(self, harness: Harness) -> None:
-        await host(make_payload(date="not-a-date"))
+    @pytest.mark.parametrize("bad_date", ["not-a-date", ""])
+    async def test_an_unparseable_date_fails_the_render_loudly(
+        self, harness: Harness, bad_date: str
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid isoformat"):
+            await host(make_payload(date=bad_date))
 
-        assert harness.render_calls[0]["edition_no"] == 1
-
-    async def test_empty_date_falls_back_to_edition_one(self, harness: Harness) -> None:
-        await host(make_payload(date=""))
-
-        assert harness.render_calls[0]["edition_no"] == 1
+        assert harness.upload_calls == []
 
 
 @pytest.mark.unit
@@ -471,58 +470,10 @@ class TestResolveLink:
 
 
 @pytest.mark.unit
-class TestPublicAppUrl:
-    @pytest.mark.parametrize(
-        ("frontend_url", "expected"),
-        [
-            ("https://app.example.com", "https://app.example.com"),
-            ("https://app.example.com/", "https://app.example.com"),
-            # rstrip takes a character SET: only slashes may be removed.
-            ("https://app.example.com/BOX", "https://app.example.com/BOX"),
-            ("http://localhost:3000", "https://heygaia.io"),
-            ("http://127.0.0.1:3000", "https://heygaia.io"),
-            ("", "https://heygaia.io"),
-            (None, "https://heygaia.io"),
-        ],
-    )
-    def test_the_link_origin_is_never_a_dev_host(
-        self, monkeypatch: pytest.MonkeyPatch, frontend_url: str | None, expected: str
-    ) -> None:
-        monkeypatch.setattr(edition_email, "settings", SimpleNamespace(FRONTEND_URL=frontend_url))
-
-        assert edition_email._public_app_url() == expected
-
-    @pytest.mark.parametrize("frontend_url", ["http://localhost:3000", "http://127.0.0.1:3000", ""])
-    def test_dev_origins_fall_back_to_the_public_app(
-        self, harness: Harness, monkeypatch: pytest.MonkeyPatch, frontend_url: str
-    ) -> None:
-        monkeypatch.setattr(edition_email, "settings", SimpleNamespace(FRONTEND_URL=frontend_url))
-
-        html = render(make_payload(sections=[make_section(make_item("you", "Do it", "todos/1"))]))
-
-        assert f'href="{BRIEF_URL}"' in html
-        assert 'href="https://heygaia.io/todos/1"' in html
-
-    def test_unset_frontend_url_falls_back_to_the_public_app(
-        self, harness: Harness, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(edition_email, "settings", SimpleNamespace(FRONTEND_URL=None))
-
-        html = render(make_payload())
-
-        assert f'href="{BRIEF_URL}"' in html
-
-    def test_trailing_slash_is_stripped_so_links_never_double_up(
-        self, harness: Harness, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            edition_email, "settings", SimpleNamespace(FRONTEND_URL="https://app.example.com/")
-        )
-
-        html = render(make_payload(sections=[make_section(make_item("you", "Do it", "/todos/1"))]))
-
-        assert 'href="https://app.example.com/todos/1"' in html
-        assert "app.example.com//todos" not in html
+class TestEditionNumber:
+    def test_editions_count_days_from_the_epoch(self) -> None:
+        assert edition_email._edition_no("2026-01-01") == 1
+        assert edition_email._edition_no("2026-10-14") == 287
 
 
 @pytest.mark.unit

@@ -40,6 +40,7 @@ from app.constants.agents import (
     wrap_agent_payload,
 )
 from app.constants.briefing import (
+    BRIEFING_RUN_SUMMARIES,
     DAILY_BRIEFING_WORKFLOW_KEY,
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
@@ -1259,10 +1260,11 @@ async def _run_briefing_workflow(workflow: Workflow) -> str:
     )
 
     if workflow.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY:
-        await run_daily_briefing(workflow.user_id)
+        outcome = await run_daily_briefing(workflow.user_id)
     else:
-        await run_weekly_digest(workflow.user_id)
-    return "Briefing delivered"
+        outcome = await run_weekly_digest(workflow.user_id)
+    log.set_ns("workflow", briefing_outcome=outcome.value)
+    return BRIEFING_RUN_SUMMARIES[outcome]
 
 
 async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: str) -> str:

@@ -165,6 +165,8 @@ async def run_briefing_now(kind: str, email: str) -> JSONResponse:
             status_code=404,
             detail=f"No GAIA user exists for '{email}' — mint it via POST /api/v1/dev/users",
         )
-    await run(user.id)
-    log.set(dev={"user_id": user.id})
-    return JSONResponse(content={"user_id": user.id, "kind": kind, "status": "completed"})
+    outcome = await run(user.id)
+    log.set(dev={"user_id": user.id, "outcome": outcome.value})
+    return JSONResponse(
+        content={"user_id": user.id, "kind": kind, "status": "completed", "outcome": outcome.value}
+    )

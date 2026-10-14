@@ -15,22 +15,19 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 
 from e2b import AsyncSandbox
 import pytest
 
 from app.agents.workspace.paths import session_artifacts
-from app.models.short_link_models import ShortLinkTargetType
 from app.services.sandbox import artifact_watcher as aw
 from app.services.sandbox.artifact_watcher import ArtifactWatcher, _strip_artifacts_prefix
-from app.services.short_link_projections import session_artifact_target_id
 from app.services.storage import JuiceFSUnavailable
 from app.services.storage.sessions.artifacts import ArtifactInfo
 
 USER = "user-1"
 CONV = "conv-a"
-SHORT_URL = "https://heygaia.link/abcdefghijk"
 
 
 def info(path: str, size: int = 10, mtime: float = 100.0, inode: int = 0) -> ArtifactInfo:
@@ -88,11 +85,14 @@ def stat_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def mint(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    """Each upsert mints the artifact's heygaia.link; the store is not under test."""
-    mock = AsyncMock(return_value=SHORT_URL)
-    monkeypatch.setattr("app.services.artifact_events.get_or_create_short_link", mock)
-    return mock
+def link_store(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Stand in for the short-link store, which the watcher must never touch.
+
+    A rescan re-lists every historical artifact; minting there would share them all.
+    """
+    store = MagicMock()
+    monkeypatch.setattr("app.services.short_link_service.short_link_repository", store)
+    return store
 
 
 @pytest.fixture
@@ -106,9 +106,9 @@ def upserts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     calls: list[tuple[str, Any]] = []
     real = aw.upsert_event
 
-    async def record(user_id: str, session_id: str, art: Any, **kw: Any) -> dict[str, Any]:
+    def record(session_id: str, art: Any, **kw: Any) -> dict[str, Any]:
         calls.append((session_id, art))
-        return await real(user_id, session_id, art, **kw)
+        return real(session_id, art, **kw)
 
     monkeypatch.setattr(aw, "upsert_event", record)
     return calls
@@ -200,7 +200,7 @@ async def test_a_file_deleted_between_the_event_and_the_stat_publishes_nothing(
 
 
 async def test_a_written_artifact_is_published_as_an_upsert_for_its_conversation(
-    published: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch, mint: AsyncMock
+    published: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch, link_store: MagicMock
 ) -> None:
     async def stat(user_id: str, conv: str, rel: str) -> ArtifactInfo:
         return info(rel, size=42, mtime=7.0)
@@ -218,14 +218,9 @@ async def test_a_written_artifact_is_published_as_an_upsert_for_its_conversation
             "size_bytes": 42,
             "mtime": 7.0,
             "content_type": "text/plain",
-            "short_url": SHORT_URL,
         }
     ]
-    mint.assert_awaited_once_with(
-        USER,
-        ShortLinkTargetType.SESSION_ARTIFACT,
-        session_artifact_target_id(CONV, "nested/a.md"),
-    )
+    assert link_store.mock_calls == []
 
 
 @pytest.mark.parametrize("etype", ["REMOVE", "RENAME"])
@@ -365,7 +360,7 @@ async def test_a_new_artifact_is_published_on_the_first_scan(
     watcher: ArtifactWatcher,
     published: list[dict[str, Any]],
     stub_scan: dict[str, Any],
-    mint: AsyncMock,
+    link_store: MagicMock,
 ) -> None:
     stub_scan["artifacts"] = {CONV: [info("a.md")]}
     await watcher._rescan_each([CONV])
@@ -378,12 +373,10 @@ async def test_a_new_artifact_is_published_on_the_first_scan(
             "size_bytes": 10,
             "mtime": 100.0,
             "content_type": "text/plain",
-            "short_url": SHORT_URL,
         }
     ]
-    mint.assert_awaited_once_with(
-        USER, ShortLinkTargetType.SESSION_ARTIFACT, session_artifact_target_id(CONV, "a.md")
-    )
+    # The first full rescan re-lists every historical file: none may be shared.
+    assert link_store.mock_calls == []
 
 
 async def test_an_unchanged_artifact_is_not_republished(

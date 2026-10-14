@@ -20,6 +20,7 @@ from app.models.short_link_models import ShortLink, ShortLinkTargetType, ShortLi
 # two unique-key violations apart by the index Mongo names in the error.
 SLUG_UNIQUE_INDEX = "slug_unique"
 LIVE_TARGET_UNIQUE_INDEX = "target_live_unique"
+TARGET_HISTORY_INDEX = "target_history"
 
 
 class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
@@ -51,6 +52,21 @@ class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
                 "target_id": target_id,
                 "revoked": False,
             }
+        )
+
+    async def get_latest_for_target(
+        self, user_id: str, target_type: ShortLinkTargetType, target_id: str
+    ) -> ShortLink | None:
+        """Return the owner's newest link to a target, live or revoked.
+
+        A live link is always the newest — a link is only minted while none is
+        live — so the newest one alone tells whether sharing is on (live), turned
+        off by the owner (revoked) or never started (None). Served by
+        TARGET_HISTORY_INDEX.
+        """
+        return await self._find_one(
+            {"user_id": user_id, "target_type": target_type, "target_id": target_id},
+            sort=[("created_at", -1)],
         )
 
     async def revoke(self, user_id: str, slug: str) -> bool:

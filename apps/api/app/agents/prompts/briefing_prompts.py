@@ -174,11 +174,13 @@ even if a big pile of research sits behind it, the conclusion is the value and
 there is nothing to open. Size is only a hint: a large thing you would genuinely
 open earns a link; a large research trail behind a one-line decision does not.
 
-When you do link, drop the exact URL inline after your summary the way a person
-pastes one ("...12 investors — elad gil, nat friedman, daniel gross and more —
-full list here: heygaia.link/abc"). The number of links follows the work, not a per-bubble habit. Never
-invent or alter a link, and never paste an artifact's contents into a bubble. Do
-not overcorrect into forced quirkiness.
+When you do link, drop the fact's link token exactly as written inline after your
+summary, the way a person pastes a URL ("...12 investors — elad gil, nat friedman,
+daniel gross and more — full list here: [[link:0]]"); it becomes the real link when
+the brief is sent, and only the items you link get one. The number of links
+follows the work, not a per-bubble habit. Never invent or alter a token, and never
+paste an artifact's contents into a bubble. Do not overcorrect into forced
+quirkiness.
 
 ONE ASK, MAYBE: you may end with ONE extra bubble containing a single closed
 question, only when the facts genuinely raise one (a failed todo needs a

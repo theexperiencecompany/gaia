@@ -5,7 +5,7 @@ The subscription state changes themselves are the reducer's (test_subscription_e
 
 from datetime import UTC, datetime
 from typing import get_args
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from dodopayments.types import WebhookEventType
 from pydantic import ValidationError
@@ -1425,6 +1425,8 @@ class TestASilentSkipIsOnTheRecord:
                 "failure_reason": "unattributable_payment",
                 "analytics_event": PaymentSucceeded.event,
                 "payment_id": PAYMENT_DATA_PAYLOAD["payment_id"],
+                "error_type": "ValueError",
+                "error": ANY,
             }
         ]
 
@@ -1592,6 +1594,8 @@ class TestAnUnlistedEventTypeIsAcknowledged:
                 "msg": f"{LogTag.PAYMENT} Unlisted Dodo event type acknowledged and ignored",
                 "event_type": "subscription.brand_new_thing",
                 "webhook_id": "wh_unlisted",
+                "error_type": "ValueError",
+                "error": ANY,
             }
         ]
 

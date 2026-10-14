@@ -6,6 +6,7 @@ happened overnight, then the link. Chat caption and email subject/preheader are 
 
 from dataclasses import dataclass
 
+from app.config.settings import settings
 from app.models.briefing_models import BriefingItem, BriefingPayload
 
 MAX_SKIM_ASKS = 3
@@ -61,6 +62,11 @@ def _overnight(done: list[str], running: list[str], period: str) -> str | None:
     if running:
         return f"{period} {_named(running)} {verb} in progress."
     return None
+
+
+def full_brief_url(briefing_id: str) -> str:
+    """Return the brief's in-app page URL, the skim's link when it has no heygaia.link."""
+    return f"{settings.FRONTEND_URL}{brief_path(briefing_id)}"
 
 
 def brief_path(briefing_id: str) -> str:

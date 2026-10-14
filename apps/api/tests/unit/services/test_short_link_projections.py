@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.config.settings import settings
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingItem,
@@ -273,6 +274,29 @@ def workspace(tmp_path):
         patch(f"{_MOD}.resolve_session_path", AsyncMock(return_value=host_file)) as resolve,
     ):
         yield host_file, stat, resolve
+
+
+class TestEscapingTargetIds:
+    """A target id that leaves the owner's artifacts root names no artifact: not a crash.
+
+    Runs the real storage walk over a tmp mount, so the containment check that
+    raises is the production one.
+    """
+
+    @pytest.fixture(autouse=True)
+    def mount(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "JUICEFS_HOST_MOUNT_PATH", str(tmp_path))
+        monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: True)
+        (tmp_path / "secret.txt").write_text("not yours")
+
+    @pytest.mark.parametrize(
+        "target_id", ["conv-1/../../../../secret.txt", "conv-1/../../other-user/x", "..%2f/x"]
+    )
+    async def test_projects_to_nothing(self, target_id: str) -> None:
+        assert await project_target(SESSION, "owner", target_id) is None
+
+    async def test_the_public_file_route_finds_nothing(self) -> None:
+        assert await session_artifact_file("owner", "conv-1/../../../../secret.txt") is None
 
 
 class TestSessionArtifact:

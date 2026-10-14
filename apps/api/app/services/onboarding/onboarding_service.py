@@ -32,6 +32,7 @@ from app.services.onboarding.first_question import (
 )
 from app.services.onboarding.intelligence_job import abort_active_intelligence_job
 from app.services.platform_link_service import linked_platforms_of
+from app.services.system_workflows.provisioner import provision_briefing_workflows
 from app.services.workflow.service import WorkflowService
 from app.utils.background_tasks import spawn_background_task
 from app.utils.seeding_utils import seed_first_conversation
@@ -111,6 +112,9 @@ async def complete_onboarding(
             analytics_user,
             {"profession": onboarding_data.profession, "onboarding_completed": True},
         )
+        # Every new user gets the daily brief and the weekly digest, on the
+        # timezone and quiet hours the completion write just stored.
+        await provision_briefing_workflows(user_id)
 
         seeded_user = await _seed_first_conversation(updated_user, preferences)
 

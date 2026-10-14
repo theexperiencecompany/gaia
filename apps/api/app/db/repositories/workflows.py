@@ -178,6 +178,18 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             }
         )
 
+    async def find_system_workflows(
+        self, user_id: str, system_workflow_keys: Sequence[str]
+    ) -> list[WorkflowDocument]:
+        """Return the user's system workflows under any of system_workflow_keys."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "system_workflow_key": {"$in": list(system_workflow_keys)},
+                "is_system_workflow": True,
+            }
+        )
+
     async def find_live_system_workflows(self, system_workflow_key: str) -> list[WorkflowDocument]:
         """Every user's system workflow under system_workflow_key that runs or that GAIA may resume.
 

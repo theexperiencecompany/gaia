@@ -18,6 +18,7 @@ from app.agents.core.background.session import ExecutorRun, TodoRun
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.constants.todos import (
@@ -34,6 +35,7 @@ from app.constants.todos import (
 )
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -202,7 +204,7 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
     # Read now, not when the run started: the run itself may have turned it off.
     if not todo.notify_on_run:
         resolution = _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
-    elif _is_desk_sweep(todo, finished):
+    elif _is_desk_sweep(todo, finished) and await _has_live_daily_brief(todo.user_id):
         resolution = _not_sent(TodoRunDeliveryOutcome.HELD_FOR_BRIEF)
     else:
         resolution = await _narrate_and_send(finished, user, todo)
@@ -234,6 +236,15 @@ def _is_desk_sweep(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
         and todo.external_ref.source is ExternalRefSource.INBOX_DESK
         and finished.trigger_type is TriggerType.SCHEDULED_TODO
     )
+
+
+async def _has_live_daily_brief(user_id: str) -> bool:
+    """Whether a daily brief will run for the user: its workflow exists and is switched on.
+
+    Without one, folding the sweep into "the brief" would mean nobody ever sees it.
+    """
+    workflow = await workflow_repository.find_system_workflow(user_id, DAILY_BRIEFING_WORKFLOW_KEY)
+    return workflow is not None and workflow.activated
 
 
 def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | None:

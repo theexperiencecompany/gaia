@@ -6,13 +6,13 @@ the block or state the run would hand the agent.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from tests.helpers import captured_wide_event, local_timezone
+from tests.helpers import local_timezone
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, WEEK_LIST_LIMIT, WINBACK_THRESHOLD
 from app.constants.todos import (
@@ -115,14 +115,12 @@ class TestGoalBlock:
         assert has_goal is True
         assert block.splitlines() == ["Stated goal: Close 10 customers", "- Raising a seed round"]
 
-    async def test_recall_failure_still_briefs_from_the_stated_goal(
-        self, recall: AsyncMock
-    ) -> None:
+    async def test_a_recall_failure_fails_the_run(self, recall: AsyncMock) -> None:
+        """Goal knowledge gates the brief; a broken memory store must not read as no goal."""
         recall.side_effect = RuntimeError("vector store down")
 
-        block, has_goal = await context.format_goal_block(_USER, _user_with_focus("Ship v2"))
-
-        assert (block, has_goal) == ("Stated goal: Ship v2", True)
+        with pytest.raises(RuntimeError, match="vector store down"):
+            await context.format_goal_block(_USER, _user_with_focus("Ship v2"))
 
 
 class TestTrackedWork:
@@ -221,6 +219,12 @@ class TestTrackedWork:
 
 
 class TestLookback:
+    @pytest.fixture(autouse=True)
+    def no_briefing_workflows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            context.workflow_repository, "find_system_workflows", AsyncMock(return_value=[])
+        )
+
     async def test_first_look_back_with_nothing_done(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             context.todo_repository, "list_completed_since", AsyncMock(return_value=[])
@@ -259,6 +263,14 @@ class TestLookback:
         assert "- Workflow [success]: 3 drafts" in block
 
 
+def _sent_days_ago(brief: BriefingModel, days: int) -> BriefingModel:
+    brief.created_at = datetime(2026, 10, 12, 8, tzinfo=UTC) - timedelta(days=days)
+    return brief
+
+
+_WINBACK_USER = UserDocument(id=_USER)
+
+
 class TestWinback:
     @pytest.fixture
     def briefs(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
@@ -267,63 +279,78 @@ class TestWinback:
         return listing
 
     @pytest.fixture
-    def active_since(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-        signal = AsyncMock(return_value=False)
-        monkeypatch.setattr(context.dormancy, "reactivation_signal_since", signal)
-        return signal
+    def last_active(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+        read = AsyncMock(return_value=None)
+        monkeypatch.setattr(context.dormancy, "latest_activity_since", read)
+        return read
 
     async def test_no_briefs_is_not_winback(
-        self, briefs: AsyncMock, active_since: AsyncMock
+        self, briefs: AsyncMock, last_active: AsyncMock
     ) -> None:
-        state = await context.compute_winback_state(_USER)
+        state = await context.compute_winback_state(_WINBACK_USER)
 
         assert (state.unacknowledged, state.is_winback, state.should_back_off) == (0, False, False)
+        last_active.assert_not_awaited()
 
     async def test_ignored_briefs_up_to_the_threshold_flip_to_winback(
-        self, briefs: AsyncMock, active_since: AsyncMock
+        self, briefs: AsyncMock, last_active: AsyncMock
     ) -> None:
-        briefs.return_value = [_brief("clear") for _ in range(WINBACK_THRESHOLD)] + [
-            _brief("clear", opened=True)
-        ]
+        briefs.return_value = [
+            _sent_days_ago(_brief("clear"), d) for d in range(WINBACK_THRESHOLD)
+        ] + [_sent_days_ago(_brief("clear", opened=True), WINBACK_THRESHOLD)]
 
-        state = await context.compute_winback_state(_USER)
+        state = await context.compute_winback_state(_WINBACK_USER)
 
         assert state.unacknowledged == WINBACK_THRESHOLD
         assert state.is_winback
         assert not state.should_back_off
 
     async def test_activity_after_a_brief_acknowledges_it(
-        self, briefs: AsyncMock, active_since: AsyncMock
+        self, briefs: AsyncMock, last_active: AsyncMock
     ) -> None:
-        briefs.return_value = [_brief("clear") for _ in range(WINBACK_THRESHOLD + 1)]
-        active_since.side_effect = [False, True]
+        briefs.return_value = [
+            _sent_days_ago(_brief("clear"), d) for d in range(WINBACK_THRESHOLD + 1)
+        ]
+        # Active between the second-newest brief and the newest one.
+        last_active.return_value = datetime(2026, 10, 11, 9, tzinfo=UTC)
 
-        state = await context.compute_winback_state(_USER)
+        state = await context.compute_winback_state(_WINBACK_USER)
 
         assert state.unacknowledged == 1
         assert not state.is_winback
 
+    async def test_last_activity_is_read_once_from_the_oldest_brief(
+        self, briefs: AsyncMock, last_active: AsyncMock
+    ) -> None:
+        briefs.return_value = [_sent_days_ago(_brief("clear"), d) for d in range(5)]
+
+        await context.compute_winback_state(_WINBACK_USER)
+
+        last_active.assert_awaited_once_with(_WINBACK_USER, datetime(2026, 10, 8, 8, tzinfo=UTC))
+
     async def test_a_sent_winback_that_is_still_ignored_backs_off(
-        self, briefs: AsyncMock, active_since: AsyncMock
+        self, briefs: AsyncMock, last_active: AsyncMock
     ) -> None:
         briefs.return_value = [_brief("winback")] + [
-            _brief("clear") for _ in range(WINBACK_THRESHOLD)
+            _sent_days_ago(_brief("clear"), d + 1) for d in range(WINBACK_THRESHOLD)
         ]
 
-        state = await context.compute_winback_state(_USER)
+        state = await context.compute_winback_state(_WINBACK_USER)
 
         assert state.should_back_off
 
     async def test_naive_created_at_is_read_as_utc(
-        self, briefs: AsyncMock, active_since: AsyncMock
+        self, briefs: AsyncMock, last_active: AsyncMock
     ) -> None:
         brief = _brief("clear")
         brief.created_at = datetime(2026, 10, 12, 8)
         briefs.return_value = [brief]
+        last_active.return_value = datetime(2026, 10, 12, 8, tzinfo=UTC)
 
-        await context.compute_winback_state(_USER)
+        state = await context.compute_winback_state(_WINBACK_USER)
 
-        assert active_since.await_args.args[1] == datetime(2026, 10, 12, 8, tzinfo=UTC)
+        assert last_active.await_args.args[1] == datetime(2026, 10, 12, 8, tzinfo=UTC)
+        assert state.unacknowledged == 0
 
 
 def _clock(iso: str = "2026-10-14T07:00:00", tz: str = "Asia/Kolkata") -> context.UserClock:
@@ -412,17 +439,17 @@ class TestWeek:
             return doc
 
         # Newest completion first, as list_completed_since returns them.
-        completed = AsyncMock(
-            return_value=[
+        completed = context.CompletedWork(
+            gaia=[
                 done("Memo", "2026-10-18T09:00", GAIA_TRACKED_LABEL),
-                done("Gym", "2026-10-12T23:30"),
                 done("Deck", "2026-10-12T10:00", GAIA_TRACKED_LABEL),
-            ]
+            ],
+            user=[done("Gym", "2026-10-12T23:30")],
         )
-        monkeypatch.setattr(context.todo_repository, "list_completed_since", completed)
         monkeypatch.setattr(context, "gather_calendar", AsyncMock(return_value=[]))
+        clock = _clock("2026-10-18T17:00:00")
 
-        week = await context.gather_week(_USER, _clock("2026-10-18T17:00:00"))
+        week = await context.gather_week(_USER, clock, completed)
 
         assert [(d.you, d.gaia) for d in week.days] == [
             (1, 1),
@@ -435,7 +462,7 @@ class TestWeek:
         ]
         assert week.shipped == ["Gym"]
         assert week.handled == ["Deck", "Memo"]
-        assert completed.await_args.kwargs["since"] == datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
+        assert context.week_start_utc(clock) == datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 
 
 class TestClockIsTheUsers:
@@ -482,20 +509,6 @@ class TestGoalBlockEdges:
         block, has_goal = await context.format_goal_block(_USER, UserDocument())
 
         assert (block, has_goal) == ("- Hiring a designer", True)
-
-    async def test_a_recall_failure_is_recorded_on_the_wide_event(self, recall: AsyncMock) -> None:
-        recall.side_effect = RuntimeError("vector store down")
-
-        async with captured_wide_event() as event:
-            await context.format_goal_block(_USER, UserDocument())
-
-        assert event["warnings"] == [
-            {
-                "msg": "briefing.goal_block_recall_failed",
-                "user_id": _USER,
-                "error": "vector store down",
-            }
-        ]
 
 
 class TestReadsAreScopedToTheUser:
@@ -560,10 +573,17 @@ class TestLookbackBlock:
     @pytest.fixture
     def reads(self, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         reads = SimpleNamespace(
-            completed=AsyncMock(return_value=[]), executions=AsyncMock(return_value=[])
+            completed=AsyncMock(return_value=[]),
+            executions=AsyncMock(return_value=[]),
+            briefing_workflows=AsyncMock(
+                return_value=[SimpleNamespace(id="wf-daily"), SimpleNamespace(id="wf-weekly")]
+            ),
         )
         monkeypatch.setattr(context.todo_repository, "list_completed_since", reads.completed)
         monkeypatch.setattr(context.workflow_executions_repository, "list_since", reads.executions)
+        monkeypatch.setattr(
+            context.workflow_repository, "find_system_workflows", reads.briefing_workflows
+        )
         return reads
 
     async def test_the_whole_block_reads_plan_then_done_then_runs(
@@ -598,7 +618,13 @@ class TestLookbackBlock:
             "- Workflow [failed]"
         )
         reads.completed.assert_awaited_once_with(_USER, since=since)
-        reads.executions.assert_awaited_once_with(_USER, since, limit=20)
+        # The briefing workflows' own runs are not background work to report.
+        reads.briefing_workflows.assert_awaited_once_with(
+            _USER, ("daily_briefing", "weekly_digest")
+        )
+        reads.executions.assert_awaited_once_with(
+            _USER, since, exclude_workflow_ids=["wf-daily", "wf-weekly"], limit=20
+        )
 
     async def test_a_first_look_back_with_nothing_done_says_both_plainly(
         self, reads: SimpleNamespace
@@ -625,21 +651,21 @@ class TestWinbackReads:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         listing = AsyncMock(return_value=[_brief("clear")])
-        signal = AsyncMock(return_value=True)
+        signal = AsyncMock(return_value=None)
         monkeypatch.setattr(context.briefing_repository, "list_recent", listing)
-        monkeypatch.setattr(context.dormancy, "reactivation_signal_since", signal)
+        monkeypatch.setattr(context.dormancy, "latest_activity_since", signal)
 
-        await context.compute_winback_state(_USER)
+        await context.compute_winback_state(_WINBACK_USER)
 
         listing.assert_awaited_once_with(_USER, limit=10, kind=BRIEFING_KIND_DAILY)
-        assert signal.await_args.args[0] == _USER
+        assert signal.await_args.args[0] is _WINBACK_USER
 
     async def test_no_briefs_means_no_winback_went_out(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(context.briefing_repository, "list_recent", AsyncMock(return_value=[]))
 
-        state = await context.compute_winback_state(_USER)
+        state = await context.compute_winback_state(_WINBACK_USER)
 
         assert state.last_was_winback is False
 
@@ -693,6 +719,14 @@ def _done(title: str, completed_at: datetime | None, *labels: str) -> TodoDocume
     return doc
 
 
+def _by_owner(docs: list[TodoDocument]) -> context.CompletedWork:
+    """Split completions the way gather_completed_since does, keeping their order."""
+    return context.CompletedWork(
+        gaia=[d for d in docs if context.is_gaia_tracked(d)],
+        user=[d for d in docs if not context.is_gaia_tracked(d)],
+    )
+
+
 class TestWeekEdges:
     @pytest.fixture
     def ahead(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
@@ -705,8 +739,8 @@ class TestWeekEdges:
     ) -> None:
         tz = ZoneInfo("Pacific/Kiritimati")
         # Newest first: the walk is oldest first, so the skipped rows come first.
-        completed = AsyncMock(
-            return_value=[
+        completed = _by_owner(
+            [
                 _done("Memo", datetime(2026, 10, 13, 2, tzinfo=tz), GAIA_TRACKED_LABEL),
                 _done("Brief", datetime(2026, 10, 12, 23, tzinfo=tz), GAIA_TRACKED_LABEL),
                 _done("Gym", datetime(2026, 10, 12, 20, tzinfo=tz)),
@@ -715,19 +749,16 @@ class TestWeekEdges:
                 _done("Never", None),
             ]
         )
-        monkeypatch.setattr(context.todo_repository, "list_completed_since", completed)
+        clock = _clock("2026-10-14T12:00:00", "Pacific/Kiritimati")
 
         # Mongo's naive "Run" is UTC whatever zone the server itself runs in.
         with local_timezone("Asia/Kolkata"):
-            week = await context.gather_week(
-                _USER, _clock("2026-10-14T12:00:00", "Pacific/Kiritimati")
-            )
+            week = await context.gather_week(_USER, clock, completed)
 
         assert [(d.you, d.gaia) for d in week.days][:2] == [(1, 1), (1, 1)]
         assert week.shipped == ["Run", "Gym"]
         assert week.handled == ["Brief", "Memo"]
-        assert completed.await_args.args == (_USER,)
-        assert completed.await_args.kwargs["since"].tzinfo is UTC
+        assert context.week_start_utc(clock).tzinfo is UTC
 
     async def test_two_on_one_day_count_twice(
         self, monkeypatch: pytest.MonkeyPatch, ahead: AsyncMock
@@ -739,11 +770,7 @@ class TestWeekEdges:
             _done("c", at, GAIA_TRACKED_LABEL),
             _done("d", at, GAIA_TRACKED_LABEL),
         ]
-        monkeypatch.setattr(
-            context.todo_repository, "list_completed_since", AsyncMock(return_value=docs)
-        )
-
-        week = await context.gather_week(_USER, _clock())
+        week = await context.gather_week(_USER, _clock(), _by_owner(docs))
 
         assert (week.days[0].you, week.days[0].gaia) == (2, 2)
 
@@ -754,12 +781,9 @@ class TestWeekEdges:
             BriefingEvent(date="2026-10-15", title=f"E{i}") for i in range(WEEK_LIST_LIMIT + 1)
         ]
         ahead.return_value = events
-        monkeypatch.setattr(
-            context.todo_repository, "list_completed_since", AsyncMock(return_value=[])
-        )
         clock = _clock()
 
-        week = await context.gather_week(_USER, clock)
+        week = await context.gather_week(_USER, clock, context.CompletedWork())
 
         assert week.ahead == events[:WEEK_LIST_LIMIT]
         ahead.assert_awaited_once_with(_USER, clock, days=7, days_ahead=1)
