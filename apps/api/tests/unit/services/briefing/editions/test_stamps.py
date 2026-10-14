@@ -8,6 +8,7 @@ import pytest
 
 from app.services.briefing.editions import stamps
 from app.services.briefing.editions.stamps import (
+    StampCity,
     hosted_stamp_weights,
     stamp_asset_url,
     stamp_for,
@@ -20,10 +21,10 @@ _PARIS_URL = "https://res.cloudinary.com/x/image/upload/briefing/stamps/paris.we
 @pytest.fixture(autouse=True)
 def _cold_catalogue() -> Iterator[None]:
     """Start every test with the lru-cached catalogue loaders unread."""
-    stamps._cities.cache_clear()
+    stamps.stamp_catalogue.cache_clear()
     stamps._postage.cache_clear()
     yield
-    stamps._cities.cache_clear()
+    stamps.stamp_catalogue.cache_clear()
     stamps._postage.cache_clear()
 
 
@@ -31,11 +32,17 @@ def _cold_catalogue() -> Iterator[None]:
 def hosted(monkeypatch: pytest.MonkeyPatch) -> None:
     """Paris and Tokyo uploaded, Osaka not yet."""
     rows = {
-        "paris": {"slug": "paris", "name": "Paris", "country": "France", "url": _PARIS_URL},
-        "tokyo": {"slug": "tokyo", "name": "Tokyo", "country": "Japan", "url": "https://t"},
-        "osaka": {"slug": "osaka", "name": "Osaka", "country": "Japan", "url": None},
+        "paris": StampCity(
+            slug="paris", name="Paris", country="France", lat=48.86, lng=2.35, url=_PARIS_URL
+        ),
+        "tokyo": StampCity(
+            slug="tokyo", name="Tokyo", country="Japan", lat=35.68, lng=139.69, url="https://t"
+        ),
+        "osaka": StampCity(
+            slug="osaka", name="Osaka", country="Japan", lat=34.69, lng=135.5, url=None
+        ),
     }
-    monkeypatch.setattr(stamps, "_cities", lambda: rows)
+    monkeypatch.setattr(stamps, "stamp_catalogue", lambda: rows)
 
 
 @pytest.mark.unit
@@ -44,7 +51,7 @@ class TestCatalogue:
         rows = json.loads(_CATALOGUE.read_text())
 
         assert len(rows) == 85
-        assert all(set(row) == {"slug", "name", "country", "url"} for row in rows)
+        assert all(set(row) == {"slug", "name", "country", "lat", "lng", "url"} for row in rows)
         assert not list(_CATALOGUE.parent.glob("*.webp"))
         assert not list(_CATALOGUE.parent.glob("*.png"))
 

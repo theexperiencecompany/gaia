@@ -25,10 +25,10 @@ async def collected_postmarks(user_id: str) -> PostmarksResponse:
         city = catalogue[slug]
         postmarks[slug] = Postmark(
             city_slug=slug,
-            city=city["name"],
-            country=city["country"],
-            lat=city["lat"],
-            lng=city["lng"],
+            city=city.name,
+            country=city.country,
+            lat=city.lat,
+            lng=city.lng,
             stamp_url=stamp_asset_url(slug),
             date=brief.date,
             briefing_id=brief.id,
