@@ -29,6 +29,7 @@ import {
   unconfiguredInstallCheck,
 } from "../../src/commands/doctor/checks.js";
 import { hasBlockingFailure } from "../../src/commands/doctor/flow.js";
+import { printDoctorReport } from "../../src/commands/doctor/handler.js";
 // Import after mocks are registered so the modules pick them up.
 import type { CheckResult } from "../../src/commands/doctor/types.js";
 
@@ -570,7 +571,68 @@ describe("checkWebReachable", () => {
   });
 });
 
+describe("printDoctorReport", () => {
+  it("starts every check's label in the same column, whatever its status", () => {
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    const result = (
+      state: CheckResult["state"],
+      severity: CheckResult["severity"],
+    ): CheckResult => ({ id: "x", label: "Label", severity, state });
+
+    printDoctorReport({
+      install: "/srv/gaia (selfhost mode)",
+      results: [
+        result("ok", "blocker"),
+        result("fail", "warning"),
+        result("skipped", "blocker"),
+        result("fail", "blocker"),
+      ],
+    });
+
+    const lines = write.mock.calls
+      .map(([chunk]) => String(chunk))
+      .filter((line) => line.includes("Label"));
+    write.mockRestore();
+    expect(lines.map((line) => line.indexOf("Label"))).toEqual(
+      Array(4).fill(lines[0]?.indexOf("Label")),
+    );
+    for (const line of lines) expect(line).toMatch(/\] +Label/);
+  });
+});
+
 describe("checkSetupReadiness", () => {
+  it("says what is missing in plain words", async () => {
+    stubSetupEndpoints({
+      auth_mode: "local",
+      needs_setup: true,
+      plans_seeded: false,
+      has_admin_account: false,
+      registration_policy: "invite_only",
+      deployment: {
+        kind: "selfhost",
+        bills: false,
+        local_code_sandbox: false,
+        blob_store: "local",
+        gaia_support: false,
+      },
+      providers: {
+        openai: { configured: true, source: "env", env_shadowed: false },
+      },
+    });
+
+    const results = await checkSetupReadiness({
+      apiHealthy: true,
+      apiUrl: "http://localhost:3000/api/v1",
+      webPort: 3000,
+    });
+
+    expect(results.map((r) => [r.label, r.detail])).toEqual([
+      ["Setup readiness", "No admin account yet"],
+    ]);
+  });
+
   it("emits one warning-level fail per unconfigured item", async () => {
     stubSetupEndpoints({
       auth_mode: "workos",

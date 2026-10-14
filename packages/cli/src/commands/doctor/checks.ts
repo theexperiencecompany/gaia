@@ -192,9 +192,11 @@ import type {
 export type SetupStatusPayload = SetupStatusResponse;
 
 export interface SetupReadinessItem {
-  /** e.g. "models seeded". */
+  /** e.g. "plans seeded". */
   label: string;
   configured: boolean;
+  /** What doctor reports while the item is unconfigured, e.g. "No admin account yet". */
+  missing: string;
   fix: string;
 }
 
@@ -213,17 +215,26 @@ export function evaluateSetupReadiness(
     (key) => payload.providers?.[key]?.configured === true,
   );
 
-  const items: Array<{ label: string; configured: boolean }> = [
-    { label: "LLM provider configured", configured: llmConfigured },
+  const items: Omit<SetupReadinessItem, "fix">[] = [
+    {
+      label: "LLM provider configured",
+      configured: llmConfigured,
+      missing: "No AI provider configured yet",
+    },
     {
       label: "admin account created",
       configured: payload.has_admin_account === true,
+      missing: "No admin account yet",
     },
   ];
 
   // Plans exist only to be bought; an instance that does not bill has none.
   if (payload.deployment.bills) {
-    items.push({ label: "plans seeded", configured: payload.plans_seeded });
+    items.push({
+      label: "plans seeded",
+      configured: payload.plans_seeded,
+      missing: "Billing plans not seeded yet",
+    });
   }
 
   return items.map((item) => ({
@@ -503,9 +514,8 @@ export async function checkSetupReadiness(options: {
     .filter((item) => !item.configured)
     .map((item) => ({
       ...base,
-      label: `Setup readiness: ${item.label}`,
       state: "fail" as const,
-      detail: `${item.label.charAt(0).toUpperCase()}${item.label.slice(1)} is not configured`,
+      detail: item.missing,
       fix: item.fix,
     }));
 }

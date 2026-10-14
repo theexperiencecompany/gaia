@@ -29,13 +29,17 @@ function out(line = ""): void {
   process.stdout.write(`${line}\n`);
 }
 
+// The widest tag ("[warn]", "[skip]", "[FAIL]") plus one space of gutter.
+const TAG_COLUMN_WIDTH = 7;
+const LINE_INDENT = "  ";
+
 /** Renders one check line plus its remediation hint on failure. */
 function printCheck(result: CheckResult): void {
-  const tag = tagFor(result).padEnd(6);
+  const tag = tagFor(result).padEnd(TAG_COLUMN_WIDTH);
   const detail = result.detail ? ` — ${result.detail}` : "";
-  out(`  ${tag}${result.label}${detail}`);
+  out(`${LINE_INDENT}${tag}${result.label}${detail}`);
   if ((result.state === "fail" || result.state === "skipped") && result.fix) {
-    out(`         Fix: ${result.fix}`);
+    out(`${LINE_INDENT}${" ".repeat(TAG_COLUMN_WIDTH)}Fix: ${result.fix}`);
   }
 }
 
