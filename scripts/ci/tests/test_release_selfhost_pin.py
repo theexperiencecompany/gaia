@@ -1,4 +1,4 @@
-"""A CLI release pins the gaia + gaia-web images built from its own release commit.
+"""A CLI release pins the gaia, gaia-web and self-host bot images built from its own release commit.
 
 `gaia update` pins GAIA_VERSION=v<CLI version>; tagging that from :latest pinned
 whatever master last deployed, not the code the CLI was released with. The pin
@@ -20,6 +20,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RELEASE_SH = REPO_ROOT / "scripts" / "ci" / "release.sh"
 NAMESPACE = "ghcr.io/theexperiencecompany"
+RELEASE_REPOS = ("gaia", "gaia-web", "gaia-bot-telegram", "gaia-bot-discord", "gaia-bot-slack")
 
 # `imagetools inspect <ref>` succeeds when <ref> is in $PRESENT, or when it is
 # listed in $LATE as "<ref> <n>" and has been inspected more than n times.
@@ -178,17 +179,17 @@ def _created(workspace: Path) -> list[str]:
     return (workspace / "created.txt").read_text().splitlines()
 
 
+def _release_images(sha: str, *, without: str = "") -> list[str]:
+    return [f"{NAMESPACE}/{repo}:{sha}" for repo in RELEASE_REPOS if repo != without]
+
+
 def test_the_release_pins_the_images_of_its_own_commit(workspace: Path) -> None:
     sha = _head(workspace)
-    result = _pin(
-        workspace,
-        present=[f"{NAMESPACE}/gaia:{sha}", f"{NAMESPACE}/gaia-web:{sha}"],
-    )
+    result = _pin(workspace, present=_release_images(sha))
 
     assert result.returncode == 0, result.stderr
     assert _created(workspace) == [
-        f"{NAMESPACE}/gaia:v0.6.0 {NAMESPACE}/gaia:{sha}",
-        f"{NAMESPACE}/gaia-web:v0.6.0 {NAMESPACE}/gaia-web:{sha}",
+        f"{NAMESPACE}/{repo}:v0.6.0 {NAMESPACE}/{repo}:{sha}" for repo in RELEASE_REPOS
     ]
 
 
@@ -196,7 +197,7 @@ def test_the_pin_waits_for_a_build_still_in_flight(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=[f"{NAMESPACE}/gaia:{sha}"],
+        present=_release_images(sha, without="gaia-web"),
         late={f"{NAMESPACE}/gaia-web:{sha}": 2},
     )
 
@@ -217,19 +218,32 @@ def test_a_missing_image_times_out_loud_and_tags_nothing(workspace: Path) -> Non
     assert _created(workspace) == []
 
 
+def test_a_release_without_its_bot_images_times_out_loud_and_tags_nothing(
+    workspace: Path,
+) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=_release_images(sha, without="gaia-bot-slack"),
+        env_extra={"PIN_WAIT_SECONDS": "0"},
+    )
+
+    assert result.returncode != 0
+    assert f"gaia-bot-slack:{sha}" in result.stderr
+    assert _created(workspace) == []
+
+
 def test_an_existing_release_tag_is_never_moved(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=[
-            f"{NAMESPACE}/gaia:v0.6.0",
-            f"{NAMESPACE}/gaia:{sha}",
-            f"{NAMESPACE}/gaia-web:{sha}",
-        ],
+        present=[f"{NAMESPACE}/gaia:v0.6.0", *_release_images(sha)],
     )
 
     assert result.returncode == 0, result.stderr
-    assert _created(workspace) == [f"{NAMESPACE}/gaia-web:v0.6.0 {NAMESPACE}/gaia-web:{sha}"]
+    assert _created(workspace) == [
+        f"{NAMESPACE}/{repo}:v0.6.0 {NAMESPACE}/{repo}:{sha}" for repo in RELEASE_REPOS[1:]
+    ]
 
 
 def test_a_sha_other_than_the_checked_out_release_is_refused(workspace: Path) -> None:
@@ -244,13 +258,9 @@ def test_a_sha_other_than_the_checked_out_release_is_refused(workspace: Path) ->
     assert _created(workspace) == []
 
 
-def _both_images(sha: str) -> list[str]:
-    return [f"{NAMESPACE}/gaia:{sha}", f"{NAMESPACE}/gaia-web:{sha}"]
-
-
 def test_the_pin_asks_for_the_quality_gate_of_the_release_commit(workspace: Path) -> None:
     sha = _head(workspace)
-    result = _pin(workspace, present=_both_images(sha))
+    result = _pin(workspace, present=_release_images(sha))
 
     assert result.returncode == 0, result.stderr
     calls = (workspace / "gh-calls.txt").read_text()
@@ -263,7 +273,7 @@ def test_a_failed_quality_gate_refuses_the_release_and_tags_nothing(workspace: P
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_both_images(sha),
+        present=_release_images(sha),
         main_runs={7: {"quality-gate": ("completed", "failure")}},
     )
 
@@ -276,7 +286,7 @@ def test_a_gate_that_never_finishes_times_out_loud_and_tags_nothing(workspace: P
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_both_images(sha),
+        present=_release_images(sha),
         main_runs={7: {"quality-gate": ("in_progress", None)}},
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
@@ -290,7 +300,7 @@ def test_a_commit_main_yml_never_ran_on_is_not_released(workspace: Path) -> None
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_both_images(sha),
+        present=_release_images(sha),
         main_runs={},
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
@@ -303,7 +313,7 @@ def test_a_passed_gate_releases_even_when_a_non_gating_job_failed(workspace: Pat
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_both_images(sha),
+        present=_release_images(sha),
         main_runs={
             7: {
                 "changelog-sync": ("completed", "failure"),
@@ -313,14 +323,14 @@ def test_a_passed_gate_releases_even_when_a_non_gating_job_failed(workspace: Pat
     )
 
     assert result.returncode == 0, result.stderr
-    assert len(_created(workspace)) == 2
+    assert len(_created(workspace)) == len(RELEASE_REPOS)
 
 
 def test_an_unreadable_actions_api_fails_the_pin_loud(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_both_images(sha),
+        present=_release_images(sha),
         env_extra={"GH_FIXTURES": str(workspace / "absent"), "PIN_WAIT_SECONDS": "0"},
     )
 

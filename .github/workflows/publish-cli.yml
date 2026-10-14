@@ -41,7 +41,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      # pin-selfhost-release tags the gaia / gaia-web images in GHCR.
+      # pin-selfhost-release tags the gaia / gaia-web / self-host bot images in GHCR.
       packages: write
       # ...after reading main.yml's quality gate on the release commit.
       actions: read

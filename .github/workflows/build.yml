@@ -114,11 +114,13 @@ jobs:
       api: ${{ steps.affected.outputs.api }}
       bots: ${{ steps.affected.outputs.bots }}
       web: ${{ steps.affected.outputs.web }}
-      # Build + publish the gaia / gaia-web images: affected, or a CLI release
-      # commit (its publish pins this commit's :<sha> pair). Deploys still key
-      # on api/web alone, so a CLI-only release never redeploys the backend.
+      # Build + publish the gaia / gaia-web / bot images: affected, or a CLI
+      # release commit (its publish pins this commit's :<sha> set). Deploys
+      # still key on api/web/bots alone, so a CLI-only release never redeploys
+      # the backend.
       api_image: ${{ steps.affected.outputs.api_image }}
       web_image: ${{ steps.affected.outputs.web_image }}
+      bots_image: ${{ steps.affected.outputs.bots_image }}
     steps:
       # Full history: nx-set-shas resolves NX_BASE to the pre-push master SHA,
       # which a shallow clone does not contain ("fatal: bad object").
@@ -217,10 +219,12 @@ jobs:
 
           api_image=$api
           web_image=$web
+          bots_image=$bots
           if [ "${CLI_RELEASE:-false}" = "true" ]; then
-            echo "CLI release commit: publishing the gaia + gaia-web images it pins"
+            echo "CLI release commit: publishing the gaia, gaia-web and bot images it pins"
             api_image=true
             web_image=true
+            bots_image=true
           fi
 
           echo "api=$api" >> "$GITHUB_OUTPUT"
@@ -228,6 +232,7 @@ jobs:
           echo "web=$web" >> "$GITHUB_OUTPUT"
           echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
           echo "web_image=$web_image" >> "$GITHUB_OUTPUT"
+          echo "bots_image=$bots_image" >> "$GITHUB_OUTPUT"
 
   docker-release:
     needs: [affected]
@@ -300,7 +305,7 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Determine version scheme
-        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots_image == 'true'
         id: version
         run: |
           if [ "${{ github.ref }}" = "refs/heads/master" ]; then
@@ -318,7 +323,7 @@ jobs:
       # Publish bot image tags when bot scope changed.
       - name: Release bots Docker images
         id: release-bots
-        if: needs.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.bots_image == 'true'
         run: pnpm exec nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Captured right after the push steps, before Discord command sync —
@@ -351,12 +356,26 @@ jobs:
       # rather than as a silent "nothing published".
       - name: Resolve immutable image tags
         id: image-tags
-        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots_image == 'true'
         env:
           VERSION_SCHEME: ${{ steps.version.outputs.scheme }}
           APPS_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
           BOTS_RELEASE_OUTCOME: ${{ steps.release-bots.outcome }}
         run: bash scripts/ci/release.sh resolve-image-tags
+
+      # A self-host install pins its bots with GAIA_VERSION like the API and
+      # web: `release.sh pin-selfhost-release` tags v<CLI version> from :<sha>.
+      - name: Tag self-host bot images with the commit sha
+        if: steps.image-tags.outputs.bots_tag != ''
+        env:
+          BOTS_TAG: ${{ steps.image-tags.outputs.bots_tag }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          source scripts/ci/lib/image-repos.sh
+          for repo in "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+            docker buildx imagetools create -t "$GHCR_NAMESPACE/$repo:$COMMIT_SHA" "$GHCR_NAMESPACE/$repo:$BOTS_TAG"
+          done
 
       # Discord command sync is only meaningful for production bot deploys.
       - name: Register Discord slash commands
@@ -368,7 +387,7 @@ jobs:
         run: pnpm deploy-commands
 
       - name: Skip notification
-        if: needs.affected.outputs.api_image != 'true' && needs.affected.outputs.bots != 'true'
+        if: needs.affected.outputs.api_image != 'true' && needs.affected.outputs.bots_image != 'true'
         run: echo "No affected API/bot Docker projects, skipping build"
 
   # Self-hosters run the API image (gaia, also the ARQ worker) on arm64 too.

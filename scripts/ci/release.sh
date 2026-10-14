@@ -14,10 +14,10 @@
 #   cli-release-images   Does HEAD release the CLI? Its gaia + gaia-web images
 #                        must then be published even when nx sees api/web
 #                        unaffected. Writes required=true|false.
-#   pin-selfhost-release Wait for the release commit's gaia + gaia-web :<sha>
-#                        images and main.yml's quality gate on it, then tag
-#                        them v<CLI version>, the pair that CLI release's
-#                        `gaia update` pins.
+#   pin-selfhost-release Wait for the release commit's gaia + gaia-web +
+#                        self-host bot :<sha> images and main.yml's quality
+#                        gate on it, then tag them v<CLI version>, the set that
+#                        CLI release's `gaia update` pins.
 #   connect-cross-check  Cross-compile tools/gaia-connect for every published
 #                        target and discard the result — the pre-merge proof
 #                        that a release build cannot fail on a target the
@@ -397,8 +397,9 @@ cmd_connect_binaries() {
 
 # Whether HEAD is a CLI release commit: release-please bumps packages/cli's
 # version in the commit it tags cli-v<version>. pin-selfhost-release waits for
-# that commit's gaia + gaia-web :<sha> images, so build.yml publishes them for a
-# release commit even when nx sees neither app as affected (a CLI-only release).
+# that commit's gaia, gaia-web and self-host bot :<sha> images, so build.yml
+# publishes them for a release commit even when nx sees none of them as
+# affected (a CLI-only release).
 cmd_cli_release_images() {
 
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
@@ -412,13 +413,14 @@ cmd_cli_release_images() {
   ci_ok "cli-release-images: required=$required"
 }
 
-# Gives a CLI release its own immutable image pair. `gaia update` pins
-# GAIA_VERSION=v<CLI version> for gaia (API + worker) and gaia-web together, so
-# both must carry that tag before the CLI reaches npm, and both must be the
-# release commit's own build (build.yml tags every master build :<sha>). That
+# Gives a CLI release its own immutable image set. `gaia update` pins
+# GAIA_VERSION=v<CLI version> for gaia (API + worker), gaia-web and the
+# self-host bots together, so each must carry that tag before the CLI reaches
+# npm, and each must be the release commit's own build (build.yml tags every
+# master build :<sha>). That
 # build runs alongside this publish, so the pair is awaited, bounded, and a
 # timeout fails loud instead of falling back to whatever :latest is. Nothing is
-# tagged until both exist, so a timeout never leaves half a pair. Idempotent:
+# tagged until all exist, so a timeout never leaves a partial set. Idempotent:
 # an existing v<version> tag is kept, because an install may already run it.
 # main.yml's quality-gate verdict across the push runs on <sha>: passed when
 # any run's gate succeeded, failed when every run's gate finished otherwise,
@@ -459,7 +461,7 @@ cmd_pin_selfhost_release() {
 
   local tag="v${VERSION}"
   local repo pending=()
-  for repo in gaia "$WEB_IMAGE_REPO"; do
+  for repo in gaia "$WEB_IMAGE_REPO" "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
     if docker buildx imagetools inspect "$GHCR_NAMESPACE/$repo:$tag" >/dev/null 2>&1; then
       ci_ok "$GHCR_NAMESPACE/$repo:$tag already exists; keeping it."
     else
