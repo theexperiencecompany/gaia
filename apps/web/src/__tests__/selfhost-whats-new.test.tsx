@@ -41,6 +41,7 @@ const SELFHOST_STATUS: SetupStatusResponse = {
   registration_policy: "invite_only",
   needs_setup: false,
   wizard_dismissed: false,
+  features: {},
   plans_seeded: false,
   bots: {
     telegram_username: null,

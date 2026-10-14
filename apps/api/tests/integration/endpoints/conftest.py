@@ -19,12 +19,13 @@ from app.api.v1.endpoints.setup import router as setup_router
 from app.api.v1.endpoints.setup_composio import router as setup_composio_router
 from app.config.settings import settings
 from app.constants.auth import InstanceRole, RegistrationPolicy
-from app.constants.providers import CredentialSource
+from app.constants.providers import PROVIDER_FEATURES, CredentialSource, ProviderFeature
 from app.core.exception_handlers import register_exception_handlers
 from app.db.repositories.instance_settings import instance_settings_repository
 from app.models.auth_models import LocalCredentialDocument
 from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import AuthenticatedUser
+from app.services.providers.feature_status import FeatureStatus
 from app.services.providers.provider_credentials_service import (
     CredentialResolution,
     ProviderConfig,
@@ -138,6 +139,17 @@ instance_settings = FakeInstanceSettings()
 seed_state = FakeSeedState()
 
 
+async def _fake_feature_statuses() -> dict[ProviderFeature, FeatureStatus]:
+    """Report a fresh instance: each built-in engine serves, every other feature is off."""
+    return {
+        feature: FeatureStatus(
+            working=spec.built_in is not None,
+            in_use=[spec.built_in.engine] if spec.built_in else [],
+        )
+        for feature, spec in PROVIDER_FEATURES.items()
+    }
+
+
 async def _fake_is_payment_setup() -> bool:
     return seed_state.plans_seeded
 
@@ -161,6 +173,7 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_module, "invalidate_provider_cache", provider_service.invalidate)
     monkeypatch.setattr(setup_module, "local_credentials_repository", local_credentials_repo)
     monkeypatch.setattr(setup_module, "is_payment_setup", _fake_is_payment_setup)
+    monkeypatch.setattr(setup_module, "feature_statuses", _fake_feature_statuses)
     monkeypatch.setattr(setup_module, "get_registration_policy", _fake_registration_policy)
     monkeypatch.setattr(instance_settings_repository, "find_by_key", instance_settings.find_by_key)
     monkeypatch.setattr(instance_settings_repository, "put", instance_settings.put)

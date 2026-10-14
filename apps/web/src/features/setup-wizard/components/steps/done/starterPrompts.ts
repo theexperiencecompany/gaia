@@ -1,14 +1,14 @@
+import type { ProviderFeature } from "@gaia/shared/api/generated";
 import { CodeIcon, GlobalIcon, Mail01Icon, SparklesIcon } from "@icons";
-import type { CredentialProvider } from "@/features/settings/api/providersApi";
 
-/** A starter prompt plus the capability it needs. Prompts whose capability
- * is missing are hidden — offering "search the web" with no search key just
- * teaches the user the app is broken. */
+/** A starter prompt plus the feature it needs. Prompts whose feature is off
+ * are hidden — offering "run a script" with no sandbox just teaches the user
+ * the app is broken. */
 export interface StarterPrompt {
   prompt: string;
   icon: typeof GlobalIcon;
   /** Omitted for prompts that need nothing but chat. */
-  requires?: CredentialProvider | "sandbox" | "inbox";
+  requires?: ProviderFeature;
 }
 
 export const STARTER_PROMPTS: StarterPrompt[] = [
@@ -19,16 +19,16 @@ export const STARTER_PROMPTS: StarterPrompt[] = [
   {
     prompt: "Search the web for today's AI headlines",
     icon: GlobalIcon,
-    requires: "tavily",
+    requires: "web_search",
   },
   {
     prompt: "Run a Python script that prints hello world",
     icon: CodeIcon,
-    requires: "sandbox",
+    requires: "code_running",
   },
   {
     prompt: "Help me organize my inbox",
     icon: Mail01Icon,
-    requires: "inbox",
+    requires: "integrations",
   },
 ];

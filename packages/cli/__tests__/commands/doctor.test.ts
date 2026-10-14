@@ -71,7 +71,12 @@ function stubSetupEndpoints(status: unknown): void {
   stubFetch(async (url) =>
     okResponse(
       url.endsWith("/api/v1/setup/catalog")
-        ? { providers: {}, custom_presets: {}, llm_provider_keys: LLM_KEYS }
+        ? {
+            providers: {},
+            custom_presets: {},
+            features: {},
+            llm_provider_keys: LLM_KEYS,
+          }
         : status,
     ),
   );
@@ -145,6 +150,7 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "workos",
         needs_setup: true,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: false,
         bots: {
           telegram_username: null,
@@ -186,6 +192,7 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "workos",
         needs_setup: false,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
         bots: {
           telegram_username: null,
@@ -218,6 +225,7 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "local",
         needs_setup: false,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
         bots: {
           telegram_username: null,
@@ -258,6 +266,7 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "local",
         needs_setup: true,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
         bots: {
           telegram_username: null,
@@ -291,6 +300,7 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "local",
         needs_setup: false,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
         bots: {
           telegram_username: null,
@@ -328,6 +338,7 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "workos",
         needs_setup: false,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: false,
         bots: {
           telegram_username: null,
@@ -363,6 +374,7 @@ describe("evaluateSetupReadiness", () => {
       auth_mode: "local" as const,
       needs_setup: false,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: false,
       bots: {
         telegram_username: null,
@@ -404,6 +416,7 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "local",
         needs_setup: true,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
         bots: {
           telegram_username: null,
@@ -716,6 +729,7 @@ describe("checkSetupReadiness", () => {
       auth_mode: "local",
       needs_setup: true,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: false,
       bots: {
         telegram_username: null,
@@ -752,6 +766,7 @@ describe("checkSetupReadiness", () => {
       auth_mode: "workos",
       needs_setup: true,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: false,
       bots: {
         telegram_username: null,
@@ -792,6 +807,7 @@ describe("checkSetupReadiness", () => {
       auth_mode: "workos",
       needs_setup: false,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: true,
       bots: {
         telegram_username: null,
@@ -829,6 +845,7 @@ describe("checkSetupReadiness", () => {
       auth_mode: "local",
       needs_setup: false,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: true,
       bots: {
         telegram_username: null,
@@ -865,6 +882,7 @@ describe("checkSetupReadiness", () => {
       auth_mode: "local",
       needs_setup: false,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: true,
       bots: {
         telegram_username: null,

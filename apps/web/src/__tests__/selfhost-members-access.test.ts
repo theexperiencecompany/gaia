@@ -20,6 +20,7 @@ const status = (
   registration_policy: "invite_only",
   needs_setup: false,
   wizard_dismissed: false,
+  features: {},
   plans_seeded: true,
   bots: {
     telegram_username: null,

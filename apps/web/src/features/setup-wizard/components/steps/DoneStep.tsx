@@ -10,16 +10,16 @@
 import * as m from "motion/react-m";
 import { useEffect } from "react";
 import type {
-  CredentialProvider,
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
 import {
   isAnyLlmConfigured,
+  isFeatureWorking,
   isProviderConfigured,
-  runsCodeInLocalSandbox,
 } from "@/features/settings/hooks/useSetupStatus";
-import { SEARCH_PROVIDER_CARD, TOOL_PROVIDER_CARDS } from "../../constants";
+import { featureEngineLabel } from "@/features/settings/utils/providerCatalog";
+import { TOOL_PROVIDER_CARDS } from "../../constants";
 import {
   resolveLlmProviderCards,
   resolveProviderCard,
@@ -29,7 +29,7 @@ import { ReadyCard } from "./done/ReadyCard";
 import { SetupSummaryCard } from "./done/SetupSummaryCard";
 import { SkippedProviderCard } from "./done/SkippedProviderCard";
 import { StarterPromptsCard } from "./done/StarterPromptsCard";
-import { STARTER_PROMPTS, type StarterPrompt } from "./done/starterPrompts";
+import { STARTER_PROMPTS } from "./done/starterPrompts";
 
 interface DoneStepProps {
   status: SetupStatus;
@@ -42,29 +42,20 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
   );
   const hasLlm = isAnyLlmConfigured(status, catalog);
 
-  const searchConfigured = isProviderConfigured(
-    status,
-    SEARCH_PROVIDER_CARD.key,
-  );
+  const [searchEngine] = status.features.web_search?.in_use ?? [];
+  const searchLabel = searchEngine
+    ? featureEngineLabel(searchEngine, catalog.features.web_search, catalog)
+    : null;
 
   const connectedTools = TOOL_PROVIDER_CARDS.filter((card) =>
     isProviderConfigured(status, card.key),
   ).map((card) => resolveProviderCard(card, catalog));
-  const toolConfigured = (key: CredentialProvider) =>
-    connectedTools.some((card) => card.key === key);
 
-  // Code runs on E2B or the operator's opt-in local sandbox; the inbox needs
-  // Composio — every other prompt needs its key configured.
-  const capabilityReady = (requires: StarterPrompt["requires"]): boolean => {
-    if (!requires) return true;
-    if (requires === "sandbox")
-      return toolConfigured("e2b") || runsCodeInLocalSandbox(status);
-    if (requires === "inbox") return toolConfigured("composio");
-    return isProviderConfigured(status, requires);
-  };
-
-  const starterPrompts = STARTER_PROMPTS.filter((item) =>
-    capabilityReady(item.requires),
+  const starterPrompts = STARTER_PROMPTS.filter(
+    (item) => !item.requires || isFeatureWorking(status, item.requires),
+  );
+  const someFeatureOff = Object.values(status.features).some(
+    (feature) => !feature.working,
   );
 
   // Subtle confetti burst when the GAIA is ready — single fire, no loop.
@@ -107,16 +98,12 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
       {hasLlm && <StarterPromptsCard prompts={starterPrompts} />}
       <SetupSummaryCard
         connectedLlmCards={connectedLlmCards}
-        searchLabel={
-          searchConfigured
-            ? resolveProviderCard(SEARCH_PROVIDER_CARD, catalog).label
-            : null
-        }
+        searchLabel={searchLabel}
         connectedTools={connectedTools}
         hasAdminAccount={status.has_admin_account}
       />
       <DoneActions hasLlm={hasLlm} />
-      {!searchConfigured && (
+      {someFeatureOff && (
         <m.p
           variants={{
             hidden: { opacity: 0 },
@@ -125,8 +112,8 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
           transition={{ duration: 0.35, delay: 0.2 }}
           className="text-center text-xs text-zinc-500"
         >
-          Skipped something? You can finish anytime in Settings, under AI
-          Providers.
+          Skipped something? You can finish anytime in Settings, under Providers
+          & Tools.
         </m.p>
       )}
     </m.div>

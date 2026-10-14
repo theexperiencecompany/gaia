@@ -45,6 +45,7 @@ const PENDING: SetupStatus = {
     gaia_support: false,
   },
   providers: {},
+  features: {},
   plans_seeded: false,
   bots: {
     telegram_username: null,

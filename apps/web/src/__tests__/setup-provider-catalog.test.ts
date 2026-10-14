@@ -74,6 +74,7 @@ const CATALOG: ProviderCatalog = {
       favicon_domain: "opencode.ai",
     }),
   },
+  features: {},
 };
 
 const statusWith = (configured: string[]): SetupStatus => ({
@@ -95,6 +96,7 @@ const statusWith = (configured: string[]): SetupStatus => ({
     discord_client_id: null,
     slack_workspace_url: null,
   },
+  features: {},
   providers: Object.fromEntries(
     configured.map((key) => [
       key,

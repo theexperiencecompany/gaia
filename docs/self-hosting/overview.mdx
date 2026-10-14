@@ -87,6 +87,20 @@ All state lives in Docker volumes, so stopping containers or upgrading later kee
 
 That's it — you land in chat.
 
+## What works out of the box
+
+Only the AI model needs setup. Everything else already works, or stays off until you add a key. Add any key later in **Settings → Providers & Tools**, where each feature shows **Working** or **Off** and which provider it is using.
+
+| Feature | Works out of the box with | Optional upgrades |
+| ------- | ------------------------- | ----------------- |
+| AI models | Nothing. You need one: an OpenRouter, Gemini or OpenAI key, a local Ollama, or any OpenAI-compatible server | The others work as alternatives or fallbacks |
+| Web search | DuckDuckGo (free, no key) | A Tavily, Exa or Brave key for better results, or the URL of your own SearXNG server |
+| Reading web pages | The built-in reader (a headless browser) | A Firecrawl key, which helps with sites that block bots |
+| Running code | A local sandbox on your machine's Docker, once turned on with `LOCAL_CODE_SANDBOX=true` (or `gaia up --code-sandbox`). Off otherwise | An E2B key (cloud sandbox) |
+| File storage | Your server's disk | Cloudinary: set `BLOB_STORE=cloudinary` plus its keys |
+| Email | Off | A Resend key |
+| Integrations (Gmail, Calendar, Slack, ...) | Off | A Composio key; see [Connect integrations](/self-hosting/composio-integrations) |
+
 ## Changing things later
 
 Everything the setup wizard asks can be changed afterwards in **Settings → Providers & Tools**: add, replace, or remove providers any time. Changes apply immediately — no restart needed. Keys are stored encrypted and validated with a live test before saving.

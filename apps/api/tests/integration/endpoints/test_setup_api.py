@@ -26,7 +26,7 @@ from app.api.v1.endpoints.setup import router as setup_router
 from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
 from app.constants.llm import OPENROUTER_MODELS_URL
-from app.constants.providers import CREDENTIAL_PROVIDERS
+from app.constants.providers import CREDENTIAL_PROVIDERS, ProviderFeature
 from shared.py.wide_events import log
 from tests.integration.endpoints.conftest import (
     API,
@@ -119,6 +119,7 @@ class TestStatus:
             "wizard_dismissed",
             "deployment",
             "providers",
+            "features",
             "plans_seeded",
             "bots",
         }
@@ -141,6 +142,9 @@ class TestStatus:
             "ollama",
             "custom",
             "tavily",
+            "exa",
+            "brave",
+            "searxng",
             "composio",
             "e2b",
             "openai",
@@ -152,6 +156,8 @@ class TestStatus:
         assert all(
             set(v) == {"configured", "source", "env_shadowed"} for v in body["providers"].values()
         )
+        assert set(body["features"]) == set(ProviderFeature)
+        assert body["features"]["web_search"] == {"working": True, "in_use": ["duckduckgo"]}
 
     @pytest.mark.parametrize("blob_store", list(BlobStoreKind))
     async def test_status_reports_the_instances_blob_store(
@@ -465,6 +471,17 @@ class TestProviderCatalog:
         body = (await anon_client.get(f"{API}/catalog")).json()
         assert body["llm_provider_keys"] == ["openrouter", "gemini", "openai", "ollama", "custom"]
 
+    async def test_catalog_groups_every_provider_under_a_feature(
+        self, anon_client: AsyncClient
+    ) -> None:
+        body = (await anon_client.get(f"{API}/catalog")).json()
+        assert list(body["features"]) == [f.value for f in ProviderFeature]
+        assert body["features"]["web_search"]["built_in"]["engine"] == "duckduckgo"
+        assert body["features"]["web_search"]["providers"] == ["tavily", "exa", "brave", "searxng"]
+        assert body["features"]["email"]["built_in"] is None
+        grouped = [p for spec in body["features"].values() for p in spec["providers"]]
+        assert sorted(grouped) == sorted(CREDENTIAL_PROVIDERS)
+
     async def test_catalog_is_public_without_auth(self, anon_client: AsyncClient) -> None:
         # The wizard renders cards before an admin session exists; the catalog
         # carries display metadata only.
@@ -744,8 +761,13 @@ class TestProviderProbe:
         assert body["ok"] is False
         assert body["models"] == []
 
-    async def test_tavily_cannot_be_probed(self, client: AsyncClient) -> None:
-        resp = await client.post(f"{API}/providers/tavily/test", json={"api_key": "tvly"})
+    @pytest.mark.parametrize(
+        "provider", sorted(set(CREDENTIAL_PROVIDERS) - set(setup_endpoint._LLM_PROVIDER_KEYS))
+    )
+    async def test_only_chat_providers_can_be_probed(
+        self, client: AsyncClient, provider: str
+    ) -> None:
+        resp = await client.post(f"{API}/providers/{provider}/test", json={"api_key": "k"})
         assert resp.status_code == 422
 
     async def test_detail_never_leaks_the_api_key(self, client: AsyncClient) -> None:

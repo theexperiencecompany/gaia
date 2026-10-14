@@ -68,6 +68,7 @@ const status = (bots: InstanceBots): SetupStatusResponse => ({
   wizard_dismissed: false,
   plans_seeded: true,
   providers: {},
+  features: {},
   bots,
 });
 

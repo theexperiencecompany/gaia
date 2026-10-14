@@ -90,6 +90,7 @@ export function SignupForm({
         onValueChange={setName}
         autoComplete="name"
         isDisabled={isSubmitting}
+        variant="faded"
       />
       <Input
         type="email"
@@ -100,6 +101,7 @@ export function SignupForm({
         autoComplete="email"
         isRequired
         isDisabled={isSubmitting}
+        variant="faded"
       />
       <Input
         type={isPasswordVisible ? "text" : "password"}
@@ -110,6 +112,7 @@ export function SignupForm({
         description={`At least ${MIN_PASSWORD_LENGTH} characters`}
         isRequired
         isDisabled={isSubmitting}
+        variant="faded"
         endContent={
           <VisibilityToggleButton
             visible={isPasswordVisible}

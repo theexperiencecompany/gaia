@@ -18,8 +18,8 @@ from app.utils.webpage_fetch import (
     FirecrawlFetcher,
     HttpxFetcher,
     WebpageFetcher,
-    _default_fetchers,
     _fetch_first_success,
+    default_fetchers,
 )
 
 
@@ -98,7 +98,7 @@ async def test_default_fetchers_resolve_the_firecrawl_key_from_the_store() -> No
         "app.utils.webpage_fetch.resolve_firecrawl_config",
         new=AsyncMock(return_value=stored),
     ):
-        fetchers = await _default_fetchers()
+        fetchers = await default_fetchers()
 
     firecrawl = next(f for f in fetchers if isinstance(f, FirecrawlFetcher))
     assert firecrawl.is_configured() is True

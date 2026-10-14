@@ -611,20 +611,26 @@ def provider_configured(provider_name: LLMProviderName) -> bool:
             return bool(config.get("api_key"))
 
 
+def chat_routes() -> list[tuple[LLMProviderName, str]]:
+    """Return every usable chat provider and its model, in the order lanes take them.
+
+    A provider with no model (a custom endpoint saved without one) is skipped.
+    """
+    available = _get_available_providers()
+    return [
+        (name, model)
+        for name in _chat_priority()
+        if name in available and (model := chat_model(name))
+    ]
+
+
 def chat_route(exclude: LLMProviderName | None = None) -> tuple[LLMProviderName, str] | None:
     """Return the highest-priority usable chat provider other than exclude, and its model.
 
     The default lane takes it with no exclusion; a lane's fallback excludes the
-    provider that just failed. None when nothing (else) is usable. A provider
-    with no model (a custom endpoint saved without one) is skipped.
+    provider that just failed. None when nothing (else) is usable.
     """
-    available = _get_available_providers()
-    for name in _chat_priority():
-        if name == exclude or name not in available:
-            continue
-        if model := chat_model(name):
-            return name, model
-    return None
+    return next((route for route in chat_routes() if route[0] != exclude), None)
 
 
 def _get_ordered_providers(
