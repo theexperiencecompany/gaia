@@ -143,9 +143,7 @@ function EmailBodyPreview({
           </Button>
         </div>
       )}
-      <div className="pb-5">
-        <HtmlEmailBody html={html} />
-      </div>
+      <HtmlEmailBody html={html} />
     </ScrollShadow>
   );
 }
