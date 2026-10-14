@@ -16329,6 +16329,17 @@
             ],
             "title": "Currency"
           },
+          "dodo_customer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dodo Customer Id"
+          },
           "dodo_subscription_id": {
             "title": "Dodo Subscription Id",
             "type": "string"

@@ -188,6 +188,7 @@ class TestRecovery:
         assert result.status == "processed"
         written = _written_fields(mock_webhook_subscription_repository)
         assert written["status"] == "active"
+        assert written["dodo_customer_id"] == SUBSCRIPTION_DATA_PAYLOAD["customer"]["customer_id"]
         assert written["next_billing_date"] == SUBSCRIPTION_DATA_PAYLOAD["next_billing_date"]
         assert (
             written["previous_billing_date"] == (SUBSCRIPTION_DATA_PAYLOAD["previous_billing_date"])
@@ -299,6 +300,7 @@ class TestActivationCreatesTheRow:
         created = mock_webhook_subscription_repository.create.await_args.args[0]
         assert created.dodo_subscription_id == "sub_xyz789"
         assert created.user_id == FAKE_USER_ID
+        assert created.dodo_customer_id == SUBSCRIPTION_DATA_PAYLOAD["customer"]["customer_id"]
         assert created.product_id == "prod_abc123"
         assert created.status == "active"
         assert created.quantity == 1
@@ -605,6 +607,7 @@ class TestTransitionsDriveTheSideEffects:
         assert _written_fields(mock_webhook_subscription_repository) == {
             "product_id": "prod_abc123",
             "last_event_at": NOW,
+            "dodo_customer_id": SUBSCRIPTION_DATA_PAYLOAD["customer"]["customer_id"],
         }
         mock_track_subscription.assert_not_called()
         mock_deactivate_workflows.assert_not_awaited()
@@ -1345,6 +1348,6 @@ class TestReferralHooks:
         )
 
         written = _written_fields(mock_webhook_subscription_repository)
-        assert set(written) == {"next_billing_date", "last_event_at"}
+        assert set(written) == {"next_billing_date", "last_event_at", "dodo_customer_id"}
         assert written["next_billing_date"] == "2025-03-01T00:00:00Z"
         mock_track_subscription.assert_not_called()
