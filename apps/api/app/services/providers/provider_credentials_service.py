@@ -10,7 +10,6 @@ never read. Writes invalidate locally and publish so other pods rebuild too.
 from collections.abc import Callable
 import importlib
 import json
-import os
 from time import monotonic
 from typing import NamedTuple, TypedDict
 
@@ -318,12 +317,9 @@ def _openrouter_env() -> ProviderConfig | None:
 
 
 def _ollama_env() -> ProviderConfig | None:
-    # Only when the endpoint was explicitly provided; the settings default
-    # is a docker-internal name that is unreachable from bare instances.
-    explicit = os.environ.get("OLLAMA_BASE_URL")
-    if not explicit:
+    if not settings.OLLAMA_BASE_URL:
         return None
-    return ProviderConfig(api_key=None, base_url=explicit, model=None, preset=None)
+    return ProviderConfig(api_key=None, base_url=settings.OLLAMA_BASE_URL, model=None, preset=None)
 
 
 def _custom_env() -> ProviderConfig | None:

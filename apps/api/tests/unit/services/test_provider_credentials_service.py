@@ -291,7 +291,7 @@ class TestResolvePrecedenceAndFallbacks:
         assert config is not None and config["api_key"] == "g-emini-key"
 
     async def test_ollama_env_fallback_returns_base_url(self, repo, monkeypatch) -> None:
-        monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        monkeypatch.setattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
         config = await resolve("ollama")
 
         assert config == {
@@ -301,9 +301,9 @@ class TestResolvePrecedenceAndFallbacks:
             "preset": None,
         }
 
-    async def test_ollama_code_default_is_not_configured(self, repo, monkeypatch) -> None:
-        """Disregard the settings default URL; bare instances would die on connect."""
-        monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    async def test_ollama_without_an_endpoint_is_not_configured(self, repo, monkeypatch) -> None:
+        """A guessed default endpoint would die on connect from a bare instance."""
+        monkeypatch.setattr(settings, "OLLAMA_BASE_URL", None)
         assert await resolve("ollama") is None
 
     async def test_tavily_env_fallback(self, repo) -> None:

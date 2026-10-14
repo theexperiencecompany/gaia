@@ -113,9 +113,9 @@ class Settings(BrowserHostSettings):
     # sessions and derives Fernet keys for stored provider credentials.
     INSTANCE_SECRET: str | None = None
 
-    # Ollama endpoint as seen from THIS process. Inside Docker the host is
-    # reached via the special host-gateway DNS name; native runs use localhost.
-    OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
+    # Ollama endpoint as seen from THIS process; unset means no Ollama lane.
+    # Inside Docker the host is http://host.docker.internal:11434.
+    OLLAMA_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Environment & Deployment
