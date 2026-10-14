@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.utils.general_utils import ProjectInfo
 from shared.py.logging import env_context
 
 
@@ -79,11 +80,7 @@ class TestHealthEndpoints:
         """GET /health should still return 200 when pyproject.toml cannot be read."""
         with patch(
             "app.api.v1.endpoints.health.get_project_info",
-            return_value={
-                "name": "GAIA API",
-                "version": "dev",
-                "description": "Backend for GAIA",
-            },
+            return_value=ProjectInfo(),
         ):
             response = await test_client.get("/health")
 

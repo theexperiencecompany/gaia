@@ -81,9 +81,9 @@ async def health_check(response: Response) -> HealthResponse | DegradedHealthRes
 
     return HealthResponse(
         message="Welcome to the GAIA API!",
-        name=project_info["name"],
-        version=project_info["version"],
-        description=project_info["description"],
+        name=project_info.name,
+        version=project_info.version,
+        description=project_info.description,
         environment=settings.ENV,
         commit=env_context().commit,
         event_loop_lag_ms=round(lag_ms, 2),
