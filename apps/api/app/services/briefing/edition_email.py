@@ -10,10 +10,14 @@ the email can never approve or send on its own.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import date as date_cls
 from html import escape
 
+import cloudinary.utils
+
 from app.config.settings import settings
+from app.constants.briefing import EDITION_DELIVERY_MAX_WIDTH_PX, EditionDeliveryFormat
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
@@ -132,18 +136,43 @@ async def render_edition_png(payload: BriefingPayload) -> bytes:
     )
 
 
-async def host_edition_image(payload: BriefingPayload, *, render_key: str) -> str:
-    """Render the edition and host it on the CDN under render_key; returns the image URL.
+@dataclass(frozen=True)
+class HostedEditionImage:
+    """Delivery URLs for one hosted edition; the original upload stays untouched."""
 
-    One image serves the in-app page, the email and the chat post. The URL goes out in
-    emails and on public brief links, so its path is the caller's random key alone,
-    never the user, kind or date.
+    display_url: str
+    chat_url: str
+
+
+def edition_delivery_url(public_id: str, fetch_format: EditionDeliveryFormat) -> str:
+    """Build the CDN URL serving the edition at display size instead of the full original."""
+    # The SDK is untyped; it returns (url, options left after building the URL).
+    delivery: tuple[str, dict[str, object]] = cloudinary.utils.cloudinary_url(
+        public_id,
+        secure=True,
+        fetch_format=fetch_format.value,
+        quality="auto",
+        width=EDITION_DELIVERY_MAX_WIDTH_PX,
+        crop="limit",
+    )
+    return delivery[0]
+
+
+async def host_edition_image(payload: BriefingPayload, *, render_key: str) -> HostedEditionImage:
+    """Render the edition, host it on the CDN under render_key, and return its delivery URLs.
+
+    The display URL serves the in-app page and the email, the chat URL the chat post.
+    The URL goes out in emails and on public brief links, so its path is the caller's
+    random key alone, never the user, kind or date.
     """
     image = await render_edition_png(payload)
     public_id = f"briefing/editions/{render_key}"
-    image_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
-    log.debug("briefing.edition_image.hosted", image_bytes=len(image), url=image_url)
-    return image_url
+    original_url = await asyncio.to_thread(upload_file_to_cloudinary, public_id, file_data=image)
+    log.debug("briefing.edition_image.hosted", image_bytes=len(image), url=original_url)
+    return HostedEditionImage(
+        display_url=edition_delivery_url(public_id, EditionDeliveryFormat.AUTO),
+        chat_url=edition_delivery_url(public_id, EditionDeliveryFormat.JPG),
+    )
 
 
 def render_edition_email(
