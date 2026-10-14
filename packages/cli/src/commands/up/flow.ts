@@ -26,9 +26,9 @@ import {
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import { delay, runPortChecks } from "../../lib/flow-utils.js";
-import * as git from "../../lib/git.js";
 import { checkGit, ensureDocker } from "../../lib/prerequisites.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
+import { cloneRelease, GAIA_REPO_URL } from "../../lib/release.js";
 import {
   detectSetupMode,
   isGaiaCheckout,
@@ -39,8 +39,6 @@ import { LOG_BUFFER_LINES } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
 
 const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
-const GAIA_REPO_URL = "https://github.com/theexperiencecompany/gaia.git";
 
 /**
  * Map a raw docker build log line to a human-readable phase label for the
@@ -184,7 +182,7 @@ export async function runUpFlow(
     store.updateData("repoProgress", 0);
     store.updateData("repoPhase", "");
     try {
-      await git.setupRepo(targetPath, GAIA_REPO_URL, (progress, phase) => {
+      await cloneRelease(targetPath, GAIA_REPO_URL, (progress, phase) => {
         store.updateData("repoProgress", progress);
         if (phase) {
           store.updateData("repoPhase", phase);

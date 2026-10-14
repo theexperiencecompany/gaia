@@ -5,6 +5,7 @@
 
 import * as readline from "node:readline";
 import { isInteractive } from "../../lib/non-tty.js";
+import { CLI_INSTALL_COMMAND } from "../../lib/release.js";
 import { findInstallRoot } from "../../lib/service-starter.js";
 import { GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import {
@@ -27,7 +28,6 @@ export interface UpdateOptions {
 
 const MAX_LISTED_COMMITS = 10;
 const RELEASE_NOTES_URL = "https://docs.heygaia.io/release-notes";
-const CLI_INSTALL_COMMAND = "curl -fsSL https://heygaia.io/install.sh | sh";
 
 function out(line = ""): void {
   process.stdout.write(`${line}\n`);

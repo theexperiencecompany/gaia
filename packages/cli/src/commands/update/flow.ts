@@ -12,11 +12,13 @@
 
 import { execa } from "execa";
 import {
-  GAIA_VERSION_ENV_KEY,
   readDockerComposePortOverrides,
   readPinnedGaiaVersion,
-  setDockerComposeEnvValue,
 } from "../../lib/env-writer.js";
+import {
+  assertReleaseTagPublished,
+  pinReleaseImages,
+} from "../../lib/release.js";
 import {
   pullSelfhostImages,
   startServices,
@@ -102,6 +104,7 @@ export async function planReleaseUpdate(
     return { repoPath, fromVersion, toVersion, checkout: null };
   }
 
+  await assertReleaseTagPublished("origin", repoPath);
   const tagRef = `refs/tags/${CLI_RELEASE_GIT_TAG}`;
   const fetched = await execa(
     "git",
@@ -174,7 +177,7 @@ export async function applyReleaseUpdate(
   }
 
   onStatus(`Pinning GAIA_VERSION=${plan.toVersion} in infra/docker/.env...`);
-  setDockerComposeEnvValue(plan.repoPath, GAIA_VERSION_ENV_KEY, plan.toVersion);
+  pinReleaseImages(plan.repoPath, plan.toVersion);
 
   onStatus("Restarting services...");
   await startServices(
