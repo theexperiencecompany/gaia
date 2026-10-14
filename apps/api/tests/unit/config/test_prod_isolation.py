@@ -284,10 +284,10 @@ def test_selfhost_missing_mongo_db_raises(monkeypatch):
         Settings(_env_file=None, **kwargs)
 
 
-def test_selfhost_has_ollama_base_url_default():
-    """Default the Ollama base URL so an unconfigured install still resolves one."""
+def test_ollama_has_no_endpoint_until_one_is_set():
+    """No guessed Ollama endpoint: the setup preset suggests one, the admin saves it."""
 
-    assert Settings.model_fields["OLLAMA_BASE_URL"].default == ("http://host.docker.internal:11434")
+    assert Settings.model_fields["OLLAMA_BASE_URL"].default is None
 
 
 # ---------------------------------------------------------------------------
