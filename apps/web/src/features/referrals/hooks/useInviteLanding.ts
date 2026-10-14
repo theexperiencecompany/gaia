@@ -13,10 +13,8 @@ function pickLandingVariant(): ReferralCopyVariant {
   const stored = localStorage.getItem(LANDING_VARIANT_KEY);
   const known = LIVE_LANDING_VARIANTS.find((variant) => variant === stored);
   if (known) return known;
-  const picked =
-    LIVE_LANDING_VARIANTS[
-      Math.floor(Math.random() * LIVE_LANDING_VARIANTS.length)
-    ];
+  const [draw] = crypto.getRandomValues(new Uint32Array(1));
+  const picked = LIVE_LANDING_VARIANTS[draw % LIVE_LANDING_VARIANTS.length];
   localStorage.setItem(LANDING_VARIANT_KEY, picked);
   return picked;
 }
