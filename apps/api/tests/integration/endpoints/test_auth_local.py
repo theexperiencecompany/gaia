@@ -215,18 +215,26 @@ class InviteStore:
         self.invites[invite.id] = invite
         return invite
 
-    async def redeem(self, token_hash: str, now: datetime) -> LocalInviteDocument | None:
-        await asyncio.sleep(0)
-        for invite in self.invites.values():
-            if (
-                invite.token_hash == token_hash
+    async def find_redeemable(self, token_hash: str, now: datetime) -> LocalInviteDocument | None:
+        return next(
+            (
+                invite
+                for invite in self.invites.values()
+                if invite.token_hash == token_hash
                 and invite.used_at is None
                 and invite.revoked_at is None
                 and invite.expires_at > now
-            ):
-                self.invites[invite.id] = invite.model_copy(update={"used_at": now})
-                return self.invites[invite.id]
-        return None
+            ),
+            None,
+        )
+
+    async def redeem(self, token_hash: str, now: datetime) -> LocalInviteDocument | None:
+        await asyncio.sleep(0)
+        invite = await self.find_redeemable(token_hash, now)
+        if invite is None:
+            return None
+        self.invites[invite.id] = invite.model_copy(update={"used_at": now})
+        return self.invites[invite.id]
 
     async def update(self, invite_id: str, update: LocalInviteUpdate) -> LocalInviteDocument:
         self.invites[invite_id] = self.invites[invite_id].model_copy(
@@ -251,6 +259,9 @@ def invite_store(monkeypatch) -> InviteStore:
     from app.services import members_service
 
     store = InviteStore()
+    monkeypatch.setattr(
+        members_service.local_invites_repository, "find_redeemable", store.find_redeemable
+    )
     monkeypatch.setattr(members_service.local_invites_repository, "redeem", store.redeem)
     monkeypatch.setattr(members_service.local_invites_repository, "update", store.update)
     return store
@@ -690,6 +701,17 @@ class TestMemberSignup:
         assert response.status_code == 403
         assert response.json()["code"] == "registration_closed"
         assert invite_store.invites[invite.id].used_at is None
+
+    async def test_a_spent_invite_reads_as_spent_even_for_a_registered_email(
+        self, patched_repos, invite_store, settings_store, captured, _instance_secret
+    ):
+        invite_store.add("spent")
+        assert (await _signup("teammate@gaia.dev", invite="spent")).status_code == 201
+
+        response = await _signup("teammate@gaia.dev", invite="spent")
+
+        assert response.status_code == 403
+        assert response.json()["code"] == "invite_invalid"
 
 
 @pytest.mark.integration

@@ -13,7 +13,7 @@ import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 
 const MIN_PASSWORD_LENGTH = 8;
 const INVITE_INVALID_COPY =
-  "This invite link is invalid or has expired. Ask for a new one.";
+  "This invite link was already used or has expired. Ask for a new one.";
 const GENERIC_ERROR_COPY = "Could not create your account. Please try again.";
 
 /**

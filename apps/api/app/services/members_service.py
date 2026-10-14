@@ -85,6 +85,24 @@ async def revoke_invite(invite_id: str) -> None:
         raise AppError(message="Invite not found", status_code=404)
 
 
+def _invite_invalid() -> AppError:
+    return AppError(
+        message="This invite link was already used or has expired",
+        status_code=403,
+        code=INVITE_INVALID,
+    )
+
+
+async def ensure_invite_redeemable(invite_token: str) -> None:
+    """Refuse a used, revoked, expired or unknown invite without spending a live one."""
+    now = datetime.now(UTC)
+    if (
+        await local_invites_repository.find_redeemable(_hash_invite_token(invite_token), now)
+        is None
+    ):
+        raise _invite_invalid()
+
+
 async def admit_member(invite_token: str | None) -> MemberAdmission | None:
     """Decide whether a non-bootstrap signup may proceed; None means registration is closed.
 
@@ -96,11 +114,7 @@ async def admit_member(invite_token: str | None) -> MemberAdmission | None:
             _hash_invite_token(invite_token), datetime.now(UTC)
         )
         if invite is None:
-            raise AppError(
-                message="This invite link is invalid or has expired",
-                status_code=403,
-                code=INVITE_INVALID,
-            )
+            raise _invite_invalid()
         return MemberAdmission(via="invite", invite_id=invite.id)
     if await get_registration_policy() is RegistrationPolicy.OPEN:
         return MemberAdmission(via="open")

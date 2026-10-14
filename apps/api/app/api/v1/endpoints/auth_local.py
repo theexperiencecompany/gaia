@@ -28,7 +28,11 @@ from app.models.auth_models import (
     SignupRequest,
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.members_service import admit_member, record_member_joined
+from app.services.members_service import (
+    admit_member,
+    ensure_invite_redeemable,
+    record_member_joined,
+)
 from app.utils.auth_utils import build_user_context, session_cookie_secure
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
@@ -177,6 +181,11 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     email = str(body.email)
     log.set(operation="local_signup", email=email, client_ip=_client_ip(request))
 
+    admin_exists = await local_credentials_repository.admin_exists()
+    if admin_exists and body.invite is not None:
+        # A spent link must read as spent, not as closed, whoever presents it.
+        await ensure_invite_redeemable(body.invite)
+
     if await user_repository.get_by_email(email) is not None:
         # Email already belongs to an existing identity. Attaching a credential
         # would hand that identity to whoever knows the address, which is not
@@ -200,7 +209,7 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     # local-part so the display name never has to handle null.
     name = body.name or email.split("@", 1)[0]
 
-    if not await local_credentials_repository.admin_exists():
+    if not admin_exists:
         # Fast-path pre-check only — the authoritative gate is the claim below.
         user = await user_repository.create(
             UserDocument(email=email, name=name, role=InstanceRole.ADMIN)

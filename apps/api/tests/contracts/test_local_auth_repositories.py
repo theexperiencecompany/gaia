@@ -148,6 +148,17 @@ class TestInvites:
         assert first is not None and first.used_at is not None
         assert await repo.redeem("h1", now) is None
 
+    async def test_finding_a_live_invite_does_not_spend_it(self, repo):
+        await repo.create(self._invite("peek", expires_in=timedelta(days=1)))
+        await repo.create(self._invite("stale", expires_in=timedelta(seconds=-1)))
+        now = datetime.now(UTC)
+
+        found = await repo.find_redeemable("peek", now)
+        assert found is not None and found.used_at is None
+        assert await repo.find_redeemable("stale", now) is None
+        assert await repo.redeem("peek", now) is not None
+        assert await repo.find_redeemable("peek", now) is None
+
     async def test_racing_redemptions_admit_one(self, repo):
         await repo.create(self._invite("race", expires_in=timedelta(days=1)))
         now = datetime.now(UTC)

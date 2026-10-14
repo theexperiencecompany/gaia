@@ -12,6 +12,15 @@ from app.db.repositories.base import MongoRepository
 from app.models.auth_models import LocalInviteDocument, LocalInviteUpdate
 
 
+def _redeemable(token_hash: str, now: datetime) -> dict[str, object]:
+    return {
+        "token_hash": token_hash,
+        "used_at": None,
+        "revoked_at": None,
+        "expires_at": {"$gt": now},
+    }
+
+
 class LocalInvitesRepository(MongoRepository[LocalInviteDocument, LocalInviteUpdate]):
     collection_name = "auth_invites"
     document_model = LocalInviteDocument
@@ -26,17 +35,14 @@ class LocalInvitesRepository(MongoRepository[LocalInviteDocument, LocalInviteUpd
             sort=[("created_at", -1)],
         )
 
+    async def find_redeemable(self, token_hash: str, now: datetime) -> LocalInviteDocument | None:
+        """Look up a live invite without spending it; None when unknown, used, revoked or expired."""
+        return await self._find_one(_redeemable(token_hash, now))
+
     async def redeem(self, token_hash: str, now: datetime) -> LocalInviteDocument | None:
         """Atomically mark a live invite used; None when unknown, used, revoked or expired."""
         return await self._apply_raw_update(
-            {
-                "token_hash": token_hash,
-                "used_at": None,
-                "revoked_at": None,
-                "expires_at": {"$gt": now},
-            },
-            {"$set": {"used_at": now}},
-            scope=REPO_GLOBAL_SCOPE,
+            _redeemable(token_hash, now), {"$set": {"used_at": now}}, scope=REPO_GLOBAL_SCOPE
         )
 
     async def revoke(self, invite_id: str, now: datetime) -> bool:
