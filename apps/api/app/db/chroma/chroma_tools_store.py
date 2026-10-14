@@ -518,7 +518,9 @@ async def delete_tools_by_namespace(namespace: str) -> int:
     name="chroma_tools_store",
     required_keys=[],
     strategy=MissingKeyStrategy.ERROR,
-    auto_initialize=False,  # Lazy-load only when first accessed (avoids duplicate indexing)
+    # Seed at startup: embedding every builtin tool on a fresh instance took 41s,
+    # paid by the first chat. Replicas serialize on the seed lock below.
+    auto_initialize=True,
 )
 async def initialize_chroma_tools_store() -> ChromaStore:
     """Create and seed the ChromaDB-backed tools store with incremental updates.

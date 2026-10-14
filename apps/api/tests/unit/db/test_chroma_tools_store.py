@@ -994,6 +994,12 @@ class TestInitializeChromaToolsStore:
             }
         }
 
+    async def test_the_store_seeds_at_startup_not_on_the_first_chat(self):
+        """Seeding embeds every builtin tool: 41s on a fresh self-host, paid by its first message."""
+        loader = initialize_chroma_tools_store()
+
+        assert loader.auto_initialize is True
+
     async def test_raises_when_embeddings_unavailable(self):
         with (
             patch("app.db.chroma.chroma_tools_store.get_tool_registry", new=AsyncMock()),
