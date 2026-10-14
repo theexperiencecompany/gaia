@@ -5,8 +5,8 @@ import { Chip } from "@heroui/chip";
 import { Select, SelectItem } from "@heroui/select";
 import type { HilMode } from "@shared/chat";
 import { useRouter } from "next/navigation";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { useHilPreferences } from "@/features/settings/hooks/useHilPreferences";
 import { toast } from "@/lib/toast";
 

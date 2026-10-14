@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import type { DesktopPermissionStatus } from "@shared/desktop-tools";
 import { useCallback, useEffect, useState } from "react";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
+import { SettingsRow } from "@/components/settings/SettingsRow";
 import { getElectronAPI } from "@/lib/electron/api";
 import { toast } from "@/lib/toast";
 

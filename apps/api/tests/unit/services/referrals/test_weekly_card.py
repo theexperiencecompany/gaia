@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,6 +22,9 @@ USER = UserDocument(id="64a0000000000000000000a1", name="Aryan", timezone="Asia/
 # Sunday 20:00 UTC is already Monday in Kolkata (+05:30) and still Sunday in New York.
 SUNDAY_EVENING_UTC = datetime(2026, 10, 18, 20, 0, tzinfo=UTC)
 MONDAY_NOON_UTC = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
+# Tuesday 03:00 UTC is still Monday evening in Los Angeles (-07:00).
+TUESDAY_EARLY_UTC = datetime(2026, 10, 20, 3, 0, tzinfo=UTC)
+MONDAY = date(2026, 10, 19)
 
 
 def _stats(minutes_saved: int) -> TimeSavedSummary:
@@ -34,30 +37,17 @@ def _stats(minutes_saved: int) -> TimeSavedSummary:
     )
 
 
-@pytest.mark.parametrize(
-    ("timezone", "now", "due"),
-    [
-        ("Asia/Kolkata", SUNDAY_EVENING_UTC, True),
-        ("America/New_York", SUNDAY_EVENING_UTC, False),
-        (None, MONDAY_NOON_UTC, True),
-        (None, SUNDAY_EVENING_UTC, False),
-    ],
-)
-def test_the_card_is_due_on_the_users_local_monday(
-    timezone: str | None, now: datetime, due: bool
-) -> None:
-    user = UserDocument(name="Aryan", email="a@example.com", timezone=timezone)
-    assert weekly_card_due(user, _stats(30), now) is due
+def test_the_card_is_due_only_on_a_monday() -> None:
+    assert weekly_card_due(MONDAY, _stats(30)) is True
+    assert weekly_card_due(date(2026, 10, 18), _stats(30)) is False
 
 
 def test_a_week_with_nothing_saved_never_shows_the_card() -> None:
-    user = UserDocument(name="Aryan", email="a@example.com")
-    assert weekly_card_due(user, _stats(0), MONDAY_NOON_UTC) is False
+    assert weekly_card_due(MONDAY, _stats(0)) is False
 
 
 def test_a_single_minute_saved_is_a_week_worth_showing() -> None:
-    user = UserDocument(name="Aryan", email="a@example.com")
-    assert weekly_card_due(user, _stats(1), MONDAY_NOON_UTC) is True
+    assert weekly_card_due(MONDAY, _stats(1)) is True
 
 
 @dataclass
@@ -99,7 +89,7 @@ class TestClaimWeeklyCard:
         seams.load_user.assert_awaited_once_with(USER.id)
         seams.subscribed.assert_awaited_once_with(USER.id)
         seams.ensure_code.assert_awaited_once_with(USER)
-        seams.time_saved.assert_awaited_once_with(USER.id, MONDAY_NOON_UTC)
+        seams.time_saved.assert_awaited_once_with(USER.id, MONDAY)
         seams.variant.assert_awaited_once_with(REFERRAL_COPY_FLAG, USER.id)
         seams.pitch.assert_awaited_once_with(
             USER.id, ReferralNudge.WEEKLY_STATS_CARD, rendered_by_client
@@ -117,3 +107,35 @@ class TestClaimWeeklyCard:
         seams.pitch.return_value = False
 
         assert (await claim_weekly_card(USER.id, MONDAY_NOON_UTC)).show is False
+
+
+@pytest.mark.parametrize(
+    ("timezone", "now"),
+    [
+        ("Asia/Kolkata", SUNDAY_EVENING_UTC),
+        ("America/Los_Angeles", TUESDAY_EARLY_UTC),
+        (None, MONDAY_NOON_UTC),
+    ],
+)
+async def test_a_local_monday_on_any_utc_day_recaps_the_same_week(
+    seams: Seams, timezone: str | None, now: datetime
+) -> None:
+    seams.load_user.return_value = USER.model_copy(update={"timezone": timezone})
+
+    card = await claim_weekly_card(USER.id, now)
+
+    assert card.show is True
+    seams.time_saved.assert_awaited_once_with(USER.id, MONDAY)
+
+
+@pytest.mark.parametrize(
+    ("timezone", "now"),
+    [("America/New_York", SUNDAY_EVENING_UTC), (None, SUNDAY_EVENING_UTC)],
+)
+async def test_a_local_sunday_hides_the_card_and_keeps_the_week(
+    seams: Seams, timezone: str | None, now: datetime
+) -> None:
+    seams.load_user.return_value = USER.model_copy(update={"timezone": timezone})
+
+    assert (await claim_weekly_card(USER.id, now)).show is False
+    seams.pitch.assert_not_awaited()

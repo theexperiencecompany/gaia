@@ -1,11 +1,10 @@
 """The Monday recap card in chat: last week's time saved, shared with the user's invite link."""
 
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
 
 from app.config.feature_flags import REFERRAL_COPY_FLAG
 from app.constants.referrals import WEEKLY_CARD_WEEKDAY, ReferralNudge
-from app.models.user_models import UserDocument
 from app.schemas.referrals import ReferralWeeklyCardResponse
 from app.schemas.usage import TimeSavedSummary
 from app.services.feature_flags import get_variant
@@ -16,10 +15,9 @@ from app.services.time_saved import get_time_saved
 from app.utils.timezone import Timezone
 
 
-def weekly_card_due(user: UserDocument, stats: TimeSavedSummary, now: datetime) -> bool:
-    """Whether the card is worth showing now: the user's local Monday, for a week with something in it."""
-    local_day = now.astimezone(Timezone.parse(user.timezone).tzinfo).weekday()
-    return local_day == WEEKLY_CARD_WEEKDAY and stats.minutes_saved > 0
+def weekly_card_due(local_today: date, stats: TimeSavedSummary) -> bool:
+    """Whether the card is worth showing: the user's local Monday, for a week with something in it."""
+    return local_today.weekday() == WEEKLY_CARD_WEEKDAY and stats.minutes_saved > 0
 
 
 async def claim_weekly_card(user_id: str, now: datetime) -> ReferralWeeklyCardResponse:
@@ -29,13 +27,15 @@ async def claim_weekly_card(user_id: str, now: datetime) -> ReferralWeeklyCardRe
     """
     user = await load_user(user_id)
     await require_referrer_subscription(user.id)
+    # One local date drives both the Monday check and the week recapped, whatever UTC day it is.
+    local_today = now.astimezone(Timezone.parse(user.timezone).tzinfo).date()
     code, stats, copy_variant = await asyncio.gather(
         ensure_code(user),
-        get_time_saved(user.id, now),
+        get_time_saved(user.id, local_today),
         get_variant(REFERRAL_COPY_FLAG, user.id),
     )
     # The weekly slot is spent only when the card would actually appear.
-    show = weekly_card_due(user, stats, now) and await send_pitch(
+    show = weekly_card_due(local_today, stats) and await send_pitch(
         user.id, ReferralNudge.WEEKLY_STATS_CARD, rendered_by_client
     )
     return ReferralWeeklyCardResponse(

@@ -199,7 +199,7 @@ class TestTimeSaved:
         await _run(user_id, today + timedelta(hours=1), "success")
         await _run((await _user("Other")).id, today - timedelta(days=2), "success")
 
-        summary = await get_time_saved(user_id, NOW)
+        summary = await get_time_saved(user_id, NOW.date())
 
         assert (summary.actions, summary.workflow_runs) == (10, 1)
         assert summary.minutes_saved == (
@@ -209,7 +209,7 @@ class TestTimeSaved:
         assert summary.window_end == today
 
     async def test_a_quiet_week_saves_nothing(self, clean: None) -> None:
-        summary = await get_time_saved((await _user("Aryan")).id, NOW)
+        summary = await get_time_saved((await _user("Aryan")).id, NOW.date())
         assert (summary.actions, summary.workflow_runs, summary.minutes_saved) == (0, 0, 0)
 
 

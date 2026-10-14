@@ -1,8 +1,8 @@
 "use client";
 
 import { Switch } from "@heroui/switch";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { useSentWithGaia } from "../hooks/useSentWithGaia";
 import { SENT_WITH_GAIA_COPY } from "../referralCopy";
 

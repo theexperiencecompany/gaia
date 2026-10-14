@@ -14,5 +14,5 @@ MINUTES_SAVED_PER_ACTION = 2
 # follow-up round) a person would otherwise sit down and do.
 MINUTES_SAVED_PER_WORKFLOW_RUN = 10
 
-# The recap covers the seven full UTC days before today.
+# The recap covers the seven UTC days before the day it is shown on.
 TIME_SAVED_WINDOW = timedelta(days=7)

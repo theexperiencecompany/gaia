@@ -12,6 +12,7 @@ the shared before-hook acts on) is tested in test_file_upload_hooks.py.
 """
 
 import asyncio
+from collections.abc import Coroutine, Iterator
 from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -56,7 +57,7 @@ SHARED = "app.utils.composio_hooks.file_upload_hooks"
 
 
 @pytest.fixture(autouse=True)
-def _sent_with_gaia_off():
+def _sent_with_gaia_off() -> Iterator[None]:
     """Send as a user who never turned the Sent with GAIA line on."""
     with patch(f"{HOOKS}.sent_with_gaia_link", AsyncMock(return_value=None)):
         yield
@@ -587,7 +588,7 @@ class TestSentWithGaia:
         self.capture: MagicMock = capture
         return out["arguments"], sent
 
-    def test_a_user_who_turned_it_on_gets_the_line_in_the_mail_and_the_card(self):
+    def test_a_user_who_turned_it_on_gets_the_line_in_the_mail_and_the_card(self) -> None:
         args, sent = self._send(AsyncMock(return_value=self.LINK))
 
         assert args["body"].endswith(
@@ -599,24 +600,24 @@ class TestSentWithGaia:
             UserId(self.USER_ID), ReferralSentWithGaiaAppended(tool="GMAIL_SEND_EMAIL")
         )
 
-    def test_off_leaves_the_body_alone(self):
+    def test_off_leaves_the_body_alone(self) -> None:
         args, _ = self._send(AsyncMock(return_value=None))
 
         assert "Sent with" not in args["body"]
         self.capture.assert_not_called()
 
-    def test_a_failed_lookup_still_sends_the_normalised_mail(self):
+    def test_a_failed_lookup_still_sends_the_normalised_mail(self) -> None:
         args, sent = self._send(AsyncMock(side_effect=ServerSelectionTimeoutError("down")))
 
         assert args["is_html"] is True and args["recipient_email"] == "r@x.com"
         assert "Sent with" not in args["body"] and sent
         self.capture.assert_not_called()
 
-    def test_the_lookup_is_the_senders_and_bounded_by_its_timeout(self):
+    def test_the_lookup_is_the_senders_and_bounded_by_its_timeout(self) -> None:
         lookup = AsyncMock(return_value=self.LINK)
         timeouts: list[float | None] = []
 
-        def run(coro, *, timeout=None):
+        def run(coro: Coroutine[object, None, None], *, timeout: float | None = None) -> None:
             timeouts.append(timeout)
             return asyncio.run(coro)
 
@@ -630,7 +631,7 @@ class TestSentWithGaia:
         lookup.assert_awaited_once_with(self.USER_ID)
         assert timeouts == [SENT_WITH_GAIA_LOOKUP_TIMEOUT_SECONDS]
 
-    def test_a_failed_lookup_is_logged_with_the_tool(self):
+    def test_a_failed_lookup_is_logged_with_the_tool(self) -> None:
         with (
             patch(
                 f"{HOOKS}.sent_with_gaia_link",
@@ -647,7 +648,7 @@ class TestSentWithGaia:
             tool="GMAIL_SEND_EMAIL",
         )
 
-    def test_a_link_is_attribute_escaped_in_the_line(self):
+    def test_a_link_is_attribute_escaped_in_the_line(self) -> None:
         arguments: dict[str, object] = {"body": "<p>Hi</p>"}
         with (
             patch(f"{HOOKS}.sent_with_gaia_link", AsyncMock(return_value='https://x.io/a"b')),
@@ -659,7 +660,7 @@ class TestSentWithGaia:
             link="https://x.io/a&quot;b"
         )
 
-    def test_a_body_already_signed_is_left_alone_and_not_counted(self):
+    def test_a_body_already_signed_is_left_alone_and_not_counted(self) -> None:
         signed = "<p>Hi</p>" + SENT_WITH_GAIA_HTML.format(link=self.LINK)
         arguments: dict[str, object] = {"body": signed}
         with (
@@ -671,7 +672,7 @@ class TestSentWithGaia:
         assert arguments["body"] == signed
         capture.assert_not_called()
 
-    def test_a_call_with_no_user_never_looks_anyone_up(self):
+    def test_a_call_with_no_user_never_looks_anyone_up(self) -> None:
         lookup = AsyncMock(return_value=self.LINK)
         args, _ = self._send(lookup, user_id=None)
 

@@ -7,7 +7,7 @@ import {
   patchCurrentUser,
   useCurrentUser,
 } from "@/features/auth/hooks/useCurrentUser";
-import { mergedOnboardingUpdate } from "@/features/settings/utils/onboardingPreferences";
+import { mergedOnboardingUpdate } from "@/lib/onboardingPreferences";
 import { toast } from "@/lib/toast";
 import { SENT_WITH_GAIA_COPY } from "../referralCopy";
 

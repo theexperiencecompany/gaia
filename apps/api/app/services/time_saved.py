@@ -1,7 +1,7 @@
 """Time saved: what GAIA did for a user over the last week, from the rollups it already keeps."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
 
 from app.constants.time_saved import (
     MINUTES_SAVED_PER_ACTION,
@@ -13,9 +13,9 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.schemas.usage import TimeSavedSummary
 
 
-async def get_time_saved(user_id: str, now: datetime) -> TimeSavedSummary:
-    """Summarize the seven full UTC days before now's day; counts are recorded, minutes estimated."""
-    window_end = now.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+async def get_time_saved(user_id: str, week_end: date) -> TimeSavedSummary:
+    """Summarize the seven UTC days before week_end; counts are recorded, minutes estimated."""
+    window_end = datetime.combine(week_end, time(), tzinfo=UTC)
     window_start = window_end - TIME_SAVED_WINDOW
     # usage_daily keys rows by UTC day as YYYY-MM-DD, which isoformat() of a date is.
     first_day, end_day = window_start.date().isoformat(), window_end.date().isoformat()
