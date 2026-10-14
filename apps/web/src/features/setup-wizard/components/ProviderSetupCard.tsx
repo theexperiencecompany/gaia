@@ -17,8 +17,6 @@ import {
   McpServerIcon,
   SquareArrowUpRight02Icon,
   Tick02Icon,
-  ViewIcon,
-  ViewOffSlashIcon,
 } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
@@ -26,12 +24,12 @@ import CopyButton from "@/components/ui/CopyButton";
 import {
   extractProviderError,
   getProviderErrorHint,
-  PROVIDER_KEY_URLS,
   providerFaviconUrl,
   providersApi,
 } from "@/features/settings/api/providersApi";
+import { ProviderApiKeyInput } from "@/features/settings/components/providers/ProviderApiKeyInput";
 import { useProviderSetup } from "../hooks/useProviderSetup";
-import type { ProviderCard } from "../utils/providerCards";
+import type { CustomPreset, ProviderCard } from "../utils/providerCards";
 
 interface ProviderSetupCardProps {
   config: ProviderCard;
@@ -46,7 +44,6 @@ export function ProviderSetupCard({
   isConfigured,
   onSaved,
 }: ProviderSetupCardProps) {
-  const [isKeyVisible, setIsKeyVisible] = useState(false);
   const {
     apiKey,
     setApiKey,
@@ -67,24 +64,10 @@ export function ProviderSetupCard({
     (!config.showApiKey || apiKey.trim().length > 0) &&
     (!config.showBaseUrl || baseUrl.trim().length > 0);
 
-  const faviconDomain = preset?.favicon_domain ?? config.faviconDomain;
-
   return (
     <div className="w-full rounded-2xl bg-zinc-800 p-4">
       <div className="mb-1 flex items-center gap-3">
-        {config.hasPresets && !preset ? (
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900">
-            <McpServerIcon size={16} className="text-zinc-300" />
-          </span>
-        ) : (
-          <Image
-            src={providerFaviconUrl(faviconDomain)}
-            alt={`${config.label} icon`}
-            width={24}
-            height={24}
-            className="shrink-0 rounded-md"
-          />
-        )}
+        <ProviderCardIcon config={config} preset={preset} />
         <p className="flex-1 text-sm font-medium text-zinc-100">
           {config.label}
         </p>
@@ -101,66 +84,26 @@ export function ProviderSetupCard({
       )}
 
       {config.hasPresets && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          {config.presets.map((p) => (
-            <Button
-              key={p.key}
-              size="sm"
-              radius="full"
-              variant="flat"
-              color={preset?.key === p.key ? "primary" : "default"}
-              onPress={() => applyPreset(preset?.key === p.key ? null : p)}
-            >
-              {p.label}
-            </Button>
-          ))}
-        </div>
+        <PresetChips
+          presets={config.presets}
+          selected={preset}
+          onSelect={applyPreset}
+        />
       )}
 
       <div className="space-y-2">
         {config.showApiKey && (
-          <>
-            <Input
-              type={isKeyVisible ? "text" : "password"}
-              label="API key"
-              placeholder="Paste your API key"
-              value={apiKey}
-              onValueChange={setApiKey}
-              autoComplete="off"
-              startContent={<KeyIcon size={16} className="text-zinc-500" />}
-              endContent={
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="light"
-                  radius="full"
-                  aria-label={isKeyVisible ? "Hide API key" : "Show API key"}
-                  onPress={() => setIsKeyVisible((visible) => !visible)}
-                  className="text-zinc-500"
-                >
-                  {isKeyVisible ? (
-                    <ViewOffSlashIcon size={16} />
-                  ) : (
-                    <ViewIcon size={16} />
-                  )}
-                </Button>
-              }
-              size="sm"
-              radius="md"
-              isDisabled={isBusy}
-            />
-            {PROVIDER_KEY_URLS[config.key] && (
-              <Link
-                href={PROVIDER_KEY_URLS[config.key] as string}
-                isExternal
-                size="sm"
-                className="inline-flex items-center gap-1 text-xs text-zinc-500"
-              >
-                Get your key
-                <SquareArrowUpRight02Icon size={12} />
-              </Link>
-            )}
-          </>
+          <ProviderApiKeyInput
+            provider={config.key}
+            placeholder="Paste your API key"
+            value={apiKey}
+            onValueChange={setApiKey}
+            autoComplete="off"
+            startContent={<KeyIcon size={16} className="text-zinc-500" />}
+            size="sm"
+            radius="md"
+            isDisabled={isBusy}
+          />
         )}
         {config.showBaseUrl && (
           <Input
@@ -358,15 +301,17 @@ function OutcomeLine({
   savedLabel: string;
   showModelCount: boolean;
 }) {
-  if (error) {
+  const failure =
+    error ?? (outcome && !outcome.ok ? outcome.detail || "Test failed" : null);
+  if (failure) {
     return (
       <div className="flex min-w-0 flex-col gap-1">
         <span
-          title={error}
+          title={failure}
           className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400"
         >
           <Alert01Icon height={14} className="shrink-0" />
-          <span className="truncate">{error}</span>
+          <span className="truncate">{failure}</span>
         </span>
         {hint && (
           <span className="text-xs leading-relaxed text-zinc-500">{hint}</span>
@@ -375,23 +320,6 @@ function OutcomeLine({
     );
   }
   if (!outcome) return null;
-  if (!outcome.ok) {
-    const detail = outcome.detail || "Test failed";
-    return (
-      <div className="flex min-w-0 flex-col gap-1">
-        <span
-          title={detail}
-          className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400"
-        >
-          <Alert01Icon height={14} className="shrink-0" />
-          <span className="truncate">{detail}</span>
-        </span>
-        {hint && (
-          <span className="text-xs leading-relaxed text-zinc-500">{hint}</span>
-        )}
-      </div>
-    );
-  }
   const countLabel =
     showModelCount && outcome.modelCount > 0
       ? ` · ${outcome.modelCount} models`
@@ -404,5 +332,58 @@ function OutcomeLine({
         {countLabel}
       </span>
     </span>
+  );
+}
+
+function ProviderCardIcon({
+  config,
+  preset,
+}: {
+  config: ProviderCard;
+  preset: CustomPreset | null;
+}) {
+  // A preset-driven card shows a neutral glyph until a gateway is picked.
+  if (config.hasPresets && !preset) {
+    return (
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900">
+        <McpServerIcon size={16} className="text-zinc-300" />
+      </span>
+    );
+  }
+  return (
+    <Image
+      src={providerFaviconUrl(preset?.favicon_domain ?? config.faviconDomain)}
+      alt={`${config.label} icon`}
+      width={24}
+      height={24}
+      className="shrink-0 rounded-md"
+    />
+  );
+}
+
+function PresetChips({
+  presets,
+  selected,
+  onSelect,
+}: {
+  presets: readonly CustomPreset[];
+  selected: CustomPreset | null;
+  onSelect: (preset: CustomPreset | null) => void;
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {presets.map((p) => (
+        <Button
+          key={p.key}
+          size="sm"
+          radius="full"
+          variant="flat"
+          color={selected?.key === p.key ? "primary" : "default"}
+          onPress={() => onSelect(selected?.key === p.key ? null : p)}
+        >
+          {p.label}
+        </Button>
+      ))}
+    </div>
   );
 }

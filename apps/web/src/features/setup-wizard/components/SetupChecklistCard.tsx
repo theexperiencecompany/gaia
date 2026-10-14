@@ -14,7 +14,7 @@ import { Button } from "@heroui/button";
 import { ArrowRight02Icon, Cancel01Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import {
@@ -22,8 +22,7 @@ import {
   isProviderConfigured,
   useSetupStatus,
 } from "@/features/settings/hooks/useSetupStatus";
-
-const DISMISSED_KEY = "gaia_setup_checklist_dismissed";
+import { useSetupChecklistStore } from "@/stores/setupChecklistStore";
 
 interface ChecklistItem {
   key: string;
@@ -32,33 +31,13 @@ interface ChecklistItem {
   href: string;
 }
 
-/** Item keys pending when the checklist was last dismissed (localStorage).
- * A missing/legacy/unparsable value reads as nothing-dismissed so the card
- * re-arms instead of staying hidden forever. */
-function readDismissedSnapshot(): string[] {
-  try {
-    const raw = window.localStorage.getItem(DISMISSED_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((key): key is string => typeof key === "string");
-  } catch {
-    // localStorage unavailable (private mode) — never treat as dismissed.
-    return [];
-  }
-}
-
 export function SetupChecklistCard() {
   const { data: status } = useSetupStatus();
   const { data: catalog } = useProviderCatalog();
   // Instance setup is the admin's job; a member could not act on any item.
   const isMember = useCurrentUser().role === "member";
-  const [dismissedKeys, setDismissedKeys] = useState<string[]>([]);
-
-  // Read localStorage after mount so SSR and hydration agree.
-  useEffect(() => {
-    setDismissedKeys(readDismissedSnapshot());
-  }, []);
+  const dismissedKeys = useSetupChecklistStore((s) => s.dismissedKeys);
+  const dismiss = useSetupChecklistStore((s) => s.dismiss);
 
   const items = useMemo<ChecklistItem[]>(() => {
     if (!status || !catalog) return [];
@@ -92,22 +71,15 @@ export function SetupChecklistCard() {
 
   // Hidden only while the pending set matches what was dismissed; any new or
   // returning item (LLM unconfigured again) makes the card visible once more.
+  const dismissedSet = new Set(dismissedKeys);
   const isDismissed =
     items.length > 0 &&
-    dismissedKeys.length === items.length &&
-    items.every((item) => dismissedKeys.includes(item.key));
+    dismissedSet.size === items.length &&
+    items.every((item) => dismissedSet.has(item.key));
 
   if (!status || isMember || items.length === 0 || isDismissed) return null;
 
-  const handleDismiss = () => {
-    const keys = items.map((item) => item.key);
-    setDismissedKeys(keys);
-    try {
-      window.localStorage.setItem(DISMISSED_KEY, JSON.stringify(keys));
-    } catch {
-      // Same as above — non-persistent dismissal is fine.
-    }
-  };
+  const handleDismiss = () => dismiss(items.map((item) => item.key));
 
   return (
     <m.div
@@ -138,7 +110,7 @@ export function SetupChecklistCard() {
             <Link
               key={item.key}
               href={item.href}
-              className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-900 p-3 transition-all duration-200 hover:bg-zinc-700"
+              className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-900 p-3 transition-colors duration-200 hover:bg-zinc-700"
             >
               <span className="min-w-0 flex-col">
                 <span className="block truncate text-sm font-medium text-zinc-200">

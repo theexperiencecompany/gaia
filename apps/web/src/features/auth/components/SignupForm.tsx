@@ -2,9 +2,10 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Alert01Icon, ViewIcon, ViewOffSlashIcon } from "@icons";
+import { Alert01Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButton";
 
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { RegistrationClosedNotice } from "@/features/auth/components/RegistrationClosedNotice";
@@ -110,21 +111,11 @@ export function SignupForm({
         isRequired
         isDisabled={isSubmitting}
         endContent={
-          <Button
-            isIconOnly
-            size="sm"
-            variant="light"
-            radius="full"
-            aria-label={isPasswordVisible ? "Hide password" : "Show password"}
-            onPress={() => setIsPasswordVisible((visible) => !visible)}
-            className="text-zinc-500"
-          >
-            {isPasswordVisible ? (
-              <ViewOffSlashIcon size={16} />
-            ) : (
-              <ViewIcon size={16} />
-            )}
-          </Button>
+          <VisibilityToggleButton
+            visible={isPasswordVisible}
+            onToggle={() => setIsPasswordVisible((visible) => !visible)}
+            subject="password"
+          />
         }
       />
 

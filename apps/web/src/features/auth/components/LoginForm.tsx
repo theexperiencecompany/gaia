@@ -4,14 +4,10 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Link } from "@heroui/link";
 import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
-import {
-  Alert01Icon,
-  ArrowRight02Icon,
-  ViewIcon,
-  ViewOffSlashIcon,
-} from "@icons";
+import { Alert01Icon, ArrowRight02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButton";
 
 import CopyButton from "@/components/ui/CopyButton";
 
@@ -84,21 +80,11 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         isRequired
         isDisabled={isSubmitting}
         endContent={
-          <Button
-            isIconOnly
-            size="sm"
-            variant="light"
-            radius="full"
-            aria-label={isPasswordVisible ? "Hide password" : "Show password"}
-            onPress={() => setIsPasswordVisible((visible) => !visible)}
-            className="text-zinc-500"
-          >
-            {isPasswordVisible ? (
-              <ViewOffSlashIcon size={16} />
-            ) : (
-              <ViewIcon size={16} />
-            )}
-          </Button>
+          <VisibilityToggleButton
+            visible={isPasswordVisible}
+            onToggle={() => setIsPasswordVisible((visible) => !visible)}
+            subject="password"
+          />
         }
       />
       {/* Self-host has one admin and no email recovery — surface the CLI reset path. This form only renders on local-auth instances (see login/page.tsx). */}

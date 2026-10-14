@@ -7,99 +7,40 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
-import {
-  Alert01Icon,
-  ArrowRight02Icon,
-  CheckmarkCircle02Icon,
-  CodeIcon,
-  GlobalIcon,
-  Mail01Icon,
-  SparklesIcon,
-  Tick02Icon,
-} from "@icons";
 import * as m from "motion/react-m";
-import nextDynamic from "next/dynamic";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect } from "react";
-import {
-  type CredentialProvider,
-  type ProviderCatalog,
-  providerFaviconUrl,
-  type SetupStatus,
+import { useEffect } from "react";
+import type {
+  CredentialProvider,
+  ProviderCatalog,
+  SetupStatus,
 } from "@/features/settings/api/providersApi";
 import {
   isAnyLlmConfigured,
   isProviderConfigured,
 } from "@/features/settings/hooks/useSetupStatus";
-import { useAppendToInput } from "@/stores/composerStore";
 import {
   LLM_PROVIDER_CARDS,
   SEARCH_PROVIDER_CARD,
   TOOL_PROVIDER_CARDS,
   WIZARD_EXCLUDED_TOOL_KEYS,
 } from "../../constants";
-
-const ConnectedAppsCount = nextDynamic(() => import("./ConnectedAppsCount"), {
-  ssr: false,
-});
+import { DoneActions } from "./done/DoneActions";
+import { ReadyCard } from "./done/ReadyCard";
+import { SetupSummaryCard } from "./done/SetupSummaryCard";
+import { SkippedProviderCard } from "./done/SkippedProviderCard";
+import { StarterPromptsCard } from "./done/StarterPromptsCard";
+import { STARTER_PROMPTS, type StarterPrompt } from "./done/starterPrompts";
 
 interface DoneStepProps {
   status: SetupStatus;
   catalog: ProviderCatalog;
 }
 
-function providerLabel(key: string): string {
-  return (
-    [...LLM_PROVIDER_CARDS, SEARCH_PROVIDER_CARD, ...TOOL_PROVIDER_CARDS].find(
-      (card) => card.key === key,
-    )?.label ?? key
-  );
-}
-
-/** A starter prompt plus the capability it needs. Prompts whose capability
- * is missing are hidden — offering "search the web" with no search key just
- * teaches the user the app is broken. */
-interface StarterPrompt {
-  prompt: string;
-  icon: typeof GlobalIcon;
-  /** Omitted for prompts that need nothing but chat. */
-  requires?: CredentialProvider | "sandbox" | "inbox";
-}
-
-const STARTER_PROMPTS: StarterPrompt[] = [
-  {
-    prompt: "What can you do for me?",
-    icon: SparklesIcon,
-  },
-  {
-    prompt: "Search the web for today's AI headlines",
-    icon: GlobalIcon,
-    requires: "tavily",
-  },
-  {
-    prompt: "Run a Python script that prints hello world",
-    icon: CodeIcon,
-    requires: "sandbox",
-  },
-  {
-    prompt: "Help me organize my inbox",
-    icon: Mail01Icon,
-    requires: "inbox",
-  },
-];
-
 export function DoneStep({ status, catalog }: DoneStepProps) {
-  const router = useRouter();
-  const appendToInput = useAppendToInput();
-
   const connectedLlmCards = LLM_PROVIDER_CARDS.filter((card) =>
     isProviderConfigured(status, card.key),
   );
   const hasLlm = isAnyLlmConfigured(status, catalog);
-  const primaryLlm = connectedLlmCards[0] ?? null;
 
   const searchConfigured = isProviderConfigured(
     status,
@@ -119,7 +60,7 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
   const capabilityReady = (requires: StarterPrompt["requires"]): boolean => {
     if (!requires) return true;
     if (requires === "sandbox")
-      return toolConfigured("e2b") || status?.local_code_sandbox === true;
+      return toolConfigured("e2b") || status.local_code_sandbox === true;
     if (requires === "inbox") return toolConfigured("composio");
     return isProviderConfigured(status, requires);
   };
@@ -161,282 +102,18 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
       }}
     >
       {hasLlm ? (
-        <m.div
-          variants={{
-            hidden: { opacity: 0, y: 12 },
-            visible: { opacity: 1, y: 0 },
-          }}
-          transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
-          className="w-full rounded-2xl bg-zinc-800 p-6 text-center"
-        >
-          <m.div
-            initial={{ scale: 0, rotate: -12 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{
-              type: "spring",
-              stiffness: 320,
-              damping: 18,
-              delay: 0.15,
-            }}
-            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-400/10"
-          >
-            <CheckmarkCircle02Icon size={28} className="text-emerald-400" />
-          </m.div>
-          <m.p
-            variants={{
-              hidden: { opacity: 0, y: 8 },
-              visible: { opacity: 1, y: 0 },
-            }}
-            transition={{ duration: 0.35, delay: 0.22 }}
-            className="mt-4 text-xl font-semibold tracking-tight text-zinc-100"
-          >
-            You're ready to chat
-          </m.p>
-          <m.p
-            variants={{
-              hidden: { opacity: 0, y: 8 },
-              visible: { opacity: 1, y: 0 },
-            }}
-            transition={{ duration: 0.35, delay: 0.28 }}
-            className="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-zinc-400"
-          >
-            Connected and ready to help. Try one of the prompts below or start
-            chatting on your own.
-          </m.p>
-          {primaryLlm && (
-            <m.div
-              variants={{
-                hidden: { opacity: 0, y: 8 },
-                visible: { opacity: 1, y: 0 },
-              }}
-              transition={{ duration: 0.35, delay: 0.34 }}
-              className="mt-4 inline-flex items-center gap-2 rounded-full bg-zinc-900 px-3 py-1.5"
-            >
-              <Image
-                src={providerFaviconUrl(primaryLlm.faviconDomain)}
-                alt={`${primaryLlm.label} favicon`}
-                width={16}
-                height={16}
-                className="rounded-sm"
-              />
-              <span className="text-xs font-medium text-zinc-200">
-                Connected to {primaryLlm.label}
-              </span>
-              <span className="h-3 w-px bg-zinc-700" />
-              <span className="flex items-center gap-1 text-xs text-emerald-400">
-                <Tick02Icon height={12} className="shrink-0" />
-                Ready
-              </span>
-              {connectedLlmCards.length > 1 && (
-                <>
-                  <span className="h-3 w-px bg-zinc-700" />
-                  <span className="text-xs text-zinc-500">
-                    +{connectedLlmCards.length - 1} more
-                  </span>
-                </>
-              )}
-            </m.div>
-          )}
-        </m.div>
+        <ReadyCard connectedLlmCards={connectedLlmCards} />
       ) : (
-        <m.div
-          variants={{
-            hidden: { opacity: 0, y: 12 },
-            visible: { opacity: 1, y: 0 },
-          }}
-          transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
-          className="w-full rounded-2xl bg-zinc-800 p-6"
-        >
-          <div className="flex gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-400/10">
-              <Alert01Icon size={18} className="text-amber-400" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-zinc-100">
-                You skipped provider setup
-              </p>
-              <p className="mt-1 text-sm leading-relaxed text-zinc-400">
-                Chat requires a provider to work. Add a key in{" "}
-                <span className="font-medium text-zinc-300">
-                  Settings, under AI Providers
-                </span>{" "}
-                to start chatting — one key is all it takes.
-              </p>
-              <Button
-                as={Link}
-                href="/settings/providers"
-                size="sm"
-                variant="flat"
-                className="mt-3"
-              >
-                Go to Settings
-              </Button>
-            </div>
-          </div>
-        </m.div>
+        <SkippedProviderCard />
       )}
-
-      {hasLlm && (
-        <m.div
-          variants={{
-            hidden: { opacity: 0, y: 12 },
-            visible: { opacity: 1, y: 0 },
-          }}
-          transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
-          className="w-full rounded-2xl bg-zinc-800 p-4"
-        >
-          <div className="mb-3 flex items-center gap-2">
-            <SparklesIcon size={14} className="text-zinc-500" />
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Try one to get started
-            </p>
-          </div>
-          <m.div
-            initial="hidden"
-            animate="visible"
-            variants={{
-              hidden: {},
-              visible: {
-                transition: { staggerChildren: 0.06, delayChildren: 0.1 },
-              },
-            }}
-            className="flex flex-col gap-2"
-          >
-            {starterPrompts.map(({ prompt, icon: Icon }) => (
-              <m.div
-                key={prompt}
-                variants={{
-                  hidden: { opacity: 0, y: 8 },
-                  visible: { opacity: 1, y: 0 },
-                }}
-              >
-                <Button
-                  fullWidth
-                  variant="light"
-                  size="sm"
-                  onPress={() => {
-                    appendToInput(prompt);
-                    router.push("/c");
-                  }}
-                  className="h-11 justify-start gap-3 rounded-xl bg-zinc-900 px-3 text-sm font-normal text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
-                  startContent={
-                    <Icon size={18} className="shrink-0 text-zinc-500" />
-                  }
-                  endContent={
-                    <ArrowRight02Icon
-                      size={14}
-                      className="ml-auto shrink-0 text-zinc-600"
-                    />
-                  }
-                >
-                  <span className="truncate text-left">{prompt}</span>
-                </Button>
-              </m.div>
-            ))}
-          </m.div>
-        </m.div>
-      )}
-
-      <m.div
-        variants={{
-          hidden: { opacity: 0, y: 12 },
-          visible: { opacity: 1, y: 0 },
-        }}
-        transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
-        className="w-full rounded-2xl bg-zinc-800 p-4"
-      >
-        <p className="mb-3 text-sm font-semibold text-zinc-100">
-          Your setup so far
-        </p>
-        <div className="space-y-2">
-          <SummaryRow
-            label="AI provider"
-            value={
-              connectedLlmCards.length > 0
-                ? connectedLlmCards.map((c) => c.label).join(", ")
-                : "Not set up"
-            }
-            done={connectedLlmCards.length > 0}
-          />
-          <SummaryRow
-            label="Web search"
-            value={
-              searchConfigured
-                ? providerLabel(SEARCH_PROVIDER_CARD.key)
-                : "Skipped"
-            }
-            done={searchConfigured}
-          />
-          <SummaryRow
-            label="Tool keys"
-            value={
-              connectedTools.length > 0
-                ? connectedTools.map((card) => card.label).join(", ")
-                : "None yet"
-            }
-            done={null}
-          />
-          <SummaryRow
-            label="Connected accounts"
-            value={<ConnectedAppsCount />}
-            done={null}
-          />
-          <SummaryRow
-            label="Admin account"
-            value={status.has_admin_account ? "Active" : "Pending"}
-            done={status.has_admin_account}
-          />
-        </div>
-      </m.div>
-
-      <m.div
-        variants={{
-          hidden: { opacity: 0, y: 12 },
-          visible: { opacity: 1, y: 0 },
-        }}
-        transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
-      >
-        {hasLlm ? (
-          <Button
-            as={Link}
-            href="/c"
-            color="primary"
-            fullWidth
-            size="lg"
-            className="font-medium"
-            endContent={<ArrowRight02Icon size={18} />}
-          >
-            Start chatting
-          </Button>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <p className="text-center text-xs leading-relaxed text-amber-400">
-              Chat requires a provider — add one to start chatting.
-            </p>
-            <Button
-              as={Link}
-              href="/settings/providers"
-              color="primary"
-              fullWidth
-              size="lg"
-              className="font-medium"
-              endContent={<ArrowRight02Icon size={18} />}
-            >
-              Go to AI Providers
-            </Button>
-            <Button
-              as={Link}
-              href="/c"
-              variant="light"
-              fullWidth
-              size="sm"
-              className="text-zinc-400"
-            >
-              Continue to chat anyway
-            </Button>
-          </div>
-        )}
-      </m.div>
+      {hasLlm && <StarterPromptsCard prompts={starterPrompts} />}
+      <SetupSummaryCard
+        connectedLlmCards={connectedLlmCards}
+        searchLabel={searchConfigured ? SEARCH_PROVIDER_CARD.label : null}
+        connectedTools={connectedTools}
+        hasAdminAccount={status.has_admin_account}
+      />
+      <DoneActions hasLlm={hasLlm} />
       {!searchConfigured && (
         <m.p
           variants={{
@@ -451,28 +128,5 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
         </m.p>
       )}
     </m.div>
-  );
-}
-
-function SummaryRow({
-  label,
-  value,
-  done,
-}: {
-  label: string;
-  value: ReactNode;
-  /** null = informational row without a done/pending verdict */
-  done: boolean | null;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-900 p-3">
-      <span className="text-sm font-medium text-zinc-200">{label}</span>
-      <span className="flex items-center gap-1.5 text-xs text-zinc-400">
-        {done !== null && done && (
-          <Tick02Icon height={14} className="text-emerald-400" />
-        )}
-        {value}
-      </span>
-    </div>
   );
 }

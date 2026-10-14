@@ -2,8 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Alert01Icon, ViewIcon, ViewOffSlashIcon } from "@icons";
+import { Alert01Icon } from "@icons";
 import { type FormEvent, useState } from "react";
+import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButton";
 
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -85,9 +86,10 @@ export function PasswordChangeSection() {
           isRequired
           isDisabled={isSubmitting}
           endContent={
-            <PasswordVisibilityToggle
+            <VisibilityToggleButton
               visible={arePasswordsVisible}
               onToggle={() => setArePasswordsVisible((v) => !v)}
+              subject="passwords"
             />
           }
         />
@@ -101,9 +103,10 @@ export function PasswordChangeSection() {
           isRequired
           isDisabled={isSubmitting}
           endContent={
-            <PasswordVisibilityToggle
+            <VisibilityToggleButton
               visible={arePasswordsVisible}
               onToggle={() => setArePasswordsVisible((v) => !v)}
+              subject="passwords"
             />
           }
         />
@@ -116,9 +119,10 @@ export function PasswordChangeSection() {
           isRequired
           isDisabled={isSubmitting}
           endContent={
-            <PasswordVisibilityToggle
+            <VisibilityToggleButton
               visible={arePasswordsVisible}
               onToggle={() => setArePasswordsVisible((v) => !v)}
+              subject="passwords"
             />
           }
         />
@@ -145,27 +149,5 @@ export function PasswordChangeSection() {
         </div>
       </form>
     </SettingsSection>
-  );
-}
-
-function PasswordVisibilityToggle({
-  visible,
-  onToggle,
-}: {
-  visible: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <Button
-      isIconOnly
-      size="sm"
-      variant="light"
-      radius="full"
-      aria-label={visible ? "Hide passwords" : "Show passwords"}
-      onPress={onToggle}
-      className="text-zinc-500"
-    >
-      {visible ? <ViewOffSlashIcon size={16} /> : <ViewIcon size={16} />}
-    </Button>
   );
 }
