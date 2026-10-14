@@ -9428,6 +9428,11 @@ export interface components {
          * @description ``GET /health`` (and its ping/root aliases) when the API is serving normally.
          */
         HealthResponse: {
+            /**
+             * Commit
+             * @description Short sha the image was built from; 'local' outside one
+             */
+            commit: string;
             /** Description */
             description: string;
             /**

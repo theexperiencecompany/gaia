@@ -4,7 +4,6 @@ from datetime import datetime
 import json
 from pathlib import Path
 import tomllib
-from typing import TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -183,16 +182,8 @@ def decode_message_body(msg: GmailApiMessage) -> str:
     return html_body or plain_body or ""
 
 
-class ProjectInfo(TypedDict):
-    """The pyproject.toml metadata the health endpoint reports."""
-
-    name: str
-    version: str
-    description: str
-
-
-class _PyprojectProject(BaseModel):
-    """The ``[project]`` table of pyproject.toml, defaulted key by key."""
+class ProjectInfo(BaseModel):
+    """The pyproject.toml [project] metadata the health endpoint reports, defaulted key by key."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -204,7 +195,7 @@ class _PyprojectProject(BaseModel):
 class _Pyproject(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    project: _PyprojectProject = Field(default_factory=_PyprojectProject)
+    project: ProjectInfo = Field(default_factory=ProjectInfo)
 
 
 def get_project_info() -> ProjectInfo:
@@ -213,14 +204,9 @@ def get_project_info() -> ProjectInfo:
         # Path to pyproject.toml from this file location
         pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
         with open(pyproject_path, "rb") as f:
-            project = _Pyproject.model_validate(tomllib.load(f)).project
-            return ProjectInfo(
-                name=project.name,
-                version=project.version,
-                description=project.description,
-            )
+            return _Pyproject.model_validate(tomllib.load(f)).project
     except Exception:
-        return ProjectInfo(name="GAIA API", version="dev", description="Backend for GAIA")
+        return ProjectInfo()
 
 
 def describe_structure(obj: object, parent: str = "") -> list[str]:
