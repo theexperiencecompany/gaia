@@ -58,7 +58,11 @@ async def seed_dev_user_data(payload: SeedDevDataRequest) -> SeedDevDataResponse
         }
     )
     result = await seed_dev_data(
-        payload.email, payload.todos, payload.conversations, payload.platform_links
+        payload.email,
+        payload.todos,
+        payload.conversations,
+        payload.platform_links,
+        pro=payload.pro,
     )
     log.set(dev={"user_id": result.user_id})
     return result

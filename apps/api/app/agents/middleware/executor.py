@@ -14,7 +14,7 @@ It handles executing middleware hooks at appropriate points:
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 import inspect
-import time
+from time import perf_counter
 from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
@@ -430,7 +430,7 @@ class MiddlewareExecutor:
 
         # Execute the chain
         metric_name = _tool_metric_name(tool_name, tool)
-        chain_start = time.perf_counter()
+        chain_start = perf_counter()
         try:
             result = await current_handler(request)
         except GraphBubbleUp:
@@ -453,7 +453,7 @@ class MiddlewareExecutor:
                 result = tool_result
             else:
                 observe_tool_call(
-                    time.perf_counter() - chain_start, tool_name=metric_name, status="error"
+                    perf_counter() - chain_start, tool_name=metric_name, status="error"
                 )
                 if tool_attempted:
                     # The tool itself raised: retrying would run its side effects again.
@@ -466,9 +466,7 @@ class MiddlewareExecutor:
                     name=tool_name,
                     status="error",
                 )
-        observe_tool_call(
-            time.perf_counter() - chain_start, tool_name=metric_name, status="success"
-        )
+        observe_tool_call(perf_counter() - chain_start, tool_name=metric_name, status="success")
         return result
 
     def has_wrap_model_call(self) -> bool:
