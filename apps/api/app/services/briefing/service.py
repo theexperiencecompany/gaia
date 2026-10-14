@@ -505,11 +505,11 @@ def _build_facts(
         for it in sec.items:
             if it.todo_id is None:
                 fact_lines.append(_fact_line(it))
-                continue
-            link_targets[len(link_targets)] = it.todo_id
-            fact_lines.append(
-                _work_fact_line(it, artifacts[it.todo_id], _link_token(len(link_targets) - 1))
-            )
+            else:
+                link_targets[len(link_targets)] = it.todo_id
+                fact_lines.append(
+                    _work_fact_line(it, artifacts[it.todo_id], _link_token(len(link_targets) - 1))
+                )
     if left_out:
         fact_lines.append(
             f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
