@@ -72,9 +72,7 @@ async def resolve_short_link_route(
 ) -> PublicShortLinkView:
     """Resolve a capability slug to its target's public view. No auth."""
     log.set(short_link={"operation": "resolve", "slug": slug})
-    response.headers["Cache-Control"] = (
-        _NO_STORE  # pragma: no mutate — headers lowercase names on set
-    )
+    response.headers["Cache-Control"] = _NO_STORE  # pragma: no mutate — case-insensitive name
     try:
         view = await get_public_view(slug)
     except JuiceFSUnavailable as e:
