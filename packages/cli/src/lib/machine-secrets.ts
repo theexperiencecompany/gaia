@@ -2,7 +2,8 @@
  * Machine-local secrets for self-hosted instances.
  *
  * A self-host install must boot with AGENT_SECRET / BOT_SESSION_TOKEN_SECRET /
- * EMAIL_UNSUBSCRIBE_SECRET set, and file sharing needs SHARE_GRANT_SECRET, but
+ * EMAIL_UNSUBSCRIBE_SECRET set, file sharing needs SHARE_GRANT_SECRET and the
+ * chat bots authenticate with GAIA_BOT_API_KEY, but
  * asking users to invent random strings is hostile UX. The CLI generates them once (crypto.randomBytes,
  * hex-encoded, openssl-rand-hex-32 equivalent) and merges them into
  * apps/api/.env with merge-don't-clobber semantics: values already present in
@@ -24,6 +25,7 @@ const MACHINE_SECRET_VARS = [
   "BOT_SESSION_TOKEN_SECRET",
   "EMAIL_UNSUBSCRIBE_SECRET",
   "SHARE_GRANT_SECRET",
+  "GAIA_BOT_API_KEY",
 ] as const;
 
 /** Keeps the credential-encryption key out of the database it protects. */

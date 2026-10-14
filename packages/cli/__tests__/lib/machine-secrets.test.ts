@@ -48,6 +48,7 @@ describe("collectMachineSecrets", () => {
       "AGENT_SECRET",
       "BOT_SESSION_TOKEN_SECRET",
       "EMAIL_UNSUBSCRIBE_SECRET",
+      "GAIA_BOT_API_KEY",
       "INSTANCE_SECRET",
       "SHARE_GRANT_SECRET",
     ]);
@@ -62,6 +63,7 @@ describe("collectMachineSecrets", () => {
       "AGENT_SECRET=existing-agent-secret",
       "BOT_SESSION_TOKEN_SECRET=existing-bot-secret",
       "SHARE_GRANT_SECRET=existing-share-secret",
+      "GAIA_BOT_API_KEY=existing-bot-api-key",
     ].join("\n");
 
     const secrets = collectMachineSecrets(existing);
@@ -84,6 +86,7 @@ describe("collectMachineSecrets", () => {
       "AGENT_SECRET",
       "BOT_SESSION_TOKEN_SECRET",
       "EMAIL_UNSUBSCRIBE_SECRET",
+      "GAIA_BOT_API_KEY",
       "SHARE_GRANT_SECRET",
     ]);
   });

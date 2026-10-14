@@ -747,7 +747,7 @@ class TestInitiatePlatformConnect:
         with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = "my_gaia_bot"
+            mock_settings.telegram_bot_username = "my_gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
         assert resp.status_code == 200
@@ -757,15 +757,14 @@ class TestInitiatePlatformConnect:
         assert body["action_link"] == "https://t.me/my_gaia_bot"
 
     @pytest.mark.asyncio
-    async def test_telegram_default_bot_username(self, client: AsyncClient) -> None:
+    async def test_telegram_without_a_bot_is_501(self, client: AsyncClient) -> None:
         with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = None
+            mock_settings.telegram_bot_username = None
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
-        assert resp.status_code == 200
-        assert "gaia_bot" in resp.json()["instructions"]
+        assert resp.status_code == 501
 
     @pytest.mark.asyncio
     async def test_whatsapp_manual(self, client: AsyncClient) -> None:
@@ -792,7 +791,7 @@ class TestInitiatePlatformConnect:
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = "gaia_bot"
+            mock_settings.telegram_bot_username = "gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
         assert resp.status_code == 200
@@ -1053,7 +1052,7 @@ class TestImessagePremiumGate:
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = "gaia_bot"
+            mock_settings.telegram_bot_username = "gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
         assert resp.status_code == 200
@@ -1067,7 +1066,7 @@ class TestImessagePremiumGate:
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
-            mock_settings.TELEGRAM_BOT_USERNAME = "gaia_bot"
+            mock_settings.telegram_bot_username = "gaia_bot"
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
         assert resp.status_code == 200

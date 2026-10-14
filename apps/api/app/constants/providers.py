@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TypedDict
 
+from pydantic import BaseModel, ConfigDict
+
 from app.constants.llm import (
     AUX_MODEL_NAME,
     COMMS_MODEL_NAME,
@@ -197,8 +199,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "favicon_domain": "nousresearch.com",
         "needs_base_url": False,
     },
-    # Search tool key — a single credential, no LLM endpoint, and no live
-    # probe (the setup test endpoint hard-rejects it).
+    # Search tool keys (SearXNG: an endpoint) — no LLM endpoint and no live
+    # probe (the setup test endpoint rejects every non-chat provider).
     "tavily": {
         "label": "Tavily",
         "description": "Web search results grounded in live sources.",
@@ -207,6 +209,33 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "tavily.com",
         "needs_base_url": False,
+    },
+    "exa": {
+        "label": "Exa",
+        "description": "Search that understands what you mean, not just the words.",
+        "key_url": "https://dashboard.exa.ai/api-keys",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "exa.ai",
+        "needs_base_url": False,
+    },
+    "brave": {
+        "label": "Brave Search",
+        "description": "Brave's own independent web index.",
+        "key_url": "https://api-dashboard.search.brave.com/app/keys",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "search.brave.com",
+        "needs_base_url": False,
+    },
+    "searxng": {
+        "label": "SearXNG",
+        "description": "Your own private search server. Paste its address; no key needed.",
+        "key_url": "",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "searxng.org",
+        "needs_base_url": True,
     },
     # Tool / integration keys — no LLM endpoint, single-credential cards.
     "composio": {
@@ -276,7 +305,7 @@ PRESETS: dict[str, ProviderPreset] = {
 
 
 # Credential-store providers. "custom" covers OpenCode/Nous/any OpenAI-compatible
-# gateway (its UI card exposes the preset chips); "tavily" is a tool key, not an LLM.
+# gateway (its UI card exposes the preset chips); the rest are tool keys, not LLMs.
 class CredentialProviderName(StrEnum):
     """A provider the credential store can hold, in display order."""
 
@@ -285,6 +314,9 @@ class CredentialProviderName(StrEnum):
     OLLAMA = "ollama"
     CUSTOM = "custom"
     TAVILY = "tavily"
+    EXA = "exa"
+    BRAVE = "brave"
+    SEARXNG = "searxng"
     COMPOSIO = "composio"
     E2B = "e2b"
     OPENAI = "openai"
@@ -296,17 +328,134 @@ class CredentialProviderName(StrEnum):
 
 CREDENTIAL_PROVIDERS: tuple[str, ...] = tuple(p.value for p in CredentialProviderName)
 
+
+class ProviderFeature(StrEnum):
+    """What a provider is for, as Settings and the setup wizard group them."""
+
+    AI_MODELS = "ai_models"
+    WEB_SEARCH = "web_search"
+    PAGE_READING = "page_reading"
+    CODE_RUNNING = "code_running"
+    FILE_STORAGE = "file_storage"
+    EMAIL = "email"
+    INTEGRATIONS = "integrations"
+
+
+class BuiltInEngine(StrEnum):
+    """An engine a feature runs on with no credential at all."""
+
+    DUCKDUCKGO = "duckduckgo"
+    PAGE_READER = "page_reader"
+    LOCAL_SANDBOX = "local_sandbox"
+    LOCAL_DISK = "local_disk"
+
+
+class BuiltInOption(BaseModel):
+    """What a feature runs on with no key, as the UI names it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    engine: BuiltInEngine
+    label: str
+    description: str
+
+
+class FeatureSpec(BaseModel):
+    """One feature: what it does, its keyless engine if any, and the providers that upgrade it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    label: str
+    description: str
+    built_in: BuiltInOption | None  # None ⇒ the feature is off until a provider is added
+    providers: tuple[CredentialProviderName, ...]  # the optional upgrades, in display order
+
+
+PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {
+    ProviderFeature.AI_MODELS: FeatureSpec(
+        label="AI models",
+        description="The models GAIA chats and reasons with. It needs at least one.",
+        built_in=None,
+        providers=tuple(CredentialProviderName(p.value) for p in LLM_PROVIDER_PRIORITY),
+    ),
+    ProviderFeature.WEB_SEARCH: FeatureSpec(
+        label="Web search",
+        description="Looks things up on the web while answering.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.DUCKDUCKGO,
+            label="DuckDuckGo",
+            description="Free, no key needed.",
+        ),
+        providers=(
+            CredentialProviderName.TAVILY,
+            CredentialProviderName.EXA,
+            CredentialProviderName.BRAVE,
+            CredentialProviderName.SEARXNG,
+        ),
+    ),
+    ProviderFeature.PAGE_READING: FeatureSpec(
+        label="Reading web pages",
+        description="Opens a link and reads the page.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.PAGE_READER,
+            label="Built-in reader",
+            description="A headless browser on this server, no key needed.",
+        ),
+        providers=(CredentialProviderName.FIRECRAWL,),
+    ),
+    ProviderFeature.CODE_RUNNING: FeatureSpec(
+        label="Running code",
+        description="Lets GAIA write and run code in a sandbox.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.LOCAL_SANDBOX,
+            label="Local sandbox",
+            description="Runs code in Docker on this server, when LOCAL_CODE_SANDBOX is on.",
+        ),
+        providers=(CredentialProviderName.E2B,),
+    ),
+    ProviderFeature.FILE_STORAGE: FeatureSpec(
+        label="File storage",
+        description="Where uploaded and generated files are kept.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.LOCAL_DISK,
+            label="This server's disk",
+            description="Files stay on your own machine.",
+        ),
+        providers=(CredentialProviderName.CLOUDINARY,),
+    ),
+    ProviderFeature.EMAIL: FeatureSpec(
+        label="Email",
+        description="Sends notifications and reminders by email.",
+        built_in=None,
+        providers=(CredentialProviderName.RESEND,),
+    ),
+    ProviderFeature.INTEGRATIONS: FeatureSpec(
+        label="Integrations",
+        description="Connects your accounts, like Gmail, Calendar and Slack.",
+        built_in=None,
+        providers=(
+            CredentialProviderName.COMPOSIO,
+            CredentialProviderName.GOOGLE_OAUTH,
+        ),
+    ),
+}
+
 FAVICON_URL_TEMPLATE = "https://www.google.com/s2/favicons?domain={domain}&sz=128"
 
 __all__ = [
     "CREDENTIAL_PROVIDERS",
+    "BuiltInEngine",
+    "BuiltInOption",
     "CredentialProviderName",
     "FAVICON_URL_TEMPLATE",
+    "FeatureSpec",
     "HOSTED_COMMS_ONLY_PROVIDERS",
     "HOSTED_ONE_SHOT_PROVIDERS",
     "LLM_MODEL_PROFILES",
     "LLM_PROVIDER_PRIORITY",
     "PRESETS",
+    "PROVIDER_FEATURES",
     "LLMModelProfile",
+    "ProviderFeature",
     "ProviderPreset",
 ]

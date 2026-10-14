@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-/** Settings lists providers by role, working ones first, and leaves Composio to Integrations setup. */
+/** Settings shows one card per feature: whether it works, what it runs on, and its optional providers. */
 
+import type { FeatureSpec, FeatureStatus } from "@gaia/shared/api/generated";
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -8,25 +9,26 @@ import type {
   SetupStatus,
 } from "@/features/settings/api/providersApi";
 
-/** Catalog display order, each provider with the label the catalog serves for it. */
 const CATALOG_LABELS: [string, string][] = [
   ["openrouter", "OpenRouter"],
-  ["gemini", "Google Gemini"],
-  ["ollama", "Ollama"],
-  ["custom", "Custom"],
-  ["tavily", "Tavily"],
-  ["composio", "Composio"],
-  ["e2b", "E2B Sandbox"],
   ["openai", "OpenAI"],
-  ["resend", "Resend Email"],
-  ["cloudinary", "Cloudinary"],
-  ["google_oauth", "Google OAuth"],
+  ["tavily", "Tavily"],
+  ["exa", "Exa"],
+  ["searxng", "SearXNG"],
   ["firecrawl", "Firecrawl"],
+  ["resend", "Resend Email"],
+  ["composio", "Composio"],
+  ["cloudinary", "Cloudinary"],
 ];
-const CATALOG_ORDER = CATALOG_LABELS.map(([key]) => key);
+
+const feature = (
+  label: string,
+  providers: FeatureSpec["providers"],
+  builtIn: FeatureSpec["built_in"] = null,
+): FeatureSpec => ({ label, description: "", built_in: builtIn, providers });
 
 const catalog: ProviderCatalog = {
-  llm_provider_keys: ["openrouter", "gemini", "openai", "ollama", "custom"],
+  llm_provider_keys: ["openrouter", "openai"],
   providers: Object.fromEntries(
     CATALOG_LABELS.map(([key, label]) => [
       key,
@@ -37,22 +39,46 @@ const catalog: ProviderCatalog = {
         base_url: "",
         default_model: "",
         favicon_domain: `${key}.example`,
-        needs_base_url: false,
+        needs_base_url: key === "searxng",
       },
     ]),
   ),
   custom_presets: {},
+  features: {
+    ai_models: feature("AI models", ["openrouter", "openai"]),
+    web_search: feature("Web search", ["tavily", "exa", "searxng"], {
+      engine: "duckduckgo",
+      label: "DuckDuckGo",
+      description: "Free, no key needed.",
+    }),
+    page_reading: feature("Reading web pages", ["firecrawl"], {
+      engine: "page_reader",
+      label: "Built-in reader",
+      description: "No key needed.",
+    }),
+    file_storage: feature("File storage", ["cloudinary"], {
+      engine: "local_disk",
+      label: "This server's disk",
+      description: "Files stay on your machine.",
+    }),
+    email: feature("Email", ["resend"]),
+    integrations: feature("Integrations", ["composio"]),
+  },
 };
 
 const configured = new Set(["openai", "firecrawl"]);
 
-let status: SetupStatus;
+const using = (...in_use: FeatureStatus["in_use"]): FeatureStatus => ({
+  working: in_use.length > 0,
+  in_use,
+});
 
-const BASE_STATUS = {
+const status = {
   auth_mode: "local",
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
+  wizard_dismissed: false,
   deployment: {
     kind: "selfhost",
     bills: false,
@@ -61,7 +87,7 @@ const BASE_STATUS = {
     gaia_support: false,
   },
   providers: Object.fromEntries(
-    CATALOG_ORDER.map((key) => [
+    CATALOG_LABELS.map(([key]) => [
       key,
       {
         configured: configured.has(key),
@@ -70,18 +96,27 @@ const BASE_STATUS = {
       },
     ]),
   ),
+  features: {
+    ai_models: using("openai"),
+    web_search: using("duckduckgo"),
+    page_reading: using("page_reader", "firecrawl"),
+    file_storage: using("local_disk"),
+    email: using(),
+    integrations: using(),
+  },
   plans_seeded: false,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
 } as SetupStatus;
 
 vi.mock("@/features/settings/hooks/useProviderCatalog", () => ({
   useProviderCatalog: () => ({ data: catalog, isError: false }),
 }));
 vi.mock("@/features/settings/hooks/useProviderConfigs", () => ({
-  useProviderConfigs: () => ({
-    data: {},
-    isLoading: false,
-    refetch: vi.fn(),
-  }),
+  useProviderConfigs: () => ({ data: {}, isLoading: false, refetch: vi.fn() }),
 }));
 vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
   ...(await importOriginal<
@@ -92,70 +127,55 @@ vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
 
 import { ProvidersSettings } from "@/features/settings/components/ProvidersSettings";
 
-const section = (title: string) =>
+const card = (title: string) =>
   within(screen.getByRole("region", { name: title }));
-
-const ROW_LABEL =
-  /^(OpenRouter|Google Gemini|OpenAI|Ollama|Custom|Tavily|Composio|E2B Sandbox|Resend Email|Cloudinary|Google OAuth|Firecrawl)$/;
-
-const rowLabels = (title: string) =>
-  section(title)
-    .getAllByText(ROW_LABEL)
-    .map((label) => label.textContent);
 
 describe("ProvidersSettings", () => {
   beforeEach(() => {
-    status = BASE_STATUS;
+    render(<ProvidersSettings />);
   });
 
-  it("groups providers by role instead of one unlabelled list", () => {
-    render(<ProvidersSettings />);
-
-    expect(rowLabels("AI models")).toContain("OpenAI");
-    expect(rowLabels("AI models")).not.toContain("Tavily");
-    expect(rowLabels("Search & tools")).toEqual(
-      expect.arrayContaining(["Tavily", "Firecrawl", "E2B Sandbox"]),
-    );
-    expect(rowLabels("Email")).toEqual(["Resend Email"]);
+  it("renders one card per feature, in catalog order", () => {
+    expect(screen.getAllByRole("region").map((r) => r.ariaLabel)).toEqual([
+      "AI models",
+      "Web search",
+      "Reading web pages",
+      "File storage",
+      "Email",
+      "Integrations",
+    ]);
   });
 
-  it("lists the working provider first within its section", () => {
-    render(<ProvidersSettings />);
-
-    expect(rowLabels("AI models")[0]).toBe("OpenAI");
-    expect(rowLabels("Search & tools")[0]).toBe("Firecrawl");
+  it("shows keyless web search working, with its keys as optional upgrades", () => {
+    const search = card("Web search");
+    expect(search.getByText("Working")).toBeTruthy();
+    expect(search.getByText("Using: DuckDuckGo")).toBeTruthy();
+    expect(search.getByText("Optional upgrades")).toBeTruthy();
+    expect(search.getAllByRole("button", { name: "Add key" })).toHaveLength(2);
+    expect(search.getByRole("button", { name: "Add address" })).toBeTruthy();
   });
 
-  it("sends Composio to Integrations setup instead of configuring it here", () => {
-    render(<ProvidersSettings />);
+  it("names the engine in use first and the rest as backups", () => {
+    const reading = card("Reading web pages");
+    expect(reading.getByText("Using: Built-in reader")).toBeTruthy();
+    expect(reading.getByText("Backup: Firecrawl")).toBeTruthy();
+    expect(reading.getByText("Connected")).toBeTruthy();
+  });
 
-    const integrations = section("Integrations");
-    expect(rowLabels("Integrations")).toContain("Composio");
+  it("marks a feature with no built-in and no key as off", () => {
+    const email = card("Email");
+    expect(email.getByText("Off")).toBeTruthy();
+    expect(email.getByText("Not running")).toBeTruthy();
+    expect(email.getByText("Add a provider below to turn it on.")).toBeTruthy();
+  });
+
+  it("sends Composio to Integrations setup and hides Cloudinary on local storage", () => {
     expect(
-      integrations
+      card("Integrations")
         .getByText("Open Integrations setup")
         .closest("a")
         ?.getAttribute("href"),
     ).toBe("/settings/integrations-setup");
-    // Composio links out and Cloudinary isn't offered without its blob store.
-    expect(screen.getAllByRole("button", { name: "Configure" })).toHaveLength(
-      CATALOG_ORDER.length - 2,
-    );
-  });
-
-  it("reports the local code sandbox on the E2B row when no E2B key is set", () => {
-    status = {
-      ...BASE_STATUS,
-      deployment: { ...BASE_STATUS.deployment, local_code_sandbox: true },
-    };
-    render(<ProvidersSettings />);
-
-    const tools = section("Search & tools");
-    expect(tools.getByText("Local sandbox active")).toBeTruthy();
-    // Only Tavily is left unconfigured: Firecrawl has a key, E2B runs locally.
-    expect(tools.getAllByText("Not configured")).toHaveLength(1);
-    expect(rowLabels("Search & tools").slice(0, 2)).toEqual(
-      expect.arrayContaining(["E2B Sandbox", "Firecrawl"]),
-    );
+    expect(screen.queryByText("Cloudinary")).toBeNull();
   });
 });

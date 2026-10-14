@@ -45,7 +45,13 @@ const PENDING: SetupStatus = {
     gaia_support: false,
   },
   providers: {},
+  features: {},
   plans_seeded: false,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
 };
 
 function signedInAs(role: "admin" | "member"): void {

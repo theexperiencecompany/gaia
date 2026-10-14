@@ -25,12 +25,12 @@ import {
   BOT_PLATFORM_LABELS,
   type BotPlatform,
 } from "@/config/botPlatforms";
+import { isSelfhostWeb } from "@/lib/selfhost";
 import type { PlatformPreviewPlatform } from "../constants/platformPreviewMessages";
 import { isPreviewPlatform } from "../constants/platformPreviewMessages";
 
-const PLATFORMS: BotPlatform[] = ["telegram", "whatsapp", "imessage"];
-
 interface OnboardingPlatformConnectProps {
+  platforms: readonly BotPlatform[];
   onConnect: (platform: BotPlatform) => void;
   onSkip: () => void;
   onHoverPlatform: (platform: PlatformPreviewPlatform | null) => void;
@@ -52,6 +52,7 @@ const PlatformMention: FC<{ platform: BotPlatform }> = ({ platform }) => (
 );
 
 export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
+  platforms,
   onConnect,
   onSkip,
   onHoverPlatform,
@@ -73,7 +74,7 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
         className="flex flex-wrap gap-2"
         onMouseLeave={() => onHoverPlatform(null)}
       >
-        {PLATFORMS.map((platform, index) => (
+        {platforms.map((platform, index) => (
           <m.div
             key={platform}
             initial={{ opacity: 0, y: 8 }}
@@ -105,18 +106,21 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
           className="flex flex-col items-start gap-1"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.25, delay: PLATFORMS.length * 0.08 }}
+          transition={{ duration: 0.25, delay: platforms.length * 0.08 }}
         >
           <Button variant="flat" size="md" onPress={onSkip}>
             Skip
           </Button>
-          <p className="flex flex-wrap items-center gap-1 px-1 text-xs text-zinc-400">
-            Don't worry, you can connect more platforms like
-            <PlatformMention platform="slack" />
-            and
-            <PlatformMention platform="discord" />
-            later.
-          </p>
+          {/* A self-hosted instance offers every bot it runs right here. */}
+          {!isSelfhostWeb() && (
+            <p className="flex flex-wrap items-center gap-1 px-1 text-xs text-zinc-400">
+              Don't worry, you can connect more platforms like
+              <PlatformMention platform="slack" />
+              and
+              <PlatformMention platform="discord" />
+              later.
+            </p>
+          )}
         </m.div>
       )}
     </div>

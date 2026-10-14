@@ -4,20 +4,16 @@ import { Spinner } from "@heroui/spinner";
 import { useMemo, useState } from "react";
 import type { CredentialProvider } from "@/features/settings/api/providersApi";
 import { ConfigureProviderModal } from "@/features/settings/components/providers/ConfigureProviderModal";
-import { ProviderSettingsRow } from "@/features/settings/components/providers/ProviderSettingsRow";
+import { ProviderFeatureSection } from "@/features/settings/components/providers/ProviderFeatureSection";
 import {
-  groupProviderRows,
-  providerRowState,
+  groupProvidersByFeature,
   resolveProviderRow,
 } from "@/features/settings/components/providers/providerRows";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import { useProviderConfigs } from "@/features/settings/hooks/useProviderConfigs";
 import {
   isProviderConfigured,
-  isProviderOffered,
-  savedCredentialOverridesEnv,
   useSetupStatus,
 } from "@/features/settings/hooks/useSetupStatus";
 import { customPresetsFromCatalog } from "@/features/setup-wizard/utils/providerCards";
@@ -32,28 +28,13 @@ export function ProvidersSettings() {
   const { data: catalog, isError: isCatalogError } = useProviderCatalog();
   const [editingKey, setEditingKey] = useState<CredentialProvider | null>(null);
 
-  // The catalog serves every credential-store provider in display order.
-  const { displayRows, presets } = useMemo(
-    () =>
-      catalog
-        ? {
-            displayRows: (
-              Object.keys(catalog.providers) as CredentialProvider[]
-            )
-              .filter((key) => isProviderOffered(status, key))
-              .map((key) => resolveProviderRow(key, catalog)),
-            presets: customPresetsFromCatalog(catalog),
-          }
-        : { displayRows: [], presets: [] },
-    [catalog, status],
+  const presets = useMemo(
+    () => (catalog ? customPresetsFromCatalog(catalog) : []),
+    [catalog],
   );
-
-  const editingRow = displayRows.find((r) => r.key === editingKey) ?? null;
-
-  const sections = groupProviderRows(
-    displayRows,
-    (key) => providerRowState(status, key) !== "not_configured",
-  );
+  const groups = catalog ? groupProvidersByFeature(catalog, status) : [];
+  const editingRow =
+    catalog && editingKey ? resolveProviderRow(editingKey, catalog) : null;
 
   return (
     <SettingsPage>
@@ -63,24 +44,17 @@ export function ProvidersSettings() {
           Couldn&apos;t load the provider list. Reload the page to try again.
         </p>
       )}
-      {sections.map((section) => (
-        <SettingsSection
-          key={section.key}
-          title={section.title}
-          description={section.description}
-        >
-          {section.rows.map((row) => (
-            <ProviderSettingsRow
-              key={row.key}
-              row={row}
-              state={providerRowState(status, row.key)}
-              overridesEnv={savedCredentialOverridesEnv(status, row.key)}
-              isDisabled={isLoadingConfigs}
-              onConfigure={() => setEditingKey(row.key)}
-            />
-          ))}
-        </SettingsSection>
-      ))}
+      {catalog &&
+        groups.map((group) => (
+          <ProviderFeatureSection
+            key={group.key}
+            group={group}
+            catalog={catalog}
+            status={status}
+            isDisabled={isLoadingConfigs}
+            onConfigure={setEditingKey}
+          />
+        ))}
 
       {editingRow && (
         <ConfigureProviderModal

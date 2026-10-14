@@ -55,6 +55,11 @@ const BASE_STATUS = {
   },
   providers: {},
   plans_seeded: false,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
 } as SetupStatus;
 
 describe("SetupWizard after the first provider is saved", () => {

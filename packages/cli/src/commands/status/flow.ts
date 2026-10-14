@@ -1,5 +1,10 @@
+import { botService } from "../../lib/bots.js";
+import { readConfig } from "../../lib/config.js";
 import { fetchDependencyReadiness } from "../../lib/dependency-readiness.js";
-import { COMPOSE_PROJECT_BY_MODE } from "../../lib/docker.js";
+import {
+  COMPOSE_PROJECT_BY_MODE,
+  type ContainerStatus,
+} from "../../lib/docker.js";
 import { localOrigin } from "../../lib/endpoints.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import {
@@ -35,7 +40,7 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
   }
 
   const portOverrides = readDockerComposePortOverrides(repoPath);
-  const [services, docker, readiness] = await Promise.all([
+  const [services, compose, readiness] = await Promise.all([
     mode === "developer" ? checkDeveloperServices(portOverrides) : [],
     getDockerStatus(mode),
     fetchDependencyReadiness(
@@ -44,6 +49,10 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
     ),
   ]);
 
+  const docker =
+    mode === "selfhost" && compose.running
+      ? { ...compose, containers: withEnabledBots(compose.containers) }
+      : compose;
   store.updateData("services", services);
   store.updateData("docker", docker);
   store.updateData("readiness", readiness);
@@ -60,6 +69,17 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
     const up = services.filter((s) => s.status === "up").length;
     showResults(store, `${up}/${services.length} services running`);
   }
+}
+
+/** List every enabled chat bot, including one whose container was never created. */
+function withEnabledBots(containers: ContainerStatus[]): ContainerStatus[] {
+  const absent = (readConfig()?.bots ?? [])
+    .map(botService)
+    .filter((service) => !containers.some((c) => c.name === service));
+  return [
+    ...containers,
+    ...absent.map((name): ContainerStatus => ({ name, status: "not_found" })),
+  ];
 }
 
 /** Publish a finished check: the summary, when it ran, and that r may refresh it. */

@@ -14,6 +14,7 @@ vi.mock("../../src/lib/version.js", () => ({
 import {
   areServicesRunning,
   checkApiHealth,
+  checkBots,
   checkComposeContainers,
   checkDiskHeadroom,
   checkDockerDaemon,
@@ -70,7 +71,12 @@ function stubSetupEndpoints(status: unknown): void {
   stubFetch(async (url) =>
     okResponse(
       url.endsWith("/api/v1/setup/catalog")
-        ? { providers: {}, custom_presets: {}, llm_provider_keys: LLM_KEYS }
+        ? {
+            providers: {},
+            custom_presets: {},
+            features: {},
+            llm_provider_keys: LLM_KEYS,
+          }
         : status,
     ),
   );
@@ -144,7 +150,13 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "workos",
         needs_setup: true,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: false,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: false,
         registration_policy: "invite_only",
         deployment: {
@@ -180,7 +192,13 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "workos",
         needs_setup: false,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -207,7 +225,13 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "local",
         needs_setup: false,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -242,7 +266,13 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "local",
         needs_setup: true,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -270,7 +300,13 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "local",
         needs_setup: false,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -302,7 +338,13 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "workos",
         needs_setup: false,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: false,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: true,
         registration_policy: "invite_only",
         deployment: {
@@ -332,7 +374,13 @@ describe("evaluateSetupReadiness", () => {
       auth_mode: "local" as const,
       needs_setup: false,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: false,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only" as const,
       deployment: {
@@ -368,7 +416,13 @@ describe("evaluateSetupReadiness", () => {
         auth_mode: "local",
         needs_setup: true,
         wizard_dismissed: false,
+        features: {},
         plans_seeded: true,
+        bots: {
+          telegram_username: null,
+          discord_client_id: null,
+          slack_workspace_url: null,
+        },
         has_admin_account: false,
         registration_policy: "invite_only",
         deployment: {
@@ -505,6 +559,65 @@ describe("checkComposeContainers", () => {
   });
 });
 
+describe("checkBots", () => {
+  it("reports nothing when no bot is enabled", async () => {
+    expect(await checkBots([], "gaia-selfhost")).toEqual([]);
+    expect(mockedExeca).not.toHaveBeenCalled();
+  });
+
+  it("warns per bot: healthy passes, a restarting or absent bot fails", async () => {
+    const stdout = [
+      "bot-telegram|running|Up 2 minutes (healthy)",
+      "bot-discord|restarting|Restarting (1) 5 seconds ago",
+    ].join("\n");
+    mockedExeca.mockResolvedValueOnce({ stdout } as Awaited<ResultPromise>);
+
+    const results = await checkBots(
+      ["telegram", "discord", "slack"],
+      "gaia-selfhost",
+    );
+
+    expect(results.map((r) => [r.id, r.state, r.severity])).toEqual([
+      ["bot-telegram", "ok", "warning"],
+      ["bot-discord", "fail", "warning"],
+      ["bot-slack", "fail", "warning"],
+    ]);
+    expect(results[0]?.detail).toBe("running, healthy");
+    expect(results[1]?.fix).toContain("logs bot-discord");
+    expect(results[2]?.detail).toBe("not created");
+  });
+
+  it("passes a bot that is still connecting to its platform", async () => {
+    mockedExeca.mockResolvedValueOnce({
+      stdout: "bot-telegram|running|Up 5 seconds (health: starting)",
+    } as Awaited<ResultPromise>);
+
+    const [result] = await checkBots(["telegram"], "gaia-selfhost");
+
+    expect(result?.state).toBe("ok");
+    expect(result?.detail).toBe("running, health: starting");
+  });
+
+  it("fails a running bot whose healthcheck is failing", async () => {
+    mockedExeca.mockResolvedValueOnce({
+      stdout: "bot-slack|running|Up 3 minutes (unhealthy)",
+    } as Awaited<ResultPromise>);
+
+    const [result] = await checkBots(["slack"], "gaia-selfhost");
+
+    expect(result?.state).toBe("fail");
+    expect(result?.detail).toBe("running, unhealthy");
+  });
+
+  it("skips every bot when the daemon is down", async () => {
+    mockedExeca.mockRejectedValueOnce(new Error("daemon down"));
+
+    const results = await checkBots(["telegram"], "gaia-selfhost");
+
+    expect(results.map((r) => r.state)).toEqual(["skipped"]);
+  });
+});
+
 describe("unconfiguredInstallCheck", () => {
   it("names the checkout it inspected instead of sending the user to setup", () => {
     const result = unconfiguredInstallCheck("/home/me/gaia-src");
@@ -616,7 +729,13 @@ describe("checkSetupReadiness", () => {
       auth_mode: "local",
       needs_setup: true,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: false,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: false,
       registration_policy: "invite_only",
       deployment: {
@@ -647,7 +766,13 @@ describe("checkSetupReadiness", () => {
       auth_mode: "workos",
       needs_setup: true,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: false,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only",
       deployment: {
@@ -682,7 +807,13 @@ describe("checkSetupReadiness", () => {
       auth_mode: "workos",
       needs_setup: false,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: true,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only",
       deployment: {
@@ -714,7 +845,13 @@ describe("checkSetupReadiness", () => {
       auth_mode: "local",
       needs_setup: false,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: true,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only",
       deployment: {
@@ -745,7 +882,13 @@ describe("checkSetupReadiness", () => {
       auth_mode: "local",
       needs_setup: false,
       wizard_dismissed: false,
+      features: {},
       plans_seeded: true,
+      bots: {
+        telegram_username: null,
+        discord_client_id: null,
+        slack_workspace_url: null,
+      },
       has_admin_account: true,
       registration_policy: "invite_only",
       deployment: {

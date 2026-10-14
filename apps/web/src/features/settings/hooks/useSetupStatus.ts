@@ -1,6 +1,9 @@
 "use client";
 
-import type { DeploymentStatus } from "@gaia/shared/api/generated";
+import type {
+  DeploymentStatus,
+  ProviderFeature,
+} from "@gaia/shared/api/generated";
 import { useQuery } from "@tanstack/react-query";
 import {
   type CredentialProvider,
@@ -70,14 +73,12 @@ export function savedCredentialOverridesEnv(
   return status?.providers?.[key]?.env_shadowed === true;
 }
 
-/** Whether no E2B key is saved yet code still runs, in the opt-in local sandbox. */
-export function runsCodeInLocalSandbox(
+/** Whether a feature works right now, on a saved provider or its built-in engine. */
+export function isFeatureWorking(
   status: SetupStatus | undefined,
+  feature: ProviderFeature,
 ): boolean {
-  return (
-    status?.deployment.local_code_sandbox === true &&
-    !isProviderConfigured(status, "e2b")
-  );
+  return status?.features[feature]?.working === true;
 }
 
 /**

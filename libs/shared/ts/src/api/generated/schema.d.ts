@@ -4473,7 +4473,9 @@ export interface paths {
          *     - ``custom_presets``: OpenAI-compatible gateway presets offered inside the
          *       custom lane's card (``opencode`` / ``nous``),
          *     - ``llm_provider_keys``: which providers can serve chat (the wizard's
-         *       readiness rule mirrors ``_needs_setup``).
+         *       readiness rule mirrors ``_needs_setup``),
+         *     - ``features``: the providers grouped by what they are for, with what each
+         *       feature runs on when no key is set.
          *
          *     Adding or renaming a provider becomes a Python-only change; the UI picks
          *     it up here. Public under local auth like ``/status`` — the wizard renders
@@ -7075,6 +7077,23 @@ export interface components {
             reset_time: string;
         };
         /**
+         * BuiltInEngine
+         * @description An engine a feature runs on with no credential at all.
+         * @enum {string}
+         */
+        BuiltInEngine: "duckduckgo" | "page_reader" | "local_sandbox" | "local_disk";
+        /**
+         * BuiltInOption
+         * @description What a feature runs on with no key, as the UI names it.
+         */
+        BuiltInOption: {
+            /** Description */
+            description: string;
+            engine: components["schemas"]["BuiltInEngine"];
+            /** Label */
+            label: string;
+        };
+        /**
          * BuiltinSkillInfo
          * @description A read-only built-in skill shipped with GAIA, for display in settings.
          */
@@ -8262,7 +8281,7 @@ export interface components {
          * @description A provider the credential store can hold, in display order.
          * @enum {string}
          */
-        CredentialProviderName: "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "google_oauth" | "firecrawl";
+        CredentialProviderName: "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "exa" | "brave" | "searxng" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "google_oauth" | "firecrawl";
         /**
          * CredentialSource
          * @description Where a provider's active credential comes from: a saved one wins over env.
@@ -8963,11 +8982,40 @@ export interface components {
             used: number;
         };
         /**
+         * FeatureSpec
+         * @description One feature: what it does, its keyless engine if any, and the providers that upgrade it.
+         */
+        FeatureSpec: {
+            built_in: components["schemas"]["BuiltInOption"] | null;
+            /** Description */
+            description: string;
+            /** Label */
+            label: string;
+            /** Providers */
+            providers: components["schemas"]["CredentialProviderName"][];
+        };
+        /**
          * FeatureStage
          * @description How finished a user-facing feature is, shown next to its toggle.
          * @enum {string}
          */
         FeatureStage: "experimental";
+        /**
+         * FeatureStatus
+         * @description Whether one feature works and what it runs on.
+         */
+        FeatureStatus: {
+            /**
+             * In Use
+             * @description What the feature runs on, in the order it tries them; the first serves
+             */
+            in_use: (components["schemas"]["CredentialProviderName"] | components["schemas"]["BuiltInEngine"])[];
+            /**
+             * Working
+             * @description Whether the feature works right now
+             */
+            working: boolean;
+        };
         /**
          * FeatureUpgrade
          * @description The Pro tier's limits for a feature, so a free user sees the delta.
@@ -9836,6 +9884,27 @@ export interface components {
              * @description Manual linking instructions (if manual auth)
              */
             instructions: string | null;
+        };
+        /**
+         * InstanceBots
+         * @description The chat bots this instance runs, for the web Bots page; null where none is set up.
+         */
+        InstanceBots: {
+            /**
+             * Discord Client Id
+             * @description The Discord application id the bot's invite link names
+             */
+            discord_client_id: string | null;
+            /**
+             * Slack Workspace Url
+             * @description The Slack workspace the bot is installed in
+             */
+            slack_workspace_url: string | null;
+            /**
+             * Telegram Username
+             * @description The Telegram bot's @username
+             */
+            telegram_username: string | null;
         };
         /**
          * InstanceRole
@@ -12561,6 +12630,13 @@ export interface components {
                 [key: string]: components["schemas"]["ProviderPreset"];
             };
             /**
+             * Features
+             * @description What each feature does, what it runs on with no key, and its optional providers
+             */
+            features: {
+                [key: string]: components["schemas"]["FeatureSpec"];
+            };
+            /**
              * Llm Provider Keys
              * @description Which providers can serve chat
              */
@@ -12608,6 +12684,12 @@ export interface components {
             /** Preset */
             preset?: ("opencode" | "nous") | null;
         };
+        /**
+         * ProviderFeature
+         * @description What a provider is for, as Settings and the setup wizard group them.
+         * @enum {string}
+         */
+        ProviderFeature: "ai_models" | "web_search" | "page_reading" | "code_running" | "file_storage" | "email" | "integrations";
         /** ProviderListResponse */
         ProviderListResponse: {
             /**
@@ -13618,8 +13700,17 @@ export interface components {
              * @enum {string}
              */
             auth_mode: "workos" | "local";
+            /** @description The chat bots this instance runs */
+            bots: components["schemas"]["InstanceBots"];
             /** @description What this deployment does */
             deployment: components["schemas"]["DeploymentStatus"];
+            /**
+             * Features
+             * @description Whether each feature works and what it runs on
+             */
+            features: {
+                [key: string]: components["schemas"]["FeatureStatus"];
+            };
             /**
              * Has Admin Account
              * @description Whether the instance administrator exists
@@ -16522,6 +16613,8 @@ export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus']
 export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
 export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
+export type BuiltInEngine = components['schemas']['BuiltInEngine'];
+export type BuiltInOption = components['schemas']['BuiltInOption'];
 export type BuiltinSkillInfo = components['schemas']['BuiltinSkillInfo'];
 export type BuiltinSkillsResponse = components['schemas']['BuiltinSkillsResponse'];
 export type BulkActionRequest = components['schemas']['BulkActionRequest'];
@@ -16629,7 +16722,9 @@ export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
+export type FeatureSpec = components['schemas']['FeatureSpec'];
 export type FeatureStage = components['schemas']['FeatureStage'];
+export type FeatureStatus = components['schemas']['FeatureStatus'];
 export type FeatureUpgrade = components['schemas']['FeatureUpgrade'];
 export type FeatureUsageSummary = components['schemas']['FeatureUsageSummary'];
 export type FileData = components['schemas']['FileData'];
@@ -16684,6 +16779,7 @@ export type ImportedOrigin = components['schemas']['ImportedOrigin'];
 export type ImportTokenResponse = components['schemas']['ImportTokenResponse'];
 export type InitiatePlatformConnectRequest = components['schemas']['InitiatePlatformConnectRequest'];
 export type InitiatePlatformConnectResponse = components['schemas']['InitiatePlatformConnectResponse'];
+export type InstanceBots = components['schemas']['InstanceBots'];
 export type InstanceRole = components['schemas']['InstanceRole'];
 export type InstructionsEditor = components['schemas']['InstructionsEditor'];
 export type IntegrationAccountResponse = components['schemas']['IntegrationAccountResponse'];
@@ -16832,6 +16928,7 @@ export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];
 export type ProviderCatalogResponse = components['schemas']['ProviderCatalogResponse'];
 export type ProviderConfiguredState = components['schemas']['ProviderConfiguredState'];
 export type ProviderCredentialBody = components['schemas']['ProviderCredentialBody'];
+export type ProviderFeature = components['schemas']['ProviderFeature'];
 export type ProviderListResponse = components['schemas']['ProviderListResponse'];
 export type ProviderPreset = components['schemas']['ProviderPreset'];
 export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];

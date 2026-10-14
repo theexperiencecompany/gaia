@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { botComposeFile, botService, writeBotsEnv } from "./bots.js";
 import { readConfig, updateConfig } from "./config.js";
 import {
   assertEngineSupportsCodeSandbox,
@@ -59,17 +60,24 @@ function resolveStartTimeoutMs(): number | undefined {
 }
 
 /**
- * Compose files for a self-host `up`. The base file is image-only; building
- * and the Docker-socket code sandbox are explicit override files.
+ * Compose files for a self-host install. The base file is image-only; building,
+ * the Docker-socket code sandbox and each chat bot are explicit override files.
+ * The sandbox and bots come from the saved config, so a restart or update can
+ * never silently drop (or add) one.
  */
-function selfhostComposeFiles(options: {
-  build?: boolean;
-  codeSandbox: boolean;
-}): string[] {
+export function selfhostComposeFiles(
+  options: { build?: boolean } = {},
+): string[] {
+  const config = readConfig();
   const files = ["docker-compose.selfhost.yml"];
   if (options.build) files.push("docker-compose.build.yml");
-  if (options.codeSandbox) files.push("docker-compose.sandbox.yml");
+  if (config?.codeSandbox === true) files.push("docker-compose.sandbox.yml");
+  files.push(...(config?.bots ?? []).map(botComposeFile));
   return files;
+}
+
+export function composeFileArgs(files: string[]): string[] {
+  return files.flatMap((file) => ["-f", file]);
 }
 
 /** The volume every code sandbox shared before per-user isolation. */
@@ -86,7 +94,7 @@ function legacySandboxMigrationArgs(
 ): string[] {
   return [
     "compose",
-    ...files.flatMap((file) => ["-f", file]),
+    ...composeFileArgs(files),
     ...envArgs,
     "run",
     "--rm",
@@ -110,7 +118,7 @@ function buildSelfhostUpArgs(
 ): string[] {
   const upArgs = [
     "compose",
-    ...files.flatMap((file) => ["-f", file]),
+    ...composeFileArgs(files),
     ...envArgs,
     "up",
     "-d",
@@ -168,11 +176,11 @@ export async function startServices(
     portOverrides && Object.keys(portOverrides).length > 0
       ? portOverridesToDockerEnv(portOverrides)
       : undefined;
-  // The sandbox opt-in is read from the saved config on every start, so a
-  // restart or update can never silently drop (or add) the Docker socket.
-  const codeSandbox = readConfig()?.codeSandbox === true;
-  if (codeSandbox) await assertEngineSupportsCodeSandbox();
-  const files = selfhostComposeFiles({ build: options?.build, codeSandbox });
+  const config = readConfig();
+  if (config?.codeSandbox === true) await assertEngineSupportsCodeSandbox();
+  // Re-copies the bot key and public URL, which `gaia up` or a restore may have changed.
+  if (config?.bots?.length) writeBotsEnv(repoPath);
+  const files = selfhostComposeFiles({ build: options?.build });
   const envArgs = getEnvFileArgs(dockerComposePath);
 
   await runCommand(
@@ -198,12 +206,39 @@ export async function startServices(
   onStatus?.("All services started in Docker!");
 }
 
+/** Run a one-off command in a fresh container of a self-host service. */
+export async function runSelfhostOneOff(
+  repoPath: string,
+  service: string,
+  command: string[],
+  onLog?: (chunk: string) => void,
+): Promise<void> {
+  const dockerComposePath = path.join(repoPath, "infra/docker");
+  await runCommand(
+    "docker",
+    [
+      "compose",
+      ...composeFileArgs(selfhostComposeFiles()),
+      ...getEnvFileArgs(dockerComposePath),
+      "run",
+      "--rm",
+      "--no-deps",
+      service,
+      ...command,
+    ],
+    dockerComposePath,
+    undefined,
+    onLog,
+  );
+}
+
 /** The self-host services that run GAIA's own images (GAIA_VERSION). */
 const SELFHOST_APP_SERVICES = ["gaia-backend", "arq_worker", "gaia-web"];
 
 /**
- * Pull GAIA's images at one tag without touching running containers, so a
- * tag that does not exist fails before anything about the install changes.
+ * Pull GAIA's images (enabled bots included) at one tag without touching
+ * running containers, so a tag that does not exist fails before anything
+ * about the install changes.
  */
 export async function pullSelfhostImages(
   repoPath: string,
@@ -214,11 +249,11 @@ export async function pullSelfhostImages(
     "docker",
     [
       "compose",
-      "-f",
-      "docker-compose.selfhost.yml",
+      ...composeFileArgs(selfhostComposeFiles()),
       ...getEnvFileArgs(dockerComposePath),
       "pull",
       ...SELFHOST_APP_SERVICES,
+      ...(readConfig()?.bots ?? []).map(botService),
     ],
     dockerComposePath,
     undefined,
@@ -242,7 +277,12 @@ export async function stopServices(
     const envArgs = getEnvFileArgs(dockerComposePath);
     const composeArgs =
       mode === "selfhost"
-        ? ["compose", "-f", "docker-compose.selfhost.yml", ...envArgs, "down"]
+        ? [
+            "compose",
+            ...composeFileArgs(selfhostComposeFiles()),
+            ...envArgs,
+            "down",
+          ]
         : ["compose", ...envArgs, "down"];
     await runCommand("docker", composeArgs, dockerComposePath);
   } catch {

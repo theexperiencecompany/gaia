@@ -1,0 +1,11 @@
+# Opt-in Telegram bot (long polling: no public URL needed). `gaia bots add
+# telegram --token <token>` layers this on the self-host stack.
+services:
+  bot-telegram:
+    extends:
+      file: selfhost/bot.yml
+      service: bot
+    image: ghcr.io/theexperiencecompany/gaia-bot-telegram:${GAIA_VERSION:-latest}
+    depends_on:
+      gaia-backend:
+        condition: service_healthy

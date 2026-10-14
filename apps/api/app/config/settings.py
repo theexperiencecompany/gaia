@@ -24,6 +24,7 @@ from app.config.deployment import (
 )
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
+from app.constants.bot import GAIA_CLOUD_TELEGRAM_BOT_USERNAME
 from app.constants.browser import BrowserAgentEffort
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.llm import DevLLMApi
@@ -161,6 +162,13 @@ class Settings(BrowserHostSettings):
             local_code_sandbox=self.LOCAL_CODE_SANDBOX,
             blob_store=self.BLOB_STORE,
         )
+
+    @property
+    def telegram_bot_username(self) -> str | None:
+        """Return this instance's Telegram bot, GAIA Cloud's own when the deployment runs on it."""
+        if self.TELEGRAM_BOT_USERNAME:
+            return self.TELEGRAM_BOT_USERNAME
+        return GAIA_CLOUD_TELEGRAM_BOT_USERNAME if self.deployment.hosted_bots else None
 
     # Outbound Email. EMAIL_PROVIDER keys the registry in
     # app/services/email/providers.
@@ -567,6 +575,8 @@ class Settings(BrowserHostSettings):
     SLACK_BOT_TOKEN: str | None = None
     SLACK_SIGNING_SECRET: str | None = None
     SLACK_APP_TOKEN: str | None = None
+    # The workspace a self-hosted instance's Slack bot is installed in (set by `gaia bots add slack`).
+    SLACK_WORKSPACE_URL: str | None = None
     TELEGRAM_BOT_TOKEN: str | None = None
     KAPSO_API_KEY: str | None = None
     KAPSO_PHONE_NUMBER_ID: str | None = None
@@ -583,7 +593,7 @@ class Settings(BrowserHostSettings):
     DISCORD_OAUTH_CLIENT_SECRET: str | None = None
     SLACK_OAUTH_CLIENT_ID: str | None = None
     SLACK_OAUTH_CLIENT_SECRET: str | None = None
-    TELEGRAM_BOT_USERNAME: str | None = "heygaia_bot"
+    TELEGRAM_BOT_USERNAME: str | None = None
 
     # ----------------------------------------------
     # Bot Session Token Configuration

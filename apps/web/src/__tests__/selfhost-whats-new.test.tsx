@@ -41,7 +41,13 @@ const SELFHOST_STATUS: SetupStatusResponse = {
   registration_policy: "invite_only",
   needs_setup: false,
   wizard_dismissed: false,
+  features: {},
   plans_seeded: false,
+  bots: {
+    telegram_username: null,
+    discord_client_id: null,
+    slack_workspace_url: null,
+  },
   providers: {},
 };
 

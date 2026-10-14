@@ -36,13 +36,17 @@ from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
     LLM_PROVIDER_PRIORITY,
     PRESETS,
+    PROVIDER_FEATURES,
     CredentialProviderName,
     CredentialSource,
+    FeatureSpec,
+    ProviderFeature,
     ProviderPreset,
 )
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.models.user_models import AuthenticatedUser
 from app.services.members_service import get_registration_policy
+from app.services.providers.feature_status import FeatureStatus, feature_statuses
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     delete as delete_provider_config,
@@ -65,8 +69,8 @@ _LLM_PROVIDER_KEYS: tuple[str, ...] = tuple(p.value for p in LLM_PROVIDER_PRIORI
 
 # Providers whose outbound traffic targets a caller-configurable base_url — the
 # only stored base_urls the SSRF guard applies to (openrouter/gemini dial
-# canonical endpoints; tavily is a tool key).
-_BASE_URL_PROVIDERS = frozenset({"custom", "ollama"})
+# canonical endpoints; the tool keys carry no endpoint).
+_BASE_URL_PROVIDERS = frozenset({"custom", "ollama", "searxng"})
 
 _PRESET_NAMES = Literal["opencode", "nous"]
 
@@ -124,6 +128,18 @@ class DeploymentStatus(BaseModel):
     )
 
 
+class InstanceBots(BaseModel):
+    """The chat bots this instance runs, for the web Bots page; null where none is set up."""
+
+    telegram_username: str | None = Field(description="The Telegram bot's @username")
+    discord_client_id: str | None = Field(
+        description="The Discord application id the bot's invite link names"
+    )
+    slack_workspace_url: str | None = Field(
+        description="The Slack workspace the bot is installed in"
+    )
+
+
 class SetupStatusResponse(BaseModel):
     """``GET /setup/status`` — what the first-run wizard branches on."""
 
@@ -140,7 +156,11 @@ class SetupStatusResponse(BaseModel):
     providers: dict[str, ProviderConfiguredState] = Field(
         description="Readiness per credential-store provider"
     )
+    features: dict[ProviderFeature, FeatureStatus] = Field(
+        description="Whether each feature works and what it runs on"
+    )
     plans_seeded: bool = Field(description="Whether the billing plans have been seeded")
+    bots: InstanceBots = Field(description="The chat bots this instance runs")
 
 
 class ProviderCatalogResponse(BaseModel):
@@ -157,6 +177,9 @@ class ProviderCatalogResponse(BaseModel):
         description="OpenAI-compatible gateway presets for the custom lane's card"
     )
     llm_provider_keys: list[str] = Field(description="Which providers can serve chat")
+    features: dict[ProviderFeature, FeatureSpec] = Field(
+        description="What each feature does, what it runs on with no key, and its optional providers"
+    )
 
 
 class MaskedProvider(BaseModel):
@@ -244,7 +267,13 @@ async def get_setup_status() -> SetupStatusResponse:
             )
             for p, r in resolutions.items()
         },
+        features=await feature_statuses(),
         plans_seeded=await is_payment_setup(),
+        bots=InstanceBots(
+            telegram_username=settings.telegram_bot_username,
+            discord_client_id=settings.DISCORD_CLIENT_ID,
+            slack_workspace_url=settings.SLACK_WORKSPACE_URL,
+        ),
     )
 
 
@@ -261,7 +290,9 @@ async def get_provider_catalog() -> ProviderCatalogResponse:
     - ``custom_presets``: OpenAI-compatible gateway presets offered inside the
       custom lane's card (``opencode`` / ``nous``),
     - ``llm_provider_keys``: which providers can serve chat (the wizard's
-      readiness rule mirrors ``_needs_setup``).
+      readiness rule mirrors ``_needs_setup``),
+    - ``features``: the providers grouped by what they are for, with what each
+      feature runs on when no key is set.
 
     Adding or renaming a provider becomes a Python-only change; the UI picks
     it up here. Public under local auth like ``/status`` — the wizard renders
@@ -272,6 +303,7 @@ async def get_provider_catalog() -> ProviderCatalogResponse:
         providers={name: PRESETS[name] for name in CREDENTIAL_PROVIDERS},
         custom_presets={name: PRESETS[name] for name in ("opencode", "nous")},
         llm_provider_keys=list(_LLM_PROVIDER_KEYS),
+        features=PROVIDER_FEATURES,
     )
 
 
@@ -411,9 +443,11 @@ async def test_provider(
     422 by the SSRF guard inside ``_probe``.
     """
     log.set(user={"id": user.user_id})
-    if provider == "tavily":
-        raise HTTPException(status_code=422, detail="Tavily keys cannot be connection-tested")
     _ensure_known_provider(provider)
+    if provider not in _LLM_PROVIDER_KEYS:
+        raise HTTPException(
+            status_code=422, detail=f"Only chat providers can be connection-tested, not {provider}"
+        )
 
     stored: ProviderConfig | None = await resolve_provider_config(provider)
     if stored is not None:

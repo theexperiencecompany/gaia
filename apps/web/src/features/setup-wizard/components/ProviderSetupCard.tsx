@@ -90,6 +90,7 @@ export function ProviderSetupCard({
             startContent={<KeyIcon size={16} className="text-zinc-500" />}
             size="sm"
             radius="md"
+            variant="faded"
             isDisabled={isBusy}
           />
         )}
@@ -103,6 +104,7 @@ export function ProviderSetupCard({
             onValueChange={setBaseUrl}
             size="sm"
             radius="md"
+            variant="faded"
             isDisabled={isBusy}
           />
         )}
@@ -115,6 +117,7 @@ export function ProviderSetupCard({
             onValueChange={setModel}
             size="sm"
             radius="md"
+            variant="faded"
             isDisabled={isBusy}
           />
         )}

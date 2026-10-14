@@ -9,11 +9,13 @@ import {
   runInteractiveCommand,
 } from "../../lib/interactive.js";
 import {
+  composeFileArgs,
   DEV_LOG_FILE,
   detectSetupMode,
   findInstallRoot,
   isPidAlive,
   readStoredDevPid,
+  selfhostComposeFiles,
 } from "../../lib/service-starter.js";
 
 function getDockerEnvFileArgs(dockerDir: string): string[] {
@@ -52,8 +54,7 @@ export async function runLogs(): Promise<void> {
       "docker",
       [
         "compose",
-        "-f",
-        "docker-compose.selfhost.yml",
+        ...composeFileArgs(selfhostComposeFiles()),
         ...envArgs,
         "logs",
         "-f",

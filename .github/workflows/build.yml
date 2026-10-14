@@ -114,11 +114,15 @@ jobs:
       api: ${{ steps.affected.outputs.api }}
       bots: ${{ steps.affected.outputs.bots }}
       web: ${{ steps.affected.outputs.web }}
-      # Build + publish the gaia / gaia-web images: affected, or a CLI release
-      # commit (its publish pins this commit's :<sha> pair). Deploys still key
-      # on api/web alone, so a CLI-only release never redeploys the backend.
+      # Build + publish the gaia / gaia-web / bot images: affected, or a CLI
+      # release commit (its publish pins this commit's :<sha> set). Deploys
+      # still key on api/web/bots alone, so a CLI-only release never redeploys
+      # the backend.
       api_image: ${{ steps.affected.outputs.api_image }}
       web_image: ${{ steps.affected.outputs.web_image }}
+      bots_image: ${{ steps.affected.outputs.bots_image }}
+      # A CLI release commit; only it builds the self-host bots' arm64 half.
+      cli_release: ${{ steps.cli-release.outputs.required }}
     steps:
       # Full history: nx-set-shas resolves NX_BASE to the pre-push master SHA,
       # which a shallow clone does not contain ("fatal: bad object").
@@ -217,10 +221,12 @@ jobs:
 
           api_image=$api
           web_image=$web
+          bots_image=$bots
           if [ "${CLI_RELEASE:-false}" = "true" ]; then
-            echo "CLI release commit: publishing the gaia + gaia-web images it pins"
+            echo "CLI release commit: publishing the gaia, gaia-web and bot images it pins"
             api_image=true
             web_image=true
+            bots_image=true
           fi
 
           echo "api=$api" >> "$GITHUB_OUTPUT"
@@ -228,6 +234,7 @@ jobs:
           echo "web=$web" >> "$GITHUB_OUTPUT"
           echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
           echo "web_image=$web_image" >> "$GITHUB_OUTPUT"
+          echo "bots_image=$bots_image" >> "$GITHUB_OUTPUT"
 
   docker-release:
     needs: [affected]
@@ -300,7 +307,7 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Determine version scheme
-        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots_image == 'true'
         id: version
         run: |
           if [ "${{ github.ref }}" = "refs/heads/master" ]; then
@@ -318,7 +325,7 @@ jobs:
       # Publish bot image tags when bot scope changed.
       - name: Release bots Docker images
         id: release-bots
-        if: needs.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.bots_image == 'true'
         run: pnpm exec nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Captured right after the push steps, before Discord command sync —
@@ -351,7 +358,7 @@ jobs:
       # rather than as a silent "nothing published".
       - name: Resolve immutable image tags
         id: image-tags
-        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots_image == 'true'
         env:
           VERSION_SCHEME: ${{ steps.version.outputs.scheme }}
           APPS_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
@@ -368,7 +375,7 @@ jobs:
         run: pnpm deploy-commands
 
       - name: Skip notification
-        if: needs.affected.outputs.api_image != 'true' && needs.affected.outputs.bots != 'true'
+        if: needs.affected.outputs.api_image != 'true' && needs.affected.outputs.bots_image != 'true'
         run: echo "No affected API/bot Docker projects, skipping build"
 
   # Self-hosters run the API image (gaia, also the ARQ worker) on arm64 too.
@@ -459,6 +466,77 @@ jobs:
           fi
           docker buildx imagetools create -t "$IMAGE:$APPS_TAG" -t "$IMAGE:$COMMIT_SHA" "$IMAGE:$APPS_TAG" "$IMAGE@$ARM64_DIGEST"
           docker buildx imagetools inspect "$IMAGE:$APPS_TAG"
+
+  # Self-hosters run the bots on arm64 too; production's bot images stay
+  # amd64-only. Only a CLI release commit builds the arm64 half (native arm
+  # runner, pushed by digest, untagged), and nothing on the production deploy
+  # path waits for it: deployment-plan does not need these jobs.
+  docker-bots-arm64:
+    needs: [affected]
+    if: needs.affected.outputs.cli_release == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digests: ${{ steps.build.outputs.digests }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Build and push the self-host bot arm64 images by digest
+        id: build
+        env:
+          GIT_COMMIT_SHA: ${{ github.sha }}
+        run: bash scripts/ci/release.sh selfhost-bots-arm64
+
+  # Tags each self-host bot :<commit sha> as an amd64 + arm64 index, the tag
+  # `release.sh pin-selfhost-release` waits for and tags v<CLI version>. The
+  # release's own bots tag (what production deploys) is left as it is. Fails
+  # loud, rather than skipping, when the arm64 build did not succeed.
+  docker-bots-manifest:
+    needs: [affected, docker-release, docker-bots-arm64]
+    if: ${{ !cancelled() && needs.affected.outputs.cli_release == 'true' && needs.docker-release.outputs.bots_tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Tag the self-host bots :<sha> for amd64 + arm64
+        env:
+          BOTS_TAG: ${{ needs.docker-release.outputs.bots_tag }}
+          COMMIT_SHA: ${{ github.sha }}
+          ARM64_DIGESTS: ${{ needs.docker-bots-arm64.outputs.digests }}
+        run: bash scripts/ci/release.sh selfhost-bots-manifest
 
   # Builds the gaia-web image consumed by docker-compose.selfhost.yml, once
   # per platform on a native runner (QEMU would multiply the Next.js build

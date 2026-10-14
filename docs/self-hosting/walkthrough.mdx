@@ -29,18 +29,31 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
 
   <Step title="Run gaia up">
     ```bash
-    gaia up --llm-provider openai --llm-key sk-...
+    gaia up
     ```
 
-    This installs Docker if it is missing, downloads GAIA and starts it. Passing your AI key here saves you a step in the browser. You can also run plain `gaia up` and paste the key later.
-
-    When it finishes, it prints the address to open.
+    This installs Docker if it is missing, downloads GAIA and starts it. When it finishes, it prints the address to open. You can paste your AI key in the browser afterwards.
 
     <Frame caption="gaia up installs Docker, starts every service and prints the address">
       <img src="/images/self-hosting/terminal-gaia-up.webp" alt="Terminal output of gaia up: prerequisites, repository and environment setup, all services started in Docker, and the addresses to open GAIA at, including the setup page on the server's local network address" />
     </Frame>
 
-    `--code-sandbox` in the screenshot turns on the local code sandbox. Leave it out unless you want it; see [Run code](#run-code-optional) below.
+    To change how it starts, add flags. Most people need none.
+
+    | Flag | What it does | Default |
+    | ---- | ------------ | ------- |
+    | `--yes` | Accepts every default and never asks a question, including installing Docker if it is missing | Asks before it acts |
+    | `--llm-provider <provider>` | Names the AI provider for `--llm-key`: `openrouter`, `gemini`, `openai` or `custom` | None |
+    | `--llm-key <key>` | Saves your AI key on the first start, so you can skip it in the browser | None |
+    | `--web-port <port>` | The port GAIA is served on | 3000 |
+    | `--domain <domain>` | Serves GAIA at `https://<domain>` with an automatic certificate. Uses ports 80 and 443 | Off |
+    | `-b, --build` | Builds the images from this checkout instead of downloading them | Downloads them |
+    | `--code-sandbox` | Turns on the local code sandbox. It is kept on later starts and updates | Off |
+    | `--no-code-sandbox` | Turns the local code sandbox off again | Not applicable |
+    | `--no-start` | Sets everything up but does not start GAIA | Starts GAIA |
+    | `--force-dev-tree` | Lets the command run in a developer checkout that is not your recorded install | Off |
+
+    For example, `gaia up --llm-provider openai --llm-key sk-...` starts GAIA with your OpenAI key already saved. The code sandbox is explained in [Run code](#run-code-optional) below.
   </Step>
 
   <Step title="Open the printed address">
@@ -70,7 +83,11 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
   </Step>
 
   <Step title="Add the optional extras, or skip them">
-    The next steps add extras like web search. Each one is optional. Paste a key if you have one, or press **Skip for now**. You can add them later in Settings.
+    The next screens offer extras, like better web search. You do not need any of them. Paste a key if you have one, or press **Skip for now**.
+
+    Web search, reading web pages and file storage already work without a key. See [what works out of the box](/self-hosting/overview#what-works-out-of-the-box).
+
+    You can add a key at any time in **Settings → Providers & Tools**. Each feature shows **Working** or **Off** there, and which provider it is using.
 
     <Frame caption="An optional step: web search with a Tavily key">
       <img src="/images/self-hosting/setup-web-search.webp" alt="Setup step titled Add web search, with a field for a Tavily API key, a Save button, and Back, Continue and Skip for now options" />
