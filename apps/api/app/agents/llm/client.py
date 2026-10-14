@@ -1681,14 +1681,15 @@ def _parse_structured_reply(message: BaseMessage, schema: type[_StructuredT]) ->
 
 
 def _structured_tool_choice(llm: BaseChatModel) -> str:
-    """Return how a structured one-shot offers its one tool to llm: forced on the Responses API only.
+    """Return how a structured one-shot offers its one tool to llm: forced on OpenAI-style APIs only.
 
     Forced tools get grammar-decoded on Baidu/Together, cutting at an unescaped quote:
     27 of 43 closing answers cut forced, 0 of 28 offered (deepseek-v4-flash replay).
-    Offered, gpt-6-luna on the Responses API answered in prose instead (3 of 3 on a
-    memory-style prompt); forced, it called the tool 12 of 12.
+    Offered, OpenAI models answer in prose instead: gpt-6-luna on the Responses API
+    3 of 3, gpt-5.6-luna on OpenAI's chat completions on every follow-up.
     """
-    return "required" if isinstance(llm, ChatOpenAI) and llm.use_responses_api else "auto"
+    forced = isinstance(llm, ChatOpenAI) and (llm.use_responses_api or _is_openai_wire(llm))
+    return "required" if forced else "auto"
 
 
 def _structured_tool_runnable(llm: BaseChatModel, schema: type[_StructuredT]) -> Runnable:

@@ -2305,6 +2305,23 @@ class TestStructuredReplyParsing:
         assert binding.bound.model_name == AUX_MODEL_NAME
         assert binding.bound.max_tokens == HELPER_MAX_OUTPUT_TOKENS
 
+    @pytest.mark.parametrize(
+        ("base_url", "tool_choice"),
+        [(None, "required"), ("https://nous.example/v1", "auto")],
+    )
+    def test_openais_own_chat_completions_api_is_forced_to_call_the_tool(
+        self, base_url: str | None, tool_choice: str
+    ) -> None:
+        """Offered, gpt-5.6-luna on an OpenAI-only self-host answered follow-ups in prose."""
+        llm = ChatOpenAI(model="gpt-5.6-luna", api_key=SecretStr("k"), base_url=base_url)
+
+        runnable = client_module._structured_tool_runnable(llm, _Closing)
+
+        assert isinstance(runnable, RunnableSequence)
+        binding = runnable.first
+        assert isinstance(binding, RunnableBinding)
+        assert binding.kwargs["tool_choice"] == tool_choice
+
 
 class TestStampFallback:
     """The marker that tells the rest of the system a downgrade happened.
