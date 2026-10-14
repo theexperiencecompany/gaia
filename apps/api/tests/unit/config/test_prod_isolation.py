@@ -1,8 +1,8 @@
 """Production-isolation regression suite for the self-host additions.
 
 Proves two invariants. First, production behavior is unchanged by the
-self-host profile: same dev-override hard blocks, same WorkOS credential
-requirements under AUTH_MODE workos, same Infisical-mandatory boot. Second,
+self-host profile: same dev-override hard blocks, the same warn-and-boot
+on a missing key (WorkOS credentials included), same Infisical-mandatory boot. Second,
 every self-host-only knob is gated out of production: AUTH_MODE local refuses
 ENV production, self-host public surfaces stay out of other modes, and ENV
 selfhost never contacts Infisical.
@@ -398,7 +398,7 @@ def test_production_without_identity_vars_still_raises(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Case 9 — hosted boot guard: production + workos requires WorkOS credentials
+# Case 9 — hosted boot: production + workos warns about missing WorkOS credentials
 # ---------------------------------------------------------------------------
 
 
@@ -424,28 +424,26 @@ def _production_boot_env(kind: DeploymentKind) -> dict[str, str]:
     return {name: str(value) for name, value in _required_dummies(kind).items()}
 
 
+def _missing_groups_named(key: str) -> list[list[str]]:
+    from app.config.settings_validator import settings_validator
+
+    return [keys for _, keys in settings_validator.missing_groups if key in keys]
+
+
 @pytest.mark.parametrize("missing_var", _WORKOS_CREDENTIAL_VARS)
-def test_production_boot_without_workos_credential_refuses(monkeypatch, missing_var):
-    """Refuse hosted boot when a WorkOS credential is missing; the error names every missing var."""
+def test_production_boot_without_a_workos_credential_boots_and_flags_it(monkeypatch, missing_var):
+    """Boot hosted production with a WorkOS credential unset, as master did, and flag the gap."""
     from app.config.settings import get_settings
 
     _isolate_boot_env(monkeypatch)
-    _unset_workos_credentials(monkeypatch)
-    for var in _WORKOS_CREDENTIAL_VARS:
-        if var != missing_var:
-            monkeypatch.setenv(var, f"dummy-{var.lower()}")
+    for name, value in _production_boot_env(DeploymentKind.PRODUCTION).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv(missing_var)
 
-    with pytest.raises(RuntimeError, match=missing_var) as exc_info:
-        get_settings()
+    settings_obj = get_settings()
 
-    message = str(exc_info.value)
-    assert missing_var in message
-    # Only the actually-missing variables are blamed — none of the others
-    # (no name is a substring of another) appear in the error.
-    for present_var in _WORKOS_CREDENTIAL_VARS:
-        if present_var != missing_var:
-            assert present_var not in message
-    assert "ENV=production" in message
+    assert getattr(settings_obj, missing_var) is None
+    assert _missing_groups_named(missing_var)
 
 
 def test_production_boot_with_all_workos_credentials_succeeds(monkeypatch):
@@ -466,20 +464,19 @@ def test_production_boot_with_all_workos_credentials_succeeds(monkeypatch):
     assert settings_obj.WORKOS_API_KEY == "sk_test_fake"
 
 
-def test_production_boot_with_a_missing_required_setting_refuses(monkeypatch):
-    """A missing required key stops the hosted boot instead of booting with an empty string."""
+def test_production_boot_with_a_missing_capability_key_boots_and_flags_it(monkeypatch):
+    """An unset integration key degrades that integration; it never takes GAIA Cloud down."""
     from app.config.settings import get_settings
 
     _isolate_boot_env(monkeypatch)
-    monkeypatch.setenv("WORKOS_API_KEY", "sk_test_fake")
-    monkeypatch.setenv("WORKOS_CLIENT_ID", "client_fake")
-    monkeypatch.setenv("WORKOS_COOKIE_PASSWORD", "a" * 32)
     for name, value in _production_boot_env(DeploymentKind.PRODUCTION).items():
         monkeypatch.setenv(name, value)
     monkeypatch.delenv("LLAMA_INDEX_KEY")
 
-    with pytest.raises(RuntimeError, match="LLAMA_INDEX_KEY"):
-        get_settings()
+    settings_obj = get_settings()
+
+    assert settings_obj.LLAMA_INDEX_KEY is None
+    assert _missing_groups_named("LLAMA_INDEX_KEY")
 
 
 def test_selfhost_boot_with_a_missing_required_setting_refuses(monkeypatch):

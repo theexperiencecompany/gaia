@@ -5,9 +5,9 @@ import pytest
 from app.config.capability_requirements import required_keys, unused_keys
 from app.config.deployment import DeploymentKind, baseline_profile
 
-# What a hosted production boot has always refused to start without: every
-# field ProductionSettings declared required, plus the WorkOS trio its boot
-# guard demanded. Frozen here when the per-environment classes were collapsed.
+# What a hosted production boot warns about when unset: every field
+# ProductionSettings declared required, plus the WorkOS trio. Production boots
+# without them, as it always has; only self-host refuses a missing key.
 PRODUCTION_REQUIRED = frozenset(
     {
         "AGENT_SECRET", "BLOG_BEARER_TOKEN", "BOT_SESSION_TOKEN_SECRET", "CHROMADB_HOST",
@@ -29,7 +29,7 @@ PRODUCTION_REQUIRED = frozenset(
     }
 )  # fmt: skip
 
-# What SelfHostSettings required: infrastructure plus the CLI's machine secrets.
+# What a self-host boot refuses to start without: infrastructure plus the CLI's machine secrets.
 SELFHOST_REQUIRED = frozenset(
     {
         "AGENT_SECRET", "BOT_SESSION_TOKEN_SECRET", "CHROMADB_HOST", "CHROMADB_PORT",
