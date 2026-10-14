@@ -43,15 +43,26 @@ export async function getSetupStatusServer(): Promise<SetupStatusResponse | null
 export async function resolveInstanceAuthMode(): Promise<
   SetupStatusResponse["auth_mode"]
 > {
-  const envAuthMode = process.env.AUTH_MODE;
-  if (envAuthMode) {
-    if (envAuthMode === "workos" || envAuthMode === "local") {
-      return envAuthMode;
-    }
-    console.error(
-      `[auth] Ignoring invalid AUTH_MODE "${envAuthMode}" (expected "workos" or "local")`,
-    );
-  }
+  const configured = configuredInstanceAuthMode();
+  if (configured) return configured;
   const setupStatus = await getSetupStatusServer();
   return setupStatus?.auth_mode ?? "workos";
+}
+
+/**
+ * The auth mode the deployment pins through AUTH_MODE (the self-host image
+ * always sets it), or null when unset or invalid. Never touches the network.
+ */
+export function configuredInstanceAuthMode():
+  | SetupStatusResponse["auth_mode"]
+  | null {
+  const envAuthMode = process.env.AUTH_MODE;
+  if (!envAuthMode) return null;
+  if (envAuthMode === "workos" || envAuthMode === "local") {
+    return envAuthMode;
+  }
+  console.error(
+    `[auth] Ignoring invalid AUTH_MODE "${envAuthMode}" (expected "workos" or "local")`,
+  );
+  return null;
 }
