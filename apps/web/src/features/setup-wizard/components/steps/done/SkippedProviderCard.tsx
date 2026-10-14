@@ -24,7 +24,7 @@ export function SkippedProviderCard() {
           <p className="mt-1 text-sm leading-relaxed text-zinc-400">
             Chat requires a provider to work. Add a key in{" "}
             <span className="font-medium text-zinc-300">
-              Settings, under AI Providers
+              Settings, under Providers &amp; Tools
             </span>{" "}
             to start chatting — one key is all it takes.
           </p>

@@ -16,7 +16,7 @@ export function SettingsSection({
   className = "",
 }: SettingsSectionProps) {
   return (
-    <div>
+    <section aria-label={title}>
       {title && (
         <div className="mb-2 flex items-center gap-2">
           <p className="text-sm font-medium text-zinc-300">{title}</p>
@@ -31,6 +31,6 @@ export function SettingsSection({
       >
         {children}
       </div>
-    </div>
+    </section>
   );
 }

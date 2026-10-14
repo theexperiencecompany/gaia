@@ -11,7 +11,7 @@ const PROVIDER_CATALOG_QUERY_KEY = ["setup", "catalog"] as const;
 /**
  * Provider catalog (public GET /setup/catalog): labels, endpoint defaults,
  * preset gateways and which providers can serve chat. One shared cache entry
- * for the setup wizard, the setup checklist banner and Settings → AI Providers.
+ * for the setup wizard, the setup checklist banner and Settings → Providers & Tools.
  */
 export function useProviderCatalog() {
   return useQuery<ProviderCatalog>({

@@ -58,7 +58,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   },
   {
     key: "providers",
-    label: "AI Providers",
+    label: "Providers & Tools",
     iconElement: (
       <Image
         src={providerFaviconUrl("opencode.ai")}

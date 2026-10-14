@@ -39,7 +39,7 @@ export function DoneActions({ hasLlm }: DoneActionsProps) {
             className="font-medium"
             endContent={<ArrowRight02Icon size={18} />}
           >
-            Go to AI Providers
+            Go to Providers &amp; Tools
           </Button>
           <Button
             as={Link}
