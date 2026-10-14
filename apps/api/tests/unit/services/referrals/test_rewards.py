@@ -465,6 +465,10 @@ class TestSelfReferral:
         await record_friend_payment(_payment(customer_id="cus_friend"))
 
         seams.log.set_ns.assert_any_call("referral", converted=True, self_referral=False)
+        seams.log.warning.assert_called_once_with(
+            "referral self-check skipped a subscription Dodo no longer has",
+            subscription_id="sub_gone",
+        )
 
     async def test_a_referrer_without_an_email_is_still_checked_by_dodo_customer(
         self, seams: Seams
