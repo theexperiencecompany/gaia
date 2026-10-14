@@ -323,6 +323,12 @@ def _custom_env() -> ProviderConfig | None:
     )
 
 
+def _searxng_env() -> ProviderConfig | None:
+    if not settings.SEARXNG_BASE_URL:
+        return None
+    return ProviderConfig(api_key=None, base_url=settings.SEARXNG_BASE_URL, model=None, preset=None)
+
+
 def _cloudinary_env() -> ProviderConfig | None:
     # Uploads need all three: cloud name + key + secret ship together.
     if not (
@@ -352,6 +358,8 @@ def _google_oauth_env() -> ProviderConfig | None:
 _SIMPLE_ENV_KEYS = {
     "gemini": "GOOGLE_API_KEY",
     "tavily": "TAVILY_API_KEY",
+    "exa": "EXA_API_KEY",
+    "brave": "BRAVE_API_KEY",
     "composio": "COMPOSIO_KEY",
     "e2b": "E2B_API_KEY",
     "openai": "OPENAI_API_KEY",
@@ -364,6 +372,7 @@ _BESPOKE_ENV_RESOLVERS = {
     "openrouter": _openrouter_env,
     "ollama": _ollama_env,
     "custom": _custom_env,
+    "searxng": _searxng_env,
     "cloudinary": _cloudinary_env,
     "google_oauth": _google_oauth_env,
 }
