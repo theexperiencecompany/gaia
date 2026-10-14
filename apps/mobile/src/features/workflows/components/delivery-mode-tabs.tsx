@@ -1,3 +1,4 @@
+import { WORKFLOW_DELIVERIES, WORKFLOW_DELIVERY_COPY } from "@gaia/shared";
 import type { WorkflowDelivery } from "@gaia/shared/api/generated";
 import { Pressable, View } from "react-native";
 import { Text } from "@/components/ui/text";
@@ -9,12 +10,6 @@ interface DeliveryModeTabsProps {
   value: WorkflowDelivery | null;
   onChange: (delivery: WorkflowDelivery) => void;
 }
-
-const TABS: { key: WorkflowDelivery; label: string }[] = [
-  { key: "now", label: "Tell me now" },
-  { key: "brief", label: "Add to my brief" },
-  { key: "silent", label: "Don't notify me" },
-];
 
 /**
  * How each run's result reaches the user, mirroring the web workflow modal's
@@ -34,14 +29,14 @@ export function DeliveryModeTabs({ value, onChange }: DeliveryModeTabsProps) {
         gap: 4,
       }}
     >
-      {TABS.map((tab) => {
-        const isActive = tab.key === value;
+      {WORKFLOW_DELIVERIES.map((delivery) => {
+        const isActive = delivery === value;
         return (
           <Pressable
-            key={tab.key}
+            key={delivery}
             accessibilityRole="radio"
             accessibilityState={{ selected: isActive }}
-            onPress={() => onChange(tab.key)}
+            onPress={() => onChange(delivery)}
             style={{
               flex: 1,
               paddingVertical: 10,
@@ -61,7 +56,7 @@ export function DeliveryModeTabs({ value, onChange }: DeliveryModeTabsProps) {
                   : WORKFLOW_COLORS.textFaint,
               }}
             >
-              {tab.label}
+              {WORKFLOW_DELIVERY_COPY[delivery].label}
             </Text>
           </Pressable>
         );

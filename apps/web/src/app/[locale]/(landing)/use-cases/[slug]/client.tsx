@@ -1,5 +1,6 @@
 "use client";
 
+import { ONE_CLICK_WORKFLOW_DELIVERY } from "@gaia/shared";
 import { PlayIcon, UserCircle02Icon } from "@icons";
 import { getToolDisplayName } from "@shared/icons";
 import { formatCompactNumber } from "@shared/utils";
@@ -16,7 +17,6 @@ import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
-import { ONE_CLICK_WORKFLOW_DELIVERY } from "@/features/workflows/constants/delivery";
 import {
   DEFAULT_WORKFLOW_ICON_COLOR,
   WORKFLOW_ICON_BG_ALPHA,
