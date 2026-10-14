@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import re
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -23,6 +24,7 @@ from app.constants.referrals import (
     REWARD_LOCK_LEASE_S,
     REWARD_LOCK_MAX_HOLD_S,
     REWARD_LOCK_RENEW_S,
+    REWARD_LOCK_UNAVAILABLE,
     REWARD_LOCK_WAIT_S,
     ReferralCopyVariant,
 )
@@ -406,7 +408,7 @@ class TestTheMonthMovesTheBill:
     ) -> None:
         seams.lock.return_value.hold.side_effect = lambda: _lease(held=False)
 
-        with pytest.raises(RuntimeError, match="referral reward lease"):
+        with pytest.raises(RuntimeError, match=re.escape(REWARD_LOCK_UNAVAILABLE)):
             await record_friend_payment(_payment())
 
         seams.dodo.subscriptions.update.assert_not_called()

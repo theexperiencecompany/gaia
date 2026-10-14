@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from fakeredis.aioredis import FakeRedis
 import pytest
@@ -212,6 +213,18 @@ class TestTheDailyCeiling:
         response = await send_invites(SENDER.id, _request("priya@example.com"))
 
         assert _statuses(response) == [("priya@example.com", ReferralInviteStatus.SENT)]
+
+    async def test_the_allowance_is_counted_on_the_utc_day_not_the_local_one(
+        self, seams: Seams
+    ) -> None:
+        # 20:00 UTC is already the next morning in Kolkata.
+        with time_machine.travel(
+            datetime(2026, 10, 15, 1, 30, tzinfo=ZoneInfo("Asia/Kolkata")), tick=False
+        ):
+            await send_invites(SENDER.id, _request("priya@example.com"))
+
+        utc_day = INVITE_QUOTA_KEY_TEMPLATE.format(user_id=SENDER.id, day="2026-10-14")
+        assert await seams.quota.get(utc_day) == "1"
 
     async def test_a_batch_past_the_ceiling_sends_nothing(self, seams: Seams) -> None:
         await seams.quota.set(QUOTA_KEY, INVITE_DAILY_SEND_CEILING - 1)
