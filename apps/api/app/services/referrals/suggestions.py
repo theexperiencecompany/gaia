@@ -20,6 +20,8 @@ from app.constants.referrals import (
     GMAIL_LIST_SEND_AS_TOOL,
     LOCAL_PART_WORD_SEPARATORS,
     ROLE_LOCAL_PART_WORDS,
+    SELF_NAME_MIN_WORD_LENGTH,
+    SELF_NAME_MIN_WORDS,
     SEND_AS_READ_FAILED_MESSAGE,
     SEND_AS_READ_FAILED_WHY,
     SUGGESTION_GMAIL_MAX_PAGES,
@@ -51,6 +53,7 @@ from shared.py.wide_events import log
 
 _METADATA_ONLY = MessageFetchOptions(output_format="metadata", include_payload=False, verbose=False)
 _LOCAL_PART_WORDS = re.compile(LOCAL_PART_WORD_SEPARATORS)
+_NAME_WORDS = re.compile(r"[\W_]+")
 
 
 @dataclass
@@ -126,6 +129,17 @@ async def _send_as_addresses(user_id: str) -> list[str]:
     return [alias.send_as_email for alias in GmailSendAsList.model_validate(result.data).send_as]
 
 
+def _named_after(address: str, name: str | None) -> bool:
+    """Whether an address's local part holds every word of the user's full name."""
+    words = [
+        w for w in _NAME_WORDS.split((name or "").lower()) if len(w) >= SELF_NAME_MIN_WORD_LENGTH
+    ]
+    if len(words) < SELF_NAME_MIN_WORDS:
+        return False
+    local = address.lower().rpartition("@")[0]
+    return all(word in local for word in words)
+
+
 async def _own_identities(user: UserDocument, gmail_connected: bool) -> set[str]:
     """Return the user's own mailboxes: their login, every connected Gmail and its send-as aliases."""
     addresses = [user.email] if user.email else []
@@ -155,6 +169,11 @@ async def _excluded(user: UserDocument, tally: _Tally, *, gmail_connected: bool)
         | suppressed
         | {identity for identity, address in tally.addresses.items() if address in registered}
         | {identity for identity, address in tally.addresses.items() if is_automated(address)}
+        | {
+            identity
+            for identity, address in tally.addresses.items()
+            if _named_after(address, user.name)
+        }
     )
 
 
