@@ -342,7 +342,7 @@ def deliverable_markdown(canvas: str) -> str:
             # The preamble before the first section: only the "# title" line.
             kept += [ln for ln in chunk.splitlines() if not ln.lstrip().startswith("# ")]
         elif not _is_working_section(heading.group(1)):
-            kept.append(chunk.strip("\n"))
+            kept.append(chunk)
     return "\n\n".join(part.strip() for part in kept if part.strip())
 
 

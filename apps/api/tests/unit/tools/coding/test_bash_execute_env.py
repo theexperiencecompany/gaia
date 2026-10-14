@@ -7,7 +7,7 @@ seeded first — no standing sandbox-wide token, ever.
 
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import AbstractAsyncContextManager, ExitStack
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -19,6 +19,7 @@ from app.agents.tools.coding._artifacts import artifact_links_note
 from app.agents.tools.coding.bash_tool import _publish_artifacts, bash, build_bash_tool
 from app.agents.workspace.paths import WORKSPACE_ROOT, runs_log_dir
 from app.constants.sandbox import ARTIFACT_MTIME_SKEW_SECONDS, BASH_MAX_TIMEOUT_SECONDS
+from app.services.storage import FsOps, fs_timer
 
 MODULE = "app.agents.tools.coding.bash_tool"
 CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
@@ -317,16 +318,35 @@ class TestBashArtifactLinks:
     async def test_the_result_hands_the_agent_the_links_of_what_the_run_wrote(self) -> None:
         sbx = _sbx()
         publish = AsyncMock(return_value={"report.html": SHORT_URL})
+        timed: list[str] = []
+
+        def recording_timer(op: str, **labels: str) -> AbstractAsyncContextManager[None]:
+            timed.append(op)
+            return fs_timer(op, **labels)
+
         with (
             patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
             patch(f"{MODULE}._publish_artifacts", new=publish),
+            patch(f"{MODULE}.fs_timer", new=recording_timer),
         ):
             before = time.time()
             out = await bash.ainvoke({"command": "make"}, config=SESSION_CONFIG)
             after = time.time()
         assert out.endswith(artifact_links_note({"report.html": SHORT_URL}))
-        assert publish.await_args.args[1:] == ("u1", "conv1")
+        assert FsOps.TOOL_BASH_PUBLISH in timed
+        assert publish.await_args.args == (sbx, "u1", "conv1")
         assert before <= publish.await_args.kwargs["changed_since"] <= after
+
+    async def test_a_run_outside_a_session_publishes_nothing(self) -> None:
+        sbx = _sbx()
+        publish = AsyncMock(return_value={"report.html": SHORT_URL})
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}._publish_artifacts", new=publish),
+        ):
+            out = await bash.ainvoke({"command": "make"}, config=CONFIG)
+        publish.assert_not_awaited()
+        assert SHORT_URL not in out
 
     async def test_only_files_written_since_the_run_started_get_a_link(self) -> None:
         sbx = _sbx()
@@ -354,3 +374,16 @@ class TestBashArtifactLinks:
         with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=None)):
             links = await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
         assert links == {}
+
+    async def test_each_artifact_is_published_with_its_size_mtime_and_inline_body(self) -> None:
+        sbx = _sbx()
+        sbx.commands.run = AsyncMock(
+            return_value=SimpleNamespace(
+                stdout=f"notes.md\0{ARTIFACT_SIZE}\0{RUN_STARTED_AT}\0YWJj\0"
+            )
+        )
+        with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=SHORT_URL)) as pub:
+            await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
+        pub.assert_awaited_once_with(
+            "u1", "conv1", "notes.md", ARTIFACT_SIZE, RUN_STARTED_AT, "abc"
+        )

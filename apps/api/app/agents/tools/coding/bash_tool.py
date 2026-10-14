@@ -302,12 +302,10 @@ async def _run_bash(
             # A bash command can create artifacts many ways (cat, python, mv,
             # curl -o, …), not just the write tool. Enumerate the session's
             # artifacts/ from the sandbox itself (no cross-mount race) in real time.
-            links: dict[str, str] = {}
-            if session_id:
-                async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                    links = await _publish_artifacts(
-                        sbx, user_id, session_id, changed_since=started_at
-                    )
+            if not session_id:
+                return result
+            async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
+                links = await _publish_artifacts(sbx, user_id, session_id, changed_since=started_at)
             return result + artifact_links_note(links)
     except SandboxAcquisitionError as e:
         return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable ({e})", session_id)

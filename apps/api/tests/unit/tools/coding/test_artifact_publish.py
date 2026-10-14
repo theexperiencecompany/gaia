@@ -11,6 +11,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from tests.helpers import captured_wide_event
 
 from app.agents.tools.coding import _artifacts
 from app.agents.tools.coding._artifacts import (
@@ -61,7 +62,19 @@ async def test_publish_artifact_never_raises_into_caller() -> None:
     # Best-effort: a Redis failure must not break the tool.
     mock = AsyncMock(side_effect=RuntimeError("redis down"))
     with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact("u1", "c1", "x.md", 1, 1.0, None)  # must not raise
+        async with captured_wide_event() as event:
+            result = await publish_artifact("u1", "c1", "x.md", 1, 1.0, None)
+
+    assert result is None
+    assert event["errors"] == [
+        {
+            "msg": "artifact publish failed",
+            "conversation_id": "c1",
+            "file_name": "x.md",
+            "error": "redis down",
+            "error_type": "RuntimeError",
+        }
+    ]
 
 
 async def test_write_path_strips_artifacts_prefix_to_relative() -> None:

@@ -4,10 +4,8 @@ import { Button } from "@heroui/button";
 import { Download01Icon, File01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 
-import {
-  FileViewerBody,
-  PREVIEWABLE_CONTENT_TYPES,
-} from "@/features/chat/components/artifacts/FileViewerBody";
+import { FileViewerBody } from "@/features/chat/components/artifacts/FileViewerBody";
+import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
 import { shortLinkFileUrl } from "@/features/short-links/api/shortLinksApi";
 import type { PublicSessionArtifact } from "@/types/features/shortLinkTypes";
 

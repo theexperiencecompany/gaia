@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import { Link01Icon } from "@icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { createShortLink } from "@/features/short-links/api/shortLinksApi";
 import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
@@ -23,13 +23,15 @@ export function ShareLinkButton({
   targetId,
 }: ShareLinkButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const latestRequestId = useRef(0);
 
   const handlePress = async () => {
+    const requestId = ++latestRequestId.current;
     setIsLoading(true);
     try {
       await copyShortLink(await createShortLink(targetType, targetId));
     } finally {
-      setIsLoading(false);
+      if (requestId === latestRequestId.current) setIsLoading(false);
     }
   };
 

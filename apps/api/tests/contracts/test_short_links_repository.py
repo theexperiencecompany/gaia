@@ -64,6 +64,16 @@ class TestShortLinksLiveTargetUniqueness:
         with pytest.raises(DuplicateKeyError, match=LIVE_TARGET_UNIQUE_INDEX):
             await indexed_repo.create(make_doc(user_id="u", target_id="t1"))
 
+    async def test_two_owners_sharing_a_target_id_each_hold_their_own_live_link(
+        self, indexed_repo, make_doc
+    ):
+        """A target id is only unique per owner: one user's link never blocks another's mint."""
+        await indexed_repo.create(make_doc(user_id="owner-a", target_id="conv-1/report.html"))
+        theirs = await indexed_repo.create(
+            make_doc(user_id="owner-b", target_id="conv-1/report.html")
+        )
+        assert await indexed_repo.get_by_slug(theirs.slug) is not None
+
     async def test_a_revoked_link_does_not_block_a_fresh_mint(self, indexed_repo, make_doc):
         await indexed_repo.create(make_doc(user_id="u", target_id="t1", revoked=True))
         fresh = await indexed_repo.create(make_doc(user_id="u", target_id="t1"))
@@ -117,26 +127,45 @@ class TestShortLinksResolution:
 class TestShortLinksMintingIdempotency:
     async def test_get_live_for_target_returns_the_live_link(self, indexed_repo, make_doc):
         created = await indexed_repo.create(make_doc(target_id="t1"))
-        found = await indexed_repo.get_live_for_target(ShortLinkTargetType.TODO_DELIVERABLE, "t1")
+        found = await indexed_repo.get_live_for_target(
+            "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1"
+        )
         assert found is not None and found.slug == created.slug
 
     async def test_get_live_for_target_none_when_no_link(self, indexed_repo):
         assert (
-            await indexed_repo.get_live_for_target(ShortLinkTargetType.TODO_DELIVERABLE, "missing")
+            await indexed_repo.get_live_for_target(
+                "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "missing"
+            )
             is None
         )
 
     async def test_get_live_for_target_skips_revoked_link(self, indexed_repo, make_doc):
         await indexed_repo.create(make_doc(target_id="t1", revoked=True))
-        result = await indexed_repo.get_live_for_target(ShortLinkTargetType.TODO_DELIVERABLE, "t1")
+        result = await indexed_repo.get_live_for_target(
+            "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1"
+        )
         assert result is None  # revoked link is dead — caller mints a fresh one
+
+    async def test_get_live_for_target_never_returns_another_owners_link(
+        self, indexed_repo, make_doc
+    ):
+        await indexed_repo.create(make_doc(user_id="someone-else", target_id="t1"))
+        assert (
+            await indexed_repo.get_live_for_target(
+                "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1"
+            )
+            is None
+        )
 
     async def test_target_types_do_not_share_a_live_link(self, indexed_repo, make_doc):
         await indexed_repo.create(make_doc(target_id="same-id"))
         other = await indexed_repo.create(
             make_doc(target_type=ShortLinkTargetType.BRIEFING, target_id="same-id")
         )
-        found = await indexed_repo.get_live_for_target(ShortLinkTargetType.BRIEFING, "same-id")
+        found = await indexed_repo.get_live_for_target(
+            "user-1", ShortLinkTargetType.BRIEFING, "same-id"
+        )
         assert found is not None and found.slug == other.slug
 
 

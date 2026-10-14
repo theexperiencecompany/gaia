@@ -2,7 +2,7 @@
 
 import { type ContentSegment, parseOpenUISegments } from "@shared/utils";
 import dynamic from "next/dynamic";
-import { Fragment, type ReactNode, useId } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import MarkdownRenderer from "./MarkdownRenderer";
@@ -36,13 +36,12 @@ interface RichContentRendererProps {
  * MarkdownRenderer and fenced blocks via OpenUIRenderer — the single place that
  * turns markdown + OpenUI into React, shared by chat and the heygaia.link pages.
  */
-export default function RichContentRenderer({
+export function RichContentRenderer({
   content,
   isStreaming = false,
   className,
   renderMarkdown,
 }: Readonly<RichContentRendererProps>) {
-  const baseId = useId();
   const segments = parseOpenUISegments(content, isStreaming);
   const lastMarkdownIndex = segments.reduce(
     (acc, segment, index) =>
@@ -53,8 +52,7 @@ export default function RichContentRenderer({
   return (
     <div className={cn("flex flex-col", className)}>
       {segments.map((segment, index) => {
-        // Segments only ever append while streaming, so an index key is stable.
-        const key = `${baseId}-seg-${index}`;
+        const key = `${segment.type}-${segment.offset}`;
 
         if (segment.type === "openui") {
           return (

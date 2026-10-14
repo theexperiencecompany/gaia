@@ -505,8 +505,7 @@ def _build_facts(
     sections, left_out = built.sections, built.left_out
     for sec in sections:
         for it in sec.items:
-            art = artifacts.get(it.todo_id or "")
-            if art and art.link:
+            if it.todo_id and (art := artifacts.get(it.todo_id)) and art.link:
                 it.link = art.link
 
     items = [it for sec in sections for it in sec.items]

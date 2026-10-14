@@ -4,18 +4,9 @@ import { Spinner } from "@heroui/spinner";
 import Image from "next/image";
 
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { getExtension } from "@/features/chat/utils/fileExtension";
 
 export type ViewMode = "preview" | "source";
-
-export const PREVIEWABLE_CONTENT_TYPES = new Set([
-  "text/markdown",
-  "text/html",
-  "text/x-latex",
-]);
-
-export function getExtension(filename: string): string {
-  return filename.split(".").pop()?.toLowerCase() || "";
-}
 
 function getLanguage(filename: string): string {
   const ext = getExtension(filename);

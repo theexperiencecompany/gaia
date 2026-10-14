@@ -1,5 +1,6 @@
 """The conversation artifact registry keeps each file's heygaia.link across reloads."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 from app.services.artifact_events import ArtifactEventMessage
@@ -34,9 +35,15 @@ class TestRegistryKeepsTheLink:
     async def test_a_new_file_is_stored_with_its_link(self) -> None:
         repo = await _upsert(update_matched=False)
 
-        element = repo.push_artifact.await_args.kwargs["element"]
-        assert element["path"] == "report.html"
-        assert element["short_url"] == "https://heygaia.link/abcdefghijk"
+        element = dict(repo.push_artifact.await_args.kwargs["element"])
+        assert datetime.fromisoformat(element.pop("updated_at")).tzinfo == UTC
+        assert element == {
+            "path": "report.html",
+            "size_bytes": 12,
+            "mtime": 2.0,
+            "content_type": "text/html",
+            "short_url": "https://heygaia.link/abcdefghijk",
+        }
 
     async def test_a_re_emit_refreshes_the_link_on_the_existing_entry(self) -> None:
         repo = await _upsert(update_matched=True)

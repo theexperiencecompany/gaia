@@ -111,9 +111,7 @@ async def get_artifact_file(
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_artifact"})
     await require_owned_conversation(conv_id, user_id)
     host_path = await _resolve_file(user_id, conv_id, "artifacts", path)
-    return sandboxed_file_response(
-        host_path, filename=path.rsplit("/", 1)[-1], cache_control=_ARTIFACT_CACHE_CONTROL
-    )
+    return sandboxed_file_response(host_path, cache_control=_ARTIFACT_CACHE_CONTROL)
 
 
 @router.get("/{conv_id}/uploads")
@@ -156,9 +154,7 @@ async def get_upload_file(
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_upload"})
     await require_owned_conversation(conv_id, user_id)
     host_path = await _resolve_file(user_id, conv_id, "uploaded", path)
-    return sandboxed_file_response(
-        host_path, filename=path.rsplit("/", 1)[-1], cache_control=_UPLOAD_CACHE_CONTROL
-    )
+    return sandboxed_file_response(host_path, cache_control=_UPLOAD_CACHE_CONTROL)
 
 
 @router.post(

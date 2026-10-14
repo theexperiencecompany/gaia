@@ -21,6 +21,7 @@ from app.models.short_link_models import (
     ShortLinkResponse,
 )
 from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import error_responses
 from app.services.short_link_projections import project_target
 from app.services.short_link_service import (
     get_or_create_short_link,
@@ -71,7 +72,9 @@ async def resolve_short_link_route(
 ) -> PublicShortLinkView:
     """Resolve a capability slug to its target's public view. No auth."""
     log.set(short_link={"operation": "resolve", "slug": slug})
-    response.headers["Cache-Control"] = _NO_STORE
+    response.headers["Cache-Control"] = (
+        _NO_STORE  # pragma: no mutate — headers lowercase names on set
+    )
     try:
         view = await get_public_view(slug)
     except JuiceFSUnavailable as e:
@@ -82,7 +85,11 @@ async def resolve_short_link_route(
     return view
 
 
-@router.get("/{slug}/file")
+@router.get(
+    "/{slug}/file",
+    response_class=FileResponse,
+    responses=error_responses({404: _NOT_FOUND, 503: _STORAGE_OFFLINE}),
+)
 @limiter.limit("60/minute")
 @limiter.limit("600/hour")
 async def get_short_link_file_route(request: Request, slug: str) -> FileResponse:
@@ -95,7 +102,7 @@ async def get_short_link_file_route(request: Request, slug: str) -> FileResponse
         raise HTTPException(status_code=503, detail=_STORAGE_OFFLINE) from e
     if host_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
-    return sandboxed_file_response(host_path, filename=host_path.name, cache_control=_NO_STORE)
+    return sandboxed_file_response(host_path, cache_control=_NO_STORE)
 
 
 @router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)

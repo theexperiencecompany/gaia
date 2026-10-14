@@ -15,11 +15,11 @@ import { useCallback, useEffect, useState, type WheelEvent } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import {
   FileViewerBody,
-  getExtension,
-  PREVIEWABLE_CONTENT_TYPES,
   type ViewMode,
 } from "@/features/chat/components/artifacts/FileViewerBody";
+import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
+import { getExtension } from "@/features/chat/utils/fileExtension";
 import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
 

@@ -59,11 +59,11 @@ async def get_or_create_short_link(
 ) -> str:
     """Return the heygaia.link URL for a target user_id owns, minting it once.
 
-    Idempotent per (target_type, target_id); a revoked link stays dead and the
+    Idempotent per (user_id, target_type, target_id); a revoked link stays dead and the
     next mint draws a fresh slug. Callers pass targets they already hold; the
     public mint endpoint proves ownership first.
     """
-    existing = await short_link_repository.get_live_for_target(target_type, target_id)
+    existing = await short_link_repository.get_live_for_target(user_id, target_type, target_id)
     if existing:
         return _build_url(existing.slug)
 
@@ -87,7 +87,9 @@ async def get_or_create_short_link(
             # Lost a concurrent mint for this target. The winner's slug is the
             # one live link, and minting a third would leave a link alive after
             # the user revokes the one they were shown — hand back the winner.
-            winner = await short_link_repository.get_live_for_target(target_type, target_id)
+            winner = await short_link_repository.get_live_for_target(
+                user_id, target_type, target_id
+            )
             if winner is None:
                 # The winner was revoked between the collision and this read;
                 # a fresh slug is now the correct outcome.

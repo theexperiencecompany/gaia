@@ -1,7 +1,7 @@
 import { Chip } from "@heroui/chip";
 import { CheckmarkCircle02Icon } from "@icons";
 
-import RichContentRenderer from "@/features/chat/components/interface/RichContentRenderer";
+import { RichContentRenderer } from "@/features/chat/components/interface/RichContentRenderer";
 import type { PublicTodoDeliverable } from "@/types/features/shortLinkTypes";
 
 export function PublicTodoDeliverableView({

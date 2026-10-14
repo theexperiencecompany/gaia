@@ -738,6 +738,34 @@ class TestDeliverable:
         expected = len("Draft is ready for review. Hi team, Tuesday works for us.")
         assert deliverable_size(DELIVERABLE_CANVAS) == expected
 
+    def test_the_deliverable_is_exactly_the_result_sections_without_their_comments(self):
+        canvas = (
+            "  # Reply to Acme\n"
+            "Intro the user wrote.\n"
+            "\n## Current State\nDraft <!-- internal: v2 --> is ready.\n"
+            "\n## Key Details\n- email: ceo@acme-secret.com\n"
+            "\n## Draft reply\nHi team.\n"
+        )
+
+        assert deliverable_markdown(canvas) == (
+            "Intro the user wrote.\n\n"
+            "## Current State\nDraft  is ready.\n\n"
+            "## Draft reply\nHi team."
+        )
+
+    def test_a_blank_heading_never_drops_the_sections_before_it(self):
+        canvas = "# Plan\n\n## Current State\nShipped.\n\n## \nloose line\n"
+
+        out = deliverable_markdown(canvas)
+
+        assert out.startswith("## Current State\nShipped.\n\n")
+        assert out.endswith("loose line")
+
+    def test_size_skips_an_indented_heading_inside_a_result_section(self):
+        canvas = "# Plan\n\n## Current State\n  ### Summary\nShipped.\n"
+
+        assert deliverable_size(canvas) == len("Shipped.")
+
     def test_an_empty_canvas_has_no_deliverable(self):
         assert deliverable_markdown("") == ""
         assert deliverable_size("") == 0

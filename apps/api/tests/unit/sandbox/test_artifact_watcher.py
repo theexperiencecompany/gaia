@@ -21,13 +21,16 @@ from e2b import AsyncSandbox
 import pytest
 
 from app.agents.workspace.paths import session_artifacts
+from app.models.short_link_models import ShortLinkTargetType
 from app.services.sandbox import artifact_watcher as aw
 from app.services.sandbox.artifact_watcher import ArtifactWatcher, _strip_artifacts_prefix
+from app.services.short_link_projections import session_artifact_target_id
 from app.services.storage import JuiceFSUnavailable
 from app.services.storage.sessions.artifacts import ArtifactInfo
 
 USER = "user-1"
 CONV = "conv-a"
+SHORT_URL = "https://heygaia.link/abcdefghijk"
 
 
 def info(path: str, size: int = 10, mtime: float = 100.0, inode: int = 0) -> ArtifactInfo:
@@ -85,12 +88,11 @@ def stat_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def mint(monkeypatch: pytest.MonkeyPatch) -> None:
+def mint(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """Each upsert mints the artifact's heygaia.link; the store is not under test."""
-    monkeypatch.setattr(
-        "app.services.artifact_events.get_or_create_short_link",
-        AsyncMock(return_value="https://heygaia.link/abcdefghijk"),
-    )
+    mock = AsyncMock(return_value=SHORT_URL)
+    monkeypatch.setattr("app.services.artifact_events.get_or_create_short_link", mock)
+    return mock
 
 
 @pytest.fixture
@@ -198,7 +200,7 @@ async def test_a_file_deleted_between_the_event_and_the_stat_publishes_nothing(
 
 
 async def test_a_written_artifact_is_published_as_an_upsert_for_its_conversation(
-    published: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+    published: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch, mint: AsyncMock
 ) -> None:
     async def stat(user_id: str, conv: str, rel: str) -> ArtifactInfo:
         return info(rel, size=42, mtime=7.0)
@@ -207,10 +209,23 @@ async def test_a_written_artifact_is_published_as_an_upsert_for_its_conversation
     w = ArtifactWatcher(USER, fake_sandbox())
     await w._on_fs_event(fs_event(f"{CONV}/artifacts/nested/a.md"))
 
-    assert len(published) == 1
-    assert published[0]["user_id"] == USER
-    assert published[0]["session_id"] == CONV
-    assert "nested/a.md" in str(published[0])
+    assert published == [
+        {
+            "user_id": USER,
+            "event": "upsert",
+            "session_id": CONV,
+            "path": "nested/a.md",
+            "size_bytes": 42,
+            "mtime": 7.0,
+            "content_type": "text/plain",
+            "short_url": SHORT_URL,
+        }
+    ]
+    mint.assert_awaited_once_with(
+        USER,
+        ShortLinkTargetType.SESSION_ARTIFACT,
+        session_artifact_target_id(CONV, "nested/a.md"),
+    )
 
 
 @pytest.mark.parametrize("etype", ["REMOVE", "RENAME"])
@@ -347,11 +362,28 @@ def stub_scan(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 
 async def test_a_new_artifact_is_published_on_the_first_scan(
-    watcher: ArtifactWatcher, published: list[dict[str, Any]], stub_scan: dict[str, Any]
+    watcher: ArtifactWatcher,
+    published: list[dict[str, Any]],
+    stub_scan: dict[str, Any],
+    mint: AsyncMock,
 ) -> None:
     stub_scan["artifacts"] = {CONV: [info("a.md")]}
     await watcher._rescan_each([CONV])
-    assert len(published) == 1
+    assert published == [
+        {
+            "user_id": USER,
+            "event": "upsert",
+            "session_id": CONV,
+            "path": "a.md",
+            "size_bytes": 10,
+            "mtime": 100.0,
+            "content_type": "text/plain",
+            "short_url": SHORT_URL,
+        }
+    ]
+    mint.assert_awaited_once_with(
+        USER, ShortLinkTargetType.SESSION_ARTIFACT, session_artifact_target_id(CONV, "a.md")
+    )
 
 
 async def test_an_unchanged_artifact_is_not_republished(

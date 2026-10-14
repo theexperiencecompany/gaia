@@ -20,7 +20,7 @@ import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { db } from "@/lib/db/chatDb";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
-import RichContentRenderer from "../../../interface/RichContentRenderer";
+import { RichContentRenderer } from "../../../interface/RichContentRenderer";
 import {
   ApprovalResolveProvider,
   type ApprovalResolver,

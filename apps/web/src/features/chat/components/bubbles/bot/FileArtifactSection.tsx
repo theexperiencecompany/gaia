@@ -8,6 +8,7 @@ import { useCallback, useMemo, useState } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
+import { getExtension } from "@/features/chat/utils/fileExtension";
 import { ShortLinkRow } from "@/features/short-links/components/ShortLinkRow";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useConversationArtifacts } from "@/stores/chatStore";
@@ -75,7 +76,7 @@ function basename(path: string): string {
 }
 
 function getFileConfig(filename: string) {
-  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  const ext = getExtension(filename);
   return (
     FILE_TYPE_CONFIG[ext] || {
       label: ext.toUpperCase() || "File",
@@ -87,7 +88,7 @@ function getFileConfig(filename: string) {
 
 function resolveContentType(artifact: ArtifactData, filename: string): string {
   if (artifact.content_type) return artifact.content_type;
-  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  const ext = getExtension(filename);
   return EXT_CONTENT_TYPE[ext] || "application/octet-stream";
 }
 

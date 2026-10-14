@@ -402,7 +402,7 @@ class TestCreateShortLinkIndexes:
     async def test_one_live_link_per_target_is_a_unique_index(
         self, mock_get_collection: MagicMock
     ) -> None:
-        """Two overlapping mints for one target must collide on the index."""
+        """Two overlapping mints for one owner's target must collide on the index."""
         collection = MagicMock()
         collection.create_index = AsyncMock()
         mock_get_collection.return_value = collection
@@ -410,7 +410,7 @@ class TestCreateShortLinkIndexes:
         await create_short_link_indexes()
 
         collection.create_index.assert_any_await(
-            [("target_type", 1), ("target_id", 1)],
+            [("user_id", 1), ("target_type", 1), ("target_id", 1)],
             unique=True,
             partialFilterExpression={"revoked": False},
             name=LIVE_TARGET_UNIQUE_INDEX,
@@ -448,7 +448,6 @@ class TestCreatePaymentIndexes:
 class TestCreateAllIndexes:
     """Tests for create_all_indexes() and its error handling."""
 
-    @pytest.mark.regression
     @patch("app.db.mongodb.indexes.log")
     async def test_a_failed_short_links_index_build_is_not_swallowed(
         self, mock_log: MagicMock

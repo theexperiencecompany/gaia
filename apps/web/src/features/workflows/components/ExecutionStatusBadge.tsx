@@ -1,5 +1,6 @@
 import { Chip } from "@heroui/chip";
-import { AlertCircleIcon, CheckmarkCircle02Icon, Loading03Icon } from "@icons";
+import { Spinner } from "@heroui/spinner";
+import { AlertCircleIcon, CheckmarkCircle02Icon } from "@icons";
 
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";
 
@@ -47,9 +48,11 @@ export function ExecutionStatusBadge({
           radius="sm"
           variant="flat"
           startContent={
-            <div className="animate-spin">
-              <Loading03Icon className="h-3 w-3" />
-            </div>
+            <Spinner
+              size="sm"
+              color="current"
+              classNames={{ wrapper: "h-3 w-3" }}
+            />
           }
         >
           Running

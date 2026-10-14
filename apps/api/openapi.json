@@ -30416,12 +30416,17 @@
         ],
         "responses": {
           "200": {
+            "description": "Successful Response"
+          },
+          "404": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Short link not found"
           },
           "422": {
             "content": {
@@ -30442,6 +30447,16 @@
               }
             },
             "description": "Client Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace storage offline"
           },
           "5XX": {
             "content": {

@@ -136,12 +136,11 @@ async def _project_session_artifact(user_id: str, target_id: str) -> PublicSessi
     info = located.info
     content: str | None = None
     if is_inlineable_content_type(info.content_type) and info.size_bytes <= PUBLIC_TEXT_MAX_BYTES:
-        content = await asyncio.to_thread(
-            located.host_path.read_text, encoding="utf-8", errors="replace"
-        )
+        raw = await asyncio.to_thread(located.host_path.read_bytes)
+        content = raw.decode(errors="replace")
     return PublicSessionArtifact(
         target_type=ShortLinkTargetType.SESSION_ARTIFACT,
-        filename=info.path.rsplit("/", 1)[-1],
+        filename=located.host_path.name,
         content_type=info.content_type or _DEFAULT_CONTENT_TYPE,
         size_bytes=info.size_bytes,
         content=content,

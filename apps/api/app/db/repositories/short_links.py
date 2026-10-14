@@ -5,8 +5,9 @@ read-only access to one artifact with no session, so resolution
 (get_by_slug) is a deliberately global, unscoped read — the one operation
 in this user-scoped repository with no user_id in its filter, exactly like
 a cross-user maintenance scan on any other UserScopedRepository. Finding a
-target's live link is keyed by the target alone, because a target id names one
-artifact of one owner; revoking is owner-scoped.
+target's live link and revoking are owner-scoped: a target id is only unique
+per owner (a session-artifact id is conversation_id/path), so a link one user
+mints can never be handed to — or block — another.
 
 No CachePolicy: resolution is a public, low-volume read keyed by slug, not
 by the entity id an id-keyed cache would serve.
@@ -37,14 +38,19 @@ class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
         return await self._find_one({"slug": slug})
 
     async def get_live_for_target(
-        self, target_type: ShortLinkTargetType, target_id: str
+        self, user_id: str, target_type: ShortLinkTargetType, target_id: str
     ) -> ShortLink | None:
-        """Return the target's one live (non-revoked) link.
+        """Return the owner's one live (non-revoked) link to a target.
 
         Served by the partial LIVE_TARGET_UNIQUE_INDEX, whose predicate the filter matches.
         """
         return await self._find_one(
-            {"target_type": target_type, "target_id": target_id, "revoked": False}
+            {
+                "user_id": user_id,
+                "target_type": target_type,
+                "target_id": target_id,
+                "revoked": False,
+            }
         )
 
     async def revoke(self, user_id: str, slug: str) -> bool:

@@ -3,7 +3,7 @@
 import { useLocale } from "next-intl";
 import { useMemo } from "react";
 
-import RichContentRenderer from "@/features/chat/components/interface/RichContentRenderer";
+import { RichContentRenderer } from "@/features/chat/components/interface/RichContentRenderer";
 import { ExecutionStatusBadge } from "@/features/workflows/components/ExecutionStatusBadge";
 import type { PublicWorkflowRun } from "@/types/features/shortLinkTypes";
 

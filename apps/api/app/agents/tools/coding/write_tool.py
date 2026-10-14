@@ -143,6 +143,6 @@ async def write(
     short_url = await publish_artifact_write(
         user_id, role, role_conv, abs_path, content, len(encoded), real_mtime
     )
-    links = {abs_path.rsplit("/", 1)[-1]: short_url} if short_url else {}
+    links = {posixpath.basename(abs_path): short_url} if short_url else {}
 
     return f"Wrote {len(encoded)} bytes to {abs_path}{artifact_links_note(links)}"

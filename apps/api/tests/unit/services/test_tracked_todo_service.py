@@ -880,6 +880,9 @@ class TestCompleteTrackedTodo:
         mock_repo.get.return_value = _todo_doc(completed=True)
 
         assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") == SHORT_URL
+        mock_deps.mint.assert_awaited_once_with(
+            USER_ID, ShortLinkTargetType.TODO_DELIVERABLE, TODO_ID
+        )
         mock_deps.record.assert_not_awaited()
         mock_repo.update.assert_not_awaited()
 

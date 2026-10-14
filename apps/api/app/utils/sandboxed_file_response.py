@@ -22,6 +22,7 @@ _ACTIVE_CONTENT_TYPES = (
     "application/xhtml+xml",
     "application/xml",
 )
+_SANDBOX_CSP = {"Content-Security-Policy": "sandbox"}
 # Known-safe types rendered inline via the served URL; everything else is
 # force-downloaded so a direct/shared link can't execute on the API origin.
 # HTML is deliberately absent: its preview renders in a sandboxed srcDoc iframe.
@@ -34,16 +35,17 @@ _SAFE_INLINE_TYPES = (
 )
 
 
-def sandboxed_file_response(host_path: Path, *, filename: str, cache_control: str) -> FileResponse:
+def sandboxed_file_response(host_path: Path, *, cache_control: str) -> FileResponse:
     """FileResponse with content-type, sandboxing + cache headers.
 
-    FileResponse natively handles Range / 206 / Accept-Ranges.
+    The content type comes from the file's own name on disk, so every route
+    serving the same file types it identically. FileResponse natively handles
+    Range / 206 / Accept-Ranges.
     """
+    filename = host_path.name
     content_type = detect_content_type(filename) or _DOWNLOAD_OCTET
-    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": cache_control}
-    if content_type in _ACTIVE_CONTENT_TYPES:
-        # Agent-generated HTML/SVG/XML is untrusted — neuter scripts/same-origin.
-        headers["Content-Security-Policy"] = "sandbox"
+    # Agent-generated HTML/SVG/XML is untrusted — neuter scripts/same-origin.
+    sandbox = _SANDBOX_CSP if content_type in _ACTIVE_CONTENT_TYPES else {}
     # Force download for anything not a known-safe inline type so a shared link
     # can't execute JS on the API origin. filename= emits an RFC-encoded
     # Content-Disposition, so a quoted/CR-LF filename can't inject the header.
@@ -51,6 +53,6 @@ def sandboxed_file_response(host_path: Path, *, filename: str, cache_control: st
     return FileResponse(
         path=str(host_path),
         media_type=content_type,
-        headers=headers,
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": cache_control, **sandbox},
         filename=filename if force_download else None,
     )

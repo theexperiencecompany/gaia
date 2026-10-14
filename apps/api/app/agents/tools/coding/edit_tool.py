@@ -250,7 +250,7 @@ async def _do_edit(sbx: AsyncSandbox, target: EditTarget, patch: EditPatch) -> s
         real_mtime,
     )
 
-    links = {target.abs_path.rsplit("/", 1)[-1]: short_url} if short_url else {}
+    links = {posixpath.basename(target.abs_path): short_url} if short_url else {}
     return _emit_edit(target.abs_path, len(new_bytes), replaced, target.session_id) + (
         artifact_links_note(links)
     )

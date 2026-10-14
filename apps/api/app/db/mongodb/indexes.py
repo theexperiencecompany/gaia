@@ -1421,7 +1421,7 @@ async def create_e2b_sandbox_indexes() -> None:
 
 
 async def create_short_link_indexes() -> None:
-    """Create the short_links indexes: one slug namespace, one live link per target.
+    """Create the short_links indexes: one slug namespace, one live link per owned target.
 
     The live-target index is partial on revoked: False, so a revoked link never
     blocks the next mint and the idempotency read is served by it.
@@ -1431,7 +1431,7 @@ async def create_short_link_indexes() -> None:
         await asyncio.gather(
             short_links_collection.create_index([("slug", 1)], unique=True, name=SLUG_UNIQUE_INDEX),
             short_links_collection.create_index(
-                [("target_type", 1), ("target_id", 1)],
+                [("user_id", 1), ("target_type", 1), ("target_id", 1)],
                 unique=True,
                 partialFilterExpression={"revoked": False},
                 name=LIVE_TARGET_UNIQUE_INDEX,

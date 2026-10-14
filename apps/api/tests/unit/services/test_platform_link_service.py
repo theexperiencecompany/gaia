@@ -320,6 +320,26 @@ class TestLinkSideEffects:
 
         assert len(day_zero_pool.jobs) == 1
 
+    async def test_two_users_linking_together_are_each_greeted(
+        self, mock_repo, sample_user_id, day_zero_pool
+    ):
+        """The hello is deduplicated per user, never across users."""
+        other_user_id = "507f1f77bcf86cd799439099"
+        mock_repo.get.side_effect = lambda user_id: _user(id=user_id, platform_links={})
+        mock_repo.link_platform.side_effect = lambda user_id, *_a, **_k: _user(id=user_id)
+
+        await asyncio.gather(
+            PlatformLinkService.link_account(sample_user_id, "discord", "discord456"),
+            PlatformLinkService.link_account(other_user_id, "telegram", "tg-1"),
+        )
+
+        assert sorted(day_zero_pool.jobs) == sorted(
+            [
+                ("send_day_zero_hello", sample_user_id, "discord"),
+                ("send_day_zero_hello", other_user_id, "telegram"),
+            ]
+        )
+
     async def test_a_same_id_relink_never_re_greets(self, mock_repo, sample_user_id, day_zero_pool):
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"discord": {"id": "discord123"}}

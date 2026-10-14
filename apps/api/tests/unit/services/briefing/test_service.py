@@ -51,6 +51,7 @@ from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
+from app.services.short_link_service import ShortLinkExhaustedError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
 
@@ -949,6 +950,71 @@ class TestTheFactsTheModelVoices:
         await service.run_daily_briefing(_USER)
 
         assert [i.text for s in _stored_payload(world).sections for i in s.items] == ["Digest: "]
+
+
+def _todo_link(todo_id: str) -> str:
+    return f"https://heygaia.link/todo-{todo_id}"
+
+
+class TestEachItemLinksItsOwnDeliverable:
+    """Every item carries the link to its own todo, minted for the brief's owner."""
+
+    @pytest.fixture(autouse=True)
+    def keyed_mint(self, world: World) -> None:
+        def mint(user_id: str, target_type: ShortLinkTargetType, target_id: str) -> str:
+            if user_id != _USER:
+                raise AssertionError(f"minted for {user_id!r}, not the brief's owner")
+            if target_type is ShortLinkTargetType.TODO_DELIVERABLE:
+                return _todo_link(target_id)
+            return _BRIEF_LINK
+
+        world.mint.side_effect = mint
+
+    async def test_the_prompt_and_the_stored_items_carry_each_todos_own_link(
+        self, world: World
+    ) -> None:
+        world.work = context.TrackedWork(
+            completed=[_todo("c1", "Deck")], blocked=[_todo("b1", "Reply")]
+        )
+        world.held = [_held("h1", "Digest", "first")]
+
+        await service.run_daily_briefing(_USER)
+
+        prompt = _prompt(world)
+        assert f"- Done: Deck | artifact holds ~0 chars | link: {_todo_link('c1')}\n" in prompt
+        assert f"waiting on you | link: {_todo_link('b1')}\n" in prompt
+        links = {it.text: it.link for sec in _stored_payload(world).sections for it in sec.items}
+        assert {link for link in links.values() if link} == {_todo_link("c1"), _todo_link("b1")}
+
+    async def test_a_failed_mint_costs_only_that_items_link(self, world: World) -> None:
+        def mint(user_id: str, target_type: ShortLinkTargetType, target_id: str) -> str:
+            if target_id == "c1":
+                raise ShortLinkExhaustedError("namespace exhausted")
+            return _todo_link(target_id) if target_id != _BRIEF_ID else _BRIEF_LINK
+
+        world.mint.side_effect = mint
+        world.work = context.TrackedWork(
+            completed=[_todo("c1", "Deck")], running=[_todo("r1", "Research")]
+        )
+
+        async with captured_wide_event() as event:
+            await service.run_daily_briefing(_USER)
+
+        prompt = _prompt(world)
+        assert "- Done: Deck | artifact holds ~0 chars\n" in prompt
+        assert (
+            f"- In progress: Research | artifact holds ~0 chars | link: {_todo_link('r1')}\n"
+            in (prompt)
+        )
+        stored = [it for sec in _stored_payload(world).sections for it in sec.items]
+        assert [it.link for it in stored if it.todo_id == "c1"] == [None]
+        assert {
+            "msg": "briefing.short_link_mint_failed",
+            "user_id": _USER,
+            "todo_id": "c1",
+            "error_type": "ShortLinkExhaustedError",
+            "error": "namespace exhausted",
+        } in event["warnings"]
 
 
 class TestTheGoalHold:
