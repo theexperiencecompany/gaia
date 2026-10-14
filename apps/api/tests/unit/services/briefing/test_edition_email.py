@@ -9,6 +9,7 @@ its tests also prove it never rasterizes or uploads a second copy.
 
 from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
@@ -156,7 +157,7 @@ def render(payload: BriefingPayload, **overrides: Any) -> str:
     return render_edition_email(payload, **kwargs)
 
 
-RENDER_KEY = "9f2c4b7e1a6d4c8e9b3f5a7d2c1e8b4f"
+RENDER_KEY = uuid4().hex
 
 
 async def host(payload: BriefingPayload, *, crop_to_paper: bool = False) -> str:

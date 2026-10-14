@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -33,7 +34,7 @@ def _make_store():
 
 
 @pytest.fixture(autouse=True)
-def previous_actions_lookup():
+def previous_actions_lookup() -> Iterator[AsyncMock]:
     """Stub the already-shown-suggestions read so no test reaches Mongo.
 
     Tests that care about dedup set its return value or side effect.
