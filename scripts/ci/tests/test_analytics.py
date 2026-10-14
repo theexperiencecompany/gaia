@@ -853,13 +853,55 @@ def test_the_lane_scope_is_the_files_that_define_the_contract() -> None:
         assert not re.search(scope, path), path
 
 
-def test_the_ci_job_runs_the_check_with_the_secret_and_reads_the_lane_scope() -> None:
+def test_the_ci_job_syncs_on_master_checks_prs_against_master_and_reads_the_lane_scope() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text())
     job = workflow["jobs"]["analytics-check"]
-    (step,) = [s for s in job["steps"] if "analytics.py" in str(s.get("run", ""))]
-    assert step["run"] == "python3 scripts/ci/analytics.py check"
-    assert step["env"]["POSTHOG_PERSONAL_API_KEY"] == "${{ secrets.POSTHOG_PERSONAL_API_KEY }}"
+    sync, check = [s for s in job["steps"] if "analytics.py" in str(s.get("run", ""))]
+    secret = "${{ secrets.POSTHOG_PERSONAL_API_KEY }}"
+    assert check["run"].startswith("python3 scripts/ci/analytics.py check ")
+    assert "--loop-catalog" in check["run"]
+    assert "pull_request" in check["env"]["LOOP_CATALOG"]
+    assert check["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
+    assert sync["run"] == "python3 scripts/ci/analytics.py sync-loop-alert --apply"
+    assert "github.event_name == 'push'" in sync["if"]
+    assert "default_branch" in sync["if"]
+    assert sync["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
     assert "has_analytics" in job["if"]
     (detect,) = [s for s in workflow["jobs"]["changes"]["steps"] if s.get("id") == "detect"]
     assert "l.name === 'analytics-check'" in detect["run"]
     assert "has_analytics=$ANALYTICS" in detect["run"]
+
+
+class _CheckedProject(_LoopProject):
+    """The rest of the reads check makes, answered so only the loop check can fail."""
+
+    def project(self) -> dict[str, Any]:
+        return {}
+
+    def probe(self, filter_test_accounts: bool) -> int:
+        return 1
+
+    def actions(self) -> list[dict[str, Any]]:
+        return []
+
+
+@pytest.mark.parametrize(("held_to_live", "code"), [(True, 0), (False, 1)])
+def test_the_loop_alert_is_held_to_the_catalog_passed_as_live(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, held_to_live: bool, code: int
+) -> None:
+    """A PR's new events must not fail it while the live alert still matches master's catalog."""
+    live_doc = json.loads(json.dumps(CATALOG_DOC))
+    next(e for e in live_doc["events"] if e["event"] == "chat:message_submitted")[
+        "budget_per_user_day"
+    ] = 300
+    live_catalog = tmp_path / "live-catalog.json"
+    live_catalog.write_text(json.dumps(live_doc))
+    monkeypatch.setattr(analytics, "CATALOG_JSON", tmp_path / "branch-catalog.json")
+    (tmp_path / "branch-catalog.json").write_text(json.dumps(CATALOG_DOC))
+    project = _CheckedProject(*_live_loop(analytics.Catalog.from_doc(live_doc)))
+    monkeypatch.setattr(analytics, "client_from_env", lambda scopes: project)
+    for clean in ("_insight_failures", "settings_diff", "action_diff", "coverage_gaps"):
+        monkeypatch.setattr(analytics, clean, lambda *a: [])
+
+    args = ["--loop-catalog", str(live_catalog)] if held_to_live else []
+    assert analytics.main(["check", *args]) == code
