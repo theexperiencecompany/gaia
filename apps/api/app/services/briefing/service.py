@@ -43,6 +43,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
     NotificationChannel,
+    ProactiveMessageClass,
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
@@ -281,6 +282,7 @@ async def _post_to_chat(
         channel=channel,
         text=caption,
         origin=f"{kind} brief",
+        message_class=ProactiveMessageClass.ROUTINE,
         image=PlatformImage(url=image_url, filename=f"gaia-{kind}-brief.png"),
     )
 

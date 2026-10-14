@@ -11381,6 +11381,8 @@ export interface components {
             created_at?: string;
             /** Id */
             id?: string;
+            /** @default routine */
+            message_class?: components["schemas"]["ProactiveMessageClass"];
             /** Metadata */
             metadata?: {
                 [key: string]: unknown;
@@ -12142,6 +12144,12 @@ export interface components {
          */
         Priority: "high" | "medium" | "low" | "none";
         /**
+         * ProactiveMessageClass
+         * @description What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.
+         * @enum {string}
+         */
+        ProactiveMessageClass: "routine" | "user_timed" | "user_triggered";
+        /**
          * ProjectCreate
          * @description Model for creating projects
          */
@@ -12628,7 +12636,8 @@ export interface components {
          * @description A daily window, on the user's own clock, when GAIA holds proactive pushes.
          *
          *     Whole local hours; the window may span midnight (start 22, end 8 is 22:00 to
-         *     08:00). The end hour is the first hour outside the window.
+         *     08:00). The end hour is the first hour outside the window. What the window
+         *     means for a message is app/services/delivery/quiet_hours.py's to decide.
          */
         QuietHours: {
             /** End Hour */
@@ -16474,6 +16483,7 @@ export type PlatformType = components['schemas']['PlatformType'];
 export type PollPairingRequest = components['schemas']['PollPairingRequest'];
 export type PollPairingResponse = components['schemas']['PollPairingResponse'];
 export type Priority = components['schemas']['Priority'];
+export type ProactiveMessageClass = components['schemas']['ProactiveMessageClass'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
 export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];

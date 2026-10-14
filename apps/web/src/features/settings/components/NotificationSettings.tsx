@@ -1,6 +1,6 @@
 "use client";
 
-import { NOTIFICATION_CHANNELS } from "@gaia/shared";
+import { EMAIL_CHANNEL_DESCRIPTION, NOTIFICATION_CHANNELS } from "@gaia/shared";
 import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
@@ -97,9 +97,11 @@ export default function NotificationSettings() {
               key={channel}
               label={label}
               description={
-                isAvailable
-                  ? "Send notifications to this channel"
-                  : "Connect in Linked Accounts to enable"
+                !isAvailable
+                  ? "Connect in Linked Accounts to enable"
+                  : channel === "email"
+                    ? EMAIL_CHANNEL_DESCRIPTION
+                    : "Send notifications to this channel"
               }
               icon={
                 <Image

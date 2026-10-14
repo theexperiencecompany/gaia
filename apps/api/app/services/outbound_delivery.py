@@ -39,6 +39,8 @@ class OutboundResult(StrEnum):
     PUBLISHED = "published"
     SKIPPED = "skipped"
     FAILED = "failed"
+    #: Held for the user's quiet hours: a scheduled job publishes it when they end.
+    DEFERRED = "deferred"
 
 
 def _envelope_fields(envelope: OutboundMessageEnvelope, user_id: str) -> dict[str, str]:

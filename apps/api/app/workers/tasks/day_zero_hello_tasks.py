@@ -14,6 +14,7 @@ from uuid import uuid4
 from app.agents.core.background.platform_chat import post_to_platform_chat
 from app.agents.prompts.briefing_prompts import build_day_zero_hello_prompt
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.user_models import UserDocument
@@ -119,6 +120,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             channel=channel,
             text=NEW_MESSAGE_BREAKER.join(bubbles),
             origin="day-zero hello",
+            message_class=ProactiveMessageClass.USER_TRIGGERED,
         )
         if result is not OutboundResult.PUBLISHED:
             # Nothing landed, so leave the once-ever flag unset: a later relink can

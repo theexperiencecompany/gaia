@@ -6,22 +6,35 @@ turn reads: the comms graph's checkpoint, written as the tools node.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis.aioredis
 from langchain_core.messages import AIMessage, HumanMessage
+import pytest
 
 from app.agents.core.background.thread_record import (
     record_exchange_in_thread,
     record_platform_delivery,
 )
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
+from app.constants.notifications import (
+    PROACTIVE_RECORD_JOB_PREFIX,
+    PROACTIVE_RECORD_RETRY_DELAY,
+    PROACTIVE_RECORD_TASK,
+)
 from tests.helpers import captured_wide_event
+
+# Real SET NX / WATCH semantics for the executor busy lock the write takes.
+pytestmark = pytest.mark.usefixtures("fake_redis")
 
 MODULE = "app.agents.core.background.thread_record"
 CONVERSATION_ID = "conv-1"
 
 
-def _fake_comms_graph() -> MagicMock:
+def _fake_comms_graph(*, interrupted: bool = False) -> MagicMock:
     graph = MagicMock()
     graph.aupdate_state = AsyncMock()
+    task = MagicMock(interrupts=(MagicMock(),) if interrupted else ())
+    graph.aget_state = AsyncMock(return_value=MagicMock(tasks=(task,)))
     return graph
 
 
@@ -38,7 +51,7 @@ class TestRecordPlatformDelivery:
 
         # The comms graph specifically — a wrong graph writes into a thread
         # whose next turn would read a message it never sent.
-        get_graph.assert_awaited_once_with("comms_agent")
+        assert {call.args for call in get_graph.await_args_list} == {("comms_agent",)}
         graph.aupdate_state.assert_awaited_once()
         call = graph.aupdate_state.await_args
         assert call.args[0] == {"configurable": {"thread_id": CONVERSATION_ID}}
@@ -69,6 +82,67 @@ class TestRecordPlatformDelivery:
         assert error["msg"] == (f"{LogTag.AGENT} Failed to record messages in conversation thread")
         assert error["conversation_id"] == CONVERSATION_ID
         assert error["error"] == "checkpoint down"
+
+
+class TestProactiveWritesWaitForTheThread:
+    """A proactive record never races a run or lands on a parked interrupt."""
+
+    async def _record(self, graph: MagicMock) -> AsyncMock:
+        enqueue = AsyncMock()
+        with (
+            _patch_graph(graph),
+            patch(f"{MODULE}.enqueue_worker_job", enqueue),
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock()),
+        ):
+            await record_platform_delivery(CONVERSATION_ID, "Digest is ready.")
+        return enqueue
+
+    async def test_a_free_thread_is_written_now_and_its_lock_released(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        graph = _fake_comms_graph()
+        enqueue = await self._record(graph)
+
+        graph.aupdate_state.assert_awaited_once()
+        enqueue.assert_not_awaited()
+        assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION_ID}") is None
+
+    async def test_a_running_executor_hands_the_write_to_a_retrying_job(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        lock = f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION_ID}"
+        await fake_redis.set(lock, "stream-1:task-1")
+        graph = _fake_comms_graph()
+        enqueue = await self._record(graph)
+
+        graph.aupdate_state.assert_not_awaited()
+        (_pool, task, conversation_id, text) = enqueue.await_args.args
+        assert (task, conversation_id, text) == (
+            PROACTIVE_RECORD_TASK,
+            CONVERSATION_ID,
+            "Digest is ready.",
+        )
+        assert enqueue.await_args.kwargs["_defer_by"] == PROACTIVE_RECORD_RETRY_DELAY
+        assert enqueue.await_args.kwargs["_job_id"].startswith(PROACTIVE_RECORD_JOB_PREFIX)
+        # The run's lock is untouched.
+        assert await fake_redis.get(lock) == "stream-1:task-1"
+
+    async def test_a_pending_interrupt_defers_the_write_and_frees_the_lock(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        graph = _fake_comms_graph(interrupted=True)
+        enqueue = await self._record(graph)
+
+        graph.aupdate_state.assert_not_awaited()
+        enqueue.assert_awaited_once()
+        assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION_ID}") is None
+
+    async def test_a_failed_state_read_is_retried_in_a_job(self) -> None:
+        graph = _fake_comms_graph()
+        graph.aget_state = AsyncMock(side_effect=RuntimeError("checkpointer down"))
+        enqueue = await self._record(graph)
+
+        enqueue.assert_awaited_once()
 
 
 class TestRecordExchangeInThread:

@@ -20,6 +20,7 @@ import httpx
 from standardwebhooks.webhooks import Webhook
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
+from app.constants.workflows import WorkflowDelivery
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import (
     OnboardingNeed,
@@ -246,6 +247,7 @@ def workflow(stack: Stack) -> None:
         trigger_config=TriggerConfig(type=TriggerType.MANUAL),
         steps=[WorkflowStep(title="reply", description=SIM_REPLY)],
         generate_immediately=False,
+        delivery=WorkflowDelivery.NOW,
     )
     with stack.client() as api:
         created = _expect(

@@ -20,6 +20,7 @@ from pydantic import (
 
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import MongoDocument
+from app.models.legacy_delivery import LEGACY_WORKFLOW_NOTIFY_KEY, delivery_from_legacy_flag
 from app.models.scheduler_models import (
     BaseScheduledTask,
     DeactivationReason,
@@ -756,19 +757,6 @@ class PlaybookDiscard(BaseModel):
     details: dict[str, str] = Field(default_factory=dict)
 
 
-class LegacyDeliveryFlag(BaseModel):
-    """The flag a workflow stored before delivery modes; the old schema defaulted it to True."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    notify_on_completion: bool = True
-
-    @property
-    def delivery(self) -> WorkflowDelivery:
-        """What the flag meant: False ran silently, True pushed the result."""
-        return WorkflowDelivery.NOW if self.notify_on_completion else WorkflowDelivery.SILENT
-
-
 class WorkflowDocument(Workflow, MongoDocument):
     """A workflow as stored in MongoDB.
 
@@ -796,9 +784,9 @@ class WorkflowDocument(Workflow, MongoDocument):
         API reads every existing workflow the way it ran until now.
         scripts/migrate_workflow_delivery.py rewrites the records for good.
         """
-        if isinstance(data, dict) and "delivery" not in data:
-            return {**data, "delivery": LegacyDeliveryFlag.model_validate(data).delivery}
-        return data
+        return delivery_from_legacy_flag(
+            data, flag_key=LEGACY_WORKFLOW_NOTIFY_KEY, delivery_key="delivery"
+        )
 
     #: Runs declined to write a playbook at this workflow hash. Past
     #: PLAYBOOK_DECLINE_LIMIT on the same hash the check brief stops asking;

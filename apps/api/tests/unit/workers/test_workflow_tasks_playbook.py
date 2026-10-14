@@ -31,6 +31,7 @@ from app.constants.agents import (
 )
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
 from app.models.playbook_models import (
     PlaybookDocument,
@@ -1984,6 +1985,7 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
                 user_id=USER_ID,
                 notification_text="Agenda sent.",
                 origin='workflow "Daily agenda" (id wf_1)',
+                message_class=ProactiveMessageClass.ROUTINE,
             )
         ]
 
