@@ -3,11 +3,12 @@
 Every seam is faked; provision_existing_user itself runs for real.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 
-from app.models.user_models import UserDocument
+from app.models.user_models import BriefingBootstrap, UserDocument
 from app.services.briefing import context, rollout
 from app.services.briefing.rollout import provision_existing_user
 from shared.py.analytics import UserId
@@ -41,8 +42,18 @@ class FakeUserRepo:
         self.bootstrap_calls.append(user_id)
 
 
+class FakeBriefingRepo:
+    def __init__(self) -> None:
+        self.briefed = False
+
+    async def has_daily_briefing(self, user_id: str) -> bool:
+        assert user_id == USER_ID
+        return self.briefed
+
+
 class Harness:
     def __init__(self) -> None:
+        self.briefings = FakeBriefingRepo()
         self.has_goal = True
         self.goal_calls: list[tuple[str, UserDocument]] = []
         self.provisioned: list[str] = []
@@ -75,7 +86,34 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     monkeypatch.setattr(rollout, "capture", fake_capture)
     monkeypatch.setattr(rollout, "user_integration_repository", h.integrations)
     monkeypatch.setattr(rollout, "user_repository", h.users)
+    monkeypatch.setattr(rollout, "briefing_repository", h.briefings)
     return h
+
+
+@pytest.mark.unit
+class TestReRun:
+    """A second rollout pass leaves a user's held or briefed state exactly as it was."""
+
+    async def test_a_user_already_held_keeps_their_grace_window(self, harness: Harness) -> None:
+        harness.has_goal = False
+        harness.users.user = UserDocument(
+            id=USER_ID,
+            briefing_bootstrap=BriefingBootstrap(
+                pending=True, since=datetime(2026, 10, 1, tzinfo=UTC)
+            ),
+        )
+
+        assert await provision_existing_user(USER_ID) == "already_rolled_out"
+        assert harness.users.bootstrap_calls == []
+        assert harness.provisioned == [USER_ID]
+
+    async def test_a_user_already_briefed_is_never_held(self, harness: Harness) -> None:
+        harness.has_goal = False
+        harness.briefings.briefed = True
+
+        assert await provision_existing_user(USER_ID) == "already_rolled_out"
+        assert harness.users.bootstrap_calls == []
+        assert harness.captured == []
 
 
 @pytest.mark.unit

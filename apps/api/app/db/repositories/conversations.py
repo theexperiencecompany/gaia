@@ -45,6 +45,7 @@ from app.models.conversation_models import (
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
+    UserMessageDateRow,
     _ConversationIdRow,
     _MessageProjectionRow,
     _SourceRow,
@@ -566,20 +567,30 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else ConversationSource.coerce(row.source)
 
-    async def has_user_message_since(self, user_id: str, since: datetime) -> bool:
-        """Report whether the user sent any message in any conversation at/after since.
+    async def latest_user_message_since(self, user_id: str, since: datetime) -> datetime | None:
+        """Return when the user last sent a message in any conversation, if at/after since.
 
         Bot chats bypass the auth middleware that bumps last_active_at, so this is their
-        reactivation signal. Message dates are UTC ISO strings, so $gte is a string comparison.
+        activity signal. Message dates are UTC ISO strings, so $gte is a string comparison.
         """
         since_iso = since.astimezone(UTC).isoformat()
-        document = await self._find_one(
-            {
-                "user_id": user_id,
-                "messages": {"$elemMatch": {"type": "user", "date": {"$gte": since_iso}}},
-            }
+        rows = await self._aggregate(
+            [
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "messages": {"$elemMatch": {"type": "user", "date": {"$gte": since_iso}}},
+                    }
+                },
+                {"$unwind": "$messages"},
+                {"$match": {"messages.type": "user", "messages.date": {"$gte": since_iso}}},
+                {"$sort": {"messages.date": -1}},
+                {"$limit": 1},
+                {"$project": {"_id": False, "date": "$messages.date"}},
+            ],
+            UserMessageDateRow,
         )
-        return document is not None
+        return datetime.fromisoformat(rows[0].date) if rows else None
 
     async def list_bot_replies_since(
         self, user_id: str, since: datetime, *, limit: int

@@ -28,12 +28,15 @@ from app.constants.briefing import (
     BOOTSTRAP_GRACE_DAYS,
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
+    DAILY_KICKER,
     MAX_BRIEF_ITEMS,
     MAX_VOICE_ATTEMPTS,
     POSTAL_FAMILY,
     WEEKLY_FAMILY,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
+    WEEKLY_KICKER,
     BriefingBag,
+    BriefingRunOutcome,
     hue_for_day,
 )
 from app.constants.notifications import (
@@ -72,7 +75,7 @@ from app.models.notification.notification_models import (
 )
 from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import TodoDocument
-from app.models.user_models import AuthenticatedUser, UserDocument
+from app.models.user_models import AuthenticatedUser, ShuffleBag, UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing import chat_sync, context, dormancy
 from app.services.briefing.context import UserClock
@@ -345,7 +348,7 @@ async def _deliver(
             },
         )
     )
-    delivered = [c.channel_type for c in record.channels]
+    delivered = [c.channel_type for c in record.channels if c.reached_user]
     if chat_post:
         chat_channel, image_url = chat_post
         result = await _post_to_chat(user, chat_channel, skim_text, image_url, kind)
@@ -354,9 +357,11 @@ async def _deliver(
     return delivered
 
 
-_NEEDS_YOU_SECTION_TITLE = "NEEDS YOU"
-_HELD_SECTION_TITLE = "WHILE YOU WERE AWAY"
-_WORK_SECTION_TITLE = "GAIA'S WORK"
+# Display casing: every surface shows these as written; an edition that sets its
+# section heads in capitals does so in its own CSS.
+_NEEDS_YOU_SECTION_TITLE = "Needs you"
+_HELD_SECTION_TITLE = "While you were away"
+_WORK_SECTION_TITLE = "GAIA's work"
 _SECTION_NUMERALS = ("I", "II", "III")
 
 
@@ -595,7 +600,7 @@ async def _clear_bootstrap(user: UserDocument) -> None:
         await user_repository.clear_briefing_bootstrap(user.id)
 
 
-async def _wake_or_skip(user_id: str, user: UserDocument) -> dormancy.DormancyState | None:
+async def _wake_or_skip(user: UserDocument) -> dormancy.DormancyState | None:
     """Wake a dormant loop on a reactivation signal (user active, any message).
 
     Otherwise None means skip before any LLM cost. The daily run is the only writer of
@@ -604,11 +609,11 @@ async def _wake_or_skip(user_id: str, user: UserDocument) -> dormancy.DormancySt
     dstate = dormancy.state_from_user(user)
     if not dstate.dormant_since:
         return dstate
-    if await dormancy.reactivation_signal_since(user_id, dstate.dormant_since):
-        await dormancy.clear_dormancy(user_id)
-        log.info("briefing.dormancy_cleared", user_id=user_id)
+    if await dormancy.latest_activity_since(user, dstate.dormant_since) is not None:
+        await dormancy.clear_dormancy(user.id)
+        log.info("briefing.dormancy_cleared", user_id=user.id)
         return dormancy.DormancyState(idle_days=0, date=None, dormant_since=None)
-    log.info("briefing.dormant_skip", user_id=user_id)
+    log.info("briefing.dormant_skip", user_id=user.id)
     return None
 
 
@@ -619,30 +624,45 @@ def _calendar_note(events: list[BriefingEvent]) -> str:
     return "Today's calendar (user-local 24h times):\n" + "\n".join(lines)
 
 
-async def _draw_from_bag(user_id: str, bag: BriefingBag, weights: Mapping[str, int]) -> str:
-    """Draw today's member from one of the user's shuffle bags.
+@dataclass(frozen=True)
+class _BagDraw:
+    """Today's member of one shuffle bag and the state that continues its pass."""
 
-    The new state is persisted at once so tomorrow continues the pass.
+    bag: BriefingBag
+    member: str
+    next_state: ShuffleBag
+
+
+def _draw_from_bag(user: UserDocument, bag: BriefingBag, weights: Mapping[str, int]) -> _BagDraw:
+    """Draw today's member from one of the user's shuffle bags, off the loaded user.
+
+    Nothing is persisted here: _publish saves the draw only once the brief went out,
+    so a failed run does not burn a member of the pass.
     """
-    state = await user_repository.get_briefing_bag(user_id, bag)
+    state = (user.briefing_shuffle_bags or {}).get(bag)
     member, next_state = draw(state, weights, random.SystemRandom())
-    await user_repository.set_briefing_bag(user_id, bag, next_state)
-    log.info("briefing.bag_drawn", user_id=user_id, bag=bag.value, member=member)
-    return member
+    return _BagDraw(bag=bag, member=member, next_state=next_state)
 
 
-async def _assign_edition(user_id: str, payload: BriefingPayload, family: str) -> None:
-    """Record the edition family on the payload, and for Air Mail its stamp."""
+async def _persist_draws(user_id: str, draws: list[_BagDraw]) -> None:
+    for bag_draw in draws:
+        await user_repository.set_briefing_bag(user_id, bag_draw.bag, bag_draw.next_state)
+        log.info(
+            "briefing.bag_drawn", user_id=user_id, bag=bag_draw.bag.value, member=bag_draw.member
+        )
+
+
+def _assign_edition(user: UserDocument, payload: BriefingPayload, family: str) -> list[_BagDraw]:
+    """Record the edition family on the payload, and for Air Mail its stamp.
+
+    Returns the stamp draw, persisted once the brief is delivered.
+    """
     payload.template_family = family
     if family != POSTAL_FAMILY:
-        return
-    stamp_cities = hosted_stamp_weights()
-    if not stamp_cities:
-        # Until scripts/upload_city_stamps.py has run, Air Mail draws its stamp
-        # from the template's own vendored city art, as before the city stamps.
-        log.warning("briefing.no_hosted_stamps", user_id=user_id)
-        return
-    payload.stamp_city = await _draw_from_bag(user_id, BriefingBag.STAMP_CITY, stamp_cities)
+        return []
+    stamp = _draw_from_bag(user, BriefingBag.STAMP_CITY, hosted_stamp_weights())
+    payload.stamp_city = stamp.member
+    return [stamp]
 
 
 def _user_todos_note(open_count: int, open_titles: list[str]) -> str:
@@ -691,7 +711,7 @@ def _daily_payload(
     is_winback: bool,
 ) -> BriefingPayload:
     return BriefingPayload(
-        kicker="THE MORNING BRIEF",
+        kicker=DAILY_KICKER,
         date=clock.date_str,
         headline=voice.headline,
         lede=voice.lede,
@@ -707,20 +727,35 @@ def _daily_payload(
     )
 
 
+@dataclass(frozen=True)
+class _Edition:
+    """The edition family a brief renders in, and the bag draws spent choosing it."""
+
+    family: str
+    draws: list[_BagDraw]
+
+
+_NOTIFICATION_KINDS: dict[BriefingKind, str] = {
+    BRIEFING_KIND_DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
+    BRIEFING_KIND_WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
+}
+
+
 async def _publish(
     user: UserDocument,
     clock: UserClock,
     kind: BriefingKind,
     payload: BriefingPayload,
-    notification_kind: str,
-    family: str,
+    edition: _Edition,
 ) -> BriefingModel:
     """Draw the edition, render and store the brief, deliver it and report where it went.
 
     The full edition is rendered and hosted first, so a render failure stores and sends
-    nothing; the stored brief keeps its URL for the in-app page and the email.
+    nothing; the stored brief keeps its URL for the in-app page and the email. The
+    shuffle-bag draws (the family's and the stamp's) persist only after delivery.
     """
-    await _assign_edition(user.id, payload, family)
+    family = edition.family
+    draws = [*edition.draws, *_assign_edition(user, payload, family)]
     # A fresh random key per render: the hosted URL reaches emails and public links.
     render_key = uuid4().hex
     edition_image_url = await host_edition_image(
@@ -729,8 +764,9 @@ async def _publish(
     briefing = await briefing_repository.upsert_briefing(
         user.id, clock.date_str, kind, payload, edition_image_url=edition_image_url
     )
-    channels = await _deliver(user, briefing, payload, notification_kind, render_key)
+    channels = await _deliver(user, briefing, payload, _NOTIFICATION_KINDS[kind], render_key)
     await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
+    await _persist_draws(user.id, draws)
     capture(
         UserId(user.id),
         BriefingSent(
@@ -745,34 +781,44 @@ async def _publish(
     return briefing
 
 
-async def run_daily_briefing(user_id: str) -> None:
-    """Look back, plan, and deliver one daily briefing for the user."""
+async def _already_delivered(user_id: str, clock: UserClock, kind: BriefingKind) -> bool:
+    """One brief per user, local date and kind: a second run that day sends nothing."""
+    if await briefing_repository.was_delivered(user_id, clock.date_str, kind):
+        log.info("briefing.already_delivered_skip", user_id=user_id, kind=kind)
+        return True
+    return False
+
+
+async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
+    """Look back, plan, and deliver one daily briefing for the user; return how it ended."""
     log.set(component="briefing", operation="run_daily_briefing", user_id=user_id)
     user = await user_repository.get(user_id)
     if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")
     clock = context.resolve_clock(user.timezone)
+    if await _already_delivered(user_id, clock, BRIEFING_KIND_DAILY):
+        return BriefingRunOutcome.ALREADY_DELIVERED
 
-    dstate = await _wake_or_skip(user_id, user)
+    dstate = await _wake_or_skip(user)
     if dstate is None:
-        return
+        return BriefingRunOutcome.DORMANT
 
     goal_block, has_goal = await context.format_goal_block(user_id, user)
     if _bootstrap_should_skip(user, has_goal):
         log.info("briefing.bootstrap_pending_skip", user_id=user_id)
-        return
+        return BriefingRunOutcome.BOOTSTRAP_PENDING
 
     # Gather the world the agent must see.
     yesterday = await context.get_yesterday_payload(user_id, before_date=clock.date_str)
     since = context.day_start_utc(clock, days_ago=1)
     lookback_block = await context.format_lookback_block(user_id, yesterday, since)
-    winback = await context.compute_winback_state(user_id)
+    winback = await context.compute_winback_state(user)
     is_first = not await briefing_repository.has_daily_briefing(user_id)
 
     # Gone-quiet backoff: a winback already went out and the user is still silent.
     if winback.should_back_off:
         log.info("briefing.winback_backoff", user_id=user_id, unacknowledged=winback.unacknowledged)
-        return
+        return BriefingRunOutcome.WINBACK_BACKOFF
 
     # Facts are assembled by code from tracked-work state; the model only voices them.
     work = await context.gather_tracked_work(user_id, since)
@@ -817,13 +863,13 @@ async def run_daily_briefing(user_id: str) -> None:
         ).model_copy(update={"calendar": calendar, "tallies": tallies}),
     )
     await _link_voiced_items(user_id, payload, facts.link_targets)
+    family = _draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
     await _publish(
         user,
         clock,
         BRIEFING_KIND_DAILY,
         payload,
-        NOTIFICATION_KIND_BRIEFING_DAILY,
-        await _draw_from_bag(user_id, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS),
+        _Edition(family=family.member, draws=[family]),
     )
     if facts.carried_ids:
         await pending_brief_items_repository.consume(user_id, facts.carried_ids)
@@ -833,27 +879,31 @@ async def run_daily_briefing(user_id: str) -> None:
     if wind_down == dormancy.WIND_DOWN_FINAL:
         await dormancy.enter_dormancy(user_id)
         log.info("briefing.dormancy_entered", user_id=user_id, idle_days=idle_days)
+    return BriefingRunOutcome.SENT
 
 
-async def run_weekly_digest(user_id: str) -> None:
-    """Zoom out on the week: completed work, GAIA's and the user's."""
+async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
+    """Zoom out on the week: completed work, GAIA's and the user's; return how it ended."""
     log.set(component="briefing", operation="run_weekly_digest", user_id=user_id)
     user = await user_repository.get(user_id)
     if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")
     clock = context.resolve_clock(user.timezone)
+    if await _already_delivered(user_id, clock, BRIEFING_KIND_WEEKLY):
+        return BriefingRunOutcome.ALREADY_DELIVERED
 
     # A dormant loop has nothing to zoom out on; the daily run owns reactivation.
     dstate = dormancy.state_from_user(user)
-    if dstate.dormant_since and not await dormancy.reactivation_signal_since(
-        user_id, dstate.dormant_since
+    if (
+        dstate.dormant_since
+        and await dormancy.latest_activity_since(user, dstate.dormant_since) is None
     ):
         log.info("briefing.weekly_dormant_skip", user_id=user_id)
-        return
+        return BriefingRunOutcome.DORMANT
 
-    since = context.day_start_utc(clock, days_ago=7)
-    completed = await context.gather_completed_since(user_id, since)
-    week = await context.gather_week(user_id, clock)
+    # One window for the prose and the tallies: this week, Monday to now.
+    completed = await context.gather_completed_since(user_id, context.week_start_utc(clock))
+    week = await context.gather_week(user_id, clock, completed)
 
     prompt = build_weekly_digest_prompt(
         date_local=clock.date_str,
@@ -866,6 +916,8 @@ async def run_weekly_digest(user_id: str) -> None:
         payload = await _generate_payload(
             build_user_context(user, auth_provider=None), clock, prompt, BRIEFING_KIND_WEEKLY
         )
+    payload.kicker = WEEKLY_KICKER
+    payload.date = clock.date_str
     payload.hue = hue_for_day(clock.day_of_year)
     payload.generated_at = clock.now_local.strftime("%-I:%M %p")
     payload.week = week
@@ -873,5 +925,10 @@ async def run_weekly_digest(user_id: str) -> None:
         done_by_you=sum(d.you for d in week.days), done_by_gaia=sum(d.gaia for d in week.days)
     )
     await _publish(
-        user, clock, BRIEFING_KIND_WEEKLY, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY, WEEKLY_FAMILY
+        user,
+        clock,
+        BRIEFING_KIND_WEEKLY,
+        payload,
+        _Edition(family=WEEKLY_FAMILY, draws=[]),
     )
+    return BriefingRunOutcome.SENT

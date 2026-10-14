@@ -281,7 +281,8 @@ class TestUpdateUserName:
 class TestUpdateTimezone:
     """PATCH /api/v1/user/timezone."""
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_success(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = UserDocument(timezone="America/New_York")
         with (
@@ -301,7 +302,8 @@ class TestUpdateTimezone:
             UserId(FAKE_USER.user_id), ProfileUpdated(changed_field_count=1)
         )
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_utc(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = UserDocument(timezone="UTC")
         response = await client.patch(
@@ -317,7 +319,8 @@ class TestUpdateTimezone:
         )
         assert response.status_code == 400
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_user_not_found(
         self, mock_update: AsyncMock, client: AsyncClient
     ):
@@ -332,7 +335,8 @@ class TestUpdateTimezone:
         response = await client.patch(f"{USER_BASE}/timezone")
         assert response.status_code == 422
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_db_error(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.side_effect = Exception("db error")
         response = await client.patch(

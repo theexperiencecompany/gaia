@@ -55,6 +55,24 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         """Whether the user has ever received a daily briefing (first-briefing gate)."""
         return await self._count({"user_id": user_id, "kind": BRIEFING_KIND_DAILY}) > 0
 
+    async def was_delivered(self, user_id: str, date: str, kind: BriefingKind) -> bool:
+        """Whether the (user, date, kind) brief already reached at least one channel.
+
+        A brief stored but delivered nowhere (its run failed mid-delivery) does not
+        count, so a retry can still send it.
+        """
+        return (
+            await self._count(
+                {
+                    "user_id": user_id,
+                    "date": date,
+                    "kind": kind,
+                    "delivered_channels.0": {"$exists": True},
+                }
+            )
+            > 0
+        )
+
     # ----------------------------------------------------------------- writes
 
     async def upsert_briefing(

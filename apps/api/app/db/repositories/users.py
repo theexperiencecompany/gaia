@@ -786,10 +786,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     # ------------------------------------------------------------ briefing engine
 
-    async def get_last_active_at(self, user_id: str) -> datetime | None:
-        user = await self.get(user_id)
-        return user.last_active_at if user else None
-
     async def clear_briefing_bootstrap(self, user_id: str) -> None:
         """Clear the pending-bootstrap marker once a real briefing goes out."""
         await self._apply_raw_update_unfetched(
@@ -798,11 +794,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             scope=REPO_GLOBAL_SCOPE,
             doc_id=user_id,
         )
-
-    async def get_briefing_bag(self, user_id: str, bag: BriefingBag) -> ShuffleBag | None:
-        """Return the user's current pass of one briefing shuffle bag, if any."""
-        user = await self.get(user_id)
-        return (user.briefing_shuffle_bags or {}).get(bag) if user else None
 
     async def set_briefing_bag(self, user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
         """Persist one shuffle bag's advanced state (see shuffle_bag.draw)."""
@@ -816,10 +807,11 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def set_briefing_bootstrap_pending(self, user_id: str) -> None:
         """Hold briefings for a sparse existing-user rollout.
 
-        Held until a goal arrives or the grace window elapses.
+        Held until a goal arrives or the grace window elapses. Only a user with no
+        marker yet is stamped, so a re-run never restarts a running grace window.
         """
         await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id)},
+            {"_id": self._id_value(user_id), "briefing_bootstrap": {"$exists": False}},
             {
                 "$set": {
                     "briefing_bootstrap": BriefingBootstrap(

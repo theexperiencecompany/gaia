@@ -160,6 +160,13 @@ def persisting_repo(mock_repo: MagicMock, sample_user_id: str) -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
+def provision() -> Iterator[AsyncMock]:
+    """Stub briefing provisioning; the tests that care assert on it."""
+    with patch(f"{SERVICE}.provision_briefing_workflows", AsyncMock(return_value=[])) as mock:
+        yield mock
+
+
+@pytest.fixture(autouse=True)
 def no_llm_question() -> Iterator[MagicMock]:
     """Stub the first-question resolver so no test reaches a model or Redis.
 
@@ -228,6 +235,20 @@ class TestCompleteOnboarding:
 
         assert result["_id"] == sample_user_id
         assert result["user_id"] == sample_user_id
+
+    async def test_a_new_user_gets_the_briefing_workflows(
+        self,
+        mock_repo: MagicMock,
+        provision: AsyncMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_user: UserDocument,
+    ) -> None:
+        mock_repo.complete_onboarding.return_value = sample_user
+
+        await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        provision.assert_awaited_once_with(sample_user_id)
 
     async def test_persists_the_completed_phase(
         self,
@@ -447,6 +468,7 @@ class TestCompleteOnboarding:
     async def test_a_replay_captures_nothing(
         self,
         mock_repo: MagicMock,
+        provision: AsyncMock,
         sample_user: UserDocument,
         sample_user_id: str,
         sample_onboarding_request: OnboardingRequest,
@@ -459,6 +481,7 @@ class TestCompleteOnboarding:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         capture.assert_not_called()
+        provision.assert_not_awaited()
 
     async def test_user_not_found(
         self,

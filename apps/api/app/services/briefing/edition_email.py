@@ -27,7 +27,6 @@ from shared.py.wide_events import log
 # Edition numbering is cosmetic furniture; anchor it to a fixed epoch so the
 # number is stable and monotonic across days without any stored counter.
 _EDITION_EPOCH = date_cls(2026, 1, 1)
-_PUBLIC_APP_URL = "https://heygaia.io"
 
 # GAIA email palette: dark-first, single cyan accent (matches DESIGN.md).
 _BG = "#000000"
@@ -38,23 +37,9 @@ _MUTED = "#a1a1aa"
 _HAIRLINE = "#27272a"
 
 
-def _public_app_url() -> str:
-    """Return the app URL to link to from email — never localhost.
-
-    An email is always opened away from the dev host, so a localhost FRONTEND_URL must
-    fall back to the public origin or every link in the mail is dead.
-    """
-    url = (settings.FRONTEND_URL or "").rstrip("/")
-    if not url or "localhost" in url or "127.0.0.1" in url:
-        return _PUBLIC_APP_URL
-    return url
-
-
 def _edition_no(iso_date: str) -> int:
-    try:
-        return (date_cls.fromisoformat(iso_date) - _EDITION_EPOCH).days + 1
-    except ValueError:
-        return 1
+    """Return the edition number: days since the epoch; an unparseable date raises."""
+    return (date_cls.fromisoformat(iso_date) - _EDITION_EPOCH).days + 1
 
 
 def _action_items(payload: BriefingPayload) -> list[BriefingItem]:
@@ -69,8 +54,7 @@ def _resolve_link(link: str | None) -> str | None:
     # URLs, not an insecure outbound request.
     if link.startswith(("http://", "https://")):  # NOSONAR python:S5332
         return link
-    base = _public_app_url()
-    return f"{base}/{link.lstrip('/')}"
+    return f"{settings.FRONTEND_URL}/{link.lstrip('/')}"
 
 
 def _action_strip(payload: BriefingPayload, brief_url: str, unsubscribe_url: str) -> str:
@@ -79,7 +63,7 @@ def _action_strip(payload: BriefingPayload, brief_url: str, unsubscribe_url: str
     It holds the primary CTA, per-proposal review links and unsubscribe. Deep-links
     only — never approves.
     """
-    app_url = _public_app_url()
+    app_url = settings.FRONTEND_URL
     actions = _action_items(payload)
 
     sans = "Inter,-apple-system,Helvetica,Arial,sans-serif"

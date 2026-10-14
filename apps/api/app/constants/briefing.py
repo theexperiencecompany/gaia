@@ -32,6 +32,10 @@ WEEKLY_DIGEST_CRON: Final[str] = "0 17 * * 0"  # Sunday 17:00
 BRIEFING_KIND_DAILY: Final[Literal["daily"]] = "daily"
 BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
 
+# Masthead labels, set by code on each kind's payload (never by the model).
+DAILY_KICKER: Final[str] = "THE MORNING BRIEF"
+WEEKLY_KICKER: Final[str] = "THE WEEKLY DIGEST"
+
 # A brief is finite: at most this many items across all its sections, so it reads
 # in under a minute. The daily brief keeps the highest-priority items (needs-you
 # first); a weekly payload over the cap fails generation.
@@ -80,3 +84,23 @@ class BriefingBag(StrEnum):
 
     EDITION_FAMILY = "edition_family"
     STAMP_CITY = "stamp_city"
+
+
+class BriefingRunOutcome(StrEnum):
+    """How one scheduled briefing run ended: sent, or skipped before any delivery."""
+
+    SENT = "sent"
+    ALREADY_DELIVERED = "already_delivered"
+    DORMANT = "dormant"
+    BOOTSTRAP_PENDING = "bootstrap_pending"
+    WINBACK_BACKOFF = "winback_backoff"
+
+
+# The workflow execution's summary for each outcome, shown in the run history.
+BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
+    BriefingRunOutcome.SENT: "Briefing delivered",
+    BriefingRunOutcome.ALREADY_DELIVERED: "Skipped: this briefing was already delivered today",
+    BriefingRunOutcome.DORMANT: "Skipped: briefings are paused until the user is active again",
+    BriefingRunOutcome.BOOTSTRAP_PENDING: "Skipped: held until the user's goal is known",
+    BriefingRunOutcome.WINBACK_BACKOFF: "Skipped: backing off after an unanswered winback",
+}

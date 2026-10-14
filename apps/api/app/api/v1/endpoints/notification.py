@@ -47,7 +47,7 @@ from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
-from app.services.briefing.schedule import resync_daily_briefing_schedule
+from app.services.briefing.schedule import resync_briefing_schedules
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
@@ -225,7 +225,10 @@ async def update_quiet_hours(
     """Replace the user's quiet hours, moving the daily brief out of them; echoes back what was stored."""
     log.set(user={"id": user_id}, operation="update_quiet_hours")
     await user_repository.set_quiet_hours(user_id, body)
-    await resync_daily_briefing_schedule(user_id, body)
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    await resync_briefing_schedules(user)
     log.audit(
         "quiet hours updated",
         actor=user_id,

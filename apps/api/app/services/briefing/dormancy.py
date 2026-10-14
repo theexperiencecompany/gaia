@@ -48,23 +48,22 @@ def wind_down_stage(idle_days: int) -> str | None:
     return None
 
 
-async def reactivation_signal_since(user_id: str, since: datetime) -> bool:
-    """Report whether the user did anything since the cutoff that should wake the loop.
+async def latest_activity_since(user: UserDocument, since: datetime) -> datetime | None:
+    """Return when the user was last active, if at/after the cutoff; None when not since.
 
-    The canonical "user was active since T" predicate: last_active_at or any user message
-    in any conversation. Shared by the dormancy ladder and winback acknowledgement
-    (context.compute_winback_state). The cutoff must be timezone-aware.
+    The canonical "user was active since T" read: last_active_at on the loaded user
+    document or any user message in any conversation. Read once per run and compared
+    against every cutoff (the dormancy ladder, winback acknowledgement in
+    context.compute_winback_state). The cutoff must be timezone-aware.
     """
-    last_active = await user_repository.get_last_active_at(user_id)
-    if isinstance(last_active, datetime):
-        if last_active.tzinfo is None:
-            last_active = last_active.replace(tzinfo=UTC)
-        if last_active >= since:
-            return True
-
+    last_active = user.last_active_at
+    if last_active is not None and last_active.tzinfo is None:
+        last_active = last_active.replace(tzinfo=UTC)
     # Bot turns don't pass the web auth middleware that bumps last_active_at, so
     # a Telegram reply is detected from the conversation record directly.
-    return await conversation_repository.has_user_message_since(user_id, since)
+    last_message = await conversation_repository.latest_user_message_since(user.id, since)
+    seen = [t for t in (last_active, last_message) if t is not None and t >= since]
+    return max(seen, default=None)
 
 
 async def record_idle_day(user_id: str, prior: DormancyState, idle: bool, date_str: str) -> int:

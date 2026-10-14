@@ -15,6 +15,7 @@ narration), Redis, the activity store and the outbound transport.
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -101,6 +102,7 @@ def _seams(
     todo: TodoDocument,
     narrated: str = NARRATED,
     executor: _ExecutorResult | None = None,
+    daily_brief: SimpleNamespace | None = None,
 ) -> Iterator[_Seams]:
     seams = _Seams(
         narrate=AsyncMock(return_value=narrated),
@@ -132,6 +134,11 @@ def _seams(
         patch.object(trd, "narrate_executor_result", seams.narrate),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "todo_repository", seams.repo),
+        patch.object(
+            trd,
+            "workflow_repository",
+            MagicMock(find_system_workflow=AsyncMock(return_value=daily_brief)),
+        ),
         patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture", seams.capture),
         patch.object(trd, "enqueue_worker_job", seams.enqueue),
@@ -497,6 +504,9 @@ def _assert_failed_loudly(event: dict[str, Any], failure: str, cause: str) -> No
     assert error["run_id"]
 
 
+_LIVE_BRIEF = SimpleNamespace(activated=True)
+
+
 def _desk() -> TodoDocument:
     desk = _todo()
     desk.title = "Inbox desk"
@@ -521,13 +531,26 @@ class TestTheInboxDeskBriefsThroughTheMorningBrief:
     """
 
     async def test_the_scheduled_report_is_folded_into_the_brief_not_sent(self) -> None:
-        with _seams(todo=_desk(), narrated=EXECUTOR_REPORT) as seams:
+        with _seams(todo=_desk(), narrated=EXECUTOR_REPORT, daily_brief=_LIVE_BRIEF) as seams:
             await run_todo_on_executor(_desk_request(TriggerType.SCHEDULED_TODO))
 
         seams.send.assert_not_awaited()
         seams.narrate.assert_not_awaited()
         assert seams.capture.call_args.args[1].outcome == "held_for_brief"
         assert _activity(seams).startswith("folded into the morning brief (summary=")
+
+    @pytest.mark.parametrize(
+        "daily_brief", [None, SimpleNamespace(activated=False)], ids=["no-brief", "brief-off"]
+    )
+    async def test_without_a_live_daily_brief_the_report_is_sent_as_usual(
+        self, daily_brief: SimpleNamespace | None
+    ) -> None:
+        """Folding into a brief that never runs would mean nobody sees the sweep."""
+        with _seams(todo=_desk(), narrated=EXECUTOR_REPORT, daily_brief=daily_brief) as seams:
+            await run_todo_on_executor(_desk_request(TriggerType.SCHEDULED_TODO))
+
+        seams.send.assert_awaited_once()
+        assert seams.capture.call_args.args[1].outcome != "held_for_brief"
 
     async def test_a_mail_woken_alert_still_goes_out_at_once(self) -> None:
         with _seams(todo=_desk(), narrated=EXECUTOR_REPORT) as seams:
