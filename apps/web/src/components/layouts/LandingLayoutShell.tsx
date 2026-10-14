@@ -1,4 +1,5 @@
 "use client";
+import type { SetupStatusResponse } from "@gaia/shared/api/generated";
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 import Navbar from "@/components/navigation/Navbar";
@@ -6,6 +7,7 @@ import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { usePathname } from "@/i18n/navigation";
 import LandingProvidersLayout from "@/layouts/LandingProvidersLayout";
+import { showsMarketingChrome } from "./marketingChrome";
 
 // Footer is always below the fold on landing pages — defer it so it doesn't
 // compete with hero-above-the-fold rendering for main-thread time.
@@ -27,11 +29,14 @@ const BLUR_CONFIG: BlurLayer[] = [
 
 export default function LandingLayoutShell({
   children,
+  instanceAuthMode,
 }: {
   children: ReactNode;
+  /** AUTH_MODE the deployment pins; null on hosted GAIA. */
+  instanceAuthMode: SetupStatusResponse["auth_mode"] | null;
 }) {
   const pathname = usePathname();
-  const isDesktopLogin = pathname === "/desktop-login";
+  const chrome = showsMarketingChrome(pathname, instanceAuthMode);
 
   return (
     <LandingProvidersLayout>
@@ -47,14 +52,14 @@ export default function LandingLayoutShell({
         />
 
         <LazyMotionProvider>
-          {!isDesktopLogin && <Navbar />}
+          {chrome && <Navbar />}
 
           <main id="main-content" className="min-h-screen">
             {children}
           </main>
         </LazyMotionProvider>
 
-        {!isDesktopLogin && <Footer />}
+        {chrome && <Footer />}
       </div>
     </LandingProvidersLayout>
   );
