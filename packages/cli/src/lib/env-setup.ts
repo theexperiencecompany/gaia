@@ -82,7 +82,13 @@ export async function runEnvSetup(
     // The schema is vendored (see env-parser.loadVendoredSchema), so manual
     // collection never depends on a host Python install. Load failures
     // propagate — the caller surfaces them.
-    await collectManualEnv(store, answers, setupMode);
+    await collectManualEnv(
+      store,
+      answers,
+      setupMode,
+      // --llm-provider already chose one; asking again would offer a different pick.
+      options?.llmProvider === undefined,
+    );
   }
 
   const existingEnv = fs.existsSync(apiEnvPath(repoPath))
@@ -209,6 +215,7 @@ async function collectManualEnv(
   store: CLIStore,
   envValues: Record<string, string>,
   setupMode: envParser.SetupMode,
+  askForProvider: boolean,
 ): Promise<void> {
   store.setStatus("Parsing environment variables...");
   const categories = envParser
@@ -226,7 +233,7 @@ async function collectManualEnv(
   );
 
   // Handle alternative groups
-  for (const alternatives of alternativePairs) {
+  for (const alternatives of askForProvider ? alternativePairs : []) {
     store.updateData("alternativeGroups", alternatives);
     store.setStatus("Choose an AI provider...");
 

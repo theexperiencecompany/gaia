@@ -17,6 +17,14 @@ const DOCKER_GROUP = "docker";
 /** Set in the relaunched process so a still-denied socket fails loud, not loops. */
 const RELAUNCHED_ENV = "GAIA_DOCKER_GROUP_RELAUNCHED";
 
+/** The step the first process was in, so the relaunch's output reads as one run. */
+const RESUMED_STEP_ENV = "GAIA_RESUMED_STEP";
+
+/** The step this process continues from a docker-group relaunch, if it is one. */
+export function resumedStep(): string | undefined {
+  return process.env[RESUMED_STEP_ENV] || undefined;
+}
+
 /** True when `docker` failed because the socket refused this user. */
 export function isDockerSocketPermissionError(error: unknown): boolean {
   const stderr = (error as { stderr?: unknown }).stderr;
@@ -63,13 +71,17 @@ function shellQuote(arg: string): string {
  * Re-run this exact command with the docker group active and exit with its
  * status. Call only after the UI has released the terminal.
  */
-export function relaunchWithDockerGroup(): Promise<never> {
+export function relaunchWithDockerGroup(currentStep: string): Promise<never> {
   const command = [process.execPath, ...process.argv.slice(1)]
     .map(shellQuote)
     .join(" ");
   const child = spawn("sg", [DOCKER_GROUP, "-c", command], {
     stdio: "inherit",
-    env: { ...process.env, [RELAUNCHED_ENV]: "1" },
+    env: {
+      ...process.env,
+      [RELAUNCHED_ENV]: "1",
+      [RESUMED_STEP_ENV]: currentStep,
+    },
   });
   return new Promise((_resolve, reject) => {
     child.on("error", reject);

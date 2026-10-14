@@ -42,6 +42,18 @@ export function localApiUrl(
 /** Docker's own bridges (docker0, br-<network id>) answer only on this host. */
 const DOCKER_BRIDGE_RE = /^(docker\d+|br-[0-9a-f]+)$/;
 
+/** http://<address>:<port> for each non-loopback IPv4 address of the host. */
+function hostWebUrls(
+  webPort: number,
+  interfaces: NodeJS.Dict<NetworkInterfaceInfo[]>,
+): string[] {
+  return Object.entries(interfaces)
+    .filter(([name]) => !DOCKER_BRIDGE_RE.test(name))
+    .flatMap(([, infos]) => infos ?? [])
+    .filter((info) => info.family === "IPv4" && !info.internal)
+    .map((info) => `http://${info.address}:${webPort}`);
+}
+
 /**
  * Every address a browser can open the self-host web app at: https://<domain>
  * when one is set, localhost, then each non-loopback IPv4 address of the host.
@@ -51,14 +63,22 @@ export function reachableWebUrls(
   domain: string | undefined,
   interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = networkInterfaces(),
 ): string[] {
-  const hostAddresses = Object.entries(interfaces)
-    .filter(([name]) => !DOCKER_BRIDGE_RE.test(name))
-    .flatMap(([, infos]) => infos ?? [])
-    .filter((info) => info.family === "IPv4" && !info.internal)
-    .map((info) => `http://${info.address}:${webPort}`);
   return [
     ...(domain ? [`https://${domain}`] : []),
     `http://localhost:${webPort}`,
-    ...hostAddresses,
+    ...hostWebUrls(webPort, interfaces),
   ];
+}
+
+/**
+ * The one address to send a browser to, which may sit on another machine: the
+ * domain, else the host's first LAN address, else localhost.
+ */
+export function primaryWebUrl(
+  webPort: number,
+  domain: string | undefined,
+  interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = networkInterfaces(),
+): string {
+  if (domain) return `https://${domain}`;
+  return hostWebUrls(webPort, interfaces)[0] ?? `http://localhost:${webPort}`;
 }

@@ -14,7 +14,7 @@ import { render } from "ink";
 import React from "react";
 import { App, type CLICommand } from "../ui/app.js";
 import { type CLIStore, createStore } from "../ui/store.js";
-import { relaunchWithDockerGroup } from "./docker-group.js";
+import { relaunchWithDockerGroup, resumedStep } from "./docker-group.js";
 import {
   attachPlainReporter,
   isInteractive,
@@ -75,13 +75,15 @@ async function runPlain(
   store: CLIStore,
   runtime: CommandRuntime,
 ): Promise<void> {
-  attachPlainReporter(store);
+  attachPlainReporter(store, resumedStep());
   for (const [id, value] of runtime.autoResolve ?? []) {
     store.setAutoResolve(id, value);
   }
   try {
     await runtime.runFlow(store);
-    if (needsDockerGroupRelaunch(store)) await relaunchWithDockerGroup();
+    if (needsDockerGroupRelaunch(store)) {
+      await relaunchWithDockerGroup(store.currentState.step);
+    }
     runtime.onPlainComplete?.(store);
   } catch (error) {
     store.setError(error as Error);
@@ -117,7 +119,9 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   }
 
   unmount();
-  if (needsDockerGroupRelaunch(store)) await relaunchWithDockerGroup();
+  if (needsDockerGroupRelaunch(store)) {
+    await relaunchWithDockerGroup(store.currentState.step);
+  }
   exitForStore(store);
 }
 

@@ -132,6 +132,25 @@ describe("runEnvSetup env policy", () => {
     expect(developer).toEqual(expect.arrayContaining(hostedOnly));
   });
 
+  it("never asks for an AI provider that --llm-provider/--llm-key already chose", async () => {
+    const repo = makeRepo();
+    const asked: string[] = [];
+    const statuses: string[] = [];
+    const store = makeHeadlessStore((id) => asked.push(id));
+    store.on("change", (state: { status: string }) =>
+      statuses.push(state.status),
+    );
+
+    await runEnvSetup(store, repo, "selfhost", undefined, {
+      llmProvider: "openai",
+      llmKey: "sk-test",
+    });
+
+    expect(asked).not.toContain("env_alternatives");
+    expect(statuses).not.toContain("Choose an AI provider...");
+    expect(readApiEnv(repo)).toMatch(/^OPENAI_API_KEY=sk-test$/m);
+  });
+
   it("developer mode keeps ENV=development without AUTH_MODE", async () => {
     const repo = makeRepo();
     const store = makeHeadlessStore();

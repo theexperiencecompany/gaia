@@ -22,6 +22,7 @@ import { readConfig, updateConfig } from "../../lib/config.js";
 import {
   DEFAULT_WEB_PORT,
   localApiUrl,
+  primaryWebUrl,
   reachableWebUrls,
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
@@ -225,9 +226,7 @@ export async function runUpFlow(
   }
 
   const webPort = portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
-  const webUrl = options.domain
-    ? `https://${options.domain}`
-    : `http://localhost:${webPort}`;
+  const webUrl = primaryWebUrl(webPort, options.domain);
   const reachableUrls = reachableWebUrls(webPort, options.domain);
 
   // 6. Start — pull-first fast path, local build fallback.

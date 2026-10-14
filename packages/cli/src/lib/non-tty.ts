@@ -29,9 +29,10 @@ export function requireInteractive(commandName: string): void {
  * Subscribe to a CLIStore and stream its state changes as plain text. Used
  * when the command is running outside a TTY: Ink cannot render, but we still
  * want to surface progress (steps, status messages, errors) on stdout/stderr.
+ * A resumed step's header was already printed by the process that relaunched this one.
  */
-export function attachPlainReporter(store: CLIStore): void {
-  let lastStep = "";
+export function attachPlainReporter(store: CLIStore, resumedStep = ""): void {
+  let lastStep = resumedStep;
   let lastStatus = "";
   let lastErrorMsg = "";
 

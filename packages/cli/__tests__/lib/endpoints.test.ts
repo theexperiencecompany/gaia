@@ -1,6 +1,6 @@
 import type { NetworkInterfaceInfo } from "node:os";
 import { describe, expect, it } from "vitest";
-import { reachableWebUrls } from "../../src/lib/endpoints.js";
+import { primaryWebUrl, reachableWebUrls } from "../../src/lib/endpoints.js";
 
 function iface(
   address: string,
@@ -42,5 +42,25 @@ describe("reachableWebUrls", () => {
       "http://192.168.64.7:80",
       "http://10.0.0.5:80",
     ]);
+  });
+});
+
+describe("primaryWebUrl", () => {
+  it("points a browser on another machine at the host's LAN address", () => {
+    expect(primaryWebUrl(3000, undefined, INTERFACES)).toBe(
+      "http://192.168.64.7:3000",
+    );
+  });
+
+  it("prefers the public domain when one is set", () => {
+    expect(primaryWebUrl(80, "gaia.example.com", INTERFACES)).toBe(
+      "https://gaia.example.com",
+    );
+  });
+
+  it("falls back to localhost on a host with no LAN address", () => {
+    expect(primaryWebUrl(3000, undefined, { lo: INTERFACES.lo })).toBe(
+      "http://localhost:3000",
+    );
   });
 });
