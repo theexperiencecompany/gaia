@@ -18,12 +18,12 @@ import {
 import {
   assertReleaseTagPublished,
   pinReleaseImages,
+  releaseGitTag,
 } from "../../lib/release.js";
 import {
   pullSelfhostImages,
   startServices,
 } from "../../lib/service-starter.js";
-import { CLI_RELEASE_GIT_TAG } from "../../lib/version.js";
 
 /** Paths whose change matters for a self-host deploy. */
 export const WATCH_PATHS = ["apps/web", "apps/api", "infra/docker"] as const;
@@ -100,12 +100,13 @@ export async function planReleaseUpdate(
   toVersion: string,
 ): Promise<ReleasePlan> {
   const fromVersion = readPinnedGaiaVersion(repoPath);
+  const toTag = releaseGitTag(toVersion);
   if (!(await isGitCheckout(repoPath))) {
     return { repoPath, fromVersion, toVersion, checkout: null };
   }
 
-  await assertReleaseTagPublished("origin", repoPath);
-  const tagRef = `refs/tags/${CLI_RELEASE_GIT_TAG}`;
+  await assertReleaseTagPublished("origin", toVersion, repoPath);
+  const tagRef = `refs/tags/${toTag}`;
   const fetched = await execa(
     "git",
     ["fetch", "--no-tags", "origin", `+${tagRef}:${tagRef}`],
@@ -113,13 +114,13 @@ export async function planReleaseUpdate(
   );
   if (fetched.exitCode !== 0) {
     throw new Error(
-      `Could not fetch ${CLI_RELEASE_GIT_TAG} from origin: ${fetched.stderr.trim()}`,
+      `Could not fetch ${toTag} from origin: ${fetched.stderr.trim()}`,
     );
   }
 
   const [head, tagCommit, fromRef] = await Promise.all([
     git(repoPath, ["rev-parse", "HEAD"]),
-    git(repoPath, ["rev-parse", `${CLI_RELEASE_GIT_TAG}^{commit}`]),
+    git(repoPath, ["rev-parse", `${toTag}^{commit}`]),
     git(repoPath, ["rev-parse", "--short", "HEAD"]),
   ]);
   return {
@@ -128,9 +129,9 @@ export async function planReleaseUpdate(
     toVersion,
     checkout: {
       fromRef,
-      toTag: CLI_RELEASE_GIT_TAG,
+      toTag,
       atTag: head === tagCommit,
-      changes: await summarizeChanges(repoPath, `HEAD..${CLI_RELEASE_GIT_TAG}`),
+      changes: await summarizeChanges(repoPath, `HEAD..${toTag}`),
     },
   };
 }

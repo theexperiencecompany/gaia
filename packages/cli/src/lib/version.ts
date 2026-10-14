@@ -11,6 +11,3 @@ export const CLI_VERSION: string = packageJson.version;
  * CLI release pins one tested image pair.
  */
 export const GAIA_RELEASE_IMAGE_TAG = `v${CLI_VERSION}`;
-
-/** The git tag this CLI release was cut from; its infra/docker matches the images. */
-export const CLI_RELEASE_GIT_TAG = `cli-v${CLI_VERSION}`;

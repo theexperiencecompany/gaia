@@ -15,7 +15,6 @@ vi.mock("../../src/lib/service-starter.js", () => ({
 vi.mock("../../src/lib/version.js", () => ({
   CLI_VERSION: "1.2.3",
   GAIA_RELEASE_IMAGE_TAG: "v1.2.3",
-  CLI_RELEASE_GIT_TAG: "cli-v1.2.3",
 }));
 
 import {
@@ -36,6 +35,7 @@ const GIT_IDENTITY = [
 const ignoreStatus = vi.fn();
 
 let root: string;
+let origin: string;
 let install: string;
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
@@ -58,7 +58,7 @@ function composeEnv(): string {
 /** An origin with the CLI's release tag one commit behind master, and a master clone of it. */
 beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "gaia-update-"));
-  const origin = path.join(root, "origin");
+  origin = path.join(root, "origin");
   fs.mkdirSync(origin);
   await git(origin, "init", "-q", "-b", "master");
   await commitCompose(origin, "release compose");
@@ -113,6 +113,34 @@ describe("gaia update (release mode)", () => {
     expect(composeEnv()).toMatch(/^GAIA_VERSION=v1\.2\.3$/m);
     expect(isReleaseCurrent(await planReleaseUpdate(install, "v1.2.3"))).toBe(
       true,
+    );
+  });
+
+  it("--version moves the compose files to that release too, not only the images", async () => {
+    pullSelfhostImages.mockResolvedValue(undefined);
+    startServices.mockResolvedValue(undefined);
+    await commitCompose(origin, "1.2.2 compose");
+    await git(origin, "tag", "cli-v1.2.2");
+    const plan = await planReleaseUpdate(install, "v1.2.2");
+
+    await applyReleaseUpdate(plan, ignoreStatus);
+
+    expect(plan.checkout?.toTag).toBe("cli-v1.2.2");
+    expect(fs.readFileSync(path.join(install, COMPOSE), "utf-8")).toBe(
+      "1.2.2 compose",
+    );
+    expect(composeEnv()).toMatch(/^GAIA_VERSION=v1\.2\.2$/m);
+  });
+
+  it("--version refuses an image tag that names no release", async () => {
+    await expect(planReleaseUpdate(install, "latest")).rejects.toThrow(
+      /latest is not a GAIA release/,
+    );
+  });
+
+  it("--version fails naming the git tag of a release origin never published", async () => {
+    await expect(planReleaseUpdate(install, "v9.9.9")).rejects.toThrow(
+      /cli-v9\.9\.9/,
     );
   });
 

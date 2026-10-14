@@ -74,7 +74,7 @@ flowchart TD
   RP_CLI -- "No" --> RP_CLI_STOP["No CLI publish"]:::terminal
 
   RP_DISPATCH --> CLI_BIN["publish-cli.yml (checks out cli-v* tag)<br/>publish-binaries: attach gaia-connect"]:::release
-  CLI_BIN --> CLI_VERIFY["publish: verify + pin gaia/gaia-web :sha as v*<br/>(waits up to 30 min for the release build)"]:::release
+  CLI_BIN --> CLI_VERIFY["publish: verify + pin gaia/gaia-web :sha as v*<br/>(waits up to 30 min for the release build<br/>and main.yml's quality gate on that sha)"]:::release
   CLI_VERIFY --> CLI_GATE{"should_publish == true?"}:::decision
   CLI_GATE -- "Yes" --> CLI_PUBLISH["Build + npm publish @heygaia/cli"]:::release
   CLI_GATE -- "No" --> CLI_SKIP["Skip publish (already exists)"]:::terminal
@@ -153,7 +153,7 @@ flowchart TD
 
 ### `.github/workflows/publish-cli.yml`
 Inputs `tag`, `version` and `sha` (the commit the tag points at). Both jobs check out the tag, not master HEAD, so `packages/cli/package.json`, the build and the pin are the released commit. npm is last, so it never serves a CLI whose binaries or images are missing:
-1. `publish` (`needs: publish-binaries`, 45 min cap) — verify tag/version/manifests and npm idempotency (`should_publish`), then `release.sh pin-selfhost-release`: wait (bounded, 30 min, fails loud) until `gaia:<sha>` and `gaia-web:<sha>` exist and tag both `v<version>`, the pair `gaia update` pins; an existing `v<version>` is never moved and nothing is tagged until both exist. The pin is NOT gated on `should_publish`, so a re-dispatch of a published version backfills it. If publish is required, build `packages/cli` and `npm publish`; otherwise skip.
+1. `publish` (`needs: publish-binaries`, 45 min cap) — verify tag/version/manifests and npm idempotency (`should_publish`), then `release.sh pin-selfhost-release`: wait (bounded, 30 min, fails loud) until `gaia:<sha>` and `gaia-web:<sha>` exist and main.yml's `quality-gate` job has passed on that sha (a failed gate refuses at once; `GH_TOKEN` with `actions: read`), then tag both `v<version>`, the pair `gaia update` pins; an existing `v<version>` is never moved and nothing is tagged until both exist. The pin is NOT gated on `should_publish`, so a re-dispatch of a published version backfills it. If publish is required, build `packages/cli` and `npm publish`; otherwise skip.
 2. `publish-binaries` — cross-compile the `tools/gaia-connect` Go module for `darwin/{arm64,amd64}`, `linux/{amd64,arm64}` and `windows/amd64` (all `CGO_ENABLED=0` on one ubuntu runner — the macOS keychain read shells out to `security`, so no cgo and no macOS runner), then attach `gaia-connect-<os>-<arch>[.exe]` plus a `gaia-connect-SHA256SUMS` manifest to the same `cli-v<version>` release via `gh release upload --clobber` (`scripts/ci/release.sh connect-binaries`). The CLI downloads these assets by exact name, so the names and the manifest format are a contract. Deliberately NOT gated on `should_publish`: a rerun must be able to attach missing assets to a release whose npm version already exists. Both jobs notify Discord and Slack on failure.
 
 ### `.github/workflows/desktop-release.yml`

@@ -33,7 +33,7 @@ gaia --help        # Show all commands
 | `gaia up`        | One-command setup: configure, pull and start GAIA (self-host)                |
 | `gaia update`    | Move to the release this CLI ships: pin its images, pull them and restart    |
 | `gaia backup`    | Dump MongoDB, PostgreSQL, the storage volumes and `apps/api/.env` to `./backups` |
-| `gaia restore`   | Restore a backup, `apps/api/.env` (the credential key) first               |
+| `gaia restore`   | Restore a backup, `apps/api/.env` (the credential key) first, then restart  |
 | `gaia init`      | Developer setup wizard: clone, configure env (manual or Infisical), start   |
 | `gaia setup`     | Configure an existing repository                                             |
 | `gaia start`     | Start GAIA services in self-host mode                                        |
@@ -303,7 +303,7 @@ Overrides persist across restarts and are reused by `gaia start`, `gaia logs`, a
 
 ```bash
 gaia update                 # add --yes to skip the confirmation
-gaia update --version v0.7.0  # pin a specific release instead
+gaia update --version v0.7.0  # move to another release: its images and its cli-v0.7.0 compose files
 gaia update --git           # contributors: pull your branch and rebuild from source
 ```
 

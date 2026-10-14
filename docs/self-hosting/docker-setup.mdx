@@ -471,18 +471,25 @@ gaia backup                          # dumps MongoDB + PostgreSQL to ./backups/
 gaia backup --output /tmp/my-backups # custom directory
 gaia backup --dry-run                # print the exact docker commands without running them
 
-# Restore — picks the latest dumps in a directory, or pass explicit files:
-gaia restore --from backups          # restores mongo-YYYY-MM-DD.gz + postgres-YYYY-MM-DD.sql
-gaia restore --mongo backups/mongo-2026-08-27.gz --postgres backups/postgres-2026-08-27.sql
+# Restore — picks the newest backup run in a directory, or pass explicit files:
+gaia restore --from backups          # restores every file of the newest run, e.g. mongo-2026-08-27T09-30-00Z.gz
+gaia restore --mongo backups/mongo-2026-08-27T09-30-00Z.gz --postgres backups/postgres-2026-08-27T09-30-00Z.sql \
+  --env backups/api-env-2026-08-27T09-30-00Z.env
 gaia restore --dry-run --from backups # preview restore commands
 ```
 
-Equivalent one-copy-paste block for manual use (run from `infra/docker/`):
+`gaia restore` puts `apps/api/.env` back first and restarts the stack afterwards. That file holds `INSTANCE_SECRET`, the key the stored provider credentials are encrypted under: a Mongo dump restored under a different secret leaves them undecryptable. `--from` restores it automatically; with explicit `--mongo`, pass the same run's `api-env-<stamp>.env` with `--env` (without it, the restore warns and keeps this install's current secret).
+
+Each run's files share one UTC stamp (`YYYY-MM-DDTHH-MM-SSZ`), so a second backup the same day never overwrites the first, and a run that fails part-way leaves no files behind.
+
+Equivalent one-copy-paste block for manual use (run from `infra/docker/`); keep the stamp format so `gaia restore --from` finds the files:
 
 ```bash
 mkdir -p backups
-docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
-docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
+STAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
+docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$STAMP.sql
+install -m 600 ../../apps/api/.env backups/api-env-$STAMP.env
 ```
 
 See the collapsed sections below for consistent-snapshot variants, ChromaDB/RabbitMQ, and restore steps.
@@ -495,24 +502,30 @@ Four stores hold data you cannot rebuild:
 - **`gaia-selfhost_files`** — the files users attached and the images GAIA generated.
 - **`gaia-selfhost_workspace`** — each user's workspace and installed skills.
 
-`gaia backup` archives both volumes (as `files-<date>.tar.gz` and `workspace-<date>.tar.gz`) next to the database dumps, and `gaia restore --from` puts them back. Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content) and RabbitMQ (transient messages) are lower-stakes.
+`gaia backup` archives both volumes (as `files-<stamp>.tar.gz` and `workspace-<stamp>.tar.gz`) next to the database dumps, and `gaia restore --from` puts them back. Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content) and RabbitMQ (transient messages) are lower-stakes.
 
 <AccordionGroup>
   <Accordion title="Advanced: Manual backup & restore details">
+    Give every file of one backup the same stamp, set once in your shell — `gaia restore --from` restores only the files of the newest stamp:
+
+    ```bash
+    STAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+    ```
+
     ### Back up MongoDB
 
     The database tools ship inside the mongo container. Dump to a gzip archive and redirect it to a file on the host:
 
     ```bash
     mkdir -p backups
-    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
     ```
 
     For a fully consistent snapshot, stop the writers first so nothing changes mid-dump:
 
     ```bash
     docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
-    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
     docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
     ```
 
@@ -521,7 +534,7 @@ Four stores hold data you cannot rebuild:
     `pg_dump` produces a consistent snapshot on its own — safe against a live stack:
 
     ```bash
-    docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
+    docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$STAMP.sql
     ```
 
     ### Back up ChromaDB
@@ -531,7 +544,7 @@ Four stores hold data you cannot rebuild:
     ```bash
     mkdir -p backups
     docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
-    docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma-$(date +%F).tar.gz
+    docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma_data-$STAMP.tar.gz
     docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
     ```
 
@@ -540,7 +553,7 @@ Four stores hold data you cannot rebuild:
     ```bash
     docker volume create gaia-selfhost_chroma_data
     docker run --rm -v gaia-selfhost_chroma_data:/data -v "$PWD/backups:/backups" alpine \
-      tar xzf /backups/chroma-2026-08-24.tar.gz -C /data
+      tar xzf /backups/chroma_data-2026-08-24T09-30-00Z.tar.gz -C /data
     ```
 
     ### Back up RabbitMQ
@@ -559,7 +572,7 @@ Four stores hold data you cannot rebuild:
     `--drop` replaces existing collections so you don't merge stale and restored state; `-T` disables the pseudo-terminal so the redirected archive reaches `mongorestore`'s stdin:
 
     ```bash
-    docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-2026-08-24.gz
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-2026-08-24T09-30-00Z.gz
     ```
 
     Restart the app containers afterwards so sessions re-issue against the restored data.
@@ -570,7 +583,7 @@ Four stores hold data you cannot rebuild:
 
     ```bash
     docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
-    cat backups/postgres-2026-08-24.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph
+    cat backups/postgres-2026-08-24T09-30-00Z.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph
     ```
   </Accordion>
 </AccordionGroup>

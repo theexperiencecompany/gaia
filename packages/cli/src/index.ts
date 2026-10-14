@@ -187,20 +187,26 @@ program
   .option("--mongo <file>", "MongoDB archive file (mongodump --archive)")
   .option("--postgres <file>", "PostgreSQL dump file")
   .option(
+    "--env <file>",
+    "The backup's apps/api/.env (api-env-<stamp>.env): its INSTANCE_SECRET decrypts the Mongo dump's credentials",
+  )
+  .option(
     "--from <dir>",
-    "Restore from a backup directory (picks the latest of each backed-up file, apps/api/.env included)",
+    "Restore from a backup directory (every file of the newest backup run, apps/api/.env included)",
   )
   .option("--dry-run", "Print the docker commands without executing them")
   .action(
     async (options: {
       mongo?: string;
       postgres?: string;
+      env?: string;
       from?: string;
       dryRun?: boolean;
     }) => {
       await runRestoreCommand({
         mongo: options.mongo,
         postgres: options.postgres,
+        env: options.env,
         from: options.from,
         dryRun: options.dryRun,
       });
@@ -213,7 +219,7 @@ program
   .option("--yes", "Apply updates without prompting")
   .option(
     "--version <tag>",
-    "Pin this GAIA image tag instead of the release this CLI ships",
+    "Move to this GAIA release (v<x.y.z>) instead of the one this CLI ships: its images and its compose files",
   )
   .option(
     "--git",

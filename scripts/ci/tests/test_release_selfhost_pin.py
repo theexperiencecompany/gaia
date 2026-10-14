@@ -4,10 +4,13 @@
 whatever master last deployed, not the code the CLI was released with. The pin
 now waits for build.yml's per-commit :<sha> pair and fails loud when it never
 appears, and build.yml must publish that pair for every CLI release commit.
+The :<sha> images exist before main.yml's quality gate has judged that commit,
+so the pin also waits for the gate to pass on it.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -41,6 +44,42 @@ esac
 """
 
 
+# `gh api <path> --jq <expr>` answers from the JSON fixture for <path>, filtered
+# by the real jq, so the script's jq expressions are exercised too.
+GH_STUB = """#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == "api" && "$3" == "--jq" ]] || { echo "gh stub: unexpected $*" >&2; exit 1; }
+echo "$2" >> "$GH_CALLS"
+case "$2" in
+  */actions/workflows/main.yml/runs\\?*) file="$GH_FIXTURES/runs.json" ;;
+  */actions/runs/*/jobs*) id="${2#*/actions/runs/}"; file="$GH_FIXTURES/jobs-${id%%/*}.json" ;;
+  *) echo "gh stub: unexpected path $2" >&2; exit 1 ;;
+esac
+jq -r "$4" "$file"
+"""
+
+JobState = tuple[str, str | None]
+GATE_PASSED: dict[str, JobState] = {"quality-gate": ("completed", "success")}
+
+
+def _write_main_runs(workspace: Path, runs: dict[int, dict[str, JobState]]) -> None:
+    fixtures = workspace / "gh"
+    (fixtures / "runs.json").write_text(
+        json.dumps({"workflow_runs": [{"id": run_id} for run_id in runs]})
+    )
+    for run_id, jobs in runs.items():
+        (fixtures / f"jobs-{run_id}.json").write_text(
+            json.dumps(
+                {
+                    "jobs": [
+                        {"name": name, "status": status, "conclusion": conclusion}
+                        for name, (status, conclusion) in jobs.items()
+                    ]
+                }
+            )
+        )
+
+
 def _git(cwd: Path, *args: str) -> str:
     return subprocess.run(
         ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
@@ -54,6 +93,11 @@ def workspace(tmp_path: Path) -> Path:
     stub = bin_dir / "docker"
     stub.write_text(DOCKER_STUB)
     stub.chmod(0o755)
+    gh_stub = bin_dir / "gh"
+    gh_stub.write_text(GH_STUB)
+    gh_stub.chmod(0o755)
+    (tmp_path / "gh").mkdir()
+    (tmp_path / "gh-calls.txt").write_text("")
     for name in ("present.txt", "late.txt", "inspected.txt", "created.txt"):
         (tmp_path / name).write_text("")
     repo = tmp_path / "repo"
@@ -80,8 +124,10 @@ def _run(
     *,
     present: list[str] | None = None,
     late: dict[str, int] | None = None,
+    main_runs: dict[int, dict[str, JobState]] | None = None,
     env_extra: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    _write_main_runs(workspace, {1: GATE_PASSED} if main_runs is None else main_runs)
     (workspace / "present.txt").write_text("".join(f"{r}\n" for r in present or []))
     (workspace / "late.txt").write_text("".join(f"{r} {n}\n" for r, n in (late or {}).items()))
     env = dict(os.environ)
@@ -91,6 +137,9 @@ def _run(
         LATE=str(workspace / "late.txt"),
         INSPECTED=str(workspace / "inspected.txt"),
         CREATED=str(workspace / "created.txt"),
+        GH_FIXTURES=str(workspace / "gh"),
+        GH_CALLS=str(workspace / "gh-calls.txt"),
+        GITHUB_REPOSITORY="theexperiencecompany/gaia",
         PIN_POLL_SECONDS="0",
         GITHUB_OUTPUT=str(workspace / "github-output.txt"),
     )
@@ -111,10 +160,18 @@ def _pin(
     *,
     present: list[str],
     late: dict[str, int] | None = None,
+    main_runs: dict[int, dict[str, JobState]] | None = None,
     env_extra: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = {"VERSION": "0.6.0", "SHA": _head(workspace), **(env_extra or {})}
-    return _run(workspace, "pin-selfhost-release", present=present, late=late, env_extra=env)
+    return _run(
+        workspace,
+        "pin-selfhost-release",
+        present=present,
+        late=late,
+        main_runs=main_runs,
+        env_extra=env,
+    )
 
 
 def _created(workspace: Path) -> list[str]:
@@ -184,6 +241,91 @@ def test_a_sha_other_than_the_checked_out_release_is_refused(workspace: Path) ->
     )
 
     assert result.returncode != 0
+    assert _created(workspace) == []
+
+
+def _both_images(sha: str) -> list[str]:
+    return [f"{NAMESPACE}/gaia:{sha}", f"{NAMESPACE}/gaia-web:{sha}"]
+
+
+def test_the_pin_asks_for_the_quality_gate_of_the_release_commit(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(workspace, present=_both_images(sha))
+
+    assert result.returncode == 0, result.stderr
+    calls = (workspace / "gh-calls.txt").read_text()
+    assert (
+        f"repos/theexperiencecompany/gaia/actions/workflows/main.yml/runs?head_sha={sha}" in calls
+    )
+
+
+def test_a_failed_quality_gate_refuses_the_release_and_tags_nothing(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=_both_images(sha),
+        main_runs={7: {"quality-gate": ("completed", "failure")}},
+    )
+
+    assert result.returncode != 0
+    assert "quality gate" in result.stderr
+    assert _created(workspace) == []
+
+
+def test_a_gate_that_never_finishes_times_out_loud_and_tags_nothing(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=_both_images(sha),
+        main_runs={7: {"quality-gate": ("in_progress", None)}},
+        env_extra={"PIN_WAIT_SECONDS": "0"},
+    )
+
+    assert result.returncode != 0
+    assert "quality gate" in result.stderr
+    assert _created(workspace) == []
+
+
+def test_a_commit_main_yml_never_ran_on_is_not_released(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=_both_images(sha),
+        main_runs={},
+        env_extra={"PIN_WAIT_SECONDS": "0"},
+    )
+
+    assert result.returncode != 0
+    assert _created(workspace) == []
+
+
+def test_a_passed_gate_releases_even_when_a_non_gating_job_failed(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=_both_images(sha),
+        main_runs={
+            7: {
+                "changelog-sync": ("completed", "failure"),
+                "quality-gate": ("completed", "success"),
+            }
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert len(_created(workspace)) == 2
+
+
+def test_an_unreadable_actions_api_fails_the_pin_loud(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=_both_images(sha),
+        env_extra={"GH_FIXTURES": str(workspace / "absent"), "PIN_WAIT_SECONDS": "0"},
+    )
+
+    assert result.returncode != 0
+    assert "could not read main.yml's runs" in result.stderr
     assert _created(workspace) == []
 
 
