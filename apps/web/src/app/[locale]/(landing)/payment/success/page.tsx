@@ -189,9 +189,12 @@ export default function PaymentSuccessPage() {
                 stage={printerStage}
                 subscriptionRef={receipt.subscriptionRef}
               />
-              <div className="mt-6">
-                <PostPaymentReferral />
-              </div>
+              {/* A first payment comes before onboarding: ask to share only once they have used GAIA. */}
+              {user.onboarding?.completed && (
+                <div className="mt-6">
+                  <PostPaymentReferral />
+                </div>
+              )}
             </m.div>
           )}
         </div>
