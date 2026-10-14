@@ -136,7 +136,7 @@ class ChainRun:
     transcript: Transcript
     stream_id: str
     conversation_id: str
-    #: Every ``save_conversation_async`` call — the comms turn's own persistence.
+    #: Every ``save_bot_reply`` call — the comms turn's own reply persistence.
     saved: list[dict[str, Any]] = field(default_factory=list)
     #: Every ``append_message_tool_data`` call — the executor cards pushed onto
     #: the already-saved bot message after the executor finishes.
@@ -257,7 +257,8 @@ async def run_chain(
         ),
         patch("app.agents.tools.memory_tools.memory_engine", memory),
         patch("app.agents.core.nodes.memory_node.memory_engine", memory),
-        patch("app.services.chat.stream.save_conversation_async", new=_save),
+        patch("app.services.chat.stream.save_user_message", new=AsyncMock()),
+        patch("app.services.chat.stream.save_bot_reply", new=_save),
         patch.object(chat_stream.conversation_repository, "append_message_tool_data", new=_attach),
         patch.object(chat_stream.conversation_repository, "get_message", new=saved.get_message),
         patch.object(
