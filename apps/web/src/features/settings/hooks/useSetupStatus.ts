@@ -8,23 +8,26 @@ import {
   providersApi,
   type SetupStatus,
 } from "@/features/settings/api/providersApi";
+import { isSelfhostWeb } from "@/lib/selfhost";
 
 const SETUP_STATUS_QUERY_KEY = ["setup", "status"] as const;
 
 /**
  * Instance setup status (public endpoint). Single shared react-query cache
  * entry for every consumer — the setup wizard, the setup checklist banner, the
- * settings menu/sidebar and the providers settings page.
+ * settings menu/sidebar and the providers settings page. Never fetched on
+ * hosted GAIA, which mounts no /setup routes.
  */
 export function useSetupStatus() {
   return useQuery<SetupStatus>({
     queryKey: SETUP_STATUS_QUERY_KEY,
     queryFn: () => providersApi.fetchSetupStatus(),
     staleTime: 30_000,
+    enabled: isSelfhostWeb(),
   });
 }
 
-/** GAIA Cloud's profile: hosted production never serves /setup/status. */
+/** GAIA Cloud's profile; hosted GAIA never serves /setup/status. */
 const HOSTED_DEPLOYMENT: DeploymentStatus = {
   kind: "production",
   bills: true,

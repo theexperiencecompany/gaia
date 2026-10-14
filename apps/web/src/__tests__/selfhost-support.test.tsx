@@ -4,7 +4,7 @@
 import type { SetupStatusResponse } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchSetupStatus = vi.fn<() => Promise<SetupStatusResponse>>();
 
@@ -36,6 +36,14 @@ const status = (gaia_support: boolean): SetupStatusResponse => ({
   needs_setup: false,
   plans_seeded: true,
   providers: {},
+});
+
+beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 function renderForm() {

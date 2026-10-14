@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Outside a Next request scope connection() throws; the page's render is not under test.
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  connection: async () => undefined,
+}));
+
 import { selfhostHomeRedirect } from "@/features/auth/api/selfhostHomeRedirect";
 import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 
@@ -52,7 +58,7 @@ afterEach(() => {
 
 describe("/ on a self-hosted instance", () => {
   beforeEach(() => {
-    vi.stubEnv("GAIA_SELFHOST", "true");
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
   });
 
   it("goes to the setup wizard while setup is needed", async () => {
@@ -85,6 +91,7 @@ describe("/ on hosted GAIA", () => {
 
 describe("the auth mode server-rendered auth pages use", () => {
   it("is the API's, whatever a stale AUTH_MODE in the web env says", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
     vi.stubEnv("AUTH_MODE", "local");
     stubSetupStatus({ auth_mode: "workos" });
 

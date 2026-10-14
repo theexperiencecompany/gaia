@@ -225,9 +225,6 @@ services:
       # Browsers call the same-origin /api/v1/ baked into the image; server-side
       # (SSR) fetches reach the API directly over the private network.
       API_BASE_URL_INTERNAL: http://gaia-backend:8000/api/v1/
-      # Marks this web server as a self-hosted instance's; what the instance
-      # does (auth mode included) comes from the API's GET /setup/status.
-      GAIA_SELFHOST: "true"
     expose:
       - "3000"
     restart: on-failure

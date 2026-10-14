@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getSetupStatusServer, isSelfhostWeb } from "./serverSetupStatusApi";
+import { isSelfhostWeb } from "@/lib/selfhost";
+
+import { getSetupStatusServer } from "./serverSetupStatusApi";
 
 /** The session cookie the API sets on sign-in. */
 const SESSION_COOKIE = "wos_session";
