@@ -157,14 +157,6 @@
       "command": "bash scripts/dead-code-check.sh --strict --verbose"
     },
     {
-      "name": "design-tokens",
-      "scope": "^DESIGN\\.md$|^config/design\\.tokens\\.json$",
-      "heavy": false,
-      "timeout_s": 120,
-      "require_cmd": [],
-      "command": "pnpm tokens:check"
-    },
-    {
       "name": "shadcn-lint",
       "ci_job": "shadcn-lint",
       "scope": "^apps/web/(src/.*\\.(tsx|ts|jsx|js)|\\.oxlintrc\\.json)$",

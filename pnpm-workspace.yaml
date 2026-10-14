@@ -60,7 +60,5 @@ onlyBuiltDependencies:
 # Dependencies that have an install script we deliberately do NOT run. Listed
 # so strictDepBuilds stays green and the decision is recorded.
 ignoredBuiltDependencies:
-  - "@bundled-es-modules/glob" # postinstall: patch-package; ships prebundled, dev-only (style-dictionary)
   - less                       # postinstall prints a message only; dev-only via @nx/web
   - onnxruntime-node           # postinstall only fetches optional CUDA binaries; CPU binaries ship in the tarball
-  - style-dictionary           # postinstall: patch-package / husky; dev-only design-token build
