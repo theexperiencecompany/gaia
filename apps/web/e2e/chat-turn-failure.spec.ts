@@ -92,4 +92,27 @@ test.describe("chat turn failure", () => {
     await expect(reply.getByText(/Used \d+ tools?/)).toBeVisible();
     await expect(reply.getByRole("button", { name: "Retry" })).toBeVisible();
   });
+  test("a reply the model retried after a failure shows its text once", async ({
+    page,
+  }) => {
+    test.skip(
+      !SIM_ENABLED,
+      "Requires the deterministic sim stack. Run `mise dev --sim` and set E2E_SIM=1.",
+    );
+    const replyText = "Streamed before the provider failed";
+
+    // The stub breaks every attempt after its text, so the model call is retried
+    // and each attempt streams the same words.
+    await send(
+      page,
+      `[[say:${replyText}]] [[fail:provider dropped the stream]]`,
+    );
+
+    const reply = page.locator(".chatbubblebot_parent").first();
+    await expect(reply.getByText("Response was cut short")).toBeVisible({
+      timeout: 60_000,
+    });
+    const shown = await reply.innerText();
+    expect(shown.split(replyText).length - 1).toBe(1);
+  });
 });

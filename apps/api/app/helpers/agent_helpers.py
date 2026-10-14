@@ -249,6 +249,39 @@ def drop_retracted_text(payload: object, *held: dict[str, str]) -> None:
             texts.pop(boundary.message_id or "", None)
 
 
+def retract_abandoned_attempt(
+    message_id: str,
+    metadata: StreamChunkMetadata,
+    attempt_by_node_run: dict[str, str],
+    message_texts: dict[str, str],
+) -> str | None:
+    """Forget the text of an earlier model attempt in this node run; return its id.
+
+    A retried or failed-over model call streams each attempt under its own message
+    id within one node run, and only the last attempt ever reaches a boundary.
+    """
+    node_run = metadata.get("langgraph_checkpoint_ns")
+    if node_run is None:
+        return None
+    previous = attempt_by_node_run.get(node_run)
+    attempt_by_node_run[node_run] = message_id
+    if previous is None or previous == message_id or previous not in message_texts:
+        return None
+    del message_texts[previous]
+    return previous
+
+
+def message_boundary_frame(message_id: str, *, discarded: bool) -> str:
+    """Build the SSE frame announcing a message's fate: kept as a bubble, or retracted."""
+    return format_sse_data(
+        {
+            "message_boundary": MessageBoundaryPayload(
+                message_id=message_id, discarded=discarded
+            ).model_dump()
+        }
+    )
+
+
 def last_ai_message(messages: Sequence[object]) -> AIMessage | None:
     """Return the model's own reply in a node update.
 
@@ -957,6 +990,8 @@ class _SilentAccumulators:
     # after the text has already been accumulated.
     message_texts: dict[str, str] = field(default_factory=dict)
     tool_call_message_ids: set[str] = field(default_factory=set)
+    # The message id each node run is streaming, to spot a retried model attempt.
+    attempt_by_node_run: dict[str, str] = field(default_factory=dict)
     # Track tool calls to avoid duplicate emissions (same as streaming)
     emitted_tool_calls: set[str] = field(default_factory=set)
 
@@ -978,8 +1013,7 @@ def _accumulate_silent_custom_event(payload: object, acc: _SilentAccumulators) -
 def _hold_silent_chunk(
     payload: tuple[BaseMessage, StreamChunkMetadata],
     is_comms: bool,
-    tool_call_message_ids: set[str],
-    message_texts: dict[str, str],
+    acc: _SilentAccumulators,
 ) -> None:
     """One "messages"-mode event of a silent run: hold the chunk's text by message."""
     metadata: StreamChunkMetadata
@@ -989,9 +1023,12 @@ def _hold_silent_chunk(
         return  # Skip silent chunks (e.g. follow-up actions generation)
 
     if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
-        message_id, held_text = _held_chunk_text(chunk, is_comms, tool_call_message_ids)
+        message_id, held_text = _held_chunk_text(chunk, is_comms, acc.tool_call_message_ids)
         if held_text:
-            message_texts[message_id] = message_texts.get(message_id, "") + held_text
+            retract_abandoned_attempt(
+                message_id, metadata, acc.attempt_by_node_run, acc.message_texts
+            )
+            acc.message_texts[message_id] = acc.message_texts.get(message_id, "") + held_text
 
 
 async def execute_graph_silent(
@@ -1049,7 +1086,7 @@ async def execute_graph_silent(
             continue
 
         if stream_mode == "messages":
-            _hold_silent_chunk(payload, is_comms, acc.tool_call_message_ids, acc.message_texts)
+            _hold_silent_chunk(payload, is_comms, acc)
 
         elif stream_mode == "custom":
             _accumulate_silent_custom_event(payload, acc)
@@ -1109,6 +1146,8 @@ class _StreamAccumulators:
     pipeline_ttft_perf: float | None = None
     # The visible text of each held message already streamed.
     released_text: dict[str, str] = field(default_factory=dict)
+    # The message id each node run is streaming, to spot a retried model attempt.
+    attempt_by_node_run: dict[str, str] = field(default_factory=dict)
 
 
 async def _emit_mcp_app_event(
@@ -1284,13 +1323,7 @@ async def _stream_updates(
             if boundary_id is not None:
                 if closing_text and not discarded:
                     yield format_sse_response(closing_text)
-                yield format_sse_data(
-                    {
-                        "message_boundary": MessageBoundaryPayload(
-                            message_id=boundary_id, discarded=discarded
-                        ).model_dump()
-                    }
-                )
+                yield message_boundary_frame(boundary_id, discarded=discarded)
 
 
 async def _stream_tool_message_frames(
@@ -1380,6 +1413,13 @@ async def _stream_messages(
         if held_text:
             if state.pipeline_ttft_perf is None:
                 state.pipeline_ttft_perf = time.perf_counter()
+            abandoned = retract_abandoned_attempt(
+                message_id, metadata, state.attempt_by_node_run, state.message_texts
+            )
+            if abandoned is not None:
+                # The client already shows the failed attempt's text; retract it
+                # before the retry streams the reply again.
+                yield message_boundary_frame(abandoned, discarded=True)
             state.message_texts[message_id] = state.message_texts.get(message_id, "") + held_text
             if visible := _stream_visible_text(state, message_id):
                 yield format_sse_response(visible)

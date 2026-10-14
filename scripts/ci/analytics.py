@@ -2,7 +2,7 @@
 """analytics.py — the PostHog side of the event catalog contract.
 
 Subcommands:
-  check                   Fail when the PostHog project drifts from the repo:
+  check [--loop-catalog P] Fail when the PostHog project drifts from the repo:
                           (a) a saved insight on a live dashboard references an
                               event or property the catalog does not have;
                           (b) the project settings differ from
@@ -843,8 +843,16 @@ def _insight_failures(client: PostHog, catalog: Catalog) -> list[str]:
     return failures
 
 
-def cmd_check(_args: list[str]) -> int:
+def cmd_check(args: list[str]) -> int:
     """Run the five checks and exit non-zero on any failure."""
+    parser = argparse.ArgumentParser(prog="analytics.py check")
+    parser.add_argument(
+        "--loop-catalog",
+        type=Path,
+        default=CATALOG_JSON,
+        help="catalog the live loop alert is held to; a PR passes master's, the one a merge syncs",
+    )
+    opts = parser.parse_args(args)
     client = client_from_env(READ_SCOPES)
     if client is None:
         return 1
@@ -876,7 +884,10 @@ def cmd_check(_args: list[str]) -> int:
 
     spec = _read_json(LOOP_ALERT_JSON)
     loop_failures = loop_alert_diff(
-        catalog, spec, client.insight(spec["insight"]["id"]), client.alert(spec["alert"]["id"])
+        Catalog.load(opts.loop_catalog),
+        spec,
+        client.insight(spec["insight"]["id"]),
+        client.alert(spec["alert"]["id"]),
     )
     _report("the loop alert divides by the catalog's budgets", loop_failures)
 
