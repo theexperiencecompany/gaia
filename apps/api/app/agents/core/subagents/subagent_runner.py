@@ -45,7 +45,6 @@ from app.constants.general import (
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
-from app.constants.workflows import WorkflowDelivery
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread, build_agent_config
 from app.helpers.message_helpers import (
@@ -55,6 +54,7 @@ from app.helpers.message_helpers import (
 )
 from app.models.agent_models import (
     AgentConfigurable,
+    AgentConfigurableView,
     AgentRunnableConfig,
     AgentUserContext,
     StreamChunkMetadata,
@@ -882,7 +882,7 @@ async def prepare_executor_execution(
     # configurable) rather than depend on comms forwarding the rule. Skip if already present.
     if configurable.get("workflow_id") and "NOTIFICATIONS:" not in enhanced_task:
         notification_section = WORKFLOW_DELIVERY_SECTIONS[
-            configurable.get("workflow_delivery", WorkflowDelivery.NOW)
+            AgentConfigurableView.model_validate(configurable).workflow_delivery
         ]
         enhanced_task = f"{enhanced_task}\n{notification_section}"
 
