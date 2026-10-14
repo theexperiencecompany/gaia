@@ -26,7 +26,7 @@ from app.services.payments.subscription_events import (
     SubscriptionEventOutcome,
     SubscriptionEventResult,
 )
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.billing import (
     PaymentFailed,
     PaymentSucceeded,
@@ -515,6 +515,23 @@ class TestHandlePaymentSucceeded:
         assert result.status == "failed"
         mock_processed_webhook_repository.release.assert_awaited_once_with("wh_pay_ref_fail")
 
+    async def test_a_redelivery_after_a_failed_reward_records_the_payment_as_one_fact(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+        mock_no_referral,
+    ):
+        mock_no_referral.conversion.side_effect = [ConnectionError("dodo unreachable"), None]
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+
+        await webhook_service.process_webhook(event_data, "wh_pay_redelivered")
+        await webhook_service.process_webhook(event_data, "wh_pay_redelivered")
+
+        fact = Dedupe(key="pay_001", occurred_at=datetime(2025, 1, 1, tzinfo=UTC))
+        assert [c.kwargs["dedupe"] for c in mock_payment_capture.call_args_list] == [fact, fact]
+
     async def test_tracks_analytics_event(
         self,
         webhook_service,
@@ -537,6 +554,7 @@ class TestHandlePaymentSucceeded:
                 currency_charged="USD",
                 amount_usd_pre_tax=9.99,
             ),
+            dedupe=Dedupe(key="pay_001", occurred_at=datetime(2025, 1, 1, tzinfo=UTC)),
         )
 
     async def test_a_localised_taxed_charge_reports_pre_tax_local_and_usd(

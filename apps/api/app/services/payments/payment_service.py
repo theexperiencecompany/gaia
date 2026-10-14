@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal, TypedDict, cast
 
-from dodopayments import DodoPayments, NotFoundError
+from dodopayments import APIError, DodoPayments, NotFoundError
 from dodopayments.types import Subscription
 from fastapi import HTTPException
 
@@ -180,7 +180,17 @@ class DodoPaymentService:
         if existing:
             raise HTTPException(409, "Active subscription exists")
 
-        gift_code = await self._referral_gift_code(user_id, product_id)
+        # The gift is a referral perk: Dodo failing to mint it must not stop the friend paying.
+        try:
+            gift_code = await self._referral_gift_code(user_id, product_id)
+        except APIError as e:
+            log.error(
+                f"{LogTag.PAYMENT} Referral gift could not be minted; checkout opens without it",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
+            gift_code = None
 
         # Create hosted checkout session (preferred over deprecated subscriptions.create)
         try:

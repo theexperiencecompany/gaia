@@ -90,10 +90,13 @@ WEEKLY_CARD_WEEKDAY = 0
 # Far above anything a person does by hand; it exists to protect the sending
 # domain's reputation from a script, not to ration real users.
 INVITE_DAILY_SEND_CEILING = 200
+# One counter per sender per UTC day; it outlives its day so a late release still lands on it.
+INVITE_QUOTA_KEY_TEMPLATE = "referral:invite-quota:{user_id}:{day}"
+INVITE_QUOTA_TTL_S = 2 * 24 * 60 * 60
 # Largest batch one POST /invites may carry.
 INVITE_BATCH_MAX = 50
 INVITE_FROM_ADDRESS = "invites@heygaia.io"
-INVITE_SENDER_TEMPLATE = "{name} via GAIA <" + INVITE_FROM_ADDRESS + ">"
+INVITE_SENDER_NAME_TEMPLATE = "{name} via GAIA"
 INVITE_EMAIL_TEMPLATE = "referral_invite.html"
 INVITE_SUBJECT_TEMPLATE = "{name} sent you a gift!"
 INVITE_CTA_LABEL = "Open your gift"
@@ -200,8 +203,11 @@ SELF_NAME_MIN_WORD_LENGTH = 3
 
 # One referrer's billing date is moved by one reward at a time.
 REWARD_LOCK_KEY_TEMPLATE = "referral:reward-lock:{user_id}"
-REWARD_LOCK_TIMEOUT_S = 60
+REWARD_LOCK_LEASE_S = 60
+REWARD_LOCK_RENEW_S = 20
 REWARD_LOCK_WAIT_S = 30
+# A banked batch makes two Dodo calls per month; ten minutes covers far more months than anyone banks.
+REWARD_LOCK_MAX_HOLD_S = 600
 
 # ---- Worker ------------------------------------------------------------------
 

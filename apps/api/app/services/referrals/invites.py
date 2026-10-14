@@ -14,10 +14,6 @@ from pydantic import EmailStr, TypeAdapter, ValidationError
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.referrals import (
     FRIEND_PRICE_LINE,
-    INVITE_CEILING_FIX,
-    INVITE_CEILING_MESSAGE,
-    INVITE_CEILING_WHY,
-    INVITE_DAILY_SEND_CEILING,
     INVITE_GMAIL_BODY,
     INVITE_NO_SENDER_EMAIL_MESSAGE,
     INVITE_NO_SENDER_EMAIL_WHY,
@@ -50,6 +46,7 @@ from app.services.mail.mail_service import EmailContent, send_email
 from app.services.oauth.oauth_service import check_integration_status
 from app.services.payments.payment_service import payment_service
 from app.services.referrals.codes import ensure_code, first_name_of, load_user, share_link
+from app.services.referrals.invite_quota import release_invites, reserve_invites
 from app.services.referrals.offer import build_offer
 from app.utils.email_utils import email_identity
 from app.utils.errors import AppError
@@ -202,10 +199,6 @@ async def _invite_one(batch: _Batch, address: str | None) -> ReferralInviteStatu
     return ReferralInviteStatus.SENT
 
 
-def _day_start(now: datetime) -> datetime:
-    return now.replace(hour=0, minute=0, second=0, microsecond=0)
-
-
 async def send_invites(user_id: str, request: ReferralInviteRequest) -> ReferralInviteResponse:
     """Judge and send each requested address, returning one result per address in request order."""
     sender = await load_user(user_id)
@@ -225,32 +218,27 @@ async def send_invites(user_id: str, request: ReferralInviteRequest) -> Referral
         for identity in identities
         if identity != sender_identity and identity not in suppressed
     }
-    sent_today = await referral_invite_repository.count_sent_since(
-        sender.id, _day_start(datetime.now(UTC))
-    )
-    if sent_today + len(sendable) > INVITE_DAILY_SEND_CEILING:
-        raise AppError(
-            message=INVITE_CEILING_MESSAGE,
-            why=INVITE_CEILING_WHY,
-            fix=INVITE_CEILING_FIX,
-            status_code=429,
-            meta={"sent_today": sent_today, "ceiling": INVITE_DAILY_SEND_CEILING},
+    reservation = await reserve_invites(sender.id, len(sendable), datetime.now(UTC))
+    results: list[ReferralInviteResult] = []
+    try:
+        gmail_connected = await check_integration_status(GMAIL_INTEGRATION_ID, sender.id)
+        batch = _Batch(
+            sender=sender,
+            sender_email=sender.email,
+            surface=request.surface,
+            channel=ReferralInviteChannel.GMAIL if gmail_connected else ReferralInviteChannel.GAIA,
+            link=share_link(await ensure_code(sender)),
+            offer=build_offer(await payment_service.get_pro_plans()),
+            suppressed=suppressed,
         )
-
-    gmail_connected = await check_integration_status(GMAIL_INTEGRATION_ID, sender.id)
-    batch = _Batch(
-        sender=sender,
-        sender_email=sender.email,
-        surface=request.surface,
-        channel=ReferralInviteChannel.GMAIL if gmail_connected else ReferralInviteChannel.GAIA,
-        link=share_link(await ensure_code(sender)),
-        offer=build_offer(await payment_service.get_pro_plans()),
-        suppressed=suppressed,
-    )
-    results = [
-        ReferralInviteResult(email=raw, status=await _invite_one(batch, address))
-        for raw, address in parsed
-    ]
+        for raw, address in parsed:
+            results.append(
+                ReferralInviteResult(email=raw, status=await _invite_one(batch, address))
+            )
+    finally:
+        await release_invites(
+            reservation, sum(r.status is ReferralInviteStatus.SENT for r in results)
+        )
     log.set_ns(
         "referral",
         invite_channel=batch.channel.value,

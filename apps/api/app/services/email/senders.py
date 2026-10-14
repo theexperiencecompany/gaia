@@ -1,6 +1,7 @@
 """Domain senders for every platform email GAIA delivers."""
 
 from datetime import UTC, datetime, timedelta
+from email.utils import formataddr
 
 from app.config.rate_limits import derive_pro_benefits, get_feature_info
 from app.config.settings import settings
@@ -18,7 +19,8 @@ from app.constants.log_tags import LogTag
 from app.constants.referrals import (
     INVITE_CTA_LABEL,
     INVITE_EMAIL_TEMPLATE,
-    INVITE_SENDER_TEMPLATE,
+    INVITE_FROM_ADDRESS,
+    INVITE_SENDER_NAME_TEMPLATE,
     INVITE_SUBJECT_TEMPLATE,
     REFERRALS_PAGE_PATH,
     REWARD_APPLIED_TITLE,
@@ -274,7 +276,9 @@ async def send_referral_invite_email(invite: ReferralInviteEmail) -> None:
     """Send a friend's invite from GAIA's domain; raises when the provider refuses it."""
     await send_email(
         EmailMessage(
-            sender=INVITE_SENDER_TEMPLATE.format(name=invite.referrer_name),
+            sender=formataddr(
+                (INVITE_SENDER_NAME_TEMPLATE.format(name=invite.referrer_name), INVITE_FROM_ADDRESS)
+            ),
             to=[invite.to],
             subject=INVITE_SUBJECT_TEMPLATE.format(name=invite.referrer_name),
             html=render_email_template(
