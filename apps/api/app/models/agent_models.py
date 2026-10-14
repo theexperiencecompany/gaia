@@ -184,9 +184,11 @@ class StreamChunkMetadata(TypedDict, total=False):
     """The run-metadata keys a messages-mode stream consumer reads off one chunk.
 
     silent is stamped by quiet LLM calls (llm/client.py, follow_up_actions_node) so their tokens never stream.
+    langgraph_checkpoint_ns is LangGraph's id for the node run that produced the chunk.
     """
 
     silent: bool
+    langgraph_checkpoint_ns: str
 
 
 class AgentRunnableConfig(RunnableConfig):

@@ -978,8 +978,8 @@ class TestRunChatStreamBackground:
         # A failed turn is not a completed one: no completion milestone for it.
         mock_capture.assert_not_called()
 
-    async def test_error_chunk_published_before_set_error(self, test_user, existing_conv_body):
-        """set_error() sends STREAM_ERROR_SIGNAL, which breaks the subscriber — publish the error JSON first."""
+    async def test_a_failed_turn_has_one_error_sender(self, test_user, existing_conv_body):
+        """set_error's terminal entry is the client's error frame; a published error chunk as well showed it twice."""
         sm = _make_stream_manager_mock()
         sm.get_progress = AsyncMock(return_value=None)
         publish_calls: list[str] = []
@@ -988,13 +988,7 @@ class TestRunChatStreamBackground:
             publish_calls.append(chunk)
 
         sm.publish_chunk = AsyncMock(side_effect=track_publish)
-        set_error_calls: list[str] = []
-
-        def track_set_error(stream_id: str, err: str) -> None:
-            set_error_calls.append(err)
-            # Verify no further publish_chunk called after this
-
-        sm.set_error = AsyncMock(side_effect=track_set_error)
+        sm.set_error = AsyncMock()
 
         with (
             _patch_stream_manager(sm),
@@ -1015,17 +1009,8 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        # There must be at least one error chunk published
-        error_chunks = [c for c in publish_calls if "error" in c]
-        assert error_chunks, "Expected an error chunk to be published"
-
-        # The error chunk must contain the error message
-        error_payload = json.loads(error_chunks[0][6:])
-        assert "error" in error_payload
-        assert "network timeout" in error_payload["error"]
-
-        # set_error must also have been called
-        assert set_error_calls, "Expected set_error to be called"
+        assert [c for c in publish_calls if '"error"' in c] == []
+        sm.set_error.assert_awaited_once_with("stream_7", "network timeout")
 
     async def test_save_always_called_even_on_agent_failure(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()

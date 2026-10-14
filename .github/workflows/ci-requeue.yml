@@ -1,0 +1,36 @@
+# Re-run attempts stranded on an offline home runner. "Re-run failed jobs"
+# re-runs only the failed lanes: select-runner and runner-watchdog do not
+# re-run, so the lanes inherit the old home runs-on and queue forever when the
+# home listeners are offline. runner.sh requeue-stranded cancels such an
+# attempt and re-runs it in full, so select chooses afresh.
+name: CI requeue stranded re-runs
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-requeue
+  cancel-in-progress: false
+
+jobs:
+  requeue:
+    name: Requeue stranded re-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Cancel and fully re-run attempts queued on an offline home runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/runner.sh requeue-stranded
