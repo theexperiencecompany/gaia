@@ -188,7 +188,7 @@ program
   .option("--postgres <file>", "PostgreSQL dump file")
   .option(
     "--from <dir>",
-    "Restore from a backup directory (picks the latest of each backed-up file, apps/api/.env included)",
+    "Restore from a backup directory (every file of the newest backup run, apps/api/.env included)",
   )
   .option("--dry-run", "Print the docker commands without executing them")
   .action(

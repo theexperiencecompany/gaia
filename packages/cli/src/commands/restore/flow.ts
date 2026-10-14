@@ -11,18 +11,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
+import { backupFileSet, latestBackupStamp } from "../../lib/backup-files.js";
 import { isDockerRunning } from "../../lib/docker.js";
 import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
 import { apiEnvPath, findInstallRoot } from "../../lib/service-starter.js";
 import {
-  VOLUME_BACKUPS,
   type VolumeFile,
   volumeRestoreScript,
 } from "../../lib/volume-backups.js";
-import {
-  API_ENV_BACKUP_PREFIX,
-  API_ENV_BACKUP_SUFFIX,
-} from "../backup/flow.js";
 
 export interface RestoreOptions {
   mongoFile?: string;
@@ -43,24 +39,18 @@ export function resolveRestoreFiles(
 ): ResolvedRestoreFiles {
   if (options.fromDir) {
     const dir = path.resolve(options.fromDir);
-    // Pick most recent matching file when a directory is given.
-    const pickLatest = (prefix: string, suffix: string): string | undefined => {
-      if (!fs.existsSync(dir)) return undefined;
-      const candidates = fs
-        .readdirSync(dir)
-        .filter((f) => f.startsWith(prefix) && f.endsWith(suffix))
-        .map((f) => path.join(dir, f))
-        .sort();
-      return candidates.at(-1);
-    };
+    const stamp = latestBackupStamp(dir);
+    if (!stamp) return { volumeFiles: [] };
+    // Every file of the newest run, and only that run: mixing runs would
+    // pair a dump with another run's files or INSTANCE_SECRET.
+    const files = backupFileSet(dir, stamp);
+    const present = (file: string): string | undefined =>
+      fs.existsSync(file) ? file : undefined;
     return {
-      mongoFile: options.mongoFile ?? pickLatest("mongo-", ".gz"),
-      postgresFile: options.postgresFile ?? pickLatest("postgres-", ".sql"),
-      apiEnvFile: pickLatest(API_ENV_BACKUP_PREFIX, API_ENV_BACKUP_SUFFIX),
-      volumeFiles: VOLUME_BACKUPS.flatMap((v) => {
-        const file = pickLatest(`${v.fileSuffix}-`, ".tar.gz");
-        return file ? [{ volume: v.volume, label: v.label, file }] : [];
-      }),
+      mongoFile: options.mongoFile ?? present(files.mongoFile),
+      postgresFile: options.postgresFile ?? present(files.postgresFile),
+      apiEnvFile: present(files.apiEnvFile),
+      volumeFiles: files.volumeFiles.filter((v) => fs.existsSync(v.file)),
     };
   }
   return {
@@ -121,7 +111,7 @@ export async function runRestore(
         "No backup files specified.",
         "Use --mongo <file> --postgres <file> or --from <backup-dir> containing mongo-*.gz and postgres-*.sql.",
         "Example: gaia restore --from backups",
-        "Example: gaia restore --mongo backups/mongo-2026-08-27.gz --postgres backups/postgres-2026-08-27.sql",
+        "Example: gaia restore --mongo backups/mongo-2026-08-27T09-30-00Z.gz --postgres backups/postgres-2026-08-27T09-30-00Z.sql",
       ].join("\n"),
     );
   }

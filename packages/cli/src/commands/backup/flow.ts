@@ -13,6 +13,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
+import {
+  type BackupFileSet,
+  backupFileSet,
+  backupStamp,
+  partialPath,
+  volumeBackupFile,
+} from "../../lib/backup-files.js";
 import { dockerVolumeExists, isDockerRunning } from "../../lib/docker.js";
 import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
 import { apiEnvPath, findInstallRoot } from "../../lib/service-starter.js";
@@ -23,48 +30,27 @@ export interface BackupOptions {
   dryRun?: boolean;
 }
 
-export interface BackupResult {
-  mongoFile: string;
-  postgresFile: string;
-  apiEnvFile: string;
+export interface BackupResult extends BackupFileSet {
   commands: string[];
-  volumeFiles?: VolumeFile[];
-  warnings?: string[];
+  warnings: string[];
 }
-
-/** YYYY-MM-DD for dated filenames. */
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/** The backup's copy of apps/api/.env; `gaia restore --from` picks the latest. */
-export const API_ENV_BACKUP_PREFIX = "api-env-";
-export const API_ENV_BACKUP_SUFFIX = ".env";
 
 /** Exact shell one-liners shown in `--help` / docs, run from infra/docker/. */
 export function getBackupCommands(
   outputDir: string,
-  date = todayIso(),
+  stamp = backupStamp(),
 ): string[] {
-  const mongoFile = path.join(outputDir, `mongo-${date}.gz`);
-  const postgresFile = path.join(outputDir, `postgres-${date}.sql`);
-  const apiEnvFile = path.join(
-    outputDir,
-    `${API_ENV_BACKUP_PREFIX}${date}${API_ENV_BACKUP_SUFFIX}`,
-  );
-  const base = [
+  const files = backupFileSet(outputDir, stamp);
+  return [
     `mkdir -p ${outputDir}`,
-    `docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > ${mongoFile}`,
-    `docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > ${postgresFile}`,
-    `install -m 600 ../../apps/api/.env ${apiEnvFile}`,
+    `docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > ${files.mongoFile}`,
+    `docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > ${files.postgresFile}`,
+    `install -m 600 ../../apps/api/.env ${files.apiEnvFile}`,
+    ...files.volumeFiles.map(
+      ({ volume, file }) =>
+        `docker run --rm -v ${volume}:/data -v ${outputDir}:/backups alpine tar czf /backups/${path.basename(file)} -C /data .`,
+    ),
   ];
-  for (const v of VOLUME_BACKUPS) {
-    const file = path.join(outputDir, `${v.fileSuffix}-${date}.tar.gz`);
-    base.push(
-      `docker run --rm -v ${v.volume}:/data -v ${outputDir}:/backups alpine tar czf /backups/${path.basename(file)} -C /data .`,
-    );
-  }
-  return base;
 }
 
 function resolveDockerDir(repoPath: string): string {
@@ -96,27 +82,12 @@ export async function runBackup(
   }
 
   const outDir = resolveBackupOutputDir(repoPath, options.outputDir);
-  const date = todayIso();
-  const mongoFile = path.join(outDir, `mongo-${date}.gz`);
-  const postgresFile = path.join(outDir, `postgres-${date}.sql`);
-  const apiEnvFile = path.join(
-    outDir,
-    `${API_ENV_BACKUP_PREFIX}${date}${API_ENV_BACKUP_SUFFIX}`,
-  );
-  const commands = getBackupCommands(outDir, date);
+  const stamp = backupStamp();
+  const files = backupFileSet(outDir, stamp);
+  const commands = getBackupCommands(outDir, stamp);
 
   if (options.dryRun) {
-    return {
-      mongoFile,
-      postgresFile,
-      apiEnvFile,
-      commands,
-      volumeFiles: VOLUME_BACKUPS.map((v) => ({
-        volume: v.volume,
-        label: v.label,
-        file: path.join(outDir, `${v.fileSuffix}-${date}.tar.gz`),
-      })),
-    };
+    return { ...files, commands, warnings: [] };
   }
 
   const dockerRunning = await isDockerRunning();
@@ -138,14 +109,56 @@ export async function runBackup(
     // (e.g. on a read-only mount) must not abort the backup.
   }
 
-  backupApiEnv(repoPath, apiEnvFile);
+  // Every file is written under its partial name and renamed only once the
+  // whole run succeeded, so a failed run never shadows the last good one.
+  const allFiles = [
+    files.mongoFile,
+    files.postgresFile,
+    files.apiEnvFile,
+    ...files.volumeFiles.map((v) => v.file),
+  ];
+  let written: { volumeFiles: VolumeFile[]; warnings: string[] };
+  try {
+    written = await writeBackupFiles(
+      repoPath,
+      dockerDir,
+      outDir,
+      stamp,
+      commands,
+    );
+  } catch (e) {
+    for (const file of allFiles) fs.rmSync(partialPath(file), { force: true });
+    throw e;
+  }
+  for (const file of [
+    files.mongoFile,
+    files.postgresFile,
+    files.apiEnvFile,
+    ...written.volumeFiles.map((v) => v.file),
+  ]) {
+    fs.renameSync(partialPath(file), file);
+  }
+
+  return { ...files, ...written, commands };
+}
+
+/** Write the run's files under their partial names; returns the volumes archived. */
+async function writeBackupFiles(
+  repoPath: string,
+  dockerDir: string,
+  outDir: string,
+  stamp: string,
+  commands: string[],
+): Promise<{ volumeFiles: VolumeFile[]; warnings: string[] }> {
+  const files = backupFileSet(outDir, stamp);
+  backupApiEnv(repoPath, partialPath(files.apiEnvFile));
 
   try {
     await streamCommandToFile(
       "docker",
       composeExecArgs("mongo", ["mongodump", "--archive", "--gzip"]),
       dockerDir,
-      mongoFile,
+      partialPath(files.mongoFile),
     );
   } catch (e) {
     throw new Error(
@@ -163,7 +176,7 @@ export async function runBackup(
         "langgraph",
       ]),
       dockerDir,
-      postgresFile,
+      partialPath(files.postgresFile),
     );
   } catch (e) {
     throw new Error(
@@ -176,7 +189,8 @@ export async function runBackup(
   const volumeFiles: VolumeFile[] = [];
   const warnings: string[] = [];
   for (const v of VOLUME_BACKUPS) {
-    const file = path.join(outDir, `${v.fileSuffix}-${date}.tar.gz`);
+    const target = volumeBackupFile(outDir, stamp, v);
+    const partial = partialPath(target.file);
     if (!(await dockerVolumeExists(v.volume))) {
       warnings.push(
         `${v.label} volume ${v.volume} not found — nothing to back up`,
@@ -192,11 +206,11 @@ export async function runBackup(
           "-v",
           `${v.volume}:/data`,
           "-v",
-          `${outDir}:/backups`,
+          `${path.dirname(partial)}:/backups`,
           "alpine",
           "tar",
           "czf",
-          `/backups/${path.basename(file)}`,
+          `/backups/${path.basename(partial)}`,
           "-C",
           "/data",
           ".",
@@ -204,31 +218,19 @@ export async function runBackup(
         { cwd: dockerDir },
       );
       try {
-        fs.chmodSync(file, 0o600);
+        fs.chmodSync(partial, 0o600);
       } catch {
         // Best-effort hardening.
       }
-      volumeFiles.push({ volume: v.volume, label: v.label, file });
+      volumeFiles.push(target);
     } catch (e) {
-      try {
-        fs.unlinkSync(file);
-      } catch {
-        // No partial file or already cleaned.
-      }
+      fs.rmSync(partial, { force: true });
       const message = `${v.label} backup failed: ${(e as Error).message}`;
       if (v.userData) throw new Error(message);
       warnings.push(message);
     }
   }
-
-  return {
-    mongoFile,
-    postgresFile,
-    apiEnvFile,
-    commands,
-    volumeFiles,
-    warnings,
-  };
+  return { volumeFiles, warnings };
 }
 
 /**
