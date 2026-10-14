@@ -552,7 +552,8 @@ Style: `new-york`, base: `zinc`, CSS variables on.
 
 | Component | Key details |
 |---|---|
-| `Button` | Variants: `default`, `destructive`, `outline`, `ghost`, `link`, `glass` (dark translucent pill over hero imagery) · Sizes: `default`, `sm`, `lg`, `icon`. No `secondary`: `bg-secondary` resolves to HeroUI's purple here |
+| `Button` | Variants: `default`, `destructive`, `outline`, `ghost`, `link`, `glass` (dark translucent pill over hero imagery), `ghostPrimary` (header icon buttons, primary-tinted hover), `composer` / `composerActive` (the chat composer's round action buttons, closed / open) · Sizes: `default`, `sm`, `lg`, `icon`. No `secondary`: `bg-secondary` resolves to HeroUI's purple here |
+| `AccordionTrigger` | Variant `sidebarGroup` for the chat list's date-group headers |
 | `Input` | `h-9 rounded-md shadow-xs` · focus ring · `aria-invalid` error state |
 | `Textarea` | Same as Input · `min-h-16` · auto-height via `field-sizing-content` |
 | `Dialog` | Zoom + fade entrance/exit — use for confirmations, forms requiring focus |
