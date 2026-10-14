@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 import re
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from dodopayments import NotFoundError
+import httpx
 import pytest
 import time_machine
 
@@ -101,10 +103,13 @@ def _payment(**overrides: object):
     return payment.model_copy(update={"payment_id": "pay_1"})
 
 
-def _subscription(dodo_subscription_id: str = SUB_ID) -> SubscriptionDocument:
+def _subscription(
+    dodo_subscription_id: str = SUB_ID, dodo_customer_id: str | None = None
+) -> SubscriptionDocument:
     return SubscriptionDocument.model_validate(
         {
             "dodo_subscription_id": dodo_subscription_id,
+            "dodo_customer_id": dodo_customer_id,
             "user_id": REFERRER.id,
             "product_id": "pdt_pro_monthly",
             "status": "active",
@@ -443,6 +448,34 @@ class TestSelfReferral:
         seams.list_for_user.assert_awaited_once_with(REFERRER.id)
         seams.dodo.subscriptions.retrieve.assert_called_once_with(SUB_ID)
         self._assert_self_referral(seams)
+
+    async def test_a_stored_customer_id_is_compared_without_asking_dodo(self, seams: Seams) -> None:
+        seams.list_for_user.return_value = [_subscription(dodo_customer_id="cus_referrer")]
+
+        await record_friend_payment(_payment(customer_id="cus_referrer"))
+
+        seams.dodo.subscriptions.retrieve.assert_not_called()
+        self._assert_self_referral(seams)
+
+    async def test_an_old_subscription_dodo_no_longer_has_does_not_fail_the_payment(
+        self, seams: Seams
+    ) -> None:
+        seams.list_for_user.return_value = [_subscription(), _subscription("sub_gone")]
+        live = seams.dodo.subscriptions.retrieve.side_effect
+        gone = NotFoundError(
+            "gone", response=httpx.Response(404, request=httpx.Request("GET", "x")), body=None
+        )
+
+        def retrieve(sid: str):
+            if sid == "sub_gone":
+                raise gone
+            return live(sid)
+
+        seams.dodo.subscriptions.retrieve.side_effect = retrieve
+
+        await record_friend_payment(_payment(customer_id="cus_friend"))
+
+        seams.log.set_ns.assert_any_call("referral", converted=True, self_referral=False)
 
     async def test_a_referrer_without_an_email_is_still_checked_by_dodo_customer(
         self, seams: Seams

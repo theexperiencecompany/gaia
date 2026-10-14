@@ -13570,6 +13570,8 @@ export interface components {
             created_at?: string | null;
             /** Currency */
             currency?: string | null;
+            /** Dodo Customer Id */
+            dodo_customer_id?: string | null;
             /** Dodo Subscription Id */
             dodo_subscription_id: string;
             /**
