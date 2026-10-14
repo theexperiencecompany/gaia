@@ -244,8 +244,7 @@ class TestTheSimStubRunsABriefsScriptOnce:
         self, sections: dict[str, Any]
     ) -> None:
         stub = load_llm_stub_module("directives")
-        criteria = sections.pop("acceptance_criteria")
-        brief = compose_executor_brief(_SCRIPT, criteria, verbatim_request=_SCRIPT, **sections)
+        brief = compose_executor_brief(_SCRIPT, verbatim_request=_SCRIPT, **sections)
         tools = frozenset({"create_reminder"})
         turn: list[dict[str, object]] = [{"role": "user", "content": brief}]
         after_one: list[dict[str, object]] = [
