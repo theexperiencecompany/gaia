@@ -67,7 +67,7 @@ export default function IntegrationsSidebar() {
           key={integration.id}
           fullWidth
           onPress={() => handleIntegrationClick(integration)}
-          className="justify-start text-start text-sm text-zinc-500 hover:text-zinc-300"
+          className="justify-start px-2 text-start text-sm text-zinc-500 hover:text-zinc-300"
           variant="light"
           radius="sm"
           size="sm"

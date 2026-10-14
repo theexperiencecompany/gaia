@@ -99,6 +99,7 @@ export function IntervalPicker({
         fullWidth
         radius="md"
         classNames={{
+          tabList: "p-1",
           tabContent:
             "font-medium text-zinc-400 group-data-[selected=true]:text-white",
           panel: "hidden",

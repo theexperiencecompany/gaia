@@ -57,7 +57,7 @@ export function SidebarPromo({
               variant="light"
               size="sm"
               radius="full"
-              className="text-zinc-400 hover:text-white relative left-3 group-hover:opacity-100 opacity-0 transition"
+              className="p-0! text-zinc-400 hover:text-white relative left-3 group-hover:opacity-100 opacity-0 transition"
               onPress={() => handleCollapse()}
             >
               <CancelIcon width={15} height={15} />

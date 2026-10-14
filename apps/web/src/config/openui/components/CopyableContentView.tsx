@@ -45,7 +45,7 @@ export function CopyableContentView(
         onPress={copy}
         aria-label={copied ? "Copied" : "Copy content"}
         radius="full"
-        className="inline-flex items-center min-w-0 h-auto transition-colors"
+        className="inline-flex items-center gap-1.5 transition-colors px-3 py-1.5 min-w-0 h-auto"
       >
         <span className="font-mono text-xs text-zinc-200 truncate">
           {props.content}
@@ -82,7 +82,7 @@ export function CopyableContentView(
           onPress={copy}
           aria-label={copied ? "Copied" : "Copy content"}
           className={cn(
-            "shrink-0 aspect-square min-w-7 w-7 h-7",
+            "shrink-0 aspect-square min-w-7 w-7 h-7 p-0",
             copied ? "text-emerald-500" : "text-zinc-500",
           )}
         >

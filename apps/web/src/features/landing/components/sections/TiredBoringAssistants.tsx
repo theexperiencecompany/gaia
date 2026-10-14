@@ -456,7 +456,7 @@ export default function Tired() {
                 delay={200}
                 closeDelay={0}
                 classNames={{
-                  content: "text-white text-xs",
+                  content: "text-white text-xs px-2.5 py-1",
                 }}
               >
                 <div className="tool-icon-btn">

@@ -99,7 +99,7 @@ function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
       radius="sm"
       onPress={() => onClick()}
       className={cn(
-        "h-7 min-w-7 text-xs font-semibold transition-all duration-150",
+        "h-7 min-w-7 px-1.5 text-xs font-semibold transition-all duration-150",
         active ? "text-zinc-100" : "text-zinc-400 hover:text-zinc-50",
       )}
     >

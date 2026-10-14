@@ -111,6 +111,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
             ref={inputRef}
             autoFocus
             classNames={{
+              inputWrapper: "px-3",
               innerWrapper: `${currentHeight > 24 ? "items-end" : "items-center"} `,
               input: "font-light",
             }}

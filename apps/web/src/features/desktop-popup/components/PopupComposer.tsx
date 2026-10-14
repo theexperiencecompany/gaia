@@ -113,7 +113,8 @@ export default function PopupComposer({
           // The window's liquid glass IS the field's background — the flat
           // variant's default tint is trusted instead of a transparent
           // override so the field stays theme-consistent.
-          input: "text-sm text-zinc-100 placeholder:text-zinc-400",
+          inputWrapper: "py-0 pl-0.5 pr-2",
+          input: "px-1.5 text-sm text-zinc-100 placeholder:text-zinc-400",
         }}
       />
     </div>

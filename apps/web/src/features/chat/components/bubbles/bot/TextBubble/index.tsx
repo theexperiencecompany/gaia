@@ -107,7 +107,7 @@ function FailedResponse({
 }>) {
   const retryButton = onRetry && (
     <Button
-      className="h-7 min-w-0 shrink-0 text-xs"
+      className="h-7 min-w-0 shrink-0 px-2 text-xs"
       isDisabled={isRetrying}
       onPress={onRetry}
       radius="full"

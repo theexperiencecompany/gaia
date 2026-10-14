@@ -197,7 +197,7 @@ export default function ChatsList() {
         <>
           <Accordion
             type="multiple"
-            className="w-full"
+            className="w-full p-0"
             value={openAccordions}
             onValueChange={setOpenAccordions}
           >

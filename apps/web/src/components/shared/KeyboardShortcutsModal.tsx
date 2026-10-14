@@ -63,7 +63,7 @@ export default function KeyboardShortcutsModal({
       backdrop="blur"
     >
       <ModalContent>
-        <ModalHeader>
+        <ModalHeader className="flex flex-col gap-1">
           <span className="text-xl font-semibold">Keyboard Shortcuts</span>
         </ModalHeader>
 

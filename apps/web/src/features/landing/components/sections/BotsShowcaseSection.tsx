@@ -438,7 +438,7 @@ function CTAGroup({
           radius="full"
           aria-label="Previous platform"
           onPress={onPrev}
-          className="min-w-10 h-10 w-10 text-zinc-500 transition-colors hover:text-zinc-200"
+          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
         >
           <ArrowLeft02Icon size={24} />
         </Button>
@@ -448,7 +448,7 @@ function CTAGroup({
           radius="full"
           aria-label="Next platform"
           onPress={onNext}
-          className="min-w-10 h-10 w-10 text-zinc-500 transition-colors hover:text-zinc-200"
+          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
         >
           <ArrowRight02Icon size={24} />
         </Button>

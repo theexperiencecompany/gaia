@@ -119,7 +119,7 @@ async function saveSkill(
 
 function SkillEditorHeader({ isEdit }: Readonly<{ isEdit: boolean }>) {
   return (
-    <ModalHeader className="flex flex-col items-start">
+    <ModalHeader className="flex flex-col items-start gap-1">
       <span>{isEdit ? "Edit skill" : "New skill"}</span>
       <span className="mt-1 text-xs font-normal text-zinc-500">
         {isEdit

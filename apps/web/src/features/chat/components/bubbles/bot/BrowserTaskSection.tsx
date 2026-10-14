@@ -103,7 +103,7 @@ function StepsAccordion({
   currentTask: string | undefined;
 }) {
   return (
-    <Accordion isCompact variant="light">
+    <Accordion isCompact className="px-0" variant="light">
       <AccordionItem
         key="steps"
         aria-label="Steps"
@@ -117,7 +117,7 @@ function StepsAccordion({
               variant="flat"
               classNames={{
                 base: "h-5",
-                content: "text-xs text-zinc-300",
+                content: "px-1.5 text-xs text-zinc-300",
               }}
             >
               {steps.length}
@@ -129,12 +129,11 @@ function StepsAccordion({
             )}
           </div>
         }
+        classNames={{ trigger: "py-2", content: "space-y-2 pb-2" }}
       >
-        <div className="space-y-2 pb-2">
-          {steps.map((step) => (
-            <StepRow key={`browser-step-${step.index}`} step={step} />
-          ))}
-        </div>
+        {steps.map((step) => (
+          <StepRow key={`browser-step-${step.index}`} step={step} />
+        ))}
       </AccordionItem>
     </Accordion>
   );

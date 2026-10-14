@@ -81,7 +81,7 @@ interface LogoWithContextMenuProps {
 }
 
 export function LogoWithContextMenu({
-  className = "",
+  className = "px-2",
   imageClassName = "object-contain",
   width = 100,
   height = 30,
@@ -207,7 +207,7 @@ export function LogoWithContextMenu({
         </Button>
       </ContextMenuTrigger>
       {isOpen && (
-        <ContextMenuContent>
+        <ContextMenuContent className="p-1.5">
           {menuItemsConfig.map((item, index) => {
             // --menu-index drives .menu-stagger-item's delay; it must sit on the
             // animated node, since animation-delay is not inherited.

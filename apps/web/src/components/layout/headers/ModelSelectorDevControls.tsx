@@ -87,6 +87,7 @@ function ModelSelect({
             key={m.id}
             textValue={m.name}
             classNames={{
+              base: "gap-2",
               title: "text-xs text-zinc-200",
             }}
             startContent={<ModelLogo src={m.logo} alt={m.provider} size={18} />}

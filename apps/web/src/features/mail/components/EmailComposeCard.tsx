@@ -103,7 +103,7 @@ function ComposeHeader({
       radius="none"
       onPress={onToggle}
       aria-expanded={!isCollapsed}
-      className="h-auto justify-between"
+      className="h-auto justify-between px-6 pt-4 pb-3"
     >
       <span className="flex flex-row items-center gap-2">
         <Gmail width={18} height={18} />
@@ -135,7 +135,7 @@ function EmailBodyPreview({
   onEdit: () => void;
 }) {
   return (
-    <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto text-sm leading-relaxed text-zinc-200">
+    <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
       {!isLocked && (
         <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
           <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
@@ -335,7 +335,7 @@ function EditEmailModal({
               variant="light"
               size="sm"
               onPress={onClose}
-              className="h-7 text-xs text-zinc-300"
+              className="h-7 px-2 text-xs text-zinc-300"
             >
               Cancel
             </Button>
@@ -343,7 +343,7 @@ function EditEmailModal({
               color="primary"
               size="sm"
               onPress={() => onSave(draft)}
-              className="h-7 text-xs font-medium"
+              className="h-7 px-3 text-xs font-medium"
             >
               Save
             </Button>

@@ -28,7 +28,7 @@ export function AppIconPicker({
               // 22% radius ≈ the macOS app-icon squircle, so flat square
               // sources match the default (pre-rounded) GAIA icon. Ring lives
               // on this wrapper because Button styling stays theme-owned.
-              "overflow-hidden rounded-[24%]",
+              "overflow-hidden rounded-[24%] p-1",
               isSelected ? "ring-2 ring-primary" : "ring-2 ring-transparent",
             )}
           >

@@ -84,7 +84,7 @@ export function MemoryRow({
               size="sm"
               variant="flat"
               classNames={{
-                content: "text-xs text-zinc-400",
+                content: "px-1.5 text-xs text-zinc-400",
               }}
             >
               {memory.category_path}
@@ -98,7 +98,7 @@ export function MemoryRow({
               onClick={toggleHistory}
               classNames={{
                 base: "cursor-pointer",
-                content: "text-xs text-zinc-400",
+                content: "px-1.5 text-xs text-zinc-400",
               }}
             >
               v{memory.version}

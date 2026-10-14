@@ -205,7 +205,7 @@ function DemoTodosCard() {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-zinc-400"
+                  className="text-zinc-400 px-1"
                   radius="sm"
                 >
                   {todo.priority}
@@ -214,7 +214,7 @@ function DemoTodosCard() {
                   <Chip
                     size="sm"
                     variant="flat"
-                    className="text-zinc-400"
+                    className="text-zinc-400 px-1"
                     radius="sm"
                   >
                     {new Date(todo.due_date).toDateString() ===
@@ -354,7 +354,7 @@ function DemoGoalsCard() {
                     <Chip
                       size="sm"
                       variant="flat"
-                      className="text-zinc-400"
+                      className="text-zinc-400 px-1"
                       radius="sm"
                       startContent={
                         <CheckmarkCircle02Icon
@@ -413,7 +413,7 @@ function DemoConversationsCard() {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-zinc-400"
+                  className="text-zinc-400 px-1"
                   radius="sm"
                   startContent={
                     <MessageMultiple02Icon
@@ -429,7 +429,7 @@ function DemoConversationsCard() {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-zinc-400"
+                  className="text-zinc-400 px-1"
                   radius="sm"
                   startContent={
                     <Calendar03Icon width={15} height={15} className="mx-1" />

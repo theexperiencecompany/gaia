@@ -87,7 +87,7 @@ export function LivePreview({
             size="sm"
             variant="light"
             radius="full"
-            className="h-7 text-xs text-zinc-400"
+            className="h-7 px-2 text-xs text-zinc-400"
             startContent={<SidebarRight01Icon className="size-3.5" />}
             onPress={surface.openPanel}
           >
@@ -105,7 +105,7 @@ export function LivePreview({
             size="sm"
             variant="light"
             radius="full"
-            className="h-7 text-xs text-zinc-400"
+            className="h-7 px-2 text-xs text-zinc-400"
             startContent={<SquareArrowUpRight02Icon className="size-3.5" />}
           >
             Open full browser

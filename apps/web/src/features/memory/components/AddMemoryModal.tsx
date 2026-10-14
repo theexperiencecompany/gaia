@@ -66,7 +66,7 @@ export function AddMemoryModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
       <ModalContent>
-        <ModalHeader className="flex flex-col">
+        <ModalHeader className="flex flex-col gap-1">
           <span>Add memory</span>
           <span className="mt-1 text-xs font-normal text-zinc-500">
             Tell GAIA something specific about yourself, your preferences, or

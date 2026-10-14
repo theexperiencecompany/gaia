@@ -83,7 +83,7 @@ export default function LabelsFieldChip({
                     handleAddLabel();
                     onClose();
                   }}
-                  className={`h-8 min-w-8 ${!newLabel.trim() || value.includes(newLabel.trim()) ? "text-zinc-600" : "text-zinc-200"}`}
+                  className={`h-8 min-w-8 p-0 ${!newLabel.trim() || value.includes(newLabel.trim()) ? "text-zinc-600" : "text-zinc-200"}`}
                 >
                   <PlusSignIcon size={14} />
                 </Button>
@@ -104,7 +104,7 @@ export default function LabelsFieldChip({
                       variant="light"
                       size="sm"
                       onPress={() => handleRemoveLabel(label)}
-                      className="h-4 w-4 min-w-4 text-zinc-400 hover:text-zinc-200"
+                      className="h-4 w-4 min-w-4 p-0 text-zinc-400 hover:text-zinc-200"
                     >
                       <Cancel01Icon size={10} />
                     </Button>

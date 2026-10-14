@@ -20,7 +20,7 @@ export function MarkdownPreview({ content, title }: MarkdownPreviewProps) {
           <h3 className="text-sm font-medium">Preview</h3>
         </div>
       </CardHeader>
-      <CardBody className="overflow-y-auto">
+      <CardBody className="overflow-y-auto pt-0">
         {title && (
           <h1 className="mb-4 text-2xl font-bold text-foreground">{title}</h1>
         )}

@@ -87,7 +87,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
         )}
       </SidebarHeader>
 
-      <SidebarContent className="flex-1">
+      <SidebarContent className="flex-1 px-1">
         <SidebarGroup>
           <SidebarGroupContent className="overflow-hidden">
             <div className="space-y-1 overflow-hidden">

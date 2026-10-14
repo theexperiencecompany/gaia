@@ -62,6 +62,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           title="Executed Code"
           classNames={{
             trigger: "text-sm font-medium text-zinc-300 hover:text-white",
+            content: "pt-0",
           }}
         >
           <div className="w-full max-w-[30vw] overflow-hidden rounded-xl">
@@ -78,6 +79,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           title="Output"
           classNames={{
             trigger: "text-sm font-medium text-zinc-300 hover:text-white",
+            content: "pt-0",
           }}
         >
           <CodeExecutionOutput
@@ -97,6 +99,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
             title="Charts"
             classNames={{
               trigger: "text-sm font-medium text-zinc-300 hover:text-white",
+              content: "pt-0",
             }}
           >
             <ChartDisplay charts={code_data.charts} />

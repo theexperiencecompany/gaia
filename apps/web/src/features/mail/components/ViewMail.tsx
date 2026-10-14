@@ -57,7 +57,7 @@ function AISummary({
           <Chip
             classNames={{
               content:
-                "text-sm relative flex! flex-row text-primary items-center font-medium",
+                "text-sm relative flex! flex-row text-primary items-center gap-1 pl-3 font-medium",
             }}
             variant="flat"
             color="primary"
@@ -81,7 +81,7 @@ function AISummary({
         <Chip
           classNames={{
             content:
-              "text-sm relative flex! flex-row text-primary items-center font-medium",
+              "text-sm relative flex! flex-row text-primary items-center gap-1 pl-3 font-medium",
           }}
           variant="flat"
           color="primary"
@@ -130,7 +130,7 @@ function AISummary({
       {/* Semantic Labels */}
       {analysis.semantic_labels && analysis.semantic_labels.length > 0 && (
         <div className="px-2 pb-2">
-          <Accordion variant="light" selectionMode="multiple">
+          <Accordion variant="light" selectionMode="multiple" className="px-0">
             <AccordionItem
               key="labels"
               aria-label="Semantic Labels"
@@ -142,6 +142,7 @@ function AISummary({
                   </Chip>
                 </div>
               }
+              className="px-0"
             >
               <div className="flex flex-wrap gap-1 pb-2">
                 {analysis.semantic_labels.map((label) => (

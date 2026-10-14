@@ -55,7 +55,8 @@ export function SkillRow({
                 />
               }
               classNames={{
-                content: "text-xs text-zinc-400",
+                base: "gap-1 pl-1.5",
+                content: "px-1 text-xs text-zinc-400",
               }}
             >
               {targetMeta.label}
@@ -91,7 +92,8 @@ export function SkillRow({
               )
             }
             classNames={{
-              content: "text-xs text-zinc-400",
+              base: "gap-1 pl-2",
+              content: "px-1 text-xs text-zinc-400",
             }}
           >
             {skill.source === "github" ? "GitHub" : "Source"}

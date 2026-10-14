@@ -40,7 +40,7 @@ export function IntegrationAccountRenameModal({
       onOpenChange={onClose}
     >
       <ModalContent>
-        <ModalHeader>Rename account</ModalHeader>
+        <ModalHeader className="pb-0">Rename account</ModalHeader>
         <ModalBody>
           <Input
             autoFocus

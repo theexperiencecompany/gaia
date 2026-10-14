@@ -89,7 +89,7 @@ function TwitterUserCard({
             variant="flat"
             size="sm"
             radius="full"
-            className="relative z-20"
+            className="relative z-20 px-4 py-1.5"
             onPress={() => onFollow(user.id)}
           >
             Follow

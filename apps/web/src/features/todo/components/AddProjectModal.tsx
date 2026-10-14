@@ -80,7 +80,9 @@ export default function AddProjectModal({
       <ModalContent>
         {(onClose) => (
           <>
-            <ModalHeader>Create New Project</ModalHeader>
+            <ModalHeader className="flex flex-col gap-1">
+              Create New Project
+            </ModalHeader>
             <ModalBody>
               <div className="flex flex-col gap-4">
                 {/* Name */}

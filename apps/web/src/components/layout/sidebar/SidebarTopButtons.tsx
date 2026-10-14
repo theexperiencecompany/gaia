@@ -79,7 +79,7 @@ export default function SidebarTopButtons() {
         href="/c"
         size="sm"
         variant="light"
-        className="w-full justify-start text-sm text-zinc-400 hover:text-zinc-300"
+        className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
         startContent={<ChevronLeft className="size-4" />}
       >
         Back to chats

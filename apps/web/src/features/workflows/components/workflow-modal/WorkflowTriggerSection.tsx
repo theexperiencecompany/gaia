@@ -135,6 +135,7 @@ export default function WorkflowTriggerSection({
         fullWidth
         radius="lg"
         classNames={{
+          tabList: "p-1",
           tabContent:
             "text-zinc-400 group-data-[selected=true]:text-zinc-100 font-medium",
         }}

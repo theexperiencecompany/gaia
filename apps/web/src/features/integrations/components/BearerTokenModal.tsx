@@ -94,7 +94,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
       isKeyboardDismissDisabled={isLoading}
     >
       <ModalContent>
-        <ModalHeader className="flex flex-col">
+        <ModalHeader className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold">Connect {integrationName}</h2>
           <p className="mt-1 text-sm font-normal text-zinc-400">
             Enter your API key / Bearer Token to connect

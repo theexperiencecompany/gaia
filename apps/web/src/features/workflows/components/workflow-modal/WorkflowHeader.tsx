@@ -84,6 +84,7 @@ export default function WorkflowHeader({
                 base: "min-w-0 flex-1",
                 input:
                   "text-2xl font-semibold text-white placeholder:font-normal placeholder:text-zinc-600",
+                inputWrapper: "px-0 py-0",
               }}
               isRequired
               isInvalid={!!errors.title}
@@ -210,6 +211,7 @@ export default function WorkflowHeader({
             variant="underlined"
             classNames={{
               input: "resize-none text-sm text-zinc-300",
+              inputWrapper: "px-0 py-0",
             }}
             isInvalid={!!errors.description}
             errorMessage={errors.description?.message}

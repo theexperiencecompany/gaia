@@ -337,6 +337,7 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
           aria-label="Metric"
           selectedKey={metric}
           onSelectionChange={(k) => setMetric(k as Metric)}
+          classNames={{ tabList: "p-0.5", tab: "px-2.5" }}
         >
           <Tab key="actions" title="Actions" />
           <Tab key="tokens" title="Tokens" />
@@ -355,6 +356,7 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
           aria-label="Range"
           selectedKey={range}
           onSelectionChange={(k) => setRange(k as RangeKey)}
+          classNames={{ tabList: "p-0.5", tab: "px-2.5" }}
         >
           {RANGES.map((r) => (
             <Tab key={r.key} title={r.label} />

@@ -66,7 +66,7 @@ export default function StatusBanner() {
         variant="light"
         aria-label="Dismiss status banner"
         onPress={() => setDismissed(true)}
-        className="shrink-0 text-amber-500"
+        className="shrink-0 p-0.5 text-amber-500"
       >
         <Cancel01Icon className="size-4" />
       </Button>

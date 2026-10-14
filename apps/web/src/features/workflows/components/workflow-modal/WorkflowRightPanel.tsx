@@ -50,10 +50,10 @@ export default function WorkflowRightPanel({
           base: "w-full shrink-0",
           // HeroUI's tabList defaults to overflow-x-scroll, which paints a
           // permanent scrollbar track even though fullWidth tabs always fit.
-          tabList: "overflow-x-hidden",
+          tabList: "overflow-x-hidden p-1",
           tabContent:
             "font-medium text-zinc-400 group-data-[selected=true]:text-black",
-          panel: "flex-1 overflow-y-auto",
+          panel: "flex-1 overflow-y-auto px-1 py-2",
         }}
       >
         <Tab key="steps" title="Steps">

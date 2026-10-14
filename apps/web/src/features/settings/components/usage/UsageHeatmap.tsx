@@ -210,7 +210,7 @@ export function ActivityBadge({
         disableRipple
         variant="flat"
         radius="lg"
-        className="flex h-auto w-44 shrink-0 flex-col items-center justify-start text-center transition-colors"
+        className="flex h-auto w-44 shrink-0 flex-col items-center justify-start gap-1 p-4 text-center transition-colors"
       >
         <Medal tier={tier} className="size-28" />
         <p className="mt-1 text-lg font-semibold text-white">{t.label}</p>
@@ -341,7 +341,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
               color="warning"
               classNames={{
                 content:
-                  "flex items-center text-xs font-medium text-orange-500",
+                  "flex items-center gap-1 px-2 text-xs font-medium text-orange-500",
               }}
             >
               <Fire02Icon size={13} />

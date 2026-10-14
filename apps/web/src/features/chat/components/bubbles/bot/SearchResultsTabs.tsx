@@ -132,7 +132,7 @@ function ImageResults({ images }: ImageResultsProps) {
         <Button
           onPress={cycleNext}
           radius="lg"
-          className={`relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center text-zinc-300 transition-colors hover:text-white ${displayImages.length % 2 === 0 ? "rotate-[8deg]" : "rotate-[-8deg]"}`}
+          className={`relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center gap-1.5 text-zinc-300 transition-colors hover:text-white ${displayImages.length % 2 === 0 ? "rotate-[8deg]" : "rotate-[-8deg]"}`}
           variant="flat"
         >
           <span className="text-base font-semibold">+{nextBatchCount}</span>
@@ -247,7 +247,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
             <span className="font-medium text-zinc-300">Search Results</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent>
+        <PopoverContent className="p-0!">
           <WebResults web={web} />
         </PopoverContent>
       </Popover>
@@ -306,7 +306,7 @@ function WebResults({ web }: WebResultsProps) {
           <div key={result.url + result.title}>
             <div className="w-full p-4 pb-3 transition-colors hover:bg-white/5">
               {url ? (
-                <Link href={result.url} isExternal className="w-full">
+                <Link href={result.url} isExternal className="w-full space-y-1">
                   <h2 className="truncate text-sm font-medium">
                     {result.title}
                   </h2>

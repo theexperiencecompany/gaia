@@ -85,7 +85,7 @@ export function ConfirmationDialog({
       <ModalContent>
         {(onClose) => (
           <>
-            <ModalHeader>{title}</ModalHeader>
+            <ModalHeader className="flex flex-col gap-1">{title}</ModalHeader>
             <ModalBody>
               <p>{message}</p>
             </ModalBody>

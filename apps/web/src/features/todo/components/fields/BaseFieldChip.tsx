@@ -58,7 +58,7 @@ export default function BaseFieldChip({
           size="sm"
           aria-label={`${label} selection. Current value: ${hasValue ? (typeof value === "string" ? value : "selected") : "none selected"}`}
           className={cn(
-            "h-8 min-w-0 font-normal transition-all",
+            "h-8 min-w-0 gap-1 px-3 font-normal transition-all",
             !hasValue && "text-zinc-500",
             className,
           )}
@@ -77,7 +77,7 @@ export default function BaseFieldChip({
           />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="min-w-68 max-w-68">
+      <PopoverContent className="min-w-68 max-w-68 p-0">
         <div className="flex w-full justify-start pl-4 pt-3 text-xs font-medium text-zinc-400">
           {label}
         </div>

@@ -57,7 +57,9 @@ function EditTicketModal({
   return (
     <Modal isOpen={isOpen} onOpenChange={onClose} size="lg">
       <ModalContent>
-        <ModalHeader>Edit Support Ticket</ModalHeader>
+        <ModalHeader className="flex flex-col gap-1">
+          Edit Support Ticket
+        </ModalHeader>
         <ModalBody>
           {/* Type Selection */}
           <div className="mb-4">

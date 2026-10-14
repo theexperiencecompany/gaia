@@ -19,7 +19,7 @@ export default function UserContainer() {
     <SettingsMenu onOpenChange={setIsOpen}>
       <Button
         variant="light"
-        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between"
+        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 px-2 py-6!"
         endContent={
           isOpen ? (
             <ChevronsDownUp

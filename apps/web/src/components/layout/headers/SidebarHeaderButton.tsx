@@ -33,7 +33,10 @@ export const SidebarHeaderButton = ({
       isIconOnly
       radius="md"
       variant="light"
-      className={cn("group/btn group h-9 w-9 hover:text-primary", className)}
+      className={cn(
+        "group/btn group h-9 w-9 p-1! hover:text-primary",
+        className,
+      )}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onFocus={onFocus}

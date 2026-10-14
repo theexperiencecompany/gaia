@@ -61,6 +61,7 @@ export default function CalendarSidebar() {
         {calendars.length > 0 && selectedCalendars.length === 0 && (
           <div className="flex justify-center mt-2 mb-1">
             <Chip
+              className="mb-2 mx-auto pl-2"
               variant="flat"
               color="danger"
               size="sm"

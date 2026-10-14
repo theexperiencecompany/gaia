@@ -41,6 +41,7 @@ export function NestedMenuTooltip({
       placement="right-start"
       offset={8}
       closeDelay={0}
+      classNames={{ content: "p-0" }}
       content={
         <div
           onMouseEnter={() => onOpenChange(true)}

@@ -275,7 +275,7 @@ function IntegrationListSection({
         <div className="mt-3 flex justify-center">
           <Link
             href="/marketplace"
-            className="text-xs text-primary hover:underline"
+            className="text-xs text-primary hover:underline gap-1"
           >
             <span>Go to Marketplace</span>
             <ArrowRight02Icon width={16} height={16} className="ml-1" />
@@ -308,6 +308,7 @@ function IntegrationListSection({
         selectionMode="multiple"
         // showDivider={false}
         defaultExpandedKeys={defaultExpandedKeys}
+        className="px-0"
         variant="light"
         isCompact
         itemClasses={{

@@ -96,7 +96,7 @@ export function PricingCards({
             color="danger"
             onPress={() => window.location.reload()}
             radius="md"
-            className="mt-4"
+            className="mt-4 px-4 py-2"
           >
             Refresh Page
           </Button>

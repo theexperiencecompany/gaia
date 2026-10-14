@@ -56,7 +56,7 @@ const ACTION_COLOR: Record<
   info: "primary",
   loading: "default",
 };
-const BTN_BASE = "h-7 min-w-0 font-medium text-xs";
+const BTN_BASE = "h-7 min-w-0 px-3 font-medium text-xs";
 
 // Sileo's own `button` slot only fits one button, so we render our own row here.
 // `idRef` resolves the toast id at click time, since sileo only returns it after creation.

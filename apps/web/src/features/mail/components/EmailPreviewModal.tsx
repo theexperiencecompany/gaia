@@ -283,7 +283,7 @@ export function EmailPreviewModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside">
       <ModalContent>
-        <ModalHeader className="flex flex-col">
+        <ModalHeader className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold">Review & Send Email</h2>
           <p className="mt-1 text-sm text-zinc-600">
             {recipient_query

@@ -143,7 +143,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   variant="flat"
                   radius="full"
                   classNames={{
-                    content: "text-xs",
+                    base: "px-0",
+                    content: "px-1.5 text-xs",
                   }}
                 >
                   {integrationTools.length}
@@ -153,7 +154,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                 <Button
                   size="sm"
                   variant="light"
-                  className="h-7 shrink-0 text-xs text-zinc-400"
+                  className="h-7 shrink-0 px-2 text-xs text-zinc-400"
                   startContent={<Settings01Icon className="size-3.5" />}
                   onPress={permissionsModal.onOpen}
                 >

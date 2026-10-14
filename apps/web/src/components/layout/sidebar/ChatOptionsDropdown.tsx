@@ -233,7 +233,7 @@ export default function ChatOptionsDropdown({
         onOpenChange={closeEditModal}
       >
         <ModalContent>
-          <ModalHeader>Rename Conversation</ModalHeader>
+          <ModalHeader className="pb-0">Rename Conversation</ModalHeader>
           <ModalBody>
             <Input
               label={

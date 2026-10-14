@@ -148,7 +148,7 @@ export const IntegrationInstructionsModal = ({
       scrollBehavior="inside"
     >
       <ModalContent>
-        <ModalHeader className="flex">
+        <ModalHeader className="flex gap-3">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-zinc-800">
             <IntegrationIcon
               integrationId={integration.id}
@@ -176,6 +176,7 @@ export const IntegrationInstructionsModal = ({
               selectedKey={tab}
               onSelectionChange={(key) => setTab(String(key))}
               variant="solid"
+              classNames={{ panel: "px-0 pb-0 pt-2" }}
             >
               <Tab key="write" title="Write">
                 <MentionEditor

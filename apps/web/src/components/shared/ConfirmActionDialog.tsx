@@ -99,7 +99,9 @@ export function ConfirmActionDialog({
       <ModalContent>
         {(onClose) => (
           <>
-            <ModalHeader>{config.title}</ModalHeader>
+            <ModalHeader className="flex flex-col gap-1">
+              {config.title}
+            </ModalHeader>
             <ModalBody>
               <p className="text-sm text-zinc-400">{config.description}</p>
             </ModalBody>

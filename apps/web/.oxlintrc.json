@@ -27,6 +27,7 @@
             "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Textarea|Tooltip|User)$",
             "allow": [
               "layout",
+              "spacing",
               "typography",
               "text-*",
               "opacity-0",
@@ -137,6 +138,10 @@
           },
           {
             "pattern": "^ModalBody$",
+            "allow": ["layout", "spacing"]
+          },
+          {
+            "pattern": "^(AccordionContent|ContextMenuContent|SidebarContent)$",
             "allow": ["layout", "spacing"]
           },
           {

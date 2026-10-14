@@ -77,8 +77,8 @@ export default function ChatBubble_Actions_Image({
         <Button
           className={
             fullWidth
-              ? "w-fit h-fit min-w-5.5"
-              : "w-fit h-fit min-w-5.5 text-zinc-500"
+              ? "w-fit h-fit min-w-5.5 px-3 py-2"
+              : "w-fit h-fit min-w-5.5 p-0 text-zinc-500"
           }
           color="primary"
           isIconOnly={!fullWidth}

@@ -201,7 +201,7 @@ export function HandoffDecision({
       <Button
         variant="light"
         radius="sm"
-        className="shrink-0 text-zinc-500"
+        className="shrink-0 px-3 text-zinc-500"
         onPress={() => decide("cancel")}
       >
         Stop task

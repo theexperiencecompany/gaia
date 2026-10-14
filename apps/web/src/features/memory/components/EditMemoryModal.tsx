@@ -52,7 +52,7 @@ export function EditMemoryModal({
   return (
     <Modal isOpen={memory !== null} onClose={onClose} size="lg">
       <ModalContent>
-        <ModalHeader className="flex flex-col">
+        <ModalHeader className="flex flex-col gap-1">
           <span>Edit memory</span>
           <span className="mt-1 text-xs font-normal text-zinc-500">
             Saving keeps the previous version in this memory's history

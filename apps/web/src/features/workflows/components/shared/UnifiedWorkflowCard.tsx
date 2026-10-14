@@ -284,6 +284,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       placement="top"
       className="max-w-xs"
       showArrow
+      classNames={{ content: "p-4" }}
       delay={200}
       closeDelay={0}
     >

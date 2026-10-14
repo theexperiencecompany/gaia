@@ -107,7 +107,7 @@ export default function SendStopButton({
           : hasContent && !isUploading
             ? "text-black"
             : "text-zinc-500",
-        showQueue ? "h-9 min-h-9" : className,
+        showQueue ? "h-9 min-h-9 gap-1.5 px-3" : className,
         showStop && !showQueue ? "cursor-pointer" : "",
       )}
       color={bg}

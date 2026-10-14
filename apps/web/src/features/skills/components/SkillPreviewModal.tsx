@@ -45,7 +45,7 @@ export function SkillPreviewModal({
       <ModalContent>
         {skill && (
           <>
-            <ModalHeader className="flex items-center">
+            <ModalHeader className="flex items-center gap-3">
               <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-zinc-800">
                 <SkillTargetIcon
                   value={skill.icon}

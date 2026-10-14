@@ -229,6 +229,8 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
           onSelectionChange={(k) => setWin(k as Period)}
           className="absolute right-4 top-4"
           classNames={{
+            tabList: "p-0.5",
+            tab: "px-3",
             tabContent:
               "text-xs font-medium text-zinc-500 group-data-[selected=true]:text-zinc-100",
           }}
@@ -737,6 +739,8 @@ function Tools({
           selectedKey={period}
           onSelectionChange={(k) => onPeriod(k as Period)}
           classNames={{
+            tabList: "p-0.5",
+            tab: "px-3",
             tabContent:
               "text-xs font-medium text-zinc-500 group-data-[selected=true]:text-zinc-100",
           }}

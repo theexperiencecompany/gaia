@@ -28,6 +28,7 @@ export const PermissionModeDecision = ({
   >
     <RadioGroup
       aria-label="How often GAIA asks"
+      classNames={{ wrapper: "gap-0.5" }}
       value={permissions.mode}
       isDisabled={permissions.isSavingMode}
       onValueChange={(value) => permissions.changeMode(value as HilMode)}

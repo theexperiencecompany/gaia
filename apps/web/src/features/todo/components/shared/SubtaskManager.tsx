@@ -128,7 +128,7 @@ export default function SubtaskManager({
           variant="flat"
           onPress={handleAddSubtask}
           isDisabled={!newSubtaskTitle.trim()}
-          className={`h-9 w-9 ${!newSubtaskTitle.trim() ? "text-zinc-600" : "text-zinc-200"}`}
+          className={`h-9 w-9 p-0 ${!newSubtaskTitle.trim() ? "text-zinc-600" : "text-zinc-200"}`}
         >
           <PlusSignIcon size={16} />
         </Button>
@@ -173,7 +173,7 @@ export default function SubtaskManager({
                     variant="light"
                     onPress={handleSaveEdit}
                     isDisabled={!editingTitle.trim()}
-                    className="h-7 w-7 text-zinc-400 hover:text-zinc-200"
+                    className="h-7 w-7 p-0 text-zinc-400 hover:text-zinc-200"
                   >
                     <Tick02Icon />
                   </Button>
@@ -183,7 +183,7 @@ export default function SubtaskManager({
                     radius="sm"
                     variant="light"
                     onPress={handleCancelEdit}
-                    className="h-7 w-7 text-zinc-400 hover:text-zinc-200"
+                    className="h-7 w-7 p-0 text-zinc-400 hover:text-zinc-200"
                   >
                     <Cancel01Icon size={12} />
                   </Button>
@@ -206,7 +206,7 @@ export default function SubtaskManager({
                     radius="sm"
                     variant="light"
                     onPress={() => handleDeleteSubtask(subtask.id)}
-                    className="h-7 w-7 text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-red-500"
+                    className="h-7 w-7 p-0 text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-red-500"
                   >
                     <Cancel01Icon size={14} />
                   </Button>

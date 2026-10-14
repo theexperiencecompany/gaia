@@ -116,20 +116,20 @@ const ChatsSidebarContent = memo(function ChatsSidebarContent() {
     <Accordion
       type="multiple"
       defaultValue={["Today", "Yesterday", "Last 30 days"]}
-      className="w-full"
+      className="w-full p-0"
     >
       {Object.entries(CHAT_GROUPS).map(([group, tabs]) => (
         <AccordionItem
           key={group}
           value={group}
-          className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden"
+          className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden py-1"
         >
           <AccordionTrigger className="w-full">
             <span className="w-full px-2 pt-0 pb-1 text-left text-xs font-normal text-zinc-600 hover:text-zinc-600 hover:no-underline">
               {group}
             </span>
           </AccordionTrigger>
-          <AccordionContent className="w-full">
+          <AccordionContent className="w-full p-0!">
             <div className="flex w-full flex-col gap-1">
               {tabs.map((tab) => (
                 <DemoChatTab
@@ -433,7 +433,7 @@ const DemoSidebar = memo(function DemoSidebar({
         {/* Logo */}
         <div className="flex items-center px-2 py-2">
           <LogoWithContextMenu
-            className="group flex items-center"
+            className="group flex items-center gap-2 px-1"
             width={80}
             height={24}
           />

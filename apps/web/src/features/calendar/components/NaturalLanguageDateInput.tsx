@@ -125,7 +125,7 @@ export const NaturalLanguageDateInput: React.FC<
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={placeholder}
             classNames={{
-              input: "text-zinc-200 placeholder:text-zinc-600",
+              input: "text-zinc-200 placeholder:text-zinc-600 pr-10",
             }}
             endContent={
               <PopoverTrigger asChild>
@@ -141,7 +141,7 @@ export const NaturalLanguageDateInput: React.FC<
           />
         </div>
         <PopoverContent
-          className="w-auto overflow-hidden"
+          className="w-auto overflow-hidden p-0"
           align="center"
           sideOffset={4}
         >
@@ -306,7 +306,7 @@ export const NaturalLanguageDateRangeInput: React.FC<
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={placeholder}
             classNames={{
-              input: "text-zinc-200 placeholder:text-zinc-600",
+              input: "text-zinc-200 placeholder:text-zinc-600 pr-10",
             }}
             endContent={
               <PopoverTrigger asChild>
@@ -322,7 +322,7 @@ export const NaturalLanguageDateRangeInput: React.FC<
           />
         </div>
         <PopoverContent
-          className="w-auto overflow-hidden"
+          className="w-auto overflow-hidden p-1"
           align="center"
           sideOffset={4}
         >

@@ -181,6 +181,7 @@ export function InstallPageClient() {
             aria-label="Package managers"
             color="primary"
             variant="underlined"
+            classNames={{ base: "mx-auto pb-0 mb-0", panel: "pt-3" }}
           >
             {installMethods.map((method) => (
               <Tab key={method.key} title={method.title}>

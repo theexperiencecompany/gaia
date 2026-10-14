@@ -181,7 +181,9 @@ export default function ContactSupportModal({
       <ModalContent>
         {() => (
           <>
-            <ModalHeader>Get in Touch</ModalHeader>
+            <ModalHeader className="flex flex-col gap-1">
+              Get in Touch
+            </ModalHeader>
 
             <ModalBody>
               <div className="flex flex-col gap-4">
@@ -242,7 +244,7 @@ export default function ContactSupportModal({
                     variant="flat"
                     color={dragActive ? "primary" : "default"}
                     radius="lg"
-                    className={`h-auto w-full cursor-pointer text-center transition-all duration-200 ${dragActive ? "scale-[1.02]" : ""}`}
+                    className={`h-auto w-full cursor-pointer p-5 text-center transition-all duration-200 ${dragActive ? "scale-[1.02]" : ""}`}
                     onDragEnter={handleDrag}
                     onDragLeave={handleDrag}
                     onDragOver={handleDrag}

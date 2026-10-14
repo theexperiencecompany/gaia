@@ -235,6 +235,7 @@ function MultiSourceAccordion({
     <div className="mt-2 mb-2 animate-scale-in rounded-3xl bg-zinc-800/70 backdrop-blur-xl p-1 w-full max-w-96">
       <Accordion
         defaultExpandedKeys={[defaultExpandedKey]}
+        className="px-0"
         itemClasses={{
           base: "px-2",
           title: "text-xs font-medium text-zinc-400",

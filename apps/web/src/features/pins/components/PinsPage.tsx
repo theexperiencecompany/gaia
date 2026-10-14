@@ -71,6 +71,7 @@ export default function Pins() {
           <Input
             autoFocus
             className="w-full"
+            classNames={{ inputWrapper: "pr-1" }}
             placeholder="Enter a message to filter pins"
             radius="full"
             size="lg"

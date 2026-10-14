@@ -190,7 +190,7 @@ export function ShortcutRecorder({
       radius="lg"
       onPress={() => (recording ? stopRecording() : setRecording(true))}
       onBlur={stopRecording}
-      className="h-9 min-w-36"
+      className="h-9 min-w-36 px-3"
     >
       {content}
     </Button>

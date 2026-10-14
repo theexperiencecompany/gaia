@@ -116,7 +116,7 @@ function SidebarSection({
                 <span className="ml-auto text-xs">{item.count}</span>
               )
             }
-            className={`justify-start text-start text-sm ${activeItem === item.href ? "text-zinc-300" : "text-zinc-500 hover:text-zinc-300"}`}
+            className={`justify-start px-2 text-start text-sm ${activeItem === item.href ? "text-zinc-300" : "text-zinc-500 hover:text-zinc-300"}`}
             variant={activeItem === item.href ? "flat" : "light"}
             radius="sm"
             size="sm"

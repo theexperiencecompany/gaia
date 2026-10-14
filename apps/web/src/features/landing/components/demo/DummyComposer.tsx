@@ -97,7 +97,7 @@ const DummyComposer: React.FC<{
             radius="full"
             onPress={handleIntegrationsClick}
             aria-label="Connect your tools to GAIA"
-            className="absolute -top-4 z-0 flex h-fit text-xs text-foreground-300 hover:text-zinc-400"
+            className="absolute -top-4 z-0 flex h-fit px-4 py-2 pb-8 text-xs text-foreground-300 hover:text-zinc-400"
           >
             <div className="flex w-full items-center justify-between">
               <span className="text-xs">Connect your tools to GAIA</span>
@@ -141,6 +141,7 @@ const DummyComposer: React.FC<{
               ref={textareaRef}
               autoFocus
               classNames={{
+                inputWrapper: "px-3",
                 innerWrapper: "items-center",
                 input: "font-light",
               }}
@@ -170,7 +171,7 @@ const DummyComposer: React.FC<{
                     isIconOnly
                     radius="full"
                     variant="flat"
-                    className="group relative h-9 w-9"
+                    className="group relative h-9 w-9 p-0"
                     aria-label="Add context or attach files"
                   >
                     <PlusSignIcon className="min-h-[23px] min-w-[23px] text-zinc-400!" />
@@ -216,7 +217,7 @@ const DummyComposer: React.FC<{
                   radius="full"
                   variant="flat"
                   color={isSlashDropdownOpen ? "primary" : "default"}
-                  className={`group relative h-9 w-9`}
+                  className={`group relative h-9 w-9 p-0`}
                   onClick={handleSlashButtonClick}
                   aria-label="Browse all tools"
                 >
@@ -243,7 +244,7 @@ const DummyComposer: React.FC<{
               color="primary"
               onClick={handleSend}
               isDisabled={!message.trim()}
-              className="h-9 w-9 text-xl"
+              className="h-9 w-9 p-0 text-xl"
               aria-label="Send message"
             >
               <ArrowUp02Icon

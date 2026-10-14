@@ -22,7 +22,7 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
 
         <Accordion
           variant="light"
-          className="cursor-pointer"
+          className="cursor-pointer p-0!"
           itemClasses={{ titleWrapper: "cursor-pointer" }}
           defaultSelectedKeys={["0"]}
         >

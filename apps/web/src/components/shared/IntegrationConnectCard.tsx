@@ -51,7 +51,7 @@ export const IntegrationConnectCard: React.FC<IntegrationConnectCardProps> = ({
         color="primary"
         onPress={handleConnect}
         size={small ? "sm" : "md"}
-        className="mt-2"
+        className="mt-2 px-4"
       >
         {buttonText}
       </Button>

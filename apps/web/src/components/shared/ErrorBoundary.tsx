@@ -53,7 +53,7 @@ class ErrorBoundary extends React.Component<
             <Button
               variant="solid"
               radius="md"
-              className="text-white"
+              className="gap-2 p-2 px-3 text-white"
               onPress={() => window.location.replace("/")}
             >
               <Home01Icon width={20} />
@@ -62,7 +62,7 @@ class ErrorBoundary extends React.Component<
             <Button
               variant="solid"
               radius="md"
-              className="font-medium text-black"
+              className="gap-2 p-2 px-3 font-medium text-black"
               onPress={() => window.history.back()}
             >
               <ArrowLeft01Icon width={20} /> Back

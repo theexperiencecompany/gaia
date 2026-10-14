@@ -38,7 +38,7 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
                 height={25}
               />
             }
-            className="max-w-60 min-w-60 justify-start"
+            className="max-w-60 min-w-60 justify-start py-7"
           >
             <div className="flex flex-1 flex-col items-start">
               <span className="text-left text-sm font-medium">

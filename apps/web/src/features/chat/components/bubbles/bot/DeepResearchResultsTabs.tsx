@@ -27,7 +27,7 @@ export default function DeepResearchResultsTabs({
   return (
     <div className="w-full">
       <Accordion
-        className="w-full max-w-(--breakpoint-sm)"
+        className="w-full max-w-(--breakpoint-sm) px-0"
         defaultExpandedKeys={["1"]}
       >
         <AccordionItem
@@ -42,13 +42,14 @@ export default function DeepResearchResultsTabs({
             </div>
           }
           onPress={() => setIsExpanded((prev) => !prev)}
-          className="w-screen max-w-(--breakpoint-sm)"
+          className="w-screen max-w-(--breakpoint-sm) px-0"
           isCompact
         >
           <Tabs
             aria-label="Deep Research Results"
             color="primary"
             variant="light"
+            classNames={{ base: "p-0" }}
           >
             {enhanced_results && enhanced_results.length > 0 && (
               <Tab

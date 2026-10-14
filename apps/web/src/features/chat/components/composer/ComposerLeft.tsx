@@ -70,7 +70,7 @@ export default function ComposerLeft({
             radius="full"
             variant="flat"
             className={cn(
-              "group relative h-9 w-9",
+              "group relative h-9 w-9 p-0",
               isMainResponseStreaming ? "cursor-wait!" : "",
             )}
             isDisabled={isMainResponseStreaming}
@@ -146,7 +146,7 @@ export default function ComposerLeft({
             variant="flat"
             color={isSlashCommandDropdownOpen ? "primary" : "default"}
             className={cn(
-              "group relative flex h-9 w-9 items-center justify-center",
+              "group relative flex h-9 w-9 items-center justify-center p-0",
               isMainResponseStreaming ? "cursor-wait!" : "",
             )}
             isDisabled={isMainResponseStreaming}

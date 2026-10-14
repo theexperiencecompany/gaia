@@ -145,7 +145,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
       isKeyboardDismissDisabled={loading}
     >
       <ModalContent>
-        <ModalHeader className="flex flex-col">
+        <ModalHeader className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold">New Integration</h2>
           <p className="mt-1 text-sm font-normal text-zinc-400">
             Use the Model Context Protocol to extend GAIA&apos;s capabilities

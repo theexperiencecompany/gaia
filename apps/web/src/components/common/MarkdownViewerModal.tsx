@@ -62,7 +62,13 @@ const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
   errorMessage = "Something went wrong while loading this file.",
 }) => {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="3xl"
+      scrollBehavior="inside"
+      classNames={{ header: "pb-3", body: "py-4" }}
+    >
       <ModalContent>
         <ModalHeader className="text-sm font-medium text-zinc-200">
           {title}

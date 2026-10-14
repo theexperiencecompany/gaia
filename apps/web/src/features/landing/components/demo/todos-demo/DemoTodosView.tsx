@@ -117,7 +117,7 @@ function DemoTodoItem({
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {todo.due_date && (
               <Chip
-                className="flex items-center text-zinc-400"
+                className="flex items-center px-1 text-zinc-400"
                 size="sm"
                 radius="sm"
                 color={
@@ -145,6 +145,7 @@ function DemoTodoItem({
                 size="sm"
                 variant="flat"
                 radius="sm"
+                className="px-2"
                 color={PRIORITY_CHIP_COLOR[todo.priority]}
                 startContent={
                   <Flag02Icon width={15} height={15} className="mx-1" />
@@ -158,7 +159,7 @@ function DemoTodoItem({
               <Chip
                 size="sm"
                 variant="flat"
-                className="text-zinc-400"
+                className="px-1 text-zinc-400"
                 radius="sm"
                 style={{ color: project.color }}
                 startContent={
@@ -174,7 +175,7 @@ function DemoTodoItem({
                 key={label}
                 size="sm"
                 variant="flat"
-                className="flex items-center text-zinc-400"
+                className="flex items-center px-1 text-zinc-400"
                 radius="sm"
                 startContent={
                   <Tag01Icon width={17} height={17} className="mx-1" />
@@ -188,7 +189,7 @@ function DemoTodoItem({
               <Chip
                 size="sm"
                 variant="flat"
-                className="text-zinc-400"
+                className="px-1 text-zinc-400"
                 radius="sm"
                 startContent={
                   <CheckmarkCircle02Icon

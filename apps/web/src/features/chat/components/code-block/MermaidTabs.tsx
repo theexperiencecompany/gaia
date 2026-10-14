@@ -50,13 +50,14 @@ const MermaidTabs: React.FC<MermaidTabsProps> = ({
 }) => {
   return (
     <Tabs
+      className="px-3"
       disabledKeys={isLoading ? ["editor"] : []}
       selectedKey={activeTab}
       variant="underlined"
       classNames={{ tab: "font-sans" }}
       onSelectionChange={(key) => onTabChange(key as string)}
     >
-      <Tab key="preview" title="Flowchart">
+      <Tab key="preview" className="p-0" title="Flowchart">
         <FlowchartPreview>{children}</FlowchartPreview>
       </Tab>
       <Tab key="code" title="Code">

@@ -596,7 +596,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                     radius="lg"
                     onPress={() => setSelectedCategory(category)}
                     variant={selectedCategory === category ? "flat" : "light"}
-                    className={`flex items-center text-xs font-medium whitespace-nowrap ${selectedCategory === category ? "text-white" : "text-zinc-400 hover:text-zinc-300"}`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap ${selectedCategory === category ? "text-white" : "text-zinc-400 hover:text-zinc-300"}`}
                   >
                     {category === "all" ? (
                       <GridIcon

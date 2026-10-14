@@ -53,10 +53,10 @@ function TodoPriorityChip({ priority }: { priority: Todo["priority"] }) {
         radius="sm"
         className={
           priority === Priority.HIGH
-            ? "text-red-500 bg-red-500/10"
+            ? "px-2 text-red-500 bg-red-500/10"
             : priority === Priority.MEDIUM
-              ? "text-yellow-500 bg-yellow-500/10"
-              : "text-blue-500 bg-blue-500/10"
+              ? "px-2 text-yellow-500 bg-yellow-500/10"
+              : "px-2 text-blue-500 bg-blue-500/10"
         }
         startContent={<Flag02Icon width={15} height={15} className="mx-1" />}
       >
@@ -89,7 +89,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
     <div className="mt-2 flex flex-wrap items-center gap-1">
       {todo.due_date && (
         <Chip
-          className="flex items-center text-zinc-400"
+          className="flex items-center text-zinc-400 px-1"
           size="sm"
           radius="sm"
           color={dueChipColor(isToday, isOverdue)}
@@ -104,7 +104,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.scheduled_at && (
         <Chip
-          className="flex items-center text-zinc-400"
+          className="flex items-center text-zinc-400 px-1"
           size="sm"
           radius="sm"
           color="primary"
@@ -117,7 +117,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.expires_at && (
         <Chip
-          className="flex items-center text-zinc-400"
+          className="flex items-center text-zinc-400 px-1"
           size="sm"
           radius="sm"
           color="warning"
@@ -132,7 +132,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {isTrackedTodo(todo) && (
         <Chip
-          className="flex items-center text-primary"
+          className="flex items-center text-primary px-1"
           size="sm"
           radius="sm"
           color="primary"
@@ -145,7 +145,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.sub_todo_count > 0 && (
         <Chip
-          className="flex items-center text-zinc-400"
+          className="flex items-center text-zinc-400 px-1"
           size="sm"
           radius="sm"
           variant="flat"
@@ -161,7 +161,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         <Chip
           size="sm"
           variant="flat"
-          className="text-zinc-400 text-(--todo-project-color)"
+          className="text-zinc-400 px-1 text-(--todo-project-color)"
           radius="sm"
           style={{ "--todo-project-color": todoProject.color } as CSSProperties}
           startContent={
@@ -178,7 +178,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
             key={label}
             size="sm"
             variant="flat"
-            className="flex items-center text-zinc-400"
+            className="flex items-center text-zinc-400 px-1"
             radius="sm"
             startContent={<Tag01Icon width={17} height={17} className="mx-1" />}
           >
@@ -194,7 +194,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         <Chip
           size="sm"
           variant="flat"
-          className="text-zinc-400"
+          className="text-zinc-400 px-1"
           radius="sm"
           startContent={
             <CheckmarkCircle02Icon width={15} height={15} className="mx-1" />

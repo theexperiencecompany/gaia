@@ -194,6 +194,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
           <Input
             placeholder="Subject"
             variant="underlined"
+            classNames={{ innerWrapper: "px-2" }}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
           />
@@ -241,6 +242,8 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
             <Input
               placeholder="What is the email about?"
               radius="full"
+              classNames={{ inputWrapper: "pr-1 pl-0" }}
+              className="pr-1"
               variant="faded"
               size="lg"
               value={prompt}
