@@ -10,9 +10,6 @@ const REQUEST_TIMEOUT_MS = 10_000;
 /** Discord application flags: the Message Content intent, full or limited. */
 const DISCORD_MESSAGE_CONTENT_FLAGS = (1 << 18) | (1 << 19);
 
-/** Send Messages: the one permission the bot's invite link asks for. */
-const DISCORD_INVITE_PERMISSIONS = "2048";
-
 async function fetchJson<T>(url: string, init: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -66,19 +63,17 @@ export async function verifyDiscordToken(token: string): Promise<string> {
   return body.id;
 }
 
-/** The link that adds the bot to a server, with slash commands. */
-export function discordInviteUrl(applicationId: string): string {
-  const url = new URL("https://discord.com/oauth2/authorize");
-  url.searchParams.set("client_id", applicationId);
-  url.searchParams.set("scope", "bot applications.commands");
-  url.searchParams.set("permissions", DISCORD_INVITE_PERMISSIONS);
-  return url.toString();
-}
-
 interface SlackResponse {
   ok: boolean;
   error?: string;
   team?: string;
+  url?: string;
+}
+
+/** The workspace a Slack bot token is installed in. */
+export interface SlackWorkspace {
+  name: string;
+  url: string;
 }
 
 async function callSlack(
@@ -98,9 +93,9 @@ async function callSlack(
 export async function verifySlackTokens(
   botToken: string,
   appToken: string,
-): Promise<string> {
+): Promise<SlackWorkspace> {
   const auth = await callSlack("auth.test", botToken);
-  if (!auth.ok || !auth.team) {
+  if (!auth.ok || !auth.team || !auth.url) {
     throw new Error(
       `Slack rejected the bot token (xoxb-): ${auth.error ?? "unknown error"}.`,
     );
@@ -111,5 +106,5 @@ export async function verifySlackTokens(
       `Slack rejected the app token (xapp-): ${socket.error ?? "unknown error"}. Enable Socket Mode and create an app-level token with connections:write.`,
     );
   }
-  return auth.team;
+  return { name: auth.team, url: auth.url };
 }

@@ -50,7 +50,7 @@ vi.mock("../../src/lib/flow-utils.js", () => ({
   },
 }));
 
-import { runBotsAdd } from "../../src/commands/bots/handler.js";
+import { runBotsAdd, runBotsRemove } from "../../src/commands/bots/handler.js";
 import { parseEnvFileValues } from "../../src/lib/env-writer.js";
 
 const mockedExeca = vi.mocked(execa);
@@ -69,13 +69,25 @@ function readEnv(app: "api" | "bots"): Record<string, string> {
   );
 }
 
-/** `docker ps` answers with each listed bot-telegram status line in turn, then the last one forever. */
-function botContainerStatuses(...statuses: string[]): void {
+/** `docker ps` answers with each listed status line of the service in turn, then the last one forever. */
+function containerStatuses(service: string, ...statuses: string[]): void {
   let call = 0;
   mockedExeca.mockImplementation((() => {
     const status = statuses[Math.min(call++, statuses.length - 1)];
-    return Promise.resolve({ stdout: `bot-telegram|${status}` });
+    return Promise.resolve({ stdout: `${service}|${status}` });
   }) as unknown as typeof execa);
+}
+
+function botContainerStatuses(...statuses: string[]): void {
+  containerStatuses("bot-telegram", ...statuses);
+}
+
+/** Every platform API call answers with this body. */
+function platformAnswers(body: object): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({ json: async () => body })),
+  );
 }
 
 beforeEach(() => {
@@ -90,12 +102,7 @@ beforeEach(() => {
   detectSetupMode.mockResolvedValue("selfhost");
   isInteractive.mockReturnValue(true);
   vi.spyOn(process.stdout, "write").mockReturnValue(true);
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({
-      json: async () => ({ ok: true, result: { username: "my_gaia_bot" } }),
-    })),
-  );
+  platformAnswers({ ok: true, result: { username: "my_gaia_bot" } });
 });
 
 afterEach(() => {
@@ -168,6 +175,32 @@ describe("gaia bots add", () => {
     );
   });
 
+  it("names the Discord app to the web app, for its invite link", async () => {
+    platformAnswers({ id: "4242", flags: 1 << 18 });
+    containerStatuses("bot-discord", "running|Up 30 seconds (healthy)");
+
+    await runBotsAdd("discord", { token: TOKEN });
+
+    expect(readEnv("api").DISCORD_CLIENT_ID).toBe("4242");
+  });
+
+  it("names the Slack workspace to the web app", async () => {
+    platformAnswers({
+      ok: true,
+      team: "Acme",
+      url: "https://acme.slack.com/",
+    });
+    containerStatuses("bot-slack", "running|Up 30 seconds (healthy)");
+
+    await runBotsAdd("slack", {
+      token: "xoxb-1",
+      appToken: "xapp-1",
+      signingSecret: "s",
+    });
+
+    expect(readEnv("api").SLACK_WORKSPACE_URL).toBe("https://acme.slack.com/");
+  });
+
   it("refuses a machine without a self-host install before asking for anything", async () => {
     detectSetupMode.mockResolvedValue("developer");
 
@@ -175,5 +208,20 @@ describe("gaia bots add", () => {
       "No self-host GAIA install found",
     );
     expect(askSecret).not.toHaveBeenCalled();
+  });
+});
+
+describe("gaia bots remove", () => {
+  it("forgets the bot's handle so the web app stops offering it", async () => {
+    writeFileSync(
+      path.join(repo, "apps", "api", ".env"),
+      `${API_ENV}\nSLACK_WORKSPACE_URL=https://acme.slack.com/`,
+    );
+    config.current = { bots: ["slack"] };
+
+    await runBotsRemove("slack");
+
+    expect(readEnv("api")).not.toHaveProperty("SLACK_WORKSPACE_URL");
+    expect(config.current?.bots).toEqual([]);
   });
 });

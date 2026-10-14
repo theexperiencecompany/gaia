@@ -6,15 +6,18 @@
 
 import {
   discordInviteUrl,
+  telegramBotUrl,
+} from "../../../../../libs/shared/ts/src/utils/botLinks.js";
+import {
   verifyDiscordToken,
   verifySlackTokens,
   verifyTelegramToken,
 } from "../../lib/bot-tokens.js";
 import {
+  BOT_API_ENV_KEYS,
   BOT_ENV_KEYS,
   botContainerState,
   botService,
-  type EnvChange,
   type SelfhostBot,
   updateApiEnv,
   writeBotsEnv,
@@ -34,9 +37,6 @@ import {
   runSelfhostOneOff,
   startServices,
 } from "../../lib/service-starter.js";
-
-/** Where the API reads the Telegram bot behind onboarding's one-tap link. */
-const TELEGRAM_BOT_USERNAME_KEY = "TELEGRAM_BOT_USERNAME";
 
 /** Registers the bot's commands with its platform, from inside its image. */
 const COMMAND_REGISTRATION: Partial<Record<SelfhostBot, string[]>> = {
@@ -142,7 +142,8 @@ async function requireSelfhostInstall(): Promise<string> {
 
 interface VerifiedBot {
   botsEnv: Record<string, string>;
-  apiEnv?: EnvChange;
+  /** The bot's public handle, the value of its BOT_API_ENV_KEYS key. */
+  handle: string;
   nextSteps: string[];
 }
 
@@ -155,9 +156,9 @@ async function verifyCredentials(
     const username = await verifyTelegramToken(token);
     return {
       botsEnv: { TELEGRAM_BOT_TOKEN: token },
-      apiEnv: { set: { [TELEGRAM_BOT_USERNAME_KEY]: username } },
+      handle: username,
       nextSteps: [
-        `Open https://t.me/${username} and send /auth to link your GAIA account.`,
+        `Open ${telegramBotUrl(username)} and send /auth to link your GAIA account.`,
       ],
     };
   }
@@ -165,6 +166,7 @@ async function verifyCredentials(
     const applicationId = await verifyDiscordToken(token);
     return {
       botsEnv: { DISCORD_BOT_TOKEN: token, DISCORD_CLIENT_ID: applicationId },
+      handle: applicationId,
       nextSteps: [
         `Add the bot to a server: ${discordInviteUrl(applicationId)}`,
         "Then run /auth in Discord to link your GAIA account.",
@@ -176,15 +178,16 @@ async function verifyCredentials(
     credentials.signingSecret,
     "--signing-secret",
   );
-  const team = await verifySlackTokens(token, appToken);
+  const workspace = await verifySlackTokens(token, appToken);
   return {
     botsEnv: {
       SLACK_BOT_TOKEN: token,
       SLACK_APP_TOKEN: appToken,
       SLACK_SIGNING_SECRET: signingSecret,
     },
+    handle: workspace.url,
     nextSteps: [
-      `Running in the ${team} workspace. Run /auth in Slack to link your GAIA account.`,
+      `Running in the ${workspace.name} workspace. Run /auth in Slack to link your GAIA account.`,
     ],
   };
 }
@@ -230,7 +233,7 @@ export async function runBotsAdd(
   const verified = await verifyCredentials(bot, resolved);
 
   writeBotsEnv(repoPath, { set: verified.botsEnv });
-  if (verified.apiEnv) updateApiEnv(repoPath, verified.apiEnv);
+  updateApiEnv(repoPath, { set: { [BOT_API_ENV_KEYS[bot]]: verified.handle } });
   const enabled = readConfig()?.bots ?? [];
   if (!enabled.includes(bot)) updateConfig({ bots: [...enabled, bot] });
 
@@ -256,9 +259,7 @@ export async function runBotsRemove(bot: SelfhostBot): Promise<void> {
 
   updateConfig({ bots: enabled.filter((b) => b !== bot) });
   writeBotsEnv(repoPath, { unset: BOT_ENV_KEYS[bot] });
-  if (bot === "telegram") {
-    updateApiEnv(repoPath, { unset: [TELEGRAM_BOT_USERNAME_KEY] });
-  }
+  updateApiEnv(repoPath, { unset: [BOT_API_ENV_KEYS[bot]] });
   await restartStack(repoPath);
   out(`The ${bot} bot is stopped and its credentials are deleted.`);
 }

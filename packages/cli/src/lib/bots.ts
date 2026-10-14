@@ -29,6 +29,16 @@ export const BOT_ENV_KEYS: Record<SelfhostBot, readonly string[]> = {
   slack: ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_SIGNING_SECRET"],
 };
 
+/**
+ * The apps/api/.env keys naming each bot to the web app (GET /setup/status);
+ * `gaia bots add` sets them, `gaia bots remove` deletes exactly these.
+ */
+export const BOT_API_ENV_KEYS = {
+  telegram: "TELEGRAM_BOT_USERNAME",
+  discord: "DISCORD_CLIENT_ID",
+  slack: "SLACK_WORKSPACE_URL",
+} as const satisfies Record<SelfhostBot, string>;
+
 /** apps/bots/.env key → the apps/api/.env key it is copied from. */
 const BOT_ENV_FROM_API_ENV = {
   GAIA_BOT_API_KEY: "GAIA_BOT_API_KEY",
