@@ -4207,7 +4207,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Session Artifacts */
+        /**
+         * List Session Artifacts
+         * @description List the files the agent produced in this conversation's workspace.
+         */
         get: operations["sessions_list_session_artifacts"];
         put?: never;
         post?: never;
@@ -4224,7 +4227,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Artifact File */
+        /**
+         * Get Artifact File
+         * @description Serve one agent-produced file from this conversation's workspace.
+         */
         get: operations["sessions_get_artifact_file"];
         put?: never;
         post?: never;
@@ -4243,7 +4249,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Pin Artifact */
+        /**
+         * Pin Artifact
+         * @description Copy an artifact into the user's pinned folder so it outlives the conversation.
+         */
         post: operations["sessions_pin_artifact"];
         delete?: never;
         options?: never;
@@ -4258,7 +4267,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Uploads */
+        /**
+         * List Uploads
+         * @description List the files the user attached in this conversation.
+         */
         get: operations["sessions_list_uploads"];
         put?: never;
         post?: never;
@@ -4275,7 +4287,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Upload File */
+        /**
+         * Get Upload File
+         * @description Serve one file the user attached in this conversation.
+         */
         get: operations["sessions_get_upload_file"];
         put?: never;
         post?: never;
@@ -11840,7 +11855,10 @@ export interface components {
             /** Pinned */
             pinned: boolean;
         };
-        /** PinRequest */
+        /**
+         * PinRequest
+         * @description An artifact to copy into the user's pinned workspace folder.
+         */
         PinRequest: {
             /**
              * Path
@@ -11853,7 +11871,10 @@ export interface components {
              */
             target_name?: string | null;
         };
-        /** PinResponse */
+        /**
+         * PinResponse
+         * @description Where the pinned copy now lives.
+         */
         PinResponse: {
             /**
              * Pinned Path

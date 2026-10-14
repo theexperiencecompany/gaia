@@ -54,6 +54,12 @@ def fresh_redis_client():
 
 
 @pytest.fixture(autouse=True)
+def owns_the_test_conversation(owned_conversations):
+    """FAKE_USER owns the conversation _VALID_BODY names; chat-stream 404s any other."""
+    owned_conversations.add((_VALID_BODY["conversation_id"], FAKE_USER.user_id))
+
+
+@pytest.fixture(autouse=True)
 def bypass_plan_cache():
     """Answer the paid-only gate's plan lookup straight from the mock, bypassing a stale Redis cache."""
 

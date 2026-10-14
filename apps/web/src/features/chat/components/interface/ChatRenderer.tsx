@@ -18,6 +18,7 @@ import { MessageScrollerItem } from "@/components/ui/message-scroller";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
+import { ChatItemBoundary } from "@/features/chat/components/bubbles/bot/ChatItemBoundary";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
@@ -175,10 +176,20 @@ const ChatMessageItem = memo(function ChatMessageItem({
     );
   }
 
+  const guarded = (
+    <ChatItemBoundary
+      item="message"
+      messageId={message.message_id}
+      resetKey={message}
+    >
+      {bubble}
+    </ChatItemBoundary>
+  );
+
   return compact ? (
-    <CompactReveal bubbleKey={bubbleKey}>{bubble}</CompactReveal>
+    <CompactReveal bubbleKey={bubbleKey}>{guarded}</CompactReveal>
   ) : (
-    bubble
+    guarded
   );
 });
 
