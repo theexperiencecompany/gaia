@@ -36,7 +36,10 @@ import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { useBillingEnabled } from "@/features/settings/hooks/useSetupStatus";
+import {
+  useBillingEnabled,
+  useIsSelfHosted,
+} from "@/features/settings/hooks/useSetupStatus";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
 import { useReleases } from "@/features/whats-new/hooks/useReleases";
@@ -262,6 +265,7 @@ export default function SettingsMenu({
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   // Self-host instances have no billing — the entries make no sense there.
   const billingHidden = !useBillingEnabled();
+  const selfHosted = useIsSelfHosted();
   const { role } = useCurrentUser();
   const { unseen: unseenReleases } = useReleases();
 
@@ -366,16 +370,21 @@ export default function SettingsMenu({
       title: undefined,
       showDivider: false,
       items: [
-        {
-          key: "whats-new",
-          label: "What's new",
-          icon: PackageOpenIcon,
-          hasSubmenu: true,
-          badge:
-            unseenReleases.length > 0 ? (
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            ) : undefined,
-        },
+        // GAIA's release notes announce the hosted product.
+        ...(selfHosted
+          ? []
+          : [
+              {
+                key: "whats-new",
+                label: "What's new",
+                icon: PackageOpenIcon,
+                hasSubmenu: true,
+                badge:
+                  unseenReleases.length > 0 ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  ) : undefined,
+              },
+            ]),
         {
           key: "download",
           label: `Download for ${currentPlatform.isMobile ? "Desktop" : currentPlatform.shortName.split(" ")[0]}`,

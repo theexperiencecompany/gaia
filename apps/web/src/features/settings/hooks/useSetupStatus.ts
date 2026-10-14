@@ -41,6 +41,15 @@ export function useGaiaSupportAvailable(): boolean {
   return data?.gaia_support !== false;
 }
 
+/**
+ * Whether this is a self-hosted (local-auth) instance. Hosted production never
+ * serves /setup/status, so a missing status counts as hosted.
+ */
+export function useIsSelfHosted(): boolean {
+  const { data } = useSetupStatus();
+  return data?.auth_mode === "local";
+}
+
 export function isProviderConfigured(
   status: SetupStatus | undefined,
   key: CredentialProvider,
