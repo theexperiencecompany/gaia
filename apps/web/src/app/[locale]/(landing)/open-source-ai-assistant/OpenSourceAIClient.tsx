@@ -210,7 +210,7 @@ export default function OpenSourceAIClient() {
           <ul className="space-y-3 text-left">
             {checklistItems.map((item) => (
               <li key={item} className="flex items-start gap-3 text-zinc-300">
-                <span className="mt-1 shrink-0 text-emerald-400">&#x2714;</span>
+                <span className="mt-1 shrink-0 text-emerald-500">&#x2714;</span>
                 <span>{item}</span>
               </li>
             ))}
@@ -264,7 +264,7 @@ export default function OpenSourceAIClient() {
                 key: "gaia",
                 label: "GAIA",
                 headerClassName: "text-primary",
-                cellClassName: "text-emerald-400",
+                cellClassName: "text-emerald-500",
               },
               {
                 key: "chatgpt",
@@ -305,7 +305,7 @@ export default function OpenSourceAIClient() {
                 key={step.name}
                 className="flex items-start gap-4 rounded-2xl bg-zinc-800/60 p-5"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-sm font-semibold text-emerald-400">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-sm font-semibold text-emerald-500">
                   {index + 1}
                 </span>
                 <div>

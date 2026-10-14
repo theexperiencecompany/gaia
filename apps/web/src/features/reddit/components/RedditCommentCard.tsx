@@ -73,12 +73,12 @@ export default function RedditCommentCard({
                   <div className="flex items-center gap-2 text-xs">
                     <UserCircle02Icon className="h-3.5 w-3.5 text-zinc-400" />
                     <span
-                      className={`font-medium ${comment.is_submitter ? "text-blue-400" : "text-zinc-300"}`}
+                      className={`font-medium ${comment.is_submitter ? "text-blue-500" : "text-zinc-300"}`}
                     >
                       u/{comment.author}
                     </span>
                     {comment.is_submitter && (
-                      <span className="rounded bg-blue-400/10 px-1.5 py-0.5 text-xs font-medium text-blue-400">
+                      <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-xs font-medium text-blue-500">
                         OP
                       </span>
                     )}
@@ -88,7 +88,7 @@ export default function RedditCommentCard({
                   </div>
 
                   {/* Score */}
-                  <div className="flex items-center gap-1 text-xs text-orange-400">
+                  <div className="flex items-center gap-1 text-xs text-orange-500">
                     <ArrowUp02Icon width={18} height={18} />
                     <span className="font-medium tabular-nums">
                       {formatNumber(comment.score)}
@@ -106,7 +106,7 @@ export default function RedditCommentCard({
                   <Link
                     href={`https://reddit.com${comment.permalink}`}
                     isExternal
-                    className="inline-flex items-center text-xs text-orange-400 transition-colors hover:text-orange-400"
+                    className="inline-flex items-center text-xs text-orange-500"
                   >
                     View on Reddit
                     <ArrowUpRight01Icon className="ml-1 h-3.5 w-3.5" />

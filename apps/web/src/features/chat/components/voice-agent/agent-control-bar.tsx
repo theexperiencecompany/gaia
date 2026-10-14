@@ -195,7 +195,7 @@ export function AgentControlBar({
             color="danger"
             className="h-12 w-14 transition-colors"
           >
-            <CallEnd04Icon className="h-6 w-6 text-red-400" />
+            <CallEnd04Icon className="h-6 w-6 text-red-500" />
           </Button>
         )}
       </div>

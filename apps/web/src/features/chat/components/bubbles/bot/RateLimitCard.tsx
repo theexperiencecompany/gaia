@@ -29,12 +29,12 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
       <div className="flex items-start justify-between gap-3 p-4 pb-3">
         <div className="flex items-center gap-3">
           <div
-            className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${isUpgradeRequired ? "bg-warning/10" : "bg-red-400/10"}`}
+            className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${isUpgradeRequired ? "bg-warning/10" : "bg-red-500/10"}`}
           >
             {isUpgradeRequired ? (
               <UploadCircle01Icon className="size-5 text-warning-500" />
             ) : (
-              <Clock01Icon className="size-5 text-red-400" />
+              <Clock01Icon className="size-5 text-red-500" />
             )}
           </div>
 

@@ -19,7 +19,7 @@ const CHECKOUT_OPTIONS = {
       textPrimary: "#fafafa",
       textSecondary: "#a1a1aa",
       textPlaceholder: "#71717a",
-      textError: "#f87171",
+      textError: "#ef4444",
       textSuccess: "#4ade80",
       buttonPrimary: "#00bbff",
       buttonPrimaryHover: "#33c9ff",

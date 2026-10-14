@@ -254,13 +254,13 @@ export default function ContactSupportModal({
                         className={`rounded-full p-4 ${dragActive ? "bg-primary/10" : "bg-zinc-700"} transition-colors`}
                       >
                         <Upload01Icon
-                          className={`h-8 w-8 ${dragActive ? "text-blue-400" : "text-zinc-400"} transition-colors`}
+                          className={`h-8 w-8 ${dragActive ? "text-blue-500" : "text-zinc-400"} transition-colors`}
                         />
                       </div>
 
                       <div className="space-y-1">
                         <p
-                          className={`font-medium ${dragActive ? "text-blue-400" : "text-zinc-200"} transition-colors`}
+                          className={`font-medium ${dragActive ? "text-blue-500" : "text-zinc-200"} transition-colors`}
                         >
                           {dragActive
                             ? "Drop your images here"

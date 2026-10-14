@@ -649,8 +649,8 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                             )}
                             {tool.required_integration && (
                               <div className="flex items-center gap-1">
-                                <Tick02Icon className="h-3 w-3 text-emerald-400" />
-                                <span className="text-xs text-emerald-400">
+                                <Tick02Icon className="h-3 w-3 text-emerald-500" />
+                                <span className="text-xs text-emerald-500">
                                   Connected
                                 </span>
                               </div>

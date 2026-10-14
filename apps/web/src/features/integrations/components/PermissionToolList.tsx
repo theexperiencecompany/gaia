@@ -57,8 +57,8 @@ export const PermissionToolList = ({
       }
     >
       {inert && (
-        <div className="mb-2 flex items-center gap-3 rounded-xl bg-amber-400/10 px-3 py-2">
-          <p className="flex-1 text-xs leading-relaxed text-amber-400">
+        <div className="mb-2 flex items-center gap-3 rounded-xl bg-amber-500/10 px-3 py-2">
+          <p className="flex-1 text-xs leading-relaxed text-amber-500">
             Nothing here will stop GAIA until you change the setting above.
           </p>
           <Button

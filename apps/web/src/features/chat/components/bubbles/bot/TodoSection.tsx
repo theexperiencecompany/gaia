@@ -88,20 +88,20 @@ function TodoStatsView({ stats }: { stats: TodoToolStats }) {
           <p className="text-xs text-zinc-500">Total</p>
         </div>
         <div className="rounded-xl bg-zinc-900 p-3 text-center">
-          <p className="text-xl font-semibold tabular-nums text-emerald-400">
+          <p className="text-xl font-semibold tabular-nums text-emerald-500">
             {stats.completed}
           </p>
           <p className="text-xs text-zinc-500">Done</p>
         </div>
         <div className="rounded-xl bg-zinc-900 p-3 text-center">
-          <p className="text-xl font-semibold tabular-nums text-amber-400">
+          <p className="text-xl font-semibold tabular-nums text-amber-500">
             {stats.pending}
           </p>
           <p className="text-xs text-zinc-500">Pending</p>
         </div>
         {stats.overdue > 0 && (
           <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold tabular-nums text-red-400">
+            <p className="text-xl font-semibold tabular-nums text-red-500">
               {stats.overdue}
             </p>
             <p className="text-xs text-zinc-500">Overdue</p>
@@ -109,7 +109,7 @@ function TodoStatsView({ stats }: { stats: TodoToolStats }) {
         )}
         {stats.today > 0 && (
           <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold tabular-nums text-blue-400">
+            <p className="text-xl font-semibold tabular-nums text-blue-500">
               {stats.today}
             </p>
             <p className="text-xs text-zinc-500">Today</p>
@@ -245,7 +245,7 @@ function TodoSectionMessage({
   message: string;
 }) {
   const isDeleteAction = action === "delete";
-  const iconColor = isDeleteAction ? "text-red-400" : "text-emerald-400";
+  const iconColor = isDeleteAction ? "text-red-500" : "text-emerald-500";
 
   return (
     <div className="mt-3 w-fit rounded-3xl rounded-bl-none bg-zinc-800 p-4">

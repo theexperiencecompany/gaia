@@ -174,7 +174,7 @@ export default function ApprovalReviewSheet({
     <Modal isOpen={open} onClose={onClose} placement="bottom-center" size="lg">
       <ModalContent>
         <ModalHeader className="flex items-center">
-          <ShieldIcon width={18} className="shrink-0 text-amber-400" />
+          <ShieldIcon width={18} className="shrink-0 text-amber-500" />
           <span className="ml-2 text-sm text-zinc-100">
             {items.length} actions need your approval ({totals})
           </span>

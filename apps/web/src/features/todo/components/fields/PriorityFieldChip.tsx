@@ -65,7 +65,7 @@ export default function PriorityFieldChip({
                   <Flag02Icon
                     width={20}
                     height={20}
-                    className={`${option.value === Priority.HIGH ? "text-red-400" : option.value === Priority.MEDIUM ? "text-yellow-400" : option.value === Priority.LOW ? "text-blue-400" : "text-zinc-500"}`}
+                    className={`${option.value === Priority.HIGH ? "text-red-500" : option.value === Priority.MEDIUM ? "text-yellow-500" : option.value === Priority.LOW ? "text-blue-500" : "text-zinc-500"}`}
                   />
                   <span>{option.label}</span>
                 </div>

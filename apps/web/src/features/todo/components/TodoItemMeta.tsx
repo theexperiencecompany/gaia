@@ -53,10 +53,10 @@ function TodoPriorityChip({ priority }: { priority: Todo["priority"] }) {
         radius="sm"
         className={
           priority === Priority.HIGH
-            ? "text-red-400 bg-red-400/10"
+            ? "text-red-500 bg-red-500/10"
             : priority === Priority.MEDIUM
-              ? "text-yellow-400 bg-yellow-400/10"
-              : "text-blue-400 bg-blue-400/10"
+              ? "text-yellow-500 bg-yellow-500/10"
+              : "text-blue-500 bg-blue-500/10"
         }
         startContent={<Flag02Icon width={15} height={15} className="mx-1" />}
       >

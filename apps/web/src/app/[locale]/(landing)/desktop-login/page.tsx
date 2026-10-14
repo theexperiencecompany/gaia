@@ -162,7 +162,7 @@ export default function DesktopLoginPage() {
 
           {status === "error" && (
             <div className="flex flex-col items-center gap-4 py-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-400/20">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/20">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="24"
@@ -173,7 +173,7 @@ export default function DesktopLoginPage() {
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="text-red-400"
+                  className="text-red-500"
                   aria-hidden="true"
                 >
                   <circle cx="12" cy="12" r="10" />
@@ -181,7 +181,7 @@ export default function DesktopLoginPage() {
                   <line x1="9" y1="9" x2="15" y2="15" />
                 </svg>
               </div>
-              <p className="text-center text-red-400">Failed to open browser</p>
+              <p className="text-center text-red-500">Failed to open browser</p>
               <button
                 type="button"
                 onClick={() => setStatus("ready")}

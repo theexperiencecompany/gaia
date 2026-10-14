@@ -34,7 +34,7 @@ export default function ClientReportCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Weekly Status Report: TechCorp
         </span>
-        <span className="rounded-full bg-emerald-400/10 px-1.5 py-0.5 text-xs text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-500">
           Draft ready
         </span>
       </div>
@@ -50,7 +50,7 @@ export default function ClientReportCard() {
           <CheckmarkCircle02Icon
             width={12}
             height={12}
-            className="text-emerald-400"
+            className="text-emerald-500"
           />
           Completed this week:
         </p>
@@ -61,7 +61,7 @@ export default function ClientReportCard() {
         </ul>
 
         <p className="mb-0.5 mt-2 flex items-center gap-1 text-xs font-medium text-zinc-200">
-          <Loading03Icon width={12} height={12} className="text-amber-400" />
+          <Loading03Icon width={12} height={12} className="text-amber-500" />
           In Progress:
         </p>
         <ul className="list-disc pl-4 text-xs text-zinc-400">
@@ -84,7 +84,7 @@ export default function ClientReportCard() {
           <Target02Icon width={12} height={12} className="text-zinc-400" />
           Timeline:
         </p>
-        <p className="text-xs text-emerald-400">
+        <p className="text-xs text-emerald-500">
           On track: launch target March 22
         </p>
       </div>

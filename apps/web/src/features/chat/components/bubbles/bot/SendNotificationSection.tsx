@@ -18,7 +18,7 @@ export default function SendNotificationSection({
 
   return (
     <div className="mt-3 w-full max-w-sm">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-emerald-500">
         <CheckmarkCircle02Icon className="size-4" />
         Notification sent
       </div>

@@ -37,7 +37,7 @@ function renderBody({
   if (hasError) {
     return (
       <div className="flex flex-col items-center gap-2 py-12 text-center">
-        <AlertCircleIcon width={28} height={28} className="text-red-400" />
+        <AlertCircleIcon width={28} height={28} className="text-red-500" />
         <p className="text-sm text-zinc-400">{errorMessage}</p>
       </div>
     );

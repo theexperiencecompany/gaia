@@ -332,7 +332,7 @@ function Stats({
                 content: "max-w-64 text-xs text-zinc-300",
               }}
             >
-              <span className="flex cursor-default items-center gap-0.5 text-xs font-medium text-orange-400">
+              <span className="flex cursor-default items-center gap-0.5 text-xs font-medium text-orange-500">
                 <Fire02Icon size={13} />
                 {streak}
               </span>
@@ -607,7 +607,7 @@ function Trend({
           <InfoTip text="Your cumulative messages sent this month. The dashed line projects where you'll land at your current pace." />
         </div>
         {runOutDom && (
-          <p className="text-sm font-medium text-amber-400">
+          <p className="text-sm font-medium text-amber-500">
             On track to run out {monthName} {runOutDom} ({daysLeft}{" "}
             {daysLeft === 1 ? "day" : "days"} left)
           </p>
@@ -828,7 +828,7 @@ function FeatureRow({
       <span className="min-w-16 shrink-0 text-right text-xs tabular-nums text-zinc-500">
         {/* Over-limit is legitimate (plan change, automated triggers) — mark it
             instead of letting "29/20" read like a rendering bug. */}
-        <span className={p.used > p.limit ? "text-red-400" : undefined}>
+        <span className={p.used > p.limit ? "text-red-500" : undefined}>
           {p.used.toLocaleString()}
         </span>
         /{p.limit.toLocaleString()}

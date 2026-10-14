@@ -5,7 +5,7 @@ const METRICS = [
   {
     id: "sr-1",
     value: "Velocity: 87%",
-    valueClass: "text-sm font-semibold text-emerald-400",
+    valueClass: "text-sm font-semibold text-emerald-500",
     label: "Sprint performance",
   },
   {
@@ -17,7 +17,7 @@ const METRICS = [
   {
     id: "sr-3",
     value: "Avg PR time: 18.4h",
-    valueClass: "text-sm font-semibold text-amber-400",
+    valueClass: "text-sm font-semibold text-amber-500",
     label: "Review cycle",
   },
   {
@@ -51,7 +51,7 @@ export default function SprintReportCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Sprint 24 Report
         </span>
-        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
           Completed
         </span>
       </div>
@@ -71,7 +71,7 @@ export default function SprintReportCard() {
       <div className="space-y-2.5">
         <div>
           <div className="flex items-center gap-1.5 mb-1">
-            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
               What went well
             </p>
@@ -85,7 +85,7 @@ export default function SprintReportCard() {
                 <ArrowRight02Icon
                   width={12}
                   height={12}
-                  className="shrink-0 mt-0.5 text-emerald-400"
+                  className="shrink-0 mt-0.5 text-emerald-500"
                 />
                 {item}
               </p>
@@ -95,7 +95,7 @@ export default function SprintReportCard() {
 
         <div>
           <div className="flex items-center gap-1.5 mb-1">
-            <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+            <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
             <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
               What to improve
             </p>
@@ -109,7 +109,7 @@ export default function SprintReportCard() {
                 <ArrowRight02Icon
                   width={12}
                   height={12}
-                  className="shrink-0 mt-0.5 text-amber-400"
+                  className="shrink-0 mt-0.5 text-amber-500"
                 />
                 {item}
               </p>

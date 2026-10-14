@@ -9,7 +9,7 @@ const METRICS = [
     valueClass: "text-xl font-semibold text-white",
     trendUp: true,
     trend: "from 79%",
-    trendClass: "text-xs text-emerald-400",
+    trendClass: "text-xs text-emerald-500",
   },
   {
     id: "m-2",
@@ -18,7 +18,7 @@ const METRICS = [
     valueClass: "text-xl font-semibold text-white",
     trendUp: true,
     trend: "from 12h",
-    trendClass: "text-xs text-red-400",
+    trendClass: "text-xs text-red-500",
   },
   {
     id: "m-3",
@@ -27,7 +27,7 @@ const METRICS = [
     valueClass: "text-xl font-semibold text-white",
     trendUp: false,
     trend: "on track",
-    trendClass: "text-xs text-emerald-400",
+    trendClass: "text-xs text-emerald-500",
   },
 ];
 
@@ -35,31 +35,31 @@ const TEAM_MEMBERS = [
   {
     id: "t-1",
     name: "Alex M.",
-    dotClass: "bg-emerald-400",
+    dotClass: "bg-emerald-500",
     status: "4 tickets done · 1 PR in review · no blockers",
   },
   {
     id: "t-2",
     name: "Sarah K.",
-    dotClass: "bg-amber-400",
+    dotClass: "bg-amber-500",
     status: "2 tickets done · PR #214 awaiting review (4d)",
   },
   {
     id: "t-3",
     name: "Maya R.",
-    dotClass: "bg-amber-400",
+    dotClass: "bg-amber-500",
     status: "Blocked on API schema decision (ENG-407)",
   },
   {
     id: "t-4",
     name: "James T.",
-    dotClass: "bg-emerald-400",
+    dotClass: "bg-emerald-500",
     status: "3 tickets done · led incident response",
   },
   {
     id: "t-5",
     name: "Dev K.",
-    dotClass: "bg-red-400",
+    dotClass: "bg-red-500",
     status: "OOO until Thursday · ENG-412 unassigned",
   },
 ];
@@ -121,7 +121,7 @@ export default function TeamHealthCard() {
       </div>
 
       <div className="mt-2 pt-2 border-t border-zinc-800">
-        <p className="flex items-center gap-1 text-xs text-amber-400">
+        <p className="flex items-center gap-1 text-xs text-amber-500">
           <Alert01Icon width={12} height={12} />
           PR cycle time up 53%, likely PR #214 bottleneck
         </p>

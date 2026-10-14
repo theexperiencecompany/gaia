@@ -397,7 +397,7 @@ function DemoConversationsCard() {
                   </h4>
                   {conversation.starred && (
                     <StarIcon
-                      className="flex-shrink-0 text-yellow-400"
+                      className="flex-shrink-0 text-yellow-500"
                       width={14}
                       height={14}
                     />
@@ -478,27 +478,27 @@ export default function DemoDashboardView() {
 
   const sections = [
     {
-      icon: <Calendar03Icon className="w-7 h-7 text-blue-400" />,
+      icon: <Calendar03Icon className="w-7 h-7 text-blue-500" />,
       count: 3,
       label: "meetings",
     },
     {
-      icon: <CheckmarkCircle02Icon className="w-7 h-7 text-emerald-400" />,
+      icon: <CheckmarkCircle02Icon className="w-7 h-7 text-emerald-500" />,
       count: 4,
       label: "tasks due",
     },
     {
-      icon: <Alert01Icon className="w-7 h-7 text-red-400" />,
+      icon: <Alert01Icon className="w-7 h-7 text-red-500" />,
       count: 1,
       label: "overdue task",
     },
     {
-      icon: <Mail01Icon className="w-7 h-7 text-blue-400" />,
+      icon: <Mail01Icon className="w-7 h-7 text-blue-500" />,
       count: 5,
       label: "unread emails",
     },
     {
-      icon: <ZapIcon className="w-7 h-7 text-amber-400" />,
+      icon: <ZapIcon className="w-7 h-7 text-amber-500" />,
       count: 2,
       label: "workflows",
     },

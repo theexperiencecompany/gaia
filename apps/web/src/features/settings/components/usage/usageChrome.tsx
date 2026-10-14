@@ -4,7 +4,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { InformationCircleIcon } from "@icons";
 export const ACCENT = "#00bbff"; // brand blue — capacity meters
 export const HEALTHY = "#30d158"; // apple green — the activity trend
-export const NEAR = "#fbbf24"; // amber — approaching the limit
+export const NEAR = "#f59e0b"; // amber — approaching the limit
 
 export const CARD = "rounded-2xl bg-zinc-900/60";
 

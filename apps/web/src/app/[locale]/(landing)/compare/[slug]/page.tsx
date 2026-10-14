@@ -174,7 +174,7 @@ export default async function ComparisonPage({ params }: PageProps) {
                 key: "gaia",
                 label: t("comparisons.gaia_column"),
                 headerClassName: "text-primary",
-                cellClassName: "text-emerald-400",
+                cellClassName: "text-emerald-500",
               },
               {
                 key: "competitor",
@@ -190,7 +190,7 @@ export default async function ComparisonPage({ params }: PageProps) {
         {/* Advantages */}
         <div className="mb-16 grid gap-8 md:grid-cols-2">
           <section>
-            <h2 className="mb-4 text-2xl font-semibold text-emerald-400">
+            <h2 className="mb-4 text-2xl font-semibold text-emerald-500">
               {t("comparisons.why_choose_gaia")}
             </h2>
             <ul className="space-y-3">
@@ -199,7 +199,7 @@ export default async function ComparisonPage({ params }: PageProps) {
                   key={advantage}
                   className="flex items-start gap-3 text-zinc-300"
                 >
-                  <span className="mt-1 text-emerald-400">+</span>
+                  <span className="mt-1 text-emerald-500">+</span>
                   <span>{advantage}</span>
                 </li>
               ))}

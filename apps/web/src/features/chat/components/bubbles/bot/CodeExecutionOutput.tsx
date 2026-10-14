@@ -32,10 +32,10 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
       return <Spinner size="sm" />;
     }
     if (status === "error" || output?.error) {
-      return <Cancel01Icon className="h-3 w-3 text-red-400" />;
+      return <Cancel01Icon className="h-3 w-3 text-red-500" />;
     }
     if (status === "completed" && output && !output.error) {
-      return <CheckmarkCircle02Icon className="h-3 w-3 text-emerald-400" />;
+      return <CheckmarkCircle02Icon className="h-3 w-3 text-emerald-500" />;
     }
     return <SourceCodeCircleIcon className="h-3 w-3 text-zinc-400" />;
   };
@@ -69,14 +69,14 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
       <div className="bg-zinc-900 p-3 pt-0">
         {status === "executing" && !output ? (
           <div className="flex items-center gap-3 py-4 text-zinc-400">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+            <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
             <span className="text-sm">Executing {language} code...</span>
           </div>
         ) : output ? (
           <div className="space-y-3">
             {/* Standard Output */}
             {output.stdout && (
-              <div className="bg-black p-3 font-mono text-sm text-emerald-400">
+              <div className="bg-black p-3 font-mono text-sm text-emerald-500">
                 <pre className="whitespace-pre-wrap">{output.stdout}</pre>
               </div>
             )}
@@ -84,7 +84,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
             {/* Results Output */}
             {output.results && output.results.length > 0 && (
               <div>
-                <div className="bg-black p-3 font-mono text-sm text-blue-400">
+                <div className="bg-black p-3 font-mono text-sm text-blue-500">
                   {output.results.map((result, index) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: stable array
                     <pre key={result + index} className="whitespace-pre-wrap">
@@ -98,7 +98,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
             {/* Standard Error */}
             {output.stderr && (
               <div>
-                <div className="bg-black p-3 font-mono text-sm text-red-400">
+                <div className="bg-black p-3 font-mono text-sm text-red-500">
                   <pre className="whitespace-pre-wrap">{output.stderr}</pre>
                 </div>
               </div>
@@ -110,7 +110,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
                 <div className="text-xs font-medium text-zinc-500">
                   EXECUTION ERROR
                 </div>
-                <div className="bg-black p-3 font-mono text-sm text-red-400">
+                <div className="bg-black p-3 font-mono text-sm text-red-500">
                   <pre className="whitespace-pre-wrap">{output.error}</pre>
                 </div>
               </div>
@@ -120,9 +120,9 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
             <div className="flex items-center justify-between pb-3 text-xs text-zinc-500">
               <span>Status: {status || "unknown"}</span>
               {!output.error && !output.stderr ? (
-                <span className="text-emerald-400">Success</span>
+                <span className="text-emerald-500">Success</span>
               ) : (
-                <span className="text-red-400">Failed</span>
+                <span className="text-red-500">Failed</span>
               )}
             </div>
 

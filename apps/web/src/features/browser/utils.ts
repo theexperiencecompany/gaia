@@ -35,19 +35,19 @@ export const BROWSER_STATUS_META: Record<
     label: "Action needed",
     color: "warning",
     dot: "bg-amber-500",
-    text: "text-amber-400",
+    text: "text-amber-500",
   },
   completed: {
     label: "Done",
     color: "success",
     dot: "bg-emerald-500",
-    text: "text-emerald-400",
+    text: "text-emerald-500",
   },
   failed: {
     label: "Couldn't finish",
     color: "danger",
     dot: "bg-red-500",
-    text: "text-red-400",
+    text: "text-red-500",
   },
   cancelled: {
     label: "Stopped",

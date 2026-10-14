@@ -146,7 +146,7 @@ function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
       <Divider className="my-3" />
       <div className="flex items-start gap-2.5">
         {result.success ? (
-          <CheckmarkCircle02Icon className="mt-px size-4 shrink-0 text-emerald-400" />
+          <CheckmarkCircle02Icon className="mt-px size-4 shrink-0 text-emerald-500" />
         ) : (
           <Alert01Icon className="mt-px size-4 shrink-0 text-zinc-500" />
         )}

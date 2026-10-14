@@ -25,19 +25,19 @@ export default function SlackBotDemo() {
         <div className="space-y-2">
           <div className="flex items-center justify-between rounded-xl bg-zinc-900 p-3">
             <span className="text-xs text-zinc-400">Active Users</span>
-            <span className="text-xs font-semibold text-emerald-400">
+            <span className="text-xs font-semibold text-emerald-500">
               +12% &nbsp;4,821
             </span>
           </div>
           <div className="flex items-center justify-between rounded-xl bg-zinc-900 p-3">
             <span className="text-xs text-zinc-400">Revenue</span>
-            <span className="text-xs font-semibold text-emerald-400">
+            <span className="text-xs font-semibold text-emerald-500">
               +8% &nbsp;$34,200
             </span>
           </div>
           <div className="flex items-center justify-between rounded-xl bg-zinc-900 p-3">
             <span className="text-xs text-zinc-400">Churn Rate</span>
-            <span className="text-xs font-semibold text-amber-400">
+            <span className="text-xs font-semibold text-amber-500">
               2.1% &nbsp;-0.3pp
             </span>
           </div>

@@ -72,7 +72,7 @@ export default function TelegramBotDemo() {
                 </div>
               ))}
             </div>
-            <p className="text-xs mt-2 text-emerald-400 flex items-center gap-1">
+            <p className="text-xs mt-2 text-emerald-500 flex items-center gap-1">
               <CheckmarkCircle02Icon className="size-3.5" /> Task created
             </p>
             <p className="text-xs mt-1.5 text-right text-zinc-400">9:42 AM</p>

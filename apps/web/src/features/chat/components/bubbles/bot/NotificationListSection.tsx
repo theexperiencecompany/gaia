@@ -141,7 +141,7 @@ export default function NotificationListSection({
               )}
               {unreadNotifications.length > 0 && (
                 <Chip
-                  className="text-blue-400"
+                  className="text-blue-500"
                   size="sm"
                   variant="flat"
                   color="primary"

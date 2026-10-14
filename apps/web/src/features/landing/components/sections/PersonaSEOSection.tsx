@@ -74,7 +74,7 @@ export default function PersonaSEOSection({
               <Cancel01Icon
                 width={18}
                 height={18}
-                className="mt-1 shrink-0 text-red-400"
+                className="mt-1 shrink-0 text-red-500"
               />
               <p className="leading-relaxed text-zinc-300">{point}</p>
             </div>
@@ -90,7 +90,7 @@ export default function PersonaSEOSection({
         <div className="grid gap-6 md:grid-cols-2">
           {features.map((feature) => (
             <div key={feature.title} className="rounded-3xl bg-zinc-800/60 p-6">
-              <h3 className="mb-3 text-lg font-medium text-emerald-400">
+              <h3 className="mb-3 text-lg font-medium text-emerald-500">
                 {feature.title}
               </h3>
               <p className="leading-relaxed text-zinc-400">

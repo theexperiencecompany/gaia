@@ -17,19 +17,19 @@ const TIMELINE_STATUS: Record<
   { dot: string; label: string; labelColor: string }
 > = {
   success: {
-    dot: "bg-emerald-400",
+    dot: "bg-emerald-500",
     label: "Success",
-    labelColor: "text-emerald-400 bg-emerald-400/10",
+    labelColor: "text-emerald-500 bg-emerald-500/10",
   },
   error: {
-    dot: "bg-red-400",
+    dot: "bg-red-500",
     label: "Failed",
-    labelColor: "text-red-400 bg-red-400/10",
+    labelColor: "text-red-500 bg-red-500/10",
   },
   warning: {
-    dot: "bg-amber-400",
+    dot: "bg-amber-500",
     label: "Warning",
-    labelColor: "text-amber-400 bg-amber-400/10",
+    labelColor: "text-amber-500 bg-amber-500/10",
   },
   neutral: {
     dot: "bg-zinc-500",

@@ -6,14 +6,14 @@ const HANDLED_ITEMS = [
     icon: "github",
     label: "2 PRs flagged: PR #214 stale for 4 days",
     detail: "flagged",
-    detailClass: "text-red-400",
+    detailClass: "text-red-500",
   },
   {
     id: "em-2",
     icon: "linear",
     label: "Sprint velocity report compiled for retro",
     detail: "1.5h saved",
-    detailClass: "text-emerald-400",
+    detailClass: "text-emerald-500",
   },
   {
     id: "em-3",
@@ -38,7 +38,7 @@ export default function EMProactiveCard() {
         <span className="text-xs font-medium text-zinc-400">
           Handled while you were in 1:1s
         </span>
-        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
           ~4h saved today
         </span>
       </div>
@@ -53,7 +53,7 @@ export default function EMProactiveCard() {
             <div key={item.id} className="flex items-center gap-2.5 text-sm">
               <div className="flex h-4 w-4 shrink-0 items-center justify-center">
                 {iconElement ?? (
-                  <div className="h-3 w-3 rounded-full bg-red-400/70" />
+                  <div className="h-3 w-3 rounded-full bg-red-500/70" />
                 )}
               </div>
               <span className="flex-1 text-zinc-300">{item.label}</span>

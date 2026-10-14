@@ -65,7 +65,7 @@ export async function generateMetadata({
 function FitScorePip({ filled }: { readonly filled: boolean }) {
   return (
     <span
-      className={`inline-block h-3 w-3 rounded-full ${filled ? "bg-emerald-400" : "bg-zinc-700"}`}
+      className={`inline-block h-3 w-3 rounded-full ${filled ? "bg-emerald-500" : "bg-zinc-700"}`}
     />
   );
 }
@@ -149,7 +149,7 @@ function AlternativeArticle({
               key={point}
               className="flex items-start gap-3 rounded-2xl bg-zinc-800 p-4 text-zinc-300"
             >
-              <span className="mt-0.5 text-red-400 shrink-0">&#x2212;</span>
+              <span className="mt-0.5 text-red-500 shrink-0">&#x2212;</span>
               <span>{point}</span>
             </li>
           ))}
@@ -175,7 +175,7 @@ function AlternativeArticle({
         <ul className="space-y-3">
           {data.gaiaReplaces.map((item) => (
             <li key={item} className="flex items-start gap-3 text-zinc-300">
-              <span className="mt-1 text-emerald-400 shrink-0">&#x2714;</span>
+              <span className="mt-1 text-emerald-500 shrink-0">&#x2714;</span>
               <span>{item}</span>
             </li>
           ))}
@@ -201,7 +201,7 @@ function AlternativeArticle({
                 key: "gaia",
                 label: t("alternatives.gaia_column"),
                 headerClassName: "text-primary",
-                cellClassName: "text-emerald-400",
+                cellClassName: "text-emerald-500",
               },
               {
                 key: "competitor",
@@ -226,7 +226,7 @@ function AlternativeArticle({
               key={advantage}
               className="flex items-start gap-3 text-zinc-300"
             >
-              <span className="mt-1 text-emerald-400 shrink-0">+</span>
+              <span className="mt-1 text-emerald-500 shrink-0">+</span>
               <span>{advantage}</span>
             </li>
           ))}
@@ -244,7 +244,7 @@ function AlternativeArticle({
               key={step}
               className="flex items-start gap-4 rounded-2xl bg-zinc-800 p-5"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-sm font-semibold text-emerald-400">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-sm font-semibold text-emerald-500">
                 {index + 1}
               </span>
               <span className="mt-1 text-zinc-300">{step}</span>

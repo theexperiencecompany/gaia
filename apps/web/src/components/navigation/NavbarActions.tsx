@@ -43,7 +43,7 @@ export function NavbarActions({
             <span className="ml-1 hidden lg:inline">GitHub</span>
           </div>
           <div className="flex items-center gap-1 text-sm">
-            <StarFilledIcon className="relative top-px size-4 text-white group-hover:text-amber-400" />
+            <StarFilledIcon className="relative top-px size-4 text-white group-hover:text-amber-500" />
             <NumberFlow
               value={stars}
               className="font-medium text-white tabular-nums"

@@ -36,11 +36,11 @@
               "duration-200",
               "duration-300",
               "hover:bg-transparent",
-              "bg-red-400/10",
-              "bg-yellow-400/10",
-              "bg-blue-400/10",
-              "bg-emerald-400/10",
-              "bg-amber-400/10"
+              "bg-red-500/10",
+              "bg-yellow-500/10",
+              "bg-blue-500/10",
+              "bg-emerald-500/10",
+              "bg-amber-500/10"
             ]
           },
           {
@@ -150,9 +150,9 @@
               "bg-zinc-900",
               "border-dashed",
               "border-1",
-              "border-red-400",
-              "border-yellow-400",
-              "border-blue-400",
+              "border-red-500",
+              "border-yellow-500",
+              "border-blue-500",
               "border-zinc-500",
               "before:border-0!"
             ]
@@ -169,12 +169,12 @@
       {
         "allow": [
           "*-zinc-*",
-          "*-emerald-400",
-          "*-amber-400",
-          "*-red-400",
-          "*-blue-400",
-          "*-yellow-400",
-          "*-orange-400",
+          "*-emerald-500",
+          "*-amber-500",
+          "*-red-500",
+          "*-blue-500",
+          "*-yellow-500",
+          "*-orange-500",
           "*-violet-400",
           "*-lime-400",
           "*-purple-400",

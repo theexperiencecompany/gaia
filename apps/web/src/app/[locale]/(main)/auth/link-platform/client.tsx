@@ -79,7 +79,7 @@ export default function LinkPlatformClient({
         Fully synced with your account.
       </p>
 
-      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+      {error && <p className="mb-4 text-sm text-red-500">{error}</p>}
 
       <RaisedButton
         size="lg"

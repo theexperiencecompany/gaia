@@ -341,7 +341,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
               color="warning"
               classNames={{
                 content:
-                  "flex items-center text-xs font-medium text-orange-400",
+                  "flex items-center text-xs font-medium text-orange-500",
               }}
             >
               <Fire02Icon size={13} />

@@ -37,7 +37,7 @@ function StatusIcon({
   if (state === "detecting") {
     return <Spinner size="sm" color="success" />;
   }
-  return <Mic02Icon className="size-5 text-emerald-400" />;
+  return <Mic02Icon className="size-5 text-emerald-500" />;
 }
 
 /**

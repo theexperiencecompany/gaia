@@ -50,7 +50,7 @@ export function SubscriptionBillingSection({
 
       {subscription?.cancelled_at && (
         <SettingsRow label="Cancelled on">
-          <span className="text-sm text-red-400">
+          <span className="text-sm text-red-500">
             {formatDate(subscription.cancelled_at)}
           </span>
         </SettingsRow>

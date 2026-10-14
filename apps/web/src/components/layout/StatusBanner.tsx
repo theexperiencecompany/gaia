@@ -45,7 +45,7 @@ export default function StatusBanner() {
   if (!isDown || dismissed) return null;
 
   return (
-    <div className="flex w-full items-center justify-between gap-3 bg-amber-400/10 px-4 py-2 text-sm text-amber-400">
+    <div className="flex w-full items-center justify-between gap-3 bg-amber-500/10 px-4 py-2 text-sm text-amber-500">
       <div className="flex items-center gap-2">
         <Alert01Icon className="size-4 shrink-0" />
         <span>
@@ -54,7 +54,7 @@ export default function StatusBanner() {
             href={STATUS_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-amber-400"
+            className="underline underline-offset-2 hover:text-amber-500"
           >
             Learn more
           </Link>
@@ -66,7 +66,7 @@ export default function StatusBanner() {
         variant="light"
         aria-label="Dismiss status banner"
         onPress={() => setDismissed(true)}
-        className="shrink-0 text-amber-400"
+        className="shrink-0 text-amber-500"
       >
         <Cancel01Icon className="size-4" />
       </Button>

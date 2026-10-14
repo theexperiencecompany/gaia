@@ -58,7 +58,7 @@ function statusChip(granted: boolean, known: boolean) {
       variant="flat"
       color="success"
       classNames={{
-        content: "text-xs text-emerald-400",
+        content: "text-xs text-emerald-500",
       }}
     >
       Granted
@@ -68,7 +68,7 @@ function statusChip(granted: boolean, known: boolean) {
       size="sm"
       variant="flat"
       color="danger"
-      classNames={{ content: "text-xs text-red-400" }}
+      classNames={{ content: "text-xs text-red-500" }}
     >
       Not granted
     </Chip>

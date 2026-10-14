@@ -175,7 +175,7 @@ function LoginRow({
         </div>
         {exp && (
           <p
-            className={`mt-0.5 text-xs ${exp.soon ? "text-amber-400/80" : "text-zinc-500"}`}
+            className={`mt-0.5 text-xs ${exp.soon ? "text-amber-500/80" : "text-zinc-500"}`}
           >
             {exp.text}
           </p>

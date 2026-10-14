@@ -93,7 +93,7 @@ function AlternativeCard({ alt }: { readonly alt: AlternativeData }) {
         {[0, 1, 2, 3, 4].map((i) => (
           <span
             key={`pip-${i}`}
-            className={`inline-block h-2 w-2 rounded-full ${i < alt.gaiaFitScore ? "bg-emerald-400" : "bg-zinc-700"}`}
+            className={`inline-block h-2 w-2 rounded-full ${i < alt.gaiaFitScore ? "bg-emerald-500" : "bg-zinc-700"}`}
           />
         ))}
         <span className="ml-1 text-xs text-zinc-500">

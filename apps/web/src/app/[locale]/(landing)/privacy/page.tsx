@@ -349,7 +349,7 @@ function DataSharingAndGoogleData() {
           GAIA's use and transfer of information received from Google APIs to
           any other app will adhere to the{" "}
           <Link
-            className="text-blue-400 underline"
+            className="text-blue-500 underline"
             href="https://developers.google.com/terms/api-services-user-data-policy"
             isExternal
             showAnchorIcon={false}
@@ -383,7 +383,7 @@ function DataSharingAndGoogleData() {
             account settings, and you may revoke our access directly through
             your{" "}
             <Link
-              className="text-blue-400 underline"
+              className="text-blue-500 underline"
               href="https://myaccount.google.com/permissions"
               isExternal
               showAnchorIcon={false}
@@ -612,14 +612,14 @@ function YourRightsAndRetention() {
         <p className="mb-2">
           To exercise any of the rights described above, email us at{" "}
           <a
-            className="text-blue-400 underline"
+            className="text-blue-500 underline"
             href="mailto:support@heygaia.so"
           >
             support@heygaia.so
           </a>{" "}
           from the email address associated with your account, or submit a
           request through our{" "}
-          <I18nLink className="text-blue-400 underline" href="/contact">
+          <I18nLink className="text-blue-500 underline" href="/contact">
             contact page
           </I18nLink>
           , and tell us which right you wish to exercise.
@@ -712,7 +712,7 @@ function PrivacyClosingSections() {
           and terminate the associated account. If you believe a child has
           provided us with personal information, please contact us at{" "}
           <a
-            className="text-blue-400 underline"
+            className="text-blue-500 underline"
             href="mailto:support@heygaia.so"
           >
             support@heygaia.so
@@ -795,7 +795,7 @@ function PrivacyClosingSections() {
           <br />
           Email:{" "}
           <a
-            className="text-blue-400 underline"
+            className="text-blue-500 underline"
             href="mailto:support@heygaia.so"
           >
             support@heygaia.so

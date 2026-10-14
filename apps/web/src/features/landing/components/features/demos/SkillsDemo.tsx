@@ -47,7 +47,7 @@ const SKILLS: DemoSkill[] = [
 
 function InstalledBadge() {
   return (
-    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-400">
+    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-500">
       <Tick02Icon className="size-3.5" /> Installed
     </span>
   );
@@ -65,7 +65,7 @@ function AnimatingBadge({ started, onComplete }: AnimatingBadgeProps) {
     <div className="shrink-0 w-24 h-4 rounded-full bg-zinc-700 overflow-hidden">
       {started && (
         <m.div
-          className="h-full rounded-full bg-blue-400"
+          className="h-full rounded-full bg-blue-500"
           initial={{ width: "0%" }}
           animate={{ width: "100%" }}
           transition={{ duration: 1.5, ease: "easeInOut" }}
@@ -108,7 +108,7 @@ function SkillRow({
         ) : showDone ? (
           <m.span
             key="done"
-            className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-400"
+            className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-500"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}

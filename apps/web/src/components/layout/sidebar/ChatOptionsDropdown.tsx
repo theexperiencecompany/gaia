@@ -239,7 +239,7 @@ export default function ChatOptionsDropdown({
               label={
                 <div className="space-x-1 text-xs">
                   <span>Previous Name:</span>
-                  <span className="text-red-400">{chatName}</span>
+                  <span className="text-red-500">{chatName}</span>
                 </div>
               }
               labelPlacement="outside"

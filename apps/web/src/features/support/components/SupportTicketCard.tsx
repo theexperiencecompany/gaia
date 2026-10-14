@@ -83,7 +83,7 @@ function EditTicketModal({
               </Chip>
             </div>
             {errors.type && (
-              <div className="mt-1 text-xs text-red-400">{errors.type}</div>
+              <div className="mt-1 text-xs text-red-500">{errors.type}</div>
             )}
           </div>
 

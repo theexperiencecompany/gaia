@@ -39,7 +39,7 @@ export default function DiscordBotDemo() {
             <span className="text-xs font-bold text-white">G</span>
           </div>
           <div className="w-0.5 h-4 rounded-full bg-zinc-600" />
-          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-400">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500">
             <span className="text-xs font-bold text-white">D</span>
           </div>
         </div>
@@ -140,7 +140,7 @@ export default function DiscordBotDemo() {
                         className={cn(
                           "text-xs rounded px-1.5 py-0.5 font-medium shrink-0",
                           field.open
-                            ? "bg-emerald-400/10 text-emerald-400"
+                            ? "bg-emerald-500/10 text-emerald-500"
                             : "bg-zinc-500/10 text-zinc-400",
                         )}
                       >

@@ -18,7 +18,7 @@ export default function StakeholderUpdateCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Weekly Stakeholder Update: Week of March 3
         </span>
-        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
           Draft ready
         </span>
       </div>
@@ -36,7 +36,7 @@ export default function StakeholderUpdateCard() {
           <CheckmarkCircle02Icon
             width={12}
             height={12}
-            className="text-emerald-400"
+            className="text-emerald-500"
           />
           Shipped:
         </p>
@@ -55,7 +55,7 @@ export default function StakeholderUpdateCard() {
         </ul>
 
         <p className="flex items-center gap-1 text-xs font-medium text-zinc-200 mt-2 mb-0.5">
-          <Alert01Icon width={12} height={12} className="text-red-400" />
+          <Alert01Icon width={12} height={12} className="text-red-500" />
           Needs Decision:
         </p>
         <ul className="list-disc pl-4 text-xs text-zinc-300">

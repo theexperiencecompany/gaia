@@ -218,7 +218,7 @@ export function VoiceTable({
                   }
                   className={cn(
                     "text-zinc-600 hover:text-zinc-300",
-                    voice.starred && "text-yellow-400",
+                    voice.starred && "text-yellow-500",
                   )}
                   onPress={() =>
                     starVoice.mutate({

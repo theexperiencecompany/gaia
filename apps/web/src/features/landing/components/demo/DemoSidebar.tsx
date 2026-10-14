@@ -235,10 +235,10 @@ const IntegrationsSidebarContent = memo(function IntegrationsSidebarContent({
                 <InternetIcon width={14} height={14} className="text-primary" />
               )}
               {integration.status === "connected" && (
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               )}
               {integration.status === "created" && (
-                <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
               )}
             </div>
           </button>

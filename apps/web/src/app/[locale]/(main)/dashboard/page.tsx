@@ -66,35 +66,35 @@ function buildDashboardSections({
   const sections: DashboardSection[] = [];
   if (todaysMeetings > 0) {
     sections.push({
-      icon: <Calendar03Icon className="w-7 h-7 text-blue-400" />,
+      icon: <Calendar03Icon className="w-7 h-7 text-blue-500" />,
       count: todaysMeetings,
       label: todaysMeetings === 1 ? "meeting" : "meetings",
     });
   }
   if (tasksDue > 0) {
     sections.push({
-      icon: <CheckmarkCircle02Icon className="w-7 h-7 text-emerald-400" />,
+      icon: <CheckmarkCircle02Icon className="w-7 h-7 text-emerald-500" />,
       count: tasksDue,
       label: tasksDue === 1 ? "task due" : "tasks due",
     });
   }
   if (overdueTodosCount > 0) {
     sections.push({
-      icon: <Alert01Icon className="w-7 h-7 text-red-400" />,
+      icon: <Alert01Icon className="w-7 h-7 text-red-500" />,
       count: overdueTodosCount,
       label: overdueTodosCount === 1 ? "overdue task" : "overdue tasks",
     });
   }
   if (unreadEmailsCount > 0) {
     sections.push({
-      icon: <Mail01Icon className="w-7 h-7 text-blue-400" />,
+      icon: <Mail01Icon className="w-7 h-7 text-blue-500" />,
       count: unreadEmailsCount,
       label: unreadEmailsCount === 1 ? "unread email" : "unread emails",
     });
   }
   if (activeWorkflows > 0) {
     sections.push({
-      icon: <ZapIcon className="w-7 h-7 text-amber-400" />,
+      icon: <ZapIcon className="w-7 h-7 text-amber-500" />,
       count: activeWorkflows,
       label: activeWorkflows === 1 ? "workflow" : "workflows",
     });

@@ -51,7 +51,7 @@ export function CopyableContentView(
           {props.content}
         </span>
         {copied ? (
-          <CheckmarkCircle02Icon className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+          <CheckmarkCircle02Icon className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
         ) : (
           <Copy01Icon className="w-3 h-3 shrink-0 text-zinc-500" />
         )}
@@ -83,7 +83,7 @@ export function CopyableContentView(
           aria-label={copied ? "Copied" : "Copy content"}
           className={cn(
             "shrink-0 aspect-square min-w-7 w-7 h-7",
-            copied ? "text-emerald-400" : "text-zinc-500",
+            copied ? "text-emerald-500" : "text-zinc-500",
           )}
         >
           {copied ? (

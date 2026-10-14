@@ -38,7 +38,7 @@ export default function DevProactiveCard() {
         <span className="text-xs font-medium text-zinc-400">
           Handled while you were in deep work
         </span>
-        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
           ~2h saved today
         </span>
       </div>
@@ -53,12 +53,12 @@ export default function DevProactiveCard() {
             <div key={item.id} className="flex items-center gap-2.5 text-sm">
               <div className="flex h-4 w-4 shrink-0 items-center justify-center">
                 {iconElement ?? (
-                  <div className="h-3 w-3 rounded-full bg-red-400" />
+                  <div className="h-3 w-3 rounded-full bg-red-500" />
                 )}
               </div>
               <span className="flex-1 text-zinc-300">{item.label}</span>
               <span
-                className={`text-xs ${item.urgent ? "text-red-400" : "text-emerald-400"}`}
+                className={`text-xs ${item.urgent ? "text-red-500" : "text-emerald-500"}`}
               >
                 {item.detail}
               </span>

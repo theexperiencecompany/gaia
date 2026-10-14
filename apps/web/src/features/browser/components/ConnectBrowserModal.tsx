@@ -130,7 +130,7 @@ function CommandPanel({
     <>
       <CommandBlock command={command} />
       <p
-        className={`text-xs ${warning ? "text-amber-400/80" : "text-zinc-500"}`}
+        className={`text-xs ${warning ? "text-amber-500/80" : "text-zinc-500"}`}
       >
         {runner === "source" ? "Run from the repo root. " : ""}
         Expires in {formatCountdown(secondsLeft)}

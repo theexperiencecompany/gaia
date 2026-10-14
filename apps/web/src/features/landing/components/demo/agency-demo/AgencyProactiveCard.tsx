@@ -6,7 +6,7 @@ const HANDLED_ITEMS = [
     icon: "clickup",
     label: "TechCorp weekly report drafted and ready to send",
     detail: "1.5h saved",
-    detailColor: "text-emerald-400",
+    detailColor: "text-emerald-500",
   },
   {
     id: "ap-2",
@@ -20,20 +20,20 @@ const HANDLED_ITEMS = [
     icon: "slack",
     label: "At-risk project flagged: ByteScale 3 days behind",
     detail: "flagged",
-    detailColor: "text-red-400",
+    detailColor: "text-red-500",
   },
   {
     id: "ap-4",
     icon: "asana",
     label: "4 overdue tasks reassigned across 2 projects",
     detail: "30min saved",
-    detailColor: "text-emerald-400",
+    detailColor: "text-emerald-500",
   },
 ];
 
 const FALLBACK_ICONS: Record<string, React.ReactNode> = {
   clickup: <div className="h-3 w-3 rounded-full bg-purple-400" />,
-  asana: <div className="h-3 w-3 rounded-full bg-red-400/70" />,
+  asana: <div className="h-3 w-3 rounded-full bg-red-500/70" />,
 };
 
 export default function AgencyProactiveCard() {
@@ -43,7 +43,7 @@ export default function AgencyProactiveCard() {
         <span className="text-xs font-medium text-zinc-400">
           Handled while you were in client calls
         </span>
-        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
           ~5h saved today
         </span>
       </div>

@@ -38,7 +38,7 @@ export default function PMProactiveCard() {
         <span className="text-xs font-medium text-zinc-400">
           Handled while you were in product reviews
         </span>
-        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
           ~3h saved today
         </span>
       </div>
@@ -54,7 +54,7 @@ export default function PMProactiveCard() {
             </div>
             <span className="flex-1 text-zinc-300">{item.label}</span>
             <span
-              className={`text-xs ${item.detailVariant === "saved" ? "text-emerald-400" : "text-zinc-500"}`}
+              className={`text-xs ${item.detailVariant === "saved" ? "text-emerald-500" : "text-zinc-500"}`}
             >
               {item.detail}
             </span>

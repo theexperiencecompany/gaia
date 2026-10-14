@@ -44,9 +44,9 @@ const CLIENTS = [
 ];
 
 const STATUS_DOT_COLORS: Record<string, string> = {
-  green: "bg-emerald-400",
-  red: "bg-red-400",
-  yellow: "bg-amber-400",
+  green: "bg-emerald-500",
+  red: "bg-red-500",
+  yellow: "bg-amber-500",
 };
 
 export default function PortfolioBriefCard() {

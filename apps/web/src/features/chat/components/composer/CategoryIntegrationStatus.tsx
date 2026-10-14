@@ -23,11 +23,11 @@ export const CategoryIntegrationStatus: React.FC<
 
   // Show green dot if connected
   if (integration?.status === "connected")
-    return <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />;
+    return <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />;
 
   // Show orange dot if created (added but not connected)
   if (integration?.status === "created")
-    return <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />;
+    return <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />;
 
   // Show lock if tools are locked (integration not connected)
   if (lockedCount !== 0)

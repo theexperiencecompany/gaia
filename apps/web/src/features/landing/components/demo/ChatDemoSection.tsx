@@ -526,9 +526,9 @@ function ChatDemoWindow() {
           className="flex h-9 shrink-0 items-center gap-1.5 px-4"
           style={{ backgroundColor: "#1a1a1a" }}
         >
-          <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-red-400" />
-          <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-yellow-400" />
-          <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-emerald-400" />
+          <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-red-500" />
+          <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-yellow-500" />
+          <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-emerald-500" />
           <div className="flex justify-center flex-1">
             <a
               className="ml-4 text-center text-xs text-zinc-500 hover:text-primary w-fit"

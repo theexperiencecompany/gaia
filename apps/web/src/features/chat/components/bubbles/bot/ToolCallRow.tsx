@@ -20,7 +20,7 @@ import {
 // Shown in place of the running spinner so the tree explains why a step is stuck on HIL approval.
 export function WaitingForApprovalPill() {
   return (
-    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-amber-400">
+    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-amber-500">
       <ShieldAlertIcon width={13} height={13} />
       Waiting for approval
     </span>

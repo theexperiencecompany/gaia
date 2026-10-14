@@ -105,7 +105,7 @@ export default function MCPSupportDemo() {
           >
             {/* Connected header */}
             <div className="mb-2 flex items-center gap-1.5">
-              <span className="flex items-center gap-1 text-xs font-medium text-emerald-400">
+              <span className="flex items-center gap-1 text-xs font-medium text-emerald-500">
                 <Tick02Icon className="size-3.5" /> Connected
               </span>
               <span className="text-xs text-zinc-500">·</span>

@@ -37,8 +37,8 @@ export default function RedditCreatedCard({
           {allItems.map((item) => (
             <div key={item.data.id} className="space-y-3 p-3">
               <div className="flex items-center gap-2">
-                <CheckmarkCircle02Icon className="h-5 w-5 text-emerald-400" />
-                <span className="text-sm font-semibold text-emerald-400">
+                <CheckmarkCircle02Icon className="h-5 w-5 text-emerald-500" />
+                <span className="text-sm font-semibold text-emerald-500">
                   {item.type === "post"
                     ? "Post Created Successfully!"
                     : "Comment Posted Successfully!"}
@@ -47,7 +47,7 @@ export default function RedditCreatedCard({
                   size="sm"
                   variant="flat"
                   color="success"
-                  className="ml-auto text-xs text-emerald-400"
+                  className="ml-auto text-xs text-emerald-500"
                 >
                   Just now
                 </Chip>
@@ -69,7 +69,7 @@ export default function RedditCreatedCard({
                   <Link
                     href={`https://reddit.com${item.data.permalink}`}
                     target="_blank"
-                    className="ml-auto flex items-center gap-1.5 text-xs text-orange-400 transition-colors hover:text-orange-400"
+                    className="ml-auto flex items-center gap-1.5 text-xs text-orange-500 transition-opacity hover:opacity-80"
                   >
                     View on Reddit
                     <LinkSquare02Icon className="h-3.5 w-3.5" />
@@ -81,7 +81,7 @@ export default function RedditCreatedCard({
                     <Link
                       href={(item.data as RedditPostCreatedData).url || ""}
                       target="_blank"
-                      className="ml-auto flex items-center gap-1.5 text-xs text-orange-400 transition-colors hover:text-orange-400"
+                      className="ml-auto flex items-center gap-1.5 text-xs text-orange-500 transition-opacity hover:opacity-80"
                     >
                       View on Reddit
                       <LinkSquare02Icon className="h-3.5 w-3.5" />

@@ -354,7 +354,7 @@ export default function WorkflowSection({
               <div className="text-zinc-400">
                 <SparklesIcon className="mx-auto mb-2 h-8 w-8 text-zinc-500" />
                 {error ? (
-                  <p className="text-sm text-red-400">
+                  <p className="text-sm text-red-500">
                     Generation failed. Try again?
                   </p>
                 ) : (

@@ -195,8 +195,8 @@ export default function PaymentSuccessPage() {
 
       {status === "error" && (
         <div className="relative z-10 w-full max-w-md rounded-3xl bg-zinc-900/60 p-8 text-center backdrop-blur-2xl">
-          <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-red-400/15">
-            <Alert02Icon className="size-8 text-red-400" />
+          <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-red-500/15">
+            <Alert02Icon className="size-8 text-red-500" />
           </div>
           <h1 className="mb-2 text-2xl font-semibold text-white">
             Payment not completed

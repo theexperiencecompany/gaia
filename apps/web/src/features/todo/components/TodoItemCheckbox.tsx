@@ -26,11 +26,11 @@ export function TodoItemCheckbox({
         wrapper: completed
           ? "mt-1"
           : priority === Priority.HIGH
-            ? "mt-1 border-red-400 border-dashed! border-1 before:border-0! bg-zinc-900"
+            ? "mt-1 border-red-500 border-dashed! border-1 before:border-0! bg-zinc-900"
             : priority === Priority.MEDIUM
-              ? "mt-1 border-yellow-400 border-dashed! border-1 before:border-0! bg-zinc-900"
+              ? "mt-1 border-yellow-500 border-dashed! border-1 before:border-0! bg-zinc-900"
               : priority === Priority.LOW
-                ? "mt-1 border-blue-400 border-dashed! border-1 before:border-0! bg-zinc-900"
+                ? "mt-1 border-blue-500 border-dashed! border-1 before:border-0! bg-zinc-900"
                 : "mt-1 border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900",
         label: "w-[30vw]",
       }}

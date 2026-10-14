@@ -309,7 +309,7 @@ export function MissingIntegrationsAlert({
   if (!missingIntegrations.length) return null;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-400">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-500/10 px-4 py-3 text-sm text-amber-500">
       <span className="flex items-center gap-2">
         <Alert01Icon width={16} height={16} className="shrink-0" />
         <span>{missingIntegrationsMessage(missingIntegrations)}</span>

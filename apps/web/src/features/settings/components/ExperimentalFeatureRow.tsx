@@ -23,7 +23,7 @@ export function ExperimentalFeatureRow({
         <>
           {feature.description}
           {feature.unavailable_reason && (
-            <span className="mt-1 block text-amber-400">
+            <span className="mt-1 block text-amber-500">
               {feature.unavailable_reason}
             </span>
           )}

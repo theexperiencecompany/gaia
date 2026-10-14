@@ -34,7 +34,7 @@ function ReminderConfirmationCard() {
           </div>
         </div>
         <div className="flex items-center gap-2 px-1 pt-1">
-          <span className="flex items-center gap-1 text-xs font-medium text-emerald-400">
+          <span className="flex items-center gap-1 text-xs font-medium text-emerald-500">
             <Tick02Icon className="size-3.5" /> Reminder set
           </span>
         </div>

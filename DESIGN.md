@@ -28,14 +28,14 @@ colors:
   border: "#1d293a"
 
   # Status (always rendered with /10 opacity background, full color text)
-  success: "#34d399"
-  warning: "#fbbf24"
-  error: "#f87171"
-  info: "#60a5fa"
+  success: "#10b981"
+  warning: "#f59e0b"
+  error: "#ef4444"
+  info: "#3b82f6"
   destructive: "#7f1d1d"
-  priority-high: "#f87171"
-  priority-medium: "#facc15"
-  priority-low: "#60a5fa"
+  priority-high: "#ef4444"
+  priority-medium: "#eab308"
+  priority-low: "#3b82f6"
 
 typography:
   display:
@@ -302,16 +302,16 @@ Always `/10` opacity background with matching text. Never solid color background
 
 | Status | Background | Text |
 |---|---|---|
-| Success | `bg-emerald-400/10` | `text-emerald-400` |
-| Warning | `bg-amber-400/10` | `text-amber-400` |
-| Error | `bg-red-400/10` | `text-red-400` |
-| Info | `bg-blue-400/10` | `text-blue-400` |
+| Success | `bg-emerald-500/10` | `text-emerald-500` |
+| Warning | `bg-amber-500/10` | `text-amber-500` |
+| Error | `bg-red-500/10` | `text-red-500` |
+| Info | `bg-blue-500/10` | `text-blue-500` |
 | Pending | `bg-zinc-700/50` | `text-zinc-400` |
-| Priority high | `bg-red-400/10` | `text-red-400` |
-| Priority medium | `bg-yellow-400/10` | `text-yellow-400` |
-| Priority low | `bg-blue-400/10` | `text-blue-400` |
+| Priority high | `bg-red-500/10` | `text-red-500` |
+| Priority medium | `bg-yellow-500/10` | `text-yellow-500` |
+| Priority low | `bg-blue-500/10` | `text-blue-500` |
 
-Status and priority hues are the `-400` shade only; `-500` is a lint error (`no-raw-colors`).
+Status and priority hues are the `-500` shade only; any other shade of those hues is a lint error (`no-raw-colors`).
 
 ### Selection
 
@@ -510,10 +510,10 @@ Chat thread cards (data cards, tool sections, info panels in chat) follow this t
 "use client";
 
 const statusClasses = {
-  success: "bg-emerald-400/10 text-emerald-400",
-  error: "bg-red-400/10 text-red-400",
-  warning: "bg-amber-400/10 text-amber-400",
-  info: "bg-blue-400/10 text-blue-400",
+  success: "bg-emerald-500/10 text-emerald-500",
+  error: "bg-red-500/10 text-red-500",
+  warning: "bg-amber-500/10 text-amber-500",
+  info: "bg-blue-500/10 text-blue-500",
   pending: "bg-zinc-700/50 text-zinc-400",
 } as const;
 
@@ -802,7 +802,6 @@ Every rule above that a machine can check is an error, with no warning budget:
 |---|---|---|
 | `@shadcn/lint` via Oxlint (`apps/web/.oxlintrc.json`) | Component restyles (per-component HeroUI contracts), raw palette colors, off-scale arbitrary values, unknown classes, inline styles | `nx run web:lint:shadcn` |
 | Biome Grit rules (`config/biome-rules/`) | Card borders, outlines, shadows, `rounded-lg` cards, status tints off `/10`, raw divider divs, Unicode glyphs in JSX text | `pnpm exec biome check apps/web` |
-| `pnpm tokens:check` | `config/design.tokens.json` drifting from this file's frontmatter | `pnpm tokens:check` |
 
 An exception lives next to what it exempts: a per-component contract or a per-file override in `.oxlintrc.json`, never a disable comment.
 
@@ -814,7 +813,7 @@ To see what a styling change does to the product, run `mise web:visual-diff [bas
 - [ ] Inner items: `rounded-2xl bg-zinc-900 p-3`
 - [ ] No `border-`, `ring-`, `outline-` anywhere
 - [ ] Icons from `@icons` only
-- [ ] Status colors are the `-400` shade with `/10` backgrounds
+- [ ] Status colors are the `-500` shade with `/10` backgrounds
 - [ ] `nx run web:lint:shadcn` and `pnpm exec biome check apps/web` pass; `mise web:visual-diff` shows only the change you meant
 - [ ] Width: `w-fit min-w-[400px]` or `w-full`
 - [ ] If it's a native tool card: registered in `TOOL_RENDERERS`

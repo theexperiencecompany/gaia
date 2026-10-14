@@ -84,7 +84,7 @@ function StatusLabel({ status }: { status: SourceStatus }) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="text-xs text-yellow-400"
+          className="text-xs text-yellow-500"
         >
           reading...
         </m.span>
@@ -96,7 +96,7 @@ function StatusLabel({ status }: { status: SourceStatus }) {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="flex items-center gap-1 text-xs font-medium text-emerald-400"
+          className="flex items-center gap-1 text-xs font-medium text-emerald-500"
         >
           <Tick02Icon className="size-3.5" /> done
         </m.span>

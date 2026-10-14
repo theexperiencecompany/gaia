@@ -56,8 +56,8 @@ const STATIC_EVENTS: StaticEvent[] = [
     event: {
       id: "standup",
       title: "Standup",
-      colorClass: "bg-blue-400/15",
-      textClass: "text-blue-400",
+      colorClass: "bg-blue-500/15",
+      textClass: "text-blue-500",
     },
   },
   {
@@ -78,7 +78,7 @@ const STATIC_EVENTS: StaticEvent[] = [
     event: {
       id: "sprint-review",
       title: "Sprint Review",
-      colorClass: "bg-emerald-400/15",
+      colorClass: "bg-emerald-500/15",
       textClass: "text-emerald-300",
     },
   },
@@ -151,12 +151,12 @@ export default function CalendarDemo() {
                         ease: [0.32, 0.72, 0, 1],
                         delay: 0.4,
                       }}
-                      className="rounded-md px-2 py-1 bg-blue-400/10 border border-blue-400/30 absolute inset-x-0.5"
+                      className="rounded-md px-2 py-1 bg-blue-500/10 border border-blue-500/30 absolute inset-x-0.5"
                     >
-                      <p className="text-xs font-semibold text-blue-400 truncate leading-tight">
+                      <p className="text-xs font-semibold text-blue-500 truncate leading-tight">
                         Product Review
                       </p>
-                      <p className="text-[9px] text-blue-400/70 truncate leading-tight mt-0.5">
+                      <p className="text-[9px] text-blue-500/70 truncate leading-tight mt-0.5">
                         Alex, Sam, Jordan · 2:00 PM
                       </p>
                     </m.div>

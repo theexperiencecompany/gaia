@@ -192,7 +192,7 @@ export default function ScheduledFieldChip({
                 variant="light"
                 fullWidth
                 radius="lg"
-                className="justify-start text-red-400"
+                className="justify-start text-red-500"
                 startContent={<Cancel01Icon width={18} height={18} />}
                 onPress={() => {
                   onChange(undefined);

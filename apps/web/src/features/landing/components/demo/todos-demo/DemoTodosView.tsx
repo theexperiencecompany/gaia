@@ -98,7 +98,7 @@ function DemoTodoItem({
           className={`mt-1 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
         >
           {todo.completed && (
-            <div className="h-full w-full rounded-full bg-emerald-400" />
+            <div className="h-full w-full rounded-full bg-emerald-500" />
           )}
         </div>
 
@@ -404,7 +404,7 @@ function DemoTodoSidebar({
               className={`mt-1.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
             >
               {todo.completed && (
-                <div className="h-full w-full rounded-full bg-emerald-400" />
+                <div className="h-full w-full rounded-full bg-emerald-500" />
               )}
             </div>
             <h2
@@ -438,7 +438,7 @@ function DemoTodoSidebar({
                 className="flex items-center gap-2 rounded-xl p-2 hover:bg-zinc-800/50"
               >
                 <div
-                  className={`h-3.5 w-3.5 shrink-0 rounded-full border ${st.completed ? "border-emerald-400 bg-emerald-400" : "border-dashed border-zinc-500"}`}
+                  className={`h-3.5 w-3.5 shrink-0 rounded-full border ${st.completed ? "border-emerald-500 bg-emerald-500" : "border-dashed border-zinc-500"}`}
                 />
                 <span
                   className={`text-sm ${st.completed ? "text-zinc-500 line-through" : "text-zinc-300"}`}

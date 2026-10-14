@@ -108,7 +108,7 @@ function EmailSummaryCard() {
                 {email.sender}
               </span>
               {email.urgency === "urgent" && (
-                <span className="text-xs font-medium rounded-full bg-red-400/10 text-red-400 px-2 py-0.5">
+                <span className="text-xs font-medium rounded-full bg-red-500/10 text-red-500 px-2 py-0.5">
                   Urgent
                 </span>
               )}

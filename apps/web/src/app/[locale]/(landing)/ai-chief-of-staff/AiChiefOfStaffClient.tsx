@@ -225,7 +225,7 @@ export default function AiChiefOfStaffClient() {
                 key={item.title}
                 className="flex items-start gap-4 rounded-2xl bg-zinc-800/60 p-6"
               >
-                <span className="mt-0.5 shrink-0 text-emerald-400">
+                <span className="mt-0.5 shrink-0 text-emerald-500">
                   &#x2714;
                 </span>
                 <div>

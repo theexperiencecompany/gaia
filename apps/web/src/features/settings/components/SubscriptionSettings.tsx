@@ -86,7 +86,7 @@ export function SubscriptionSettings() {
           {priceFormatted}{" "}
           <span className="text-zinc-600">/ {billingCycle}</span>
           {cancellationScheduled ? (
-            <span className="ml-3 text-xs text-amber-400">
+            <span className="ml-3 text-xs text-amber-500">
               Cancellation scheduled · access until{" "}
               {subscription?.next_billing_date
                 ? formatDate(subscription.next_billing_date)
@@ -119,7 +119,7 @@ export function SubscriptionSettings() {
                   className="flex items-start gap-2 text-sm text-zinc-400"
                 >
                   <Tick02Icon
-                    className="mt-0.5 shrink-0 text-emerald-400"
+                    className="mt-0.5 shrink-0 text-emerald-500"
                     width={16}
                     height={16}
                   />

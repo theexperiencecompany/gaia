@@ -199,7 +199,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
             size="sm"
             onPress={copyAsMarkdown}
             aria-label={copied ? "Copied" : "Copy as Markdown"}
-            className={copied ? "text-emerald-400" : "text-zinc-400"}
+            className={copied ? "text-emerald-500" : "text-zinc-400"}
           >
             {copied ? <Tick01Icon size={14} /> : <Copy01Icon size={14} />}
           </Button>
@@ -220,7 +220,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
                 variant="light"
                 size="sm"
                 aria-label="Copy options"
-                className={copied ? "text-emerald-400" : "text-zinc-400"}
+                className={copied ? "text-emerald-500" : "text-zinc-400"}
               >
                 <ArrowDown01Icon size={12} />
               </Button>

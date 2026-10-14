@@ -233,7 +233,7 @@ function FileViewerBody({
   if (error) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-red-400">Failed to load file</p>
+        <p className="text-sm text-red-500">Failed to load file</p>
       </div>
     );
   }
@@ -376,7 +376,7 @@ export default function FileViewerPanel({
         </p>
 
         {copied ? (
-          <span className="text-xs text-emerald-400">Copied</span>
+          <span className="text-xs text-emerald-500">Copied</span>
         ) : null}
 
         <div className="flex items-center gap-0.5">

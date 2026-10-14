@@ -123,7 +123,7 @@ export default function LabelsFieldChip({
                   onChange([]);
                   onClose();
                 }}
-                className="gap-2 rounded-md text-red-400"
+                className="gap-2 rounded-md text-red-500"
               >
                 <Cancel01Icon size={14} />
                 Clear all labels

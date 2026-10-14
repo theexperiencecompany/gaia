@@ -15,7 +15,7 @@ const phase3Response = (
     <ArrowUp02Icon
       width={12}
       height={12}
-      className="inline-block align-middle text-emerald-400"
+      className="inline-block align-middle text-emerald-500"
     />{" "}
     from 19 last month). Organic traffic: +34% MoM. Monthly report is due
     Monday. Want me to draft it from Google Analytics and Sheets data?

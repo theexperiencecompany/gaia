@@ -24,7 +24,7 @@ function WorkflowCard() {
         <span className="text-sm font-medium text-zinc-200">
           Workflow: Daily Standup
         </span>
-        <span className="ml-auto rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs text-emerald-400">
+        <span className="ml-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-500">
           Completed
         </span>
       </div>
@@ -45,7 +45,7 @@ function WorkflowCard() {
             <CheckmarkBadge01Icon
               width={14}
               height={14}
-              className="text-emerald-400"
+              className="text-emerald-500"
             />
           </div>
         ))}
@@ -117,7 +117,7 @@ function SocialContentCard() {
                 {getToolCategoryIcon(p.platform, { width: 11, height: 11 })}
               </div>
             </div>
-            <span className="shrink-0 rounded-full bg-amber-400/10 px-2 py-0.5 text-xs text-amber-400">
+            <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
               {p.scheduledFor}
             </span>
           </div>
@@ -296,7 +296,7 @@ function MorningBriefingCard() {
           <span className="text-xs font-medium text-zinc-400">
             Urgent emails
           </span>
-          <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400">
+          <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-500">
             3 unread
           </span>
         </div>

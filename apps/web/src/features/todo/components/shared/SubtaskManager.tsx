@@ -206,7 +206,7 @@ export default function SubtaskManager({
                     radius="sm"
                     variant="light"
                     onPress={() => handleDeleteSubtask(subtask.id)}
-                    className="h-7 w-7 text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-red-400"
+                    className="h-7 w-7 text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-red-500"
                   >
                     <Cancel01Icon size={14} />
                   </Button>

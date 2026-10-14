@@ -471,8 +471,8 @@ export default function ViewEmail({
             <AISummary analysis={aiAnalysis} isLoading={isLoadingAnalysis} />
 
             {analysisError && (
-              <div className="mb-3 flex w-fit flex-col rounded-xl bg-red-400/10 p-2">
-                <div className="p-2 text-sm text-red-400">
+              <div className="mb-3 flex w-fit flex-col rounded-xl bg-red-500/10 p-2">
+                <div className="p-2 text-sm text-red-500">
                   Failed to load AI analysis. The email may not have been
                   processed yet.
                 </div>

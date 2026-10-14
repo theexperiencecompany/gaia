@@ -126,7 +126,7 @@ function WebsiteLoadingSkeleton() {
 
 function WebsiteErrorState() {
   return (
-    <div className="flex items-center gap-2 p-3 text-red-400">
+    <div className="flex items-center gap-2 p-3 text-red-500">
       <GlobalIcon className="h-4 w-4" />
       <span className="text-sm">Failed to load preview</span>
     </div>

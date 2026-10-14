@@ -28,15 +28,15 @@ export default function ProductBriefCard() {
         </div>
         <p className="text-xs text-zinc-400">14 / 22 tickets done</p>
         <div className="mt-2 space-y-1">
-          <p className="flex items-center gap-1 text-xs text-red-400">
+          <p className="flex items-center gap-1 text-xs text-red-500">
             <Alert01Icon width={12} height={12} />3 tickets blocked (ENG-441,
             ENG-445, ENG-449)
           </p>
-          <p className="flex items-center gap-1 text-xs text-emerald-400">
+          <p className="flex items-center gap-1 text-xs text-emerald-500">
             <ArrowRight02Icon width={12} height={12} />
             Mobile checkout: on track
           </p>
-          <p className="flex items-center gap-1 text-xs text-amber-400">
+          <p className="flex items-center gap-1 text-xs text-amber-500">
             <ArrowRight02Icon width={12} height={12} />
             Auth refactor: 2 days behind
           </p>
@@ -83,7 +83,7 @@ export default function ProductBriefCard() {
       </div>
 
       <div className="mt-3 pt-3 border-t border-zinc-800">
-        <p className="flex items-center gap-1 text-xs text-red-400">
+        <p className="flex items-center gap-1 text-xs text-red-500">
           <Alert01Icon width={12} height={12} />1 critical blocker needs your
           call before 10am
         </p>

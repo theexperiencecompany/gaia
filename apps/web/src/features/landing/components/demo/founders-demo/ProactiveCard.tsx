@@ -38,7 +38,7 @@ export default function ProactiveCard() {
         <span className="text-xs font-medium text-zinc-400">
           Handled while you were focused
         </span>
-        <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
           ~4h<span className="hidden sm:inline"> saved today</span>
         </span>
       </div>
@@ -53,7 +53,7 @@ export default function ProactiveCard() {
               })}
             </div>
             <span className="flex-1 text-zinc-300">{item.label}</span>
-            <span className="text-xs text-emerald-400">
+            <span className="text-xs text-emerald-500">
               <span className="sm:hidden">{item.shortDetail}</span>
               <span className="hidden sm:inline">{item.detail}</span>
             </span>

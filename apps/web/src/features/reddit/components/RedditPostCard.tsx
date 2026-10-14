@@ -74,7 +74,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
           <div className="min-w-0 flex-1">
             {/* Subreddit & Author */}
             <div className="mb-1.5 flex items-center gap-2 text-xs">
-              <span className="font-semibold text-orange-400">
+              <span className="font-semibold text-orange-500">
                 {post.subreddit}
               </span>
               <span className="text-zinc-400">u/{post.author}</span>
@@ -91,7 +91,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
                 rel="noopener noreferrer"
                 className="block cursor-pointer"
               >
-                <h3 className="text-base leading-snug font-semibold text-white transition-colors group-hover:text-orange-400">
+                <h3 className="text-base leading-snug font-semibold text-white transition-colors group-hover:text-orange-500">
                   {post.title}
                 </h3>
               </Link>
@@ -108,7 +108,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
               size="sm"
               variant="flat"
               color="primary"
-              className="text-xs text-blue-400"
+              className="text-xs text-blue-500"
             >
               {post.link_flair_text}
             </Chip>
@@ -128,7 +128,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
             href={post.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-400"
+            className="flex items-center gap-1.5 text-xs text-blue-500 transition-opacity hover:opacity-80"
           >
             <LinkSquare02Icon className="h-3 w-3" />
             <span className="truncate">{post.url}</span>
@@ -139,8 +139,8 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
         <div className="flex items-center gap-4 pt-2">
           {/* Upvotes */}
           <div className="flex items-center gap-1.5 text-sm">
-            <ArrowUp02Icon height={18} width={18} className="text-orange-400" />
-            <span className="font-medium text-orange-400 tabular-nums">
+            <ArrowUp02Icon height={18} width={18} className="text-orange-500" />
+            <span className="font-medium text-orange-500 tabular-nums">
               {formatNumber(post.score)}
             </span>
             {post.upvote_ratio && (

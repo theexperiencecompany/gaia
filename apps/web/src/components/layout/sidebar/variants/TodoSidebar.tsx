@@ -25,15 +25,15 @@ import { cn } from "@/lib/utils";
 import { accordionItemStyles } from "../constants";
 
 const HighPriorityIcon = () => (
-  <Flag02Icon width={18} height={18} className="text-red-400" />
+  <Flag02Icon width={18} height={18} className="text-red-500" />
 );
 
 const MediumPriorityIcon = () => (
-  <Flag02Icon width={18} height={18} className="text-yellow-400" />
+  <Flag02Icon width={18} height={18} className="text-yellow-500" />
 );
 
 const LowPriorityIcon = () => (
-  <Flag02Icon width={18} height={18} className="text-blue-400" />
+  <Flag02Icon width={18} height={18} className="text-blue-500" />
 );
 
 const LabelTagIcon = () => <Tag01Icon width={18} height={18} />;

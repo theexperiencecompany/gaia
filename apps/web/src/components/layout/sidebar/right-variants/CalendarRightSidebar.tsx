@@ -361,7 +361,7 @@ const DeleteEventButton: React.FC<DeleteEventButtonProps> = ({
     type="button"
     onClick={onConfirmDelete}
     disabled={disabled}
-    className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-[background-color,transform] hover:bg-red-400/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+    className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-500 transition-[background-color,transform] hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
     aria-label="Delete event"
   >
     <Delete02Icon className="size-4" />

@@ -116,7 +116,7 @@ const RecentConversationsView = memo(() => {
                     {conversation.title}
                   </h4>
                   {conversation.starred && (
-                    <span className="flex-shrink-0 text-yellow-400">★</span>
+                    <span className="flex-shrink-0 text-yellow-500">★</span>
                   )}
                 </div>
                 {conversation.description && (

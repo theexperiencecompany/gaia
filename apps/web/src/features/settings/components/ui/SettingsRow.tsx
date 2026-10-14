@@ -23,7 +23,7 @@ export function SettingsRow({
   variant = "default",
   icon,
 }: SettingsRowProps) {
-  const labelColor = variant === "danger" ? "text-red-400" : "text-white";
+  const labelColor = variant === "danger" ? "text-red-500" : "text-white";
 
   const inner = (
     <>

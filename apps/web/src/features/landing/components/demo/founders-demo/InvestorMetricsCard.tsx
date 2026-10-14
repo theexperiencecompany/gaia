@@ -24,7 +24,7 @@ export default function InvestorMetricsCard() {
           <div key={m.label} className="rounded-xl bg-zinc-900 p-2.5">
             <p className="text-xs text-zinc-500">{m.label}</p>
             <p className="text-sm font-medium text-white">{m.value}</p>
-            <p className="mt-0.5 text-xs text-emerald-400">
+            <p className="mt-0.5 text-xs text-emerald-500">
               {m.positive
                 ? m.label === "Churn"
                   ? `\u2193${m.change}`

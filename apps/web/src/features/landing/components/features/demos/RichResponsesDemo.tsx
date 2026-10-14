@@ -56,8 +56,8 @@ function TimelinePreview() {
 function StatusCardPreview() {
   return (
     <div className="flex items-center gap-2 w-full">
-      <div className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
-      <span className="flex items-center gap-1 text-xs font-medium text-emerald-400">
+      <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+      <span className="flex items-center gap-1 text-xs font-medium text-emerald-500">
         <Tick02Icon className="size-3.5" /> Deployed
       </span>
     </div>

@@ -25,13 +25,13 @@ const formatTime = (timestamp?: string) => {
 
 export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
   return (
-    <div className="w-full min-w-fit max-w-xs rounded-3xl bg-emerald-400/10 p-4 text-white">
+    <div className="w-full min-w-fit max-w-xs rounded-3xl bg-emerald-500/10 p-4 text-white">
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Gmail width={20} height={20} />
-          <CheckmarkCircle02Icon className="h-5 w-5 text-emerald-400" />
-          <span className="text-sm font-medium text-emerald-400">
+          <CheckmarkCircle02Icon className="h-5 w-5 text-emerald-500" />
+          <span className="text-sm font-medium text-emerald-500">
             Email Sent
           </span>
         </div>
@@ -63,7 +63,7 @@ export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
           </div>
         )}
 
-        <div className="text-sm font-medium text-emerald-400">
+        <div className="text-sm font-medium text-emerald-500">
           {emailSentData.message}
         </div>
       </div>

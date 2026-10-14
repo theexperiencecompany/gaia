@@ -169,11 +169,11 @@ export default function ApprovalRequestSection({
   return (
     <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
       <div className="flex items-start gap-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-400/10">
-          <ShieldAlertIcon width={17} height={17} className="text-amber-400" />
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
+          <ShieldAlertIcon width={17} height={17} className="text-amber-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-medium text-amber-400">
+          <div className="text-xs font-medium text-amber-500">
             Needs approval
           </div>
           <div className="text-sm leading-snug text-zinc-100">
