@@ -437,17 +437,18 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     )
 
 
-def _fact_line(item: BriefingItem, art: _ArtifactFact | None, link_token: str | None) -> str:
-    line = f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
-    if art:
-        if art.snippet:
-            line += f" | summary: {art.snippet}"
-        line += f" | artifact holds ~{art.chars} chars"
-        if art.action:
-            line += " | waiting on you"
-        if link_token:
-            line += f" | link: {link_token}"
-    return line
+def _fact_line(item: BriefingItem) -> str:
+    return f"- {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
+
+
+def _work_fact_line(item: BriefingItem, art: _ArtifactFact, link_token: str) -> str:
+    line = _fact_line(item)
+    if art.snippet:
+        line += f" | summary: {art.snippet}"
+    line += f" | artifact holds ~{art.chars} chars"
+    if art.action:
+        line += " | waiting on you"
+    return f"{line} | link: {link_token}"
 
 
 @dataclass
@@ -502,12 +503,13 @@ def _build_facts(
     for sec in sections:
         fact_lines.append(f"[{sec.title}]")
         for it in sec.items:
-            art = artifacts.get(it.todo_id) if it.todo_id else None
-            token: str | None = None
-            if art and it.todo_id:
-                link_targets[len(link_targets)] = it.todo_id
-                token = _link_token(len(link_targets) - 1)
-            fact_lines.append(_fact_line(it, art, token))
+            if it.todo_id is None:
+                fact_lines.append(_fact_line(it))
+                continue
+            link_targets[len(link_targets)] = it.todo_id
+            fact_lines.append(
+                _work_fact_line(it, artifacts[it.todo_id], _link_token(len(link_targets) - 1))
+            )
     if left_out:
         fact_lines.append(
             f"{left_out} lower-priority item(s) are not in this brief; they are in the app."
@@ -535,11 +537,10 @@ async def _link_voiced_items(
     """
     used = {int(n) for bubble in payload.bubbles for n in _LINK_TOKEN_RE.findall(bubble)}
     urls: dict[int, str] = {}
-    for index in sorted(used):
-        todo_id = link_targets.get(index)
-        if todo_id is None:
-            continue
-        url = await optional_short_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+    for index in sorted(used & link_targets.keys()):
+        url = await optional_short_link(
+            user_id, ShortLinkTargetType.TODO_DELIVERABLE, link_targets[index]
+        )
         if url is not None:
             urls[index] = url
     linked = {link_targets[index]: url for index, url in urls.items()}
@@ -548,7 +549,10 @@ async def _link_voiced_items(
             if item.todo_id in linked:
                 item.link = linked[item.todo_id]
     payload.bubbles = [
-        _LINK_TOKEN_RE.sub(lambda m: urls.get(int(m.group(1)), ""), bubble)
+        _LINK_TOKEN_RE.sub(
+            lambda m: urls.get(int(m.group(1)), ""),  # pragma: no mutate — re.sub drops None too
+            bubble,
+        )
         for bubble in payload.bubbles
     ]
     payload.message = "\n\n".join(payload.bubbles)

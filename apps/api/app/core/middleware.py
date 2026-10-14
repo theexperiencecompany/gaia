@@ -28,7 +28,7 @@ from app.config.settings import settings
 from app.constants.http import RETRY_AFTER_HEADER
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.schemas.errors import ErrorEnvelope, error_response
-from app.utils.log_identifiers import loggable_request_path
+from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
 RATE_LIMIT_EXCEEDED_CODE = "rate_limit_exceeded"

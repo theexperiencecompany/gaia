@@ -23,7 +23,7 @@ from starlette.responses import Response
 
 from app.api.v1.middleware.auth import get_current_user
 from app.config.loggers import request_logger
-from app.utils.log_identifiers import loggable_request_path
+from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
 _WARNING = "WARNING"

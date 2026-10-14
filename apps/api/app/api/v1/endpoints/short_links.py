@@ -29,7 +29,8 @@ from app.services.short_link_service import (
     stop_sharing,
 )
 from app.services.storage import JuiceFSUnavailable
-from app.utils.log_identifiers import hash_short_link_slug, log_route_template_as_path
+from app.utils.log_identifiers import hash_short_link_slug
+from app.utils.loggable_path import log_route_template_as_path
 from app.utils.sandboxed_file_response import sandboxed_file_response
 from shared.py.wide_events import log
 
