@@ -4,7 +4,7 @@ import type {
 } from "@/features/settings/api/providersApi";
 import {
   isAnyLlmConfigured,
-  isProviderConfigured,
+  isFeatureWorking,
 } from "@/features/settings/hooks/useSetupStatus";
 
 export interface SetupChecklistItem {
@@ -30,11 +30,11 @@ export function buildSetupChecklist(
       href: "/setup",
     });
   }
-  if (!isProviderConfigured(status, "tavily")) {
+  if (!isFeatureWorking(status, "web_search")) {
     items.push({
       key: "search",
       title: "Enable web search",
-      description: "A Tavily key lets GAIA search the live web.",
+      description: "Add a search provider so GAIA can look things up online.",
       actionLabel: "Enable",
       href: "/settings/providers",
     });

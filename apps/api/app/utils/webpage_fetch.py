@@ -110,7 +110,7 @@ class FirecrawlFetcher(WebpageFetcher):
     name = "firecrawl"
 
     def __init__(self, api_key: str | None) -> None:
-        # Resolved per fetch chain by _default_fetchers: credential store →
+        # Resolved per fetch chain by default_fetchers: credential store →
         # env (resolve applies the env fallback itself).
         self._api_key = api_key
         self._client: FirecrawlApp | None = None
@@ -119,7 +119,7 @@ class FirecrawlFetcher(WebpageFetcher):
         """Report whether a Firecrawl API key is configured.
 
         The resolved key, not the env var: a key saved in the credential store
-        reaches this fetcher through _default_fetchers and would otherwise be
+        reaches this fetcher through default_fetchers and would otherwise be
         reported unconfigured.
         """
         return bool(self._api_key)
@@ -193,7 +193,7 @@ class HttpxFetcher(WebpageFetcher):
         return markdown
 
 
-async def _default_fetchers() -> list[WebpageFetcher]:
+async def default_fetchers() -> list[WebpageFetcher]:
     """Return the fetch waterfall, cheapest/most-capable first.
 
     The Firecrawl key resolves per chain through the credential store (with
@@ -211,7 +211,7 @@ async def _fetch_first_success(url: str, fetchers: list[WebpageFetcher] | None =
     Records every engine attempt (outcome, latency, content length) in a single
     webpage_fetch wide-event field, keyed by host for high-cardinality drill-down.
     """
-    fetchers = fetchers if fetchers is not None else await _default_fetchers()
+    fetchers = fetchers if fetchers is not None else await default_fetchers()
     host = urlparse(url).hostname or ""
     attempts: list[dict[str, Any]] = []
     errors: list[str] = []

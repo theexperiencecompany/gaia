@@ -1,4 +1,8 @@
-import type { ProviderPreset } from "@gaia/shared/api/generated";
+import type {
+  FeatureSpec,
+  FeatureStatus,
+  ProviderPreset,
+} from "@gaia/shared/api/generated";
 import type {
   CredentialProvider,
   ProviderCatalog,
@@ -24,4 +28,18 @@ export function resolveCatalogProvider(
     key,
     connectionTestable: catalog.llm_provider_keys.includes(key),
   };
+}
+
+/** What a feature runs on, by name: its built-in engine, or a provider from the catalog. */
+export function featureEngineLabel(
+  engine: FeatureStatus["in_use"][number],
+  spec: FeatureSpec,
+  catalog: ProviderCatalog,
+): string {
+  if (spec.built_in?.engine === engine) return spec.built_in.label;
+  const provider = catalog.providers[engine];
+  if (!provider) {
+    throw new Error(`Provider catalog has no entry for "${engine}"`);
+  }
+  return provider.label;
 }

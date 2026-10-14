@@ -57,22 +57,24 @@ export function ConfigureProviderModal({
             Configure {row.label}
           </ModalHeader>
           <ModalBody className="gap-4">
-            <ProviderApiKeyInput
-              keyUrl={row.key_url}
-              autoFocus
-              placeholder={
-                storedKeyHint
-                  ? `Stored (${storedKeyHint}) — paste to replace`
-                  : `Paste your ${row.label} key`
-              }
-              description={
-                storedKeyHint
-                  ? "Saved — leave empty to keep it, or paste to replace."
-                  : undefined
-              }
-              value={form.apiKey}
-              onValueChange={form.setApiKey}
-            />
+            {row.showApiKey && (
+              <ProviderApiKeyInput
+                keyUrl={row.key_url}
+                autoFocus
+                placeholder={
+                  storedKeyHint
+                    ? `Stored (${storedKeyHint}) — paste to replace`
+                    : `Paste your ${row.label} key`
+                }
+                description={
+                  storedKeyHint
+                    ? "Saved — leave empty to keep it, or paste to replace."
+                    : undefined
+                }
+                value={form.apiKey}
+                onValueChange={form.setApiKey}
+              />
+            )}
             {showPresetChips && (
               <div className="space-y-2">
                 <p className="text-xs font-medium tracking-wider text-zinc-500 uppercase">
