@@ -173,7 +173,7 @@ def test_r2_credentials_are_stripped_of_secret_store_whitespace() -> None:
 
 
 def test_unset_r2_settings_become_empty_strings_not_the_literal_none() -> None:
-    # DevelopmentSettings leaves these None; `str(None)` would ship the literal
+    # Development leaves these None; `str(None)` would ship the literal
     # "None" as an R2 key and produce an unreadable auth error.
     with (
         patch.object(lifecycle.settings, "R2_ACCESS_KEY", None),

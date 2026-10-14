@@ -13,12 +13,9 @@ import pytest
 
 from app.agents.llm import client, dev_lane
 from app.config.browser_host_settings import BrowserHostSettings
-from app.config.settings import (
-    CommonSettings,
-    DevelopmentSettings,
-    ProductionSettings,
-    get_settings,
-)
+from app.config.capability_requirements import required_keys
+from app.config.deployment import DeploymentKind, baseline_profile
+from app.config.settings import Settings, get_settings
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.llm import (
     DEFAULT_LLM_TEMPERATURE,
@@ -225,36 +222,21 @@ def test_init_openrouter_base_url_enforcement_is_the_boot_guard(monkeypatch):
     assert captured["base_url"] == "http://localhost:9797"
 
 
-def test_dev_override_fields_exist_on_all_settings_classes():
-    """These fields must exist on every settings class, or production boot crashes with AttributeError (they were once declared only on DevelopmentSettings)."""
-    for cls in (CommonSettings, DevelopmentSettings, ProductionSettings):
-        assert "GAIA_SIM_MODE" in cls.model_fields, cls.__name__
-        assert "OPENROUTER_BASE_URL" in cls.model_fields, cls.__name__
-
-
 def _prod_settings(**overrides):
-    """Build ProductionSettings with all required fields stubbed.
+    """Build production settings with every required key stubbed.
 
     Direct construction (not get_settings()) so the test exercises only the
-    field validators — no ambient .env, no boot guards, no missing-key noise.
+    validators — no ambient .env, no missing-key noise.
     """
-    dummies: dict[str, object] = {}
-    for name, field in ProductionSettings.model_fields.items():
-        if not field.is_required():
-            continue
-        annotation = field.annotation
-        if annotation is bool:
-            dummies[name] = False
-        elif annotation is int:
-            dummies[name] = 0
-        else:
-            dummies[name] = "x"
+    dummies: dict[str, object] = {"ENV": DeploymentKind.PRODUCTION}
+    for name in required_keys(baseline_profile(DeploymentKind.PRODUCTION)):
+        dummies[name] = 0 if Settings.model_fields[name].annotation == int | None else "x"
     dummies.update(overrides)
-    return ProductionSettings(_env_file=None, **dummies)
+    return Settings(_env_file=None, **dummies)
 
 
 def test_production_rejects_http_dodo_base_url():
-    """A plain-http DODO_PAYMENTS_BASE_URL would send the API key in cleartext; ProductionSettings must reject it."""
+    """A plain-http DODO_PAYMENTS_BASE_URL would send the API key in cleartext; production must reject it."""
     with pytest.raises(ValidationError, match="must use https"):
         _prod_settings(DODO_PAYMENTS_BASE_URL="http://localhost:8899")
 
@@ -419,13 +401,18 @@ def test_the_custom_endpoint_defaults_to_chat_completions(monkeypatch):
     """Nous-style endpoints predate the setting and speak chat completions only."""
     monkeypatch.delenv("DEV_LLM_API", raising=False)
 
-    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.CHAT_COMPLETIONS
+    assert (
+        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API
+        is DevLLMApi.CHAT_COMPLETIONS
+    )
 
 
 def test_the_custom_endpoint_can_be_switched_to_the_responses_api(monkeypatch):
     monkeypatch.setenv("DEV_LLM_API", "responses")
 
-    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.RESPONSES
+    assert (
+        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT).DEV_LLM_API is DevLLMApi.RESPONSES
+    )
 
 
 def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
@@ -433,4 +420,4 @@ def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
     monkeypatch.setenv("DEV_LLM_API", "response")
 
     with pytest.raises(ValidationError, match="DEV_LLM_API"):
-        DevelopmentSettings(_env_file=None)
+        Settings(_env_file=None, ENV=DeploymentKind.DEVELOPMENT)

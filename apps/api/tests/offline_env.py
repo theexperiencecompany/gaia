@@ -43,7 +43,7 @@ os.environ.setdefault(
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
 os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
-# The self-host profile's infra-only required set (see SelfHostSettings): the
+# The self-host profile's infra-only required set (capability_requirements.py): the
 # schema export boots under ENV=selfhost, so these need hermetic values too.
 # setdefault-only — a test or export that sets them wins.
 os.environ.setdefault("CHROMADB_HOST", "localhost")

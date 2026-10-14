@@ -53,7 +53,7 @@ import tests.offline_env  # isort: skip  # noqa: F401 -- imported for its side e
 
 # Imported after the env setup above: document models extend MongoDocument,
 # pulling in app.config.settings which instantiates settings at import
-# time; without ENV set first that resolves to ProductionSettings and fails.
+# time; without ENV set first it boots as production and fails.
 from app.config.posthog import init_posthog
 from app.config.settings import settings as app_settings
 from app.core.lazy_loader import MissingKeyStrategy, providers

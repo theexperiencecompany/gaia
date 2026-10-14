@@ -19,7 +19,7 @@ from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.execute.tool_info import contract_from
-from app.config.settings import CommonSettings, ProductionSettings, settings
+from app.config.settings import Settings, settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.models import agent_models
 from app.models.chat_models import ConversationSource
@@ -211,9 +211,8 @@ def _tool_with_output(output: dict[str, Any]) -> StructuredTool:
 
 @pytest.mark.unit
 class TestDocsCarryReturnShapes:
-    @pytest.mark.parametrize("settings_class", [CommonSettings, ProductionSettings])
-    def test_inline_returns_ship_off(self, settings_class: type[CommonSettings]) -> None:
-        assert settings_class.model_fields["ENABLE_INLINE_TOOL_RETURNS"].default is False
+    def test_inline_returns_ship_off(self) -> None:
+        assert Settings.model_fields["ENABLE_INLINE_TOOL_RETURNS"].default is False
 
     async def test_by_default_docs_carry_args_only_and_never_read_the_shape_store(
         self, no_observed_tool_shapes: AsyncMock

@@ -13,7 +13,9 @@ from typing import Any
 from pydantic import ValidationError
 import pytest
 
-from app.config.deployment import BlobStoreKind
+from app.config.capability_requirements import required_keys
+from app.config.deployment import BlobStoreKind, DeploymentKind, baseline_profile
+from app.config.settings import Settings
 from app.constants.files import BlobKind
 
 
@@ -47,22 +49,15 @@ def _isolate_boot_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AUTH_MODE", raising=False)
 
 
-def _required_dummies(settings_cls: type) -> dict[str, Any]:
-    """Stub every required field of the settings class with a dummy value.
+def _required_dummies(kind: DeploymentKind) -> dict[str, Any]:
+    """Stub every key the kind's baseline profile requires, plus ENV itself.
 
     Init kwargs win over ambient env, so the built object depends only on
     what this suite passes in.
     """
-    dummies: dict[str, Any] = {}
-    for name, field_info in settings_cls.model_fields.items():
-        if not field_info.is_required():
-            continue
-        if field_info.annotation is bool:
-            dummies[name] = False
-        elif field_info.annotation is int:
-            dummies[name] = 0
-        else:
-            dummies[name] = "x"
+    dummies: dict[str, Any] = {"ENV": kind}
+    for name in required_keys(baseline_profile(kind)):
+        dummies[name] = 0 if Settings.model_fields[name].annotation == int | None else "x"
     return dummies
 
 
@@ -106,7 +101,7 @@ def test_a_local_blob_store_blocks_production_boot(monkeypatch):
 
 def test_selfhost_env_is_the_escaped_hatch(monkeypatch):
     """Boot the same configuration under its intended environment; the gate blocks the mode."""
-    from app.config.settings import SelfHostSettings, get_settings
+    from app.config.settings import get_settings
 
     for var in _DEV_OVERRIDE_VARS:
         monkeypatch.delenv(var, raising=False)
@@ -118,7 +113,7 @@ def test_selfhost_env_is_the_escaped_hatch(monkeypatch):
 
     settings_obj = get_settings()
 
-    assert isinstance(settings_obj, SelfHostSettings)
+    assert settings_obj.ENV == DeploymentKind.SELFHOST
     assert settings_obj.AUTH_MODE == "local"
 
 
@@ -139,27 +134,26 @@ def test_dev_auth_bypass_still_blocks_production_boot(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Case 3 — ProductionSettings: workos defaults + credential requirements
+# Case 3 — production: workos defaults + credential requirements
 # ---------------------------------------------------------------------------
 
 
 def test_production_from_env_full_valid_env_defaults_to_workos(monkeypatch):
     """Construct a fully provisioned production env; AUTH_MODE defaults to workos."""
-    from app.config.settings import ProductionSettings
 
     monkeypatch.setenv("ENV", "production")
     monkeypatch.delenv("AUTH_MODE", raising=False)
 
-    kwargs = _required_dummies(ProductionSettings)
+    kwargs = _required_dummies(DeploymentKind.PRODUCTION)
     kwargs.update(
         WORKOS_API_KEY="sk_test_fake",
         WORKOS_CLIENT_ID="client_fake",
         WORKOS_COOKIE_PASSWORD="a" * 32,
     )
 
-    settings_obj = ProductionSettings(**kwargs)
+    settings_obj = Settings(**kwargs)
 
-    assert isinstance(settings_obj, ProductionSettings)
+    assert settings_obj.ENV == DeploymentKind.PRODUCTION
     assert settings_obj.AUTH_MODE == "workos"
     assert settings_obj.WORKOS_API_KEY == "sk_test_fake"
 
@@ -167,30 +161,28 @@ def test_production_from_env_full_valid_env_defaults_to_workos(monkeypatch):
 @pytest.mark.parametrize("field", ["WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD"])
 def test_empty_workos_credential_rejected_under_workos_mode(field):
     """Require WorkOS credentials in hosted mode; empty fails though the field is optional for local."""
-    from app.config.settings import ProductionSettings
 
-    kwargs = _required_dummies(ProductionSettings)
+    kwargs = _required_dummies(DeploymentKind.PRODUCTION)
     kwargs[field] = ""
 
     with pytest.raises(ValidationError, match=f"{field} is required when AUTH_MODE=workos"):
-        ProductionSettings(_env_file=None, **kwargs)
+        Settings(_env_file=None, **kwargs)
 
 
 def test_local_mode_releases_workos_credentials():
     """Release every WorkOS credential requirement under AUTH_MODE local."""
-    from app.config.settings import ProductionSettings
 
-    kwargs = _required_dummies(ProductionSettings)
+    kwargs = _required_dummies(DeploymentKind.SELFHOST)
     kwargs["AUTH_MODE"] = "local"
 
-    settings_obj = ProductionSettings(_env_file=None, **kwargs)
+    settings_obj = Settings(_env_file=None, **kwargs)
 
     assert settings_obj.AUTH_MODE == "local"
 
 
 def test_development_boots_with_local_auth(monkeypatch):
     """Let contributors run development without WorkOS: local auth is allowed there."""
-    from app.config.settings import DevelopmentSettings, get_settings
+    from app.config.settings import get_settings
 
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("AUTH_MODE", "local")
@@ -199,7 +191,7 @@ def test_development_boots_with_local_auth(monkeypatch):
 
     settings_obj = get_settings()
 
-    assert isinstance(settings_obj, DevelopmentSettings)
+    assert settings_obj.ENV == DeploymentKind.DEVELOPMENT
     assert settings_obj.deployment.local_auth is True
     assert settings_obj.deployment.runtime_credentials is True
     assert settings_obj.deployment.bills is False
@@ -212,7 +204,7 @@ def test_development_boots_with_local_auth(monkeypatch):
 
 def test_development_boots_without_workos_credentials(monkeypatch):
     """Keep development boots dummy-ok with no WorkOS config."""
-    from app.config.settings import DevelopmentSettings, get_settings
+    from app.config.settings import get_settings
 
     monkeypatch.setenv("ENV", "development")
     for var in ("WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD"):
@@ -221,13 +213,13 @@ def test_development_boots_without_workos_credentials(monkeypatch):
 
     settings_obj = get_settings()
 
-    assert isinstance(settings_obj, DevelopmentSettings)
+    assert settings_obj.ENV == DeploymentKind.DEVELOPMENT
     assert settings_obj.WORKOS_API_KEY is None
     assert settings_obj.AUTH_MODE == "workos"
 
 
 # ---------------------------------------------------------------------------
-# Case 5 — SelfHostSettings profile contract
+# Case 5 — the self-host profile contract
 # ---------------------------------------------------------------------------
 
 
@@ -252,24 +244,14 @@ _SELFHOST_INFRA_ENV: dict[str, str] = {
 } | {"CHROMADB_PORT": "0"}
 
 
-def test_selfhost_required_set_is_infra_only():
-    """Pin the exact required-field contract of the relaxed profile."""
-    from app.config.settings import SelfHostSettings
-
-    required = {name for name, f in SelfHostSettings.model_fields.items() if f.is_required()}
-
-    assert required == _SELFHOST_INFRA_FIELDS
-
-
 def test_selfhost_minimal_infra_only_construct():
     """Construct from infra material alone; SaaS integrations stay optional and disable gracefully."""
-    from app.config.settings import SelfHostSettings
 
     kwargs: dict[str, Any] = dict.fromkeys(_SELFHOST_INFRA_FIELDS, "x")
     kwargs["CHROMADB_PORT"] = 0
     kwargs["ENV"] = "selfhost"
 
-    settings_obj = SelfHostSettings(_env_file=None, **kwargs)
+    settings_obj = Settings(_env_file=None, **kwargs)
 
     assert settings_obj.ENV == "selfhost"
     assert settings_obj.MONGO_DB == "x"
@@ -277,14 +259,13 @@ def test_selfhost_minimal_infra_only_construct():
 
 def test_selfhost_minimal_construct_with_local_auth():
     """AUTH_MODE=local needs no WorkOS credentials on the self-host profile."""
-    from app.config.settings import SelfHostSettings
 
     kwargs = dict.fromkeys(_SELFHOST_INFRA_FIELDS, "x")
     kwargs["CHROMADB_PORT"] = 0
     kwargs["ENV"] = "selfhost"
     kwargs["AUTH_MODE"] = "local"
 
-    settings_obj = SelfHostSettings(_env_file=None, **kwargs)
+    settings_obj = Settings(_env_file=None, **kwargs)
 
     # No WorkOS credential was passed in, yet construction succeeds — the
     # validator releases the requirement under AUTH_MODE=local.
@@ -293,7 +274,6 @@ def test_selfhost_minimal_construct_with_local_auth():
 
 def test_selfhost_missing_mongo_db_raises(monkeypatch):
     """Refuse to construct without MONGO_DB; it is the one infra value with no default."""
-    from app.config.settings import SelfHostSettings
 
     monkeypatch.delenv("MONGO_DB", raising=False)
     kwargs = {name: "x" for name in _SELFHOST_INFRA_FIELDS if name != "MONGO_DB"}
@@ -301,16 +281,13 @@ def test_selfhost_missing_mongo_db_raises(monkeypatch):
     kwargs["ENV"] = "selfhost"
 
     with pytest.raises(ValidationError, match="MONGO_DB"):
-        SelfHostSettings(_env_file=None, **kwargs)
+        Settings(_env_file=None, **kwargs)
 
 
 def test_selfhost_has_ollama_base_url_default():
     """Default the Ollama base URL so an unconfigured install still resolves one."""
-    from app.config.settings import SelfHostSettings
 
-    assert SelfHostSettings.model_fields["OLLAMA_BASE_URL"].default == (
-        "http://host.docker.internal:11434"
-    )
+    assert Settings.model_fields["OLLAMA_BASE_URL"].default == ("http://host.docker.internal:11434")
 
 
 # ---------------------------------------------------------------------------
@@ -438,13 +415,13 @@ def _unset_workos_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(var, raising=False)
 
 
-def _production_boot_env(settings_cls: type) -> dict[str, str]:
+def _production_boot_env(kind: DeploymentKind) -> dict[str, str]:
     """Render every required field of the settings class as an env value.
 
     A full get_settings boot then succeeds regardless of ambient dot-env
     contents.
     """
-    return {name: str(value) for name, value in _required_dummies(settings_cls).items()}
+    return {name: str(value) for name, value in _required_dummies(kind).items()}
 
 
 @pytest.mark.parametrize("missing_var", _WORKOS_CREDENTIAL_VARS)
@@ -468,43 +445,40 @@ def test_production_boot_without_workos_credential_refuses(monkeypatch, missing_
     for present_var in _WORKOS_CREDENTIAL_VARS:
         if present_var != missing_var:
             assert present_var not in message
-    assert "hosted" in message
+    assert "ENV=production" in message
 
 
 def test_production_boot_with_all_workos_credentials_succeeds(monkeypatch):
     """Complete the hosted boot through get_settings with all three credentials present."""
-    from app.config.settings import ProductionSettings, get_settings
+    from app.config.settings import get_settings
 
     _isolate_boot_env(monkeypatch)
-    _unset_workos_credentials(monkeypatch)
+    for name, value in _production_boot_env(DeploymentKind.PRODUCTION).items():
+        monkeypatch.setenv(name, value)
     monkeypatch.setenv("WORKOS_API_KEY", "sk_test_fake")
     monkeypatch.setenv("WORKOS_CLIENT_ID", "client_fake")
     monkeypatch.setenv("WORKOS_COOKIE_PASSWORD", "a" * 32)
-    for name, value in _production_boot_env(ProductionSettings).items():
-        monkeypatch.setenv(name, value)
 
     settings_obj = get_settings()
 
-    assert isinstance(settings_obj, ProductionSettings)
+    assert settings_obj.ENV == DeploymentKind.PRODUCTION
     assert settings_obj.AUTH_MODE == "workos"
     assert settings_obj.WORKOS_API_KEY == "sk_test_fake"
 
 
 def test_production_boot_with_a_missing_required_setting_refuses(monkeypatch):
     """A missing required key stops the hosted boot instead of booting with an empty string."""
-    from pydantic import ValidationError
-
-    from app.config.settings import ProductionSettings, get_settings
+    from app.config.settings import get_settings
 
     _isolate_boot_env(monkeypatch)
     monkeypatch.setenv("WORKOS_API_KEY", "sk_test_fake")
     monkeypatch.setenv("WORKOS_CLIENT_ID", "client_fake")
     monkeypatch.setenv("WORKOS_COOKIE_PASSWORD", "a" * 32)
-    for name, value in _production_boot_env(ProductionSettings).items():
+    for name, value in _production_boot_env(DeploymentKind.PRODUCTION).items():
         monkeypatch.setenv(name, value)
     monkeypatch.delenv("LLAMA_INDEX_KEY")
 
-    with pytest.raises(ValidationError, match="LLAMA_INDEX_KEY"):
+    with pytest.raises(RuntimeError, match="LLAMA_INDEX_KEY"):
         get_settings()
 
 
@@ -527,7 +501,7 @@ def test_selfhost_boot_with_a_missing_required_setting_refuses(monkeypatch):
 
 def test_development_boot_still_dummy_ok_with_workos_mode(monkeypatch):
     """Keep dev dummy-ok: the credential guard is production-only."""
-    from app.config.settings import DevelopmentSettings, get_settings
+    from app.config.settings import get_settings
 
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("AUTH_MODE", "workos")
@@ -537,14 +511,14 @@ def test_development_boot_still_dummy_ok_with_workos_mode(monkeypatch):
 
     settings_obj = get_settings()
 
-    assert isinstance(settings_obj, DevelopmentSettings)
+    assert settings_obj.ENV == DeploymentKind.DEVELOPMENT
     assert settings_obj.AUTH_MODE == "workos"
     assert settings_obj.WORKOS_API_KEY is None
 
 
 def test_selfhost_unset_auth_mode_defaults_to_local(monkeypatch):
     """Boot local auth when ENV selfhost leaves AUTH_MODE unset; never the workos default."""
-    from app.config.settings import SelfHostSettings, get_settings
+    from app.config.settings import get_settings
 
     for var in _DEV_OVERRIDE_VARS:
         monkeypatch.delenv(var, raising=False)
@@ -556,7 +530,7 @@ def test_selfhost_unset_auth_mode_defaults_to_local(monkeypatch):
 
     settings_obj = get_settings()
 
-    assert isinstance(settings_obj, SelfHostSettings)
+    assert settings_obj.ENV == DeploymentKind.SELFHOST
     assert settings_obj.AUTH_MODE == "local"
     assert settings_obj.WORKOS_API_KEY is None
 

@@ -14,13 +14,13 @@ import pytest
 
 from app.config.capability_requirements import unused_keys
 from app.config.deployment import DeploymentKind, baseline_profile
-from app.config.settings import CommonSettings
+from app.config.settings import Settings
 from app.config.settings_validator import SettingsGroup, SettingsValidator
 from tests.helpers import captured_wide_event
 
 POSTHOG_GROUP = "Posthog Analytics"
 SHARE_GROUP = "File Sharing"
-POSTHOG_FIELDS = {name for name in CommonSettings.model_fields if name.startswith("POSTHOG_")}
+POSTHOG_FIELDS = {name for name in Settings.model_fields if name.startswith("POSTHOG_")}
 
 
 class _ExpectedGroup(NamedTuple):
