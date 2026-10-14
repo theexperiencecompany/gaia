@@ -10,6 +10,7 @@ import {
   type StoredProviderConfig,
   setupTransport,
 } from "@/lib/api/setupTransport";
+import { api } from "@/lib/api/typed";
 
 export type {
   CredentialProvider,
@@ -29,6 +30,11 @@ class ProvidersApiService {
 
   fetchCatalog(): Promise<ProviderCatalog> {
     return setupTransport.get<ProviderCatalog>("catalog");
+  }
+
+  /** Stop the setup wizard opening itself for the admin. */
+  dismissSetupWizard() {
+    return api.post("/api/v1/setup/wizard/dismiss");
   }
 
   async listProviders(): Promise<ProviderListResponse["providers"]> {

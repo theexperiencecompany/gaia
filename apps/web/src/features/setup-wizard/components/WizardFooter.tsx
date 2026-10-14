@@ -56,11 +56,13 @@ export function WizardFooter({
           Skip for now
         </Button>
       )}
-      {continueReason && (
-        <p className="text-center text-xs leading-relaxed text-amber-400">
-          {continueReason}
-        </p>
-      )}
+      <p
+        role="status"
+        aria-live="polite"
+        className="text-center text-xs leading-relaxed text-amber-400 empty:hidden"
+      >
+        {continueReason}
+      </p>
     </m.div>
   );
 }

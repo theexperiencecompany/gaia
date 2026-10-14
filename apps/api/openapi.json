@@ -15794,6 +15794,11 @@
           "registration_policy": {
             "$ref": "#/components/schemas/RegistrationPolicy",
             "description": "Who may sign up once the administrator exists"
+          },
+          "wizard_dismissed": {
+            "description": "Whether the administrator skipped the wizard, which then stops opening itself",
+            "title": "Wizard Dismissed",
+            "type": "boolean"
           }
         },
         "required": [
@@ -15801,11 +15806,27 @@
           "has_admin_account",
           "registration_policy",
           "needs_setup",
+          "wizard_dismissed",
           "deployment",
           "providers",
           "plans_seeded"
         ],
         "title": "SetupStatusResponse",
+        "type": "object"
+      },
+      "SetupWizardResponse": {
+        "description": "`POST /setup/wizard/dismiss` \u2014 the wizard state after the call.",
+        "properties": {
+          "wizard_dismissed": {
+            "description": "Whether the wizard stops opening itself",
+            "title": "Wizard Dismissed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "wizard_dismissed"
+        ],
+        "title": "SetupWizardResponse",
         "type": "object"
       },
       "SignupRequest": {
@@ -37403,6 +37424,59 @@
           }
         },
         "summary": "Get Setup Status",
+        "tags": [
+          "Setup",
+          "Setup"
+        ]
+      }
+    },
+    "/api/v1/setup/wizard/dismiss": {
+      "post": {
+        "description": "Stop the setup wizard opening itself; the chat setup banner nudges instead.",
+        "operationId": "setup_dismiss_wizard",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupWizardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Dismiss Wizard",
         "tags": [
           "Setup",
           "Setup"

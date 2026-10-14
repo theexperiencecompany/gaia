@@ -1,14 +1,18 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Spinner from "@/components/ui/spinner";
+import { currentUserQueryOptions } from "@/features/auth/hooks/useCurrentUser";
 import { providersApi } from "@/features/settings/api/providersApi";
+import { opensSetupWizard } from "@/features/setup-wizard/utils/setupWizardRoute";
 import { isSelfhostWeb } from "@/lib/selfhost";
 import { toast } from "@/lib/toast";
 
 export default function RedirectPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const handleRedirect = async () => {
@@ -67,13 +71,15 @@ export default function RedirectPage() {
         return;
       }
 
-      // Self-host first run: route to the setup wizard while core setup is
-      // pending (public endpoint — safe to call right after auth lands).
+      // Self-host: the admin lands in the setup wizard while it is still owed.
       // Hosted GAIA has no setup surface to ask.
       if (isSelfhostWeb()) {
         try {
-          const setupStatus = await providersApi.fetchSetupStatus();
-          if (setupStatus.needs_setup === true) {
+          const [setupStatus, user] = await Promise.all([
+            providersApi.fetchSetupStatus(),
+            queryClient.fetchQuery(currentUserQueryOptions),
+          ]);
+          if (opensSetupWizard(setupStatus, user.role ?? undefined)) {
             router.replace("/setup");
             return;
           }

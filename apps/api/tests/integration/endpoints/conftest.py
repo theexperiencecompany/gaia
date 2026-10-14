@@ -21,7 +21,9 @@ from app.config.settings import settings
 from app.constants.auth import InstanceRole, RegistrationPolicy
 from app.constants.providers import CredentialSource
 from app.core.exception_handlers import register_exception_handlers
+from app.db.repositories.instance_settings import instance_settings_repository
 from app.models.auth_models import LocalCredentialDocument
+from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.providers.provider_credentials_service import (
     CredentialResolution,
@@ -102,6 +104,24 @@ class FakeLocalCredentialsRepository:
         return LocalCredentialDocument(user_id=user_id, password_hash="bcrypt-hash")
 
 
+class FakeInstanceSettings:
+    """In-memory instance_settings: the key/value store the setup wizard state lives in."""
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self.values: dict[str, dict[str, object]] = {}
+
+    async def find_by_key(self, key: str) -> InstanceSettingsDocument | None:
+        value = self.values.get(key)
+        return None if value is None else InstanceSettingsDocument(key=key, value=value)
+
+    async def put(self, key: str, value: dict[str, object]) -> InstanceSettingsDocument:
+        self.values[key] = value
+        return InstanceSettingsDocument(key=key, value=value)
+
+
 class FakeSeedState:
     """Flags backing fake startup_validation seed checks."""
 
@@ -114,6 +134,7 @@ class FakeSeedState:
 
 provider_service = FakeProviderService()
 local_credentials_repo = FakeLocalCredentialsRepository()
+instance_settings = FakeInstanceSettings()
 seed_state = FakeSeedState()
 
 
@@ -141,6 +162,8 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_module, "local_credentials_repository", local_credentials_repo)
     monkeypatch.setattr(setup_module, "is_payment_setup", _fake_is_payment_setup)
     monkeypatch.setattr(setup_module, "get_registration_policy", _fake_registration_policy)
+    monkeypatch.setattr(instance_settings_repository, "find_by_key", instance_settings.find_by_key)
+    monkeypatch.setattr(instance_settings_repository, "put", instance_settings.put)
     monkeypatch.setattr(settings, "ENV", "selfhost")
     monkeypatch.setattr(settings, "AUTH_MODE", "local")
 
@@ -149,6 +172,7 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
 def _reset_fake_state() -> None:
     provider_service.reset()
     local_credentials_repo.reset()
+    instance_settings.reset()
     seed_state.reset()
 
 

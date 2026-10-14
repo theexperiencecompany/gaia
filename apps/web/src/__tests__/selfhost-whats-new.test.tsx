@@ -40,6 +40,7 @@ const SELFHOST_STATUS: SetupStatusResponse = {
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
+  wizard_dismissed: false,
   plans_seeded: false,
   providers: {},
 };

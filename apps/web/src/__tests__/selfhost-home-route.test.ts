@@ -15,6 +15,7 @@ const SETUP_STATUS = {
   has_admin_account: true,
   registration_policy: "invite_only",
   needs_setup: false,
+  wizard_dismissed: false,
   deployment: {
     kind: "selfhost",
     bills: false,
@@ -65,6 +66,18 @@ describe("/ on a self-hosted instance", () => {
     stubSetupStatus({ needs_setup: true, has_admin_account: false });
 
     expect(await homeTarget()).toBe("/setup");
+  });
+
+  it("does not trap a signed-in visitor once an admin exists", async () => {
+    stubSetupStatus({ needs_setup: true });
+
+    expect(await homeTarget("wos_session=abc")).toBe("/c");
+  });
+
+  it("goes to the app with a local-auth session", async () => {
+    stubSetupStatus();
+
+    expect(await homeTarget("gaia_session=abc")).toBe("/c");
   });
 
   it("goes to login when signed out", async () => {
