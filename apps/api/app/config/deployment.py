@@ -77,6 +77,8 @@ class DeploymentProfile:
     # A key the capability table needs refuses the boot. Self-host only: its
     # .env is CLI-written, while GAIA Cloud warns and degrades the one feature.
     requires_complete_config: bool
+    # GET /health/ready answers anyone; on GAIA Cloud only the METRICS_TOKEN scraper.
+    public_readiness: bool
     trusted_origins: OriginPolicy
     # Every client reaches it over https: session cookies are always Secure and
     # share links refuse a plain-http HOST.
@@ -150,6 +152,7 @@ def deployment_profile(
         product_analytics=kind is DeploymentKind.PRODUCTION,
         fail_fast=kind is not DeploymentKind.DEVELOPMENT,
         requires_complete_config=kind is DeploymentKind.SELFHOST,
+        public_readiness=kind is not DeploymentKind.PRODUCTION,
         trusted_origins=_TRUSTED_ORIGINS[kind],
         https_only=kind is DeploymentKind.PRODUCTION,
         private_network_endpoints=kind is not DeploymentKind.PRODUCTION,
