@@ -6,7 +6,7 @@ The `@heygaia/cli` package — a Node.js CLI tool (`gaia`) for self-hosting GAIA
 
 | Command | Description |
 |---|---|
-| `gaia up [--yes] [--llm-provider/--llm-key] [--domain] [--code-sandbox]` | One-command self-host install/resume |
+| `gaia up [--yes] [--llm-provider/--llm-key/--llm-base-url/--llm-model] [--domain] [--code-sandbox]` | One-command self-host install/resume |
 | `gaia update [--yes] [--version <tag>] [--git]` | Pin the release this CLI ships (`v<version>` images + `cli-v<version>` compose files) and restart |
 | `gaia doctor` | Ordered diagnostics, incl. per-dependency `/health/ready` |
 | `gaia backup` / `gaia restore` | Dump / restore MongoDB + PostgreSQL, the storage volumes and `apps/api/.env` (INSTANCE_SECRET) |
