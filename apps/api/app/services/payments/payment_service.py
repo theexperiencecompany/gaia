@@ -528,16 +528,10 @@ class DodoPaymentService:
         if not settings.deployment.enforces_plans:
             return UserSubscriptionStatus(
                 user_id=user_id,
-                current_plan=None,
-                subscription=None,
-                is_subscribed=False,
-                days_remaining=None,
                 can_upgrade=False,
                 can_downgrade=False,
                 has_subscription=False,
-                has_ever_subscribed=False,
                 plan_type=PlanType.PRO,
-                status=None,
             )
         subscription = await subscription_repository.get_active_for_user(user_id)
 
