@@ -15,6 +15,7 @@ from app.constants.integrations import (
     COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE,
     COMPOSIO_CATALOG_MAX_PAGE_SIZE,
 )
+from app.schemas.integrations.composio_setup import ComposioCatalogResponse
 from app.services.composio import auth_config_resolver, toolkit_catalog, toolkit_enablement
 from app.services.integrations.integration_connection_service import build_integrations_config
 from shared.py.analytics import UserId
@@ -22,6 +23,7 @@ from shared.py.analytics.catalog.integrations import (
     IntegrationToolkitDisabled,
     IntegrationToolkitEnabled,
 )
+from tests.conftest import FAKE_USER
 from tests.helpers import captured_wide_event
 from tests.integration.endpoints.conftest import API, FAKE_USER_ID
 
@@ -164,6 +166,18 @@ async def test_listing_without_paging_returns_the_default_page_from_the_start(
     assert body["total"] == count
     slugs = [e["slug"] for e in body["items"]]
     assert slugs == [f"kit{i:03d}" for i in range(COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE)]
+
+
+async def test_the_handler_defaults_to_an_unfiltered_first_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Called without paging, as FastAPI's own defaults are bypassed under mutmut's trampoline."""
+    page = ComposioCatalogResponse(items=[], total=0, categories=[])
+    fetch = AsyncMock(return_value=page)
+    monkeypatch.setattr(endpoint_module, "catalog_page", fetch)
+
+    assert await endpoint_module.list_composio_toolkits(user=FAKE_USER) is page
+    fetch.assert_awaited_once_with("", None, 0, COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE)
 
 
 @pytest.mark.parametrize(
