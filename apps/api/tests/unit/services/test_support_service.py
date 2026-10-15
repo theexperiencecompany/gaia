@@ -925,21 +925,19 @@ class TestCreateSupportRequestWithAttachments:
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
 
-        with patch(
-            "app.services.support_service._delete_uploaded_files",
-            new_callable=AsyncMock,
-        ) as mock_delete:
-            with patch("app.services.support_service.log"):
-                with pytest.raises(HTTPException) as exc_info:
-                    await create_support_request_with_attachments(
-                        request_data=sample_request_data,
-                        attachments=attachments,
-                        user_id=USER_ID,
-                        user_email=USER_EMAIL,
-                    )
+        with patch("app.services.support_service.log"):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
         assert exc_info.value.status_code == 500
-        mock_delete.assert_awaited_once()
+        [(uploaded_owner, uploaded_id, *_)] = [c.args for c in mock_blob_store.put.await_args_list]
+        assert mock_blob_store.delete.await_args_list == [call(uploaded_owner, uploaded_id)]
+        assert uploaded_owner == USER_ID
 
     async def test_email_failure_cleans_up_files_and_db(
         self,
@@ -956,22 +954,20 @@ class TestCreateSupportRequestWithAttachments:
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
 
-        with patch(
-            "app.services.support_service._delete_uploaded_files",
-            new_callable=AsyncMock,
-        ) as mock_delete_files:
-            with patch("app.services.support_service.log"):
-                with pytest.raises(HTTPException) as exc_info:
-                    await create_support_request_with_attachments(
-                        request_data=sample_request_data,
-                        attachments=attachments,
-                        user_id=USER_ID,
-                        user_email=USER_EMAIL,
-                    )
+        with patch("app.services.support_service.log"):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
         assert exc_info.value.status_code == 500
-        # Files should be cleaned up
-        mock_delete_files.assert_awaited_once()
+        # Files are deleted under the owner they were uploaded for.
+        [(uploaded_owner, uploaded_id, *_)] = [c.args for c in mock_blob_store.put.await_args_list]
+        assert mock_blob_store.delete.await_args_list == [call(uploaded_owner, uploaded_id)]
+        assert uploaded_owner == USER_ID
         # DB entry should be rolled back
         mock_support_repo.delete.assert_awaited_once()
 

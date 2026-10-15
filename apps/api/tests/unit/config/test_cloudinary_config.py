@@ -10,7 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.config.cloudinary import init_cloudinary
+from app.config.cloudinary import CLOUDINARY_PROVIDER, init_cloudinary, require_cloudinary
+from app.core.lazy_loader import providers
+from app.utils.errors import AppError
 from app.utils.exceptions import ProviderNotConfiguredError
 
 MOD = "app.config.cloudinary"
@@ -71,6 +73,39 @@ class TestInitCloudinary:
             patch(f"{MOD}.cloudinary.config", config_mock),
         ):
             _patch_env(mock_settings, **{missing: None})
-            with pytest.raises(ProviderNotConfiguredError, match="not fully configured"):
+            with pytest.raises(ProviderNotConfiguredError) as refused:
                 init_cloudinary().loader_func()
         config_mock.assert_not_called()
+        assert refused.value.message == (
+            "Cloudinary is not fully configured: cloud name, API key, and "
+            "API secret are all required (a stored credential carries only "
+            "the API key today; cloud name and secret come from env)"
+        )
+
+
+class TestRequireCloudinary:
+    def test_an_unconfigured_instance_refuses_uploads_naming_the_fix(self):
+        providers.reset(CLOUDINARY_PROVIDER)
+        with (
+            patch(f"{MOD}.resolved_config", return_value=None),
+            patch(f"{SERVICE_MOD}.settings") as mock_settings,
+        ):
+            _patch_env(mock_settings, CLOUDINARY_CLOUD_NAME=None, CLOUDINARY_API_KEY=None)
+            with pytest.raises(AppError) as refused:
+                require_cloudinary()
+        providers.reset(CLOUDINARY_PROVIDER)
+
+        error = refused.value
+        assert error.status_code == 503
+        assert error.code == "file_storage_not_configured"
+        assert error.message == (
+            "File uploads are not set up on this instance. Ask the admin to add "
+            "Cloudinary credentials."
+        )
+        assert error.why == (
+            "Uploaded files are stored in Cloudinary, and no Cloudinary account is configured."
+        )
+        assert error.fix == (
+            "Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET "
+            "in apps/api/.env, then restart the API."
+        )

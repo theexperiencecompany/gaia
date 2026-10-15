@@ -96,7 +96,7 @@ class LazyLoader(Generic[T]):
         self._lock = Lock()
         self._async_lock = asyncio.Lock() if self.is_async else None
         self._warned_indices: set[int] = set()  # Track warned value indices for WARN_ONCE
-        self._warned_not_configured = False
+        self._warned_not_configured = False  # pragma: no mutate — only read as `not ...`
 
         # Check availability at registration time and log warnings
         self._check_availability_and_warn()

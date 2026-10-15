@@ -5,7 +5,7 @@ endpoint must run comms, the executor and every one-shot role on it — and fail
 loud, naming the role, when none of them can. Production must not move at all.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import cast
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -19,14 +19,30 @@ from app.agents.llm.client import (
     _build_gemini_one_shot,
     _build_openai_wire_one_shot,
     _get_ordered_providers,
+    chat_model,
+    init_custom_llm,
+    init_gemini_llm,
+    init_llm,
+    init_ollama_llm,
+    init_openai_llm,
+    init_openrouter_llm,
+    memory_lane_available,
     one_shot_route,
+    provider_configured,
     resolve_model,
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.lane import AgentRole, resolve_lane
 from app.agents.llm.types import ProviderLLM
-from app.constants.llm import LLMProviderName, ModelUse
-from app.constants.providers import CREDENTIAL_PROVIDERS
+from app.constants.llm import (
+    DEFAULT_MAX_TOKENS,
+    HELPER_MAX_OUTPUT_TOKENS,
+    LLMProviderName,
+    ModelUse,
+    ReasoningLevel,
+)
+from app.constants.providers import CREDENTIAL_PROVIDERS, LLM_MODEL_PROFILES
+from app.core.lazy_loader import LazyLoader
 from app.services.providers.provider_credentials_service import ProviderConfig
 
 _LLM_REGISTRY_KEYS = {
@@ -220,6 +236,27 @@ class TestOpenAIOnly:
 
         assert lane.model == "gpt-5.4"
         assert one_shot_route(ModelUse.HELPER) == ("openai", "gpt-5.4")
+        assert chat_model(LLMProviderName.OPENAI) == "gpt-5.4"
+
+    def test_a_one_shot_without_reasoning_keeps_its_temperature(self) -> None:
+        model = cast(ChatOpenAI, resolve_model(ModelUse.HELPER, temperature=0.3))
+
+        assert model.temperature == 0.3
+        assert model.reasoning_effort == "none"
+        assert model.max_tokens == HELPER_MAX_OUTPUT_TOKENS
+        assert model.max_retries == 0
+        assert model.openai_api_key is not None
+        assert model.openai_api_key.get_secret_value() == "sk-openai"
+        assert model.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+    def test_a_reasoning_one_shot_drops_the_temperature(self) -> None:
+        model = cast(
+            ChatOpenAI,
+            resolve_model(ModelUse.HELPER, temperature=0.3, reasoning=ReasoningLevel.LIGHT),
+        )
+
+        assert model.temperature is None
+        assert model.reasoning_effort == "low"
 
 
 class TestGeminiOnly:
@@ -232,10 +269,25 @@ class TestGeminiOnly:
         lane, _ = await resolve_lane(None, role)
 
         assert (lane.provider, lane.model) == ("gemini", "gemini-3.1-flash-lite")
+        assert (lane.reasoning, lane.max_input_tokens) == (None, DEFAULT_MAX_TOKENS)
 
     @pytest.mark.parametrize("use", list(ModelUse))
     def test_every_one_shot_role_runs_on_gemini(self, use: ModelUse) -> None:
         assert isinstance(resolve_model(use), ChatGoogleGenerativeAI)
+
+    def test_the_one_shot_client_carries_the_stored_key(self) -> None:
+        model = cast(ChatGoogleGenerativeAI, resolve_model(ModelUse.MEMORY))
+
+        assert model.google_api_key is not None
+        assert model.google_api_key.get_secret_value() == "g-key"
+
+    def test_a_configured_memory_provider_makes_the_lane_available(self) -> None:
+        assert memory_lane_available() is True
+
+    def test_the_chat_client_runs_a_stored_model(self) -> None:
+        client_module._runtime_configs["gemini"] = _config(api_key="g-key", model="gemini-x")
+
+        assert init_gemini_llm().loader_func().default.model == "gemini-x"
 
 
 class TestOllamaOnly:
@@ -262,6 +314,27 @@ class TestOllamaOnly:
         with pytest.raises(LLMNotConfiguredError, match="vision"):
             resolve_model(ModelUse.VISION)
 
+    def test_a_one_shot_keeps_its_temperature(self) -> None:
+        model = cast(ChatOpenAI, resolve_model(ModelUse.HELPER, temperature=0.3))
+
+        assert model.temperature == 0.3
+
+    def test_only_trailing_slashes_are_stripped_from_the_endpoint(self) -> None:
+        client_module._runtime_configs["ollama"] = _config(
+            base_url="http://OLLAMA-BOX//", model="qwen3:8b"
+        )
+
+        model = cast(ChatOpenAI, resolve_model(ModelUse.HELPER))
+
+        assert model.openai_api_base == "http://OLLAMA-BOX/v1"
+
+    def test_an_endpoint_saved_without_a_url_serves_nothing(self) -> None:
+        client_module._runtime_configs["ollama"] = _config(model="qwen3:8b")
+
+        assert provider_configured(LLMProviderName.OLLAMA) is False
+        with pytest.raises(LLMNotConfiguredError):
+            init_ollama_llm().loader_func()
+
 
 class TestCustomOnly:
     @pytest.fixture(autouse=True)
@@ -283,6 +356,31 @@ class TestCustomOnly:
             "https://llm.example.com/v1",
         )
 
+    def test_a_one_shot_carries_the_callers_temperature_cap_and_reasoning(self) -> None:
+        model = cast(
+            ChatOpenAI,
+            resolve_model(ModelUse.HELPER, temperature=0.3, reasoning=ReasoningLevel.OFF),
+        )
+
+        assert model.temperature == 0.3
+        assert model.max_tokens == HELPER_MAX_OUTPUT_TOKENS
+        assert model.reasoning_effort == "none"
+
+    @pytest.mark.parametrize(
+        "saved",
+        [
+            _config(base_url="https://llm.example.com/v1", model="my-model"),
+            _config(api_key="sk-custom", model="my-model"),
+        ],
+        ids=["no-key", "no-url"],
+    )
+    def test_an_endpoint_missing_its_key_or_url_serves_nothing(self, saved: ProviderConfig) -> None:
+        client_module._runtime_configs["custom"] = saved
+
+        assert provider_configured(LLMProviderName.CUSTOM) is False
+        with pytest.raises(LLMNotConfiguredError):
+            init_custom_llm().loader_func()
+
     def test_an_endpoint_saved_without_a_model_serves_nothing(self) -> None:
         client_module._runtime_configs["custom"] = _config(
             api_key="sk-custom", base_url="https://llm.example.com/v1"
@@ -299,3 +397,67 @@ class TestNothingConfigured:
         for use in ModelUse:
             with pytest.raises(LLMNotConfiguredError, match=use.value):
                 resolve_model(use)
+
+
+class TestOpenRouterOnly:
+    @pytest.fixture(autouse=True)
+    def _openrouter_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _configure(
+            "selfhost",
+            monkeypatch,
+            openrouter=_config(api_key="sk-or", base_url="https://or.example.com/api/v1"),
+        )
+
+    def test_a_one_shot_talks_to_the_configured_endpoint(self) -> None:
+        model = cast(ChatOpenRouter, resolve_model(ModelUse.HELPER))
+
+        assert model.openrouter_api_base == "https://or.example.com/api/v1"
+
+    def test_the_chat_client_runs_a_stored_model(self) -> None:
+        client_module._runtime_configs["openrouter"] = _config(api_key="sk-or", model="vendor/m")
+
+        assert init_openrouter_llm().loader_func().default.model_name == "vendor/m"
+
+
+class TestKeylessConfigs:
+    """A stored row that names a model but no key is not a configured provider."""
+
+    @pytest.mark.parametrize(
+        ("provider", "factory"),
+        [
+            (LLMProviderName.GEMINI, init_gemini_llm),
+            (LLMProviderName.OPENROUTER, init_openrouter_llm),
+            (LLMProviderName.OPENAI, init_openai_llm),
+        ],
+    )
+    def test_the_chat_client_refuses_to_build(
+        self, provider: LLMProviderName, factory: object, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _configure("selfhost", monkeypatch, **{provider.value: _config(model="some-model")})
+
+        with pytest.raises(LLMNotConfiguredError):
+            cast(Callable[[], LazyLoader[object]], factory)().loader_func()
+
+
+def test_nothing_configured_names_the_role_and_where_to_configure_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure("selfhost", monkeypatch)
+
+    with pytest.raises(LLMNotConfiguredError) as refused:
+        resolve_model(ModelUse.HELPER)
+
+    assert str(refused.value) == (
+        "No configured AI provider can serve helper calls. Configure openrouter "
+        "(or, off production, any provider that serves it) in Settings → AI Providers "
+        "or via its API-key env var."
+    )
+
+
+def test_an_unknown_preferred_provider_lists_the_valid_ones() -> None:
+    with pytest.raises(ValueError) as refused:
+        init_llm(preferred_provider="nope")
+
+    assert str(refused.value) == (
+        f"Invalid preferred_provider 'nope'. Valid providers are: {list(LLM_MODEL_PROFILES)}"
+    )

@@ -19,6 +19,9 @@ from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
 import pytest
 
+from app.constants.log_tags import LogTag
+from tests.helpers import captured_wide_event
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -207,6 +210,50 @@ class TestTokenRepositoryInit:
         ):
             assert await repo._ensure_google_client() is registered_client
         mock_oauth_instance.register.assert_not_called()
+
+    @patch("app.config.token_repository.get_db_session")
+    @patch("app.config.token_repository.OAuth")
+    async def test_lazy_client_registers_google_openid_with_account_selection(
+        self, mock_oauth_cls: MagicMock, _mock_db: MagicMock
+    ) -> None:
+        from app.config.token_repository import TokenRepository
+
+        oauth = mock_oauth_cls.return_value
+        resolver = AsyncMock(return_value=("cid", "csecret"))
+        repo = TokenRepository()
+
+        with patch("app.config.token_repository.google_oauth_client", new=lambda c: c):
+            with patch("app.config.token_repository.resolve_provider_config", new=resolver):
+                assert await repo._ensure_google_client() is oauth.register.return_value
+
+        resolver.assert_awaited_once_with("google_oauth")
+        oauth.register.assert_called_once_with(
+            name="google",
+            client_id="cid",
+            client_secret="csecret",  # pragma: allowlist secret
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
+        )
+
+    @patch("app.config.token_repository.get_db_session")
+    @patch("app.config.token_repository.OAuth")
+    async def test_an_unconfigurable_google_client_warns_on_the_wide_event(
+        self, _mock_oauth_cls: MagicMock, _mock_db: MagicMock
+    ) -> None:
+        from app.config.token_repository import TokenRepository
+
+        repo = TokenRepository()
+        with patch(
+            "app.config.token_repository.resolve_provider_config",
+            new=AsyncMock(return_value=None),
+        ):
+            async with captured_wide_event() as event:
+                assert await repo._ensure_google_client() is None
+
+        assert [w["msg"] for w in event["warnings"]] == [
+            f"{LogTag.STARTUP} Google OAuth credentials not found "
+            "(no stored credential, no GOOGLE_CLIENT_ID/SECRET env), client not registered"
+        ]
 
 
 class TestResolveGoogleOauthCredentials:
@@ -808,6 +855,65 @@ class TestRefreshToken:
                     result = await self.repo.refresh_token("user_1", "google")
 
         assert result is stored_token
+
+    async def _refresh_storing(self, provider_token: dict[str, Any]) -> AsyncMock:
+        """Run a successful refresh and return the store_token mock it wrote through."""
+        session = _mock_db_session(scalar_one_or_none_return=_make_token_record())
+        store = AsyncMock(return_value=OAuth2Token(params={"access_token": "x"}))
+        with patch("app.config.token_repository.get_db_session") as mock_get_db:
+            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
+            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
+            with (
+                patch.object(
+                    self.repo,
+                    "_refresh_provider_token",
+                    new=AsyncMock(return_value=provider_token),
+                ),
+                patch.object(self.repo, "store_token", new=store),
+            ):
+                assert await self.repo.refresh_token(USER_ID, PROVIDER) is store.return_value
+        return store
+
+    async def test_refresh_stores_every_field_the_provider_returned(self) -> None:
+        store = await self._refresh_storing(
+            {
+                "access_token": "new_access",
+                "token_type": "mac",
+                "scope": "openid",
+                "expires_in": 3600,
+                "expires_at": 1_900_000_000,
+                "refresh_token": "new_refresh",
+            }
+        )
+
+        store.assert_awaited_once_with(
+            USER_ID,
+            PROVIDER,
+            {
+                "access_token": "new_access",
+                "token_type": "mac",
+                "scope": "openid",
+                "expires_in": 3600,
+                "expires_at": 1_900_000_000,
+                "refresh_token": "new_refresh",
+            },
+        )
+
+    async def test_refresh_keeps_the_stored_scope_and_refresh_token_when_omitted(self) -> None:
+        store = await self._refresh_storing({"access_token": "new_access"})
+
+        store.assert_awaited_once_with(
+            USER_ID,
+            PROVIDER,
+            {
+                "access_token": "new_access",
+                "token_type": "Bearer",
+                "scope": SCOPES,
+                "expires_in": None,
+                "expires_at": None,
+                "refresh_token": REFRESH_TOKEN,
+            },
+        )
 
     async def test_refresh_exception_returns_none(self) -> None:
         record = _make_token_record()

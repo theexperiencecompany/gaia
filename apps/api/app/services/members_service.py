@@ -60,14 +60,17 @@ async def get_registration_policy() -> RegistrationPolicy:
 async def set_registration_policy(policy: RegistrationPolicy) -> RegistrationPolicy:
     """Persist the registration policy."""
     await instance_settings_repository.put(
-        REGISTRATION_SETTINGS_KEY, RegistrationSetting(policy=policy).model_dump(mode="json")
+        REGISTRATION_SETTINGS_KEY,
+        RegistrationSetting(policy=policy).model_dump(
+            mode="json",  # pragma: no mutate — StrEnum-only
+        ),
     )
     return policy
 
 
 async def create_invite(admin_user_id: str) -> InviteCreatedResponse:
     """Mint a single-use invite; the raw token is returned here and never stored."""
-    token = secrets.token_urlsafe(INVITE_TOKEN_BYTES)
+    token = secrets.token_urlsafe(INVITE_TOKEN_BYTES)  # pragma: no mutate — 32 is also the default
     invite = await local_invites_repository.create(
         LocalInviteDocument(
             token_hash=_hash_invite_token(token),

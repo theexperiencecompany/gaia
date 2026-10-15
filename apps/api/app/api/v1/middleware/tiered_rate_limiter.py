@@ -165,7 +165,7 @@ class TieredRateLimiter:
         user_plan: PlanType,
         current_limits: RateLimitConfig,
         *,
-        enforce: bool = True,
+        enforce: bool,
     ) -> dict[str, UsageInfo]:
         """Read current counters; raise when any non-zero window is exhausted.
 

@@ -55,10 +55,11 @@ async def _upload_single_attachment(
 ) -> tuple[str, SupportAttachment]:
     """Upload a single attachment and return (public_id, attachment metadata)."""
     # Validate file type
-    if attachment.content_type not in allowed_types:
+    content_type = attachment.content_type
+    if content_type is None or content_type not in allowed_types:
         raise HTTPException(
             status_code=400,
-            detail=f"Only image files are supported. File type {attachment.content_type} not allowed. Please use JPG, PNG, or WebP.",
+            detail=f"Only image files are supported. File type {content_type} not allowed. Please use JPG, PNG, or WebP.",
         )
 
     # Validate filename
@@ -74,7 +75,6 @@ async def _upload_single_attachment(
         )
 
     public_id = f"support/{ticket_id}_{attachment.filename}"
-    content_type = attachment.content_type or "application/octet-stream"
     store = blob_store()
     try:
         store.ensure_ready()
@@ -376,7 +376,7 @@ async def create_support_request_with_attachments(
         attachment_count=len(attachments),
     )
     request_id = None
-    attachment_ids: list[str] = []
+    attachment_ids: list[str] = []  # pragma: no mutate — only read for truthiness
     ticket_id = None
 
     try:
@@ -499,7 +499,7 @@ async def create_support_request_with_attachments(
         )
 
         # Clean up uploaded files
-        if attachment_ids and ticket_id:
+        if attachment_ids:
             try:
                 await _delete_uploaded_files(user_id, attachment_ids)
                 log.info(

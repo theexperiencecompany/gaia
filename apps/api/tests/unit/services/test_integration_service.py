@@ -2519,6 +2519,41 @@ class TestConnectMcpIntegration:
         assert result.status == "redirect"
         assert result.redirect_url == "https://auth.example.com"
         mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
+        assert mock_client.build_oauth_auth_url.await_args.kwargs["redirect_path"] == (
+            "/integrations"
+        )
+
+    @patch(
+        "app.services.integrations.integration_connection_service.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_a_failed_connect_is_a_structured_error_not_a_500(
+        self, mock_get_client, mock_update_status
+    ):
+        mock_client = AsyncMock()
+        mock_client.connect.side_effect = RuntimeError("server unreachable")
+        mock_get_client.return_value = mock_client
+
+        result = await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=False,
+            redirect_path="/integrations",
+            server_url=SERVER_URL,
+            probe_result={},
+        )
+
+        assert (result.status, result.error, result.message) == (
+            "error",
+            "server unreachable",
+            "Connection failed",
+        )
+        mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
 
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",
@@ -2788,9 +2823,14 @@ class TestConnectComposioIntegration:
         )
         auth_config_resolver.invalidate_auth_config_cache()
 
-        result = await self._connect()
+        async with captured_wide_event() as event:
+            result = await self._connect()
         auth_config_resolver.invalidate_auth_config_cache()
 
+        assert (event["integration"]["provider"], event["integration"]["status"]) == (
+            "slack",
+            "not_set_up",
+        )
         assert result.status == "error"
         assert result.error == (
             "Slack is not set up on this instance. An admin can add it in "

@@ -1,10 +1,13 @@
 """Readiness aggregation: every dependency answers for itself, and none can stall the probe."""
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.services import readiness
+from tests.helpers import captured_wide_event
 
 
 async def _answers() -> None:
@@ -59,3 +62,43 @@ async def test_all_answering_is_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     result = await readiness.check_readiness()
 
     assert result.status == "ready"
+
+
+def _clock(monkeypatch: pytest.MonkeyPatch, *readings: float) -> None:
+    ticks = iter(readings)
+    # Only readiness's clock: the event loop keeps reading the real one.
+    monkeypatch.setattr(readiness, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+
+
+@pytest.mark.parametrize(
+    ("ping", "ok"), [(_answers, True), (_refuses, False)], ids=["answers", "refuses"]
+)
+async def test_latency_is_the_checks_own_wall_time_in_milliseconds(
+    monkeypatch: pytest.MonkeyPatch, ping, ok: bool
+) -> None:
+    monkeypatch.setattr(readiness, "DEPENDENCY_CHECKS", {"mongodb": ping})
+    _clock(monkeypatch, 10.0, 10.0123456)
+
+    [status] = (await readiness.check_readiness()).dependencies
+
+    assert (status.ok, status.latency_ms) == (ok, 12.35)
+
+
+async def test_each_failure_is_warned_naming_its_dependency(checks: None) -> None:
+    async with captured_wide_event() as event:
+        await readiness.check_readiness()
+
+    assert sorted(event["warnings"], key=lambda w: w["dependency"]) == [
+        {
+            "msg": f"{LogTag.STARTUP} Readiness check failed",
+            "dependency": "mongodb",
+            "error": "connect to mongo:27017 refused — secret-host",
+            "error_type": "ConnectionRefusedError",
+        },
+        {
+            "msg": f"{LogTag.STARTUP} Readiness check failed",
+            "dependency": "redis",
+            "error": "",
+            "error_type": "TimeoutError",
+        },
+    ]

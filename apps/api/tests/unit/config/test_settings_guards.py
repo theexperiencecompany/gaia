@@ -14,8 +14,9 @@ import pytest
 from app.agents.llm import client, dev_lane
 from app.config.browser_host_settings import BrowserHostSettings
 from app.config.capability_requirements import required_keys
-from app.config.deployment import DeploymentKind, baseline_profile
+from app.config.deployment import DeploymentKind, baseline_profile, deployment_profile
 from app.config.settings import Settings, get_settings
+from app.config.settings_validator import settings_validator
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.llm import (
     DEFAULT_LLM_TEMPERATURE,
@@ -77,9 +78,9 @@ def _fake_chat_openrouter(captured: dict[str, object]) -> type:
     ("env_var", "value"),
     [
         ("DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local"),
+        ("DEV_UNLIMITED_RATE_LIMITS", "1"),
         ("OPENROUTER_BASE_URL", "http://localhost:9797"),
         ("GAIA_SIM_MODE", "1"),
-        ("COMPOSIO_AUTH_CONFIG_OVERRIDES", '{"gmail": "ac_dev"}'),
     ],
 )
 def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
@@ -90,8 +91,13 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv(env_var, value)
 
-    with pytest.raises(RuntimeError, match=env_var):
+    with pytest.raises(RuntimeError) as refused:
         get_settings()
+
+    assert str(refused.value) == (
+        f"{env_var} is set but ENV is not 'development' — "
+        "development overrides must never run in a real deployment."
+    )
 
 
 def test_composio_overrides_refuse_production_and_say_why(monkeypatch):
@@ -237,8 +243,12 @@ def _prod_settings(**overrides):
 
 def test_production_rejects_http_dodo_base_url():
     """A plain-http DODO_PAYMENTS_BASE_URL would send the API key in cleartext; production must reject it."""
-    with pytest.raises(ValidationError, match="must use https"):
+    with pytest.raises(ValidationError) as refused:
         _prod_settings(DODO_PAYMENTS_BASE_URL="http://localhost:8899")
+
+    assert [e["msg"] for e in refused.value.errors()] == [
+        "Value error, DODO_PAYMENTS_BASE_URL must use https:// in production"
+    ]
 
 
 def test_production_allows_https_dodo_base_url():
@@ -470,3 +480,78 @@ def test_an_env_with_no_deployment_kind_is_refused_by_name_at_boot() -> None:
     [error] = refused.value.errors()
     assert error["loc"] == ("ENV",)
     assert "'production', 'development' or 'selfhost'" in error["msg"]
+
+
+def _selfhost_settings(auth_mode: str, **overrides: object) -> Settings:
+    """Build self-host settings with every key the profile requires stubbed."""
+    profile = deployment_profile(
+        DeploymentKind.SELFHOST,
+        "workos" if auth_mode == "workos" else "local",
+        unlimited_usage=False,
+        local_code_sandbox=False,
+        blob_store=None,
+    )
+    dummies: dict[str, object] = {
+        name: 0 if Settings.model_fields[name].annotation == int | None else "x"
+        for name in required_keys(profile)
+    }
+    return Settings(
+        _env_file=None, ENV=DeploymentKind.SELFHOST, AUTH_MODE=auth_mode, **{**dummies, **overrides}
+    )
+
+
+def test_selfhost_keeps_an_explicit_workos_sign_in() -> None:
+    assert _selfhost_settings("workos").AUTH_MODE == "workos"
+
+
+def test_selfhost_names_every_missing_key_in_one_refusal() -> None:
+    # The keys that may be left unset; MONGO_DB and REDIS_URL fail type validation first.
+    unsettable = sorted(
+        name
+        for name in required_keys(baseline_profile(DeploymentKind.SELFHOST))
+        if Settings.model_fields[name].default is None
+    )
+    assert len(unsettable) > 1
+
+    with pytest.raises(RuntimeError) as refused:
+        _selfhost_settings("local", **dict.fromkeys(unsettable))
+
+    assert str(refused.value) == (
+        f"{', '.join(unsettable)} must be set for ENV=selfhost with AUTH_MODE=local "
+        "— see app/config/capability_requirements.py."
+    )
+
+
+@pytest.mark.parametrize(
+    ("env", "redirect"),
+    [
+        (
+            DeploymentKind.DEVELOPMENT,
+            "https://redirectmeto.com/http://localhost:8000/api/v1/platform-auth/slack/callback",
+        ),
+        (DeploymentKind.SELFHOST, "https://gaia.example.com/api/v1/platform-auth/slack/callback"),
+    ],
+)
+def test_only_development_routes_slack_through_the_localhost_proxy(
+    env: DeploymentKind, redirect: str
+) -> None:
+    if env is DeploymentKind.SELFHOST:
+        settings_obj = _selfhost_settings("local", HOST="https://gaia.example.com")
+    else:
+        settings_obj = Settings(_env_file=None, ENV=env, HOST="https://gaia.example.com")
+
+    assert redirect == settings_obj.SLACK_OAUTH_REDIRECT_URI
+
+
+def test_boot_judges_the_configuration_against_its_own_deployment(monkeypatch) -> None:
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("SHOW_MISSING_KEY_WARNINGS", "true")
+    monkeypatch.setenv("MONGO_DB", "mongodb://localhost:27017/gaia")
+
+    settings_obj = get_settings()
+
+    assert settings_validator.show_warnings is True
+    assert settings_validator.profile == settings_obj.deployment
+    assert "MongoDB Connection" not in {
+        group.name for group, _ in settings_validator.missing_groups
+    }

@@ -25,7 +25,6 @@ from app.api.v1.middleware.unhandled_exception import UnhandledExceptionMiddlewa
 from app.api.v1.middleware.websocket_wide_event import WebSocketWideEventMiddleware
 from app.config.deployment import OriginPolicy
 from app.config.settings import settings
-from app.config.workos import get_async_workos_client
 from app.constants.http import RETRY_AFTER_HEADER
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.schemas.errors import ErrorEnvelope, error_response
@@ -135,9 +134,8 @@ def configure_middleware(app: FastAPI) -> None:
 
     # WorkOS authentication — inside the logging boundary, so its rejections
     # are logged and its log.set()/log.error() calls reach the wide event.
-    # Local-auth instances have no WorkOS credentials, so no client is built.
-    workos_client = None if settings.deployment.local_auth else get_async_workos_client()
-    app.add_middleware(WorkOSAuthMiddleware, workos_client=workos_client)
+    # It builds its own WorkOS client, and none on a local-auth instance.
+    app.add_middleware(WorkOSAuthMiddleware)
 
     # Wide-event boundary — outermost (see block comment above).
     app.add_middleware(LoggingMiddleware)

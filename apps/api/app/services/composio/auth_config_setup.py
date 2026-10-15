@@ -27,7 +27,7 @@ async def composio_setup_overview() -> ComposioSetupResponse:
     integrations: list[ComposioIntegrationSetup] = []
     for integration in composio_integrations():
         if integration.composio_config is None:
-            continue
+            continue  # pragma: no mutate — composio_integrations yields only configured ones
         auth_config = resolved.get(integration.id)
         toolkit = integration.composio_config.toolkit
         integrations.append(

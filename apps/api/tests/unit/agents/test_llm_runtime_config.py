@@ -5,6 +5,7 @@ snapshot beats env fallback), provider availability from resolver results,
 snapshot refresh, and aux-cache resets.
 """
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock
@@ -340,6 +341,25 @@ class TestRefreshProviderConfigs:
         assert client_module._runtime_configs["openrouter"]["api_key"] == "sk-openrouter"
         assert client_module._runtime_configs["tavily"]["api_key"] == "sk-tavily"
         assert client_module._runtime_configs["gemini"] is None
+
+    async def test_scheduling_inside_a_loop_refreshes_and_forgets_the_task(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            service.provider_credentials_repository,
+            "find_by_provider",
+            AsyncMock(return_value=None),
+        )
+        monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-openrouter")
+        service._cache.clear()
+
+        client_module._schedule_runtime_config_refresh()
+        [task] = client_module._refresh_tasks
+        await task
+        await asyncio.sleep(0)  # let the done callback run
+
+        assert client_module._runtime_configs["openrouter"]["api_key"] == "sk-openrouter"
+        assert client_module._refresh_tasks == set()
 
     def test_scheduling_without_a_loop_is_a_noop(self) -> None:
         client_module._schedule_runtime_config_refresh()

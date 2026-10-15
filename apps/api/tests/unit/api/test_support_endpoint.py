@@ -52,6 +52,13 @@ class TestSelfHostedInstances:
 
         assert submitted.status_code == 404
         assert submitted.json()["code"] == "gaia_support_unavailable"
+        assert submitted.json()["message"] == (
+            "In-app support is not available on a self-hosted instance"
+        )
+        assert submitted.json()["fix"] == (
+            "Report bugs and request features on GitHub: "
+            "https://github.com/theexperiencecompany/gaia/issues"
+        )
         assert listed.status_code == 404
         create.assert_not_awaited()
 

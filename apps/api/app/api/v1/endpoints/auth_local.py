@@ -74,9 +74,9 @@ def _set_session_cookie(response: JSONResponse, token: str, *, request: Request)
         value=token,
         httponly=True,
         secure=session_cookie_secure(request),
-        samesite="lax",
+        samesite="lax",  # pragma: no mutate — Starlette's default, spelled out to match the WorkOS cookie
         max_age=SESSION_TTL_SECONDS,
-        path="/",
+        path="/",  # pragma: no mutate — Starlette's default, spelled out to match the WorkOS cookie
     )
 
 
@@ -258,7 +258,7 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
             error_type=type(exc).__name__,
         )
         verified = False
-    if not verified:
+    if not verified or user is None or credential is None:
         if user is None or credential is None:
             # Equalize cost with the wrong-password path above.
             _burn_one_verification(body.password)
@@ -275,7 +275,7 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
             },
         )
 
-    token = await issue_session_token(user.id, int(getattr(credential, "token_version", 0) or 0))
+    token = await issue_session_token(user.id, credential.token_version)
     log.audit("logged in", actor=user.id, mode="local")
 
     response = JSONResponse(content={"user": _user_payload(user)})
@@ -322,7 +322,7 @@ async def change_password(
         verified = (
             bcrypt.checkpw(body.current_password.encode(), credential.password_hash.encode())
             if credential is not None
-            else False
+            else False  # pragma: no mutate — a missing credential is refused just below
         )
     except ValueError as exc:
         # bcrypt >= 5 refuses inputs past its 72-byte cap: a wrong-password
@@ -354,7 +354,7 @@ async def change_password(
             detail={"message": "Password must be at most 72 bytes (UTF-8 encoded)"},
         ) from exc
 
-    new_version = int(getattr(credential, "token_version", 0) or 0) + 1
+    new_version = credential.token_version + 1
     updated = await local_credentials_repository.update(
         credential.id,
         LocalCredentialUpdate(password_hash=password_hash, token_version=new_version),

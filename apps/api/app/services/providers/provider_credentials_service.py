@@ -283,8 +283,7 @@ def _cache_get(provider: str) -> tuple[bool, ProviderConfig | None]:
         return False, None
     cached_at, config = entry
     if monotonic() - cached_at >= _CACHE_TTL_SECONDS:
-        _cache.pop(provider, None)
-        return False, None
+        return False, None  # resolve overwrites the expired entry with a fresh one
     return True, config
 
 
@@ -384,7 +383,7 @@ def env_config(provider: str) -> ProviderConfig | None:
         return resolve()
     # Tool keys resolve on a single api key.
     if key_name := _SIMPLE_ENV_KEYS.get(provider):
-        api_key = getattr(settings, key_name, None)
+        api_key = getattr(settings, key_name)
         if not api_key:
             return None
         return ProviderConfig(api_key=api_key, base_url=None, model=None, preset=None)

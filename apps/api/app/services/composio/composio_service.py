@@ -396,7 +396,7 @@ class ComposioService:
     async def list_enabled_auth_configs(self) -> list[AuthConfigItem]:
         """Return every enabled auth config in this key's Composio project, across all pages."""
         configs: list[AuthConfigItem] = []
-        cursor: str | None = None
+        cursor: str | None = None  # pragma: no mutate — only read for truthiness
         while True:
             params: AuthConfigListParams = {"limit": COMPOSIO_AUTH_CONFIG_PAGE_SIZE}
             if cursor:

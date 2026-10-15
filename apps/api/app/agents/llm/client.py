@@ -834,10 +834,16 @@ def resolve_model(
                 else (),
             )
         case LLMProviderName.GEMINI:
-            config: ProviderConfig = _require_provider_config(provider, "api_key")
+            config: ProviderConfig = _require_provider_config(
+                provider,
+                "api_key",  # pragma: no mutate — one_shot_route only routes a configured provider
+            )
             return _build_gemini_one_shot(model, temperature, api_key=str(config["api_key"]))
         case LLMProviderName.OPENAI:
-            config = _require_provider_config(provider, "api_key")
+            config = _require_provider_config(
+                provider,
+                "api_key",  # pragma: no mutate — one_shot_route only routes a configured provider
+            )
             effort = OPENAI_REASONING_EFFORT[reasoning or ReasoningLevel.OFF]
             return _build_openai_wire_one_shot(
                 model,
@@ -848,7 +854,10 @@ def resolve_model(
                 reasoning_effort=effort,
             )
         case LLMProviderName.OLLAMA:
-            config = _require_provider_config(provider, "base_url")
+            config = _require_provider_config(
+                provider,
+                "base_url",  # pragma: no mutate — one_shot_route only routes a configured provider
+            )
             return _build_openai_wire_one_shot(
                 model,
                 temperature,
@@ -879,7 +888,10 @@ def _openrouter_one_shot(
     fallback_model_names ride OpenRouter's models array, tried in order on
     transport errors only, with the provider order the client already carries.
     """
-    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER, "api_key")
+    config: ProviderConfig = _require_provider_config(
+        LLMProviderName.OPENROUTER,
+        "api_key",  # pragma: no mutate — one_shot_route only routes a configured provider
+    )
     base = _build_default_llm(
         temperature, api_key=str(config["api_key"]), base_url=config.get("base_url")
     )

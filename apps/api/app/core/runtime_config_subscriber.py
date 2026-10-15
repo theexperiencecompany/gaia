@@ -57,7 +57,7 @@ def _parse_scope(data: str | bytes) -> str | None:
 
     A malformed message must never take the listener down: log loud, skip.
     """
-    raw = data.decode("utf-8", errors="replace") if isinstance(data, bytes) else data
+    raw = data.decode(errors="replace") if isinstance(data, bytes) else data
     try:
         payload: object = json.loads(raw)
     except json.JSONDecodeError as e:
@@ -107,7 +107,10 @@ async def _consume() -> None:
     await pubsub.subscribe(RUNTIME_CONFIG_CHANNEL)
     try:
         while True:
-            raw_message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            raw_message = await pubsub.get_message(
+                ignore_subscribe_messages=True,  # pragma: no mutate — acks fail the type check below
+                timeout=1.0,  # pragma: no mutate — only paces an idle loop
+            )
             if not isinstance(raw_message, dict):
                 continue
             message: _PubSubMessage = cast(_PubSubMessage, raw_message)

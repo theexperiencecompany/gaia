@@ -6,8 +6,10 @@ from urllib.parse import parse_qs, urlparse
 from fastapi import HTTPException
 import pytest
 
+from app.constants.log_tags import LogTag
 import app.utils.oauth_utils as oauth_utils_module
 from app.utils.oauth_utils import build_google_oauth_url
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # build_google_oauth_url
@@ -235,10 +237,15 @@ class TestBuildGoogleOAuthUrl:
         mock_settings.GOOGLE_CALLBACK_URL = "http://localhost/callback"
         mock_token_repo.get_token = AsyncMock(return_value=None)
 
-        with pytest.raises(HTTPException) as exc_info:
-            await build_google_oauth_url(
-                user_email="u@e.com",
-                state_token="s",
-                integration_scopes=[],
-            )
+        async with captured_wide_event() as event:
+            with pytest.raises(HTTPException) as exc_info:
+                await build_google_oauth_url(
+                    user_email="u@e.com",
+                    state_token="s",
+                    integration_scopes=[],
+                )
         assert exc_info.value.status_code == 503
+        assert exc_info.value.detail == "Google integration is not configured on this instance."
+        assert [e["msg"] for e in event["errors"]] == [
+            f"{LogTag.OAUTH} Google OAuth is not configured; cannot build authorize URL"
+        ]

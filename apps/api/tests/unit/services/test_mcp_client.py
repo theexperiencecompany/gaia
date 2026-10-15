@@ -335,12 +335,11 @@ class TestMCPClientBuildConfig:
             "model": None,
             "preset": None,
         }
-        with patch(
-            "app.services.mcp.mcp_client.resolve_composio_config",
-            new=AsyncMock(return_value=stored),
-        ):
+        resolver = AsyncMock(return_value=stored)
+        with patch("app.services.mcp.mcp_client.resolve_composio_config", new=resolver):
             config = await client._build_config(INTEGRATION_ID, mcp_config)
         assert config["mcpServers"][INTEGRATION_ID]["headers"]["x-api-key"] == "stored-composio-key"
+        resolver.assert_awaited_once_with("composio")
 
     async def test_non_composio_servers_never_resolve_the_platform_key(self):
         client = MCPClient(user_id=USER_ID)

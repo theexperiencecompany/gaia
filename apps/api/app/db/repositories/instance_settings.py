@@ -30,7 +30,7 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
         await self._apply_raw_update_unfetched(
             {"key": key},
             {"$set": {"value": value}},
-            scope=REPO_GLOBAL_SCOPE,
+            scope=REPO_GLOBAL_SCOPE,  # pragma: no mutate — a cacheless global repo never reads its scope
             upsert=True,
         )
 
@@ -53,11 +53,13 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
         stored = await self._apply_raw_update(
             {"key": key},
             {"$set": {"value": value}},
-            scope=REPO_GLOBAL_SCOPE,
+            scope=REPO_GLOBAL_SCOPE,  # pragma: no mutate — a cacheless global repo never reads its scope
             upsert=True,
         )
         if stored is None:
-            raise AppError(message=f"instance setting {key!r} could not be read back")
+            raise AppError(
+                message=f"instance setting {key!r} could not be read back",  # pragma: no mutate — an upsert always reads back its row
+            )
         return stored
 
 

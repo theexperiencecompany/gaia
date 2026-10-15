@@ -100,3 +100,44 @@ async def test_gaia_cloud_without_a_metrics_token_does_not_serve_readiness(
         resp = await client.get("/health/ready")
 
     assert resp.status_code == 404
+
+
+DOC_PATHS = ("/openapi.json", "/docs", "/redoc")
+
+
+async def test_development_serves_the_api_docs(monkeypatch: pytest.MonkeyPatch) -> None:
+    async with _as_deployment(monkeypatch, DeploymentKind.DEVELOPMENT, None) as client:
+        statuses = [(await client.get(path)).status_code for path in DOC_PATHS]
+
+    assert statuses == [200, 200, 200]
+
+
+@pytest.mark.parametrize("kind", [DeploymentKind.SELFHOST, DeploymentKind.PRODUCTION])
+async def test_real_deployments_hide_the_api_docs(
+    monkeypatch: pytest.MonkeyPatch, kind: DeploymentKind
+) -> None:
+    async with _as_deployment(monkeypatch, kind, METRICS_TOKEN) as client:
+        statuses = [(await client.get(path)).status_code for path in DOC_PATHS]
+
+    assert statuses == [404, 404, 404]
+
+
+@pytest.mark.parametrize("path", ["/health", "/health/ready"])
+async def test_root_routes_document_the_error_envelope(
+    monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    async with _as_deployment(monkeypatch, DeploymentKind.DEVELOPMENT, None) as client:
+        schema = (await client.get("/openapi.json")).json()
+
+    assert {"4XX", "5XX"} <= set(schema["paths"][path]["get"]["responses"])
+
+
+@pytest.mark.parametrize("kind", [DeploymentKind.SELFHOST, DeploymentKind.PRODUCTION])
+async def test_the_dev_router_never_mounts_outside_development(
+    monkeypatch: pytest.MonkeyPatch, kind: DeploymentKind
+) -> None:
+    monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.test")
+    async with _as_deployment(monkeypatch, kind, METRICS_TOKEN) as client:
+        resp = await client.get("/api/v1/dev/subagents")
+
+    assert resp.status_code == 404

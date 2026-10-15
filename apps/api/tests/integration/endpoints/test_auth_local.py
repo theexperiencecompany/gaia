@@ -12,6 +12,7 @@ cookie contract all run for real.
 import asyncio
 from datetime import UTC, datetime, timedelta
 import hashlib
+from http.cookies import Morsel, SimpleCookie
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -25,7 +26,12 @@ from jose import jwt
 import pytest
 
 from app.config.settings import settings
-from app.constants.auth import JWT_ALGORITHM, REGISTRATION_SETTINGS_KEY, InstanceRole
+from app.constants.auth import (
+    AUDIT_ACTOR_UNAUTHENTICATED,
+    JWT_ALGORITHM,
+    REGISTRATION_SETTINGS_KEY,
+    InstanceRole,
+)
 from app.constants.error_codes import INVALID_CREDENTIALS
 from app.models.auth_models import (
     ADMIN_CREDENTIAL_SLOT,
@@ -36,11 +42,13 @@ from app.models.auth_models import (
 from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import UserDocument
 from app.utils.local_auth_utils import (
+    SESSION_TTL_SECONDS,
     issue_session_token,
     resolve_session_token,
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceMemberJoined
+from tests.helpers import captured_wide_event
 
 TEST_SECRET = "test-instance-secret-" + "x" * 16
 TEST_PASSWORD = "correct-horse-battery"
@@ -976,7 +984,7 @@ class TestChangePassword:
     ):
         """Pin rotation: 200 on change, old password fails, new password logs in."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
         old_hash = credential_store.store[admin.id].password_hash
 
         app = _build_middleware_app()
@@ -1013,7 +1021,7 @@ class TestChangePassword:
     ):
         """Return uniform invalid_credentials 401 on wrong current password; change nothing."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
         original = credential_store.store[admin.id]
 
         app = _build_middleware_app()
@@ -1063,7 +1071,7 @@ class TestChangePassword:
     ):
         """Reject a short new password before the current-password verify runs; write nothing."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
         original = credential_store.store[admin.id]
 
         app = _build_middleware_app()
@@ -1083,7 +1091,7 @@ class TestChangePassword:
     ):
         """Reject an over-72-byte new password as 422 first; bcrypt would raise mid-request."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
         original = credential_store.store[admin.id]
 
         app = _build_middleware_app()
@@ -1172,7 +1180,7 @@ class TestHostedLogoutRoute:
     ):
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         admin = seed_admin(patched_repos, credential_store, "admin@gaia.dev")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
 
         app = _build_user_route_app()
         client = await _client(app)
@@ -1256,7 +1264,7 @@ class TestSessionCookies:
         monkeypatch.setattr(settings, "ENV", "selfhost")
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         admin = seed_admin(patched_repos, credential_store, "admin@gaia.dev")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
         client = await _client(_build_user_route_app())
         async with client:
             client.cookies.set("gaia_session", token)
@@ -1278,7 +1286,7 @@ class TestSessionCookies:
 class TestSessionTokens:
     async def test_roundtrip_returns_user_id(self, _instance_secret):
         user_id = str(uuid4())
-        token = await issue_session_token(user_id)
+        token = await issue_session_token(user_id, 0)
         assert await resolve_session_token(token) == user_id
 
     async def test_expired_token_rejected(self, _instance_secret):
@@ -1290,7 +1298,7 @@ class TestSessionTokens:
         assert await resolve_session_token(expired) is None
 
     async def test_tampered_signature_rejected(self, _instance_secret):
-        token = await issue_session_token("u1")
+        token = await issue_session_token("u1", 0)
         head, payload, sig = token.split(".")
         tampered = f"{head}.{payload}.{'0' if sig[0] != '0' else '1'}{sig[1:]}"
         assert await resolve_session_token(tampered) is None
@@ -1306,7 +1314,7 @@ class TestSessionTokens:
     async def test_resolving_a_session_decodes_the_token_once(self, _instance_secret, monkeypatch):
         from app.utils import local_auth_utils
 
-        token = await issue_session_token("u-once")
+        token = await issue_session_token("u-once", 0)
         real_decode = local_auth_utils.jwt.decode
         decodes: list[str] = []
 
@@ -1324,7 +1332,7 @@ class TestSessionTokens:
     ):
         from app.utils import local_auth_utils
 
-        token = await issue_session_token("u-warm")
+        token = await issue_session_token("u-warm", 0)
 
         # Simulate a fresh process: cache empty even though issue just ran.
         monkeypatch.setattr(local_auth_utils, "_resolved_secret", None)
@@ -1343,7 +1351,7 @@ class TestLocalMiddlewareDispatch:
     ):
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         admin = seed_admin(patched_repos, credential_store, "admin@gaia.dev")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
 
         app = _build_middleware_app()
         client = await _client(app)
@@ -1361,7 +1369,7 @@ class TestLocalMiddlewareDispatch:
     ):
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         admin = seed_admin(patched_repos, credential_store, "admin@gaia.dev")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
 
         app = _build_middleware_app()
         client = await _client(app)
@@ -1414,7 +1422,7 @@ class TestLocalMiddlewareDispatch:
     ):
         """Authenticate nobody for a token naming a deleted user, same as the WorkOS path."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
-        ghost_token = await issue_session_token(str(ObjectId()))
+        ghost_token = await issue_session_token(str(ObjectId()), 0)
 
         app = _build_middleware_app()
         client = await _client(app)
@@ -1460,7 +1468,7 @@ class TestLocalWebSocketAuth:
     ):
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         admin = seed_admin(patched_repos, credential_store, "admin@gaia.dev")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
 
         from app.api.v1.dependencies.oauth_dependencies import get_current_user_ws
 
@@ -1490,7 +1498,7 @@ class TestLocalWebSocketAuth:
     ):
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         admin = seed_admin(patched_repos, credential_store, "admin@gaia.dev")
-        token = await issue_session_token(admin.id)
+        token = await issue_session_token(admin.id, 0)
 
         from app.api.v1.dependencies.oauth_dependencies import get_current_user_ws
 
@@ -1513,3 +1521,296 @@ class TestLocalWebSocketAuth:
             await get_current_user_ws(websocket)
 
         assert exc_info.value.code == fastapi_status.WS_1008_POLICY_VIOLATION
+
+
+# ---------------------------------------------------------------------------
+# What each credential endpoint leaves behind: wide event, audit trail, cookie
+# ---------------------------------------------------------------------------
+
+
+async def _post_as_router(path: str, json: dict[str, str]) -> tuple[httpx.Response, dict]:
+    """POST to the bare auth router inside a wide-event boundary; return the response and event."""
+    async with captured_wide_event() as live:
+        client = await _client(_build_router_app())
+        async with client:
+            response = await client.post(path, json=json)
+        event = dict(live)  # before the boundary stamps its own outcome on exit
+    return response, event
+
+
+def _session_cookie(response: httpx.Response) -> Morsel[str]:
+    return SimpleCookie(response.headers["set-cookie"])["gaia_session"]
+
+
+def _token_version(token: str) -> int:
+    return int(jwt.decode(token, TEST_SECRET, algorithms=[JWT_ALGORITHM])["ver"])
+
+
+@pytest.mark.integration
+class TestSignupTrail:
+    async def test_the_first_account_is_audited_as_admin_and_named_from_its_email(
+        self, patched_repos, credential_store, _instance_secret
+    ):
+        response, event = await _post_as_router(
+            "/api/v1/auth/signup", {"email": "owner@gaia.dev", "password": TEST_PASSWORD}
+        )
+
+        assert response.status_code == 201, response.text
+        [user] = patched_repos.created
+        assert user.name == "owner"
+        assert (event["operation"], event["email"], event["client_ip"]) == (
+            "local_signup",
+            "owner@gaia.dev",
+            "127.0.0.1",
+        )
+        assert event["outcome"] == "success"
+        assert event["audit"] == [
+            {"msg": "account created", "actor": user.id, "mode": "local", "role": "admin"}
+        ]
+        cookie = _session_cookie(response)
+        assert (cookie["httponly"], cookie["samesite"], cookie["path"]) == (True, "lax", "/")
+        assert cookie["max-age"] == str(SESSION_TTL_SECONDS)
+        assert _token_version(cookie.value) == 0
+
+    async def test_a_closed_instance_audits_the_refused_email(
+        self, patched_repos, credential_store, _instance_secret
+    ):
+        seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+
+        response, event = await _post_as_router(
+            "/api/v1/auth/signup", {"email": "stranger@gaia.dev", "password": TEST_PASSWORD}
+        )
+
+        assert response.status_code == 403
+        assert response.json()["message"] == (
+            "Signing up here needs an invite from this instance's administrator"
+        )
+        assert event["audit"] == [
+            {
+                "msg": "signup rejected — registration closed",
+                "actor": AUDIT_ACTOR_UNAUTHENTICATED,
+                "email": "stranger@gaia.dev",
+            }
+        ]
+
+    async def test_a_member_keeps_the_name_they_signed_up_with(
+        self, patched_repos, credential_store, invite_store, settings_store, _instance_secret
+    ):
+        seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+        invite_store.add("named")
+
+        response, _ = await _post_as_router(
+            "/api/v1/auth/signup",
+            {"email": "kid@gaia.dev", "password": TEST_PASSWORD, "name": "Kid", "invite": "named"},
+        )
+
+        assert response.status_code == 201, response.text
+        assert patched_repos.by_email["kid@gaia.dev"].name == "Kid"
+
+    async def test_a_cleanup_that_fails_is_warned_not_masked(
+        self, patched_repos, credential_store, invite_store, settings_store, _instance_secret
+    ):
+        from app.db.repositories.users import user_repository
+
+        seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+        invite_store.add("doomed")
+        credential_store.create.side_effect = RuntimeError("mongo write failed")
+
+        with patch.object(
+            user_repository, "delete", AsyncMock(side_effect=RuntimeError("delete failed"))
+        ):
+            response, event = await _post_as_router(
+                "/api/v1/auth/signup",
+                {"email": "kid@gaia.dev", "password": TEST_PASSWORD, "invite": "doomed"},
+            )
+
+        assert response.status_code == 500
+        orphan = patched_repos.by_email["kid@gaia.dev"]
+        assert event["warnings"] == [
+            {
+                "msg": "signup compensating account delete failed",
+                "user": {"id": orphan.id},
+                "error": "delete failed",
+                "error_type": "RuntimeError",
+            }
+        ]
+
+
+@pytest.mark.integration
+class TestLoginTrail:
+    @pytest.fixture
+    def admin(self, patched_repos, credential_store) -> UserDocument:
+        return seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+
+    async def test_a_login_is_audited_and_carries_the_current_session_version(
+        self, admin, credential_store, _instance_secret
+    ):
+        credential_store.store[admin.id] = credential_store.store[admin.id].model_copy(
+            update={"token_version": 3}
+        )
+
+        response, event = await _post_as_router(
+            "/api/v1/auth/login", {"email": "admin@gaia.dev", "password": TEST_PASSWORD}
+        )
+
+        assert response.status_code == 200, response.text
+        assert (event["operation"], event["email"], event["client_ip"]) == (
+            "local_login",
+            "admin@gaia.dev",
+            "127.0.0.1",
+        )
+        assert event["outcome"] == "success"
+        assert event["audit"] == [{"msg": "logged in", "actor": admin.id, "mode": "local"}]
+        assert _token_version(_session_cookie(response).value) == 3
+
+    async def test_a_failed_login_is_audited_against_the_attempted_email(
+        self, admin, _instance_secret
+    ):
+        response, event = await _post_as_router(
+            "/api/v1/auth/login", {"email": "admin@gaia.dev", "password": "wrong-password"}
+        )
+
+        assert response.status_code == 401
+        assert event["audit"] == [
+            {"msg": "login failed", "actor": AUDIT_ACTOR_UNAUTHENTICATED, "email": "admin@gaia.dev"}
+        ]
+
+    @pytest.mark.parametrize("failure", ["unknown_email", "no_credential", "wrong_password"])
+    async def test_every_login_failure_costs_exactly_one_bcrypt_verify(
+        self, admin, credential_store, _instance_secret, monkeypatch, failure
+    ):
+        import app.api.v1.endpoints.auth_local as auth_local_module
+
+        # A fresh process: the timing-equalizer digest is built on first use.
+        monkeypatch.setattr(auth_local_module, "_dummy_digest", None)
+        if failure == "no_credential":
+            del credential_store.store[admin.id]
+        verifies = MagicMock(wraps=bcrypt_lib.checkpw)
+        monkeypatch.setattr(auth_local_module.bcrypt, "checkpw", verifies)
+        email = "nobody@gaia.dev" if failure == "unknown_email" else "admin@gaia.dev"
+        password = "wrong-password" if failure == "wrong_password" else TEST_PASSWORD
+
+        response, _ = await _post_as_router(
+            "/api/v1/auth/login", {"email": email, "password": password}
+        )
+
+        assert response.status_code == 401
+        assert verifies.call_count == 1
+
+    async def test_an_over_cap_password_is_warned_and_folded_into_the_uniform_401(self, admin):
+        import app.api.v1.endpoints.auth_local as auth_local_module
+
+        async with captured_wide_event() as event:
+            with pytest.raises(HTTPException) as refused:
+                await auth_local_module.login(
+                    request=MagicMock(),
+                    body=SimpleNamespace(
+                        email="admin@gaia.dev", password=PASSWORD_OVER_BCRYPT_LIMIT
+                    ),
+                )
+
+        assert refused.value.status_code == 401
+        assert {"msg": "over-cap password folded into uniform 401", "error_type": "ValueError"} in (
+            event["warnings"]
+        )
+
+
+@pytest.mark.integration
+class TestChangePasswordTrail:
+    @pytest.fixture
+    def admin(self, patched_repos, credential_store) -> UserDocument:
+        return seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+
+    async def test_a_rotation_is_audited_and_reissues_the_callers_session(
+        self, admin, credential_store, _instance_secret, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        token = await issue_session_token(admin.id, 0)
+
+        async with captured_wide_event() as live:
+            client = await _client(_build_middleware_app())
+            async with client:
+                client.cookies.set("gaia_session", token)
+                response = await client.patch(
+                    "/api/v1/auth/password",
+                    json={"current_password": TEST_PASSWORD, "new_password": "brand-new-password"},
+                )
+            event = dict(live)
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {"status": "ok"}
+        assert (event["operation"], event["client_ip"]) == ("local_change_password", "127.0.0.1")
+        assert event["outcome"] == "success"
+        assert event["audit"] == [{"msg": "password changed", "actor": admin.id}]
+        assert credential_store.store[admin.id].token_version == 1
+        assert _token_version(_session_cookie(response).value) == 1
+        assert await resolve_session_token(_session_cookie(response).value) == admin.id
+
+    async def test_an_unverifiable_current_password_is_rejected_and_changes_nothing(
+        self, admin, credential_store
+    ):
+        import app.api.v1.endpoints.auth_local as auth_local_module
+
+        before = credential_store.store[admin.id]
+        async with captured_wide_event() as event:
+            with pytest.raises(HTTPException) as refused:
+                await auth_local_module.change_password(
+                    request=MagicMock(),
+                    body=SimpleNamespace(
+                        current_password=PASSWORD_OVER_BCRYPT_LIMIT,
+                        new_password="brand-new-password",
+                    ),
+                    user_id=admin.id,
+                    _user=MagicMock(),
+                )
+
+        assert refused.value.status_code == 401
+        assert refused.value.detail == {
+            "code": INVALID_CREDENTIALS,
+            "message": "Current password is incorrect",
+        }
+        assert credential_store.store[admin.id] == before
+        assert {"msg": "over-cap password folded into uniform 401", "error_type": "ValueError"} in (
+            event["warnings"]
+        )
+        assert event["audit"] == [{"msg": "password change rejected", "actor": admin.id}]
+
+    async def test_a_refused_new_hash_is_a_422_that_keeps_the_old_password(
+        self, admin, credential_store
+    ):
+        import app.api.v1.endpoints.auth_local as auth_local_module
+
+        before = credential_store.store[admin.id]
+        with pytest.raises(HTTPException) as refused:
+            await auth_local_module.change_password(
+                request=MagicMock(),
+                body=SimpleNamespace(
+                    current_password=TEST_PASSWORD, new_password=PASSWORD_OVER_BCRYPT_LIMIT
+                ),
+                user_id=admin.id,
+                _user=MagicMock(),
+            )
+
+        assert refused.value.status_code == 422
+        assert refused.value.detail == {
+            "message": "Password must be at most 72 bytes (UTF-8 encoded)"
+        }
+        assert credential_store.store[admin.id] == before
+
+    async def test_a_rotation_that_did_not_persist_is_a_500_not_a_success(
+        self, admin, credential_store
+    ):
+        import app.api.v1.endpoints.auth_local as auth_local_module
+
+        credential_store.update.side_effect = None
+        credential_store.update.return_value = None
+        with pytest.raises(HTTPException) as refused:
+            await auth_local_module.change_password(
+                request=MagicMock(),
+                body=SimpleNamespace(current_password=TEST_PASSWORD, new_password="brand-new-pw"),
+                user_id=admin.id,
+                _user=MagicMock(),
+            )
+
+        assert refused.value.status_code == 500
+        assert refused.value.detail == {"message": "Password update did not persist"}

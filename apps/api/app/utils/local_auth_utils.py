@@ -41,7 +41,7 @@ async def _session_secret() -> str:
     return _resolved_secret
 
 
-async def issue_session_token(user_id: str, token_version: int = 0) -> str:
+async def issue_session_token(user_id: str, token_version: int) -> str:
     """Mint a session JWT for a user id, valid for the session TTL.
 
     The version embeds as ver and is checked on every request, so bumping it
@@ -109,7 +109,6 @@ async def resolve_session_token(token: str) -> str | None:
         return user_id if token_ver_int == 0 else None
     if credential.disabled_at is not None:
         return None
-    current_ver = int(getattr(credential, "token_version", 0) or 0)
-    if token_ver_int != current_ver:
+    if token_ver_int != credential.token_version:
         return None
     return user_id

@@ -34,6 +34,7 @@ from app.models.payment_models import (
     PlanResponse,
     PlanTier,
     PlanType,
+    SubscriptionDetails,
     SubscriptionDocument,
     SubscriptionStatus,
     UserSubscriptionStatus,
@@ -1035,7 +1036,7 @@ class TestGetCachedPlanType:
             plan = await payment_service.get_cached_plan_type(FAKE_USER_ID)
 
         assert plan is PlanType.PRO
-        assert event["payment"]["plan_source"] == "unenforced"
+        assert event["payment"] == {"plan_type": "pro", "plan_source": "unenforced"}
 
     async def test_the_status_the_web_reads_is_pro_where_plans_are_not_enforced(
         self, payment_service, mock_subscription_repository, monkeypatch
@@ -1047,8 +1048,31 @@ class TestGetCachedPlanType:
 
         status = await payment_service.get_user_subscription_status(FAKE_USER_ID)
 
-        assert status.plan_type is PlanType.PRO
-        assert status.can_upgrade is False
+        assert status.model_dump() == {
+            "user_id": FAKE_USER_ID,
+            "current_plan": None,
+            "subscription": None,
+            "is_subscribed": False,
+            "days_remaining": None,
+            "can_upgrade": False,
+            "can_downgrade": False,
+            "has_ever_subscribed": False,
+            "has_subscription": False,
+            "plan_type": PlanType.PRO,
+            "status": None,
+        }
+
+    async def test_the_details_the_agent_reads_are_pro_where_plans_are_not_enforced(
+        self, payment_service, mock_subscription_repository, monkeypatch
+    ):
+        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            side_effect=AssertionError("no subscription read")
+        )
+
+        details = await payment_service.get_subscription_details(FAKE_USER_ID)
+
+        assert details == SubscriptionDetails(plan_type=PlanType.PRO, is_subscribed=False)
 
 
 @pytest.mark.unit
@@ -2415,4 +2439,8 @@ class TestDodoPaymentServiceInit:
                 # Init failure leaves the service without a usable client
                 assert not hasattr(svc, "client")
                 # The failure must be surfaced in the logs, not swallowed
-                mock_log.error.assert_called_once()
+                mock_log.error.assert_called_once_with(
+                    f"{LogTag.PAYMENT} Failed to instantiate dodo payments",
+                    error="Bad API key",
+                    error_type="Exception",
+                )
