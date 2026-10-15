@@ -4662,8 +4662,8 @@
     "term": "Instinct",
     "metaTitle": "Was ist Instinct? SMS-KI-Agent erklärt",
     "metaDescription": "Instinct ist der SMS-Agent von Spear Street für Reisen und Besorgungen per Text. Erfahren Sie, wie er arbeitet und wo GAIA bei Postfach und Kalender hilft.",
-    "definition": "Instinct ist ein KI-Agent von Spear Street, der Reisebuchungen und Alltagsbesorgungen per SMS und WhatsApp erledigt. Sie schreiben, was Sie brauchen, und er kümmert sich um den Rest.",
-    "extendedDescription": "Instinct arbeitet dort, wo Sie ohnehin schreiben. Es gibt keine App zu lernen und kein Dashboard zu prüfen. Sie senden eine Nachricht zu einem Flug, einer Buchung oder einer Besorgung, und der Agent kümmert sich darum.\n\nDas Produkt wuchs über eine Warteliste, mit klarem Fokus auf Reisen und Besorgungen, bevor es sich erweiterte. Dieser enge Fokus ist der Punkt: Instinct will der schnellste Weg sein, eine Aufgabe per Text abzugeben.\n\nSMS-Agenten tauschen Tiefe gegen Komfort. Sie sind stark bei einzelnen Aufgaben mit klarem Ergebnis, etwa einer Reisebuchung. Sie lesen weder Ihr Postfach, noch führen sie Ihren Kalender oder erinnern sich daran, wie Sie über Wochen und Monate arbeiten.",
+    "definition": "Instinct ist ein KI-Agent von Spear Street für Reisebuchungen und Alltagsbesorgungen per Text oder Anruf. Sie erreichen ihn über WhatsApp, iMessage oder E-Mail, und er arbeitet in Ihren verbundenen Apps und Geräten.",
+    "extendedDescription": "Instinct arbeitet dort, wo Sie ohnehin schreiben. Es gibt keine App zu lernen und kein Dashboard zu prüfen. Sie senden eine Nachricht zu einem Flug, einer Buchung oder einer Besorgung, und der Agent kümmert sich darum.\n\nDas Produkt wuchs über eine Warteliste, mit klarem Fokus auf Reisen und Besorgungen, bevor es sich erweiterte. Dieser enge Fokus ist der Punkt: Instinct will der schnellste Weg sein, eine Aufgabe per Text abzugeben.\n\nText-Agenten tauschen Offenheit gegen Komfort. Instinct verbindet E-Mail, Nachrichten, Kalender und Geräte, und speichert Ihre Vorlieben. Der Preis ist Kontrolle: Es ist ein geschlossenes Produkt nur auf Einladung, das Sie weder prüfen noch selbst betreiben können.",
     "keywords": [
       "instinct ki",
       "was ist instinct ki",
@@ -4671,7 +4671,7 @@
       "spear street instinct",
       "instinct warteliste"
     ],
-    "howGaiaUsesIt": "GAIA trifft Sie an denselben Orten: Es arbeitet in WhatsApp und Telegram, nicht nur im Web. Der Unterschied ist der Umfang. GAIA liest außerdem Ihre E-Mails, führt Ihren Kalender und behält den Kontext von allem, sodass eine gebuchte Reise mit Ihrem Plan, Ihrem Postfach und Ihren Aufgaben verbunden ist, ohne dass Sie sich wiederholen.",
+    "howGaiaUsesIt": "GAIA trifft Sie an denselben Orten: Es arbeitet in WhatsApp und Telegram, nicht nur im Web. Der Unterschied ist Kontrolle. GAIA ist Open Source und selbst hostbar mit über 50 Integrationen, also verbindet sich eine gebuchte Reise mit Ihrem Plan, Ihrem Postfach und Ihren Aufgaben in einem System, das Sie prüfen können.",
     "faqs": [
       {
         "question": "Was macht Instinct?",
@@ -4685,10 +4685,10 @@
   },
   "openai-dots": {
     "term": "OpenAI Dots",
-    "metaTitle": "Was ist OpenAI Dots? Leichter Agent erklärt",
-    "metaDescription": "Dots ist die leichte Agentenoberfläche von OpenAI für schnelle Aufgaben im Chat. Erfahren Sie, was sie abdeckt und wann ein voller Assistent besser passt.",
-    "definition": "Dots ist die leichte Agentenoberfläche von OpenAI für schnelle Aufgaben direkt im Chat. Sie ist auf Tempo gebaut, nicht darauf, Ihren ganzen Arbeitsablauf zu tragen.",
-    "extendedDescription": "Die Idee hinter Dots ist einfach: Nicht jede Anfrage braucht einen vollen Agenten mit Gedächtnis und Werkzeugen. Manchmal wollen Sie eine schnelle Antwort oder eine kleine Aktion, und eine leichte Oberfläche bringt Sie schneller ans Ziel.\n\nStand 2026 entwickelt sich die Oberfläche noch, behandeln Sie also alles, was Sie über Dots lesen, als Momentaufnahme, nicht als Datenblatt.\n\nLeichte Agenten teilen eine Grenze: Sie starten jedes Mal neu. Sie tragen weder Ihren E-Mail-Verlauf noch Ihren Kalender oder Ihre Arbeitsmuster von einer Aufgabe zur nächsten. Diese Lücke füllt ein voller Assistent.",
+    "metaTitle": "Was ist OpenAI Dots? Dauerhafter Agent erklärt",
+    "metaDescription": "Dots ist ein dauerhafter Agent auf OpenAIs Cloud. Erfahren Sie, was er abdeckt und wann ein offener Assistent besser passt.",
+    "definition": "Dots ist OpenAIs dauerhafter Agent für laufende Arbeit. Er lernt Ihre Vorlieben und Ziele, läuft auf seinem eigenen Cloud-Computer und verbindet Tausende Apps über ChatGPT, Slack und Teams.",
+    "extendedDescription": "Die Idee hinter Dots ist einfach: ein Agent, der nach dem Chat am Job bleibt. Er behält Ihre Ziele, lernt aus Feedback und arbeitet im Hintergrund weiter.\n\nStand 2026 entwickelt sich die Oberfläche noch, behandeln Sie also alles, was Sie über Dots lesen, als Momentaufnahme, nicht als Datenblatt.\n\nDots teilt eine Grenze mit jedem geschlossenen Agenten: Er läuft auf OpenAIs Cloud, also können Sie den Code weder prüfen noch selbst hosten. Diese Kontrolllücke füllt ein offener Assistent.",
     "keywords": [
       "openai dots",
       "was ist openai dots",
@@ -4696,15 +4696,15 @@
       "openai dots erklärt",
       "dots assistent"
     ],
-    "howGaiaUsesIt": "GAIA ist der volle Assistent für Arbeit, die Werkzeuge und Zeit überspannt. Es verbindet sich mit über 50 Tools, baut ein graphbasiertes Gedächtnis Ihrer Arbeitsweise auf und handelt proaktiv in E-Mail und Kalender. Wenn Dots Ihre schnellen Fragen löst, trägt GAIA alles, was Kontext braucht.",
+    "howGaiaUsesIt": "GAIA ist der offene Assistent für Arbeit über Tools und Zeit. Es verbindet sich mit über 50 Tools, baut ein graphbasiertes Gedächtnis Ihrer Arbeitsweise auf und läuft auf Code, den Sie prüfen und selbst hosten können.",
     "faqs": [
       {
         "question": "Was ist OpenAI Dots?",
-        "answer": "Dots ist eine leichte Agentenoberfläche für schnelle Aufgaben im Chat. Es ist die schnelle Spur, nicht der volle Assistent."
+        "answer": "Dots ist ein dauerhafter Agent, der nach dem Chat weiterarbeitet. Es ist die immer aktive Spur, nicht der offene Assistent."
       },
       {
         "question": "Wie unterscheidet sich Dots von einem vollen KI-Assistenten?",
-        "answer": "Ein voller Assistent behält Gedächtnis über Aufgaben hinweg, verbindet sich mit E-Mail und Kalender und handelt, bevor Sie fragen. Dots löst das Schnelle und Einmalige; GAIA trägt den Ablauf darum herum."
+        "answer": "Beide erinnern sich und handeln. Der Unterschied ist Kontrolle: Dots läuft geschlossen auf OpenAIs Cloud, und GAIA ist Open Source und selbst hostbar mit Gedächtnis unter Ihrer Kontrolle."
       }
     ]
   },
@@ -4775,7 +4775,7 @@
     "faqs": [
       {
         "question": "Wie viel kostet OMI?",
-        "answer": "Die OMI-Hardware ist je nach Modell günstige Open-Source-Hardware. Die Software ist Open Source."
+        "answer": "OMI ist günstige offene Hardware, und die Software ist Open Source zum Prüfen und Selbst-Hosten."
       },
       {
         "question": "Ist OMI wirklich Open Source?",

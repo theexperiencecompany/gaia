@@ -3629,9 +3629,9 @@
   },
   "instinct": {
     "name": "Instinct",
-    "tagline": "Les courses par texto, c'est bien. Le contexte les fixe.",
+    "tagline": "Des courses par texto, sans le code ouvert.",
     "metaTitle": "Meilleure alternative à Instinct : IA SMS ouverte",
-    "metaDescription": "Besoin d'une alternative à Instinct avec plus de portée ? GAIA répond dans WhatsApp et Telegram, et ajoute l'aide ouverte d'e-mails et d'agenda.",
+    "metaDescription": "Besoin d'une alternative à Instinct que vous pouvez voir ? GAIA répond dans WhatsApp et Telegram, et ajoute du code ouvert, plus de 50 outils et l'auto-hébergement.",
     "keywords": [
       "alternative instinct",
       "alternative instinct ia",
@@ -3642,13 +3642,13 @@
       "alternative instinct 2026"
     ],
     "painPoints": [
-      "Instinct traite une course à la fois par texto, sans vue sur votre boîte mail ni votre calendrier",
+      "Instinct gère les courses par texto et appel, avec votre contexte dans un produit fermé",
       "Accès d'époque liste d'attente qui continue de bouger",
-      "Voyages et courses couverts, mais tri des e-mails et planification ailleurs",
+      "Voyages et courses sont le focus, donc l'automation large sur des dizaines d'outils vit ailleurs",
       "Produit fermé sans option auto-hébergée ni feuille de route publique",
-      "Le contexte repart à zéro par conversation au lieu de grandir sur des semaines"
+      "Préférences et historique restent dans un système que vous ne pouvez ni voir ni auto-héberger"
     ],
-    "whyPeopleLook": "Instinct prouve que texter une course bat ouvrir une appli. Mais les utilisateurs dépassent le canal unique : la course a encore besoin de vérifications d'agenda, de contexte de boîte mail et d'un suivi qu'un fil de texto ne voit pas. Chercher une alternative à Instinct, c'est vouloir la même habitude du texto adossée à un assistant qui connaît déjà votre agenda et votre boîte mail.",
+    "whyPeopleLook": "Instinct prouve que texter une course bat ouvrir une appli. Mais les utilisateurs dépassent le canal fermé : le contexte reste dans un produit que vous ne pouvez ni voir ni auto-héberger. Chercher une alternative à Instinct, c'est vouloir la même habitude du texto avec du code ouvert, plus d'intégrations et une mémoire que vous contrôlez.",
     "gaiaReplaces": [
       "Demandes de voyage et courses que vous textez à Instinct",
       "Copie des détails de réservation dans votre calendrier à la main",
@@ -3691,17 +3691,17 @@
       {
         "feature": "Interface",
         "gaia": "Web, bureau, mobile, plus bots WhatsApp et Telegram",
-        "competitor": "Conversations par SMS et WhatsApp"
+        "competitor": "Texto ou appel sur WhatsApp, iMessage et e-mail"
       },
       {
         "feature": "E-mails et calendrier",
         "gaia": "Lit Gmail, gère Google Calendar, relie les deux à chaque demande",
-        "competitor": "Concentré sur la course en cours, aucun accès à la boîte mail"
+        "competitor": "Relie e-mails, messages, agenda et appareils"
       },
       {
         "feature": "Mémoire",
         "gaia": "Mémoire en graphe qui apprend vos habitudes dans tous les outils",
-        "competitor": "Historique de conversation dans le fil de textos"
+        "competitor": "Garde vos préférences et agit dans les applis liées"
       },
       {
         "feature": "Ouverture",
@@ -3717,9 +3717,9 @@
   },
   "openai-dots": {
     "name": "OpenAI Dots",
-    "tagline": "La voie rapide, c'est génial jusqu'à ce qu'il faille de la mémoire.",
+    "tagline": "Une aide persistante qui reste dans le cloud d'OpenAI.",
     "metaTitle": "Meilleure alternative à OpenAI Dots : OS IA complet",
-    "metaDescription": "Besoin de plus qu'un agent léger ? GAIA est l'alternative ouverte à OpenAI Dots avec mémoire, plus de 50 outils et action proactive.",
+    "metaDescription": "Envie d'une aide style Dots en ouvert ? GAIA est l'alternative ouverte à OpenAI Dots avec mémoire, plus de 50 outils et auto-hébergement.",
     "keywords": [
       "alternative openai dots",
       "remplacement openai dots",
@@ -3729,15 +3729,15 @@
       "alternative open source dots"
     ],
     "painPoints": [
-      "Dots repart de zéro à chaque fois, sans mémoire entre les tâches",
-      "Limité à ce que la surface du chat expose, sans connexion profonde",
-      "N'atteint ni votre boîte mail ni votre calendrier pour agir avec contexte",
+      "Mémoire persistante qui vit dans le cloud fermé d'OpenAI, pas sous votre contrôle",
+      "Lié à ChatGPT, Slack et Teams, avec le texto encore à venir",
+      "Votre agent tourne sur les serveurs d'OpenAI, donc votre contexte reste sur leur infra",
       "Fermé et encore en évolution, donc les capacités bougent",
-      "Réponses rapides uniquement : le suivi, c'est votre travail"
+      "Pas de code ouvert ni d'option auto-hébergée pour le travail privé ou réglé"
     ],
-    "whyPeopleLook": "Dots est parfait jusqu'à ce que la tâche demande du contexte. Les utilisateurs heurtent le mur quand une demande rapide dépend d'un fil d'e-mails, d'un événement de calendrier ou d'une décision de la semaine dernière, dont Dots ne voit rien. Chercher une alternative à OpenAI Dots, c'est vouloir la même vitesse avec de la mémoire : un assistant qui se souvient, se connecte aux outils et finit le travail.",
+    "whyPeopleLook": "Dots prouve que l'aide toujours active sert. Les utilisateurs cherchent une alternative quand ils veulent la même persistance avec du code ouvert : un assistant qui se souvient, se relie aux outils et tourne sur une infra qu'ils contrôlent.",
     "gaiaReplaces": [
-      "Tâches rapides qui voudraient se souvenir du contexte de la semaine",
+      "Tâches toujours actives à faire tourner sur une infra que vous contrôlez",
       "Travail qui traverse e-mails plus calendrier plus tâches",
       "Suivis qui doivent se faire, pas juste se répondre",
       "Automatisations que vous reconstruisez de zéro à chaque fois"
@@ -3750,14 +3750,14 @@
       "Marche dans WhatsApp et Telegram, pas dans une seule surface"
     ],
     "migrationSteps": [
-      "Notez quelles tâches Dots redemandent du contexte que Dots ne voit pas",
+      "Listez les tâches Dots à faire tourner sur une infra que vous contrôlez",
       "Connectez Gmail et Calendar pour donner ce contexte manquant à GAIA",
       "Reconstruisez votre demande Dots la plus répétée en flux GAIA",
       "Laissez GAIA l'exécuter en proactif au lieu de demander à chaque fois"
     ],
     "faqs": [
       {
-        "answer": "Un agent léger traite des tâches rapides isolées sans mémoire. GAIA porte le contexte entre les tâches, se connecte à plus de 50 outils et agit avant que vous demandiez.",
+        "answer": "Dots est un agent persistant sur le cloud d'OpenAI : il apprend vos préférences et continue entre les chats. GAIA est l'alternative ouverte avec mémoire, plus de 50 outils et auto-hébergement.",
         "question": "En quoi GAIA diffère d'OpenAI Dots ?"
       },
       {
@@ -3773,22 +3773,22 @@
       {
         "feature": "Approche centrale",
         "gaia": "OS de productivité complet avec mémoire, outils et suivi",
-        "competitor": "Petites tâches réglées dans la surface de chat"
+        "competitor": "Agent persistant dans ChatGPT, Slack et Teams"
       },
       {
         "feature": "Mémoire",
         "gaia": "Mémoire en graphe qui grandit à chaque échange",
-        "competitor": "Repart de zéro, aucune mémoire entre tâches"
+        "competitor": "Agent persistant qui apprend vos préférences et vos buts au fil du temps"
       },
       {
         "feature": "Intégrations",
         "gaia": "Plus de 50 intégrations sur e-mails, calendrier, tâches et chat",
-        "competitor": "Limité à ce que le chat expose"
+        "competitor": "Relie plus de 4000 apps, via ChatGPT, Slack et Teams"
       },
       {
         "feature": "Proactivité",
         "gaia": "Surveille vos outils et agit avant que vous demandiez",
-        "competitor": "Répond quand vous le sollicitez"
+        "competitor": "Avance vers les buts seul et rapporte les résultats pour relecture"
       },
       {
         "feature": "Ouverture",

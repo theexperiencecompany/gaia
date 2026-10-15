@@ -10792,16 +10792,16 @@
   "instinct": {
     "name": "Instinct",
     "tagline": "심부름을 문자로 넘기기",
-    "description": "Instinct는 SMS로 여행과 심부름을 처리합니다. GAIA는 같은 문자 습관에 이메일과 캘린더와 도구를 아우르는 기억을 더합니다.",
-    "metaTitle": "GAIA와 Instinct 비교. AI 기반과 SMS 대행",
-    "metaDescription": "문자로 돕는 일에서 GAIA와 Instinct를 비교합니다. Instinct는 SMS로 심부름하고 GAIA는 이메일, 캘린더, 열린 기억을 더합니다. 어울리는 경우와 시작 방법도 비교합니다.",
+    "description": "Instinct는 문자와 통화로 여행과 심부름을 맡습니다. GAIA는 같은 습관에 열린 코드와 50개가 넘는 연동과 셀프호스팅을 더합니다.",
+    "metaTitle": "GAIA와 Instinct 비교. 열린 AI 기반과 문자 대행",
+    "metaDescription": "문자로 돕는 일에서 GAIA와 Instinct를 비교합니다. Instinct는 문자와 통화로 심부름하고 GAIA는 열린 코드와 50개가 넘는 도구와 셀프호스팅을 더합니다.",
     "keywords": [
       "GAIA Instinct 비교",
       "Instinct GAIA",
       "Instinct SMS 비교",
       "Instinct AI 후기"
     ],
-    "intro": "Instinct가 잘하는 것은 하나, 심부름을 문자로 넘기는 일입니다. 여행이나 부탁을 보내면 오가는 과정을 맡습니다. GAIA는 그 습관을 존중하고 WhatsApp과 Telegram에서도 맞습니다. 차이는 문자 둘레에서 일어납니다. GAIA는 받은함을 읽고 캘린더를 보며 내 일하는 방식을 기억하므로 심부름이 생활의 다른 부분과 이어집니다.",
+    "intro": "Instinct가 잘하는 것은 하나, 문자나 통화로 심부름을 넘기는 일입니다. WhatsApp이나 iMessage나 이메일로 닿고 이은 도구와 기기를 가로질러 돕니다. GAIA는 그 습관을 존중하고 WhatsApp과 Telegram에서도 맞습니다. 차이는 통제입니다. GAIA는 오픈소스이며 셀프호스팅할 수 있고 50개가 넘는 연동과 모든 도구에 걸친 기억을 가져 심부름이 일의 다른 부분과 속을 볼 수 있는 체계로 이어집니다.",
     "rows": [
       {
         "competitor": "문자로 여행 예약과 심부름을 진행합니다",
@@ -10809,17 +10809,17 @@
         "gaia": "이메일, 캘린더, 할 일, 대화에서 움직이는 생산성 OS"
       },
       {
-        "competitor": "SMS와 WhatsApp 대화",
+        "competitor": "WhatsApp과 iMessage와 이메일의 문자나 통화",
         "feature": "접점",
         "gaia": "웹, 데스크톱, 모바일에 WhatsApp과 Telegram 봇 추가"
       },
       {
-        "competitor": "눈앞의 심부름에 집중. 받은함은 안 봅니다",
+        "competitor": "이메일과 문자와 일정과 기기에 이어집니다",
         "feature": "이메일과 일정",
         "gaia": "Gmail을 읽고 구글 캘린더를 관리하며 요청마다 둘을 잇습니다"
       },
       {
-        "competitor": "문자의 흐름 안에 있는 기록",
+        "competitor": "취향을 담고 이은 도구들을 가로질러 움직입니다",
         "feature": "기억",
         "gaia": "모든 도구에서 습관을 배우는 그래프 기반 메모리"
       },
@@ -10845,48 +10845,48 @@
       "문자를 보낼 수 있으면 쓸 수 있습니다. 그만큼 쉽습니다",
       "여행과 심부름에 집중해서 경험이 흐트러지지 않습니다"
     ],
-    "verdict": "여행이나 심부름을 문자로 넘기는 일이 전부라면 Instinct를 고릅니다. 같은 문자 습관에 받은함도 캘린더도 버릇도 아는 조수를 곁들이고 싶다면 GAIA를 고릅니다.",
+    "verdict": "여행이나 심부름을 문자로 넘기는 일이 전부라면 Instinct를 고릅니다. 같은 문자 습관을 열려 있고 직접 둘 수 있는 체계로 넓게 쓰고 싶다면 GAIA를 고릅니다.",
     "faqs": [
       {
-        "answer": "그렇습니다. GAIA는 웹에 더해 WhatsApp과 Telegram에서 돌아가니 같은 방식으로 문자로 맡길 수 있습니다. 다른 점은 움직일 때 이메일과 캘린더도 함께 본다는 것입니다.",
+        "answer": "그렇습니다. GAIA는 웹에 더해 WhatsApp과 Telegram에서 돌아가니 같은 방식으로 문자로 맡길 수 있습니다. 차이는 열린 코드와 50개가 넘는 연동과 이은 도구마다의 기억입니다.",
         "question": "Instinct처럼 GAIA에 문자로 맡길 수 있나요."
       },
       {
-        "answer": "문자로 한 번의 심부름을 넘기는 속도는 Instinct가 빠릅니다. 일정이나 받은함이나 할 일에 닿는 심부름은 GAIA가 낫습니다. 맥락을 이미 쥐고 있기 때문입니다.",
+        "answer": "문자로 한 번의 심부름을 넘기는 속도는 Instinct가 빠릅니다. 같은 도움을 열려 있고 직접 둘 수 있는 체계로 넓게 쓰고 싶다면 GAIA가 낫습니다.",
         "question": "Instinct가 나은 경우는 언제인가요."
       }
     ]
   },
   "openai-dots": {
     "name": "OpenAI Dots",
-    "tagline": "대화 안의 가벼운 일",
-    "description": "OpenAI Dots는 가벼운 일을 위한 얇은 대행 화면입니다. GAIA는 기억과 도구가 필요한 일을 위한 온전한 조수입니다.",
-    "metaTitle": "GAIA와 OpenAI Dots 비교. 전체 OS와 가벼운 대행",
-    "metaDescription": "GAIA와 OpenAI Dots를 비교합니다. Dots는 가벼운 일의 얇은 화면이고 GAIA는 기억과 도구와 선제 행동을 더합니다. 어울리는 일과 시작 방법도 비교합니다.",
+    "tagline": "OpenAI 클라우드의 상시 실행 에이전트",
+    "description": "OpenAI Dots는 ChatGPT와 Slack과 Teams에서 일하는 지속형 에이전트입니다. GAIA는 속을 보고 직접 둘 수 있는 열린 조수입니다.",
+    "metaTitle": "GAIA와 OpenAI Dots 비교. 열린 AI와 닫힌 AI",
+    "metaDescription": "GAIA와 OpenAI Dots를 비교합니다. Dots는 OpenAI 클라우드의 지속형 에이전트이고 GAIA는 열려 있고 직접 둘 수 있는 대안입니다.",
     "keywords": [
       "GAIA OpenAI Dots 비교",
       "OpenAI Dots GAIA",
       "OpenAI Dots 비교"
     ],
-    "intro": "Dots는 OpenAI의 빠른 차선입니다. 대화 안의 가벼운 일, 무거운 설정 없음. 정말 편하고, 거기까지이기도 합니다. 어제의 맥락이나 받은함이나 캘린더가 필요한 일이 되는 순간 얇은 화면에는 설 터전이 없습니다. GAIA는 바로 그 일을 위해 만들어졌습니다. 내 일하는 방식을 기억하고 사는 도구에 연결되며, 답마다가 아닌 날마다 끝까지 합니다.",
+    "intro": "Dots는 OpenAI의 상시 실행 에이전트입니다. 취향과 목표를 배우고 자신의 클라우드 컴퓨터에서 일하며 ChatGPT와 Slack과 Teams를 통해 수천 개의 앱에 이어집니다. 그 지속은 참되고 OpenAI의 닫힌 클라우드 안에 있습니다. GAIA는 다른 길입니다. 오픈소스이며 셀프호스팅할 수 있어 기억과 길이 내 관리 아래에 남습니다. 사는 도구에 이어지고 웹과 모바일과 WhatsApp과 Telegram에서 돕니다.",
     "rows": [
       {
-        "competitor": "대화 화면 안의 가벼운 일",
+        "competitor": "ChatGPT와 Slack과 Teams 안의 지속형 에이전트",
         "feature": "방향",
         "gaia": "기억과 도구와 후속 조치를 갖춘 생산성 OS"
       },
       {
-        "competitor": "백지로 시작. 일을 넘기는 기억 없음",
+        "competitor": "취향과 목표를 때와 함께 배우는 지속형 에이전트",
         "feature": "기억",
         "gaia": "닿을 때마다 자라는 그래프 기반 메모리"
       },
       {
-        "competitor": "대화 화면이 내주는 범위에 한정",
+        "competitor": "4000개가 넘는 앱에 이어지며 ChatGPT와 Slack과 Teams로 닿습니다",
         "feature": "연동",
         "gaia": "이메일, 캘린더, 할 일, 대화의 50개 이상 연동"
       },
       {
-        "competitor": "부르면 답함",
+        "competitor": "스스로 목표를 좇고 결과를 가져와 함께 봅니다",
         "feature": "선제 대응",
         "gaia": "도구를 지켜보고 묻기 전에 움직임"
       },
@@ -10909,13 +10909,13 @@
       "하나의 대화가 아닌 WhatsApp과 Telegram에서 움직임"
     ],
     "competitorAdvantages": [
-      "이미 쓰는 대화 안에서 가볍게 맡기는 가장 빠른 길",
+      "대화가 끝나도 계속 일하는 상시 실행 에이전트",
       "OpenAI 제품이라 모델이 자라면 함께 자랍니다"
     ],
-    "verdict": "대화 안에서 가장 빠른 답이 좋다면 OpenAI Dots를 고릅니다. 기억이나 도구나 한 번의 답 너머의 후속 조치가 필요한 일이라면 GAIA를 고릅니다.",
+    "verdict": "ChatGPT와 Slack과 Teams 안의 상시 실행 에이전트라면 OpenAI Dots를 고릅니다. 열린 코드와 셀프호스팅과 직접 관리하는 기억을 원한다면 GAIA를 고릅니다.",
     "faqs": [
       {
-        "answer": "가벼운 대행은 한 번의 일을 회차를 넘기는 기억 없이 처리합니다. 온전한 조수는 맥락을 갖고 도구에 연결되며 묻기 전에 움직입니다.",
+        "answer": "Dots는 자신의 클라우드 컴퓨터를 가진 지속형 에이전트입니다. 취향을 배우고 목표를 쥐며 대화 사이에도 계속 일합니다. GAIA는 열린 대안입니다. 오픈소스이며 셀프호스팅할 수 있고 기억과 도구가 내 관리 아래에 있습니다.",
         "question": "Dots와 온전한 어시스턴트의 차이는 무엇인가요."
       },
       {

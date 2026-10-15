@@ -3629,9 +3629,9 @@
   },
   "instinct": {
     "name": "Instinct",
-    "tagline": "Besorgungen per Text sind schön. Kontext lässt sie haften.",
+    "tagline": "Besorgungen per Text, ohne den offenen Code.",
     "metaTitle": "Beste Instinct-Alternative: Open-Source SMS-KI",
-    "metaDescription": "Brauchen Sie eine Instinct-Alternative mit mehr Reichweite? GAIA antwortet in WhatsApp und Telegram, und fügt offene E-Mail- und Kalenderhilfe hinzu.",
+    "metaDescription": "Brauchen Sie eine Instinct-Alternative, die Sie prüfen können? GAIA antwortet in WhatsApp und Telegram, und fügt offenen Code, über 50 Tools und Selbst-Hosting hinzu.",
     "keywords": [
       "instinct alternative",
       "instinct ki alternative",
@@ -3642,13 +3642,13 @@
       "instinct alternative 2026"
     ],
     "painPoints": [
-      "Instinct macht eine Besorgung nach der anderen per Text, ohne Blick in Ihr Postfach oder Kalender",
+      "Instinct macht Besorgungen per Text und Anruf, mit Ihrem Kontext in einem geschlossenen Produkt",
       "Zugang aus Wartelistenzeit heißt Verfügbarkeit und Funktionen ändern sich weiter",
-      "Reisen und Besorgungen abgedeckt, aber Postfach-Triage und Planung leben anderswo",
+      "Reisen und Besorgungen sind der Fokus, also lebt breite Automation über Dutzende Tools anderswo",
       "Geschlossenes Produkt ohne selbst gehostete Option und ohne öffentliche Roadmap",
-      "Kontext startet pro Gespräch neu statt über Wochen zu wachsen"
+      "Vorlieben und Verlauf bleiben in einem System, das Sie weder prüfen noch selbst hosten können"
     ],
-    "whyPeopleLook": "Instinct beweist dass eine Besorgung zu texten besser ist als eine App zu öffnen. Aber Nutzer wachsen aus dem einen Kanal heraus: die Besorgung braucht noch Kalenderprüfungen, Postfachkontext und Nachverfolgung die ein Textthread nicht sehen kann. Wer eine Instinct-Alternative sucht, will dieselbe Textgewohnheit gestützt von einem Assistenten der Ihren Kalender und Ihr Postfach schon kennt.",
+    "whyPeopleLook": "Instinct beweist, dass eine Besorgung zu texten besser ist als eine App zu öffnen. Aber Nutzer wachsen aus dem geschlossenen Kanal heraus: der Kontext bleibt in einem Produkt, das sie weder prüfen noch selbst hosten können. Wer eine Instinct-Alternative sucht, will dieselbe Textgewohnheit mit offenem Code, mehr Integrationen und Gedächtnis unter eigener Kontrolle.",
     "gaiaReplaces": [
       "Reise- und Besorgungsanfragen die Sie heute an Instinct texten",
       "Buchungsdetails von Hand in Ihren Kalender kopieren",
@@ -3691,17 +3691,17 @@
       {
         "feature": "Oberfläche",
         "gaia": "Web, Desktop, Mobil, plus WhatsApp- und Telegram-Bots",
-        "competitor": "SMS- und WhatsApp-Gespräche"
+        "competitor": "Text oder Anruf über WhatsApp, iMessage und E-Mail"
       },
       {
         "feature": "E-Mail und Kalender",
         "gaia": "Liest Gmail, führt Google Calendar, bindet beide an jede Anfrage",
-        "competitor": "Nur die Besorgung in der Hand, kein Postfach-Zugang"
+        "competitor": "Verbindet E-Mail, Nachrichten, Kalender und Geräte"
       },
       {
         "feature": "Gedächtnis",
         "gaia": "Graphbasiertes Gedächtnis das Ihre Gewohnheiten über alle Tools lernt",
-        "competitor": "Gesprächsverlauf im Text-Faden"
+        "competitor": "Speichert Ihre Vorlieben und handelt in verbundenen Apps"
       },
       {
         "feature": "Offenheit",
@@ -3717,9 +3717,9 @@
   },
   "openai-dots": {
     "name": "OpenAI Dots",
-    "tagline": "Die Überholspur ist großartig bis Sie Gedächtnis brauchen.",
+    "tagline": "Dauerhafte Hilfe, die in OpenAIs Cloud bleibt.",
     "metaTitle": "Beste OpenAI Dots Alternative: volles KI-OS",
-    "metaDescription": "Brauchen Sie mehr als einen leichten Agenten? GAIA ist eine offene OpenAI Dots Alternative mit Gedächtnis, über 50 Tools und proaktivem Handeln.",
+    "metaDescription": "Dots-Hilfe im Offenen gewünscht? GAIA ist die offene OpenAI Dots Alternative mit Gedächtnis, über 50 Tools und Selbst-Hosting.",
     "keywords": [
       "openai dots alternative",
       "openai dots ersatz",
@@ -3729,15 +3729,15 @@
       "open source dots alternative"
     ],
     "painPoints": [
-      "Dots startet jedes Mal frisch, ohne Gedächtnis zwischen Aufgaben",
-      "Begrenzt auf was die Chatfläche zeigt, keine tiefe Tool-Anbindung",
-      "Erreicht weder Ihr Postfach noch Ihren Kalender um mit Kontext zu handeln",
+      "Dauerhaftes Gedächtnis, das in OpenAIs geschlossener Cloud lebt, nicht unter Ihrer Kontrolle",
+      "Gebunden an ChatGPT, Slack und Teams, Texten kommt noch",
+      "Ihr Agent läuft auf OpenAIs Servern, also bleibt Ihr Kontext auf deren Infrastruktur",
       "Geschlossen und noch in Bewegung, also Fähigkeiten ändern sich",
-      "Nur schnelle Antworten: Nachverfolgung ist Ihr Job"
+      "Kein offener Code und keine selbst gehostete Option für private oder regulierte Arbeit"
     ],
-    "whyPeopleLook": "Dots ist perfekt bis die Aufgabe Kontext braucht. Nutzer stoßen an die Wand wenn eine schnelle Anfrage von einem E-Mail-Thread, einem Kalendertermin oder einer Entscheidung letzter Woche abhängt, von denen Dots nichts sehen kann. Wer eine OpenAI Dots Alternative sucht, will dieselbe Geschwindigkeit mit Gedächtnis daran: einen Assistenten der sich erinnert, sich mit Tools verbindet und die Arbeit beendet.",
+    "whyPeopleLook": "Dots beweist, dass immer aktive Hilfe nützt. Nutzer suchen eine Alternative, wenn sie dieselbe Dauer mit offenem Code wollen: einen Assistenten, der sich erinnert, sich mit Tools verbindet und auf Infrastruktur läuft, die sie kontrollieren.",
     "gaiaReplaces": [
-      "Schnelle Aufgaben die gern den Kontext letzter Woche erinnerten",
+      "Immer aktive Aufgaben, die auf Infrastruktur laufen sollen, die Sie kontrollieren",
       "Arbeit die E-Mail plus Kalender plus Aufgaben umspannt",
       "Nachverfolgungen die getan werden müssen, nicht nur beantwortet",
       "Automatisierungen die Sie jedes Mal von Grund auf neu bauen"
@@ -3750,14 +3750,14 @@
       "Läuft in WhatsApp und Telegram, nicht in einer Chatfläche"
     ],
     "migrationSteps": [
-      "Notieren Sie welche Dots-Aufgaben weiter Kontext brauchen den Dots nicht sieht",
+      "Listen Sie die Dots-Aufgaben, die auf Infrastruktur laufen sollen, die Sie kontrollieren",
       "Verbinden Sie Gmail und Kalender um GAIA diesen fehlenden Kontext zu geben",
       "Bauen Sie Ihre meist wiederholte Dots-Anfrage als GAIA-Workflow neu",
       "Lassen Sie GAIA ihn proaktiv fahren statt jedes Mal zu fragen"
     ],
     "faqs": [
       {
-        "answer": "Ein leichter Agent macht schnelle Einzelaufgaben ohne Gedächtnis. GAIA trägt Kontext über Aufgaben, verbindet 50 plus Tools und handelt bevor Sie fragen.",
+        "answer": "Dots ist ein dauerhafter Agent auf OpenAIs Cloud: Er lernt Ihre Vorlieben und arbeitet zwischen Chats weiter. GAIA ist die offene Alternative mit Gedächtnis, über 50 Tools und Selbst-Hosting.",
         "question": "Wie unterscheidet sich GAIA von OpenAI Dots?"
       },
       {
@@ -3773,22 +3773,22 @@
       {
         "feature": "Kernansatz",
         "gaia": "Volles Produktivitäts-OS mit Gedächtnis, Tools und Nachverfolgung",
-        "competitor": "Schnelle Aufgaben in der Chat-Fläche erledigt"
+        "competitor": "Dauerhafter Agent in ChatGPT, Slack und Teams"
       },
       {
         "feature": "Gedächtnis",
         "gaia": "Graphbasiertes Gedächtnis das mit jedem Gespräch wächst",
-        "competitor": "Startet frisch, kein Gedächtnis zwischen Aufgaben"
+        "competitor": "Dauerhafter Agent, der Ihre Vorlieben und Ziele mit der Zeit lernt"
       },
       {
         "feature": "Integrationen",
         "gaia": "50 plus Integrationen über E-Mail, Kalender, Aufgaben und Chat",
-        "competitor": "Begrenzt auf was die Chat-Fläche hergibt"
+        "competitor": "Verbindet über 4000 Apps, über ChatGPT, Slack und Teams"
       },
       {
         "feature": "Proaktivität",
         "gaia": "Beobachtet Ihre Tools und handelt bevor Sie fragen",
-        "competitor": "Antwortet wenn Sie es fragen"
+        "competitor": "Verfolgt Ziele allein und bringt Ergebnisse zur Prüfung zurück"
       },
       {
         "feature": "Offenheit",

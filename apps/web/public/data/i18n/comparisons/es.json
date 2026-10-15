@@ -10792,16 +10792,16 @@
   "instinct": {
     "name": "Instinct",
     "tagline": "Pasa un recado por texto",
-    "description": "Instinct gestiona viajes y recados por SMS. GAIA cubre el mismo hábito de escribir más correo, calendario y memoria entre herramientas.",
-    "metaTitle": "GAIA vs Instinct: SO de IA vs agente SMS",
-    "metaDescription": "Compara GAIA e Instinct para ayuda por texto. Instinct hace recados por SMS y GAIA suma correo, calendario y memoria abierta.",
+    "description": "Instinct lleva viajes y recados por texto y llamada. GAIA sigue ese hábito y suma código abierto, más de 50 integraciones y autoalojamiento.",
+    "metaTitle": "GAIA vs Instinct: SO de IA abierto vs agente de texto",
+    "metaDescription": "Compara GAIA e Instinct para ayuda por texto. Instinct hace recados por texto y llamada y GAIA suma código abierto, más de 50 herramientas y autoalojamiento.",
     "keywords": [
       "GAIA vs Instinct",
       "Instinct vs GAIA",
       "Comparativa de Instinct SMS",
       "Opinión de Instinct IA"
     ],
-    "intro": "Instinct clavó una cosa: pasar un recado por texto. Le escribes sobre un viaje o una tarea y se encarga de las idas y vueltas. GAIA respeta ese hábito y también te recibe en WhatsApp y Telegram. La diferencia está en lo que pasa alrededor del texto. GAIA lee tu bandeja, revisa tu calendario y recuerda cómo trabajas, así el recado conecta con el resto de tu vida en vez de flotar solo.",
+    "intro": "Instinct clavó una cosa: pasar un recado por texto o llamada. Lo contactas por WhatsApp, iMessage o correo, y trabaja en tus apps y dispositivos conectados. GAIA respeta ese hábito y también te recibe en WhatsApp y Telegram. La diferencia es el control. GAIA es de código abierto y autoalojable, con más de 50 integraciones y memoria en todas tus herramientas, así el recado conecta con el resto de tu trabajo en un sistema que puedes revisar.",
     "rows": [
       {
         "competitor": "Gestiona viajes y recados con mensajes de texto",
@@ -10809,17 +10809,17 @@
         "gaia": "SO de productividad que actúa en correo, calendario, tareas y chat"
       },
       {
-        "competitor": "Conversaciones por SMS y WhatsApp",
+        "competitor": "Texto o llamada por WhatsApp, iMessage y correo",
         "feature": "Interfaz",
         "gaia": "Web, escritorio, móvil, además de bots de WhatsApp y Telegram"
       },
       {
-        "competitor": "Enfocado en el recado, sin acceso a tu bandeja",
+        "competitor": "Conecta correo, mensajes, calendario y dispositivos",
         "feature": "Correo y calendario",
         "gaia": "Lee Gmail, gestiona Google Calendar y conecta ambos con cada pedido"
       },
       {
-        "competitor": "Historial de conversación dentro del hilo de texto",
+        "competitor": "Guarda tus preferencias y actúa en apps conectadas",
         "feature": "Memoria",
         "gaia": "Memoria en grafos que aprende tus hábitos en todas las herramientas"
       },
@@ -10845,48 +10845,48 @@
       "Simplísimo: si sabes enviar un texto, sabes usar Instinct",
       "Enfocado en viajes y recados, así la experiencia se mantiene ajustada"
     ],
-    "verdict": "Elige Instinct si todo lo que necesitas es lanzar un viaje o un recado por texto. Elige GAIA si quieres el mismo hábito de escribir respaldado por un asistente que ya conoce tu bandeja, tu calendario y tus patrones.",
+    "verdict": "Elige Instinct si todo lo que necesitas es lanzar un viaje o un recado por texto. Elige GAIA si quieres el mismo hábito de escribir en un sistema abierto y autoalojable con más integraciones.",
     "faqs": [
       {
-        "answer": "Sí. GAIA funciona en WhatsApp y Telegram además de la web, así que le escribes tareas igual. La diferencia es que GAIA también ve tu correo y tu calendario al actuar.",
+        "answer": "Sí. GAIA funciona en WhatsApp y Telegram además de la web, así que le escribes tareas igual. La diferencia es código abierto, más de 50 integraciones y memoria en cada herramienta que conectas.",
         "question": "¿Puedo escribirle a GAIA como le escribo a Instinct?"
       },
       {
-        "answer": "Instinct es el pase más rápido para un recado suelto por texto. GAIA es mejor opción cuando el recado toca tu agenda, tu bandeja o tus tareas, porque ya tiene ese contexto.",
+        "answer": "Instinct es el pase más rápido para un recado suelto por texto. GAIA es mejor opción cuando quieres esa misma ayuda en un sistema abierto y autoalojable con más integraciones.",
         "question": "¿Cuándo es mejor opción Instinct?"
       }
     ]
   },
   "openai-dots": {
     "name": "OpenAI Dots",
-    "tagline": "Tareas rápidas en el chat",
-    "description": "OpenAI Dots es una superficie ligera de agentes para tareas rápidas. GAIA es el asistente completo para trabajo que necesita memoria y herramientas.",
-    "metaTitle": "GAIA vs OpenAI Dots: SO total vs agente ligero",
-    "metaDescription": "Compara GAIA y OpenAI Dots. Dots es una superficie ligera de tareas y GAIA suma memoria, herramientas y acción proactiva.",
+    "tagline": "Agentes siempre activos en la nube de OpenAI",
+    "description": "OpenAI Dots es un agente persistente que trabaja en ChatGPT, Slack y Teams. GAIA es el asistente de código abierto que puedes revisar y autoalojar.",
+    "metaTitle": "GAIA vs OpenAI Dots: IA abierta vs cerrada",
+    "metaDescription": "Compara GAIA y OpenAI Dots. Dots es un agente persistente en la nube de OpenAI y GAIA es la alternativa abierta y autoalojable.",
     "keywords": [
       "GAIA vs OpenAI Dots",
       "OpenAI Dots vs GAIA",
       "Comparativa de OpenAI Dots"
     ],
-    "intro": "Dots es el carril rápido de OpenAI: tareas rápidas dentro del chat, sin configuración pesada. Eso es genuinamente útil, y también es donde termina. En cuanto una tarea necesita el contexto de ayer, tu bandeja o tu calendario, una superficie ligera no tiene en qué apoyarse. GAIA está hecho para ese trabajo. Recuerda cómo operas, se conecta a las herramientas donde vives y cumple a lo largo de días, no solo de turnos.",
+    "intro": "Dots es el agente siempre activo de OpenAI: aprende tus preferencias y metas, trabaja en su propia computadora en la nube y conecta miles de apps por ChatGPT, Slack y Teams. Esa persistencia es real, y vive dentro de la nube cerrada de OpenAI. GAIA toma otro camino. Es de código abierto y autoalojable, así que su memoria y su hoja de ruta siguen bajo tu control. Se conecta a las herramientas donde vives y funciona desde web, móvil, WhatsApp y Telegram.",
     "rows": [
       {
-        "competitor": "Tareas rápidas dentro de la superficie del chat",
+        "competitor": "Agente persistente dentro de ChatGPT, Slack y Teams",
         "feature": "Enfoque",
         "gaia": "SO de productividad con memoria, herramientas y seguimiento"
       },
       {
-        "competitor": "Empieza de cero, sin memoria entre tareas",
+        "competitor": "Agente persistente que aprende tus preferencias y metas con el tiempo",
         "feature": "Memoria",
         "gaia": "Memoria en grafos que crece con cada interacción"
       },
       {
-        "competitor": "Limitado a lo que expone el chat",
+        "competitor": "Conecta más de 4000 apps, por ChatGPT, Slack y Teams",
         "feature": "Integraciones",
         "gaia": "Más de 50 integraciones de correo, calendario, tareas y chat"
       },
       {
-        "competitor": "Responde cuando le pides algo",
+        "competitor": "Avanza metas por su cuenta y trae resultados para revisar",
         "feature": "Proactividad",
         "gaia": "Vigila tus herramientas y actúa antes de que preguntes"
       },
@@ -10909,13 +10909,13 @@
       "Funciona en WhatsApp y Telegram, no en un solo chat"
     ],
     "competitorAdvantages": [
-      "El camino más rápido para una tarea rápida dentro del chat que ya usas",
+      "Agente siempre activo que sigue trabajando tras el chat",
       "Con respaldo de OpenAI, así que mejora cuando mejoran sus modelos"
     ],
-    "verdict": "Elige OpenAI Dots para la respuesta más rápida dentro de un chat. Elige GAIA cuando la tarea necesita memoria, tus herramientas o seguimiento más allá de una respuesta.",
+    "verdict": "Elige OpenAI Dots para un agente siempre activo dentro de ChatGPT, Slack y Teams. Elige GAIA cuando quieras código abierto, autoalojamiento y memoria bajo tu control.",
     "faqs": [
       {
-        "answer": "Un agente ligero hace una tarea rápida sin memoria entre sesiones. Un asistente completo guarda contexto, se conecta a tus herramientas y actúa antes de que preguntes.",
+        "answer": "Dots es un agente persistente con su propia computadora en la nube: aprende tus preferencias, guarda tus metas y sigue trabajando entre chats. GAIA es la alternativa abierta: código abierto, autoalojable, con memoria y herramientas bajo tu control.",
         "question": "¿Qué diferencia a Dots de un asistente completo?"
       },
       {

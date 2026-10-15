@@ -4662,8 +4662,8 @@
     "term": "Instinct",
     "metaTitle": "O que é Instinct? Agente de IA por SMS",
     "metaDescription": "Instinct é o agente de IA da Spear Street para viagens e recados por SMS e WhatsApp. Saiba como funciona e onde GAIA ajuda com e-mail e agenda.",
-    "definition": "Instinct é um agente de IA da Spear Street que resolve reservas de viagens e recados do dia a dia por SMS e WhatsApp. Você escreve o que precisa e ele cuida do resto.",
-    "extendedDescription": "Instinct funciona onde você já escreve. Não há app para aprender nem painel para conferir. Você manda uma mensagem sobre um voo, uma reserva ou um recado, e o agente resolve para você.\n\nO produto cresceu com lista de espera, focado em acertar viagens e recados antes de se expandir. Esse foco estreito é a ideia: Instinct quer ser o jeito mais rápido de delegar uma tarefa por texto.\n\nAgentes por SMS trocam profundidade por comodidade. Vão bem em tarefas únicas com resultado claro, como reservar uma viagem. Não leem sua caixa, não gerenciam sua agenda nem lembram como você trabalha semana após semana.",
+    "definition": "Instinct é um agente de IA da Spear Street que resolve reservas de viagens e recados por texto ou chamada. Você fala com ele por WhatsApp, iMessage ou e-mail, e ele trabalha em seus apps e dispositivos conectados.",
+    "extendedDescription": "Instinct funciona onde você já escreve. Não há app para aprender nem painel para conferir. Você manda uma mensagem sobre um voo, uma reserva ou um recado, e o agente resolve para você.\n\nO produto cresceu com lista de espera, focado em acertar viagens e recados antes de se expandir. Esse foco estreito é a ideia: Instinct quer ser o jeito mais rápido de delegar uma tarefa por texto.\n\nAgentes de texto trocam abertura por comodidade. Instinct conecta e-mail, mensagens, agenda e dispositivos, e guarda suas preferências. O custo é controle: é um produto fechado por convite que você não pode ver nem rodar você mesmo.",
     "keywords": [
       "instinct ai",
       "o que é instinct ai",
@@ -4671,7 +4671,7 @@
       "spear street instinct",
       "lista de espera instinct"
     ],
-    "howGaiaUsesIt": "GAIA encontra você nos mesmos lugares: funciona em WhatsApp e Telegram, não só na web. A diferença é o alcance. GAIA também lê seu e-mail, gerencia sua agenda e guarda o contexto de tudo, então uma viagem reservada conecta agenda, caixa e tarefas sem você repetir nada.",
+    "howGaiaUsesIt": "GAIA encontra você nos mesmos lugares: funciona em WhatsApp e Telegram, não só na web. A diferença é controle. GAIA é open source e auto-hospedável com mais de 50 integrações, então uma viagem reservada conecta agenda, caixa e tarefas num sistema que você pode ver.",
     "faqs": [
       {
         "question": "O que faz Instinct?",
@@ -4685,10 +4685,10 @@
   },
   "openai-dots": {
     "term": "OpenAI Dots",
-    "metaTitle": "O que é OpenAI Dots? Agente leve explicado",
-    "metaDescription": "Dots é a superfície leve de agentes da OpenAI para tarefas rápidas no chat. Saiba o que cobre e quando um assistente completo vale mais.",
-    "definition": "Dots é a superfície leve de agentes da OpenAI para resolver tarefas rápidas sem sair do chat. Feita para velocidade, não para carregar seu fluxo inteiro.",
-    "extendedDescription": "A ideia por trás de Dots é simples: nem todo pedido precisa de um agente completo com memória e ferramentas. Às vezes você quer uma resposta rápida ou uma ação pequena, e uma superfície leve chega antes.\n\nEm 2026 a superfície ainda evolui, então trate o que lê sobre Dots como foto do momento, não como ficha técnica.\n\nAgentes leves dividem um limite: começam do zero a cada vez. Não levam seu histórico de e-mail, sua agenda nem seus padrões de trabalho de uma tarefa para a seguinte. Essa lacuna um assistente completo preenche.",
+    "metaTitle": "O que é OpenAI Dots? Agente persistente explicado",
+    "metaDescription": "Dots é um agente persistente na nuvem da OpenAI. Saiba o que cobre e quando um assistente open source vale mais.",
+    "definition": "Dots é o agente persistente da OpenAI para trabalho contínuo. Aprende suas preferências e metas, roda no próprio computador na nuvem e conecta milhares de apps por ChatGPT, Slack e Teams.",
+    "extendedDescription": "A ideia por trás de Dots é simples: um agente que segue no trabalho após o chat. Guarda suas metas, aprende com retornos e segue trabalhando em segundo plano.\n\nEm 2026 a superfície ainda evolui, então trate o que lê sobre Dots como foto do momento, não como ficha técnica.\n\nDots divide um limite com todo agente fechado: roda na nuvem da OpenAI, então você não pode ver o código nem hospedar você mesmo. Essa falta de controle um assistente aberto cobre.",
     "keywords": [
       "openai dots",
       "o que é openai dots",
@@ -4696,15 +4696,15 @@
       "openai dots explicado",
       "assistente dots"
     ],
-    "howGaiaUsesIt": "GAIA é o assistente completo para o trabalho que cruza ferramentas e tempo. Conecta mais de 50 ferramentas, constrói memória em grafos de como você trabalha e age de forma proativa em e-mail e agenda. Se Dots resolve suas perguntas rápidas, GAIA carrega tudo que precisa de contexto.",
+    "howGaiaUsesIt": "GAIA é o assistente aberto para o trabalho que cruza ferramentas e tempo. Conecta mais de 50 ferramentas, constrói memória em grafo de como você trabalha e roda em código que você pode ver e hospedar.",
     "faqs": [
       {
         "question": "O que é OpenAI Dots?",
-        "answer": "Dots é uma superfície leve de agentes para tarefas rápidas dentro do chat. É a via rápida, não o assistente completo."
+        "answer": "Dots é um agente persistente que segue trabalhando após o chat. É a via sempre ativa, não o assistente aberto."
       },
       {
         "question": "Como Dots difere de um assistente de IA completo?",
-        "answer": "Um assistente completo guarda memória entre tarefas, conecta e-mail e agenda, e age antes de você pedir. Dots resolve o rápido e pontual; GAIA carrega o fluxo ao redor."
+        "answer": "Os dois lembram e agem. A diferença é controle: Dots roda fechado na nuvem da OpenAI, e GAIA é open source e auto-hospedável com memória sob seu controle."
       }
     ]
   },
@@ -4775,7 +4775,7 @@
     "faqs": [
       {
         "question": "Quanto custa OMI?",
-        "answer": "O hardware OMI é aberto e barato conforme o modelo. O software é open source."
+        "answer": "OMI é hardware aberto de preço acessível, e o software é open source para inspecionar e auto-hospedar."
       },
       {
         "question": "OMI é mesmo open source?",

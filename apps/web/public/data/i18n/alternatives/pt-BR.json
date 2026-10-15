@@ -3629,9 +3629,9 @@
   },
   "instinct": {
     "name": "Instinct",
-    "tagline": "Recados por texto são bons. Contexto fixa.",
+    "tagline": "Recados por texto, sem o código aberto.",
     "metaTitle": "Melhor alternativa a Instinct: IA SMS aberta",
-    "metaDescription": "Precisa de alternativa a Instinct com mais alcance? GAIA responde em WhatsApp e Telegram, e soma ajuda aberta de e-mail e agenda.",
+    "metaDescription": "Precisa de alternativa a Instinct que você pode ver? GAIA responde em WhatsApp e Telegram, e soma código aberto, mais de 50 ferramentas e auto-hospedagem.",
     "keywords": [
       "alternativa instinct",
       "alternativa instinct ia",
@@ -3642,13 +3642,13 @@
       "alternativa instinct 2026"
     ],
     "painPoints": [
-      "Instinct leva um recado por vez por texto, sem ver sua caixa nem sua agenda",
+      "Instinct leva recados por texto e chamada, com seu contexto dentro de um produto fechado",
       "Acesso de era de lista de espera que segue mudando",
-      "Viagens e recados cobertos, mas triagem de caixa e agenda vivem noutro lugar",
+      "Viagens e recados são o foco, então a automação ampla em dezenas de ferramentas vive noutro lugar",
       "Produto fechado sem opção auto-hospedada nem roteiro público",
-      "O contexto zera por conversa em vez de crescer por semanas"
+      "Preferências e histórico ficam num sistema que você não pode ver nem auto-hospedar"
     ],
-    "whyPeopleLook": "Instinct prova que escrever um recado ganha de abrir um app. Mas usuários superam o canal único: o recado ainda precisa de checagens de agenda, contexto de caixa e acompanhamento que um fio de texto não vê. Quem busca alternativa a Instinct quer o mesmo hábito de escrever com um assistente que já conhece sua agenda e sua caixa.",
+    "whyPeopleLook": "Instinct prova que escrever um recado ganha de abrir um app. Mas usuários superam o canal fechado: o contexto fica dentro de um produto que não podem ver nem auto-hospedar. Quem busca alternativa a Instinct quer o mesmo hábito de escrever com código aberto, mais integrações e memória sob seu controle.",
     "gaiaReplaces": [
       "Pedidos de viagem e recados que hoje escreve para Instinct",
       "Copiar detalhes de reservas para sua agenda à mão",
@@ -3691,17 +3691,17 @@
       {
         "feature": "Interface",
         "gaia": "Web, desktop, celular, mais bots de WhatsApp e Telegram",
-        "competitor": "Conversas por SMS e WhatsApp"
+        "competitor": "Texto ou chamada por WhatsApp, iMessage e e-mail"
       },
       {
         "feature": "E-mail e agenda",
         "gaia": "Lê Gmail, gerencia o Google Agenda, liga os dois a cada pedido",
-        "competitor": "Só o recado da vez, sem acesso à caixa"
+        "competitor": "Conecta e-mail, mensagens, agenda e dispositivos"
       },
       {
         "feature": "Memória",
         "gaia": "Memória em grafo que aprende seus hábitos em todas as ferramentas",
-        "competitor": "Histórico de conversa dentro do fio de textos"
+        "competitor": "Guarda suas preferências e age em apps conectados"
       },
       {
         "feature": "Abertura",
@@ -3717,9 +3717,9 @@
   },
   "openai-dots": {
     "name": "OpenAI Dots",
-    "tagline": "A via rápida é ótima até precisar de memória.",
+    "tagline": "Ajuda persistente que fica na nuvem da OpenAI.",
     "metaTitle": "Melhor alternativa a OpenAI Dots: SO de IA total",
-    "metaDescription": "Precisa de mais que um agente leve? GAIA é a alternativa aberta a OpenAI Dots com memória, mais de 50 ferramentas e ação proativa.",
+    "metaDescription": "Quer ajuda estilo Dots no aberto? GAIA é a alternativa aberta a OpenAI Dots com memória, mais de 50 ferramentas e auto-hospedagem.",
     "keywords": [
       "alternativa openai dots",
       "substituto openai dots",
@@ -3729,15 +3729,15 @@
       "alternativa open source dots"
     ],
     "painPoints": [
-      "Dots começa do zero cada vez, sem memória entre tarefas",
-      "Limitado ao que a superfície do chat expõe, sem conexão profunda",
-      "Não alcança sua caixa nem sua agenda para agir com contexto",
+      "Memória persistente que vive na nuvem fechada da OpenAI, não sob seu controle",
+      "Preso a ChatGPT, Slack e Teams, com texto ainda por vir",
+      "Seu agente roda nos servidores da OpenAI, então seu contexto fica na infra deles",
       "Fechado e ainda evolui, então capacidades mudam",
-      "Só respostas rápidas: o acompanhamento é seu trabalho"
+      "Sem código aberto nem opção auto-hospedada para trabalho privado ou regulado"
     ],
-    "whyPeopleLook": "Dots é perfeito até a tarefa precisar de contexto. Usuários batem no muro quando um pedido rápido depende de um fio de e-mail, um evento de agenda ou uma decisão semanal, nada do que Dots vê. Quem busca alternativa a OpenAI Dots quer a mesma velocidade com memória: um assistente que lembra, conecta ferramentas e termina o trabalho.",
+    "whyPeopleLook": "Dots prova que ajuda sempre ativa serve. Usuários buscam alternativa quando querem a mesma persistência com código aberto: um assistente que lembra, conecta ferramentas e roda em infra que controlam.",
     "gaiaReplaces": [
-      "Tarefas rápidas que queriam lembrar o contexto semanal",
+      "Tarefas sempre ativas para rodar em infra que você controla",
       "Trabalho que cruza e-mail mais agenda mais tarefas",
       "Acompanhamentos que precisam ser feitos, não só respondidos",
       "Automações que você reconstrói do zero cada vez"
@@ -3750,14 +3750,14 @@
       "Funciona em WhatsApp e Telegram, não numa superfície só"
     ],
     "migrationSteps": [
-      "Anote quais tarefas de Dots seguem pedindo contexto que Dots não vê",
+      "Liste as tarefas de Dots para rodar em infra que você controla",
       "Conecte Gmail e Agenda para dar esse contexto faltante a GAIA",
       "Reconstrua seu pedido repetido de Dots como fluxo de GAIA",
       "Deixe GAIA rodar de forma proativa em vez de pedir cada vez"
     ],
     "faqs": [
       {
-        "answer": "Um agente leve faz tarefas rápidas avulsas sem memória. GAIA carrega contexto entre tarefas, conecta mais de 50 ferramentas e age antes de pedirem.",
+        "answer": "Dots é um agente persistente na nuvem da OpenAI: aprende suas preferências e segue trabalhando entre chats. GAIA é a alternativa aberta com memória, mais de 50 ferramentas e auto-hospedagem.",
         "question": "Como GAIA difere de OpenAI Dots?"
       },
       {
@@ -3773,22 +3773,22 @@
       {
         "feature": "Abordagem central",
         "gaia": "SO de produtividade completo com memória, ferramentas e acompanhamento",
-        "competitor": "Tarefas rápidas resolvidas dentro do chat"
+        "competitor": "Agente persistente dentro de ChatGPT, Slack e Teams"
       },
       {
         "feature": "Memória",
         "gaia": "Memória em grafo que cresce a cada conversa",
-        "competitor": "Começa do zero, sem memória entre tarefas"
+        "competitor": "Agente persistente que aprende suas preferências e metas com o tempo"
       },
       {
         "feature": "Integrações",
         "gaia": "Mais de 50 integrações em e-mail, agenda, tarefas e chat",
-        "competitor": "Só o que o chat mostra"
+        "competitor": "Conecta mais de 4000 apps, por ChatGPT, Slack e Teams"
       },
       {
         "feature": "Proatividade",
         "gaia": "Vigia suas ferramentas e age antes de pedirem",
-        "competitor": "Responde quando perguntam"
+        "competitor": "Avança metas sozinho e traz resultados para revisar"
       },
       {
         "feature": "Abertura",

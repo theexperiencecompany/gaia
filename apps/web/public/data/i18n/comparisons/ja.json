@@ -10792,16 +10792,16 @@
   "instinct": {
     "name": "Instinct",
     "tagline": "用足しを文面で渡す",
-    "description": "InstinctはSMSで旅行と用足しをこなします。GAIAは同じ文面の習慣に加え、メールとカレンダーとツールをまたぐ記憶を持ちます。",
-    "metaTitle": "GAIAとInstinctの比較。AI基盤とSMS代理",
-    "metaDescription": "文面の手伝いでGAIAとInstinctを比較。InstinctはSMSで用足し、GAIAはメール、カレンダー、開けた記憶を足します。向く場面と始め方も比べます。",
+    "description": "Instinctは文面と通話で旅行と用足しをこなします。GAIAは同じ習慣に開いたコードと50以上の連携とセルフホストを足します。",
+    "metaTitle": "GAIAとInstinctの比較。開いたAI基盤と文面代理",
+    "metaDescription": "文面の手伝いでGAIAとInstinctを比較。Instinctは文面と通話で用足しし、GAIAは開いたコードと50以上の道具とセルフホストを足します。",
     "keywords": [
       "GAIAとInstinctの比較",
       "InstinctとGAIA",
       "Instinct SMS比較",
       "Instinct AI評判"
     ],
-    "intro": "Instinctが極めたのは一つ、用足しを文面で渡すことです。旅行や頼みを送ると、やり取りを引き受けます。GAIAはその習慣を尊重し、WhatsAppとTelegramでも迎えます。違いは文面の周りで起きます。GAIAは受信箱を読み、カレンダーを見て、あなたの働き方を覚えるので、用足しが生活のほかの部分とつながります。",
+    "intro": "Instinctが極めたのは一つ、文面か通話で用足しを渡すことです。WhatsAppかiMessageかメールで届き、つないだ道具と機械をまたいで動きます。GAIAはその習慣を尊重し、WhatsAppとTelegramでも迎えます。違いはコントロールです。GAIAはオープンソースでセルフホストでき、50以上の連携と全道具にわたる記憶を持ち、用足しが仕事のほかの部分とつながります。中身を見られる仕組みです。",
     "rows": [
       {
         "competitor": "文面で旅行の予約と用足しを進める",
@@ -10809,17 +10809,17 @@
         "gaia": "メール、カレンダー、タスク、会話で動く生産性OS"
       },
       {
-        "competitor": "SMSとWhatsAppの会話",
+        "competitor": "WhatsAppとiMessageとメールでの文面か通話",
         "feature": "接点",
         "gaia": "ウェブ、デスクトップ、モバイルに加えWhatsAppとTelegramのボット"
       },
       {
-        "competitor": "目の前の用足しに集中。受信箱は見ない",
+        "competitor": "メールと文面と予定と機械につながる",
         "feature": "メールと予定",
         "gaia": "Gmailを読みGoogleカレンダーを管理し、依頼ごとに両方をつなげる"
       },
       {
-        "competitor": "文面の流れの中の履歴",
+        "competitor": "好みをため、つないだ道具をまたいで動く",
         "feature": "記憶",
         "gaia": "全ツールで習慣を学ぶグラフ型メモリ"
       },
@@ -10845,48 +10845,48 @@
       "文面を送れれば使える、とにかく簡単",
       "旅行と用足しに絞るから体験がぶれない"
     ],
-    "verdict": "旅行や用足しを文面で渡すだけならInstinctを。同じ文面の習慣に、受信箱もカレンダーも癖も知る助手を添えたいならGAIAを。",
+    "verdict": "旅行や用足しを文面で渡すだけならInstinctを。同じ文面の習慣を開けてセルフホストできる仕組みで広く使いたいならGAIAを。",
     "faqs": [
       {
-        "answer": "はい。GAIAはウェブに加えWhatsAppとTelegramで動くので、同じように文面で頼めます。違うのは動くときにメールとカレンダーも見ている点です。",
+        "answer": "はい。GAIAはウェブに加えWhatsAppとTelegramで動くので、同じように文面で頼めます。違いは開いたコードと50以上の連携と、つないだ道具ごとの記憶です。",
         "question": "InstinctのようにGAIAに文面で頼めますか。"
       },
       {
-        "answer": "文面で一度きりの用足しを渡す速さはInstinctです。予定や受信箱やタスクに触れる用足しはGAIAが向きます。文脈をすでに持つからです。",
+        "answer": "文面で一度きりの用足しを渡す速さはInstinctです。同じ助けを開けてセルフホストできる仕組みで広く使いたいならGAIAが向きます。",
         "question": "Instinctが向くのはどんなときですか。"
       }
     ]
   },
   "openai-dots": {
     "name": "OpenAI Dots",
-    "tagline": "会話の中のさっとした仕事",
-    "description": "OpenAI Dotsはさっとした仕事のための軽い代理の面です。GAIAは記憶とツールを要る仕事のためのフル機能の助手です。",
-    "metaTitle": "GAIAとOpenAI Dotsの比較。全体OSと軽い代理",
-    "metaDescription": "GAIAとOpenAI Dotsを比較。Dotsはさっとした仕事の軽い面で、GAIAは記憶とツールと先回りの行動を足します。向く仕事と始め方も比べます。",
+    "tagline": "OpenAIのクラウドの常時稼働エージェント",
+    "description": "OpenAI DotsはChatGPTとSlackとTeamsで働く持続型エージェントです。GAIAは中身を見て自分で持てるオープンな助手です。",
+    "metaTitle": "GAIAとOpenAI Dotsの比較。開いたAIと閉じたAI",
+    "metaDescription": "GAIAとOpenAI Dotsを比較。DotsはOpenAIのクラウドの持続型エージェントで、GAIAは開かれてセルフホストできる代わりです。",
     "keywords": [
       "GAIAとOpenAI Dotsの比較",
       "OpenAI DotsとGAIA",
       "OpenAI Dots比較"
     ],
-    "intro": "DotsはOpenAIの速い車線です。会話の中のさっとした仕事、重い設定なし。本当に便利であり、そこまででもあります。昨日の文脈や受信箱やカレンダーが要る仕事になった途端、軽い面には立つ土台がありません。GAIAはまさにその仕事のために作られました。あなたの回し方を覚え、暮らすツールにつながり、返事ごとでなく日ごとにやり抜きます。",
+    "intro": "DotsはOpenAIの常時稼働エージェントです。好みと目標を学び、自分のクラウドコンピューターで働き、ChatGPTとSlackとTeamsを通じて数千のアプリにつながります。その持続は本物で、OpenAIの閉じたクラウドの中にあります。GAIAは別の道です。オープンソースでセルフホストでき、記憶も道筋もあなたの管理下に残ります。暮らす道具につながり、ウェブとモバイルとWhatsAppとTelegramから動きます。",
     "rows": [
       {
-        "competitor": "会話の面の中のさっとした仕事",
+        "competitor": "ChatGPTとSlackとTeamsの中の持続型エージェント",
         "feature": "考え方",
         "gaia": "記憶とツールと追跡を備えた生産性OS"
       },
       {
-        "competitor": "白紙から始まる。仕事をまたぐ記憶なし",
+        "competitor": "好みと目標を時とともに学ぶ持続型エージェント",
         "feature": "記憶",
         "gaia": "触れるごとに育つグラフ型メモリ"
       },
       {
-        "competitor": "会話の面が出す範囲に限られる",
+        "competitor": "4000以上のアプリにつながり、ChatGPTとSlackとTeamsから届く",
         "feature": "連携",
         "gaia": "メール、カレンダー、タスク、会話の50以上の連携"
       },
       {
-        "competitor": "頼まれると返す",
+        "competitor": "自分で目標へ進み、結果を持ち帰って見せる",
         "feature": "先回り",
         "gaia": "ツールを見守り、聞かれる前に動く"
       },
@@ -10909,13 +10909,13 @@
       "一つの会話ではなくWhatsAppとTelegramで動く"
     ],
     "competitorAdvantages": [
-      "使い慣れた会話の中でさっと頼む速さが一番",
+      "会話が終わっても働き続ける常時稼働エージェント",
       "OpenAI製なので型が育てば育つ"
     ],
-    "verdict": "会話の中で一番速い答えがほしいならOpenAI Dotsを。記憶やツールや一つの返事の先の追跡が要る仕事ならGAIAを。",
+    "verdict": "ChatGPTとSlackとTeamsの中の常時稼働エージェントならOpenAI Dotsを。開いたコードとセルフホストと管理下にある記憶がほしいならGAIAを。",
     "faqs": [
       {
-        "answer": "軽い代理は一度きりの仕事を、回をまたぐ記憶なしでこなします。フル機能の助手は文脈を持ち、ツールにつながり、聞かれる前に動きます。",
+        "answer": "Dotsは自分のクラウドコンピューターを持つ持続型エージェントです。好みを学び、目標を持ち、会話の間も働き続けます。GAIAは開けた代わりです。オープンソースでセルフホストでき、記憶も道具もあなたの管理下にあります。",
         "question": "Dotsとフル機能の助手の違いは何ですか。"
       },
       {
