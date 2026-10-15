@@ -149,6 +149,50 @@ class TestNames:
         ]
 
 
+class TestTheQuietDay:
+    """Regression: a day with nothing waiting got no brief, its honest prose rejected x3."""
+
+    @pytest.mark.parametrize(
+        "headline",
+        [
+            "Nothing needs you today",
+            "Nobody is waiting on you this morning",
+            "No replies need you, and none need your review",
+            "0 things need you today",
+        ],
+    )
+    def test_saying_nothing_needs_the_user_is_not_a_needs_claim(self, headline: str) -> None:
+        payload = _payload(sections=[], tallies=_NO_TALLIES)
+
+        assert voice_contradictions(headline, "A quiet day.", payload) == []
+
+    @pytest.mark.parametrize(
+        "lede", ["Zero meetings and 0 things waiting.", "0 events, zero replies owed."]
+    )
+    def test_a_zero_count_matches_an_empty_day(self, lede: str) -> None:
+        payload = _payload(sections=[], tallies=_NO_TALLIES)
+
+        assert voice_contradictions("A quiet day", lede, payload) == []
+
+    def test_a_negation_in_an_earlier_clause_does_not_cancel_a_later_claim(self) -> None:
+        problems = voice_contradictions(
+            "Nothing on the calendar, but a reply needs you", "", _payload(sections=[])
+        )
+
+        assert any("needs the user" in p for p in problems)
+
+    def test_a_zero_count_is_rejected_when_every_count_is_filled(self) -> None:
+        payload = _payload(
+            sections=_items("lookback", "gaia", "note", "you"),
+            calendar=_SEQUOIA,
+            tallies={"done_by_you": 1, "done_by_gaia": 1},
+        )
+
+        assert voice_contradictions("0 replies drafted", "", payload) == [
+            "the prose counts 0, which no item count matches"
+        ]
+
+
 class TestProblemWording:
     def test_each_contradiction_reads_as_one_plain_sentence(self) -> None:
         problems = voice_contradictions("A reply needs you", "A meeting at noon.", _payload())
