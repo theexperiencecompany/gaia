@@ -4,8 +4,10 @@ from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import composio_client
 from composio_client.types.toolkit_list_response import Item as ToolkitListItem
 import fakeredis.aioredis
+import httpx
 import pytest
 
 from app.config.oauth_config import get_integration_by_id, set_instance_integrations
@@ -13,6 +15,7 @@ from app.config.settings import settings
 from app.constants.cache import MY_INTEGRATIONS_SNAPSHOT_KEY
 from app.db.redis import redis_cache
 from app.models.runtime_models import InstanceSettingsDocument
+from app.schemas.integrations.composio_setup import ComposioToolkit
 from app.services.composio import (
     auth_config_resolver,
     instance_toolkits,
@@ -28,6 +31,7 @@ from app.services.composio.toolkit_enablement import (
     toolkit_detail,
 )
 from app.utils.errors import AppError
+from tests.helpers import captured_wide_event
 
 
 def _item(
@@ -284,6 +288,82 @@ async def test_search_ranks_name_prefix_matches_first(composio: FakeComposio) ->
     assert [t.slug for t in found][:2] == ["attio", "affinity"]
     assert [t.slug for t in search_toolkits(toolkits, "hacker", None)] == ["hackernews"]
     assert search_toolkits(toolkits, "", "nothing") == []
+
+
+def _toolkit(name: str, slug: str, category: str, description: str) -> ComposioToolkit:
+    return ComposioToolkit(
+        slug=slug,
+        name=name,
+        description=description,
+        logo=None,
+        categories=[category],
+        auth_schemes=["OAUTH2"],
+        composio_managed=True,
+        no_auth=False,
+        tools_count=1,
+        triggers_count=0,
+    )
+
+
+def test_search_orders_prefix_then_infix_then_category_then_description_matches() -> None:
+    toolkits = [
+        _toolkit("Zeta", "zeta", "misc", "Talks to your CRM"),
+        _toolkit("Yotta", "yotta", "CRM", "x"),
+        _toolkit("Super CRM Tool", "supertool", "misc", "x"),
+        _toolkit("Hub", "hubcrm", "misc", "x"),
+        _toolkit("Alpha", "crmalpha", "misc", "x"),
+        _toolkit("CRM One", "one", "misc", "x"),
+        _toolkit("Other", "other", "misc", "x"),
+    ]
+
+    found = search_toolkits(toolkits, " CRM ", None)
+
+    assert [t.slug for t in found] == ["crmalpha", "one", "supertool", "hubcrm", "yotta", "zeta"]
+
+
+async def test_the_catalog_keeps_each_toolkits_logo_schemes_and_managed_flag(
+    composio: FakeComposio, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    logo_less = CATALOG[1].model_copy(
+        update={"meta": CATALOG[1].meta.model_copy(update={"logo": ""})}
+    )
+    monkeypatch.setattr(composio, "list_toolkits", AsyncMock(return_value=[CATALOG[0], logo_less]))
+
+    attio, coda = await toolkit_catalog.cached_toolkits()
+
+    assert (attio.logo, attio.auth_schemes, attio.composio_managed) == (
+        "https://logos.composio.dev/api/attio",
+        ["OAUTH2"],
+        True,
+    )
+    assert (coda.logo, coda.auth_schemes, coda.composio_managed) == (None, ["API_KEY"], False)
+
+
+async def test_a_key_composio_rejects_while_listing_the_catalog_names_the_key(
+    composio: FakeComposio, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rejected = composio_client.AuthenticationError(
+        "bad key",
+        response=httpx.Response(401, request=httpx.Request("GET", "https://composio.test")),
+        body=None,
+    )
+    monkeypatch.setattr(composio, "list_toolkits", AsyncMock(side_effect=rejected))
+
+    with pytest.raises(AppError) as raised:
+        await toolkit_catalog.cached_toolkits()
+
+    assert (raised.value.code, raised.value.why) == ("composio_key_rejected", "bad key")
+
+
+async def test_a_catalog_page_filters_by_category_and_stamps_its_counts(
+    composio: FakeComposio,
+) -> None:
+    async with captured_wide_event() as event:
+        page = await catalog_page("a", "crm", 1, 2)
+
+    assert [e.slug for e in page.items] == ["affinity", "coda"]
+    assert event["composio_catalog"] == {"total": 5, "matches": 4, "page": 2}
+    assert (await catalog_page("a", "productivity", 0, 50)).items == []
 
 
 async def test_a_page_cached_while_composio_creates_the_auth_config_is_dropped(

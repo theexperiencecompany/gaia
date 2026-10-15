@@ -57,15 +57,13 @@ async def cached_toolkits() -> list[ComposioToolkit]:
 def _rank(toolkit: ComposioToolkit, query: str) -> int | None:
     """Lower ranks first; None drops the toolkit from the results."""
     name = toolkit.name.lower()
-    if name.startswith(query) or toolkit.slug.startswith(query):
-        return 0
-    if query in name or query in toolkit.slug:
-        return 1
-    if any(query in c.lower() for c in toolkit.categories):
-        return 2
-    if query in toolkit.description.lower():
-        return 3
-    return None
+    tiers = (
+        name.startswith(query) or toolkit.slug.startswith(query),
+        query in name or query in toolkit.slug,
+        any(query in c.lower() for c in toolkit.categories),
+        query in toolkit.description.lower(),
+    )
+    return next((rank for rank, hit in enumerate(tiers) if hit), None)
 
 
 def search_toolkits(
@@ -76,10 +74,9 @@ def search_toolkits(
     needle = query.strip().lower()
     if not needle:
         return in_category
-    ranked = [
-        (rank, i, t) for i, t in enumerate(in_category) if (rank := _rank(t, needle)) is not None
-    ]
-    return [t for _, _, t in sorted(ranked, key=lambda entry: (entry[0], entry[1]))]
+    ranked = [(rank, t) for t in in_category if (rank := _rank(t, needle)) is not None]
+    # sorted is stable, so toolkits of one rank keep Composio's order
+    return [t for _, t in sorted(ranked, key=lambda entry: entry[0])]
 
 
 async def annotate(toolkits: Sequence[ComposioToolkit]) -> list[ComposioCatalogEntry]:
