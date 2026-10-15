@@ -573,7 +573,8 @@ async def _probe_openai_wire(
 
     Listing models is not it: a restricted OpenAI key lacks api.model.read yet chats fine.
     """
-    label = PRESETS[provider]["label"]
+    preset: ProviderPreset = PRESETS[provider]
+    label = preset["label"]
     # OpenRouter and OpenAI need no configurable endpoint — their API roots are
     # canonical; every other OpenAI-wire provider probes its configured base URL.
     if canonical_url := _CANONICAL_API_URLS.get(provider):
@@ -612,8 +613,15 @@ def _wire_error_reason(response: httpx.Response, api_key: str | None) -> str:
         body = response.json()
     except ValueError:
         return fallback
-    error = cast(_WireError, body).get("error") if isinstance(body, dict) else None
-    message = error.get("message") if isinstance(error, dict) else error
+    if not isinstance(body, dict):
+        return fallback
+    payload: _WireError = cast(_WireError, body)
+    error = payload.get("error")
+    if isinstance(error, dict):
+        detail: _WireErrorDetail = error
+        message = detail.get("message")
+    else:
+        message = error
     if not message:
         return fallback
     if api_key:
