@@ -2014,6 +2014,66 @@ class TestRetainAgendaSideEffects:
 
         assert "agenda_ms" in event["memory"]["timings"]
 
+    async def test_the_completion_event_reports_the_counts_and_every_stage(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch(
+            facts=[make_fact("sam likes green tea"), make_fact("sam lives in pune")]
+        )
+        boundaries.reconcile.side_effect = lambda _user, facts, embeddings: [
+            make_reconciled(fact, embedding=embedding) for fact, embedding in zip(facts, embeddings)
+        ]
+
+        async with captured_wide_event() as event:
+            result = await retain(
+                USER,
+                [{"role": "user", "content": "hi"}],
+                source_type=MemorySourceType.CONVERSATION,
+            )
+
+        memory = event["memory"]
+        assert result.new == 2
+        assert {key: memory[key] for key in ("operation", "source_type", "success")} == {
+            "operation": "retain",
+            "source_type": MemorySourceType.CONVERSATION.value,
+            "success": True,
+        }
+        assert memory["facts_extracted"] == 2
+        assert memory["new_count"] == 2
+        assert memory["result_count"] == result.new + result.updated + result.extended
+        assert memory["episode_entries"] == result.episode_entries
+        assert memory["episode_entries_deduped"] == 0
+        assert set(memory["timings"]) == {
+            "context_ms",
+            "extract_ms",
+            "embed_ms",
+            "reconcile_ms",
+            "apply_ms",
+            "episodes_ms",
+            "chunks_ms",
+            "agenda_ms",
+            "total_ms",
+        }
+
+    async def test_an_empty_extraction_still_reports_a_successful_retain(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch()
+
+        async with captured_wide_event() as event:
+            await retain(
+                USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.EMAIL
+            )
+
+        memory = event["memory"]
+        assert (memory["facts_extracted"], memory["result_count"], memory["success"]) == (
+            0,
+            0,
+            True,
+        )
+        assert memory["source_type"] == MemorySourceType.EMAIL.value
+        assert "timings" not in memory or not memory["timings"]
+
 
 @pytest.mark.unit
 class TestRetainFreePlanCap:
