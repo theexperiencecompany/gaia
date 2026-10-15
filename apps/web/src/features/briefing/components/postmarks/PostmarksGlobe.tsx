@@ -14,18 +14,18 @@ import {
   MarkerTooltip,
 } from "@/components/ui/map";
 import { useGlobeSpin } from "../../hooks/useGlobeSpin";
-import { useHideMapLabels } from "../../hooks/useHideMapLabels";
+import { useNightGlobeBasemap } from "../../hooks/useNightGlobeBasemap";
 import { PostmarkCard } from "./PostmarkCard";
 
 const GLOBE_PROJECTION: ProjectionSpecification = { type: "globe" };
 const GLOBE_ZOOM = 1.2;
 // Where the globe faces before any stamp has arrived.
 const DEFAULT_CENTER: [number, number] = [20, 20];
-// The mail's route: a faint warm thread, so the city lights stay the subject.
+// The mail's route: a faint brand-cyan thread (--color-primary), so the city lights stay the subject.
 const ROUTE_PAINT = {
-  "line-color": "#fcd34d",
+  "line-color": "#00bbff",
   "line-width": 1.25,
-  "line-opacity": 0.35,
+  "line-opacity": 0.45,
   "line-dasharray": [2, 2],
 };
 
@@ -51,6 +51,7 @@ export function PostmarksGlobe({ postmarks }: PostmarksGlobeProps) {
       projection={GLOBE_PROJECTION}
       center={latest ? [latest.lng, latest.lat] : DEFAULT_CENTER}
       zoom={GLOBE_ZOOM}
+      theme="dark"
       minZoom={1}
       maxZoom={4}
       attributionControl={{ compact: true }}
@@ -75,7 +76,7 @@ export function PostmarksGlobe({ postmarks }: PostmarksGlobeProps) {
 }
 
 function GlobeBehaviour() {
-  useHideMapLabels();
+  useNightGlobeBasemap();
   useGlobeSpin();
   return null;
 }
@@ -100,9 +101,9 @@ function CityLight({ postmark, isLatest }: CityLightProps) {
           className="group relative flex size-6 items-center justify-center"
         >
           {isLatest && (
-            <span className="absolute size-4 rounded-full bg-amber-300/40 motion-safe:animate-ping" />
+            <span className="absolute size-4 rounded-full bg-primary/40 motion-safe:animate-ping" />
           )}
-          <span className="size-2.5 rounded-full bg-amber-200 shadow-[0_0_10px_3px_rgb(252_211_77/0.55)] transition-transform duration-200 ease-out group-hover:scale-150" />
+          <span className="size-2.5 rounded-full bg-primary shadow-[0_0_10px_3px_rgb(0_187_255/0.55)] transition-transform duration-200 ease-out group-hover:scale-150" />
         </span>
       </MarkerContent>
       <MarkerTooltip offset={18} className="bg-transparent p-0 shadow-none">

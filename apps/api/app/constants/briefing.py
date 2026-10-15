@@ -36,6 +36,13 @@ BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
 DAILY_KICKER: Final[str] = "THE MORNING BRIEF"
 WEEKLY_KICKER: Final[str] = "THE WEEKLY DIGEST"
 
+# Daily brief section heads, numbered in order. Display casing: every surface shows
+# these as written; an edition that sets its heads in capitals does so in its own CSS.
+NEEDS_YOU_SECTION_TITLE: Final[str] = "Needs you"
+HELD_SECTION_TITLE: Final[str] = "While you were away"
+WORK_SECTION_TITLE: Final[str] = "GAIA's work"
+SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III")
+
 # A brief is finite: at most this many items across all its sections, so it reads
 # in under a minute. The daily brief keeps the highest-priority items (needs-you
 # first); a weekly payload over the cap fails generation.
