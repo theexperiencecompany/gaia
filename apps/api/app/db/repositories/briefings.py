@@ -16,6 +16,10 @@ from app.db.repositories.base import UserScopedRepository
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload, BriefingUpdate
 from app.utils.errors import AppError
 
+# A brief counts as delivered once it reached at least one channel; one stored but
+# delivered nowhere (its run failed mid-delivery) was never received.
+_DELIVERED: dict[str, object] = {"delivered_channels.0": {"$exists": True}}
+
 
 class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     collection_name = "briefings"
@@ -52,9 +56,9 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         return await self._find(query, sort=[("created_at", -1)], limit=limit)
 
     async def list_stamped(self, user_id: str) -> list[BriefingModel]:
-        """Return the briefs that carried an Air Mail city stamp, oldest first."""
+        """Return the delivered briefs that carried an Air Mail city stamp, oldest first."""
         return await self._find(
-            {"user_id": user_id, "payload.stamp_city": {"$ne": None}},
+            {"user_id": user_id, "payload.stamp_city": {"$ne": None}, **_DELIVERED},
             sort=[("date", 1)],
         )
 
@@ -65,20 +69,9 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     async def was_delivered(self, user_id: str, date: str, kind: BriefingKind) -> bool:
         """Whether the (user, date, kind) brief already reached at least one channel.
 
-        A brief stored but delivered nowhere (its run failed mid-delivery) does not
-        count, so a retry can still send it.
+        An undelivered brief does not count, so a retry can still send it.
         """
-        return (
-            await self._count(
-                {
-                    "user_id": user_id,
-                    "date": date,
-                    "kind": kind,
-                    "delivered_channels.0": {"$exists": True},
-                }
-            )
-            > 0
-        )
+        return await self._count({"user_id": user_id, "date": date, "kind": kind, **_DELIVERED}) > 0
 
     # ----------------------------------------------------------------- writes
 

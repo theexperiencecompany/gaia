@@ -201,7 +201,9 @@ class TestBriefingsReads:
         assert [b.user_id for b in recent] == [user_id, user_id]
         assert recent[0].id == newest.id
 
-    async def test_list_stamped_reads_only_the_users_stamped_briefs_oldest_first(self, repo):
+    async def test_list_stamped_reads_only_the_users_delivered_stamped_briefs_oldest_first(
+        self, repo
+    ):
         user_id = "u-stamped"
         later = await repo.upsert_briefing(
             user_id,
@@ -227,6 +229,21 @@ class TestBriefingsReads:
             _payload(stamp_city="paris"),
             edition_image_url=_IMAGE,
         )
+        # Stamped but delivered nowhere: the user never received this city.
+        await repo.upsert_briefing(
+            user_id,
+            "2026-08-08",
+            BRIEFING_KIND_DAILY,
+            _payload(stamp_city="oslo"),
+            edition_image_url=_IMAGE,
+        )
+        for owner, date in [
+            (user_id, "2026-08-05"),
+            (user_id, "2026-08-06"),
+            (user_id, "2026-08-07"),
+            ("other-user", "2026-08-04"),
+        ]:
+            await repo.set_delivered_channels(owner, date, BRIEFING_KIND_DAILY, ["inapp"])
 
         stamped = await repo.list_stamped(user_id)
 
