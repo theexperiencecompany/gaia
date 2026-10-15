@@ -4657,5 +4657,205 @@
         "answer": "A IA pode automatizar grande parte da gestão da caixa de entrada — classificação, arquivamento, cancelamento de inscrições, criação de respostas rotineiras e marcação de prioridades. Mensagens que exigem julgamento mais apurado, decisões delicadas ou respostas pessoais ainda se beneficiam da análise humana. A GAIA foi desenvolvida para lidar com o grande volume de tarefas rotineiras, permitindo que você concentre sua atenção nos e-mails realmente importantes."
       }
     ]
+  },
+  "instinct": {
+    "term": "Instinct",
+    "metaTitle": "O que é Instinct? Agente de IA por SMS",
+    "metaDescription": "Instinct é o agente de IA da Spear Street para viagens e recados por SMS e WhatsApp. Saiba como funciona e onde GAIA ajuda com e-mail e agenda.",
+    "definition": "Instinct é um agente de IA da Spear Street que resolve reservas de viagens e recados do dia a dia por SMS e WhatsApp. Você escreve o que precisa e ele cuida do resto.",
+    "extendedDescription": "Instinct funciona onde você já escreve. Não há app para aprender nem painel para conferir. Você manda uma mensagem sobre um voo, uma reserva ou um recado, e o agente resolve para você.\n\nO produto cresceu com lista de espera, focado em acertar viagens e recados antes de se expandir. Esse foco estreito é a ideia: Instinct quer ser o jeito mais rápido de delegar uma tarefa por texto.\n\nAgentes por SMS trocam profundidade por comodidade. Vão bem em tarefas únicas com resultado claro, como reservar uma viagem. Não leem sua caixa, não gerenciam sua agenda nem lembram como você trabalha semana após semana.",
+    "keywords": [
+      "instinct ai",
+      "o que é instinct ai",
+      "agente sms instinct",
+      "spear street instinct",
+      "lista de espera instinct"
+    ],
+    "howGaiaUsesIt": "GAIA encontra você nos mesmos lugares: funciona em WhatsApp e Telegram, não só na web. A diferença é o alcance. GAIA também lê seu e-mail, gerencia sua agenda e guarda o contexto de tudo, então uma viagem reservada conecta agenda, caixa e tarefas sem você repetir nada.",
+    "faqs": [
+      {
+        "question": "O que faz Instinct?",
+        "answer": "Instinct resolve reservas de viagens e recados do dia a dia por SMS e WhatsApp. Você descreve o que precisa em um texto e o agente organiza."
+      },
+      {
+        "question": "Instinct está aberto a todos?",
+        "answer": "Instinct cresceu com lista de espera enquanto a equipe focava em viagens e recados. O acesso se ampliou com o tempo, então confira o site para a disponibilidade atual."
+      }
+    ]
+  },
+  "openai-dots": {
+    "term": "OpenAI Dots",
+    "metaTitle": "O que é OpenAI Dots? Agente leve explicado",
+    "metaDescription": "Dots é a superfície leve de agentes da OpenAI para tarefas rápidas no chat. Saiba o que cobre e quando um assistente completo vale mais.",
+    "definition": "Dots é a superfície leve de agentes da OpenAI para resolver tarefas rápidas sem sair do chat. Feita para velocidade, não para carregar seu fluxo inteiro.",
+    "extendedDescription": "A ideia por trás de Dots é simples: nem todo pedido precisa de um agente completo com memória e ferramentas. Às vezes você quer uma resposta rápida ou uma ação pequena, e uma superfície leve chega antes.\n\nEm 2026 a superfície ainda evolui, então trate o que lê sobre Dots como foto do momento, não como ficha técnica.\n\nAgentes leves dividem um limite: começam do zero a cada vez. Não levam seu histórico de e-mail, sua agenda nem seus padrões de trabalho de uma tarefa para a seguinte. Essa lacuna um assistente completo preenche.",
+    "keywords": [
+      "openai dots",
+      "o que é openai dots",
+      "dots ai agent",
+      "openai dots explicado",
+      "assistente dots"
+    ],
+    "howGaiaUsesIt": "GAIA é o assistente completo para o trabalho que cruza ferramentas e tempo. Conecta mais de 50 ferramentas, constrói memória em grafos de como você trabalha e age de forma proativa em e-mail e agenda. Se Dots resolve suas perguntas rápidas, GAIA carrega tudo que precisa de contexto.",
+    "faqs": [
+      {
+        "question": "O que é OpenAI Dots?",
+        "answer": "Dots é uma superfície leve de agentes para tarefas rápidas dentro do chat. É a via rápida, não o assistente completo."
+      },
+      {
+        "question": "Como Dots difere de um assistente de IA completo?",
+        "answer": "Um assistente completo guarda memória entre tarefas, conecta e-mail e agenda, e age antes de você pedir. Dots resolve o rápido e pontual; GAIA carrega o fluxo ao redor."
+      }
+    ]
+  },
+  "dot-app": {
+    "term": "Dot",
+    "metaTitle": "O que era o app Dot? Companhia de IA",
+    "metaDescription": "Dot era o app de companhia com IA para iPhone, encerrado em outubro de 2025. Saiba o que fazia e para onde vão seus usuários agora.",
+    "definition": "Dot era um app de companhia com IA para iPhone que conversava com você e lembrava o contexto entre conversas. Encerrou em outubro de 2025.",
+    "extendedDescription": "Dot morava no seu iPhone como um companheiro com quem você falava todo dia. Lembrava o que você contava e construía sobre conversas passadas, o que parecia mais pessoal que uma caixa de busca.\n\nO app encerrou em outubro de 2025 e seus usuários precisaram achar um novo lar para o hábito. Ex-usuários de Dot costumam sentir falta de duas coisas: a relação contínua e a memória de conversas passadas.\n\nApps de companhia e assistentes de produtividade resolvem problemas diferentes. Uma companhia faz companhia. Um assistente zera sua caixa, planeja seu dia e conclui tarefas.",
+    "keywords": [
+      "dot app",
+      "o que era dot app",
+      "dot companhia ia",
+      "encerramento dot app",
+      "dot app ios"
+    ],
+    "howGaiaUsesIt": "GAIA guarda o que as pessoas amavam em Dot, que é a memória que cresce com o tempo, e soma resolução. Lembra suas preferências e seu histórico, e age: redige respostas, agenda eventos e gerencia tarefas em mais de 50 ferramentas conectadas.",
+    "faqs": [
+      {
+        "question": "O que aconteceu com o app Dot?",
+        "answer": "Dot encerrou em outubro de 2025. O app de iOS parou de funcionar e seus usuários precisaram mudar."
+      },
+      {
+        "question": "Para onde vão os ex-usuários de Dot?",
+        "answer": "Busque um assistente com memória real entre conversas e ferramentas. GAIA é open source, lembra como você trabalha e conecta e-mail e agenda."
+      }
+    ]
+  },
+  "friend-pendant": {
+    "term": "Friend Pendant",
+    "metaTitle": "O que é Friend Pendant? Wearable de IA",
+    "metaDescription": "Friend é um pingente de IA de US$ 249 que ouve seu dia e escreve como um companheiro. Saiba o que faz e como GAIA difere.",
+    "definition": "Friend é um pingente de IA de US$ 249 que você usa no pescoço. Ouve seu dia e escreve como um companheiro, mas não gerencia seu e-mail nem sua agenda.",
+    "extendedDescription": "Friend está sempre com você, e essa é toda a proposta. O pingente ouve o que você ouve e responde por texto com observações, lembretes e conversa. É companhia, não software.\n\nA troca é o alcance. Friend conhece seu dia porque ouviu. Não lê sua caixa, não vê sua agenda nem conclui tarefas nas suas ferramentas. Quando algo precisa ser feito, é você quem faz.\n\nCompanheiros wearables e assistentes completos atendem necessidades diferentes. Um acompanha seu dia. O outro limpa o trabalho para você aproveitar.",
+    "keywords": [
+      "friend pendant",
+      "o que é friend ai",
+      "pingente friend ia",
+      "friend wearable",
+      "friend companhia ia"
+    ],
+    "howGaiaUsesIt": "GAIA é a resolução que Friend nem tenta. Lê seu e-mail, gerencia sua agenda, cria tarefas e age em mais de 50 ferramentas. Muita gente iria querer os dois: um pingente para companhia e GAIA para o trabalho. Se escolher um, escolha o que esvazia seu prato.",
+    "faqs": [
+      {
+        "question": "Quanto custa Friend?",
+        "answer": "O pingente Friend custa US$ 249. Ouve ao longo do dia e fala por texto como um companheiro."
+      },
+      {
+        "question": "Friend gerencia e-mail ou tarefas?",
+        "answer": "Não. Friend ouve e conversa, mas não conecta e-mail, agenda nem ferramentas de tarefas. Esse é o trabalho de um assistente completo como GAIA."
+      }
+    ]
+  },
+  "omi": {
+    "term": "OMI",
+    "metaTitle": "O que é OMI? Pingente de IA aberto",
+    "metaDescription": "OMI é um pingente de IA open source que grava conversas para lembrar depois. Saiba como funciona e como GAIA age sobre o contexto.",
+    "definition": "OMI é um pingente de IA open source que ouve conversas e deixa para buscar depois. O hardware vai de US$ 129 a US$ 179.",
+    "extendedDescription": "OMI aposta na via aberta em wearables. O hardware ouve seu dia e o software aberto vira essas conversas em um registro pesquisável que você controla.\n\nPor ser open source, você pode conferir o que faz com seu áudio e rodar partes por conta própria. Essa transparência é rara numa categoria feita de microfones sempre ligados.\n\nCapturar é só meia tarefa. OMI lembra o que foi dito. Não redige o e-mail de follow-up, não cria a tarefa nem atualiza a agenda. Lembrar sem agir igual deixa a lista pendente.",
+    "keywords": [
+      "omi ai",
+      "o que é omi",
+      "pingente omi",
+      "omi wearable",
+      "pingente ia aberto"
+    ],
+    "howGaiaUsesIt": "GAIA respeita a ética aberta e divide: GAIA é todo open source e auto-hospedável via Docker. Onde OMI para na lembrança, GAIA segue até a ação, e vira o contexto capturado em e-mails redigidos, tarefas criadas e eventos agendados em mais de 50 integrações.",
+    "faqs": [
+      {
+        "question": "Quanto custa OMI?",
+        "answer": "O hardware OMI vai de US$ 129 a US$ 179 conforme o modelo. O software é open source."
+      },
+      {
+        "question": "OMI é mesmo open source?",
+        "answer": "Sim. OMI é open source, então você pode inspecionar o código e auto-hospedar partes. É uma vantagem real de privacidade contra wearables fechados."
+      }
+    ]
+  },
+  "gemini-assistant": {
+    "term": "Gemini Assistant",
+    "metaTitle": "O que é Gemini Assistant? IA do telefone",
+    "metaDescription": "Gemini Assistant é a IA integrada em telefones Android para comandos de voz. Saiba o que cobre e onde um assistente completo assume.",
+    "definition": "Gemini Assistant é a IA integrada em telefones Android. Responde perguntas, põe temporizadores e controla seu aparelho por voz.",
+    "extendedDescription": "Se você segurar o botão de ligar num Android moderno, aparece Gemini Assistant. Cuida dos trabalhos clássicos do telefone: ligar, pôr alarmes, tocar música, responder perguntas rápidas e trocar ajustes do aparelho.\n\nÉ um assistente de aparelho, não de trabalho. Não tria sua caixa, não prepara briefings de reunião nem gerencia projetos nas suas ferramentas. Quando o telefone volta ao bolso, a ajuda para.\n\nEsta página trata do assistente do telefone. O chatbot Gemini do Google e o antigo Google Assistente têm páginas próprias.",
+    "keywords": [
+      "gemini assistant",
+      "o que é gemini assistant",
+      "gemini assistente android",
+      "assistente telefone gemini",
+      "gemini voz android"
+    ],
+    "howGaiaUsesIt": "GAIA segue onde o assistente do telefone para. Lê seu Gmail, prepara briefings antes de reuniões, cria tarefas desde conversas e lembra contexto por semanas. Use a voz para temporizadores e ligações; use GAIA para tudo que cruza mais de um app.",
+    "faqs": [
+      {
+        "question": "O que é Gemini Assistant?",
+        "answer": "Gemini Assistant é o assistente de voz integrado em telefones Android. Cuida de ligações, temporizadores, ajustes do aparelho e perguntas rápidas por voz."
+      },
+      {
+        "question": "Como Gemini Assistant difere de GAIA?",
+        "answer": "Gemini Assistant cuida do seu telefone. GAIA cuida do seu trabalho: tria e-mail, gerencia agenda, conclui tarefas e guarda memória em todas as suas ferramentas."
+      }
+    ]
+  },
+  "siri": {
+    "term": "Siri",
+    "metaTitle": "O que é Siri? Assistente de voz da Apple",
+    "metaDescription": "Siri é o assistente de voz integrado em iPhone e Mac. Saiba o que faz bem e onde um assistente proativo vai ainda mais longe.",
+    "definition": "Siri é o assistente de voz integrado em cada iPhone, iPad e Mac. Cuida de comandos rápidos como temporizadores, ligações e perguntas simples.",
+    "extendedDescription": "Siri foi o primeiro assistente de voz de massa e ainda domina a camada de comandos rápidos em aparelhos Apple. Peça um temporizador, uma ligação, direções ou o clima, e responde em um segundo.\n\nO teto é conhecido. Pedidos de várias etapas quebram, não há memória entre conversas e não trabalha dentro do seu e-mail ou ferramentas de projeto. Usuários avançados batem nesse teto rápido.\n\nSiri cuida do seu aparelho. Nunca foi feita para carregar sua jornada, que é justo a lacuna que um assistente proativo preenche.",
+    "keywords": [
+      "siri",
+      "o que é siri",
+      "siri apple assistente",
+      "siri voz assistente",
+      "limites da siri"
+    ],
+    "howGaiaUsesIt": "GAIA faz o trabalho que Siri não alcança. Tria sua caixa antes de você acordar, prepara briefings para cada reunião, cria tarefas desde e-mails e mensagens, e lembra seus padrões em ferramentas. Deixe temporizadores com Siri; dê a jornada para GAIA.",
+    "faqs": [
+      {
+        "question": "Para que serve Siri?",
+        "answer": "Siri cuida de comandos rápidos de voz em aparelhos Apple: temporizadores, ligações, mensagens, direções e perguntas simples. Trabalho complexo de várias etapas fica grande demais."
+      },
+      {
+        "question": "Como Siri difere de GAIA?",
+        "answer": "Siri cuida do seu aparelho por voz. GAIA cuida do seu trabalho: tria caixa, gerencia agenda, tarefas e memória em mais de 50 ferramentas. Complementam mais do que competem."
+      }
+    ]
+  },
+  "chatgpt-atlas": {
+    "term": "ChatGPT Atlas",
+    "metaTitle": "O que era ChatGPT Atlas? Fim explicado",
+    "metaDescription": "ChatGPT Atlas foi um produto de IA encerrado em agosto de 2026. Saiba o que era e para onde vão seus usuários agora com um assistente completo.",
+    "definition": "ChatGPT Atlas foi um produto de IA encerrado em agosto de 2026. Seus ex-usuários em busca de um assistente mais profundo costumam chegar a ferramentas abertas como GAIA.",
+    "extendedDescription": "Atlas teve seu momento e depois se foi. O encerramento de agosto de 2026 deixou usuários com hábitos construídos sobre um produto que já não abre.\n\nEncerramentos seguem um padrão: exporte o que puder, ache o equivalente vivo mais próximo e reconstrua o fluxo. Os usuários que se recuperam antes escolhem ferramentas que ninguém pode tirar.\n\nEsse último ponto favorece open source. Um assistente auto-hospedado segue funcionando sem importar o roteiro de uma empresa, que é justo a garantia que usuários de Atlas aprenderam a querer.",
+    "keywords": [
+      "chatgpt atlas",
+      "o que era chatgpt atlas",
+      "fim chatgpt atlas",
+      "atlas ia fim",
+      "produto atlas ia"
+    ],
+    "howGaiaUsesIt": "GAIA é a resposta à prova de fins: open source, auto-hospedável via Docker, com plano gratuito para testar. Conecte seu Gmail e sua agenda, e GAIA reconstrói a camada útil que Atlas dava, desta vez em infraestrutura que você controla.",
+    "faqs": [
+      {
+        "question": "O que aconteceu com ChatGPT Atlas?",
+        "answer": "ChatGPT Atlas encerrou em agosto de 2026. Seus usuários precisam exportar dados e mudar para um produto vivo."
+      },
+      {
+        "question": "O que substitui ChatGPT Atlas?",
+        "answer": "GAIA é toda open source e auto-hospedável, então nenhum fim tira ela de você. Cobre e-mail, agenda, tarefas e memória em mais de 50 ferramentas."
+      }
+    ]
   }
 }

@@ -4657,5 +4657,205 @@
         "answer": "AI는 받은편지함 관리의 상당 부분을 자동화할 수 있습니다. 분류, 보관, 구독 해지, 반복적인 답장 작성, 우선 순위 지정 등이 이에 해당합니다. 하지만 미묘한 판단이 필요하거나 민감한 결정, 또는 개인적인 답변이 필요한 메시지는 여전히 사람이 직접 확인하는 것이 좋습니다. GAIA는 대량의 반복적인 작업을 처리하도록 설계되어, 중요한 이메일에 더욱 집중하실 수 있도록 도와줍니다."
       }
     ]
+  },
+  "instinct": {
+    "term": "Instinct",
+    "metaTitle": "Instinct란? 문자로 쓰는 SMS AI 대행",
+    "metaDescription": "Instinct는 Spear Street의 SMS 대행으로 문자와 WhatsApp으로 여행과 심부름을 맡습니다. 작동 방식과 GAIA가 맞는 지점을 비교합니다.",
+    "definition": "Instinct는 Spear Street의 AI 대행으로 SMS와 WhatsApp으로 여행 예약과 일상 심부름을 맡습니다. 필요한 일을 문자로 보내면 나머지를 대신 진행합니다.",
+    "extendedDescription": "Instinct는 평소에 문자를 쓰는 곳에서 움직입니다. 배울 도구도 확인할 화면도 필요 없습니다. 비행기나 예약이나 심부름을 문자로 보내면 대행이 대신 진행합니다.\n\n이 제품은 순서 대기로 자라면서 넓히기 전에 여행과 심부름을 다졌습니다. 그 좁음이 생각입니다. Instinct는 문자로 일을 넘기는 가장 빠른 길을 노립니다.\n\nSMS 대행은 깊이보다 편함을 택합니다. 여행 예약처럼 끝이 분명한 한 번의 일이 잘 맞습니다. 받은함을 읽지 않고, 일정을 챙기지 않으며, 몇 주에 걸친 일하는 방식도 기억하지 않습니다.",
+    "keywords": [
+      "instinct ai",
+      "instinct ai란",
+      "instinct sms 대행",
+      "spear street instinct",
+      "instinct 대기"
+    ],
+    "howGaiaUsesIt": "GAIA는 같은 곳에서 만납니다. 손 안의 도구뿐 아니라 WhatsApp과 Telegram에서도 움직입니다. 차이는 닿는 넓이입니다. GAIA는 이메일도 읽고 일정도 챙기며 전체 맥락을 기억하므로, 잡은 여행이 일정과 받은함과 할 일에 이어져 되묻지 않습니다.",
+    "faqs": [
+      {
+        "question": "Instinct는 무엇을 하나요?",
+        "answer": "Instinct는 SMS와 WhatsApp으로 여행 예약과 일상 심부름을 맡습니다. 필요한 일을 문자로 적으면 대행이 챙깁니다."
+      },
+      {
+        "question": "Instinct는 누구나 쓸 수 있나요?",
+        "answer": "Instinct는 여행과 심부름에 맞추는 동안 순서 대기로 자랐습니다. 쓸 수 있는 넓이는 때에 따라 늘었으니 지금 안내는 공식 페이지를 확인해 주세요."
+      }
+    ]
+  },
+  "openai-dots": {
+    "term": "OpenAI Dots",
+    "metaTitle": "OpenAI Dots란? 가벼운 대행 알아보기",
+    "metaDescription": "Dots는 OpenAI의 가벼운 대행 화면으로 대화 속 빠른 일을 맡습니다. 어디에 맞고 전체 조수가 나은 때와 고르는 법을 비교합니다.",
+    "definition": "Dots는 OpenAI의 가벼운 대행 화면으로 대화를 벗어나지 않고 빠른 일을 처리합니다. 속도를 위한 구조로 일 전체를 맡기 위한 것이 아닙니다.",
+    "extendedDescription": "Dots의 생각은 곧습니다. 모든 부탁에 기억과 도구를 갖춘 대행이 필요하지는 않습니다. 빠른 답이나 작은 손질이 필요할 때가 있고, 가벼운 화면이 더 빨리 닿습니다.\n\n2026년 기준으로 이 화면은 아직 자라는 중이니 Dots에 대해 읽는 이야기는 사양이 아니라 지금 모습으로 봐 주세요.\n\n가벼운 대행의 한계는 같습니다. 매번 처음부터 시작합니다. 이메일 내역도 일정도 일하는 버릇도 일에서 일로 넘기지 않습니다. 그 빈 곳을 전체 조수가 메웁니다.",
+    "keywords": [
+      "openai dots",
+      "openai dots란",
+      "dots ai 대행",
+      "openai dots 알아보기",
+      "dots 조수"
+    ],
+    "howGaiaUsesIt": "GAIA는 도구와 때를 가로지르는 일의 전체 조수입니다. 50개가 넘는 도구에 이어지고 일하는 방식을 그림 기억에 쌓으며 이메일과 일정에 먼저 움직입니다. 빠른 물음은 Dots가 받고 맥락이 필요한 전체는 GAIA가 돕니다.",
+    "faqs": [
+      {
+        "question": "OpenAI Dots는 무엇인가요?",
+        "answer": "Dots는 대화 속 빠른 일을 위한 가벼운 대행 화면입니다. 빠른 길이지 전체 조수는 아닙니다."
+      },
+      {
+        "question": "Dots는 전체 AI 조수와 어떻게 다른가요?",
+        "answer": "전체 조수는 일을 가로질러 기억을 갖고 이메일과 일정에 이어지며 묻기 전에 움직입니다. Dots는 빠르고 한 번인 일을 맡고 주변 흐름은 GAIA가 돕습니다."
+      }
+    ]
+  },
+  "dot-app": {
+    "term": "Dot",
+    "metaTitle": "Dot 앱이란? 끝난 AI 벗 알아보기",
+    "metaDescription": "Dot은 iPhone AI 벗 도구로 2025년 10월에 끝났습니다. 무엇을 했고 예전 사용자가 지금 어디로 가는지 비교합니다.",
+    "definition": "Dot은 iPhone AI 벗 도구로 말을 걸면 마주하고 대화 맥락을 기억했습니다. 2025년 10월에 끝났습니다.",
+    "extendedDescription": "Dot은 iPhone 안에 살며 매일 말을 나누는 벗이었습니다. 나눈 이야기를 기억하고 앞선 이야기에 쌓아 올려 찾기 상자보다 가깝게 느껴졌습니다.\n\n이 도구는 2025년 10월에 끝났고 버릇의 둘 곳을 사용자가 찾게 되었습니다. 예전 Dot 사용자가 아쉬워하는 것은 두 가지입니다. 이어지는 만남과 앞선 이야기의 기억입니다.\n\n벗 도구와 일 조수는 다른 어려움을 풉니다. 벗은 곁에 있습니다. 조수는 받은함을 비우고 하루를 다듬으며 일을 끝냅니다.",
+    "keywords": [
+      "dot 앱",
+      "dot 앱이란",
+      "dot ai 벗",
+      "dot 종료",
+      "dot ios"
+    ],
+    "howGaiaUsesIt": "GAIA는 Dot에서 사랑받은 곳, 때와 함께 자라는 기억을 지키고 마무리를 더합니다. 취향과 내역을 기억한 뒤에 움직입니다. 답을 쓰고 일정을 넣으며 50개가 넘는 이어진 도구로 일을 돕니다.",
+    "faqs": [
+      {
+        "question": "Dot 앱에 무슨 일이 있었나요?",
+        "answer": "Dot은 2025년 10월에 끝났습니다. iPhone 도구는 멈췄고 사용자는 다른 곳으로 옮겨야 했습니다."
+      },
+      {
+        "question": "예전 Dot 사용자는 어디로 가나요?",
+        "answer": "대화와 도구를 가로지르는 진짜 기억을 가진 조수를 찾아보세요. GAIA는 열린 구조로 일하는 방식을 기억하고 이메일과 일정에 이어집니다."
+      }
+    ]
+  },
+  "friend-pendant": {
+    "term": "Friend Pendant",
+    "metaTitle": "Friend 펜던트란? 몸에 차는 AI 알아보기",
+    "metaDescription": "Friend는 249달러 AI 목걸이로 하루를 듣고 벗처럼 문자를 보냅니다. 무엇을 하고 GAIA와 어떻게 다른지 비교합니다.",
+    "definition": "Friend는 목에 거는 249달러 AI 목걸이입니다. 하루를 듣고 벗처럼 문자를 보내지만 이메일도 일정도 챙기지 않습니다.",
+    "extendedDescription": "Friend는 늘 곁에 있고 그것이 내세움의 전부입니다. 목걸이는 듣는 것을 듣고 깨달음과 다짐과 이야기를 문자로 답합니다. 만남이지 도구가 아닙니다.\n\n맞바꿈은 닿는 넓이입니다. Friend는 들었으니 하루를 압니다. 받은함을 읽지 않고 일정을 보지 않으며 도구 속 일을 끝내지 않습니다. 할 일이 있으면 당신이 합니다.\n\n몸에 차는 벗과 전체 조수는 다른 필요에 답합니다. 하나는 하루 내내 곁에 있습니다. 다른 하나는 일을 치워 즐길 수 있게 합니다.",
+    "keywords": [
+      "friend 펜던트",
+      "friend ai란",
+      "friend 목걸이 ai",
+      "friend 웨어러블",
+      "friend 벗 ai"
+    ],
+    "howGaiaUsesIt": "GAIA는 Friend가 노리지 않는 마무리입니다. 이메일을 읽고 일정을 챙기며 할 일을 만들고 50개가 넘는 도구로 움직입니다. 솔직히 둘 다 갖고 싶은 사람이 많을 것입니다. 만남에는 목걸이, 일에는 GAIA입니다. 하나만 고른다면 접시를 비우는 쪽을 고르세요.",
+    "faqs": [
+      {
+        "question": "Friend는 얼마인가요?",
+        "answer": "Friend 펜던트는 249달러입니다. 하루 내내 듣고 벗처럼 문자로 이야기합니다."
+      },
+      {
+        "question": "Friend는 이메일이나 할 일을 챙기나요?",
+        "answer": "아닙니다. Friend는 듣고 이야기하지만 이메일에도 일정에도 할 일 도구에도 이어지지 않습니다. 그것은 GAIA 같은 전체 조수의 일입니다."
+      }
+    ]
+  },
+  "omi": {
+    "term": "OMI",
+    "metaTitle": "OMI란? 열린 AI 펜던트 알아보기",
+    "metaDescription": "OMI는 이야기를 받아 나중에 찾을 수 있게 하는 열린 AI 목걸이입니다. 작동 방식과 맥락에 GAIA가 움직이는 차이를 비교합니다.",
+    "definition": "OMI는 이야기를 듣고 나중에 찾을 수 있게 하는 열린 AI 목걸이입니다. 기계는 129달러부터 179달러입니다.",
+    "extendedDescription": "OMI는 몸에 차는 것의 열린 길을 택합니다. 기계는 하루 내내 듣고 열린 구조가 그 이야기를 찾을 수 있는 기록으로 바꾸어 당신이 쥡니다.\n\n열려 있으니 소리를 어떻게 다루는지 확인할 수 있고 일부는 직접 돌릴 수 있습니다. 그런 속 보임은 늘 켜진 귀로 이루어진 무리에서는 드문 일입니다.\n\n받기는 일의 절반입니다. OMI는 들은 말을 기억합니다. 나중 이메일 밑그림도 할 일 만들기도 일정 고치기도 하지 않습니다. 기억만 하고 움직이지 않으면 할 일은 남습니다.",
+    "keywords": [
+      "omi ai",
+      "omi란",
+      "omi 펜던트",
+      "omi 웨어러블",
+      "열린 ai 목걸이"
+    ],
+    "howGaiaUsesIt": "GAIA는 열린 생각을 받들고 나눕니다. GAIA는 전체가 열려 있고 Docker로 직접 둘 수 있습니다. OMI가 기억하는 곳에서 멈추는 앞쪽으로 GAIA는 행동으로 나아갑니다. 받은 맥락을 쓴 이메일과 만든 할 일과 넣은 일정으로 바꾸어 50개가 넘는 이어짐으로 돕니다.",
+    "faqs": [
+      {
+        "question": "OMI는 얼마인가요?",
+        "answer": "OMI 기계는 모양에 따라 129달러부터 179달러입니다. 구조는 열려 있습니다."
+      },
+      {
+        "question": "OMI는 정말 열려 있나요?",
+        "answer": "네. OMI는 열려 있으니 속을 확인하고 일부를 직접 둘 수 있습니다. 닫힌 몸에 차는 제품보다 사생활을 지키는 데서 확실히 앞섭니다."
+      }
+    ]
+  },
+  "gemini-assistant": {
+    "term": "Gemini Assistant",
+    "metaTitle": "Gemini Assistant란? 전화 AI 알아보기",
+    "metaDescription": "Gemini Assistant는 Android 전화에 들어간 음성 AI입니다. 맞는 곳과 전체 열린 조수가 넘겨받는 곳을 비교합니다.",
+    "definition": "Gemini Assistant는 Android 전화에 들어간 AI입니다. 물음에 답하고 타이머를 맞추며 목소리로 기기를 다룹니다.",
+    "extendedDescription": "요즘 Android 전화에서 전원 길게 누르기에 나오는 것이 Gemini Assistant입니다. 전화의 오랜 일을 맡습니다. 걸기와 알람, 음악, 빠른 물음에 대한 답, 기기 바꿈입니다.\n\n도구 조수이지 일 조수는 아닙니다. 받은함 정리도 회의 미리 자료도 도구를 가로지르는 일 돌보기도 하지 않습니다. 전화가 주머니로 돌아가면 도움은 멈춥니다.\n\n이 페이지는 전화 조수 이야기입니다. Google Gemini 챗봇과 예전 Google 어시스턴트는 다른 페이지에서 다룹니다.",
+    "keywords": [
+      "gemini assistant",
+      "gemini assistant란",
+      "gemini android 조수",
+      "gemini 전화 조수",
+      "gemini 음성 android"
+    ],
+    "howGaiaUsesIt": "GAIA는 전화 조수가 멈추는 곳부터 넘겨받습니다. Gmail을 읽고 회의 전에 미리 자료를 만들며 이야기에서 할 일을 만들고 몇 주 맥락을 기억합니다. 타이머와 전화는 목소리에 맡기고, 하나의 도구를 넘는 일은 GAIA에 맡겨 주세요.",
+    "faqs": [
+      {
+        "question": "Gemini Assistant는 무엇인가요?",
+        "answer": "Gemini Assistant는 Android 전화에 들어간 음성 조수입니다. 걸기와 타이머, 기기 바꿈, 빠른 물음을 목소리로 받습니다."
+      },
+      {
+        "question": "Gemini Assistant는 GAIA와 어떻게 다른가요?",
+        "answer": "Gemini Assistant는 전화를 돕습니다. GAIA는 일을 돕니다. 받은함 정리와 일정 챙김, 할 일 마무리, 도구를 가로지르는 기억입니다."
+      }
+    ]
+  },
+  "siri": {
+    "term": "Siri",
+    "metaTitle": "Siri란? Apple 음성 조수 알아보기",
+    "metaDescription": "Siri는 iPhone과 Mac에 들어간 음성 조수입니다. 잘하는 곳과 먼저 움직이는 조수가 앞서 가는 곳, 가르는 법을 비교합니다.",
+    "definition": "Siri는 iPhone과 iPad와 Mac 어디에나 들어간 음성 조수입니다. 타이머나 전화나 쉬운 물음 같은 빠른 부탁을 받습니다.",
+    "extendedDescription": "Siri는 처음 널리 퍼진 음성 조수로 지금도 Apple 기기의 빠른 부탁 층을 쥐고 있습니다. 타이머와 전화, 길 찾기, 날씨를 부탁하면 일 초에 답합니다.\n\n한계는 알려져 있습니다. 손이 많이 가는 부탁은 무너지고 대화를 가로지르는 기억은 없으며 이메일이나 일 도구 안에서는 일하지 못합니다. 깊이 쓰는 사람일수록 빨리 그 한계에 닿습니다.\n\nSiri는 기기를 돕습니다. 일하는 하루를 돕기 위해 만들어지지 않았고, 그 빈 곳을 먼저 움직이는 조수가 메웁니다.",
+    "keywords": [
+      "siri",
+      "siri란",
+      "apple siri 조수",
+      "siri 음성 조수",
+      "siri 한계"
+    ],
+    "howGaiaUsesIt": "GAIA는 Siri가 닿지 않는 일을 합니다. 일어나기 전에 받은함을 정리하고 회의마다 미리 자료를 만들며 이메일과 글에서 할 일을 만들고 도구를 가로지르는 버릇을 기억합니다. 타이머는 Siri에 맡기고 일하는 하루는 GAIA에 넘겨주세요.",
+    "faqs": [
+      {
+        "question": "Siri는 무엇이 좋나요?",
+        "answer": "Siri는 Apple 기기의 빠른 음성 부탁이 좋습니다. 타이머와 전화, 글, 길 찾기, 쉬운 물음입니다. 손이 많이 가는 어려운 일은 맞지 않습니다."
+      },
+      {
+        "question": "Siri는 GAIA와 어떻게 다른가요?",
+        "answer": "Siri는 목소리로 기기를 돕습니다. GAIA는 일을 돕습니다. 받은함 정리와 일정 챙김, 할 일, 50개가 넘는 도구를 가로지르는 기억입니다. 겨루기보다 서로 메웁니다."
+      }
+    ]
+  },
+  "chatgpt-atlas": {
+    "term": "ChatGPT Atlas",
+    "metaTitle": "ChatGPT Atlas란? 끝난 이야기 알아보기",
+    "metaDescription": "ChatGPT Atlas는 2026년 8월에 끝난 AI 제품입니다. 무엇이었고 사용자가 지금 어디로 가는지, 일어서는 길을 비교합니다.",
+    "definition": "ChatGPT Atlas는 2026년 8월에 끝난 AI 제품입니다. 깊은 조수를 찾는 예전 사용자는 GAIA 같은 열린 도구에 닿는 일이 많습니다.",
+    "extendedDescription": "Atlas는 때를 얻고 그 뒤에 사라졌습니다. 2026년 8월의 끝은 열리지 않는 제품 위에 쌓은 버릇을 사용자에게 남겼습니다.\n\n끝은 본을 따릅니다. 낼 수 있는 것을 내고 가장 가까운 살아 있는 본을 찾아 흐름을 다시 만듭니다. 빨리 일어서는 사용자는 빼앗기지 않는 도구를 고릅니다.\n\n마지막 점이 열린 구조를 떠받칩니다. 직접 두는 조수는 회사의 길에 상관없이 계속 움직입니다. 그 약속이야말로 Atlas 사용자가 원한다고 배운 것입니다.",
+    "keywords": [
+      "chatgpt atlas",
+      "chatgpt atlas란",
+      "chatgpt atlas 종료",
+      "atlas ai 종료",
+      "atlas ai 제품"
+    ],
+    "howGaiaUsesIt": "GAIA는 끝에 강한 답입니다. 열려 있고 Docker로 직접 둘 수 있으며 써보기 무료 단계가 있습니다. Gmail과 일정을 이으면 Atlas가 내던 쓸모 층을 다시 쌓습니다. 이번에는 당신이 쥐는 터 위에서입니다.",
+    "faqs": [
+      {
+        "question": "ChatGPT Atlas에 무슨 일이 있었나요?",
+        "answer": "ChatGPT Atlas는 2026년 8월에 끝났습니다. 사용자는 낼 수 있는 것을 내고 살아 있는 제품으로 옮겨야 합니다."
+      },
+      {
+        "question": "ChatGPT Atlas 대신 무엇이 있나요?",
+        "answer": "GAIA는 전체가 열려 있고 직접 둘 수 있으니 끝으로 빼앗기지 않습니다. 이메일과 일정과 할 일과 기억을 50개가 넘는 도구로 맡습니다."
+      }
+    ]
   }
 }

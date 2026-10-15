@@ -4657,5 +4657,205 @@
         "answer": "AI can automate a large portion of inbox management — classification, archiving, unsubscribing, drafting routine replies, and flagging priorities. Messages requiring nuanced judgment, sensitive decisions, or personal responses still benefit from human review. GAIA is designed to handle the high-volume routine work so you can focus your attention on the emails that matter."
       }
     ]
+  },
+  "instinct": {
+    "term": "Instinct",
+    "metaTitle": "Instinctとは。SMSのAI代理を解説",
+    "metaDescription": "InstinctはSpear StreetのSMS代理で、文で頼む旅行と用事を引き受けます。仕組みと、受信箱と予定でGAIAが向く所が分かります。",
+    "definition": "InstinctはSpear StreetのAI代理で、SMSとWhatsAppで旅行の予約と毎日の用事を引き受けます。必要なことを文で送ると、後の手配を代わりに進めます。",
+    "extendedDescription": "Instinctは普段書く所で動きます。覚える道具も見る画面も要りません。飛行機や予約や用事を文で送ると、代理が代わりに進めます。\n\nこの品は順番待ちから育ち、広げる前に旅行と用事を固めました。その狭さが考えです。Instinctは文で仕事を渡す一番速い道をねらいます。\n\nSMSの代理は深さより手軽さを取ります。旅行の予約のような、終わりがはっきりした一度の仕事が得意です。受信箱を読まず、予定を整えず、何週もかけての働き方も覚えません。",
+    "keywords": [
+      "instinct ai",
+      "instinct ai とは",
+      "instinct sms 代理",
+      "spear street instinct",
+      "instinct 順番待ち"
+    ],
+    "howGaiaUsesIt": "GAIAは同じ所で会えます。手元の道具だけでなくWhatsAppとTelegramで動きます。違いは届く広さです。GAIAはメールも読み、予定も整え、全体の文脈を覚えるので、取った旅行が予定と受信箱と仕事につながり、言い直しは要りません。",
+    "faqs": [
+      {
+        "question": "Instinctは何をしますか。",
+        "answer": "InstinctはSMSとWhatsAppで旅行の予約と毎日の用事を引き受けます。必要なことを文で書くと、代理が手配します。"
+      },
+      {
+        "question": "Instinctは誰でも使えますか。",
+        "answer": "Instinctは旅行と用事に絞る間に順番待ちで育ちました。使える広さは時とともに増えたので、今の案内は公式の場所で確かめてください。"
+      }
+    ]
+  },
+  "openai-dots": {
+    "term": "OpenAI Dots",
+    "metaTitle": "OpenAI Dotsとは。軽い代理を解説",
+    "metaDescription": "DotsはOpenAIの軽い代理の面で、話の中の速い仕事に向きます。向く所と、全体の助手がよい時と、速さと文脈の取り分け方が分かります。詳しい仕組みと選び方を順に説明します。",
+    "definition": "DotsはOpenAIの軽い代理の面で、話を離れず速い仕事を片づけます。速さのための作りで、仕事全体を回すためではありません。",
+    "extendedDescription": "Dotsの考えは素直です。頼みごと全部に記憶と道具を持つ代理は要りません。速い答えや小さな手当てがほしい時があり、軽い面の方が速く着きます。\n\n2026年時点でこの面はまだ育つ途中なので、Dotsについて読む話は仕様ではなく今の写しと見てください。\n\n軽い代理の限りは同じです。毎回まっさらから始まります。メールの来歴も予定も働き方の癖も、仕事から仕事へ持ち越しません。その開きを全体の助手が埋めます。",
+    "keywords": [
+      "openai dots",
+      "openai dots とは",
+      "dots ai 代理",
+      "openai dots 解説",
+      "dots 助手"
+    ],
+    "howGaiaUsesIt": "GAIAは道具と時をまたぐ仕事の全体の助手です。50以上の道具につながり、働き方を図の記憶にため、先回りでメールと予定に動きます。速い問いかけはDotsが受け、文脈の要る全体はGAIAが回します。",
+    "faqs": [
+      {
+        "question": "OpenAI Dotsとは何ですか。",
+        "answer": "Dotsは話の中の速い仕事のための軽い代理の面です。速い筋であり、全体の助手ではありません。"
+      },
+      {
+        "question": "Dotsは全体のAI助手とどう違いますか。",
+        "answer": "全体の助手は仕事をまたいで記憶を持ち、メールと予定につながり、頼む前に動きます。Dotsは速い一度きりを受け持ち、周りの流れはGAIAが回します。"
+      }
+    ]
+  },
+  "dot-app": {
+    "term": "Dot",
+    "metaTitle": "Dotアプリとは。終わったAI話し相手",
+    "metaDescription": "DotはiPhoneのAI話し相手の道具で、2025年10月に終わりました。何をしたかと、元利用者が今向かう先と、移る時の見所が分かります。詳しい仕組みと選び方を順に説明します。",
+    "definition": "DotはiPhoneのAI話し相手の道具で、話しかけると向き合い、話の文脈を覚えました。2025年10月に終わりました。",
+    "extendedDescription": "DotはiPhoneの中に住む、毎日話す相手でした。話したことを覚え、前の話に積み上げるので、探す箱より身近に感じられました。\n\nこの道具は2025年10月に終わり、習慣の置き所を使い手が探すことになりました。元利用者が惜しむのは二つです。続く付き合いと、前の話の記憶です。\n\n話し相手の道具と仕事の助手は別の困りを解きます。話し相手はそばにいます。助手は受信箱を空け、一日を整え、仕事を終わらせます。",
+    "keywords": [
+      "dot アプリ",
+      "dot アプリ とは",
+      "dot ai 話し相手",
+      "dot 終了",
+      "dot ios"
+    ],
+    "howGaiaUsesIt": "GAIAはDotで好かれた所、時とともに育つ記憶を保ち、やり切りを足します。好みと来歴を覚えた上で動きます。返しを書き、予定を入れ、50以上のつながる道具で仕事を回します。",
+    "faqs": [
+      {
+        "question": "Dotアプリに何がありましたか。",
+        "answer": "Dotは2025年10月に終わりました。iPhoneの道具は動かなくなり、使い手は他へ移ることになりました。"
+      },
+      {
+        "question": "元Dot利用者はどこへ行きますか。",
+        "answer": "話と道具をまたぐ本当の記憶を持つ助手を探してください。GAIAは開かれた作りで、働き方を覚え、メールと予定につながります。"
+      }
+    ]
+  },
+  "friend-pendant": {
+    "term": "Friend Pendant",
+    "metaTitle": "Friendペンダントとは。身につけるAI",
+    "metaDescription": "Friendは249ドルのAI首かけで、一日を聞いて話し相手のように文を送ります。何をするかとGAIAとの違い、向く人の見分け方が分かります。",
+    "definition": "Friendは首にかける249ドルのAI首かけです。一日を聞いて話し相手のように文を送りますが、メールも予定も整えません。",
+    "extendedDescription": "Friendはいつもそばにあり、それが売りの全部です。首かけは聞くことを聞き、気づきと念押しと話を文で返します。付き合いであり、道具ではありません。\n\n引き換えは届く広さです。Friendは聞いたので一日を知ります。受信箱は読まず、予定は見ず、道具の中の仕事は終わらせません。やることがあれば、あなたがやります。\n\n身につける話し相手と全体の助手は別の要りに答えます。一つは一日を通してそばにいます。もう一つは仕事を片づけ、楽しめるようにします。",
+    "keywords": [
+      "friend ペンダント",
+      "friend ai とは",
+      "friend 首かけ ai",
+      "friend ウェアラブル",
+      "friend 話し相手 ai"
+    ],
+    "howGaiaUsesIt": "GAIAはFriendがねらわないやり切りです。メールを読み、予定を整え、仕事を作り、50以上の道具で動きます。正直に言えば両方ほしい人が多いはずです。付き合いには首かけ、仕事にはGAIAです。一つだけ選ぶなら、皿を空ける方を選んでください。",
+    "faqs": [
+      {
+        "question": "Friendはいくらですか。",
+        "answer": "Friendペンダントは249ドルです。一日を通して聞き、話し相手のように文で話します。"
+      },
+      {
+        "question": "Friendはメールや仕事を整えますか。",
+        "answer": "いいえ。Friendは聞いて話しますが、メールにも予定にも仕事の道具にもつながりません。それはGAIAのような全体の助手の仕事です。"
+      }
+    ]
+  },
+  "omi": {
+    "term": "OMI",
+    "metaTitle": "OMIとは。開けたAIペンダントを解説",
+    "metaDescription": "OMIは話を拾って後から探せるようにする開けたAI首かけです。仕組みと、文脈にGAIAが動く違いと、開かれ方の見所が分かります。詳しい仕組みと選び方を順に説明します。",
+    "definition": "OMIは話を聞いて後から探せるようにする開けたAI首かけです。機械は129ドルから179ドルです。",
+    "extendedDescription": "OMIは身につける物の開けた道を取ります。機械は一日を通して聞き、開けた作りの仕組みがその話を探せる記録に変え、あなたが握ります。\n\n開かれているので、音をどう扱うか確かめられ、一部は自分で回せます。その透け方は、いつも働く耳でできた仲間では珍しいことです。\n\n拾うのは仕事の半分です。OMIは言われたことを覚えます。後のメールの下書きも仕事作りも予定の直しもしません。思い出すだけで動かなければ、やることは残ります。",
+    "keywords": [
+      "omi ai",
+      "omi とは",
+      "omi ペンダント",
+      "omi ウェアラブル",
+      "開けた ai 首かけ"
+    ],
+    "howGaiaUsesIt": "GAIAは開けた考えを尊び、分かち合います。GAIAは全体が開かれ、Dockerで自分持ちできます。OMIが思い出す所で止まる先へ、GAIAは行動へ進みます。拾った文脈を書いたメールと作った仕事と入れた予定に変え、50以上のつながりで回します。",
+    "faqs": [
+      {
+        "question": "OMIはいくらですか。",
+        "answer": "OMIの機械は型により129ドルから179ドルです。仕組みは開かれています。"
+      },
+      {
+        "question": "OMIは本当に開けていますか。",
+        "answer": "はい。OMIは開かれているので、中身を確かめて一部を自分持ちできます。閉じた品に対する本当のプライバシーの優れです。"
+      }
+    ]
+  },
+  "gemini-assistant": {
+    "term": "Gemini Assistant",
+    "metaTitle": "Gemini Assistantとは。電話のAIを解説",
+    "metaDescription": "Gemini AssistantはAndroid電話に入る声のAIです。向く所と、全体の開けた助手が引き継ぐ所と、始め方の順が分かります。詳しい仕組みと選び方を順に説明します。",
+    "definition": "Gemini AssistantはAndroid電話に入るAIです。問いかけに答え、タイマーをかけ、声で道具を動かします。",
+    "extendedDescription": "今どきのAndroid電話で電源の長押しに出るのがGemini Assistantです。電話の昔からの仕事を受け持ちます。かけること、目覚まし、音楽、速い問いかけへの答え、道具の切り替えです。\n\n道具の助手であり、仕事の助手ではありません。受信箱の仕分けも打ち合わせの事前資料も、道具をまたぐ仕事回しもしません。電話がポケットに戻れば、手助けは止まります。\n\nこのページは電話の助手の話です。GoogleのGeminiチャットボットと昔のGoogleアシスタントは別のページで扱います。",
+    "keywords": [
+      "gemini assistant",
+      "gemini assistant とは",
+      "gemini android 助手",
+      "gemini 電話 助手",
+      "gemini 声 android"
+    ],
+    "howGaiaUsesIt": "GAIAは電話の助手が止まる所から引き継ぎます。Gmailを読み、打ち合わせの前に事前資料を作り、話から仕事を作り、何週もの文脈を覚えます。タイマーと電話は声に任せ、一つの道具を越えることはGAIAに任せてください。",
+    "faqs": [
+      {
+        "question": "Gemini Assistantとは何ですか。",
+        "answer": "Gemini AssistantはAndroid電話に入る声の助手です。かけること、タイマー、道具の切り替え、速い問いかけを声で受けます。"
+      },
+      {
+        "question": "Gemini AssistantはGAIAとどう違いますか。",
+        "answer": "Gemini Assistantは電話を回します。GAIAは仕事を回します。受信箱の仕分け、予定の整え、仕事のやり切り、道具をまたぐ記憶です。"
+      }
+    ]
+  },
+  "siri": {
+    "term": "Siri",
+    "metaTitle": "Siriとは。Appleの声の助手を解説",
+    "metaDescription": "SiriはiPhoneとMacに入る声の助手です。得意な所と、先回りの助手が先へ行く所と、使い分けの見所が分かります。詳しい仕組みと選び方を順に説明します。",
+    "definition": "SiriはiPhoneとiPadとMacのどれにも入る声の助手です。タイマーや電話や易しい問いかけのような速い頼みごとを受けます。",
+    "extendedDescription": "Siriは初めて広がった声の助手で、今もAppleの道具の速い頼みごとの層を持ちます。タイマー、電話、道案内、天気を頼めば一秒で答えます。\n\n天井は知られています。手順の多い頼みは崩れ、話をまたぐ記憶はなく、メールや仕事の道具の中では働けません。使い込む人ほど速くその天井に着きます。\n\nSiriは道具を回します。仕事の日を回すためには作られず、その開きを先回りの助手が埋めます。",
+    "keywords": [
+      "siri",
+      "siri とは",
+      "apple siri 助手",
+      "siri 声 助手",
+      "siri 限り"
+    ],
+    "howGaiaUsesIt": "GAIAはSiriの届かない仕事をします。起きる前に受信箱を仕分け、打ち合わせごとに事前資料を作り、メールと文から仕事を作り、道具をまたぐ癖を覚えます。タイマーはSiriに任せ、仕事の日はGAIAに渡してください。",
+    "faqs": [
+      {
+        "question": "Siriは何が得意ですか。",
+        "answer": "SiriはAppleの道具の速い声の頼みごとが得意です。タイマー、電話、文、道案内、易しい問いかけです。手順の多い難しい仕事は向きません。"
+      },
+      {
+        "question": "SiriはGAIAとどう違いますか。",
+        "answer": "Siriは声で道具を回します。GAIAは仕事を回します。受信箱の仕分け、予定の整え、仕事、50以上の道具をまたぐ記憶です。争うより補い合います。"
+      }
+    ]
+  },
+  "chatgpt-atlas": {
+    "term": "ChatGPT Atlas",
+    "metaTitle": "ChatGPT Atlasとは。終わりを解説",
+    "metaDescription": "ChatGPT Atlasは2026年8月に終わったAIの品です。何だったかと、利用者が今向かう先と、立ち直り方の順が分かります。詳しい仕組みと選び方を順に説明します。",
+    "definition": "ChatGPT Atlasは2026年8月に終わったAIの品です。深い助手を探す元利用者はGAIAのような開けた道具に行き着くことが多くあります。",
+    "extendedDescription": "Atlasは時を得て、それから消えました。2026年8月の終わりは、開かなくなった品の上に積んだ習慣を使い手に残しました。\n\n終わりは型をたどります。出せる物を出し、一番近い生きる写しを見つけ、流れを作り直します。速く立ち直る使い手は、取り上げられない道具を選びます。\n\n最後の点が開かれた作りを後押しします。自分持ちの助手は会社の道筋にかかわらず動き続けます。その約束こそ、Atlasの使い手が欲しがると学んだものです。",
+    "keywords": [
+      "chatgpt atlas",
+      "chatgpt atlas とは",
+      "chatgpt atlas 終了",
+      "atlas ai 終了",
+      "atlas ai 品"
+    ],
+    "howGaiaUsesIt": "GAIAは終わりに強い答えです。開かれ、自分持ちがDockerででき、試しの無料の段があります。Gmailと予定をつなげば、Atlasが出した役立つ層を作り直せます。今度はあなたが握る土台の上です。",
+    "faqs": [
+      {
+        "question": "ChatGPT Atlasに何がありましたか。",
+        "answer": "ChatGPT Atlasは2026年8月に終わりました。使い手は出せる物を出して、生きる品へ移る必要があります。"
+      },
+      {
+        "question": "ChatGPT Atlasの代わりは何ですか。",
+        "answer": "GAIAは全体が開かれ自分持ちできるので、終わりで取り上げられません。メールと予定と仕事と記憶を50以上の道具で受け持ちます。"
+      }
+    ]
   }
 }
