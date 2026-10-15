@@ -23,6 +23,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.models.user_models import AuthenticatedUser, UserDocument
+from tests.helpers import captured_wide_event
 
 _DEPS = "app.api.v1.dependencies.oauth_dependencies"
 _BACKFILL = f"{_DEPS}._backfill_user_timezone"
@@ -234,25 +235,6 @@ class TestGetCurrentUserWs:
 
         assert exc.value.reason == "no session cookie or protocol token"
 
-    async def test_a_local_session_cookie_yields_its_account(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(oauth_dependencies.settings, "ENV", "selfhost")
-        monkeypatch.setattr(oauth_dependencies.settings, "AUTH_MODE", "local")
-        monkeypatch.setattr(oauth_dependencies.settings, "DEV_AUTH_BYPASS_EMAIL", None)
-        resolve = AsyncMock(return_value="507f1f77bcf86cd799439011")
-        user_doc = UserDocument.model_validate(
-            {"id": "507f1f77bcf86cd799439011", "email": "kid@gaia.dev", "name": "kid"}
-        )
-        with (
-            patch(f"{_DEPS}.resolve_session_token", resolve),
-            patch(f"{_DEPS}.user_repository.get", AsyncMock(return_value=user_doc)),
-        ):
-            user = await get_current_user_ws(_websocket({"gaia_session": "local.jwt"}))
-
-        resolve.assert_awaited_once_with("local.jwt")
-        assert (user.user_id, user.email) == ("507f1f77bcf86cd799439011", "kid@gaia.dev")
-
     async def test_a_rejected_session_is_a_policy_violation(self) -> None:
         with patch(_WS_AUTH, new_callable=AsyncMock, return_value=(None, None)):
             with pytest.raises(WebSocketException) as exc:
@@ -310,3 +292,73 @@ class TestGetCurrentUserWs:
                 await get_current_user_ws(_websocket())
 
         assert exc.value.reason == "dev bypass target has no Mongo user"
+
+
+_LOCAL_USER_ID = "507f1f77bcf86cd799439011"
+
+
+@pytest.fixture
+def local_auth_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(oauth_dependencies.settings, "ENV", "selfhost")
+    monkeypatch.setattr(oauth_dependencies.settings, "AUTH_MODE", "local")
+    monkeypatch.setattr(oauth_dependencies.settings, "DEV_AUTH_BYPASS_EMAIL", None)
+
+
+@pytest.mark.usefixtures("local_auth_mode")
+class TestGetCurrentUserWsLocalSession:
+    async def test_a_local_session_cookie_yields_its_account_as_an_email_login(self) -> None:
+        resolve = AsyncMock(return_value=_LOCAL_USER_ID)
+        user_doc = UserDocument.model_validate(
+            {"id": _LOCAL_USER_ID, "email": "kid@gaia.dev", "name": "kid"}
+        )
+        lookup = AsyncMock(return_value=user_doc)
+        with (
+            patch(f"{_DEPS}.resolve_session_token", resolve),
+            patch(f"{_DEPS}.user_repository.get", lookup),
+        ):
+            user = await get_current_user_ws(_websocket({"gaia_session": "local.jwt"}))
+
+        resolve.assert_awaited_once_with("local.jwt")
+        lookup.assert_awaited_once_with(_LOCAL_USER_ID)
+        assert (user.user_id, user.email, user.auth_provider) == (
+            _LOCAL_USER_ID,
+            "kid@gaia.dev",
+            "email",
+        )
+
+    async def test_no_local_token_is_a_policy_violation(self) -> None:
+        with pytest.raises(WebSocketException) as exc:
+            await get_current_user_ws(_websocket({"wos_session": "hosted-cookie"}))
+
+        assert exc.value.code == status.WS_1008_POLICY_VIOLATION
+        assert exc.value.reason == "no local session cookie or protocol token"
+
+    async def test_a_rejected_local_token_is_a_warned_policy_violation(self) -> None:
+        with patch(f"{_DEPS}.resolve_session_token", AsyncMock(return_value=None)):
+            async with captured_wide_event() as event:
+                with pytest.raises(WebSocketException) as exc:
+                    await get_current_user_ws(_websocket({"gaia_session": "stale.jwt"}))
+
+        assert exc.value.code == status.WS_1008_POLICY_VIOLATION
+        assert exc.value.reason == "local session token rejected"
+        assert event["warnings"] == [
+            {"msg": "[OAUTH] WebSocket local-session authentication failed"}
+        ]
+
+    async def test_a_session_naming_a_deleted_user_is_a_warned_policy_violation(self) -> None:
+        with (
+            patch(f"{_DEPS}.resolve_session_token", AsyncMock(return_value=_LOCAL_USER_ID)),
+            patch(f"{_DEPS}.user_repository.get", AsyncMock(return_value=None)),
+        ):
+            async with captured_wide_event() as event:
+                with pytest.raises(WebSocketException) as exc:
+                    await get_current_user_ws(_websocket({"gaia_session": "local.jwt"}))
+
+        assert exc.value.code == status.WS_1008_POLICY_VIOLATION
+        assert exc.value.reason == "local session user not found"
+        assert event["warnings"] == [
+            {
+                "msg": "[OAUTH] WebSocket local session resolved to missing user",
+                "user_id": _LOCAL_USER_ID,
+            }
+        ]
