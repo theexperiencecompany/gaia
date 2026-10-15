@@ -53,7 +53,7 @@ from app.services.sandbox.execute_client import (
     sandbox_execute_enabled,
     seed_execute_client,
 )
-from app.services.storage import FsOps, fs_timer
+from app.services.storage import ArtifactInfo, FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
@@ -383,14 +383,15 @@ async def _publish_artifacts(
             mtime = float(mtime_str) if mtime_str else time.time()
         except ValueError:
             mtime = time.time()
-        inline_body = _decode_inline(body_b64, size_bytes, detect_content_type(rel))
+        artifact = ArtifactInfo(
+            path=rel, size_bytes=size_bytes, mtime=mtime, content_type=detect_content_type(rel)
+        )
+        inline_body = _decode_inline(body_b64, size_bytes, artifact.content_type)
         # Same shared publisher write/edit use — one owner of the event shape.
         short_url = await publish_artifact(
             user_id,
             session_id,
-            rel,
-            size_bytes,
-            mtime,
+            artifact,
             inline_body,
             written_this_turn=mtime >= changed_since - ARTIFACT_MTIME_SKEW_SECONDS,
         )

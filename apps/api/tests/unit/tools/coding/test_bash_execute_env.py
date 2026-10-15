@@ -19,7 +19,7 @@ from app.agents.tools.coding._artifacts import artifact_links_note
 from app.agents.tools.coding.bash_tool import _publish_artifacts, bash, build_bash_tool
 from app.agents.workspace.paths import WORKSPACE_ROOT, runs_log_dir
 from app.constants.sandbox import ARTIFACT_MTIME_SKEW_SECONDS, BASH_MAX_TIMEOUT_SECONDS
-from app.services.storage import FsOps, fs_timer
+from app.services.storage import ArtifactInfo, FsOps, fs_timer
 
 ARTIFACTS_MODULE = "app.agents.tools.coding._artifacts"
 MODULE = "app.agents.tools.coding.bash_tool"
@@ -398,5 +398,14 @@ class TestBashArtifactLinks:
         with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=SHORT_URL)) as pub:
             await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
         pub.assert_awaited_once_with(
-            "u1", "conv1", "notes.md", ARTIFACT_SIZE, RUN_STARTED_AT, "abc", written_this_turn=True
+            "u1",
+            "conv1",
+            ArtifactInfo(
+                path="notes.md",
+                size_bytes=ARTIFACT_SIZE,
+                mtime=RUN_STARTED_AT,
+                content_type="text/markdown",
+            ),
+            "abc",
+            written_this_turn=True,
         )

@@ -246,7 +246,6 @@ async def _do_edit(sbx: AsyncSandbox, target: EditTarget, patch: EditPatch) -> s
         target.role_conv,
         target.abs_path,
         new_content,
-        len(new_bytes),
         real_mtime,
     )
 
