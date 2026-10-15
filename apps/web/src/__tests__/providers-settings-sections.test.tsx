@@ -43,6 +43,7 @@ const catalog: ProviderCatalog = {
         needs_base_url: key === "searxng",
         account_id_label: key === "cloudinary" ? "Cloud name" : "",
         second_key_label: key === "cloudinary" ? "API secret" : "",
+        api_key_label: "API key",
       },
     ]),
   ),
@@ -66,6 +67,17 @@ const catalog: ProviderCatalog = {
     }),
     email: feature("Email", ["resend"]),
     integrations: feature("Integrations", ["composio"]),
+    voice: {
+      ...feature("Voice", [], {
+        engine: "hosted_voice",
+        label: "GAIA voice",
+        description: "Hosted voice.",
+      }),
+      self_host_gap: {
+        reason: "Voice needs GAIA Cloud's LiveKit project.",
+        docs_url: "https://docs.example/voice",
+      },
+    },
   },
 };
 
@@ -73,6 +85,7 @@ const configured = new Set(["openai", "firecrawl"]);
 
 const using = (...in_use: FeatureStatus["in_use"]): FeatureStatus => ({
   working: in_use.length > 0,
+  available: true,
   in_use,
 });
 
@@ -106,6 +119,7 @@ const status = {
     file_storage: using("local_disk"),
     email: using(),
     integrations: using(),
+    voice: { working: false, available: false, in_use: [] },
   },
   plans_seeded: false,
   bots: {
@@ -166,6 +180,7 @@ describe("ProvidersSettings", () => {
       "File storage",
       "Email",
       "Integrations",
+      "Voice",
     ]);
   });
 
@@ -205,6 +220,19 @@ describe("ProvidersSettings", () => {
     expect(
       email.getByText("Pick a provider below to turn it on."),
     ).toBeTruthy();
+  });
+
+  it("explains a feature this instance cannot run, with a docs link and no key field", () => {
+    const voice = card("Voice");
+    expect(voice.getByText("Unavailable")).toBeTruthy();
+    expect(
+      voice.getByText("Voice needs GAIA Cloud's LiveKit project."),
+    ).toBeTruthy();
+    expect(
+      voice.getByText("Read the docs").closest("a")?.getAttribute("href"),
+    ).toBe("https://docs.example/voice");
+    expect(voice.queryByLabelText("API key")).toBeNull();
+    expect(voice.queryByText(/Provider/)).toBeNull();
   });
 
   it("sends Composio to Integrations setup and hides Cloudinary on local storage", () => {

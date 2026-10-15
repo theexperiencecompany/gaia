@@ -4,10 +4,7 @@ import type {
   SetupStatus,
 } from "@/features/settings/api/providersApi";
 import { providerFeatureHref } from "@/features/settings/components/providers/providerRows";
-import {
-  isAnyLlmConfigured,
-  isFeatureWorking,
-} from "@/features/settings/hooks/useSetupStatus";
+import { isAnyLlmConfigured } from "@/features/settings/hooks/useSetupStatus";
 
 /** Chat itself; the required AI-provider item already asks for it. */
 const REQUIRED_FEATURE: ProviderFeature = "ai_models";
@@ -22,7 +19,7 @@ export interface SetupChecklistItem {
   href: string;
 }
 
-/** What is still left to configure: the required items first, then each optional feature with no free default that is off. */
+/** What is still left to configure: the required items first, then each optional feature this instance can run, with no free default, that is off. */
 export function buildSetupChecklist(
   status: SetupStatus,
   catalog: ProviderCatalog,
@@ -53,7 +50,8 @@ export function buildSetupChecklist(
   ][];
   for (const [feature, spec] of features) {
     if (feature === REQUIRED_FEATURE || spec.built_in) continue;
-    if (isFeatureWorking(status, feature)) continue;
+    const featureStatus = status.features[feature];
+    if (!featureStatus?.available || featureStatus.working) continue;
     items.push({
       key: feature,
       title: spec.label,

@@ -28,6 +28,7 @@ export function ProviderFeatureSection({
   onSaved,
 }: ProviderFeatureSectionProps) {
   const working = group.status?.working === true;
+  const unavailable = group.status?.available === false;
   const sectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,7 +46,10 @@ export function ProviderFeatureSection({
         title={group.spec.label}
         titleAccessory={
           group.status && (
-            <StatusBadge label={working ? "Working" : "Off"} active={working} />
+            <StatusBadge
+              label={unavailable ? "Unavailable" : working ? "Working" : "Off"}
+              active={working}
+            />
           )
         }
         description={group.spec.description}

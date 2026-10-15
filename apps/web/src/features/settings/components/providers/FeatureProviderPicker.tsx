@@ -1,8 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Link as HeroLink } from "@heroui/link";
 import { Select, SelectItem } from "@heroui/select";
 import { Skeleton } from "@heroui/skeleton";
+import { SquareArrowUpRight02Icon } from "@icons";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type {
@@ -64,6 +66,10 @@ export function FeatureProviderPicker({
     void configs.refetch();
     onSaved();
   };
+
+  if (group.status?.available === false) {
+    return <UnavailableNotice group={group} />;
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -149,6 +155,31 @@ export function FeatureProviderPicker({
           />
         )
       )}
+    </div>
+  );
+}
+
+/** Why this instance cannot run the feature, and where the docs explain it. */
+function UnavailableNotice({ group }: { group: FeatureGroup }) {
+  const gap = group.spec.self_host_gap;
+  if (!gap) {
+    throw new Error(
+      `Feature "${group.key}" is unavailable but the catalog gives no reason`,
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-sm text-zinc-100">Not available on this instance</p>
+      <p className="text-xs text-zinc-500">{gap.reason}</p>
+      <HeroLink
+        href={gap.docs_url}
+        isExternal
+        size="sm"
+        className="inline-flex items-center gap-1 self-start text-xs"
+      >
+        Read the docs
+        <SquareArrowUpRight02Icon size={12} />
+      </HeroLink>
     </div>
   );
 }

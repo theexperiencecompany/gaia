@@ -42,6 +42,7 @@ const CATALOG: ProviderCatalog = {
         needs_base_url: false,
         account_id_label: "",
         second_key_label: "",
+        api_key_label: "API key",
       },
     ]),
   ),

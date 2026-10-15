@@ -82,6 +82,17 @@ export function isFeatureWorking(
 }
 
 /**
+ * Whether this deployment can run a feature at all. Hosted GAIA runs every
+ * feature and never fetches setup status; a self-host instance answers from
+ * it, and counts a feature unavailable until that status loads.
+ */
+export function useFeatureAvailable(feature: ProviderFeature): boolean {
+  const { data } = useSetupStatus();
+  if (!isSelfhostWeb()) return true;
+  return data?.features[feature]?.available === true;
+}
+
+/**
  * Whether Settings offers a provider's card. Cloudinary does nothing unless
  * the instance stores files there (BLOB_STORE=cloudinary).
  */

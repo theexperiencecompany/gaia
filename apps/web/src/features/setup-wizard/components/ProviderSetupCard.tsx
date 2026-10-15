@@ -82,7 +82,7 @@ export function ProviderSetupCard({
       <div className="space-y-2">
         {config.showApiKey && (
           <ProviderApiKeyInput
-            label="API key"
+            label={config.api_key_label}
             keyUrl={config.key_url}
             placeholder="Paste your API key"
             value={apiKey}

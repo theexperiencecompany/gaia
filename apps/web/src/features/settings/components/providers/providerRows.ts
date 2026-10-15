@@ -66,6 +66,9 @@ const PROVIDER_ROWS: ProviderRow[] = [
   keyOnlyRow("cloudinary"),
   keyOnlyRow("google_oauth"),
   keyOnlyRow("firecrawl"),
+  keyOnlyRow("openweather"),
+  keyOnlyRow("llamaparse"),
+  keyOnlyRow("github"),
 ];
 
 export type CustomPresetId = CustomPresetKey | "manual";

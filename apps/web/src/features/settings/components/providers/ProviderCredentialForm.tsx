@@ -56,7 +56,7 @@ export function ProviderCredentialForm({
       )}
       {row.showApiKey && (
         <ProviderApiKeyInput
-          label="API key"
+          label={row.api_key_label}
           keyUrl={row.key_url}
           placeholder={
             storedKeyHint

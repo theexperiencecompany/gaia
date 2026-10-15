@@ -39,6 +39,7 @@ const CATALOG = {
     }),
     email: feature("Email"),
     integrations: feature("Integrations"),
+    browser: feature("Browser"),
   },
 } as unknown as ProviderCatalog;
 
@@ -75,8 +76,8 @@ function statusWith(
   hasAdmin: boolean,
   working: string[] = ["email", "integrations"],
 ): SetupStatus {
-  const off = { working: false, in_use: [] };
-  const on = { working: true, in_use: [] };
+  const off = { working: false, available: true, in_use: [] };
+  const on = { working: true, available: true, in_use: [] };
   return {
     auth_mode: "local",
     has_admin_account: hasAdmin,
@@ -88,6 +89,7 @@ function statusWith(
       web_search: off,
       email: working.includes("email") ? on : off,
       integrations: working.includes("integrations") ? on : off,
+      browser: { working: false, available: false, in_use: [] },
     },
   } as unknown as SetupStatus;
 }
@@ -118,6 +120,13 @@ describe("SetupChecklistBanner", () => {
     renderBanner();
 
     expect(screen.queryByText("Web search")).toBeNull();
+  });
+
+  it("never lists a feature this instance cannot run", () => {
+    state.status = statusWith(["openai"], true);
+    renderBanner();
+
+    expect(screen.queryByText("Browser")).toBeNull();
   });
 
   it("shows a single missing item as one line with its action", () => {
