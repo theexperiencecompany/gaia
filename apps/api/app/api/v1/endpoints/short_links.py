@@ -30,13 +30,11 @@ from app.services.short_link_service import (
 )
 from app.services.storage import JuiceFSUnavailable
 from app.utils.log_identifiers import hash_short_link_slug
-from app.utils.loggable_path import log_route_template_as_path
+from app.utils.loggable_path import SHORT_LINK_ROUTE_PREFIX, SHORT_LINK_UNSHARE_PATH
 from app.utils.sandboxed_file_response import sandboxed_file_response
 from shared.py.wide_events import log
 
-router = APIRouter(
-    prefix="/l", tags=["Short Links"], dependencies=[Depends(log_route_template_as_path)]
-)
+router = APIRouter(prefix=SHORT_LINK_ROUTE_PREFIX, tags=["Short Links"])
 
 # A capability URL can be revoked at any moment, so no browser or intermediary
 # may keep serving content the owner has already taken back.
@@ -103,7 +101,7 @@ async def get_short_link_file_route(slug: str) -> FileResponse:
     return sandboxed_file_response(host_path, cache_control=_NO_STORE)
 
 
-@router.post("/unshare", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(SHORT_LINK_UNSHARE_PATH, status_code=status.HTTP_204_NO_CONTENT)
 async def stop_sharing_route(
     body: ShortLinkTargetRequest, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> Response:
