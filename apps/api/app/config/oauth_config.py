@@ -2307,7 +2307,7 @@ def get_composio_integrations_by_provider() -> dict[str, OAuthIntegration]:
     return {
         integration.provider: integration
         for integration in all_integrations()
-        if integration.managed_by == "composio" and integration.composio_config
+        if integration.managed_by == "composio"
     }
 
 

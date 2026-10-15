@@ -1,6 +1,7 @@
 """Composio toolkits an instance admin enabled join every reader of the integration catalog."""
 
 from collections.abc import Iterator
+import re
 
 import pytest
 
@@ -141,10 +142,12 @@ async def test_a_stored_toolkit_now_defined_in_code_yields_to_the_code_entry(
     assert event["instance_toolkits"] == {"loaded": 1}
 
 
-def test_installing_an_integration_that_shadows_a_code_one_is_refused() -> None:
-    shadow = build_instance_integration(ATTIO.model_copy(update={"slug": "github"}))
+# calcom's code toolkit is CAL: "calcom" shadows only the id, "cal" only the toolkit.
+@pytest.mark.parametrize("slug", ["github", "calcom", "cal"])
+def test_installing_an_integration_that_shadows_a_code_one_is_refused(slug: str) -> None:
+    shadow = build_instance_integration(ATTIO.model_copy(update={"slug": slug}))
 
-    with pytest.raises(ValueError, match="github"):
+    with pytest.raises(ValueError, match=re.escape(f"['{slug}']")):
         set_instance_integrations([shadow])
 
 
