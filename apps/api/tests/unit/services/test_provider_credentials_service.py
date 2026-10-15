@@ -14,6 +14,7 @@ from typing import Any
 from cryptography.fernet import Fernet
 import pytest
 
+from app.agents.llm.client import reset_aux_llm_caches
 from app.config.settings import settings
 from app.constants.providers import CredentialSource
 from app.core.lazy_loader import providers as provider_registry
@@ -176,10 +177,8 @@ def aux_cache_calls(monkeypatch) -> list[int]:
 
 
 def test_the_llm_client_rebuilds_its_caches_on_every_invalidation(monkeypatch) -> None:
-    from app.agents.llm import client
-
     monkeypatch.undo()  # see the real hook list, not the autouse stub
-    assert client.reset_aux_llm_caches in service_module._local_invalidation_hooks
+    assert reset_aux_llm_caches in service_module._local_invalidation_hooks
 
 
 @pytest.fixture
