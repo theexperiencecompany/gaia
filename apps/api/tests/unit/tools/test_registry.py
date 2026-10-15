@@ -620,6 +620,18 @@ class TestSupportCategory:
         assert "create_support_ticket" not in registry.get_tool_names()
 
 
+class TestBrowserCategory:
+    def test_a_self_hosted_registry_has_no_browser_tool(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        assert registry.get_category("browser") is None
+        assert "browser_task" not in registry.get_tool_names()
+
+
 class TestBillingCategory:
     def test_billing_category_registers_the_subscription_tools(self):
         """A checkout link is inert until the user pays it, so nothing in the billing category may be marked destructive or the upgrade flow could trip HIL."""

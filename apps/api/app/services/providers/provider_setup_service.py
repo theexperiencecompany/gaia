@@ -5,9 +5,7 @@ both write through save_provider_credential, so gaia up accepts exactly what
 the wizard and Settings accept.
 """
 
-import ipaddress
 from typing import Literal
-from urllib.parse import urlparse
 
 from app.config.settings import settings
 from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS, ProviderPreset
@@ -17,7 +15,7 @@ from app.services.providers.provider_credentials_service import (
     upsert,
 )
 from app.utils.errors import AppError
-from app.utils.url_safety import assert_public_http_url, assert_safe_url_shape
+from app.utils.url_safety import assert_endpoint_url_allowed, assert_endpoint_url_shape
 
 # Providers whose outbound traffic targets a caller-configurable base_url — the
 # only stored base_urls the SSRF guard applies to (openrouter/gemini dial
@@ -60,44 +58,19 @@ def allows_private_endpoint(provider: str) -> bool:
     return provider == "ollama" or settings.deployment.private_network_endpoints
 
 
-def _is_link_local(hostname: str) -> bool:
-    """Whether hostname is a literal link-local IP (169.254/16, fe80::/10), the cloud-metadata range."""
-    try:
-        return ipaddress.ip_address(hostname).is_link_local
-    except ValueError:
-        return False
-
-
-def _unsafe(detail: str) -> AppError:
-    return AppError(message=detail, status_code=_UNPROCESSABLE)
-
-
 async def assert_endpoint_safe(base_url: str | None, *, allow_private: bool = False) -> None:
-    """Refuse base_url values GAIA must not send requests to (SSRF), at save and at probe time.
+    """Refuse, as a 422, a base_url GAIA must not send requests to (SSRF), at save and at probe time.
 
-    The string checks are cheap fast-fails; app.utils.url_safety owns the policy and
-    validates every resolved address, so decimal IP shorthands and public names that
-    answer with private addresses are refused too. allow_private skips only that
-    public-address check: scheme, credential and metadata checks still apply.
+    app.utils.url_safety owns the policy; this maps its refusal to the error an admin reads.
     """
     if not base_url:
         return
-    parsed = urlparse(base_url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise _unsafe("base_url must be an http(s) URL")
-    if parsed.username or parsed.password or (parsed.port and parsed.port in (0, 1)):
-        raise _unsafe("base_url must not embed credentials")
-    if parsed.hostname in ("169.254.169.254", "metadata.google.internal") or _is_link_local(
-        parsed.hostname
-    ):
-        raise _unsafe(f"{_PRIVATE_URL_HINT} (refusing metadata address {parsed.hostname})")
-    if allow_private:
-        return
     try:
-        assert_safe_url_shape(base_url)
-        await assert_public_http_url(base_url)
+        # Literal-IP and shape refusals fail fast, before any DNS lookup.
+        assert_endpoint_url_shape(base_url, allow_private=allow_private)
+        await assert_endpoint_url_allowed(base_url, allow_private=allow_private)
     except ValueError as e:
-        raise _unsafe(f"{_PRIVATE_URL_HINT} ({e})") from e
+        raise AppError(message=f"{_PRIVATE_URL_HINT} ({e})", status_code=_UNPROCESSABLE) from e
 
 
 _ConfigField = Literal["api_key", "base_url", "model", "preset", "account_id", "api_secret"]

@@ -2115,7 +2115,11 @@
           "duckduckgo",
           "page_reader",
           "local_sandbox",
-          "local_disk"
+          "local_disk",
+          "local_parser",
+          "public_github",
+          "hosted_browser",
+          "hosted_voice"
         ],
         "title": "BuiltInEngine",
         "type": "string"
@@ -4644,7 +4648,10 @@
           "resend",
           "cloudinary",
           "google_oauth",
-          "firecrawl"
+          "firecrawl",
+          "openweather",
+          "llamaparse",
+          "github"
         ],
         "title": "CredentialProviderName",
         "type": "string"
@@ -6165,6 +6172,16 @@
             },
             "title": "Providers",
             "type": "array"
+          },
+          "self_host_gap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelfHostGap"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -6187,6 +6204,11 @@
       "FeatureStatus": {
         "description": "Whether one feature works and what it runs on.",
         "properties": {
+          "available": {
+            "description": "Whether this deployment can run the feature at all; false means its catalog self_host_gap explains why",
+            "title": "Available",
+            "type": "boolean"
+          },
           "in_use": {
             "description": "What the feature runs on, in the order it tries them; the first serves",
             "items": {
@@ -6209,6 +6231,7 @@
           }
         },
         "required": [
+          "available",
           "working",
           "in_use"
         ],
@@ -13874,7 +13897,12 @@
           "code_running",
           "file_storage",
           "email",
-          "integrations"
+          "integrations",
+          "weather",
+          "scanned_documents",
+          "skill_installs",
+          "browser",
+          "voice"
         ],
         "title": "ProviderFeature",
         "type": "string"
@@ -13900,6 +13928,10 @@
         "properties": {
           "account_id_label": {
             "title": "Account Id Label",
+            "type": "string"
+          },
+          "api_key_label": {
+            "title": "Api Key Label",
             "type": "string"
           },
           "base_url": {
@@ -13943,6 +13975,7 @@
           "default_model",
           "favicon_domain",
           "needs_base_url",
+          "api_key_label",
           "account_id_label",
           "second_key_label"
         ],
@@ -15705,6 +15738,25 @@
           "steps"
         ],
         "title": "SelectedWorkflowData",
+        "type": "object"
+      },
+      "SelfHostGap": {
+        "description": "Why a feature cannot run on a self-hosted instance, and where the docs explain it.",
+        "properties": {
+          "docs_url": {
+            "title": "Docs Url",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "docs_url"
+        ],
+        "title": "SelfHostGap",
         "type": "object"
       },
       "SelfPairRequest": {

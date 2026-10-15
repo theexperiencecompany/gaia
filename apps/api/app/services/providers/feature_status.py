@@ -8,6 +8,7 @@ re-deriving their order here, so Settings can never disagree with the runtime.
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import chat_routes, refresh_provider_configs
+from app.config.settings import settings
 from app.constants.providers import (
     PROVIDER_FEATURES,
     BuiltInEngine,
@@ -28,6 +29,10 @@ FeatureEngine = CredentialProviderName | BuiltInEngine
 class FeatureStatus(BaseModel):
     """Whether one feature works and what it runs on."""
 
+    available: bool = Field(
+        description="Whether this deployment can run the feature at all; "
+        "false means its catalog self_host_gap explains why"
+    )
     working: bool = Field(description="Whether the feature works right now")
     in_use: list[FeatureEngine] = Field(
         description="What the feature runs on, in the order it tries them; the first serves"
@@ -47,10 +52,43 @@ async def feature_statuses() -> dict[ProviderFeature, FeatureStatus]:
         ProviderFeature.FILE_STORAGE: _file_stores(),
         ProviderFeature.EMAIL: _usable_providers(ProviderFeature.EMAIL),
         ProviderFeature.INTEGRATIONS: _usable_providers(ProviderFeature.INTEGRATIONS),
+        ProviderFeature.WEATHER: _usable_providers(ProviderFeature.WEATHER),
+        ProviderFeature.SCANNED_DOCUMENTS: [
+            *_usable_providers(ProviderFeature.SCANNED_DOCUMENTS),
+            BuiltInEngine.LOCAL_PARSER,
+        ],
+        ProviderFeature.SKILL_INSTALLS: [
+            *_usable_providers(ProviderFeature.SKILL_INSTALLS),
+            BuiltInEngine.PUBLIC_GITHUB,
+        ],
+        ProviderFeature.BROWSER: _hosted_browser(),
+        ProviderFeature.VOICE: _hosted_voice(),
     }
     return {
-        feature: _status(PROVIDER_FEATURES[feature], chain) for feature, chain in chains.items()
+        feature: _status(PROVIDER_FEATURES[feature], chain, available=_available(feature))
+        for feature, chain in chains.items()
     }
+
+
+def _available(feature: ProviderFeature) -> bool:
+    """Whether the deployment ships what the feature runs on; only features with a self-host gap may not."""
+    match feature:
+        case ProviderFeature.BROWSER:
+            return settings.deployment.browser_automation
+        case ProviderFeature.VOICE:
+            return settings.deployment.voice
+        case _:
+            return True
+
+
+def _hosted_browser() -> list[str]:
+    usable = is_usable("openrouter", resolved_config("openrouter"))
+    return [BuiltInEngine.HOSTED_BROWSER] if usable else []
+
+
+def _hosted_voice() -> list[str]:
+    configured = settings.LIVEKIT_URL and settings.LIVEKIT_API_KEY and settings.LIVEKIT_API_SECRET
+    return [BuiltInEngine.HOSTED_VOICE] if configured else []
 
 
 async def _code_runners() -> list[str]:
@@ -77,13 +115,15 @@ def _usable_providers(feature: ProviderFeature) -> list[str]:
     ]
 
 
-def _status(spec: FeatureSpec, chain: list[str]) -> FeatureStatus:
+def _status(spec: FeatureSpec, chain: list[str], *, available: bool) -> FeatureStatus:
     """Name each engine in the chain as the catalog does, keeping the first of any repeats."""
+    if not available:
+        return FeatureStatus(available=False, working=False, in_use=[])
     in_use: list[FeatureEngine] = []
     for engine in (_catalog_engine(spec, name) for name in chain):
         if engine not in in_use:
             in_use.append(engine)
-    return FeatureStatus(working=bool(in_use), in_use=in_use)
+    return FeatureStatus(available=True, working=bool(in_use), in_use=in_use)
 
 
 def _catalog_engine(spec: FeatureSpec, engine: str) -> FeatureEngine:

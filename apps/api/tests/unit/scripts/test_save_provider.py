@@ -1,10 +1,26 @@
 """The gaia up first-boot save: what the CLI's --llm-* flags store, through the wizard's own path."""
 
+import socket
+
 import pytest
 
 from app.scripts import save_provider
 from app.services.providers.provider_credentials_service import resolve
 from tests.helpers import InMemoryCredentialStore
+
+_PUBLIC_IP = "8.8.8.8"
+
+
+@pytest.fixture(autouse=True)
+def _public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Answer every hostname with a public address so no test touches real DNS."""
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, port, *args, **kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (_PUBLIC_IP, port))
+        ],
+    )
 
 
 async def test_ollama_defaults_to_the_endpoint_its_card_prefills(
@@ -50,5 +66,8 @@ async def test_a_refused_endpoint_exits_non_zero_naming_why(
     code = await save_provider.run(["--provider", "custom", "--base-url", "ftp://gw"])
 
     assert code == 1
-    assert capsys.readouterr().err == "Could not save custom: base_url must be an http(s) URL\n"
+    assert capsys.readouterr().err == (
+        "Could not save custom: This URL looks private or unreachable — use a public endpoint "
+        "or set OLLAMA_BASE_URL in your .env for local Ollama (unsupported URL scheme: 'ftp')\n"
+    )
     assert await resolve("custom") is None

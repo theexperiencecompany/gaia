@@ -8,11 +8,12 @@ This module provides utility functions for:
 - Skill file filtering and sorting
 """
 
-import os
 from typing import TypedDict
 from urllib.parse import quote, urlparse
 
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
+from app.services.providers.provider_credentials_service import resolved_config
 from shared.py.wide_events import log
 
 GITHUB_API_BASE = "https://api.github.com"
@@ -45,15 +46,11 @@ class GitHubContentEntry(TypedDict):
     download_url: str | None
 
 
-def get_github_token() -> str | None:
-    """Get GitHub token from environment for API rate limit relief."""
-    return os.environ.get("GITHUB_TOKEN")
-
-
 def get_github_headers() -> dict[str, str]:
-    """Get headers for GitHub API requests."""
+    """Return GitHub API headers, authenticated by the saved or env GitHub token when one is set."""
     headers = {"Accept": "application/vnd.github.v3+json"}
-    token = get_github_token()
+    config = resolved_config(CredentialProviderName.GITHUB)
+    token = config["api_key"] if config else None
     if token:
         headers["Authorization"] = f"token {token}"
     return headers

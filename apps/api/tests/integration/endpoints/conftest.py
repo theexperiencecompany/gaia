@@ -148,6 +148,7 @@ async def _fake_feature_statuses() -> dict[ProviderFeature, FeatureStatus]:
     """Report a fresh instance: each built-in engine serves, every other feature is off."""
     return {
         feature: FeatureStatus(
+            available=True,
             working=spec.built_in is not None,
             in_use=[spec.built_in.engine] if spec.built_in else [],
         )

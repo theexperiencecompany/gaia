@@ -33,6 +33,13 @@ _KEYED_SETTINGS = (
     "CLOUDINARY_CLOUD_NAME",
     "CLOUDINARY_API_KEY",
     "CLOUDINARY_API_SECRET",
+    "OPENWEATHER_API_KEY",
+    "LLAMA_INDEX_KEY",
+    "GITHUB_TOKEN",
+    "OPENROUTER_API_KEY",
+    "LIVEKIT_URL",
+    "LIVEKIT_API_KEY",
+    "LIVEKIT_API_SECRET",
 )
 
 
@@ -58,7 +65,7 @@ async def test_every_feature_reports_a_status(store: InMemoryCredentialStore) ->
 
 async def test_web_search_works_keyless_on_duckduckgo(store: InMemoryCredentialStore) -> None:
     assert await _status(ProviderFeature.WEB_SEARCH) == FeatureStatus(
-        working=True, in_use=[BuiltInEngine.DUCKDUCKGO]
+        available=True, working=True, in_use=[BuiltInEngine.DUCKDUCKGO]
     )
 
 
@@ -99,7 +106,9 @@ async def test_a_firecrawl_key_backs_up_the_built_in_reader(
 async def test_code_running_is_off_without_e2b_or_the_local_sandbox(
     store: InMemoryCredentialStore,
 ) -> None:
-    assert await _status(ProviderFeature.CODE_RUNNING) == FeatureStatus(working=False, in_use=[])
+    assert await _status(ProviderFeature.CODE_RUNNING) == FeatureStatus(
+        available=True, working=False, in_use=[]
+    )
 
 
 async def test_code_running_uses_the_opted_in_local_sandbox(
@@ -127,12 +136,16 @@ async def test_cloudinary_storage_is_off_until_its_account_is_complete(
     store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "BLOB_STORE", "cloudinary")
-    store.save("cloudinary", api_key="stored-key")
+    store.save("cloudinary", api_key="stored-key", account_id="cloud")
 
     assert not (await _status(ProviderFeature.FILE_STORAGE)).working
 
-    monkeypatch.setattr(settings, "CLOUDINARY_CLOUD_NAME", "cloud")
-    monkeypatch.setattr(settings, "CLOUDINARY_API_SECRET", "secret")
+
+async def test_cloudinary_storage_runs_on_a_complete_saved_account(
+    store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "BLOB_STORE", "cloudinary")
+    store.save("cloudinary", api_key="k", account_id="cloud", api_secret="s")
 
     assert (await _status(ProviderFeature.FILE_STORAGE)).in_use == [
         CredentialProviderName.CLOUDINARY
@@ -176,3 +189,59 @@ def test_a_keyless_engine_on_a_feature_without_a_built_in_is_a_catalog_bug() -> 
         _catalog_engine(spec, "ollama")
 
     assert str(refused.value) == "AI models has no built-in engine, yet 'ollama' needs no key"
+
+
+async def test_weather_is_off_without_a_key(store: InMemoryCredentialStore) -> None:
+    assert await _status(ProviderFeature.WEATHER) == FeatureStatus(
+        available=True, working=False, in_use=[]
+    )
+
+
+async def test_weather_runs_on_a_saved_openweather_key(store: InMemoryCredentialStore) -> None:
+    store.save("openweather", api_key="stored-owm")
+
+    assert (await _status(ProviderFeature.WEATHER)).in_use == [CredentialProviderName.OPENWEATHER]
+
+
+@pytest.mark.parametrize(
+    ("feature", "built_in", "provider"),
+    [
+        (ProviderFeature.SCANNED_DOCUMENTS, BuiltInEngine.LOCAL_PARSER, "llamaparse"),
+        (ProviderFeature.SKILL_INSTALLS, BuiltInEngine.PUBLIC_GITHUB, "github"),
+    ],
+)
+async def test_a_saved_key_runs_ahead_of_a_feature_s_built_in(
+    store: InMemoryCredentialStore,
+    feature: ProviderFeature,
+    built_in: BuiltInEngine,
+    provider: str,
+) -> None:
+    store.save(provider, api_key="stored-key")
+
+    assert (await _status(feature)).in_use == [CredentialProviderName(provider), built_in]
+
+
+@pytest.mark.parametrize("feature", [ProviderFeature.BROWSER, ProviderFeature.VOICE])
+async def test_self_host_reports_browser_and_voice_unavailable_whatever_is_set(
+    store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch, feature: ProviderFeature
+) -> None:
+    store.save("openrouter", api_key="stored-or")
+    for name in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+        monkeypatch.setattr(settings, name, "set")
+
+    assert await _status(feature) == FeatureStatus(available=False, working=False, in_use=[])
+
+
+async def test_gaia_cloud_runs_browser_and_voice_on_its_own_services(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "env-or")
+    for name in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+        monkeypatch.setattr(settings, name, "set")
+
+    statuses = await feature_statuses()
+
+    assert statuses[ProviderFeature.BROWSER].in_use == [BuiltInEngine.HOSTED_BROWSER]
+    assert statuses[ProviderFeature.VOICE].in_use == [BuiltInEngine.HOSTED_VOICE]

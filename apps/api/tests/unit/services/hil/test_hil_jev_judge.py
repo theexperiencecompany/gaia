@@ -7,7 +7,7 @@ most confident and asks whether the code around it still refuses.
 """
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -99,8 +99,7 @@ async def _decide(
         ),
     )
     with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=_client(answer)):
-        with patch(f"{CLIENT_MODULE}.settings") as settings:
-            settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        with _openrouter_key("or-key"):
             return await judge.decide(
                 user_id="u",
                 user_messages=["draft an email to bob@example.com about the deck"],
@@ -419,8 +418,7 @@ class TestFallback:
     async def test_missing_api_key_runs_the_fallback(self) -> None:
         fallback = AsyncMock()
         judge = JevIntentJudge(fallback=fallback)
-        with patch(f"{CLIENT_MODULE}.settings") as settings:
-            settings.OPENROUTER_API_KEY = None
+        with _openrouter_key(None):
             await judge.decide(
                 user_id="u",
                 user_messages=["send it"],
@@ -436,8 +434,7 @@ class TestWire:
         """The criteria reference these names; a renamed field blinds the judge."""
         client = _client(_answer("unclear", 0.5))
         with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client):
-            with patch(f"{CLIENT_MODULE}.settings") as settings:
-                settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+            with _openrouter_key("or-key"):
                 await ask_jev(
                     user_messages=["send it"],
                     call=_call(),
@@ -464,8 +461,7 @@ class TestWire:
         """Empty evidence reads as missing evidence and costs confidence, so an old-shape call posts the old-shape state — and a rich call carries it all."""
         client = _client(_answer("unclear", 0.5))
         with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client):
-            with patch(f"{CLIENT_MODULE}.settings") as settings:
-                settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+            with _openrouter_key("or-key"):
                 await ask_jev(
                     user_messages=["send it"],
                     call=_call(),
@@ -484,8 +480,7 @@ class TestWire:
 
         client = _client(_answer("unclear", 0.5))
         with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client):
-            with patch(f"{CLIENT_MODULE}.settings") as settings:
-                settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+            with _openrouter_key("or-key"):
                 await ask_jev(
                     user_messages=["send it"],
                     call=_call(
@@ -509,8 +504,7 @@ class TestWire:
         with patch(
             f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=_client(_answer("unclear", 0.5))
         ):
-            with patch(f"{CLIENT_MODULE}.settings") as settings:
-                settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+            with _openrouter_key("or-key"):
                 choice, conf, probs, tokens_in, tokens_out = await ask_jev(
                     user_messages=["send it"],
                     call=_call(),
@@ -570,10 +564,17 @@ def _jev(client: AsyncMock, key: str | None = "or-key") -> Iterator[MagicMock]:
     """Serve client as the Decisions API with key configured; yields the AsyncClient factory."""
     with (
         patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client) as factory,
-        patch(f"{CLIENT_MODULE}.settings") as settings,
+        _openrouter_key(key),
     ):
-        settings.OPENROUTER_API_KEY = key
         yield factory
+
+
+def _openrouter_key(key: str | None) -> AbstractContextManager[AsyncMock]:
+    """Serve key as the resolved OpenRouter credential the JEV client reads."""
+    return patch(
+        f"{CLIENT_MODULE}.resolve",
+        AsyncMock(return_value={"api_key": key} if key is not None else None),
+    )
 
 
 FORBID_TURNS = ["never email bob@example.com", "email bob@example.com the deck"]
@@ -623,7 +624,7 @@ class TestTheDecisionsWire:
         with (
             _jev(client, key=None),
             pytest.raises(
-                RuntimeError, match="^OPENROUTER_API_KEY unset; cannot reach the JEV judge$"
+                RuntimeError, match="^No OpenRouter key saved or set; cannot reach the JEV judge$"
             ),
         ):
             await ask_jev(
@@ -692,7 +693,7 @@ class TestTheForbidWire:
         with (
             _jev(client, key=None),
             pytest.raises(
-                RuntimeError, match="^OPENROUTER_API_KEY unset; cannot reach the JEV judge$"
+                RuntimeError, match="^No OpenRouter key saved or set; cannot reach the JEV judge$"
             ),
         ):
             await ask_jev_forbid(user_messages=FORBID_TURNS, call=_call())

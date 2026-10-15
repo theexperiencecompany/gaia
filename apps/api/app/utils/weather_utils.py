@@ -4,9 +4,9 @@ import time
 
 import httpx
 
-from app.config.settings import settings
 from app.constants.cache import ONE_HOUR_TTL
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.db.redis import get_cache, set_cache
 from app.models.integrations.weather import (
     DailyForecast,
@@ -22,7 +22,14 @@ from app.models.integrations.weather import (
     WeatherLocation,
     WeatherReport,
 )
+from app.services.providers.provider_credentials_service import resolve
 from shared.py.wide_events import log
+
+# Said to the model in place of data, so it tells the user instead of inventing a forecast.
+WEATHER_NOT_CONFIGURED = (
+    "Weather isn't set up on this GAIA instance, so no weather data is available. "
+    "An admin can add an OpenWeather key in Settings → Providers & Tools."
+)
 
 http_async_client = httpx.AsyncClient()
 
@@ -145,11 +152,12 @@ async def get_location_data(
 async def user_weather(location_name: str | None = None) -> WeatherReport | str:
     """Fetch weather data for a specified location."""
     log.set(operation="user_weather", location_name=location_name)
+    config = await resolve(CredentialProviderName.OPENWEATHER)
+    api_key = config["api_key"] if config else None
+    if not api_key:
+        log.set(weather={"configured": False})
+        return WEATHER_NOT_CONFIGURED
     try:
-        api_key = settings.OPENWEATHER_API_KEY
-        if not api_key:
-            raise Exception("OpenWeatherMap API key is not configured")
-
         try:
             location_data = await get_location_data(location_name=location_name)
             cache_key = location_data.cache_key
