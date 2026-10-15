@@ -131,6 +131,176 @@ interface RankedPick {
   readonly hasAlternativePage: boolean;
 }
 
+interface RankedTableSectionProps {
+  readonly ranked: RankedPick[];
+}
+
+function RankedTableSection({ ranked }: RankedTableSectionProps) {
+  return (
+    <section className="mb-16">
+      <h2 className="mb-6 text-3xl font-semibold text-white">
+        The top 12 at a glance
+      </h2>
+      <ComparisonTable
+        ariaLabel="Top 12 AI assistants ranked"
+        columns={[
+          {
+            key: "rank",
+            label: "#",
+            headerClassName: "text-zinc-500",
+            cellClassName: "font-medium text-zinc-300",
+          },
+          {
+            key: "assistant",
+            label: "Assistant",
+            headerClassName: "text-primary",
+            cellClassName: "font-medium text-white",
+          },
+          {
+            key: "bestFor",
+            label: "Best for",
+            headerClassName: "text-zinc-500",
+            cellClassName: "text-zinc-300",
+          },
+          {
+            key: "take",
+            label: "The short version",
+            headerClassName: "text-zinc-500",
+            cellClassName: "text-zinc-400",
+          },
+        ]}
+        rows={[
+          {
+            rank: "1",
+            assistant: "GAIA (our pick)",
+            bestFor: "Proactive daily work",
+            take: "Monitors email, calendar, and tasks across 50+ tools and acts before you ask.",
+          },
+          ...ranked.map((pick, index) => ({
+            rank: String(index + 2),
+            assistant: pick.data.name,
+            bestFor: BEST_FOR[pick.data.slug] ?? pick.data.tagline,
+            take: SHORT_VERSION[pick.data.slug] ?? pick.data.tagline,
+          })),
+        ]}
+      />
+    </section>
+  );
+}
+
+function RunnersUpSection({ ranked }: RankedTableSectionProps) {
+  return (
+    <section className="mb-16">
+      <h2 className="mb-6 text-3xl font-semibold text-white">
+        The 11 runners-up, in order
+      </h2>
+      <ol className="mb-10 space-y-2 text-zinc-400">
+        {ranked.map((pick, index) => (
+          <li key={pick.data.slug}>
+            <span className="mr-2 text-zinc-500">{index + 2}.</span>
+            <a
+              href={`#pick-${pick.data.slug}`}
+              className="underline underline-offset-2 hover:text-zinc-200"
+            >
+              {pick.data.name}
+            </a>
+          </li>
+        ))}
+      </ol>
+
+      <div className="space-y-10">
+        {ranked.map((pick, index) => (
+          <section
+            key={pick.data.slug}
+            id={`pick-${pick.data.slug}`}
+            className="scroll-mt-32 rounded-3xl bg-zinc-800 p-8"
+          >
+            <p className="mb-1 text-sm text-zinc-500">#{index + 2} of 12</p>
+            <h3 className="mb-1 text-2xl font-semibold text-white">
+              {pick.data.name}
+            </h3>
+            <p className="mb-4 text-sm text-zinc-500">{pick.data.tagline}</p>
+            <p className="mb-4 leading-relaxed text-zinc-300">
+              {pick.data.description}
+            </p>
+            <p className="mb-6 leading-relaxed text-zinc-400">
+              {pick.data.verdict}
+            </p>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <Link
+                href={`/compare/${pick.data.slug}`}
+                className="text-zinc-300 underline underline-offset-2 hover:text-white"
+              >
+                GAIA vs {pick.data.name}: full comparison
+              </Link>
+              {pick.hasAlternativePage && (
+                <Link
+                  href={`/alternative-to/${pick.data.slug}`}
+                  className="text-zinc-300 underline underline-offset-2 hover:text-white"
+                >
+                  Best {pick.data.name} alternative guide
+                </Link>
+              )}
+            </div>
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface HubLinkItem {
+  readonly key: string;
+  readonly href: string;
+  readonly label: string;
+}
+
+interface HubLinkIndexProps {
+  readonly title: string;
+  readonly lead: string;
+  readonly hubPrefix: string;
+  readonly hubHref: string;
+  readonly hubLinkText: string;
+  readonly items: HubLinkItem[];
+}
+
+function HubLinkIndex({
+  title,
+  lead,
+  hubPrefix,
+  hubHref,
+  hubLinkText,
+  items,
+}: HubLinkIndexProps) {
+  return (
+    <section className="mb-16">
+      <h2 className="mb-4 text-3xl font-semibold text-white">{title}</h2>
+      <p className="mb-6 leading-relaxed text-zinc-400">
+        {lead} {hubPrefix}{" "}
+        <Link
+          href={hubHref}
+          className="underline underline-offset-2 hover:text-zinc-200"
+        >
+          {hubLinkText}
+        </Link>{" "}
+        or jump straight in:
+      </p>
+      <ul className="columns-2 gap-6 text-sm leading-loose text-zinc-400 sm:columns-3">
+        {items.map((item) => (
+          <li key={item.key} className="break-inside-avoid">
+            <Link
+              href={item.href}
+              className="hover:text-zinc-200 hover:underline hover:underline-offset-2"
+            >
+              {item.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default async function BestAiAssistantPage() {
   const [picks, allComparisons, allAlternatives] = await Promise.all([
     Promise.all(
@@ -247,54 +417,7 @@ export default async function BestAiAssistantPage() {
           </p>
         </section>
 
-        <section className="mb-16">
-          <h2 className="mb-6 text-3xl font-semibold text-white">
-            The top 12 at a glance
-          </h2>
-          <ComparisonTable
-            ariaLabel="Top 12 AI assistants ranked"
-            columns={[
-              {
-                key: "rank",
-                label: "#",
-                headerClassName: "text-zinc-500",
-                cellClassName: "font-medium text-zinc-300",
-              },
-              {
-                key: "assistant",
-                label: "Assistant",
-                headerClassName: "text-primary",
-                cellClassName: "font-medium text-white",
-              },
-              {
-                key: "bestFor",
-                label: "Best for",
-                headerClassName: "text-zinc-500",
-                cellClassName: "text-zinc-300",
-              },
-              {
-                key: "take",
-                label: "The short version",
-                headerClassName: "text-zinc-500",
-                cellClassName: "text-zinc-400",
-              },
-            ]}
-            rows={[
-              {
-                rank: "1",
-                assistant: "GAIA (our pick)",
-                bestFor: "Proactive daily work",
-                take: "Monitors email, calendar, and tasks across 50+ tools and acts before you ask.",
-              },
-              ...ranked.map((pick, index) => ({
-                rank: String(index + 2),
-                assistant: pick.data.name,
-                bestFor: BEST_FOR[pick.data.slug] ?? pick.data.tagline,
-                take: SHORT_VERSION[pick.data.slug] ?? pick.data.tagline,
-              })),
-            ]}
-          />
-        </section>
+        <RankedTableSection ranked={ranked} />
 
         <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
           <h2 className="mb-4 text-2xl font-semibold text-white">
@@ -324,64 +447,7 @@ export default async function BestAiAssistantPage() {
           </div>
         </section>
 
-        <section className="mb-16">
-          <h2 className="mb-6 text-3xl font-semibold text-white">
-            The 11 runners-up, in order
-          </h2>
-          <ol className="mb-10 space-y-2 text-zinc-400">
-            {ranked.map((pick, index) => (
-              <li key={pick.data.slug}>
-                <span className="mr-2 text-zinc-500">{index + 2}.</span>
-                <a
-                  href={`#pick-${pick.data.slug}`}
-                  className="underline underline-offset-2 hover:text-zinc-200"
-                >
-                  {pick.data.name}
-                </a>
-              </li>
-            ))}
-          </ol>
-
-          <div className="space-y-10">
-            {ranked.map((pick, index) => (
-              <section
-                key={pick.data.slug}
-                id={`pick-${pick.data.slug}`}
-                className="scroll-mt-32 rounded-3xl bg-zinc-800 p-8"
-              >
-                <p className="mb-1 text-sm text-zinc-500">#{index + 2} of 12</p>
-                <h3 className="mb-1 text-2xl font-semibold text-white">
-                  {pick.data.name}
-                </h3>
-                <p className="mb-4 text-sm text-zinc-500">
-                  {pick.data.tagline}
-                </p>
-                <p className="mb-4 leading-relaxed text-zinc-300">
-                  {pick.data.description}
-                </p>
-                <p className="mb-6 leading-relaxed text-zinc-400">
-                  {pick.data.verdict}
-                </p>
-                <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-                  <Link
-                    href={`/compare/${pick.data.slug}`}
-                    className="text-zinc-300 underline underline-offset-2 hover:text-white"
-                  >
-                    GAIA vs {pick.data.name}: full comparison
-                  </Link>
-                  {pick.hasAlternativePage && (
-                    <Link
-                      href={`/alternative-to/${pick.data.slug}`}
-                      className="text-zinc-300 underline underline-offset-2 hover:text-white"
-                    >
-                      Best {pick.data.name} alternative guide
-                    </Link>
-                  )}
-                </div>
-              </section>
-            ))}
-          </div>
-        </section>
+        <RunnersUpSection ranked={ranked} />
 
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
@@ -390,62 +456,31 @@ export default async function BestAiAssistantPage() {
           <FAQAccordion faqs={FAQS} />
         </section>
 
-        <section className="mb-16">
-          <h2 className="mb-4 text-3xl font-semibold text-white">
-            Every GAIA comparison
-          </h2>
-          <p className="mb-6 leading-relaxed text-zinc-400">
-            We publish a full head-to-head for each tool below. Start from the{" "}
-            <Link
-              href="/compare"
-              className="underline underline-offset-2 hover:text-zinc-200"
-            >
-              comparisons hub
-            </Link>{" "}
-            or jump straight in:
-          </p>
-          <ul className="columns-2 gap-6 text-sm leading-loose text-zinc-400 sm:columns-3">
-            {sortedComparisons.map((comparison) => (
-              <li key={comparison.slug} className="break-inside-avoid">
-                <Link
-                  href={`/compare/${comparison.slug}`}
-                  className="hover:text-zinc-200 hover:underline hover:underline-offset-2"
-                >
-                  GAIA vs {comparison.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <HubLinkIndex
+          title="Every GAIA comparison"
+          lead="We publish a full head-to-head for each tool below."
+          hubPrefix="Start from the"
+          hubHref="/compare"
+          hubLinkText="comparisons hub"
+          items={sortedComparisons.map((comparison) => ({
+            key: comparison.slug,
+            href: `/compare/${comparison.slug}`,
+            label: `GAIA vs ${comparison.name}`,
+          }))}
+        />
 
-        <section className="mb-16">
-          <h2 className="mb-4 text-3xl font-semibold text-white">
-            Every alternative guide
-          </h2>
-          <p className="mb-6 leading-relaxed text-zinc-400">
-            Migration-focused guides with fit scores and switch steps. Browse
-            the{" "}
-            <Link
-              href="/alternative-to"
-              className="underline underline-offset-2 hover:text-zinc-200"
-            >
-              alternatives hub
-            </Link>{" "}
-            or jump straight in:
-          </p>
-          <ul className="columns-2 gap-6 text-sm leading-loose text-zinc-400 sm:columns-3">
-            {sortedAlternatives.map((alternative) => (
-              <li key={alternative.slug} className="break-inside-avoid">
-                <Link
-                  href={`/alternative-to/${alternative.slug}`}
-                  className="hover:text-zinc-200 hover:underline hover:underline-offset-2"
-                >
-                  Best {alternative.name} alternative
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <HubLinkIndex
+          title="Every alternative guide"
+          lead="Migration-focused guides with fit scores and switch steps."
+          hubPrefix="Browse the"
+          hubHref="/alternative-to"
+          hubLinkText="alternatives hub"
+          items={sortedAlternatives.map((alternative) => ({
+            key: alternative.slug,
+            href: `/alternative-to/${alternative.slug}`,
+            label: `Best ${alternative.name} alternative`,
+          }))}
+        />
       </article>
       <FinalSection />
     </>
