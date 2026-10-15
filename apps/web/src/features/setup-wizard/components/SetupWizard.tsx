@@ -38,7 +38,6 @@ const WALLPAPER_STYLE = {
 
 // One-line reason shown under the footer once Continue is pressed too early.
 const CONTINUE_REASONS: Record<string, string> = {
-  account: "Create the admin account above to continue.",
   provider: "Chat requires a provider — add one to start chatting.",
 };
 
@@ -114,6 +113,9 @@ export function SetupWizard() {
   const isLastStep = stepIndex === lastStepIndex;
 
   const stepObjectiveMet = isStepObjectiveMet(step.id, status, catalog);
+  // Creating the account advances the wizard itself, and the step has no
+  // Back or Skip, so until the account exists there is nothing to offer.
+  const awaitingAccount = step.id === "account" && !stepObjectiveMet;
 
   const goNext = () => setStepIndex((i) => Math.min(i + 1, lastStepIndex));
   const goBack = () => setStepIndex((i) => Math.max(i - 1, 0));
@@ -190,7 +192,7 @@ export function SetupWizard() {
             </m.div>
           </AnimatePresence>
 
-          {!isLastStep && (
+          {!isLastStep && !awaitingAccount && (
             <WizardFooter
               onBack={stepIndex > 0 ? goBack : null}
               onContinue={tryContinue}
