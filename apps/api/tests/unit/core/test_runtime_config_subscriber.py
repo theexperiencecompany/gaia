@@ -11,7 +11,9 @@ import json
 from typing import Any
 from unittest.mock import patch
 
+import fakeredis
 import pytest
+from redis.asyncio.client import PubSub
 
 from app.constants.log_tags import LogTag
 from app.core import runtime_config_subscriber as subscriber_module
@@ -228,6 +230,48 @@ async def test_consume_skips_non_messages_and_keeps_listening(
         await task
 
     assert applied == ["openrouter"]
+
+
+async def test_an_idle_subscriber_waits_for_a_message_instead_of_polling(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    applied: list[str],
+) -> None:
+    reads = 0
+    open_pubsub = fake_redis.pubsub
+
+    def counting_pubsub() -> PubSub:
+        pubsub = open_pubsub()
+        read = pubsub.get_message
+
+        async def counted(**kwargs: Any) -> Any:
+            nonlocal reads
+            reads += 1
+            # Yield first, so a loop that polls without waiting cannot starve this test.
+            await asyncio.sleep(0)
+            return await read(**kwargs)
+
+        monkeypatch.setattr(pubsub, "get_message", counted)
+        return pubsub
+
+    monkeypatch.setattr(fake_redis, "pubsub", counting_pubsub)
+
+    task = asyncio.create_task(subscriber_module._consume())
+    for _ in range(200):
+        await asyncio.sleep(0)
+    idle_reads = reads
+    await fake_redis.publish(RUNTIME_CONFIG_CHANNEL, json.dumps({"scope": "provider:gemini"}))
+    for _ in range(100):
+        if applied:
+            break
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+    # The subscribe ack, then one read that blocks until the publish.
+    assert idle_reads == 2
+    assert applied == ["gemini"]
 
 
 async def test_a_dropped_connection_surfaces_even_when_cleanup_fails(

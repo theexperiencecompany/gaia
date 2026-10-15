@@ -107,10 +107,8 @@ async def _consume() -> None:
     await pubsub.subscribe(RUNTIME_CONFIG_CHANNEL)
     try:
         while True:
-            raw_message = await pubsub.get_message(
-                ignore_subscribe_messages=True,  # pragma: no mutate — acks fail the type check below
-                timeout=1.0,  # pragma: no mutate — only paces an idle loop
-            )
+            # Blocks until the next message; subscribe acks fail the type check below.
+            raw_message = await pubsub.get_message(timeout=None)
             if not isinstance(raw_message, dict):
                 continue
             message: _PubSubMessage = cast(_PubSubMessage, raw_message)
