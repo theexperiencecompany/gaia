@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import HTTPException, UploadFile
 import pytest
 
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.config.settings import settings
 from app.constants.files import BlobKind
 from app.models.chat_models import ImageData
@@ -22,6 +23,7 @@ from app.utils.image_utils import (
     IMAGE_GENERATION_NOT_CONFIGURED_MESSAGE,
     ImageGenerationNotConfiguredError,
 )
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # generate_public_id
@@ -86,7 +88,7 @@ class TestApiGenerateImage:
                 "app.services.image_service.generate_image",
                 new_callable=AsyncMock,
                 return_value=b"fake_image_bytes",
-            ),
+            ) as generate,
             patch(
                 "app.services.blob_store.cloudinary.uploader.upload",
                 return_value={"secure_url": "https://cdn.example.com/image.png"},
@@ -97,6 +99,29 @@ class TestApiGenerateImage:
         assert result.url == "https://cdn.example.com/image.png"
         assert result.prompt == "sunset"
         assert result.improved_prompt is not None
+        generate.assert_awaited_once_with(result.improved_prompt)
+
+    async def test_an_unconfigured_generator_is_a_503_naming_the_fix(self):
+        with patch(
+            "app.services.image_service.generate_image",
+            new_callable=AsyncMock,
+            side_effect=ImageGenerationNotConfiguredError("Add an OpenAI key in Settings."),
+        ):
+            async with captured_wide_event() as event:
+                with pytest.raises(HTTPException) as raised:
+                    await api_generate_image("a cat", "user-1", improve_prompt=False)
+
+        assert (raised.value.status_code, raised.value.detail) == (
+            503,
+            "Add an OpenAI key in Settings.",
+        )
+        assert event["warnings"] == [
+            {
+                "msg": "Image generation is not configured on this instance",
+                "error_type": "ImageGenerationNotConfiguredError",
+                "error": "Add an OpenAI key in Settings.",
+            }
+        ]
 
     async def test_a_self_hosted_image_is_stored_as_a_generated_image(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -233,6 +258,28 @@ class TestImageToTextEndpoint:
 
         assert result.response == "A photo of a cat"
 
+    async def test_no_vision_provider_is_a_503_naming_the_fix(self):
+        with patch(
+            "app.services.image_service.convert_image_to_text",
+            new_callable=AsyncMock,
+            side_effect=LLMNotConfiguredError("Add a vision-capable model."),
+        ):
+            async with captured_wide_event() as event:
+                with pytest.raises(HTTPException) as raised:
+                    await image_to_text_endpoint("Describe", MagicMock(spec=UploadFile))
+
+        assert (raised.value.status_code, raised.value.detail) == (
+            503,
+            "Add a vision-capable model.",
+        )
+        assert event["warnings"] == [
+            {
+                "msg": "No vision provider configured for image-to-text",
+                "error_type": "LLMNotConfiguredError",
+                "error": "Add a vision-capable model.",
+            }
+        ]
+
     async def test_raises_500_on_conversion_error(self):
         mock_file = MagicMock(spec=UploadFile)
 
@@ -263,11 +310,12 @@ class TestGenerateImageStream:
             "app.services.image_service.api_generate_image",
             new_callable=AsyncMock,
             return_value=image_result,
-        ):
+        ) as generate:
             chunks = []
             async for chunk in generate_image_stream("sunset", "user-1"):
                 chunks.append(chunk)
 
+        generate.assert_awaited_once_with("sunset", "user-1")
         assert len(chunks) == 3
         # First chunk: generating status
         first_data = json.loads(chunks[0].replace("data: ", "").strip())
