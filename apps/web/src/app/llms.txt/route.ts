@@ -100,6 +100,18 @@ const STATIC_PAGES: LlmsEntry[] = [
     description: "What makes GAIA the best AI assistant for getting work done.",
   },
   {
+    title: "Best AI email assistant",
+    url: `${BASE_URL}/best-ai-email-assistant`,
+    description:
+      "GAIA ranked against Superhuman, SaneBox, Shortwave, Missive and Spark.",
+  },
+  {
+    title: "Best AI calendar assistant",
+    url: `${BASE_URL}/best-ai-calendar-assistant`,
+    description:
+      "GAIA ranked against Motion, Reclaim, Sunsama, Akiflow and Clockwise.",
+  },
+  {
     title: "Open-source AI assistant",
     url: `${BASE_URL}/open-source-ai-assistant`,
     description:
