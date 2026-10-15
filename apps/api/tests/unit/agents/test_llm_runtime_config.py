@@ -33,6 +33,7 @@ from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.types import LLMProviderName
 from app.constants.llm import DEFAULT_LLM_TEMPERATURE, DEFAULT_MAX_TOKENS, ModelUse
 from app.services.providers import provider_credentials_service as service
+from tests.helpers import captured_wide_event
 
 
 def _store_config(
@@ -360,6 +361,49 @@ class TestRefreshProviderConfigs:
 
         assert client_module._runtime_configs["openrouter"]["api_key"] == "sk-openrouter"
         assert client_module._refresh_tasks == set()
+
+    async def test_a_failed_refresh_is_logged_with_its_cause(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            service.provider_credentials_repository,
+            "find_by_provider",
+            AsyncMock(side_effect=ConnectionError("mongo down")),
+        )
+        service._cache.clear()
+
+        async with captured_wide_event() as event:
+            client_module._schedule_runtime_config_refresh()
+            [task] = client_module._refresh_tasks
+            await asyncio.gather(task, return_exceptions=True)
+            await asyncio.sleep(0)  # let the done callback run
+
+        assert event["errors"] == [
+            {
+                "msg": "Runtime provider-config refresh failed",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
+        assert client_module._refresh_tasks == set()
+
+    async def test_a_successful_refresh_logs_no_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            service.provider_credentials_repository,
+            "find_by_provider",
+            AsyncMock(return_value=None),
+        )
+        service._cache.clear()
+
+        async with captured_wide_event() as event:
+            client_module._schedule_runtime_config_refresh()
+            [task] = client_module._refresh_tasks
+            await task
+            await asyncio.sleep(0)  # let the done callback run
+
+        assert "errors" not in event
 
     def test_scheduling_without_a_loop_is_a_noop(self) -> None:
         client_module._schedule_runtime_config_refresh()

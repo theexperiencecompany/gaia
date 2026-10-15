@@ -7,7 +7,6 @@ signups presenting the same link cannot both win it.
 
 from datetime import datetime
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.auth_models import LocalInviteDocument, LocalInviteUpdate
 
@@ -46,7 +45,7 @@ class LocalInvitesRepository(MongoRepository[LocalInviteDocument, LocalInviteUpd
         return await self._apply_raw_update(
             _redeemable(token_hash, now),
             {"$set": {"used_at": now, "used_by": used_by}},
-            scope=REPO_GLOBAL_SCOPE,  # pragma: no mutate — a cacheless global repo never reads its scope
+            scope=None,
         )
 
     async def revoke(self, invite_id: str, now: datetime) -> bool:
@@ -56,7 +55,7 @@ class LocalInvitesRepository(MongoRepository[LocalInviteDocument, LocalInviteUpd
         revoked = await self._apply_raw_update(
             {**self._identity_filter(invite_id), "used_at": None, "revoked_at": None},
             {"$set": {"revoked_at": now}},
-            scope=REPO_GLOBAL_SCOPE,  # pragma: no mutate — a cacheless global repo never reads its scope
+            scope=None,
         )
         return revoked is not None
 

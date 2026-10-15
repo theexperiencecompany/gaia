@@ -299,3 +299,13 @@ def test_the_baseline_profile_is_the_kind_with_nothing_optional_set(
         local_code_sandbox=False,
         blob_store=None,
     )
+
+
+def test_the_baseline_profile_is_the_memoised_unconfigured_profile() -> None:
+    assert baseline_profile(DeploymentKind.PRODUCTION) is deployment_profile(
+        DeploymentKind.PRODUCTION,
+        "workos",
+        unlimited_usage=False,
+        local_code_sandbox=False,
+        blob_store=None,
+    )

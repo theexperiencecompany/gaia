@@ -121,6 +121,15 @@ class TestWorkOSAuthMiddlewareExcludedPaths:
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
 
+    @pytest.mark.parametrize("prefix", ["/api/v1/exports/XLSX", "/api/v1/exports/XLSX/"])
+    def test_a_prefix_exclusion_trims_only_its_trailing_slash(self, prefix: str) -> None:
+        middleware = WorkOSAuthMiddleware(
+            app=MagicMock(), workos_client=MagicMock(), exclude_paths=[prefix]
+        )
+
+        assert middleware._is_excluded("/api/v1/exports/XLSX/report") is True
+        assert middleware._is_excluded("/api/v1/exports/XLSXreport") is False
+
     def test_custom_exclude_paths(self) -> None:
         app = _build_test_app(middleware_kwargs={"exclude_paths": ["/health", "/api/v1/protected"]})
         client = TestClient(app)
@@ -1106,6 +1115,15 @@ class TestLocalSessionDispatch:
 
         resolve.assert_awaited_once_with("session jwt")
         assert (resp.json()["user"], resp.json()["auth_provider"]) == ("kid@gaia.dev", "email")
+
+    def test_a_bearer_session_is_taken_verbatim_after_the_first_space(self) -> None:
+        resolve = AsyncMock(return_value=None)
+        with patch("app.api.v1.middleware.auth.resolve_session_token", resolve):
+            TestClient(_build_local_probe_app()).get(
+                "/api/v1/protected", headers={"Authorization": "Bearer  session.jwt"}
+            )
+
+        resolve.assert_awaited_once_with(" session.jwt")
 
     def test_a_non_bearer_authorization_header_is_not_a_session(self) -> None:
         resolve = AsyncMock(return_value=LOCAL_USER.id)

@@ -386,9 +386,7 @@ async def logout(
         response.delete_cookie(
             LOCAL_SESSION_COOKIE,
             httponly=True,
-            path="/",  # pragma: no mutate — Starlette's default, spelled out to match the WorkOS cookie
             secure=session_cookie_secure(request),
-            samesite="lax",  # pragma: no mutate — Starlette's default, spelled out to match the WorkOS cookie
         )
         log.set(outcome="success")
         return LogoutResponse(logout_url=None)

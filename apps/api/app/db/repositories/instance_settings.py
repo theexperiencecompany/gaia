@@ -7,10 +7,8 @@ written as upserts. No cache: reads are rare and must observe the latest
 persisted value.
 """
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.runtime_models import InstanceSettingsDocument, InstanceSettingsUpdate
-from app.utils.errors import AppError
 
 
 class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, InstanceSettingsUpdate]):
@@ -27,12 +25,7 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
 
     async def set_value(self, key: str, value: dict[str, object]) -> None:
         """Insert or replace the value stored under key in one round trip."""
-        await self._apply_raw_update_unfetched(
-            {"key": key},
-            {"$set": {"value": value}},
-            scope=REPO_GLOBAL_SCOPE,  # pragma: no mutate — a cacheless global repo never reads its scope
-            upsert=True,
-        )
+        await self.upsert(key, InstanceSettingsUpdate(value=value))
 
     async def set_if_absent(self, key: str, value: dict[str, object]) -> bool:
         """Atomically insert value only when key does not exist yet.
@@ -43,24 +36,10 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
         """
         result = await self._raw_collection().update_one(
             {"key": key},
-            {"$setOnInsert": {"key": key, "value": value}},
+            {"$setOnInsert": {"value": value}},
             upsert=True,
         )
         return result.upserted_id is not None
-
-    async def put(self, key: str, value: dict[str, object]) -> InstanceSettingsDocument:
-        """Store value under key, creating the document when absent."""
-        stored = await self._apply_raw_update(
-            {"key": key},
-            {"$set": {"value": value}},
-            scope=REPO_GLOBAL_SCOPE,  # pragma: no mutate — a cacheless global repo never reads its scope
-            upsert=True,
-        )
-        if stored is None:
-            raise AppError(
-                message=f"instance setting {key!r} could not be read back",  # pragma: no mutate — an upsert always reads back its row
-            )
-        return stored
 
 
 instance_settings_repository = InstanceSettingsRepository()

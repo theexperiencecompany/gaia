@@ -74,9 +74,7 @@ def _set_session_cookie(response: JSONResponse, token: str, *, request: Request)
         value=token,
         httponly=True,
         secure=session_cookie_secure(request),
-        samesite="lax",  # pragma: no mutate — Starlette's default, spelled out to match the WorkOS cookie
         max_age=SESSION_TTL_SECONDS,
-        path="/",  # pragma: no mutate — Starlette's default, spelled out to match the WorkOS cookie
     )
 
 
@@ -108,6 +106,22 @@ def _registration_closed(email: str) -> Never:
         detail={
             "code": REGISTRATION_CLOSED,
             "message": "Signing up here needs an invite from this instance's administrator",
+        },
+    )
+
+
+def _login_failed(email: str) -> Never:
+    """Audit and raise the one invalid-credentials rejection every login failure shares."""
+    log.audit(
+        "login failed",
+        actor=AUDIT_ACTOR_UNAUTHENTICATED,
+        email=email,
+    )
+    raise HTTPException(
+        status_code=401,
+        detail={
+            "code": INVALID_CREDENTIALS,
+            "message": "Invalid email or password",
         },
     )
 
@@ -179,7 +193,7 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
 
     # Self-host name is optional, unlike hosted signups. Default to the email
     # local-part so the display name never has to handle null.
-    name = body.name or email.split("@", 1)[0]
+    name = body.name or email.split("@")[0]
 
     if not admin_exists:
         # Fast-path pre-check only — the authoritative gate is the claim below.
@@ -243,12 +257,12 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
     # A removed member fails exactly like an unknown account.
     credential = stored if stored is not None and stored.disabled_at is None else None
 
+    if user is None or credential is None:
+        # Equalize cost with the wrong-password path below.
+        _burn_one_verification(body.password)
+        _login_failed(email)
     try:
-        verified = (
-            bcrypt.checkpw(body.password.encode(), credential.password_hash.encode())
-            if user is not None and credential is not None
-            else False
-        )
+        verified = bcrypt.checkpw(body.password.encode(), credential.password_hash.encode())
     except ValueError as exc:
         # bcrypt >= 5 refuses passwords past its 72-byte cap: a wrong-password
         # outcome, not a server error. Fold into the uniform 401 below
@@ -258,22 +272,8 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
             error_type=type(exc).__name__,
         )
         verified = False
-    if not verified or user is None or credential is None:
-        if user is None or credential is None:
-            # Equalize cost with the wrong-password path above.
-            _burn_one_verification(body.password)
-        log.audit(
-            "login failed",
-            actor=AUDIT_ACTOR_UNAUTHENTICATED,
-            email=email,
-        )
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "code": INVALID_CREDENTIALS,
-                "message": "Invalid email or password",
-            },
-        )
+    if not verified:
+        _login_failed(email)
 
     token = await issue_session_token(user.id, credential.token_version)
     log.audit("logged in", actor=user.id, mode="local")
@@ -371,7 +371,7 @@ async def change_password(
     # Rotate the caller's session so they stay logged in while every other
     # session (old ``ver``) is revoked.
     new_token = await issue_session_token(user_id, new_version)
-    response = JSONResponse(status_code=200, content={"status": "ok"})
+    response = JSONResponse(content={"status": "ok"})
     _set_session_cookie(response, new_token, request=request)
     log.set(outcome="success")
     return response

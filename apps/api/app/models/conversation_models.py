@@ -181,7 +181,9 @@ class _ConversationIdRow(BaseModel):
 
 
 class _ConversationOwnerRow(_ConversationIdRow):
-    """Projection of a conversation id and the user who owns it."""
+    """Projection of a conversation id and the user who owns it; anything else is a projection bug."""
+
+    model_config = ConfigDict(extra="forbid")
 
     user_id: str
 

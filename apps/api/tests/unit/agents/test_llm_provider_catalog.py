@@ -197,6 +197,7 @@ class TestProductionRoutingIsPinned:
 
         assert lane.model == "gpt-5.6-luna"
         assert llm.default.model_name == "gpt-5.6-luna"
+        assert chat_model(LLMProviderName.OPENAI) == "gpt-5.6-luna"
 
     def test_a_missing_hosted_key_is_never_routed_around(
         self, monkeypatch: pytest.MonkeyPatch
@@ -388,6 +389,8 @@ class TestCustomOnly:
 
         with pytest.raises(LLMNotConfiguredError, match="helper"):
             resolve_model(ModelUse.HELPER)
+        with pytest.raises(LLMNotConfiguredError):
+            init_custom_llm().loader_func()
 
 
 class TestNothingConfigured:

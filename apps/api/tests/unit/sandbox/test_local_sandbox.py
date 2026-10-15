@@ -913,8 +913,10 @@ async def test_output_cut_mid_character_ends_with_a_replacement_not_silence(
     recorder: SpawnRecorder,
 ) -> None:
     recorder._responses = [FakeProcess(stdout="done é".encode()[:-1])]
-    result = await _sandbox().commands.run("killed mid-write")
+    streamed: list[str] = []
+    result = await _sandbox().commands.run("killed mid-write", on_stdout=streamed.append)
     assert result.stdout == "done �"
+    assert "".join(streamed) == "done �"
 
 
 async def test_undecodable_command_output_is_replaced_and_every_chunk_is_kept(
