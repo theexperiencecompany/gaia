@@ -633,9 +633,6 @@
 
   :root {
     /* HeroUI theme variables */
-    --heroui-primary: #00bbff;
-    --heroui-primary-foreground: #000000;
-    --heroui-focus: #00bbff;
     --heroui-white: #ffffff;
     --heroui-white-foreground: #000000;
 
@@ -673,9 +670,6 @@
 
   .dark {
     /* HeroUI theme variables */
-    --heroui-primary: #00bbff;
-    --heroui-primary-foreground: #000000;
-    --heroui-focus: #00bbff;
     --heroui-white: #ffffff;
     --heroui-white-foreground: #000000;
 

@@ -265,6 +265,8 @@ The palette is rooted in a deep neutral foundation, with a single saturated cyan
 | `--color-primary-bg` | `#111111` | Main app background |
 | `--color-secondary-bg` | `#1a1a1a` | Sidebar background |
 
+HeroUI reads the brand from `apps/web/src/app/styles/hero.mjs`: the whole `primary` scale (50–900) is cyan around `#00bbff`, because `flat`/`light`/`bordered` variants color text from the scale (`primary-600`/`-700`), not from `DEFAULT`. Change brand color there, not in `globals.css`.
+
 ### Semantic Variables (Shadcn / Radix)
 
 Use on layout surfaces and standard components. Switch automatically between light and dark.
