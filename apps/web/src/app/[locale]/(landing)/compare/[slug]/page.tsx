@@ -62,6 +62,61 @@ export async function generateMetadata({
   };
 }
 
+type ComparisonPageData = NonNullable<
+  Awaited<ReturnType<typeof getTranslatedComparison>>
+>;
+
+function buildComparisonSchemas(data: ComparisonPageData, slug: string) {
+  const pageUrl = `${siteConfig.url}/compare/${slug}`;
+  const crumbs = [
+    { name: "Home", url: siteConfig.url },
+    { name: "Comparisons", url: `${siteConfig.url}/compare` },
+    {
+      name: `GAIA vs ${data.name}`,
+      url: pageUrl,
+    },
+  ];
+  return {
+    webPageSchema: generateWebPageSchema(
+      data.metaTitle,
+      data.metaDescription,
+      pageUrl,
+      crumbs,
+    ),
+    breadcrumbSchema: generateBreadcrumbSchema(crumbs),
+    faqSchema: generateFAQSchema(data.faqs),
+    productSchema: generateProductSchema(),
+  };
+}
+
+interface MarketplaceCtaSectionProps {
+  readonly name: string;
+  readonly marketplacePath: string;
+}
+
+function MarketplaceCtaSection({
+  name,
+  marketplacePath,
+}: MarketplaceCtaSectionProps) {
+  return (
+    <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
+      <h2 className="mb-3 text-2xl font-semibold text-white">
+        Connect {name} to GAIA
+      </h2>
+      <p className="mb-6 leading-relaxed text-zinc-400">
+        Use {name} with your AI assistant: connect it in under two minutes, then
+        automate {name} workflows in plain English.
+      </p>
+      <Link
+        href={marketplacePath}
+        className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
+      >
+        Connect {name}
+      </Link>
+    </section>
+  );
+}
+
 export default async function ComparisonPage({ params }: PageProps) {
   const { locale, slug } = await params;
   setRequestLocale(locale);
@@ -94,31 +149,8 @@ export default async function ComparisonPage({ params }: PageProps) {
     )
   ).filter((p): p is NonNullable<typeof p> => p !== undefined);
 
-  const webPageSchema = generateWebPageSchema(
-    data.metaTitle,
-    data.metaDescription,
-    `${siteConfig.url}/compare/${slug}`,
-    [
-      { name: "Home", url: siteConfig.url },
-      { name: "Comparisons", url: `${siteConfig.url}/compare` },
-      {
-        name: `GAIA vs ${data.name}`,
-        url: `${siteConfig.url}/compare/${slug}`,
-      },
-    ],
-  );
-
-  const breadcrumbSchema = generateBreadcrumbSchema([
-    { name: "Home", url: siteConfig.url },
-    { name: "Comparisons", url: `${siteConfig.url}/compare` },
-    {
-      name: `GAIA vs ${data.name}`,
-      url: `${siteConfig.url}/compare/${slug}`,
-    },
-  ]);
-
-  const faqSchema = generateFAQSchema(data.faqs);
-  const productSchema = generateProductSchema();
+  const { webPageSchema, breadcrumbSchema, faqSchema, productSchema } =
+    buildComparisonSchemas(data, slug);
 
   // "Connect {name}" CTA only where the marketplace slug verifiably exists.
   const marketplacePath = await resolveMarketplacePath(slug);
@@ -239,21 +271,10 @@ export default async function ComparisonPage({ params }: PageProps) {
 
         {/* Connect CTA: only rendered when the marketplace page exists */}
         {marketplacePath && (
-          <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
-            <h2 className="mb-3 text-2xl font-semibold text-white">
-              Connect {data.name} to GAIA
-            </h2>
-            <p className="mb-6 leading-relaxed text-zinc-400">
-              Use {data.name} with your AI assistant: connect it in under two
-              minutes, then automate {data.name} workflows in plain English.
-            </p>
-            <Link
-              href={marketplacePath}
-              className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
-            >
-              Connect {data.name}
-            </Link>
-          </section>
+          <MarketplaceCtaSection
+            name={data.name}
+            marketplacePath={marketplacePath}
+          />
         )}
 
         {/* FAQ */}
