@@ -8,7 +8,8 @@ the wizard and Settings accept.
 from typing import Literal
 
 from app.config.settings import settings
-from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS, ProviderPreset
+from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS, PresetName, ProviderPreset
+from app.schemas.providers import ProviderCredentialBody
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolve,
@@ -21,8 +22,6 @@ from app.utils.url_safety import assert_endpoint_url_allowed, assert_endpoint_ur
 # only stored base_urls the SSRF guard applies to (openrouter/gemini dial
 # canonical endpoints; the tool keys carry no endpoint).
 BASE_URL_PROVIDERS = frozenset({"custom", "ollama", "searxng"})
-
-PresetName = Literal["opencode", "nous"]
 
 _UNPROCESSABLE = 422
 _NOT_FOUND = 404
@@ -83,31 +82,24 @@ def _kept(given: str | None, stored: ProviderConfig | None, field: _ConfigField)
     return stored[field]
 
 
-async def save_provider_credential(
-    provider: str,
-    *,
-    preset: PresetName | None = None,
-    api_key: str | None = None,
-    base_url: str | None = None,
-    model: str | None = None,
-    account_id: str | None = None,
-    api_secret: str | None = None,
-) -> None:
+async def save_provider_credential(provider: str, body: ProviderCredentialBody) -> None:
     """Store one provider's credential, merging omitted fields with the stored config."""
     ensure_known_provider(provider)
-    if all(v is None for v in (preset, api_key, base_url, model, account_id, api_secret)):
+    if all(v is None for v in body.model_dump().values()):
         raise AppError(message="No fields to update", status_code=_UNPROCESSABLE)
     stored = await resolve(provider)
-    preset_base_url, preset_model = apply_preset(preset, base_url, model)
+    preset_base_url, preset_model = apply_preset(body.preset, body.base_url, body.model)
     merged_base_url = _kept(preset_base_url, stored, "base_url")
     if provider in BASE_URL_PROVIDERS:
         await assert_endpoint_safe(merged_base_url, allow_private=allows_private_endpoint(provider))
     await upsert(
         provider,
-        api_key=_kept(api_key, stored, "api_key"),
-        base_url=merged_base_url,
-        model=_kept(preset_model, stored, "model"),
-        preset=_kept(preset, stored, "preset"),
-        account_id=_kept(account_id, stored, "account_id"),
-        api_secret=_kept(api_secret, stored, "api_secret"),
+        ProviderConfig(
+            api_key=_kept(body.api_key, stored, "api_key"),
+            base_url=merged_base_url,
+            model=_kept(preset_model, stored, "model"),
+            preset=_kept(body.preset, stored, "preset"),
+            account_id=_kept(body.account_id, stored, "account_id"),
+            api_secret=_kept(body.api_secret, stored, "api_secret"),
+        ),
     )

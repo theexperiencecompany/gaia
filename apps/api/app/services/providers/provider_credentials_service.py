@@ -203,34 +203,15 @@ def _credential_of(config: ProviderConfig) -> tuple[str | None, ...]:
     return config["api_key"], config["base_url"], config["account_id"], config["api_secret"]
 
 
-async def upsert(
-    provider: str,
-    *,
-    api_key: str | None = None,
-    base_url: str | None = None,
-    model: str | None = None,
-    preset: str | None = None,
-    account_id: str | None = None,
-    api_secret: str | None = None,
-) -> None:
+async def upsert(provider: str, config: ProviderConfig) -> None:
     """Store (or replace) a provider's encrypted credential and fan out invalidation."""
     _ensure_writable(provider)
-    payload = json.dumps(
-        ProviderConfig(
-            api_key=api_key,
-            base_url=base_url,
-            model=model,
-            preset=preset,
-            account_id=account_id,
-            api_secret=api_secret,
-        )
-    )
-    data_encrypted = await _encrypt(payload)
+    data_encrypted = await _encrypt(json.dumps(config))
     await provider_credentials_repository.upsert_encrypted(provider, data_encrypted)
     log.info(
         f"{LogTag.API} Provider credential updated",
         provider=provider,
-        has_api_key=api_key is not None,
+        has_api_key=config["api_key"] is not None,
     )
     await invalidate(provider)
     # Warm the local cache so the credential is live before the HTTP 200 returns.

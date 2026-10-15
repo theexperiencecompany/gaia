@@ -623,7 +623,17 @@ async def test_production_refuses_to_store_a_credential(production_profile: None
     from app.services.providers import provider_credentials_service as service
 
     with pytest.raises(RuntimeError, match="environment only"):
-        await service.upsert("resend", api_key="k")
+        await service.upsert(
+            "resend",
+            service.ProviderConfig(
+                api_key="k",
+                base_url=None,
+                model=None,
+                preset=None,
+                account_id=None,
+                api_secret=None,
+            ),
+        )
 
 
 async def test_production_comms_uses_the_env_openai_key_over_a_stored_one(

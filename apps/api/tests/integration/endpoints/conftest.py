@@ -61,25 +61,8 @@ class FakeProviderService:
         source = CredentialSource.UNSET if from_env is None else CredentialSource.ENV
         return CredentialResolution(from_env, source, shadows_env=False)
 
-    async def upsert(
-        self,
-        provider: str,
-        *,
-        api_key: str | None = None,
-        base_url: str | None = None,
-        model: str | None = None,
-        preset: str | None = None,
-        account_id: str | None = None,
-        api_secret: str | None = None,
-    ) -> None:
-        self.configs[provider] = {
-            "api_key": api_key,
-            "base_url": base_url,
-            "model": model,
-            "preset": preset,
-            "account_id": account_id,
-            "api_secret": api_secret,
-        }
+    async def upsert(self, provider: str, config: ProviderConfig) -> None:
+        self.configs[provider] = config
 
     async def delete(self, provider: str) -> None:
         self.configs.pop(provider, None)

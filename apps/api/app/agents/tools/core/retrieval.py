@@ -10,6 +10,7 @@ This module provides the retrieve_tools function factory that supports:
 
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, field
 import json
 from typing import (
     Annotated,
@@ -462,6 +463,46 @@ class _DiscoveredTool(TypedDict):
     needs_approval: NotRequired[bool]
 
 
+@dataclass(frozen=True)
+class _RetrievalScope:
+    """Who one retrieve_tools call runs for, from where, and which tool spaces it may reach."""
+
+    user_id: str
+    tool_space: str
+    include_subagents: bool
+    include_desktop: bool = False
+    background: bool = False
+    conversation_id: str | None = None
+
+
+@dataclass
+class _BindingTriage:
+    """exact_tool_names sorted by whether, and under which name, they can bind."""
+
+    validated: list[str] = field(default_factory=list)
+    unknown: list[str] = field(default_factory=list)
+    out_of_scope: list[str] = field(default_factory=list)
+    # requested name -> canonical name, for the aliases we silently resolved
+    renamed: dict[str, str] = field(default_factory=dict)
+
+
+class _RankedHits(NamedTuple):
+    """The deduplicated top hits of a discovery search, and how many candidates they beat."""
+
+    tools: list[str]
+    total_candidates: int
+    limit: int
+
+
+class _SearchHitStats(NamedTuple):
+    """Raw-hit counts across the search fan-out, for the wide event."""
+
+    chroma_hits: int
+    public_hits: int
+    per_namespace_hits: dict[str, int]
+    chroma_preview: list[str]
+
+
 async def _resolve_connected_subagents(user_id: str) -> dict[str, str | None]:
     """Map connected integration id -> display name. Platform/internal names come
     from the in-memory registry; custom MCP names from the cached user-integration
@@ -562,11 +603,9 @@ async def _active_tool_spaces(conversation_id: str | None) -> set[str]:
 def _build_search_tasks(
     store: BaseStore,
     query: str,
-    tool_space: str,
+    scope: _RetrievalScope,
     user_namespaces: set[str],
-    include_subagents: bool,
     limit: int,
-    include_desktop: bool = False,
     active_namespaces: set[str] | None = None,
 ) -> list[Awaitable[SearchTaskResult]]:
     """Build list of search tasks to execute.
@@ -578,6 +617,7 @@ def _build_search_tasks(
     to search it (always for platform integrations, only when the user
     has the integration connected for custom MCPs).
     """
+    tool_space = scope.tool_space
     search_tasks: list[Awaitable[SearchTaskResult]] = []
 
     # Search in tool_space
@@ -611,14 +651,14 @@ def _build_search_tasks(
 
     # Desktop-executed tools are only discoverable for desktop-app sessions
     # (include_desktop is derived from conversation_source upstream).
-    if include_desktop:
+    if scope.include_desktop:
         log.info(f"{LogTag.TOOL} Adding search for desktop namespace")
         search_tasks.append(store.asearch((DESKTOP_TOOL_SPACE,), query=query, limit=10))
 
     # Only custom MCP integrations index a pointer doc here; surfacing it is
     # what makes an unactivated custom MCP discoverable, so the model learns
     # its id to hand off to.
-    if include_subagents:
+    if scope.include_subagents:
         log.info(f"{LogTag.TOOL} Adding search for subagents namespace")
         search_tasks.append(store.asearch(("subagents",), query=query, limit=15))
         search_tasks.append(search_public_integrations(query=query, limit=15))
@@ -650,6 +690,45 @@ def _process_public_integration_result(
     return processed
 
 
+def _subagent_pointer_hit(item: SearchItem) -> ScoredToolHit | None:
+    """The subagent: entry for a subagents-namespace pointer, or None for a stale doc.
+
+    Pointers exist only for MCP integrations, static (source "mcp", the default
+    for docs predating the field) or custom; anything else predates the index.
+    """
+    # value is unpickled from the store: the dict annotation is a claim, not a check.
+    raw_value: object = item.value
+    if not isinstance(raw_value, dict):
+        return None
+    value: _SubagentPointerValue = cast(_SubagentPointerValue, raw_value)
+    source = value.get("source", "mcp")
+    if source not in ("custom", "mcp"):
+        return None
+    tool_key = str(item.key)
+    name = value.get("name")
+    subagent_key = f"subagent:{tool_key} ({name})" if name else f"subagent:{tool_key}"
+    return ScoredToolHit(id=subagent_key, score=item.score)
+
+
+def _is_delegated_elsewhere(
+    item: SearchItem, tool_registry: ToolRegistry, active_namespaces: set[str] | None
+) -> bool:
+    """Whether a hit's tool runs only in its owner's context.
+
+    Namespaces activated in-conversation via activate_integration are exempt:
+    the activation reply promises their long tail is retrievable.
+    """
+    # Tool namespaces are single-segment: chroma_tools_store writes (namespace,).
+    namespace_key = "::".join(item.namespace)  # pragma: no mutate — 1-tuple, no separator
+    if namespace_key in (active_namespaces or ()):
+        return False
+    tool_category_name = tool_registry.get_category_of_tool(str(item.key))
+    if not tool_category_name:
+        return False
+    category = tool_registry.get_category(name=tool_category_name)
+    return bool(category and category.is_delegated)
+
+
 def _process_chroma_search_result(
     result: list[SearchItem],
     available_tool_names: set[str],
@@ -663,50 +742,20 @@ def _process_chroma_search_result(
 
     for item in result:
         tool_key = str(item.key)
+        namespace = item.namespace if hasattr(item, "namespace") else None
 
-        # Subagents-namespace pointers exist only for MCP integrations, static
-        # (source "mcp", the default for docs predating the field) or custom.
-        # Anything else here is a stale pre-index doc; drop it, never surface it.
-        if hasattr(item, "namespace") and item.namespace == ("subagents",):
-            if not include_subagents:
-                continue
-            # value is unpickled from the store: the dict annotation is a claim, not a check.
-            raw_value: object = item.value
-            if not isinstance(raw_value, dict):
-                continue
-            value: _SubagentPointerValue = cast(_SubagentPointerValue, raw_value)
-            source = value.get("source", "mcp")
-            if source not in ("custom", "mcp"):
-                continue
-            name = value.get("name")
-            subagent_key = f"subagent:{tool_key} ({name})" if name else f"subagent:{tool_key}"
-            processed.append(ScoredToolHit(id=subagent_key, score=item.score))
+        if namespace == ("subagents",):
+            if include_subagents and (hit := _subagent_pointer_hit(item)) is not None:
+                processed.append(hit)
             continue
 
-        # Filter general namespace results for subagents - only allow webpage tools
-        if (
-            hasattr(item, "namespace")
-            and item.namespace == ("general",)
-            and tool_space != "general"
-        ):
-            # Only include webpage tools from general namespace for subagents
-            if tool_key not in WEBPAGE_TOOLS:
-                continue
+        # Subagents see only the webpage tools of the general namespace.
+        if namespace == ("general",) and tool_space != "general" and tool_key not in WEBPAGE_TOOLS:
+            continue
 
-        # Delegated tools run in their owner's context only, except namespaces
-        # activated in-conversation via activate_integration, whose long tail
-        # the activation reply promises is retrievable.
-        if include_subagents:
-            # Tool namespaces are single-segment: chroma_tools_store writes (namespace,).
-            namespace_key = "::".join(item.namespace)  # pragma: no mutate — 1-tuple, no separator
-            if namespace_key not in (active_namespaces or ()):
-                tool_category_name = tool_registry.get_category_of_tool(tool_key)
-                if tool_category_name:
-                    category = tool_registry.get_category(name=tool_category_name)
-                    if category and category.is_delegated:
-                        continue
+        if include_subagents and _is_delegated_elsewhere(item, tool_registry, active_namespaces):
+            continue
 
-        # Add regular tools
         if tool_key in available_tool_names:
             processed.append(ScoredToolHit(id=tool_key, score=item.score))
 
@@ -804,14 +853,54 @@ def _split_prefixed_entry(entry: str, prefix: str) -> tuple[str, str | None]:
     return tail, None
 
 
+def _discovery_next_step(
+    total_candidates: int,
+    not_connected_lines: list[str],
+    *,
+    has_mcp_subagents: bool,
+    has_new_integrations: bool,
+) -> dict[str, object]:
+    """The payload's next instruction, plus the nothing-matched flag when it applies."""
+    if total_candidates == 0 and not_connected_lines:
+        # Nothing else matched: the missing connection is the whole answer, so
+        # there is no broader query worth retrying.
+        return {"next": " ".join(not_connected_lines)}
+    if total_candidates == 0:
+        return {
+            "search_matched_nothing": True,
+            "next": (
+                "The search matched NOTHING. Retry ONCE with a broader query "
+                "naming the action ('send email', not a product name). If you "
+                "already know the exact tool name, skip search and call "
+                "retrieve_tools(exact_tool_names=[...]). Otherwise tell the "
+                "user the capability is unavailable. Never repeat the same query."
+            ),
+        }
+    steps = [
+        "Load with retrieve_tools(exact_tool_names=[...]): internal tools bind "
+        "and are called by name, integration tools (ALLCAPS) return schemas to "
+        "run via execute and are never bound. Integrations are not subagents: "
+        "act on them yourself."
+    ]
+    if has_mcp_subagents:
+        steps.append(
+            "subagent: entries are per-user MCP integrations, the ONLY "
+            'subagents: delegate with handoff(subagent_id="<id>", task="...").'
+        )
+    if has_new_integrations:
+        steps.append(
+            "new_integrations are not connected yet: call "
+            "activate_integration(id) anyway — that call is what shows the user "
+            "the connect card."
+        )
+    return {"next": " ".join([*not_connected_lines, *steps])}
+
+
 def _render_discovery_response(
-    final_tools: list[str],
+    hits: _RankedHits,
     tool_registry: ToolRegistry,
     connected_integrations: dict[str, str | None],
     query: str | None,
-    total_candidates: int,
-    limit: int,
-    *,
     not_connected: Sequence[_UnconnectedIntegration],
     background: bool,
 ) -> str:
@@ -830,7 +919,7 @@ def _render_discovery_response(
     bindable: list[str] = []
     mcp: list[tuple[str, str | None]] = []
     new: list[tuple[str, str | None]] = []
-    for entry in final_tools:
+    for entry in hits.tools:
         if entry.startswith(_SUBAGENT_PREFIX):
             mcp.append(_split_prefixed_entry(entry, _SUBAGENT_PREFIX))
         elif entry.startswith(_INTEGRATION_PREFIX):
@@ -860,51 +949,353 @@ def _render_discovery_response(
         "mcp_subagents": [_id_entry(p) for p in mcp],
         "new_integrations": [_id_entry(p) for p in new],
     }
-    if total_candidates > limit:
-        payload["truncated"] = {"shown": len(final_tools), "total": total_candidates}
+    if hits.total_candidates > hits.limit:
+        payload["truncated"] = {"shown": len(hits.tools), "total": hits.total_candidates}
     if not_connected:
         payload["not_connected"] = [
             {"id": integration.id, "name": integration.name} for integration in not_connected
         ]
-    not_connected_lines = [
-        _not_connected_line(integration, background) for integration in not_connected
-    ]
-
-    if total_candidates == 0 and not_connected_lines:
-        # Nothing else matched: the missing connection is the whole answer, so
-        # there is no broader query worth retrying.
-        payload["next"] = " ".join(not_connected_lines)
-    elif total_candidates == 0:
-        payload["search_matched_nothing"] = True
-        payload["next"] = (
-            "The search matched NOTHING. Retry ONCE with a broader query "
-            "naming the action ('send email', not a product name). If you "
-            "already know the exact tool name, skip search and call "
-            "retrieve_tools(exact_tool_names=[...]). Otherwise tell the "
-            "user the capability is unavailable. Never repeat the same query."
+    payload.update(
+        _discovery_next_step(
+            hits.total_candidates,
+            [_not_connected_line(integration, background) for integration in not_connected],
+            has_mcp_subagents=bool(mcp),
+            has_new_integrations=bool(new),
         )
-    else:
-        steps = [
-            "Load with retrieve_tools(exact_tool_names=[...]): internal tools bind "
-            "and are called by name, integration tools (ALLCAPS) return schemas to "
-            "run via execute and are never bound. Integrations are not subagents: "
-            "act on them yourself."
-        ]
-        if mcp:
-            steps.append(
-                "subagent: entries are per-user MCP integrations, the ONLY "
-                'subagents: delegate with handoff(subagent_id="<id>", task="...").'
-            )
-        if new:
-            steps.append(
-                "new_integrations are not connected yet: call "
-                "activate_integration(id) anyway — that call is what shows the user "
-                "the connect card."
-            )
-        payload["next"] = " ".join([*not_connected_lines, *steps])
+    )
     if query:
         payload["query"] = query
     return json.dumps(payload, indent=2)
+
+
+_NO_USABLE_ARGUMENT_HINT = (
+    "retrieve_tools received no usable argument (an empty "
+    "exact_tool_names counts as none). Next step: pass "
+    "query='what you want to do' to discover, or "
+    "exact_tool_names=['TOOL_NAME'] to bind a known tool."
+)
+
+
+def _triage_exact_names(
+    exact_tool_names: list[str],
+    tool_registry: ToolRegistry,
+    bindable_set: set[str],
+    global_tool_names: set[str],
+    mcp_tool_names: set[str],
+    include_desktop: bool,
+) -> _BindingTriage:
+    """Sort requested names into bindable (canonicalised), unknown and out-of-scope."""
+    known_by_canonical = canonical_tool_name_map(bindable_set | mcp_tool_names)
+    triage = _BindingTriage()
+    for tool_name in exact_tool_names:
+        if tool_name.startswith(_SUBAGENT_PREFIX):
+            # subagent: entries are never bound — either a per-user MCP handled
+            # via handoff or a hallucination. Report unknown so the model
+            # re-discovers instead of echoing it back as a fake bind.
+            triage.unknown.append(tool_name)
+        elif (
+            not include_desktop
+            and tool_registry.get_category_of_tool(tool_name) == DESKTOP_TOOL_CATEGORY
+        ):
+            # Desktop tools must not bind outside desktop sessions —
+            # the tools also re-check the source at execution time.
+            triage.unknown.append(tool_name)
+        elif tool_name in bindable_set or tool_name in mcp_tool_names:
+            triage.validated.append(tool_name)
+        elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
+            triage.validated.append(canonical)
+            if canonical != tool_name:
+                triage.renamed[tool_name] = canonical
+        elif tool_name in global_tool_names:
+            # Known globally, but not in this agent's scope.
+            triage.out_of_scope.append(tool_name)
+        else:
+            triage.unknown.append(tool_name)
+    return triage
+
+
+def _binding_guidance(
+    out_of_scope_tool_names: list[str],
+    unconnected: dict[str, _UnconnectedIntegration],
+    background: bool,
+) -> list[str]:
+    """The lines telling the model which requested tools cannot run here, and why."""
+    guidance: list[str] = []
+    if out_of_scope_tool_names:
+        guidance.append(
+            "These tools are not available inside this subagent and cannot be "
+            f"bound here: {', '.join(out_of_scope_tool_names)}. They belong to the "
+            "main executor, not this subagent. Do not retry binding them; finish "
+            "your task here and let the executor handle them."
+        )
+    tools_by_integration: dict[_UnconnectedIntegration, list[str]] = {}
+    for name, integration in unconnected.items():
+        tools_by_integration.setdefault(integration, []).append(name)
+    guidance.extend(
+        _not_connected_line(integration, background, names)
+        for integration, names in tools_by_integration.items()
+    )
+    return guidance
+
+
+def _render_binding_response(
+    bound_tool_names: list[str],
+    proxied_docs: list[str],
+    renamed_tools: dict[str, str],
+    unknown_tool_names: list[str],
+    guidance: list[str],
+) -> str:
+    """Render a binding-mode result as the text the model acts on."""
+    bind_lines: list[str] = []
+    if bound_tool_names:
+        bind_lines.append(f"Bound {len(bound_tool_names)} tools, call them directly:")
+        bind_lines.extend(f"  - {name}" for name in bound_tool_names)
+    if proxied_docs:
+        bind_lines.append(
+            f"{len(proxied_docs)} integration tool(s) ready to run via execute. "
+            f"{_EXECUTE_DOCS_INSTRUCTION}"
+        )
+        bind_lines.extend(proxied_docs)
+    if renamed_tools:
+        bind_lines.append(
+            "Resolved to their canonical names, use these from now on: "
+            + ", ".join(f"{req} -> {canon}" for req, canon in renamed_tools.items())
+        )
+    if unknown_tool_names:
+        bind_lines.append(
+            f"Not found, nothing bound: {', '.join(unknown_tool_names)}. "
+            "Do not retry these names; run retrieve_tools(query=...) to find "
+            "what actually exists."
+        )
+    bind_lines.extend(guidance)
+    return "\n".join(bind_lines)
+
+
+async def _bind_exact_tools(
+    scope: _RetrievalScope,
+    tool_registry: ToolRegistry,
+    global_tool_names: set[str],
+    exact_tool_names: list[str],
+    bindable_tool_names: set[str] | None,
+) -> RetrieveToolsResult:
+    """Binding mode: bind internal tools, return schema docs for integration tools."""
+    # Validate against the agent's scoped set, not the global registry —
+    # else an out-of-scope tool reports a fake bind the graph then rejects,
+    # looping the model bind->reject.
+    bindable_set = bindable_tool_names if bindable_tool_names is not None else global_tool_names
+    mcp_tool_names_set = await _user_mcp_tool_names(scope.user_id)
+    triage = _triage_exact_names(
+        exact_tool_names,
+        tool_registry,
+        bindable_set,
+        global_tool_names,
+        mcp_tool_names_set,
+        scope.include_desktop,
+    )
+
+    # An unconnected integration's tools cannot run, so they are neither
+    # rescued nor documented: one line says so and names the next step.
+    # Per-user MCP tools exist only while connected, so never need this.
+    unconnected = await _unconnected_for_tools(
+        scope.user_id,
+        [name for name in [*triage.validated, *triage.unknown] if name not in mcp_tool_names_set],
+    )
+    validated_tool_names = [n for n in triage.validated if n not in unconnected]
+
+    # Catalog slugs never materialize locally — rescue them through the
+    # resolver instead of reporting a capability the catalog HAS as unknown.
+    unknown_tool_names: list[str] = []
+    for name in triage.unknown:
+        if name in unconnected:
+            continue
+        if is_catalog_slug(name) and await _resolve_for_retrieval(scope.user_id, name):
+            validated_tool_names.append(name)
+        else:
+            unknown_tool_names.append(name)
+
+    # The cutover: integration tools (Composio + MCP) are never bound —
+    # they run through the execute proxy, so binding-mode returns their
+    # schema docs instead. Internal tools still bind.
+    proxied_names: list[str] = []
+    bound_tool_names: list[str] = []
+    for name in validated_tool_names:
+        if _is_execute_routed(tool_registry, name, mcp_tool_names_set) or (
+            name not in bindable_set and is_catalog_slug(name)
+        ):
+            proxied_names.append(name)
+        else:
+            bound_tool_names.append(name)
+    proxied_docs = await _render_proxied_docs(scope.user_id, proxied_names)
+
+    if unknown_tool_names:
+        # Surfacing this is important: silently dropping requested tools
+        # makes registry-population bugs invisible to operators.
+        log.warning(
+            f"{LogTag.TOOL} retrieve_tools binding dropped unknown tools",
+            tool_space=scope.tool_space,
+            unknown=unknown_tool_names,
+            available_count=len(bindable_set),
+        )
+    if triage.out_of_scope:
+        log.warning(
+            "retrieve_tools binding rejected out-of-scope tools",
+            tool_space=scope.tool_space,
+            out_of_scope=triage.out_of_scope,
+        )
+
+    log.set(
+        tool_retrieval={
+            "mode": "binding",
+            "tools_requested": len(exact_tool_names),
+            "tools_bound": len(bound_tool_names),
+            "tools_proxied": len(proxied_names),
+            "tools_filtered": len(exact_tool_names) - len(bound_tool_names) - len(proxied_names),
+            "tools_not_connected": len(unconnected),
+        }
+    )
+
+    # Bind valid tools regardless; out-of-scope guidance stays in its own
+    # list, since a name-vs-sentence filter re-emitted every proxied name
+    # as NOT callable by name.
+    guidance = _binding_guidance(triage.out_of_scope, unconnected, scope.background)
+    return RetrieveToolsResult(
+        tools_to_bind=bound_tool_names,
+        response=[*bound_tool_names, *proxied_names, *guidance],
+        response_text=_render_binding_response(
+            bound_tool_names, proxied_docs, triage.renamed, unknown_tool_names, guidance
+        ),
+    )
+
+
+def _raise_if_every_search_failed(results: list[SearchTaskResult | BaseException]) -> None:
+    """Log each failed search task; raise when none answered.
+
+    A partial outage degrades to the namespaces that answered, but a total
+    outage must raise so the retry policy sees a failure, not silent emptiness.
+    """
+    failures = [r for r in results if isinstance(r, BaseException)]
+    for failure in failures:
+        log.error(
+            f"{LogTag.TOOL} retrieve_tools search task failed",
+            error=str(failure),
+            error_type=type(failure).__name__,
+        )
+    if failures and len(failures) == len(results):
+        raise failures[0]
+
+
+def _search_hit_stats(results: list[SearchTaskResult | BaseException]) -> _SearchHitStats:
+    """Count raw Chroma and public-integration hits, per namespace, plus a short preview."""
+    chroma_hits = 0
+    public_hits = 0
+    per_namespace_hits: dict[str, int] = {}
+    for result in results:
+        if not isinstance(result, list) or not result:
+            continue
+        if isinstance(result[0], dict):
+            public_hits += len(result)
+            continue
+        chroma_hits += len(result)
+        for item in result:
+            if not hasattr(item, "namespace"):
+                continue
+            ns = "::".join(item.namespace) if item.namespace else "default"
+            per_namespace_hits[ns] = per_namespace_hits.get(ns, 0) + 1
+
+    chroma_preview: list[str] = []
+    for result in results:
+        if isinstance(result, list) and result and not isinstance(result[0], dict):
+            for item in cast(list[SearchItem], result):
+                chroma_preview.append(f"{item.namespace}::{item.key}")
+                if len(chroma_preview) >= 10:
+                    break
+        if len(chroma_preview) >= 10:
+            break
+    return _SearchHitStats(chroma_hits, public_hits, per_namespace_hits, chroma_preview)
+
+
+async def _discover_tools(
+    store: BaseStore,
+    query: str | None,
+    scope: _RetrievalScope,
+    tool_registry: ToolRegistry,
+    global_tool_names: set[str],
+    limit: int,
+) -> RetrieveToolsResult:
+    """Discovery mode: semantic search across every tool space the call may reach."""
+    user_id = scope.user_id
+    tool_space = scope.tool_space
+    # Get user context (namespaces + connected integrations for labels)
+    (user_namespaces, connected_integrations) = await _get_user_context(
+        user_id, tool_space, scope.include_subagents
+    )
+
+    # Build and execute search tasks
+    active_namespaces = await _active_tool_spaces(scope.conversation_id)
+    search_tasks = _build_search_tasks(
+        store, query or "", scope, user_namespaces, limit, active_namespaces
+    )
+
+    results = await asyncio.gather(*search_tasks, return_exceptions=True)
+    _raise_if_every_search_failed(results)
+
+    # MCP tool names don't live in the global registry anymore (resilience
+    # rewrite removed the per-user categories) — union with the live MCPClient
+    # names so the discovery filter doesn't drop every PostHog/Notion/etc. hit.
+    available_tool_names_set = global_tool_names | await _user_mcp_tool_names(user_id)
+
+    stats = _search_hit_stats(results)
+
+    all_results = await _process_search_results(
+        results,
+        available_tool_names_set,
+        tool_registry,
+        scope.include_subagents,
+        tool_space,
+        active_namespaces,
+    )
+
+    final_tools = _deduplicate_and_sort(all_results, limit)
+    # A scoped worker searches its own, connected space; only the main
+    # context can be asked about an integration it has not connected.
+    not_connected = await _unconnected_named_in(user_id, query) if scope.include_subagents else []
+
+    log.set(
+        tool_retrieval={
+            "mode": "discovery",
+            "query": user_text_shape(query),
+            "tool_space": tool_space,
+            "user_id": user_id,
+            "namespaces_searched": sorted(user_namespaces),
+            "active_namespaces": sorted(active_namespaces),
+            "tools_discovered": len(final_tools),
+            "chroma_hits": stats.chroma_hits,
+            "public_hits": stats.public_hits,
+            "per_namespace_hits": stats.per_namespace_hits,
+            "candidates_after_filter": len(all_results),
+            "chroma_preview": stats.chroma_preview,
+            "not_connected": [integration.id for integration in not_connected],
+        }
+    )
+    if stats.chroma_hits == 0:
+        log.warning(
+            f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits — check that index_tools_to_store actually wrote docs for this namespace",
+            tool_space=tool_space,
+            user_id=user_id,
+        )
+
+    return RetrieveToolsResult(
+        tools_to_bind=[],
+        response=final_tools,
+        response_text=_render_discovery_response(
+            _RankedHits(final_tools, len(all_results), limit),
+            tool_registry,
+            connected_integrations,
+            query,
+            not_connected,
+            scope.background,
+        ),
+    )
 
 
 def get_retrieve_tools_function(
@@ -955,8 +1346,6 @@ def get_retrieve_tools_function(
         # Later readers of the live bag see the user even when only metadata named it.
         # Indexed, not via agent_configurable: an empty bag reads back as a throwaway copy.
         config["configurable"]["user_id"] = user_id
-        # No user is present to connect anything, so an unconnected integration is reported.
-        background = configurable.get("execution_mode") == "background"
         log.info(
             f"{LogTag.TOOL} retrieve_tools called",
             query=user_text_shape(query) if query else None,
@@ -969,308 +1358,35 @@ def get_retrieve_tools_function(
             # A no-usable-argument call (e.g. exact_tool_names=[]) must NOT crash
             # the run — that aborts the whole turn over a recoverable model slip.
             # Return a corrective hint so the caller self-corrects next step.
-            return RetrieveToolsResult(
-                tools_to_bind=[],
-                response=[
-                    (
-                        "retrieve_tools received no usable argument (an empty "
-                        "exact_tool_names counts as none). Next step: pass "
-                        "query='what you want to do' to discover, or "
-                        "exact_tool_names=['TOOL_NAME'] to bind a known tool."
-                    )
-                ],
-            )
+            return RetrieveToolsResult(tools_to_bind=[], response=[_NO_USABLE_ARGUMENT_HINT])
 
         tool_registry = await get_tool_registry()
-        available_tool_names = tool_registry.get_tool_names()
+        global_tool_names = set(tool_registry.get_tool_names())
         log.info(
             f"{LogTag.TOOL} Registry available tools",
-            available_tool_count=len(available_tool_names),
+            available_tool_count=len(global_tool_names),
         )
 
         # Desktop tools only surface for desktop-app conversations, and only
         # in the main agent context (subagents keep their own tool space).
         conversation_source = ConversationSource.coerce(configurable.get("conversation_source"))
-        desktop_enabled = (
-            conversation_source is ConversationSource.DESKTOP and tool_space == "general"
-        )
-
-        # BINDING MODE: Validate and bind exact tool names
-        if exact_tool_names:
-            global_tool_names_set = set(available_tool_names)
-            # Validate against the agent's scoped set, not the global registry —
-            # else an out-of-scope tool reports a fake bind the graph then rejects,
-            # looping the model bind->reject.
-            bindable_set = (
-                bindable_tool_names if bindable_tool_names is not None else global_tool_names_set
-            )
-
-            mcp_tool_names_set = await _user_mcp_tool_names(user_id)
-            known_by_canonical = canonical_tool_name_map(bindable_set | mcp_tool_names_set)
-
-            validated_tool_names: list[str] = []
-            unknown_tool_names: list[str] = []
-            out_of_scope_tool_names: list[str] = []
-            # requested name -> canonical name, for the aliases we silently resolved
-            renamed_tools: dict[str, str] = {}
-            for tool_name in exact_tool_names:
-                if tool_name.startswith(_SUBAGENT_PREFIX):
-                    # subagent: entries are never bound — either a per-user MCP handled
-                    # via handoff or a hallucination. Report unknown so the model
-                    # re-discovers instead of echoing it back as a fake bind.
-                    unknown_tool_names.append(tool_name)
-                elif (
-                    not desktop_enabled
-                    and tool_registry.get_category_of_tool(tool_name) == DESKTOP_TOOL_CATEGORY
-                ):
-                    # Desktop tools must not bind outside desktop sessions —
-                    # the tools also re-check the source at execution time.
-                    unknown_tool_names.append(tool_name)
-                elif tool_name in bindable_set or tool_name in mcp_tool_names_set:
-                    validated_tool_names.append(tool_name)
-                elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
-                    validated_tool_names.append(canonical)
-                    if canonical != tool_name:
-                        renamed_tools[tool_name] = canonical
-                elif tool_name in global_tool_names_set:
-                    # Known globally, but not in this agent's scope.
-                    out_of_scope_tool_names.append(tool_name)
-                else:
-                    unknown_tool_names.append(tool_name)
-
-            # An unconnected integration's tools cannot run, so they are neither
-            # rescued nor documented: one line says so and names the next step.
-            # Per-user MCP tools exist only while connected, so never need this.
-            unconnected = await _unconnected_for_tools(
-                user_id,
-                [
-                    name
-                    for name in [*validated_tool_names, *unknown_tool_names]
-                    if name not in mcp_tool_names_set
-                ],
-            )
-            validated_tool_names = [n for n in validated_tool_names if n not in unconnected]
-            unknown_tool_names = [n for n in unknown_tool_names if n not in unconnected]
-
-            # Catalog slugs never materialize locally — rescue them through the
-            # resolver instead of reporting a capability the catalog HAS as unknown.
-            still_unknown: list[str] = []
-            for name in unknown_tool_names:
-                if is_catalog_slug(name) and await _resolve_for_retrieval(user_id, name):
-                    validated_tool_names.append(name)
-                else:
-                    still_unknown.append(name)
-            unknown_tool_names = still_unknown
-
-            # The cutover: integration tools (Composio + MCP) are never bound —
-            # they run through the execute proxy, so binding-mode returns their
-            # schema docs instead. Internal tools still bind.
-            proxied_names: list[str] = []
-            still_bound: list[str] = []
-            for name in validated_tool_names:
-                if _is_execute_routed(tool_registry, name, mcp_tool_names_set) or (
-                    name not in bindable_set and is_catalog_slug(name)
-                ):
-                    proxied_names.append(name)
-                else:
-                    still_bound.append(name)
-            validated_tool_names = still_bound
-            proxied_docs = await _render_proxied_docs(user_id, proxied_names)
-
-            if unknown_tool_names:
-                # Surfacing this is important: silently dropping requested tools
-                # makes registry-population bugs invisible to operators.
-                log.warning(
-                    f"{LogTag.TOOL} retrieve_tools binding dropped unknown tools",
-                    tool_space=tool_space,
-                    unknown=unknown_tool_names,
-                    available_count=len(bindable_set),
-                )
-            if out_of_scope_tool_names:
-                log.warning(
-                    "retrieve_tools binding rejected out-of-scope tools",
-                    tool_space=tool_space,
-                    out_of_scope=out_of_scope_tool_names,
-                )
-
-            log.set(
-                tool_retrieval={
-                    "mode": "binding",
-                    "tools_requested": len(exact_tool_names),
-                    "tools_bound": len(validated_tool_names),
-                    "tools_proxied": len(proxied_names),
-                    "tools_filtered": len(exact_tool_names)
-                    - len(validated_tool_names)
-                    - len(proxied_names),
-                    "tools_not_connected": len(unconnected),
-                }
-            )
-
-            # Bind valid tools regardless; out-of-scope guidance stays in its own
-            # list, since a name-vs-sentence filter re-emitted every proxied name
-            # as NOT callable by name.
-            guidance: list[str] = []
-            if out_of_scope_tool_names:
-                guidance.append(
-                    "These tools are not available inside this subagent and cannot be "
-                    f"bound here: {', '.join(out_of_scope_tool_names)}. They belong to the "
-                    "main executor, not this subagent. Do not retry binding them; finish "
-                    "your task here and let the executor handle them."
-                )
-            tools_by_integration: dict[_UnconnectedIntegration, list[str]] = {}
-            for name, integration in unconnected.items():
-                tools_by_integration.setdefault(integration, []).append(name)
-            guidance.extend(
-                _not_connected_line(integration, background, names)
-                for integration, names in tools_by_integration.items()
-            )
-            response = [*validated_tool_names, *proxied_names, *guidance]
-
-            bind_lines: list[str] = []
-            if validated_tool_names:
-                bind_lines.append(f"Bound {len(validated_tool_names)} tools, call them directly:")
-                bind_lines.extend(f"  - {name}" for name in validated_tool_names)
-            if proxied_docs:
-                bind_lines.append(
-                    f"{len(proxied_docs)} integration tool(s) ready to run via execute. "
-                    f"{_EXECUTE_DOCS_INSTRUCTION}"
-                )
-                bind_lines.extend(proxied_docs)
-            if renamed_tools:
-                bind_lines.append(
-                    "Resolved to their canonical names, use these from now on: "
-                    + ", ".join(f"{req} -> {canon}" for req, canon in renamed_tools.items())
-                )
-            if unknown_tool_names:
-                bind_lines.append(
-                    f"Not found, nothing bound: {', '.join(unknown_tool_names)}. "
-                    "Do not retry these names; run retrieve_tools(query=...) to find "
-                    "what actually exists."
-                )
-            bind_lines.extend(guidance)
-
-            return RetrieveToolsResult(
-                tools_to_bind=validated_tool_names,
-                response=response,
-                response_text="\n".join(bind_lines),
-            )
-
-        # Get user context (namespaces + connected integrations for labels)
-        (user_namespaces, connected_integrations) = await _get_user_context(
-            user_id, tool_space, include_subagents
-        )
-
-        # Build and execute search tasks
-        active_namespaces = await _active_tool_spaces(configurable.get("conversation_id"))
-        search_tasks = _build_search_tasks(
-            store,
-            query or "",
-            tool_space,
-            user_namespaces,
-            include_subagents,
-            limit,
-            include_desktop=desktop_enabled,
-            active_namespaces=active_namespaces,
-        )
-
-        results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-        # Surface search failures instead of treating them as empty namespaces:
-        # a partial outage degrades to the namespaces that answered, but a total
-        # outage must raise so the retry policy sees a failure, not silent emptiness.
-        failures = [r for r in results if isinstance(r, BaseException)]
-        for failure in failures:
-            log.error(
-                f"{LogTag.TOOL} retrieve_tools search task failed",
-                error=str(failure),
-                error_type=type(failure).__name__,
-            )
-        if failures and len(failures) == len(results):
-            raise failures[0]
-
-        # MCP tool names don't live in the global registry anymore (resilience
-        # rewrite removed the per-user categories) — union with the live MCPClient
-        # names so the discovery filter doesn't drop every PostHog/Notion/etc. hit.
-        available_tool_names_set = set(available_tool_names) | await _user_mcp_tool_names(user_id)
-
-        chroma_hits = 0
-        public_hits = 0
-        per_namespace_hits: dict[str, int] = {}
-        for result in results:
-            if not isinstance(result, list) or not result:
-                continue
-            if isinstance(result[0], dict):
-                public_hits += len(result)
-                continue
-            chroma_hits += len(result)
-            for item in result:
-                if not hasattr(item, "namespace"):
-                    continue
-                ns = "::".join(item.namespace) if item.namespace else "default"
-                per_namespace_hits[ns] = per_namespace_hits.get(ns, 0) + 1
-
-        chroma_preview: list[str] = []
-        for result in results:
-            if isinstance(result, list) and result and not isinstance(result[0], dict):
-                for item in cast(list[SearchItem], result):
-                    chroma_preview.append(f"{item.namespace}::{item.key}")
-                    if len(chroma_preview) >= 10:
-                        break
-            if len(chroma_preview) >= 10:
-                break
-
-        all_results = await _process_search_results(
-            results,
-            available_tool_names_set,
-            tool_registry,
-            include_subagents,
-            tool_space,
-            active_namespaces,
-        )
-
-        final_tools = _deduplicate_and_sort(all_results, limit)
-        # A scoped worker searches its own, connected space; only the main
-        # context can be asked about an integration it has not connected.
-        not_connected = await _unconnected_named_in(user_id, query) if include_subagents else []
-
-        log.set(
-            tool_retrieval={
-                "mode": "discovery",
-                "query": user_text_shape(query),
-                "tool_space": tool_space,
-                "user_id": user_id,
-                "namespaces_searched": sorted(user_namespaces),
-                "active_namespaces": sorted(active_namespaces),
-                "tools_discovered": len(final_tools),
-                "chroma_hits": chroma_hits,
-                "public_hits": public_hits,
-                "per_namespace_hits": per_namespace_hits,
-                "candidates_after_filter": len(all_results),
-                "chroma_preview": chroma_preview,
-                "not_connected": [integration.id for integration in not_connected],
-            }
-        )
-        if chroma_hits == 0:
-            log.warning(
-                f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits — check that index_tools_to_store actually wrote docs for this namespace",
-                tool_space=tool_space,
-                user_id=user_id,
-            )
-
-        return RetrieveToolsResult(
-            tools_to_bind=[],
-            response=final_tools,
-            response_text=_render_discovery_response(
-                final_tools,
-                tool_registry,
-                connected_integrations,
-                query,
-                len(all_results),
-                limit,
-                not_connected=not_connected,
-                background=background,
+        scope = _RetrievalScope(
+            user_id=user_id,
+            tool_space=tool_space,
+            include_subagents=include_subagents,
+            include_desktop=(
+                conversation_source is ConversationSource.DESKTOP and tool_space == "general"
             ),
+            # No user is present to connect anything, so an unconnected integration is reported.
+            background=configurable.get("execution_mode") == "background",
+            conversation_id=configurable.get("conversation_id"),
         )
+
+        if exact_tool_names:
+            return await _bind_exact_tools(
+                scope, tool_registry, global_tool_names, exact_tool_names, bindable_tool_names
+            )
+        return await _discover_tools(store, query, scope, tool_registry, global_tool_names, limit)
 
     # The LLM-facing docstring is a static constant: no subagent section,
     # since the handoff tool's own description covers provider handoff.

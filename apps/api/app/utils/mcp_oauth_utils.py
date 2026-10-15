@@ -80,6 +80,12 @@ def mcp_http_client() -> httpx.AsyncClient:
     return endpoint_http_client(allow_private=settings.deployment.private_network_endpoints)
 
 
+def basic_auth_header(client_id: str | None, client_secret: str) -> str:
+    """Return the HTTP Basic Authorization value a confidential OAuth client sends."""
+    encoded = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    return f"Basic {encoded}"
+
+
 def oauth_token_expiry(expires_in: int | None) -> datetime | None:
     """Absolute tz-aware UTC expiry for an OAuth token's expires_in seconds.
 
@@ -474,10 +480,7 @@ async def revoke_token(
     # Add client authentication if provided
     if client_id:
         if client_secret:
-            # Use HTTP Basic auth for confidential clients
-            credentials = f"{client_id}:{client_secret}"
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
+            headers["Authorization"] = basic_auth_header(client_id, client_secret)
         else:
             # Public client - include client_id in body
             data["client_id"] = client_id
@@ -554,9 +557,7 @@ async def introspect_token(
     # Add client authentication (usually required for introspection)
     if client_id:
         if client_secret:
-            credentials = f"{client_id}:{client_secret}"
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
+            headers["Authorization"] = basic_auth_header(client_id, client_secret)
         else:
             data["client_id"] = client_id
 

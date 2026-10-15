@@ -8,7 +8,7 @@ Brand icons resolve client-side from the favicon service via favicon_domain.
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict
 
@@ -145,6 +145,8 @@ class ProviderPreset(TypedDict):
         str  # empty ⇒ no second key field (Cloudinary API secret, stored as api_secret)
     )
 
+
+PresetName = Literal["opencode", "nous"]
 
 PRESETS: dict[str, ProviderPreset] = {
     "openrouter": {
@@ -625,6 +627,7 @@ __all__ = [
     "LLM_MODEL_PROFILES",
     "LLM_PROVIDER_PRIORITY",
     "PRESETS",
+    "PresetName",
     "PROVIDER_FEATURES",
     "LLMModelProfile",
     "ProviderFeature",

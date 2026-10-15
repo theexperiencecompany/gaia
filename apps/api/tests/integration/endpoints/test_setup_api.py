@@ -34,6 +34,7 @@ from app.constants.providers import (
 )
 from app.services.providers import provider_setup_service
 from shared.py.wide_events import log
+from tests.factories import make_provider_config
 from tests.integration.endpoints.conftest import (
     API,
     FAKE_USER_ID,
@@ -512,7 +513,7 @@ class TestProviderCatalog:
 
 class TestProvidersMaskedView:
     async def test_masked_output_never_contains_full_key(self, client: AsyncClient) -> None:
-        await provider_service.upsert("openrouter", api_key=SECRET_KEY)
+        await provider_service.upsert("openrouter", make_provider_config(api_key=SECRET_KEY))
         resp = await client.get(f"{API}/providers")
         assert resp.status_code == 200
         text = resp.text
@@ -530,7 +531,8 @@ class TestProvidersMaskedView:
 
     async def test_a_second_secret_is_masked_like_the_key(self, client: AsyncClient) -> None:
         await provider_service.upsert(
-            "cloudinary", api_key="cl-key", account_id="my-cloud", api_secret=SECRET_KEY
+            "cloudinary",
+            make_provider_config(api_key="cl-key", account_id="my-cloud", api_secret=SECRET_KEY),
         )
 
         resp = await client.get(f"{API}/providers")
@@ -608,7 +610,9 @@ class TestProviderAudit:
 
 class TestDeleteProvider:
     async def test_delete_removes_credential_and_invalidates(self, client: AsyncClient) -> None:
-        await provider_service.upsert("ollama", base_url="http://localhost:11434")
+        await provider_service.upsert(
+            "ollama", make_provider_config(base_url="http://localhost:11434")
+        )
         resp = await client.delete(f"{API}/providers/ollama")
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
@@ -716,7 +720,8 @@ class TestProviderProbe:
     ) -> None:
         """Hit the stored endpoint with the stored key, never the attacker URL."""
         await provider_service.upsert(
-            "custom", api_key=STORED_KEY, base_url="https://good.test/v1", model="m-1"
+            "custom",
+            make_provider_config(api_key=STORED_KEY, base_url="https://good.test/v1", model="m-1"),
         )
         with respx.mock(assert_all_called=False) as mock:
             good = mock.post("https://good.test/v1/chat/completions").mock(
@@ -738,7 +743,7 @@ class TestProviderProbe:
         self, client: AsyncClient
     ) -> None:
         """Use the canonical chat URL with a stored key; a body base_url is never honored."""
-        await provider_service.upsert("openrouter", api_key=STORED_KEY)
+        await provider_service.upsert("openrouter", make_provider_config(api_key=STORED_KEY))
         with respx.mock(assert_all_called=False) as mock:
             canonical = mock.post("https://openrouter.ai/api/v1/chat/completions").mock(
                 return_value=httpx.Response(200, json=CHAT_COMPLETION)
@@ -803,7 +808,8 @@ class TestProviderProbe:
     async def test_stored_config_used_exclusively_when_present(self, client: AsyncClient) -> None:
         """Use stored base_url plus key exclusively; caller base_url never pairs with a held key."""
         await provider_service.upsert(
-            "custom", api_key=STORED_KEY, base_url="https://old.test/v1", model="m-1"
+            "custom",
+            make_provider_config(api_key=STORED_KEY, base_url="https://old.test/v1", model="m-1"),
         )
         with respx.mock:
             route = respx.post("https://old.test/v1/chat/completions").mock(
@@ -981,7 +987,8 @@ class TestSsrfGuard:
     async def test_probe_refuses_legacy_stored_private_endpoint(self, client: AsyncClient) -> None:
         """Refuse legacy private-endpoint configs at probe time too, not just save time."""
         await provider_service.upsert(
-            "custom", api_key=STORED_KEY, base_url="http://169.254.169.254/latest"
+            "custom",
+            make_provider_config(api_key=STORED_KEY, base_url="http://169.254.169.254/latest"),
         )
         with respx.mock(assert_all_called=False) as mock:
             metadata = mock.route(host="169.254.169.254").mock(
@@ -1032,7 +1039,7 @@ class TestInstanceAdminGuard:
         assert provider_service.configs == {}
 
     async def test_delete_denied_for_non_admin(self, nonadmin_client: AsyncClient) -> None:
-        await provider_service.upsert("openrouter", api_key=STORED_KEY)
+        await provider_service.upsert("openrouter", make_provider_config(api_key=STORED_KEY))
         resp = await nonadmin_client.delete(f"{API}/providers/openrouter")
         assert resp.status_code == 403
         assert provider_service.configs["openrouter"]["api_key"] == STORED_KEY
@@ -1052,7 +1059,7 @@ class TestInstanceAdminGuard:
 
     async def test_list_providers_denied_for_non_admin(self, nonadmin_client: AsyncClient) -> None:
         await provider_service.upsert(
-            "custom", api_key=STORED_KEY, base_url="https://internal.test/v1"
+            "custom", make_provider_config(api_key=STORED_KEY, base_url="https://internal.test/v1")
         )
         resp = await nonadmin_client.get(f"{API}/providers")
         assert resp.status_code == 403

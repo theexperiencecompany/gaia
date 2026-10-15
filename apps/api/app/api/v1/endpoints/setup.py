@@ -45,6 +45,7 @@ from app.constants.providers import (
 )
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.models.user_models import AuthenticatedUser
+from app.schemas.providers import ProviderCredentialBody
 from app.services.members_service import get_registration_policy
 from app.services.providers.feature_status import FeatureStatus, feature_statuses
 from app.services.providers.provider_credentials_service import (
@@ -57,7 +58,6 @@ from app.services.providers.provider_credentials_service import (
 )
 from app.services.providers.provider_setup_service import (
     BASE_URL_PROVIDERS,
-    PresetName,
     allows_private_endpoint,
     apply_preset,
     assert_endpoint_safe,
@@ -86,21 +86,6 @@ _PROBE_PROMPT = "Reply with OK."
 _AUTH_REJECTED_STATUSES = frozenset({401, 403})
 # OpenAI echoes a rejected key back in its error message.
 _API_KEY_RE = re.compile(r"\bsk-[\w*.-]+")
-
-
-class ProviderCredentialBody(BaseModel):
-    """Provider payload shared by upsert and test.
-
-    ``preset`` prefills the endpoint + default model server-side so configuring
-    OpenCode/Nous is paste-an-API-key-only.
-    """
-
-    preset: PresetName | None = None
-    base_url: str | None = None
-    api_key: str | None = None
-    model: str | None = None
-    account_id: str | None = None
-    api_secret: str | None = None
 
 
 class ProviderConfiguredState(BaseModel):
@@ -383,15 +368,7 @@ async def put_provider(
     instance makes. Validation and the merge live in save_provider_credential.
     """
     log.set(user={"id": user.user_id})
-    await save_provider_credential(
-        provider,
-        preset=body.preset,
-        api_key=body.api_key,
-        base_url=body.base_url,
-        model=body.model,
-        account_id=body.account_id,
-        api_secret=body.api_secret,
-    )
+    await save_provider_credential(provider, body)
     await invalidate_provider_cache(provider)
     log.audit(
         "provider credential saved",

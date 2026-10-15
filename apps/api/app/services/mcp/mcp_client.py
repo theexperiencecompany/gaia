@@ -91,6 +91,7 @@ from app.utils.background_tasks import spawn_background_task
 from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
     OAuthSecurityError,
+    basic_auth_header,
     get_client_metadata_document_url,
     is_localhost_url,
     mcp_http_client,
@@ -1656,9 +1657,9 @@ class MCPClient:
             "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
         }
         if exchange["client_secret"]:
-            credentials = f"{exchange['client_id']}:{exchange['client_secret']}"
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
+            headers["Authorization"] = basic_auth_header(
+                exchange["client_id"], exchange["client_secret"]
+            )
 
         async with mcp_http_client() as http_client:
             response = await http_client.post(

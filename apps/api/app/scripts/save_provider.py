@@ -18,7 +18,8 @@ import asyncio
 import os
 import sys
 
-from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS
+from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS, ProviderPreset
+from app.schemas.providers import ProviderCredentialBody
 from app.services.providers.provider_setup_service import save_provider_credential
 from app.utils.errors import AppError
 
@@ -36,13 +37,16 @@ def _parser() -> argparse.ArgumentParser:
 async def run(argv: list[str]) -> int:
     """Save the provider argv names and return the process exit code."""
     args = _parser().parse_args(argv)
+    preset: ProviderPreset = PRESETS[args.provider]
     try:
         await save_provider_credential(
             args.provider,
-            api_key=os.environ.get(API_KEY_ENV) or None,
-            # The endpoint the provider's setup card prefills, e.g. Ollama on the host.
-            base_url=args.base_url or PRESETS[args.provider]["base_url"] or None,
-            model=args.model,
+            ProviderCredentialBody(
+                api_key=os.environ.get(API_KEY_ENV) or None,
+                # The endpoint the provider's setup card prefills, e.g. Ollama on the host.
+                base_url=args.base_url or preset["base_url"] or None,
+                model=args.model,
+            ),
         )
     except AppError as e:
         print(f"Could not save {args.provider}: {e.message}", file=sys.stderr)
