@@ -10,7 +10,6 @@ requests both read an empty collection. Member rows carry no slot.
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.auth_models import (
     ADMIN_CREDENTIAL_SLOT,
@@ -45,10 +44,7 @@ class LocalCredentialsRepository(MongoRepository[LocalCredentialDocument, LocalC
         loser's DuplicateKeyError becomes None.
         """
         try:
-            return await self._insert(
-                doc,
-                REPO_GLOBAL_SCOPE,  # pragma: no mutate — a cacheless global repo never reads its scope
-            )
+            return await self.create(doc)
         except DuplicateKeyError:
             return None
 

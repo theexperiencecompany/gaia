@@ -619,6 +619,16 @@ class MongoRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
     async def update(self, doc_id: str, update: TUpdate) -> TDoc | None:
         return await self._apply_update(doc_id, REPO_GLOBAL_SCOPE, {}, update)
 
+    async def upsert(self, doc_id: str, update: TUpdate) -> None:
+        """Set update's fields on doc_id, inserting the document when it does not exist yet."""
+        await self._apply_raw_update_unfetched(
+            self._identity_filter(doc_id),
+            {"$set": update.model_dump(exclude_unset=True)},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=doc_id,
+            upsert=True,
+        )
+
     async def delete(self, doc_id: str) -> bool:
         return await self._remove(doc_id, REPO_GLOBAL_SCOPE, {})
 

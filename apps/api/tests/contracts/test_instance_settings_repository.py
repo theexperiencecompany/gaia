@@ -37,11 +37,21 @@ async def test_only_the_first_set_if_absent_wins(repo: InstanceSettingsRepositor
     assert stored is not None and stored.value == {"instance_secret": "first"}
 
 
-async def test_put_returns_the_value_it_stored(repo: InstanceSettingsRepository) -> None:
-    await repo.put("registration", {"policy": "invite_only"})
+async def test_set_if_absent_never_replaces_a_value_set_value_stored(
+    repo: InstanceSettingsRepository, raw_collection: AsyncIOMotorCollection
+) -> None:
+    await repo.set_value("registration", {"policy": "open"})
 
-    stored = await repo.put("registration", {"policy": "open"})
+    assert await repo.set_if_absent("registration", {"policy": "invite_only"}) is False
+    stored = await repo.find_by_key("registration")
+    assert stored is not None and stored.value == {"policy": "open"}
+    assert await raw_collection.count_documents({}) == 1
 
-    assert (stored.key, stored.value) == ("registration", {"policy": "open"})
-    reread = await repo.find_by_key("registration")
-    assert reread is not None and reread.value == {"policy": "open"}
+
+async def test_set_if_absent_stores_exactly_the_key_and_value(
+    repo: InstanceSettingsRepository, raw_collection: AsyncIOMotorCollection
+) -> None:
+    await repo.set_if_absent("secrets", {"instance_secret": "s"})
+
+    raw = await raw_collection.find_one({"key": "secrets"}, {"_id": 0})
+    assert raw == {"key": "secrets", "value": {"instance_secret": "s"}}
