@@ -6,8 +6,15 @@ icon: "plug"
 
 GAIA's integrations come from two places:
 
-- **The code catalog**, `OAUTH_INTEGRATIONS` in `apps/api/app/config/oauth_config.py`. Every deployment ships these, GAIA Cloud included. Each one can carry a hand-written prompt, custom tools, reviewed destructive-tool lists, triggers and marketplace content.
-- **Instance toolkits.** On a self-hosted instance the admin can enable any toolkit from Composio's catalog (see [Connect integrations](/self-hosting/composio-integrations)). GAIA builds a generic entry for it at runtime (`apps/api/app/services/composio/instance_toolkits.py`). It has a generic prompt and no triggers.
+| | Code catalog | Instance toolkit |
+| --- | --- | --- |
+| Where it lives | `OAUTH_INTEGRATIONS` in `apps/api/app/config/oauth_config.py` | Built at runtime by `apps/api/app/services/composio/instance_toolkits.py` |
+| Who adds it | A developer, in code. Every deployment ships it, GAIA Cloud included | A self-host admin, from Composio's catalog (see [Connect integrations](/self-hosting/composio-integrations)) |
+| Prompt | Hand-written | Generic |
+| Custom tools | Yes | No |
+| Triggers | Yes | No |
+| Destructive-tool list | Reviewed by hand | GAIA asks before any action that looks destructive |
+| Marketplace content | Yes | No |
 
 Write a native integration when an app needs more than the generic entry: triggers for workflows, custom tools, or guidance about how its API behaves. Everything reads the merged list through `all_integrations()` in `oauth_config.py`. Never iterate `OAUTH_INTEGRATIONS` directly, because that misses the instance toolkits.
 
@@ -71,4 +78,4 @@ Triggers let workflows and todos start from the app's events. Each `TriggerConfi
 
 - `apps/api/tests/unit/config/test_composio_integration_config.py` checks every Composio entry's invariants. Run it with `mise test:one tests/unit/config/test_composio_integration_config.py`.
 - Boot the stack with `mise dev --agent`, connect the integration from the integrations page and ask GAIA to use it. The [driving-gaia](https://github.com/theexperiencecompany/gaia/blob/master/.agents/skills/driving-gaia/SKILL.md) cookbook covers driving chat and checking the result in Mongo.
-- On a self-hosted instance, set it up from **Settings → Integrations setup → Set up automatically**. That creates the auth config in the instance's own Composio project.
+- On a self-hosted instance, open **Settings → Integrations setup**, click **Set up automatically** next to it, then **Set up** in the catalog that opens. That creates the auth config in the instance's own Composio project.

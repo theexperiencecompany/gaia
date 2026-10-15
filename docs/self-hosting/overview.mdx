@@ -54,7 +54,7 @@ Only the AI model needs setup. Everything else already works, or stays off until
 | Weather | Off | An OpenWeather key (`OPENWEATHER_API_KEY`) |
 | Reading PDFs and Office files | Text PDFs and Office files, parsed on your server | A LlamaParse key (`LLAMA_INDEX_KEY`) to read scanned PDFs |
 | Skill lookups on GitHub | 60 lookups an hour, no key | A GitHub token (`GITHUB_TOKEN`) for 5000 an hour |
-| Integrations (Gmail, Calendar, Slack, ...) | Off | A Composio key; see [Connect integrations](/self-hosting/composio-integrations) |
+| Integrations (Gmail, Calendar, Slack, ...) | Off | A Composio key, then set up each app in **Settings → Integrations setup**; see [Connect integrations](/self-hosting/composio-integrations) |
 | Voice and browser automation | Not available on self-host | None yet; see [Self-Host vs Cloud](/self-hosting/docker-setup#self-host-vs-cloud) |
 
 ## Changing things later
@@ -125,6 +125,9 @@ MongoDB holds your accounts, chats and the encrypted provider keys; PostgreSQL h
   </Card>
   <Card title="Connect Integrations" icon="plug" href="/self-hosting/composio-integrations">
     Gmail, Calendar, GitHub and more through your own Composio project
+  </Card>
+  <Card title="MCP servers" icon="server" href="/self-hosting/mcp-servers">
+    Connect MCP servers on your machine or your network
   </Card>
   <Card title="Environment Variables" icon="key" href="/configuration/environment-variables">
     Optional integrations and what they enable
