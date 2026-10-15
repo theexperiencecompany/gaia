@@ -16,13 +16,17 @@ import pytest
 
 from app.agents.llm.client import reset_aux_llm_caches
 from app.config.settings import settings
-from app.constants.providers import CredentialSource
+from app.constants.log_tags import LogTag
+from app.constants.providers import CREDENTIAL_PROVIDERS, CredentialSource
 from app.core.lazy_loader import providers as provider_registry
 from app.db.redis import redis_cache
 import app.services.providers.provider_credentials_service as service_module
 from app.services.providers.provider_credentials_service import (
+    CloudinaryAccount,
     CredentialResolution,
+    cloudinary_account,
     delete,
+    env_config,
     inspect_credential,
     invalidate,
     resolve,
@@ -634,3 +638,147 @@ class TestInspectCredential:
         assert resolution.source is CredentialSource.ENV
         assert resolution.shadows_env is False
         assert repo.find_calls == 0
+
+
+# ---------------------------------------------------------------------------
+# Exact shapes, refusals and the warnings an operator reads
+# ---------------------------------------------------------------------------
+
+
+def _config(**fields: str | None) -> dict[str, str | None]:
+    return {"api_key": None, "base_url": None, "model": None, "preset": None, **fields}
+
+
+class TestEnvConfigShapes:
+    """Every env fallback is the full four-key config the consumers index into."""
+
+    def test_searxng(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "SEARXNG_BASE_URL", "http://searx:8080")
+
+        assert env_config("searxng") == _config(base_url="http://searx:8080")
+
+    def test_cloudinary(self) -> None:
+        settings.CLOUDINARY_CLOUD_NAME = "cloud"
+        settings.CLOUDINARY_API_KEY = "ck"
+        settings.CLOUDINARY_API_SECRET = "cs"  # pragma: allowlist secret
+
+        assert env_config("cloudinary") == _config(api_key="ck")
+        assert cloudinary_account(_config(api_key="stored")) == CloudinaryAccount(
+            cloud_name="cloud", api_key="stored", api_secret="cs"
+        )
+
+    def test_google_oauth(self) -> None:
+        settings.GOOGLE_CLIENT_ID = "gid"
+        settings.GOOGLE_CLIENT_SECRET = "gsecret"  # pragma: allowlist secret
+
+        assert env_config("google_oauth") == _config(api_key="gsecret")
+
+    def test_a_single_key_tool(self) -> None:
+        settings.TAVILY_API_KEY = "tvly"
+
+        assert env_config("tavily") == _config(api_key="tvly")
+
+    @pytest.mark.parametrize(
+        "present",
+        [("DEV_LLM_BASE_URL",), ("DEV_LLM_BASE_URL", "DEV_LLM_API_KEY"), ("DEV_LLM_MODEL",)],
+    )
+    def test_the_custom_lane_needs_all_three_of_its_settings(
+        self, present: tuple[str, ...]
+    ) -> None:
+        settings.ENV = "development"
+        for field in present:
+            setattr(settings, field, "set")
+
+        assert env_config("custom") is None
+
+
+class TestOperatorFacingFailures:
+    async def test_a_shadowed_env_key_warning_names_the_fix(self, repo, fixed_secret) -> None:
+        settings.GOOGLE_API_KEY = "env-key"
+        await upsert("gemini", api_key="saved-key")
+
+        async with captured_wide_event() as event:
+            await inspect_credential("gemini")
+
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.API} A stored provider credential overrides a different env value",
+                "provider": "gemini",
+                "fix": "delete the stored credential in Settings to use the env value, "
+                "or remove the env value",
+            }
+        ]
+
+    async def test_an_undecryptable_row_is_an_error_naming_the_fix(
+        self, repo, fixed_secret
+    ) -> None:
+        repo.ciphertexts["gemini"] = "not-a-fernet-token"
+
+        async with captured_wide_event() as event:
+            await inspect_credential("gemini")
+
+        [error] = event["errors"]
+        assert error["msg"] == f"{LogTag.API} Stored provider credential cannot be decrypted"
+        assert error["reason"].startswith("instance secret mismatch (InvalidToken(")
+        assert error["fix"] == "re-enter the provider credentials; the old ciphertext is unreadable"
+
+    async def test_a_decrypted_payload_that_is_not_an_object_is_refused(
+        self, repo, fixed_secret
+    ) -> None:
+        repo.ciphertexts["gemini"] = (
+            Fernet(fernet_key_from(INSTANCE_SECRET)).encrypt(b'["not", "an", "object"]').decode()
+        )
+
+        with pytest.raises(ValueError) as refused:
+            await inspect_credential("gemini")
+
+        assert str(refused.value) == "decrypted provider credential payload is not a JSON object"
+
+    async def test_an_unknown_provider_is_refused_listing_the_known_ones(
+        self, repo, fixed_secret
+    ) -> None:
+        with pytest.raises(ValueError) as refused:
+            await upsert("bogus", api_key="sk-x")
+
+        assert str(refused.value) == (
+            f"Unknown provider 'bogus' — expected one of {', '.join(CREDENTIAL_PROVIDERS)}"
+        )
+
+    async def test_an_env_only_deployment_refuses_writes(
+        self, repo, fixed_secret, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+
+        with pytest.raises(RuntimeError) as refused:
+            await upsert("gemini", api_key="sk-x")
+
+        assert str(refused.value) == (
+            "This deployment reads provider credentials from the environment only; "
+            "the credential store is not writable here"
+        )
+
+
+class TestCacheLifecycle:
+    async def test_an_entry_expires_at_exactly_the_ttl(self, repo, fixed_secret, clock) -> None:
+        await resolve("tavily")
+        clock.advance(service_module._CACHE_TTL_SECONDS)
+        await resolve("tavily")
+
+        assert repo.find_calls == 2
+
+    async def test_a_delete_leaves_the_cache_warm(self, repo, fixed_secret, redis_fake) -> None:
+        await upsert("tavily", api_key="tvly-key")
+        await delete("tavily")
+        reads = repo.find_calls
+
+        assert await resolve("tavily") is None
+        assert repo.find_calls == reads
+
+    def test_a_registered_hook_runs_on_every_local_invalidation(self) -> None:
+        runs: list[str] = []
+        service_module.on_local_invalidation(lambda: runs.append("ran"))
+
+        service_module.invalidate_locally("gemini")
+
+        assert runs == ["ran"]
