@@ -156,9 +156,10 @@ async def test_saving_refuses_ids_that_could_never_connect(
 ) -> None:
     monkeypatch.setattr(settings, "ENV", "selfhost")
 
-    with pytest.raises(ValueError, match=message.replace("[", r"\[").replace("]", r"\]")):
+    with pytest.raises(ValueError) as refused:
         await save_auth_configs(auth_configs)
     assert store.values == {}
+    assert str(refused.value) == f"The auth config list {message}"
 
 
 async def test_saving_is_refused_where_the_deployment_reads_env_only(
@@ -166,9 +167,30 @@ async def test_saving_is_refused_where_the_deployment_reads_env_only(
 ) -> None:
     monkeypatch.setattr(settings, "ENV", "production")
 
-    with pytest.raises(RuntimeError, match="environment only"):
+    with pytest.raises(RuntimeError) as refused:
         await save_auth_configs({"gmail": "ac_x"})
     assert store.values == {}
+    assert str(refused.value) == (
+        "This deployment reads Composio auth configs from the environment only; "
+        "the instance store is not writable here"
+    )
+
+
+async def test_the_stored_set_is_read_once_per_ttl(
+    store: FakeInstanceSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    clock = [1000.0]
+    monkeypatch.setattr(resolver, "monotonic", lambda: clock[0])
+
+    await resolve_auth_configs()
+    clock[0] += resolver._CACHE_TTL_SECONDS - 1
+    await resolve_auth_configs()
+    assert store.reads == 1
+
+    clock[0] += 1
+    await resolve_auth_configs()
+    assert store.reads == 2
 
 
 async def test_a_callback_auth_config_maps_back_to_its_integration_through_the_store(

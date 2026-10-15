@@ -68,5 +68,5 @@ async def put_composio_auth_configs(
             total_count=len(overview.integrations),
         ),
     )
-    log.set(outcome="success", composio_setup={"set_up": set_up_count})
+    log.set(outcome="success")
     return overview

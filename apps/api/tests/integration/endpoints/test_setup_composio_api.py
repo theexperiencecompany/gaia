@@ -18,6 +18,7 @@ import app.services.composio.auth_config_setup as setup_service
 from app.services.providers.provider_credentials_service import ProviderConfig
 from shared.py.analytics.catalog.integrations import IntegrationInstanceSetupSaved
 from shared.py.wide_events import log
+from tests.helpers import captured_wide_event
 from tests.integration.endpoints.conftest import API, FAKE_USER_ID
 
 COMPOSIO = f"{API}/composio"
@@ -189,6 +190,35 @@ async def test_saving_auth_configs_leaves_an_audit_record_naming_the_integration
     finally:
         log.reset()
 
+    assert entry["msg"] == "composio auth configs saved"
     assert entry["actor"] == FAKE_USER_ID
     assert entry["integrations"] == ["gmail"]
     assert "ac_mine_gmail" not in str(entry)
+
+
+async def test_reading_the_setup_stamps_the_wide_event(
+    client: AsyncClient, seams: SimpleNamespace
+) -> None:
+    async with captured_wide_event() as live:
+        assert (await client.get(COMPOSIO)).status_code == 200
+        event = dict(live)  # before the boundary stamps its own outcome on exit
+
+    assert event["user"] == {"id": FAKE_USER_ID}
+    assert event["operation"] == "get_composio_setup"
+    assert event["outcome"] == "success"
+
+
+async def test_saving_stamps_how_many_were_saved_and_set_up(
+    client: AsyncClient, seams: SimpleNamespace
+) -> None:
+    async with captured_wide_event() as live:
+        resp = await client.put(
+            f"{COMPOSIO}/auth-configs", json={"auth_configs": {"gmail": "ac_mine_gmail"}}
+        )
+        assert resp.status_code == 200
+        event = dict(live)  # before the boundary stamps its own outcome on exit
+
+    assert event["user"] == {"id": FAKE_USER_ID}
+    assert event["operation"] == "put_composio_auth_configs"
+    assert event["outcome"] == "success"
+    assert (event["composio_setup"]["saved"], event["composio_setup"]["set_up"]) == (1, 1)
