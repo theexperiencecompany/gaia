@@ -396,6 +396,30 @@ class TestCacheInvalidatorAsyncKeyGenerator:
         assert [c.args[0] for c in mock_delete.await_args_list] == ["bust:a", "bust:b"]
 
 
+class TestCacheInvalidatorCallsThrough:
+    """The wrapped write runs with every argument it was given and its result comes back."""
+
+    async def test_an_async_write_gets_its_positional_and_keyword_args(self):
+        @CacheInvalidator(key_patterns=["profile:{user_id}"])
+        async def rename(user_id: str, name: str = "unset") -> str:
+            return f"{user_id}={name}"
+
+        with patch("app.decorators.caching.delete_cache", new_callable=AsyncMock) as mock_delete:
+            assert await rename("u1", name="ada") == "u1=ada"
+
+        mock_delete.assert_awaited_once_with("profile:u1")
+
+    async def test_a_sync_write_gets_its_positional_and_keyword_args(self):
+        @CacheInvalidator(key_patterns=["profile:{user_id}"])
+        def rename(user_id: str, name: str = "unset") -> str:
+            return f"{user_id}={name}"
+
+        with patch("app.decorators.caching.delete_cache", new_callable=AsyncMock) as mock_delete:
+            assert await rename("u1", name="ada") == "u1=ada"
+
+        mock_delete.assert_awaited_once_with("profile:u1")
+
+
 class TestCacheInvalidatorOrdering:
     """The invalidation lands after the write, or a read during the write re-caches the old value."""
 
