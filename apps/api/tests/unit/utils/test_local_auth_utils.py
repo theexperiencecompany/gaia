@@ -1,6 +1,7 @@
 """Local session tokens: minted with a version, revoked by the credential row's version."""
 
 from datetime import UTC, datetime, timedelta
+import time
 from unittest.mock import AsyncMock
 
 from jose import jwt
@@ -9,8 +10,12 @@ import pytest
 from app.constants.auth import JWT_ALGORITHM
 from app.models.auth_models import LocalCredentialDocument
 from app.utils import local_auth_utils
-from app.utils.local_auth_utils import issue_session_token, resolve_session_token
-from tests.helpers import captured_wide_event
+from app.utils.local_auth_utils import (
+    SESSION_TTL_SECONDS,
+    issue_session_token,
+    resolve_session_token,
+)
+from tests.helpers import captured_wide_event, local_timezone
 
 TEST_SECRET = "test-instance-secret-" + "x" * 16
 USER_ID = "507f1f77bcf86cd799439011"
@@ -106,3 +111,26 @@ async def test_a_cold_process_reads_the_instance_secret_once(
 
     assert jwt.decode(token, TEST_SECRET, algorithms=[JWT_ALGORITHM])["sub"] == "u1"
     load.assert_awaited_once_with()
+
+
+async def test_a_token_stamps_the_true_instant_whatever_the_host_zone(
+    credentials: _Credentials,
+) -> None:
+    with local_timezone("Asia/Kolkata"):
+        token = await issue_session_token(USER_ID, 0)
+        claims = jwt.decode(token, TEST_SECRET, algorithms=[JWT_ALGORITHM])
+
+    assert abs(claims["iat"] - time.time()) < 60
+    assert claims["exp"] - claims["iat"] == SESSION_TTL_SECONDS
+
+
+async def test_a_token_is_signed_with_the_configured_algorithm(
+    credentials: _Credentials, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(local_auth_utils, "JWT_ALGORITHM", "HS512")
+    credentials.add(version=0)
+
+    token = await issue_session_token(USER_ID, 0)
+
+    assert jwt.get_unverified_header(token)["alg"] == "HS512"
+    assert await resolve_session_token(token) == USER_ID
