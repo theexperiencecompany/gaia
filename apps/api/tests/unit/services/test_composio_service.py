@@ -109,7 +109,10 @@ class TestConnectAccount:
     @pytest.mark.asyncio
     async def test_unsupported_provider_raises(self):
         svc = _make_service()
-        with patch("app.services.composio.composio_service.COMPOSIO_INTEGRATIONS", {}):
+        with patch(
+            "app.services.composio.composio_service.get_composio_integrations_by_provider",
+            return_value={},
+        ):
             with pytest.raises(ValueError, match="not supported"):
                 await svc.connect_account("unsupported", "user1", "tok")
 
@@ -553,7 +556,10 @@ class TestCheckConnectionStatus:
         user_accounts.items = []
         svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
 
-        with patch("app.services.composio.composio_service.COMPOSIO_INTEGRATIONS", {}):
+        with patch(
+            "app.services.composio.composio_service.get_composio_integrations_by_provider",
+            return_value={},
+        ):
             result = await svc.check_connection_status(["unknown"], "user1")
 
         assert result == {"unknown": False}
@@ -648,7 +654,10 @@ class TestDeleteAllConnectedAccounts:
     @pytest.mark.asyncio
     async def test_unsupported_provider(self):
         svc = _make_service()
-        with patch("app.services.composio.composio_service.COMPOSIO_INTEGRATIONS", {}):
+        with patch(
+            "app.services.composio.composio_service.get_composio_integrations_by_provider",
+            return_value={},
+        ):
             with pytest.raises(ValueError, match="not supported"):
                 await svc.delete_all_connected_accounts("user1", "bad")
 

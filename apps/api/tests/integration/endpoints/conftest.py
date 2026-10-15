@@ -17,6 +17,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints import setup as setup_module
 from app.api.v1.endpoints.setup import router as setup_router
 from app.api.v1.endpoints.setup_composio import router as setup_composio_router
+from app.api.v1.endpoints.setup_composio_toolkits import router as setup_composio_toolkits_router
 from app.config.settings import settings
 from app.constants.auth import InstanceRole, RegistrationPolicy
 from app.constants.providers import PROVIDER_FEATURES, CredentialSource, ProviderFeature
@@ -205,6 +206,7 @@ def _client(
     register_exception_handlers(app)
     app.include_router(setup_router, prefix=API)
     app.include_router(setup_composio_router, prefix=API)
+    app.include_router(setup_composio_toolkits_router, prefix=API)
     if authenticated:
         app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
             user_id=user_id, role=role

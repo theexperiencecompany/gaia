@@ -1853,3 +1853,27 @@ fetched content, OR when you have explored and concluded the docs do not
 contain the answer.
 """,
 )
+
+
+_COMPOSIO_TOOLKIT_CONTENT = """
+## DOMAIN OVERVIEW
+{description}
+
+## CORE BEHAVIORS
+- This integration was enabled from the Composio catalog and has no hand-written guidance:
+  read each tool's schema before the first call and pass exactly the fields it declares.
+- Find the tool for a step with retrieve_tools inside this integration rather than guessing names.
+- Resolve names to ids with a list or search tool before any create, update or delete call.
+- If a call fails, report the tool's own error message; do not invent a cause.
+"""
+
+
+def composio_toolkit_system_prompt(name: str, description: str) -> str:
+    """Return the static prompt for a Composio toolkit enabled on an instance without code config."""
+    return BASE_SUBAGENT_PROMPT.format(
+        provider_name=name,
+        domain_expertise=f"using {name} through its Composio tools",
+        provider_specific_content=_COMPOSIO_TOOLKIT_CONTENT.format(
+            description=description or f"{name}, connected through Composio."
+        ),
+    )

@@ -52,7 +52,7 @@ class TestGetAllIntegrations:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
     @patch(f"{MODULE}.integration_repository")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_empty_marketplace(self, mock_repo: MagicMock, mock_get_all: AsyncMock) -> None:
         mock_get_all.return_value = {}
 
@@ -69,7 +69,7 @@ class TestGetAllIntegrations:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
     @patch(f"{MODULE}.integration_repository")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS")
     async def test_platform_integrations_returned(
         self,
         mock_oauth_list: MagicMock,
@@ -92,7 +92,7 @@ class TestGetAllIntegrations:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
     @patch(f"{MODULE}.integration_repository")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS")
     async def test_unavailable_integration_excluded(
         self,
         mock_oauth_list: MagicMock,
@@ -114,7 +114,7 @@ class TestGetAllIntegrations:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
     @patch(f"{MODULE}.integration_repository")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS")
     async def test_category_filter(
         self,
         mock_oauth_list: MagicMock,
@@ -138,7 +138,7 @@ class TestGetAllIntegrations:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
     @patch(f"{MODULE}.integration_repository")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS")
     async def test_tool_hydration_from_store(
         self,
         mock_oauth_list: MagicMock,
@@ -167,7 +167,7 @@ class TestGetAllIntegrations:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
     @patch(f"{MODULE}.integration_repository")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS")
     async def test_featured_sorted(
         self,
         mock_oauth_list: MagicMock,
@@ -192,7 +192,7 @@ class TestGetAllIntegrations:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
     @patch(f"{MODULE}.integration_repository")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_exclude_custom_public(
         self, mock_repo: MagicMock, mock_get_all: AsyncMock
     ) -> None:

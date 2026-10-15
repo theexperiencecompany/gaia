@@ -44,6 +44,7 @@ from app.api.v1.endpoints import (
     sessions,
     setup,
     setup_composio,
+    setup_composio_toolkits,
     shares,
     skills,
     support,
@@ -88,6 +89,8 @@ if settings.deployment.local_auth:
 if settings.deployment.runtime_credentials:
     router.include_router(setup.router, prefix="/setup", tags=["Setup"])
     router.include_router(setup_composio.router, prefix="/setup", tags=["Setup"])
+if settings.deployment.instance_toolkits:
+    router.include_router(setup_composio_toolkits.router, prefix="/setup", tags=["Setup"])
 router.include_router(integrations_router, prefix="/integrations", tags=["Integrations"])
 router.include_router(mcp.router, prefix="/mcp", tags=["MCP"])
 router.include_router(mcp_proxy.router, prefix="/mcp", tags=["MCP"])

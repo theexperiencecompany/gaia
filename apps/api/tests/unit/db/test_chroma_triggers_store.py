@@ -120,7 +120,7 @@ class TestGetCurrentTriggersWithHashes:
             associated_triggers=[trigger],
         )
         with patch(
-            "app.db.chroma.chroma_triggers_store.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integ],
         ):
             result = _get_current_triggers_with_hashes()
@@ -146,7 +146,7 @@ class TestGetCurrentTriggersWithHashes:
             associated_triggers=None,
         )
         with patch(
-            "app.db.chroma.chroma_triggers_store.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integ],
         ):
             result = _get_current_triggers_with_hashes()
@@ -160,7 +160,7 @@ class TestGetCurrentTriggersWithHashes:
             associated_triggers=[],
         )
         with patch(
-            "app.db.chroma.chroma_triggers_store.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integ],
         ):
             result = _get_current_triggers_with_hashes()

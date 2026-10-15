@@ -165,6 +165,8 @@ describe("evaluateSetupReadiness", () => {
           local_code_sandbox: false,
           blob_store: "local",
           gaia_support: false,
+          instance_toolkits: false,
+          private_network_endpoints: false,
         },
         providers: {
           openrouter: {
@@ -207,6 +209,8 @@ describe("evaluateSetupReadiness", () => {
           local_code_sandbox: false,
           blob_store: "local",
           gaia_support: false,
+          instance_toolkits: false,
+          private_network_endpoints: false,
         },
         providers: {
           gemini: { configured: true, source: "stored", env_shadowed: false },
@@ -240,6 +244,8 @@ describe("evaluateSetupReadiness", () => {
           local_code_sandbox: false,
           blob_store: "local",
           gaia_support: false,
+          instance_toolkits: true,
+          private_network_endpoints: true,
         },
         providers: {
           ollama: { configured: true, source: "stored", env_shadowed: false },
@@ -281,6 +287,8 @@ describe("evaluateSetupReadiness", () => {
           local_code_sandbox: false,
           blob_store: "local",
           gaia_support: false,
+          instance_toolkits: true,
+          private_network_endpoints: true,
         },
         providers: {
           tavily: { configured: true, source: "stored", env_shadowed: false },
@@ -315,6 +323,8 @@ describe("evaluateSetupReadiness", () => {
           local_code_sandbox: false,
           blob_store: "local",
           gaia_support: false,
+          instance_toolkits: true,
+          private_network_endpoints: true,
         },
         providers: {
           openrouter: {
@@ -353,6 +363,8 @@ describe("evaluateSetupReadiness", () => {
           local_code_sandbox: false,
           blob_store: "local",
           gaia_support: false,
+          instance_toolkits: true,
+          private_network_endpoints: true,
         },
         providers: {
           openrouter: {
@@ -389,6 +401,8 @@ describe("evaluateSetupReadiness", () => {
         local_code_sandbox: false,
         blob_store: "local" as const,
         gaia_support: false,
+        instance_toolkits: true,
+        private_network_endpoints: true,
       },
       providers: {
         openrouter: {
@@ -431,6 +445,8 @@ describe("evaluateSetupReadiness", () => {
           local_code_sandbox: false,
           blob_store: "local",
           gaia_support: false,
+          instance_toolkits: true,
+          private_network_endpoints: true,
         },
         providers: {},
       },
@@ -744,6 +760,8 @@ describe("checkSetupReadiness", () => {
         local_code_sandbox: false,
         blob_store: "local",
         gaia_support: false,
+        instance_toolkits: true,
+        private_network_endpoints: true,
       },
       providers: {
         openai: { configured: true, source: "env", env_shadowed: false },
@@ -781,6 +799,8 @@ describe("checkSetupReadiness", () => {
         local_code_sandbox: false,
         blob_store: "local",
         gaia_support: false,
+        instance_toolkits: true,
+        private_network_endpoints: true,
       },
       providers: {},
     });
@@ -822,6 +842,8 @@ describe("checkSetupReadiness", () => {
         local_code_sandbox: false,
         blob_store: "local",
         gaia_support: false,
+        instance_toolkits: false,
+        private_network_endpoints: false,
       },
       providers: {
         openrouter: { configured: true, source: "stored", env_shadowed: false },
@@ -860,6 +882,8 @@ describe("checkSetupReadiness", () => {
         local_code_sandbox: false,
         blob_store: "local",
         gaia_support: false,
+        instance_toolkits: true,
+        private_network_endpoints: true,
       },
       providers: {
         openrouter: { configured: true, source: "stored", env_shadowed: false },
@@ -897,6 +921,8 @@ describe("checkSetupReadiness", () => {
         local_code_sandbox: false,
         blob_store: "local",
         gaia_support: false,
+        instance_toolkits: true,
+        private_network_endpoints: true,
       },
       providers: {
         openai: { configured: true, source: "stored", env_shadowed: false },

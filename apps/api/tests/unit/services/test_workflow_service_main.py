@@ -1672,7 +1672,7 @@ class TestBuildTriggerHint:
 class TestBuildAvailableTriggers:
     """Tests for _build_available_triggers."""
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     def test_empty_integrations(self):
         result = _build_available_triggers()
         assert result == ""
@@ -1686,7 +1686,7 @@ class TestBuildAvailableTriggers:
 class TestGenerateStepsWithLLM:
     """Tests for WorkflowGenerationService.generate_steps_with_llm."""
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1721,7 +1721,7 @@ class TestGenerateStepsWithLLM:
         assert result[0].title == "Step 1"
         assert mock_structured.await_args[0][0] is GeneratedWorkflow
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1752,7 +1752,7 @@ class TestGenerateStepsWithLLM:
         assert result[0].title == "Parsed"
         assert mock_structured.await_count == 2
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1779,7 +1779,7 @@ class TestGenerateStepsWithLLM:
 
         assert mock_structured.await_count == 2
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1810,7 +1810,7 @@ class TestGenerateStepsWithLLM:
         # Called exactly once — the loop does not retry provider errors.
         assert mock_structured.await_count == 1
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1840,7 +1840,7 @@ class TestGenerateStepsWithLLM:
         formatted_prompt = mock_structured.await_args[0][1]
         assert "Short description" in formatted_prompt
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1876,7 +1876,7 @@ class TestGenerateStepsWithLLM:
 class TestGenerateWorkflowPrompt:
     """Tests for WorkflowGenerationService.generate_workflow_prompt."""
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1898,7 +1898,7 @@ class TestGenerateWorkflowPrompt:
         assert result["suggested_trigger"].type == "schedule"
         assert result["suggested_trigger"].cron_expression == "0 9 * * 1-5"
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1919,7 +1919,7 @@ class TestGenerateWorkflowPrompt:
         assert result["suggested_trigger"] is not None
         assert result["suggested_trigger"].type == "manual"
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -1939,7 +1939,7 @@ class TestGenerateWorkflowPrompt:
         assert result["prompt"] == "Instructions"
         assert result["suggested_trigger"] is None
 
-    @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     @patch(
         "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
@@ -2368,7 +2368,7 @@ class TestWorkflowQueueService:
 class TestTriggerService:
     """Tests for TriggerService."""
 
-    @patch("app.services.workflow.trigger_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_get_all_workflow_triggers_empty(self):
         result = await TriggerService.get_all_workflow_triggers()
         assert result == []

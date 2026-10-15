@@ -4530,6 +4530,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup/composio/toolkits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Composio Toolkits
+         * @description Search Composio's toolkit catalog; each entry says whether it is built in, enabled or available.
+         */
+        get: operations["setup_list_composio_toolkits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/composio/toolkits/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Composio Toolkit
+         * @description Return how enabling the toolkit authenticates and the values it needs, if any.
+         */
+        get: operations["setup_get_composio_toolkit"];
+        put?: never;
+        /**
+         * Enable Composio Toolkit
+         * @description Create the toolkit's auth config in the instance's Composio project and make it connectable.
+         */
+        post: operations["setup_enable_composio_toolkit"];
+        /**
+         * Disable Composio Toolkit
+         * @description Remove a toolkit the admin enabled; built-in integrations are cleared from the auth config list instead.
+         */
+        delete: operations["setup_disable_composio_toolkit"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup/providers": {
         parameters: {
             query?: never;
@@ -7617,6 +7665,85 @@ export interface components {
          */
         ComposioAuthConfigSource: "stored" | "env" | "catalog";
         /**
+         * ComposioAuthField
+         * @description A value the admin must supply to create the toolkit's auth config.
+         */
+        ComposioAuthField: {
+            /** Description */
+            description: string;
+            /** Display Name */
+            display_name: string;
+            /** Is Secret */
+            is_secret: boolean;
+            /** Name */
+            name: string;
+            /** Required */
+            required: boolean;
+        };
+        /**
+         * ComposioCatalogEntry
+         * @description A catalog toolkit plus what it is on this instance.
+         */
+        ComposioCatalogEntry: {
+            /** Auth Schemes */
+            auth_schemes: string[];
+            /** Categories */
+            categories: string[];
+            /**
+             * Composio Managed
+             * @description Composio can sign users in with its own app
+             */
+            composio_managed: boolean;
+            /** Description */
+            description: string;
+            /**
+             * Integration Id
+             * @description The GAIA integration it backs, if any
+             */
+            integration_id: string | null;
+            /** Logo */
+            logo: string | null;
+            /** Name */
+            name: string;
+            /** No Auth */
+            no_auth: boolean;
+            /**
+             * Set Up
+             * @description Whether that integration has an auth config here
+             */
+            set_up: boolean;
+            /** Slug */
+            slug: string;
+            /**
+             * Status
+             * @description built_in: defined in GAIA's code; enabled: added by the admin; available: can be enabled; unsupported: needs no sign-in, which GAIA cannot connect yet
+             * @enum {string}
+             */
+            status: "built_in" | "enabled" | "available" | "unsupported";
+            /** Tools Count */
+            tools_count: number;
+            /** Triggers Count */
+            triggers_count: number;
+        };
+        /**
+         * ComposioCatalogResponse
+         * @description GET /setup/composio/toolkits: one page of the searched catalog.
+         */
+        ComposioCatalogResponse: {
+            /**
+             * Categories
+             * @description Every category in the catalog, for the filter
+             */
+            categories: string[];
+            /** Items */
+            items: components["schemas"]["ComposioCatalogEntry"][];
+            /**
+             * Total
+             * @description Matches across all pages
+             */
+            total: number;
+        };
+        /**
          * ComposioIntegrationSetup
          * @description One Composio integration and the auth config it connects through on this instance.
          */
@@ -7631,10 +7758,21 @@ export interface components {
              * @description Matching auth configs found in the Composio project
              */
             detected: components["schemas"]["ComposioAuthConfigCandidate"][];
+            /**
+             * Icon Url
+             * @description Logo for integrations GAIA ships no icon for
+             */
+            icon_url: string | null;
             /** Integration Id */
             integration_id: string;
             /** Name */
             name: string;
+            /**
+             * Origin
+             * @description instance: a toolkit the admin enabled from the catalog
+             * @enum {string}
+             */
+            origin: "code" | "instance";
             /** @description Where the id in effect comes from */
             source: components["schemas"]["ComposioAuthConfigSource"] | null;
             /**
@@ -7655,6 +7793,28 @@ export interface components {
             composio_configured: boolean;
             /** Integrations */
             integrations: components["schemas"]["ComposioIntegrationSetup"][];
+        };
+        /**
+         * ComposioToolkitDetailResponse
+         * @description GET /setup/composio/toolkits/{slug}: how enabling this toolkit will authenticate.
+         */
+        ComposioToolkitDetailResponse: {
+            /**
+             * Auth Scheme
+             * @description The scheme GAIA will create; None if unsupported
+             */
+            auth_scheme: string | null;
+            /**
+             * Composio Managed
+             * @description Whether that scheme uses Composio's own app
+             */
+            composio_managed: boolean;
+            /**
+             * Fields
+             * @description Values to send with the enable request; empty means one click
+             */
+            fields: components["schemas"]["ComposioAuthField"][];
+            toolkit: components["schemas"]["ComposioCatalogEntry"];
         };
         /**
          * ComposioWebhookAckResponse
@@ -8411,6 +8571,11 @@ export interface components {
              * @description Whether in-app support requests reach GAIA's support team
              */
             gaia_support: boolean;
+            /**
+             * Instance Toolkits
+             * @description Whether the admin may enable Composio toolkits beyond the built-in ones
+             */
+            instance_toolkits: boolean;
             /** @description Which kind of instance this is (ENV) */
             kind: components["schemas"]["DeploymentKind"];
             /**
@@ -8418,6 +8583,11 @@ export interface components {
              * @description Whether code runs in the opt-in local Docker sandbox when no E2B key is saved
              */
             local_code_sandbox: boolean;
+            /**
+             * Private Network Endpoints
+             * @description Whether a configured endpoint such as an MCP server may be a private address
+             */
+            private_network_endpoints: boolean;
         };
         /**
          * DeregisterServerResponse
@@ -8844,6 +9014,36 @@ export interface components {
             /** Emails */
             emails: string[];
             search_data: components["schemas"]["WebSearchResult"];
+        };
+        /**
+         * EnableComposioToolkitRequest
+         * @description Values for the auth config's creation fields, keyed by field name.
+         */
+        EnableComposioToolkitRequest: {
+            /** Credentials */
+            credentials?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * EnableComposioToolkitResponse
+         * @description The integration the toolkit now backs and the auth config created for it.
+         */
+        EnableComposioToolkitResponse: {
+            /** Auth Config Id */
+            auth_config_id: string;
+            /**
+             * Composio Managed
+             * @description Users sign in through Composio's own app
+             */
+            composio_managed: boolean;
+            /** Integration Id */
+            integration_id: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "code" | "instance";
         };
         /**
          * ErrorEnvelope
@@ -9968,6 +10168,8 @@ export interface components {
             description: string;
             /** Displaypriority */
             displayPriority: number;
+            /** Iconurl */
+            iconUrl?: string | null;
             /** Id */
             id: string;
             /** Includedintegrations */
@@ -9983,6 +10185,12 @@ export interface components {
             managedBy: "self" | "composio" | "mcp" | "internal";
             /** Name */
             name: string;
+            /**
+             * Origin
+             * @default code
+             * @enum {string}
+             */
+            origin?: "code" | "instance";
             /** Provider */
             provider: string;
             /**
@@ -11537,6 +11745,12 @@ export interface components {
             managedBy: "self" | "composio" | "mcp" | "internal";
             /** Name */
             name: string;
+            /**
+             * Origin
+             * @default code
+             * @enum {string}
+             */
+            origin?: "code" | "instance";
             /** Publishedat */
             publishedAt?: string | null;
             /**
@@ -16681,8 +16895,12 @@ export type CommunityListResponse = components['schemas']['CommunityListResponse
 export type ComposedEmailOutput = components['schemas']['ComposedEmailOutput'];
 export type ComposioAuthConfigCandidate = components['schemas']['ComposioAuthConfigCandidate'];
 export type ComposioAuthConfigSource = components['schemas']['ComposioAuthConfigSource'];
+export type ComposioAuthField = components['schemas']['ComposioAuthField'];
+export type ComposioCatalogEntry = components['schemas']['ComposioCatalogEntry'];
+export type ComposioCatalogResponse = components['schemas']['ComposioCatalogResponse'];
 export type ComposioIntegrationSetup = components['schemas']['ComposioIntegrationSetup'];
 export type ComposioSetupResponse = components['schemas']['ComposioSetupResponse'];
+export type ComposioToolkitDetailResponse = components['schemas']['ComposioToolkitDetailResponse'];
 export type ComposioWebhookAckResponse = components['schemas']['ComposioWebhookAckResponse'];
 export type ConditionMatch = components['schemas']['ConditionMatch'];
 export type ConditionOperator = components['schemas']['ConditionOperator'];
@@ -16750,6 +16968,8 @@ export type EmailImportanceSummaryResponse = components['schemas']['EmailImporta
 export type EmailReadStatusRequest = components['schemas']['EmailReadStatusRequest'];
 export type EmailRequest = components['schemas']['EmailRequest'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
+export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
+export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
 export type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
 export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
@@ -29138,6 +29358,208 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ComposioSetupResponse"];
                 };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_list_composio_toolkits: {
+        parameters: {
+            query?: {
+                category?: string | null;
+                limit?: number;
+                offset?: number;
+                /** @description Search text */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposioCatalogResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_get_composio_toolkit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposioToolkitDetailResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_enable_composio_toolkit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnableComposioToolkitRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnableComposioToolkitResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_disable_composio_toolkit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unprocessable Entity */
             422: {

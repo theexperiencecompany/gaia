@@ -39,7 +39,7 @@ from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.execute.tool_info import contract_from, tool_contract
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_tool_slug
+from app.config.oauth_config import all_integrations, get_integration_by_tool_slug
 from app.config.settings import settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.constants.log_tags import LogTag
@@ -327,7 +327,7 @@ def _is_platform_tool_space(tool_space: str) -> bool:
         integration.available is True
         and integration.subagent_config is not None
         and integration.subagent_config.tool_space == tool_space
-        for integration in OAUTH_INTEGRATIONS
+        for integration in all_integrations()
     )
 
 

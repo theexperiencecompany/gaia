@@ -1,5 +1,6 @@
 """Comprehensive unit tests for tools_service (app/services/tools/tools_service.py)."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.integration_models import McpToolsRollupEntry
@@ -50,17 +51,15 @@ def _rollup(raw: dict) -> dict[str, McpToolsRollupEntry]:
 
 class TestGetIntegrationName:
     def test_returns_name_for_known_integration(self):
-        # _INTEGRATION_NAME_MAP is built from OAUTH_INTEGRATIONS at module load
-        # We verify the function works by patching the map
         with patch(
-            "app.services.tools.tools_service._INTEGRATION_NAME_MAP",
-            {"gmail": "Gmail"},
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
+            [SimpleNamespace(id="gmail", name="Gmail")],
         ):
             assert get_integration_name("gmail") == "Gmail"
             assert get_integration_name("Gmail") == "Gmail"
 
     def test_returns_none_for_unknown(self):
-        with patch("app.services.tools.tools_service._INTEGRATION_NAME_MAP", {}):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             assert get_integration_name("unknown") is None
 
 

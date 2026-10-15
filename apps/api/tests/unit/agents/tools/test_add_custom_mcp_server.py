@@ -34,7 +34,7 @@ def seams():
     user_repo = MagicMock()
     user_repo.is_connected = AsyncMock(return_value=False)
     with (
-        patch(f"{_MODULE}.OAUTH_INTEGRATIONS", []),
+        patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
         patch(f"{_MODULE}.get_mcp_client", AsyncMock(return_value=mcp_client)) as get_client,
         patch(f"{_MODULE}.integration_repository", repo),
         patch(f"{_MODULE}.user_integration_repository", user_repo),
@@ -240,7 +240,7 @@ _CATALOG = [SimpleNamespace(id="gh-id", name="GitHub Name", short_name="ghs")]
     ids=["by-id", "by-name-caseless", "by-id-case-and-space", "by-short-name"],
 )
 async def test_catalog_app_redirects_to_connect_integration(seams, name_arg):
-    with patch(f"{_MODULE}.OAUTH_INTEGRATIONS", _CATALOG):
+    with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", _CATALOG):
         result = await _run(name=name_arg)
 
     assert result == (
@@ -257,7 +257,7 @@ async def test_a_name_matching_no_catalog_field_is_not_a_redirect(seams):
     # proving the catalog guard is a real match, not an always-true short circuit.
     seams.mcp_client.probe_connection.return_value = {}
     seams.create_connect.return_value = (_integration(), {"status": "connected", "tools_count": 0})
-    with patch(f"{_MODULE}.OAUTH_INTEGRATIONS", _CATALOG):
+    with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", _CATALOG):
         result = await _run(name="Totally Unrelated")
 
     assert "built-in integration" not in result

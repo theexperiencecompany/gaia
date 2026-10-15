@@ -3,7 +3,7 @@
 import asyncio
 from typing import TypedDict, cast
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.users import user_repository
@@ -50,7 +50,7 @@ async def get_all_integrations(
     )
 
     platform_integrations = []
-    for oauth_int in OAUTH_INTEGRATIONS:
+    for oauth_int in all_integrations():
         if not oauth_int.available:
             continue
         if category and category != "all" and oauth_int.category != category:
@@ -65,15 +65,15 @@ async def get_all_integrations(
 
         platform_integrations.append(response)
 
-    all_integrations = platform_integrations + custom_integrations
-    featured = [i for i in all_integrations if i.is_featured]
+    listed = platform_integrations + custom_integrations
+    featured = [i for i in listed if i.is_featured]
     featured.sort(key=lambda x: (-x.display_priority, x.name))
-    all_integrations.sort(key=lambda x: (-x.display_priority, x.name))
+    listed.sort(key=lambda x: (-x.display_priority, x.name))
 
     return MarketplaceResponse(
         featured=featured,
-        integrations=all_integrations,
-        total=len(all_integrations),
+        integrations=listed,
+        total=len(listed),
     )
 
 

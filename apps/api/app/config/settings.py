@@ -118,6 +118,11 @@ class Settings(BrowserHostSettings):
     # Inside Docker the host is http://host.docker.internal:11434.
     OLLAMA_BASE_URL: str | None = None
 
+    # Hostname that reaches the machine GAIA runs on from inside its container
+    # (host.docker.internal under the self-host compose). When set, a custom MCP
+    # server added as localhost/127.0.0.1 is dialed through it instead.
+    LOOPBACK_HOST_ALIAS: str | None = None
+
     # ----------------------------------------------
     # Environment & Deployment
     # ----------------------------------------------

@@ -1,3 +1,4 @@
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
@@ -14,12 +15,15 @@ interface ComposioAuthConfigRowProps {
   row: ComposioIntegrationSetup;
   value: string;
   onChange: (value: string) => void;
+  /** Opens the catalog on this toolkit, where GAIA creates the auth config; absent without a Composio key. */
+  onSetUp?: (toolkit: string) => void;
 }
 
 export function ComposioAuthConfigRow({
   row,
   value,
   onChange,
+  onSetUp,
 }: ComposioAuthConfigRowProps) {
   const isSetUp = row.auth_config_id !== null || value.trim() !== "";
   const inherited =
@@ -30,10 +34,32 @@ export function ComposioAuthConfigRow({
   return (
     <SettingsRow
       label={row.name}
-      description={inherited ?? `Toolkit: ${row.toolkit}`}
-      icon={<IntegrationIcon integrationId={row.integration_id} size={24} />}
+      description={
+        inherited ??
+        (row.origin === "instance"
+          ? "Added from the Composio catalog"
+          : `Toolkit: ${row.toolkit}`)
+      }
+      icon={
+        <IntegrationIcon
+          integrationId={row.integration_id}
+          iconUrl={row.icon_url}
+          size={24}
+        />
+      }
     >
-      <div className="flex w-72 items-center gap-2">
+      <div className="flex w-96 items-center justify-end gap-2">
+        {!isSetUp && onSetUp && (
+          <Button
+            size="sm"
+            variant="flat"
+            color="primary"
+            className="shrink-0"
+            onPress={() => onSetUp(row.toolkit.toLowerCase())}
+          >
+            Set up automatically
+          </Button>
+        )}
         {row.detected.length > 0 ? (
           <Select
             aria-label={`${row.name} auth config`}

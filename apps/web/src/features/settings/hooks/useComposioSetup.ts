@@ -9,7 +9,7 @@ import {
 } from "@/features/settings/api/composioSetupApi";
 import { toast } from "@/lib/toast";
 
-const COMPOSIO_SETUP_QUERY_KEY = ["setup", "composio"] as const;
+export const COMPOSIO_SETUP_QUERY_KEY = ["setup", "composio"] as const;
 
 /** What a row's field starts as: the stored id, else the first auto-detected match. */
 function initialDraft(row: ComposioIntegrationSetup): string {

@@ -36,6 +36,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 import time_machine
 
+from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE
@@ -421,7 +422,7 @@ class TestMCPClientDoConnect:
     def _mock_ssrf_guard(self) -> Iterator[None]:
         """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
         with patch(
-            "app.services.mcp.mcp_client.assert_public_http_url",
+            "app.services.mcp.mcp_client.assert_endpoint_url_allowed",
             new_callable=AsyncMock,
         ):
             yield
@@ -2351,7 +2352,7 @@ class TestProbeMcpConnection:
     def _mock_ssrf_guard(self) -> Iterator[None]:
         """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
         with patch(
-            "app.services.mcp.oauth_discovery.assert_public_http_url",
+            "app.services.mcp.oauth_discovery.assert_endpoint_url_allowed",
             new_callable=AsyncMock,
         ):
             yield
@@ -4260,7 +4261,7 @@ class TestMCPClientDoConnectSSRF:
 
         client = MCPClient(user_id=USER_ID)
 
-        with pytest.raises(ValueError, match="non-public"):
+        with pytest.raises(ValueError, match="link-local"):
             await client._do_connect(INTEGRATION_ID)
 
         # The guard fired first: no outbound MCP client was ever built.
@@ -4268,9 +4269,10 @@ class TestMCPClientDoConnectSSRF:
 
     @patch("app.services.mcp.mcp_client.BaseMCPClient")
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
-    async def test_loopback_server_url_blocked_before_connect(
-        self, mock_resolver, mock_base_client_cls
+    async def test_loopback_server_url_blocked_before_connect_on_gaia_cloud(
+        self, mock_resolver, mock_base_client_cls, monkeypatch: pytest.MonkeyPatch
     ):
+        monkeypatch.setattr(settings, "ENV", "production")
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(server_url="https://127.0.0.1:8000/mcp")
         resolved.source = "platform"
@@ -4283,6 +4285,21 @@ class TestMCPClientDoConnectSSRF:
             await client._do_connect(INTEGRATION_ID)
 
         mock_base_client_cls.assert_not_called()
+
+    @patch("app.services.mcp.mcp_client.BaseMCPClient")
+    async def test_a_selfhost_instance_dials_a_server_on_its_own_network(
+        self, mock_base_client_cls, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        mock_base_client_cls.return_value = AsyncMock()
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config(server_url="http://127.0.0.1:8931/mcp")
+
+        config = {"mcpServers": {INTEGRATION_ID: {"url": mcp_config.server_url}}}
+        with patch.object(client, "_build_config", new_callable=AsyncMock, return_value=config):
+            await client._open_session(INTEGRATION_ID, mcp_config)
+
+        mock_base_client_cls.assert_called_once()
 
 
 class TestProbeMcpConnectionSSRF:
@@ -4368,7 +4385,7 @@ class TestOpenSessionExact:
                 client, "_build_device_client", new_callable=AsyncMock, return_value=device_client
             ) as mock_build_device,
             patch(
-                "app.services.mcp.mcp_client.assert_public_http_url", new_callable=AsyncMock
+                "app.services.mcp.mcp_client.assert_endpoint_url_allowed", new_callable=AsyncMock
             ) as mock_ssrf,
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
@@ -4389,7 +4406,7 @@ class TestOpenSessionExact:
 
         call_order: list[str] = []
 
-        async def _record_ssrf(url: str) -> None:
+        async def _record_ssrf(url: str, *, allow_private: bool) -> None:
             call_order.append("ssrf")
 
         async def _record_build(iid: str, cfg: MCPConfig) -> dict[str, Any]:
@@ -4398,7 +4415,7 @@ class TestOpenSessionExact:
 
         with (
             patch(
-                "app.services.mcp.mcp_client.assert_public_http_url",
+                "app.services.mcp.mcp_client.assert_endpoint_url_allowed",
                 new_callable=AsyncMock,
                 side_effect=_record_ssrf,
             ),
@@ -5203,7 +5220,9 @@ class TestRenameShadowingTools:
 class TestDoConnectWiringExact:
     @pytest.fixture(autouse=True)
     def _mock_ssrf_guard(self) -> Iterator[None]:
-        with patch("app.services.mcp.mcp_client.assert_public_http_url", new_callable=AsyncMock):
+        with patch(
+            "app.services.mcp.mcp_client.assert_endpoint_url_allowed", new_callable=AsyncMock
+        ):
             yield
 
     @staticmethod

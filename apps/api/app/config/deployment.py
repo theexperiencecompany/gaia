@@ -62,6 +62,8 @@ class DeploymentProfile:
     hosted_models: bool
     # The catalog's Composio auth configs are this project's.
     catalog_composio_auth_configs: bool
+    # The admin may enable Composio toolkits beyond the code catalog.
+    instance_toolkits: bool
     # Keyless code runs on the host Docker daemon (self-host opt-in).
     local_code_sandbox: bool
     # The workspace is a local volume, not a JuiceFS mount.
@@ -85,7 +87,8 @@ class DeploymentProfile:
     # Every client reaches it over https: session cookies are always Secure and
     # share links refuse a plain-http HOST.
     https_only: bool
-    # A provider endpoint the admin configures may be a private-network address.
+    # An endpoint the admin or a member configures (model provider, MCP server)
+    # may be a private-network address.
     private_network_endpoints: bool
     # The operator's own SearXNG answers before the keyless DuckDuckGo scrape, so
     # a privacy-minded self-host never leaks queries; GAIA Cloud keeps SearXNG as its floor.
@@ -155,6 +158,7 @@ def deployment_profile(
         runtime_credentials=kind is DeploymentKind.SELFHOST or local_auth,
         hosted_models=kind is DeploymentKind.PRODUCTION,
         catalog_composio_auth_configs=kind is not DeploymentKind.SELFHOST,
+        instance_toolkits=kind is DeploymentKind.SELFHOST or local_auth,
         local_code_sandbox=kind is DeploymentKind.SELFHOST and local_code_sandbox,
         local_workspace=kind is DeploymentKind.SELFHOST,
         blob_store=blob_store

@@ -14,7 +14,7 @@ from app.agents.tools.core.registry import (
     get_tool_registry,
     integration_destructive_tools,
 )
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.cache import ONE_DAY_TTL
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
@@ -28,13 +28,10 @@ from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integratio
 from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
 
-_INTEGRATION_NAME_MAP: dict[str, str] = {
-    integration.id.lower(): integration.name for integration in OAUTH_INTEGRATIONS
-}
-
 
 def get_integration_name(integration_id: str) -> str | None:
-    return _INTEGRATION_NAME_MAP.get(integration_id.lower())
+    lowered = integration_id.lower()
+    return next((i.name for i in all_integrations() if i.id.lower() == lowered), None)
 
 
 async def get_available_tools(user_id: str | None = None) -> ToolsListResponse:

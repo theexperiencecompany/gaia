@@ -17,9 +17,11 @@ from typing import TypedDict, cast
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.services.composio.auth_config_resolver import invalidate_auth_config_cache
+from app.services.composio.instance_toolkits import load_instance_toolkits
 from app.services.providers.provider_credentials_service import invalidate_locally
 from app.services.runtime.config_updates import (
     COMPOSIO_AUTH_CONFIGS_SCOPE,
+    INSTANCE_TOOLKITS_SCOPE,
     PROVIDER_SCOPE_PREFIX,
     RUNTIME_CONFIG_CHANNEL,
 )
@@ -86,6 +88,8 @@ async def _apply_update(data: str | bytes) -> None:
         # read here re-reads Mongo and rebuilds its clients.
         if scope == COMPOSIO_AUTH_CONFIGS_SCOPE:
             invalidate_auth_config_cache()
+        elif scope == INSTANCE_TOOLKITS_SCOPE:
+            await load_instance_toolkits()
         elif scope is not None and scope.startswith(PROVIDER_SCOPE_PREFIX):
             invalidate_locally(scope.removeprefix(PROVIDER_SCOPE_PREFIX))
         else:

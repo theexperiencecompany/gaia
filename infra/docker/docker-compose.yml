@@ -56,6 +56,9 @@ services:
       # every default user runs on, which Obscura runs also fall back to.
       BROWSER_HOST_URL: http://browser-host:8930
       BROWSER_FALLBACK_HOST_URL: http://browser-host-chrome:8931
+      # A custom MCP server added as localhost runs on the developer's machine,
+      # which this container reaches as host.docker.internal.
+      LOOPBACK_HOST_ALIAS: host.docker.internal
       # Public base for the recap and step-screenshot links (served by THIS api).
       # Left unset so it falls back to HOST; a friendly vhost such as
       # browser.heygaia.io must reverse-proxy here, never to the browser host.
@@ -98,6 +101,9 @@ services:
       JUICEFS_META_URL_TEMPLATE: redis://jfs-meta-redis:6379/{shard}
     env_file:
       - ../../apps/api/.env
+    # host.docker.internal on Linux too (Docker Desktop defines it already).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../../apps/api/app:/app/apps/api/app
       # Live-mount scripts so mount_juicefs.sh edits (shipped into the sandbox at
@@ -328,6 +334,7 @@ services:
       - SEARXNG_BASE_URL=http://searxng:8080
       - BROWSER_HOST_URL=http://browser-host:8930
       - BROWSER_FALLBACK_HOST_URL=http://browser-host-chrome:8931
+      - LOOPBACK_HOST_ALIAS=host.docker.internal
       - ARQ_METRICS_PORT=9100
       - JUICEFS_HOST_MOUNT_PATH=/mnt/jfs
       - UV_NO_SYNC=1
@@ -342,6 +349,8 @@ services:
       - JUICEFS_META_URL_TEMPLATE=redis://jfs-meta-redis:6379/{shard}
     expose:
       - "9100"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
     restart: always
     volumes:

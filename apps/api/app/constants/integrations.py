@@ -54,6 +54,10 @@ EVENT_ACCOUNT_ID_KEY: Final = "gaia_account_id"
 COMPOSIO_ACCOUNT_LIST_LIMIT: Final = 100
 # Composio's maximum page size for listing a project's auth configs.
 COMPOSIO_AUTH_CONFIG_PAGE_SIZE: Final = 1000
+# Composio's maximum page size for listing its toolkit catalog (~1.6k toolkits).
+COMPOSIO_TOOLKIT_PAGE_SIZE: Final = 1000
+# Largest page the admin's catalog browser may ask GAIA for.
+COMPOSIO_CATALOG_MAX_PAGE_SIZE: Final = 200
 # Label for an account whose provider exposes no identity (no metadata_config).
 FALLBACK_ACCOUNT_LABEL: Final = "{integration} account {number}"
 # What the agent is told when the account a call ran as has lost its connection.

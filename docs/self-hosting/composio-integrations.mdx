@@ -1,57 +1,78 @@
 ---
 title: "Connect integrations (Composio)"
 sidebarTitle: "Connect integrations"
-description: "Use your own Composio project so Gmail, Calendar, GitHub and the other app integrations connect on your instance"
+description: "Use your own Composio project so Gmail, GitHub and any other app Composio supports connect on your instance"
 icon: "plug"
 ---
 
-Gmail, Google Calendar, GitHub, Slack, Notion and about 25 other integrations connect through [Composio](https://composio.dev). Each one needs an **auth config**: Composio's record of how users sign in to that app.
+Gmail, Google Calendar, GitHub, Slack, Notion and about 25 other built-in integrations connect through [Composio](https://composio.dev). On a self-hosted instance you can also add any of the 1,600+ other apps in Composio's catalog. Your users then connect them from the integrations page like any built-in one.
 
-Auth configs belong to one Composio project. GAIA Cloud's auth configs live in GAIA's own project, so they don't work with your key. A self-hosted instance needs a Composio project of its own. Until an integration has an auth config on your instance, the integrations page shows it as **Not set up on this instance**.
+Each app needs an **auth config**, which is Composio's record of how users sign in to that app. Auth configs belong to one Composio project. GAIA Cloud's auth configs live in GAIA's own project, so they don't work with your key. Your instance needs a Composio project of its own. GAIA creates the auth configs in it for you.
 
-## 1. Create a Composio project and copy its key
+## 1. Create a Composio project and save its key
 
 1. Sign up at [app.composio.dev](https://app.composio.dev) and create a project.
 2. Copy the project's API key from the Composio dashboard.
-
-## 2. Create an auth config for each app you want
-
-In your Composio project, create an auth config for each app you want GAIA to use (Gmail, Google Calendar, GitHub, and so on). Make sure each one is enabled.
-
-For most apps you can use Composio's managed sign-in, which needs no further setup.
-
-<Note>
-  **Google apps (Gmail, Calendar, Drive, Docs, Sheets, Tasks, Meet).** Composio's managed Google sign-in is fine for trying things out. To show your own app name on Google's consent screen, create an OAuth client in the [Google Cloud console](https://console.cloud.google.com/apis/credentials) and choose your own credentials when you create the auth config. Use the redirect URI that Composio shows in the auth config form. Enable each Google API you use (Gmail API, Google Calendar API, and so on) in the same Google Cloud project.
-</Note>
-
-You don't need to set a callback URL in Composio. GAIA sends users back to `{HOST}/api/v1/oauth/composio/callback` on its own.
-
-## 3. Add them to GAIA
-
-1. Sign in as the instance admin and open **Settings → Integrations setup**.
-2. Paste your Composio API key and save it.
-3. GAIA lists the auth configs in your project and fills in a match for each integration. If an app has more than one, pick the right one. You can also paste an auth config id (it starts with `ac_`) by hand.
-4. Click **Save**.
-
-Saved integrations can be connected right away. You don't need to restart anything. Leave a field empty to skip that integration.
+3. Sign in as the instance admin, open **Settings → Integrations setup** and paste the key under **Composio key**.
 
 <Tip>
   You can paste the key during first-run setup too: it is the Composio card under **Tool keys**.
 </Tip>
 
+## 2. Set up the built-in integrations
+
+Each built-in integration without an auth config shows **Set up automatically**. Click it and GAIA creates the auth config in your Composio project:
+
+- **Apps where Composio has its own sign-in app** (Gmail, GitHub, Slack, Notion and most others) need nothing else. Users sign in through Composio's app.
+- **Apps where Composio has no shared app** show the exact fields Composio needs, usually a client id and client secret from an OAuth app you create with that provider. Fill them in and click **Set up**.
+
+If you already made auth configs in the Composio dashboard, GAIA lists them under each integration instead. Pick one and click **Save**. You can also paste an auth config id (it starts with `ac_`) by hand.
+
+You don't need to set a callback URL in Composio. GAIA sends users back to `{HOST}/api/v1/oauth/composio/callback` on its own.
+
+<Note>
+  **Google apps (Gmail, Calendar, Drive, Docs, Sheets, Tasks, Meet).** Composio's own Google sign-in is fine for trying things out. To show your own app name on Google's consent screen, create an OAuth client in the [Google Cloud console](https://console.cloud.google.com/apis/credentials), then create the auth config with your own credentials in the Composio dashboard and pick it here. Use the redirect URI that Composio shows in the auth config form. Enable each Google API you use (Gmail API, Google Calendar API, and so on) in the same Google Cloud project.
+</Note>
+
+## 3. Add any other app from the catalog
+
+Click **Browse Composio catalog** in **Settings → Integrations setup**. As the instance admin, you also see the same button on the integrations page.
+
+1. Search for the app, or filter by category.
+2. Pick it. GAIA shows how its users will sign in:
+   - **Composio's own app.** Nothing to fill in.
+   - **Each user's own credentials** (most API-key apps, such as Tavily or Coda). Nothing to fill in now. Each user enters their key on Composio's connect page when they connect.
+   - **Your own OAuth app.** Fill in the fields Composio lists.
+3. Click **Enable**.
+
+The app shows up on everyone's integrations page right away, with no restart. Users click **Connect** like for any built-in integration, and GAIA can then use every tool the app has in chat and in workflows.
+
+Apps added from the catalog differ from built-in ones in a few ways:
+
+- **No triggers.** Workflows can use their tools but can't start from their events. Built-in integrations keep their triggers.
+- **Generic guidance.** GAIA reads each tool's own description rather than hand-written instructions. Built-in integrations also keep their custom tools.
+- **Approvals.** GAIA asks before any action that looks destructive, because nobody has reviewed the app's tools by hand.
+
+**Apps that need no sign-in** are listed as **No sign-in** and can't be enabled yet. Composio runs these without a connected account, and GAIA's integrations always connect one. An example is Hacker News.
+
+To remove an app you added, open it in the catalog and click **Remove**. Its auth config and your users' connections stay in your Composio project, so you can delete them there.
+
 ## Setting auth configs from the environment
 
-If you manage configuration in files instead, set `COMPOSIO_KEY` and map integration ids to auth config ids in `COMPOSIO_AUTH_CONFIG_OVERRIDES`:
+If you manage configuration in files instead, set `COMPOSIO_KEY` and map built-in integration ids to auth config ids in `COMPOSIO_AUTH_CONFIG_OVERRIDES`:
 
 ```bash
 COMPOSIO_KEY=your-composio-api-key
 COMPOSIO_AUTH_CONFIG_OVERRIDES={"gmail": "ac_...", "googlecalendar": "ac_...", "github": "ac_..."}
 ```
 
-An id saved in **Settings → Integrations setup** takes priority over the environment. The instance refuses to start if this variable names an integration that doesn't use Composio, or gives an empty id.
+An id saved in **Settings → Integrations setup** takes priority over the environment. The instance refuses to start if this variable names an integration that doesn't use Composio, or gives an empty id. Apps added from the catalog are configured in the app only.
 
 ## Troubleshooting
 
 - **"Composio rejected the saved API key".** The key is wrong or was revoked. Copy a fresh one from the Composio dashboard.
-- **No matches are filled in.** The project has no enabled auth config for that app. Create one in Composio, then reload the page.
-- **An app still shows "Not set up on this instance".** It has no saved auth config yet. Add one in **Settings → Integrations setup** and save.
+- **"needs ... to create its auth config".** Composio has no shared sign-in app for this app. Fill in the listed fields from an OAuth app you create with the provider.
+- **"Composio refused to create an auth config".** The message includes Composio's reason, which is usually a wrong client id or secret.
+- **An app still shows "Not set up on this instance".** It has no auth config yet. Click **Set up automatically** next to it in **Settings → Integrations setup**.
+
+To connect MCP servers, including ones on your own network, see [MCP servers on a self-hosted instance](/self-hosting/mcp-servers).

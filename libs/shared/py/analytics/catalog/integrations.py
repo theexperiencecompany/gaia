@@ -18,6 +18,8 @@ __all__ = [
     "IntegrationDisconnected",
     "IntegrationError",
     "IntegrationInstanceSetupSaved",
+    "IntegrationToolkitDisabled",
+    "IntegrationToolkitEnabled",
     "IntegrationInstructionsUpdated",
     "IntegrationPrimaryChanged",
     "McpConnectionTested",
@@ -120,6 +122,26 @@ class IntegrationInstanceSetupSaved(ServerEvent):
     stored_count: int
     set_up_count: int
     total_count: int
+
+
+class IntegrationToolkitEnabled(ServerEvent):
+    """A self-host admin enabled a Composio toolkit; GAIA created its auth config."""
+
+    event: ClassVar[str] = "integration:toolkit_enabled"
+    budget_per_user_day: ClassVar[int] = 50
+
+    toolkit: Identifier
+    origin: Literal["code", "instance"]
+    composio_managed: bool
+
+
+class IntegrationToolkitDisabled(ServerEvent):
+    """A self-host admin removed a Composio toolkit they had enabled."""
+
+    event: ClassVar[str] = "integration:toolkit_disabled"
+    budget_per_user_day: ClassVar[int] = 50
+
+    toolkit: Identifier
 
 
 class IntegrationInstructionsUpdated(ServerEvent):

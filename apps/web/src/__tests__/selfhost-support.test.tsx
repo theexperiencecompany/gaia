@@ -30,6 +30,8 @@ const status = (gaia_support: boolean): SetupStatusResponse => ({
     local_code_sandbox: false,
     blob_store: "local",
     gaia_support: gaia_support,
+    instance_toolkits: true,
+    private_network_endpoints: true,
   },
   has_admin_account: true,
   registration_policy: "invite_only",

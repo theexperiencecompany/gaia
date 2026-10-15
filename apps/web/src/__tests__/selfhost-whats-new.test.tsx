@@ -36,6 +36,8 @@ const SELFHOST_STATUS: SetupStatusResponse = {
     local_code_sandbox: false,
     blob_store: "local",
     gaia_support: false,
+    instance_toolkits: true,
+    private_network_endpoints: true,
   },
   has_admin_account: true,
   registration_policy: "invite_only",

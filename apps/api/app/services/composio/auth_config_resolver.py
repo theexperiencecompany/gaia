@@ -13,7 +13,7 @@ from time import monotonic
 from pydantic import TypeAdapter
 
 from app.config.composio_auth_configs import check_auth_config_ids
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.config.settings import settings
 from app.constants.integrations import ComposioAuthConfigSource
 from app.constants.log_tags import LogTag
@@ -45,8 +45,8 @@ _cache: tuple[float, dict[str, str]] | None = None
 
 
 def composio_integrations() -> list[OAuthIntegration]:
-    """Return every catalog integration that connects through Composio."""
-    return [i for i in OAUTH_INTEGRATIONS if i.composio_config]
+    """Return every integration, code or instance-enabled, that connects through Composio."""
+    return [i for i in all_integrations() if i.composio_config]
 
 
 async def resolve_auth_configs() -> dict[str, ResolvedAuthConfig]:
@@ -64,7 +64,11 @@ async def resolve_auth_configs() -> dict[str, ResolvedAuthConfig]:
             resolved[integration.id] = ResolvedAuthConfig(
                 overrides[integration.id].strip(), ComposioAuthConfigSource.ENV
             )
-        elif use_catalog and integration.composio_config:
+        elif (
+            use_catalog
+            and integration.composio_config
+            and integration.composio_config.auth_config_id
+        ):
             resolved[integration.id] = ResolvedAuthConfig(
                 integration.composio_config.auth_config_id, ComposioAuthConfigSource.CATALOG
             )
@@ -97,14 +101,36 @@ async def save_auth_configs(auth_configs: dict[str, str]) -> None:
             "This deployment reads Composio auth configs from the environment only; "
             "the instance store is not writable here"
         )
-    check_auth_config_ids(OAUTH_INTEGRATIONS, auth_configs, origin="The auth config list")
+    check_auth_config_ids(all_integrations(), auth_configs, origin="The auth config list")
     cleaned = {integration_id: ac.strip() for integration_id, ac in auth_configs.items()}
-    await instance_settings_repository.set_value(AUTH_CONFIGS_SETTING_KEY, dict(cleaned))
+    await _write_stored(cleaned)
+
+
+async def set_stored_auth_config(integration_id: str, auth_config_id: str) -> None:
+    """Store one integration's auth config id, keeping every other stored entry."""
+    if not settings.deployment.runtime_credentials:
+        raise RuntimeError("This deployment reads Composio auth configs from the environment only")
+    stored = await _read_stored()
+    check_auth_config_ids(
+        all_integrations(), {integration_id: auth_config_id}, origin="The auth config"
+    )
+    await _write_stored({**stored, integration_id: auth_config_id.strip()})
+
+
+async def remove_stored_auth_config(integration_id: str) -> None:
+    """Drop one integration's stored auth config id; a missing entry is a no-op."""
+    stored = await _read_stored()
+    if integration_id in stored:
+        await _write_stored({k: v for k, v in stored.items() if k != integration_id})
+
+
+async def _write_stored(auth_configs: dict[str, str]) -> None:
+    await instance_settings_repository.set_value(AUTH_CONFIGS_SETTING_KEY, dict(auth_configs))
     invalidate_auth_config_cache()
     await publish_config_update(COMPOSIO_AUTH_CONFIGS_SCOPE)
     log.info(
         f"{LogTag.COMPOSIO} Composio auth configs saved",
-        integration_count=len(cleaned),
+        integration_count=len(auth_configs),
     )
 
 
@@ -120,7 +146,11 @@ async def _stored_auth_configs() -> dict[str, str]:
     global _cache
     if _cache is not None and monotonic() - _cache[0] < _CACHE_TTL_SECONDS:
         return _cache[1]
-    doc = await instance_settings_repository.find_by_key(AUTH_CONFIGS_SETTING_KEY)
-    stored = _STORED_AUTH_CONFIGS.validate_python(doc.value) if doc else {}
+    stored = await _read_stored()
     _cache = (monotonic(), stored)
     return stored
+
+
+async def _read_stored() -> dict[str, str]:
+    doc = await instance_settings_repository.find_by_key(AUTH_CONFIGS_SETTING_KEY)
+    return _STORED_AUTH_CONFIGS.validate_python(doc.value) if doc else {}

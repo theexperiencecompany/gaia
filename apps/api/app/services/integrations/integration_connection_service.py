@@ -1,7 +1,6 @@
 """Integration connection service - handles connect/disconnect logic."""
 
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Literal, TypedDict, Unpack
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
@@ -9,7 +8,8 @@ from pydantic import BaseModel, ConfigDict
 import pymongo.errors
 
 from app.config.oauth_config import (
-    OAUTH_INTEGRATIONS,
+    CatalogCached,
+    all_integrations,
     get_integration_by_id,
     get_integration_scopes,
 )
@@ -58,11 +58,11 @@ class _CustomIntegrationOwner(BaseModel):
     created_by: str | None = None
 
 
-@lru_cache(maxsize=1)
+@CatalogCached
 def build_integrations_config() -> IntegrationsConfigResponse:
     """Build cached integrations configuration response."""
     integration_configs = []
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if integration.managed_by == "internal":
             continue
 
@@ -92,6 +92,8 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                     integration.mcp_config.requires_auth if integration.mcp_config else False
                 ),
                 slug=integration.id,  # Platform integrations use ID as slug
+                origin=integration.origin,
+                icon_url=integration.icon_url,
             )
         )
     return IntegrationsConfigResponse(integrations=integration_configs)

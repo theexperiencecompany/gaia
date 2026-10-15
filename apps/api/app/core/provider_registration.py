@@ -56,6 +56,7 @@ from app.helpers.lifespan_helpers import (
 )
 from app.services.blob_store import ensure_local_blob_store_ready
 from app.services.composio.composio_service import init_composio_service
+from app.services.composio.instance_toolkits import load_instance_toolkits
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.sandbox.pool import init_sandbox_pool
 from app.services.startup_validation import validate_startup_requirements
@@ -212,6 +213,8 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         StartupService(redis_cache.verify_connection, "redis", required=True),
         StartupService(init_reminder_service, "reminder_service", required=True),
         StartupService(init_workflow_service, "workflow_service", required=True),
+        # Composio toolkits the instance admin enabled join the integration catalog.
+        StartupService(load_instance_toolkits, "instance_toolkits", required=True),
         # JuiceFS mount — best-effort: the provider is a no-op when R2/JFS settings
         # are unconfigured, and a storage-backend fault (R2 read errors) must degrade
         # file features, not crash the worker.

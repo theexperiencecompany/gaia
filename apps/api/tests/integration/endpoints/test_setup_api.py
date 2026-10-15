@@ -142,6 +142,8 @@ class TestStatus:
             "local_code_sandbox",
             "blob_store",
             "gaia_support",
+            "instance_toolkits",
+            "private_network_endpoints",
         }
         assert body["registration_policy"] == "invite_only"
         assert set(body["providers"]) == {

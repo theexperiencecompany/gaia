@@ -3137,6 +3137,176 @@
         "title": "ComposioAuthConfigSource",
         "type": "string"
       },
+      "ComposioAuthField": {
+        "description": "A value the admin must supply to create the toolkit's auth config.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "is_secret": {
+            "title": "Is Secret",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "description",
+          "required",
+          "is_secret"
+        ],
+        "title": "ComposioAuthField",
+        "type": "object"
+      },
+      "ComposioCatalogEntry": {
+        "description": "A catalog toolkit plus what it is on this instance.",
+        "properties": {
+          "auth_schemes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Auth Schemes",
+            "type": "array"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "composio_managed": {
+            "description": "Composio can sign users in with its own app",
+            "title": "Composio Managed",
+            "type": "boolean"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The GAIA integration it backs, if any",
+            "title": "Integration Id"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "no_auth": {
+            "title": "No Auth",
+            "type": "boolean"
+          },
+          "set_up": {
+            "description": "Whether that integration has an auth config here",
+            "title": "Set Up",
+            "type": "boolean"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "description": "built_in: defined in GAIA's code; enabled: added by the admin; available: can be enabled; unsupported: needs no sign-in, which GAIA cannot connect yet",
+            "enum": [
+              "built_in",
+              "enabled",
+              "available",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tools_count": {
+            "title": "Tools Count",
+            "type": "integer"
+          },
+          "triggers_count": {
+            "title": "Triggers Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "logo",
+          "categories",
+          "auth_schemes",
+          "composio_managed",
+          "no_auth",
+          "tools_count",
+          "triggers_count",
+          "status",
+          "integration_id",
+          "set_up"
+        ],
+        "title": "ComposioCatalogEntry",
+        "type": "object"
+      },
+      "ComposioCatalogResponse": {
+        "description": "GET /setup/composio/toolkits: one page of the searched catalog.",
+        "properties": {
+          "categories": {
+            "description": "Every category in the catalog, for the filter",
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ComposioCatalogEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "description": "Matches across all pages",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "categories"
+        ],
+        "title": "ComposioCatalogResponse",
+        "type": "object"
+      },
       "ComposioIntegrationSetup": {
         "description": "One Composio integration and the auth config it connects through on this instance.",
         "properties": {
@@ -3160,12 +3330,33 @@
             "title": "Detected",
             "type": "array"
           },
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Logo for integrations GAIA ships no icon for",
+            "title": "Icon Url"
+          },
           "integration_id": {
             "title": "Integration Id",
             "type": "string"
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "description": "instance: a toolkit the admin enabled from the catalog",
+            "enum": [
+              "code",
+              "instance"
+            ],
+            "title": "Origin",
             "type": "string"
           },
           "source": {
@@ -3191,7 +3382,9 @@
           "toolkit",
           "auth_config_id",
           "source",
-          "detected"
+          "detected",
+          "origin",
+          "icon_url"
         ],
         "title": "ComposioIntegrationSetup",
         "type": "object"
@@ -3217,6 +3410,47 @@
           "integrations"
         ],
         "title": "ComposioSetupResponse",
+        "type": "object"
+      },
+      "ComposioToolkitDetailResponse": {
+        "description": "GET /setup/composio/toolkits/{slug}: how enabling this toolkit will authenticate.",
+        "properties": {
+          "auth_scheme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The scheme GAIA will create; None if unsupported",
+            "title": "Auth Scheme"
+          },
+          "composio_managed": {
+            "description": "Whether that scheme uses Composio's own app",
+            "title": "Composio Managed",
+            "type": "boolean"
+          },
+          "fields": {
+            "description": "Values to send with the enable request; empty means one click",
+            "items": {
+              "$ref": "#/components/schemas/ComposioAuthField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "toolkit": {
+            "$ref": "#/components/schemas/ComposioCatalogEntry"
+          }
+        },
+        "required": [
+          "toolkit",
+          "auth_scheme",
+          "composio_managed",
+          "fields"
+        ],
+        "title": "ComposioToolkitDetailResponse",
         "type": "object"
       },
       "ComposioWebhookAckResponse": {
@@ -4905,6 +5139,11 @@
             "title": "Gaia Support",
             "type": "boolean"
           },
+          "instance_toolkits": {
+            "description": "Whether the admin may enable Composio toolkits beyond the built-in ones",
+            "title": "Instance Toolkits",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/DeploymentKind",
             "description": "Which kind of instance this is (ENV)"
@@ -4913,6 +5152,11 @@
             "description": "Whether code runs in the opt-in local Docker sandbox when no E2B key is saved",
             "title": "Local Code Sandbox",
             "type": "boolean"
+          },
+          "private_network_endpoints": {
+            "description": "Whether a configured endpoint such as an MCP server may be a private address",
+            "title": "Private Network Endpoints",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4920,7 +5164,9 @@
           "bills",
           "local_code_sandbox",
           "blob_store",
-          "gaia_support"
+          "gaia_support",
+          "instance_toolkits",
+          "private_network_endpoints"
         ],
         "title": "DeploymentStatus",
         "type": "object"
@@ -5779,6 +6025,54 @@
           "search_data"
         ],
         "title": "EmailSearchResponse",
+        "type": "object"
+      },
+      "EnableComposioToolkitRequest": {
+        "description": "Values for the auth config's creation fields, keyed by field name.",
+        "properties": {
+          "credentials": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Credentials",
+            "type": "object"
+          }
+        },
+        "title": "EnableComposioToolkitRequest",
+        "type": "object"
+      },
+      "EnableComposioToolkitResponse": {
+        "description": "The integration the toolkit now backs and the auth config created for it.",
+        "properties": {
+          "auth_config_id": {
+            "title": "Auth Config Id",
+            "type": "string"
+          },
+          "composio_managed": {
+            "description": "Users sign in through Composio's own app",
+            "title": "Composio Managed",
+            "type": "boolean"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "code",
+              "instance"
+            ],
+            "title": "Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "integration_id",
+          "auth_config_id",
+          "origin",
+          "composio_managed"
+        ],
+        "title": "EnableComposioToolkitResponse",
         "type": "object"
       },
       "ErrorEnvelope": {
@@ -8062,6 +8356,17 @@
             "title": "Displaypriority",
             "type": "integer"
           },
+          "iconUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iconurl"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -8093,6 +8398,15 @@
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "default": "code",
+            "enum": [
+              "code",
+              "instance"
+            ],
+            "title": "Origin",
             "type": "string"
           },
           "provider": {
@@ -11469,6 +11783,15 @@
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "default": "code",
+            "enum": [
+              "code",
+              "instance"
+            ],
+            "title": "Origin",
             "type": "string"
           },
           "publishedAt": {
@@ -37373,6 +37696,305 @@
           }
         },
         "summary": "Put Composio Auth Configs",
+        "tags": [
+          "Setup",
+          "Setup"
+        ]
+      }
+    },
+    "/api/v1/setup/composio/toolkits": {
+      "get": {
+        "description": "Search Composio's toolkit catalog; each entry says whether it is built in, enabled or available.",
+        "operationId": "setup_list_composio_toolkits",
+        "parameters": [
+          {
+            "description": "Search text",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Search text",
+              "maxLength": 100,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposioCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Composio Toolkits",
+        "tags": [
+          "Setup",
+          "Setup"
+        ]
+      }
+    },
+    "/api/v1/setup/composio/toolkits/{slug}": {
+      "delete": {
+        "description": "Remove a toolkit the admin enabled; built-in integrations are cleared from the auth config list instead.",
+        "operationId": "setup_disable_composio_toolkit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Disable Composio Toolkit",
+        "tags": [
+          "Setup",
+          "Setup"
+        ]
+      },
+      "get": {
+        "description": "Return how enabling the toolkit authenticates and the values it needs, if any.",
+        "operationId": "setup_get_composio_toolkit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposioToolkitDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Composio Toolkit",
+        "tags": [
+          "Setup",
+          "Setup"
+        ]
+      },
+      "post": {
+        "description": "Create the toolkit's auth config in the instance's Composio project and make it connectable.",
+        "operationId": "setup_enable_composio_toolkit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableComposioToolkitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnableComposioToolkitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Enable Composio Toolkit",
         "tags": [
           "Setup",
           "Setup"

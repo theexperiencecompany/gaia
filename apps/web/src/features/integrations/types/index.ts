@@ -57,6 +57,8 @@ export interface Integration {
   available?: boolean;
   /** Composio integration this instance has no auth config for; Connect cannot work. */
   instanceSetupRequired?: boolean;
+  /** "instance": a Composio toolkit the admin enabled from the catalog (no triggers). */
+  origin?: "code" | "instance";
   authType?: "oauth" | "bearer" | "none";
   source?: "platform" | "custom";
   requiresAuth?: boolean;

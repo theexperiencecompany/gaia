@@ -375,7 +375,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_returns_core_namespaces_when_no_integrations(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -397,7 +397,7 @@ class TestGetUserAvailableToolNamespaces:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(integration_id="todos", managed_by="internal", available=True),
         ],
@@ -421,7 +421,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_connected_platform_integration_uses_tool_space(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -453,7 +453,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_connected_custom_integration_derives_namespace(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -477,7 +477,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_disconnected_integrations_excluded(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -499,7 +499,7 @@ class TestGetUserAvailableToolNamespaces:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
                 integration_id="reminders", managed_by="internal", available=False
@@ -525,7 +525,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_platform_without_subagent_falls_to_custom_path(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -2392,7 +2392,7 @@ class TestCreateAndConnectCustomIntegration:
 
 class TestBuildIntegrationsConfig:
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
                 integration_id="github",
@@ -2411,7 +2411,7 @@ class TestBuildIntegrationsConfig:
         assert "todos" not in ids
 
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
                 integration_id="no-auth-mcp",
@@ -2427,7 +2427,7 @@ class TestBuildIntegrationsConfig:
         assert result.integrations[0].auth_type == "none"
 
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
                 integration_id="oauth-mcp",
@@ -2443,7 +2443,7 @@ class TestBuildIntegrationsConfig:
         assert result.integrations[0].auth_type == "oauth"
 
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(integration_id="no-mcp", managed_by="self"),
         ],
@@ -2455,7 +2455,7 @@ class TestBuildIntegrationsConfig:
         assert result.integrations[0].auth_type is None
 
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [],
     )
     def test_empty_integrations(self):
