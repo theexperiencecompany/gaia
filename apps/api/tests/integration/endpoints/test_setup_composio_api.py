@@ -12,9 +12,14 @@ from httpx import AsyncClient
 import pytest
 
 from app.api.v1.endpoints import setup_composio as endpoint_module
+from app.config.oauth_config import set_instance_integrations
 from app.models.runtime_models import InstanceSettingsDocument
 import app.services.composio.auth_config_resolver as resolver
 import app.services.composio.auth_config_setup as setup_service
+from app.services.composio.instance_toolkits import (
+    InstanceToolkitRecord,
+    build_instance_integration,
+)
 from app.services.providers.provider_credentials_service import ProviderConfig
 from shared.py.analytics.catalog.integrations import IntegrationInstanceSetupSaved
 from shared.py.wide_events import log
@@ -103,6 +108,26 @@ async def test_detected_auth_configs_are_offered_per_integration_until_saved(
         {"id": "ac_mine_slack_b", "name": "slack auth"},
     ]
     assert rows["github"]["detected"] == []
+
+
+async def test_an_instance_enabled_toolkit_is_listed_with_its_origin_and_logo(
+    client: AsyncClient, seams: SimpleNamespace
+) -> None:
+    attio = InstanceToolkitRecord(
+        slug="attio",
+        name="Attio",
+        description="CRM",
+        logo="https://logos.composio.dev/api/attio",
+        auth_scheme="OAUTH2",
+    )
+    set_instance_integrations([build_instance_integration(attio)])
+    try:
+        rows = _by_id((await client.get(COMPOSIO)).json())
+    finally:
+        set_instance_integrations([])
+
+    assert (rows["attio"]["origin"], rows["attio"]["icon_url"]) == ("instance", attio.logo)
+    assert rows["gmail"]["origin"] == "code"
 
 
 async def test_saved_ids_take_effect_and_report_their_source(
