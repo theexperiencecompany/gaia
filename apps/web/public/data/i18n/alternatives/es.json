@@ -3797,7 +3797,7 @@
     "name": "Friend",
     "tagline": "Quédate la compañía. Suma la capacidad.",
     "metaTitle": "Mejor alternativa a Friend: asistente que actúa",
-    "metaDescription": "¿Quieres más que compañía de 249 $? GAIA es la alternativa abierta a Friend que vacía caixa, agenda y tareas por ti. Mira cuándo conviene cambiar.",
+    "metaDescription": "¿Quieres más que compañía de 249 $ (v2)? GAIA es la alternativa abierta a Friend que vacía caixa, agenda y tareas por ti. Mira cuándo conviene cambiar.",
     "keywords": [
       "alternativa al colgante friend",
       "alternativa a friend ia",
@@ -3807,7 +3807,7 @@
       "alternativa de compañía a friend"
     ],
     "painPoints": [
-      "249 $ compran compañía, no capacidad: nada se hace",
+      "249 $ (v2) compran compañía, no capacidad: nada se hace",
       "Sin conexión de correo, calendario ni tareas",
       "Hardware y software cerrados sin ruta autoalojada",
       "Micrófono siempre activo en la nube de otra empresa",
@@ -3818,7 +3818,7 @@
       "Recordar todo tú después de que Friend charla del tema",
       "Copiar planes de textos a tu calendario a mano",
       "Trabajo de bandeja y tareas que Friend no puede tocar",
-      "Pagar 249 $ por compañía sin capacidad"
+      "Pagar 249 $ (v2) por compañía sin capacidad"
     ],
     "gaiaAdvantages": [
       "Vacía tu bandeja en vez de charlar sobre tu día",
@@ -3839,7 +3839,7 @@
         "question": "¿Friend hace algún trabajo real?"
       },
       {
-        "answer": "El colgante Friend cuesta 249 $ más tu tiempo haciendo todo tú. GAIA tiene plan gratuito, y Pro es un fijo de ${{PRO_MONTHLY_PRICE}}/mes.",
+        "answer": "El colgante Friend cuesta 249 $ (v2) más tu tiempo haciendo todo tú. GAIA tiene plan gratuito, y Pro es un fijo de ${{PRO_MONTHLY_PRICE}}/mes.",
         "question": "¿Qué me ahorro al cambiar desde Friend?"
       },
       {
@@ -3917,10 +3917,10 @@
       "mejor reemplazo de gemini assistant"
     ],
     "painPoints": [
-      "Hecho para tareas del aparato, no de trabajo: sin contexto de bandeja ni proyectos",
-      "Olvida todo entre sesiones de voz",
+      "Hecho para tareas del aparato primero: resume en Gmail pero no trabaja entre Slack, Notion ni herramientas fuera de Google",
+      "Sin contexto de proyecto entre herramientas",
       "No alcanza Slack, Notion, Linear ni tus herramientas de tareas",
-      "Cerrado y solo Android, atado a tu cuenta Google",
+      "Cerrado, Android e iOS, atado a tu cuenta Google",
       "Los pedidos de varios pasos se rompen tras el primero"
     ],
     "whyPeopleLook": "Nadie deja su asistente de teléfono; lo supera. El patrón es siempre el mismo: timers y llamadas van bien, luego le pides que te prepare para una reunión o vacíe tu bandeja y te mira en blanco. Quien busca una alternativa a Gemini Assistant quiere una segunda capa para el trabajo: memoria, herramientas y seguimiento que un control remoto de voz nunca se hizo para dar.",

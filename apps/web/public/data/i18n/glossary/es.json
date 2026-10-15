@@ -4736,8 +4736,8 @@
   "friend-pendant": {
     "term": "Friend Pendant",
     "metaTitle": "¿Qué es Friend Pendant? Wearable de IA explicado",
-    "metaDescription": "Friend es un colgante de IA de 249 $ que escucha tu día y te escribe como un compañero. Descubre qué hace y en qué se diferencia GAIA.",
-    "definition": "Friend es un colgante de IA de 249 $ que llevas al cuello. Escucha tu día y te escribe como un compañero, pero no gestiona tu correo ni tu calendario.",
+    "metaDescription": "Friend es un colgante de IA de 249 $ (v2) que escucha tu día y te escribe como un compañero. Descubre qué hace y en qué se diferencia GAIA.",
+    "definition": "Friend es un colgante de IA de 249 $ (v2) que llevas al cuello. Escucha tu día y te escribe como un compañero, pero no gestiona tu correo ni tu calendario.",
     "extendedDescription": "Friend siempre va contigo, y esa es toda la propuesta. El colgante oye lo que oyes y te escribe con observaciones, recordatorios y charla. Es compañía, no software.\n\nEl trato es el alcance. Friend conoce tu día porque lo oyó. No lee tu bandeja, no ve tu calendario ni completa tareas en tus herramientas. Cuando algo hay que hacerlo, lo haces tú.\n\nLos compañeros wearables y los asistentes completos responden a necesidades distintas. Uno te acompaña en el día. El otro despeja el trabajo para que lo disfrutes.",
     "keywords": [
       "friend pendant",
@@ -4750,7 +4750,7 @@
     "faqs": [
       {
         "question": "¿Cuánto cuesta Friend?",
-        "answer": "El colgante Friend cuesta 249 $. Escucha durante el día y te habla por texto como un compañero."
+        "answer": "El colgante Friend cuesta 249 $ (v2). Escucha durante el día y te habla por texto como un compañero."
       },
       {
         "question": "¿Friend gestiona correo o tareas?",
@@ -4762,7 +4762,7 @@
     "term": "OMI",
     "metaTitle": "¿Qué es OMI? Colgante de IA abierto explicado",
     "metaDescription": "OMI es un colgante de IA de código abierto que graba charlas para recordarlas luego. Descubre cómo funciona y cómo GAIA actúa sobre el contexto.",
-    "definition": "OMI es un colgante de IA de código abierto que escucha conversaciones y las deja listas para buscarlas luego. El hardware va de 129 $ a 179 $.",
+    "definition": "OMI es un colgante de IA de código abierto que escucha conversaciones y las deja listas para buscarlas luego. El hardware es abierto y barato.",
     "extendedDescription": "OMI apuesta por la vía abierta en wearables. El hardware escucha tu día y el software abierto convierte esas charlas en un registro que controlas y puedes buscar.\n\nAl ser de código abierto, puedes revisar qué hace con tu audio y ejecutar partes por tu cuenta. Esa transparencia es rara en una categoría construida sobre micrófonos siempre activos.\n\nCapturar es solo media tarea. OMI recuerda lo dicho. No redacta el correo de seguimiento, no crea la tarea ni actualiza el calendario. Recordar sin actuar igual te deja la lista pendiente.",
     "keywords": [
       "omi ai",
@@ -4775,7 +4775,7 @@
     "faqs": [
       {
         "question": "¿Cuánto cuesta OMI?",
-        "answer": "El hardware de OMI va de 129 $ a 179 $ según el modelo. El software es de código abierto."
+        "answer": "El hardware de OMI es abierto y barato según el modelo. El software es de código abierto."
       },
       {
         "question": "¿OMI es de verdad de código abierto?",

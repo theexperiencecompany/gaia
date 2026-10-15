@@ -4736,8 +4736,8 @@
   "friend-pendant": {
     "term": "Friend Pendant",
     "metaTitle": "Friend Pendant, c'est quoi ? Wearable IA expliqué",
-    "metaDescription": "Friend est un pendentif IA à 249 $ qui écoute votre journée et vous écrit comme un compagnon. Découvrez ce qu'il fait et comment GAIA diffère.",
-    "definition": "Friend est un pendentif IA à 249 $ que vous portez autour du cou. Il écoute votre journée et vous écrit comme un compagnon, mais il ne gère ni vos e-mails ni votre agenda.",
+    "metaDescription": "Friend est un pendentif IA à 249 $ (v2) qui écoute votre journée et vous écrit comme un compagnon. Découvrez ce qu'il fait et comment GAIA diffère.",
+    "definition": "Friend est un pendentif IA à 249 $ (v2) que vous portez autour du cou. Il écoute votre journée et vous écrit comme un compagnon, mais il ne gère ni vos e-mails ni votre agenda.",
     "extendedDescription": "Friend est toujours avec vous, et c'est tout l'argument. Le pendentif entend ce que vous entendez et répond par texte avec observations, rappels et conversation. C'est de la compagnie, pas du logiciel.\n\nLe compromis, c'est la portée. Friend connaît votre journée parce qu'il l'a entendue. Il ne lit pas votre boîte mail, ne voit pas votre agenda et ne termine aucune tâche dans vos outils. Quand quelque chose doit être fait, c'est vous qui le faites.\n\nLes compagnons portables et les vrais assistants répondent à des besoins différents. L'un vous tient compagnie au fil du jour. L'autre libère le travail pour que vous en profitiez.",
     "keywords": [
       "friend pendant",
@@ -4750,7 +4750,7 @@
     "faqs": [
       {
         "question": "Combien coûte Friend ?",
-        "answer": "Le pendentif Friend coûte 249 $. Il écoute au fil du jour et vous parle par texte comme un compagnon."
+        "answer": "Le pendentif Friend coûte 249 $ (v2). Il écoute au fil du jour et vous parle par texte comme un compagnon."
       },
       {
         "question": "Friend gère-t-il e-mails ou tâches ?",
@@ -4762,7 +4762,7 @@
     "term": "OMI",
     "metaTitle": "OMI, c'est quoi ? Pendentif IA ouvert expliqué",
     "metaDescription": "OMI est un pendentif IA open source qui capte les conversations pour les revoir plus tard. Découvrez comment GAIA agit sur ce contexte.",
-    "definition": "OMI est un pendentif IA open source qui écoute les conversations et les rend cherchables plus tard. Le matériel va de 129 $ à 179 $.",
+    "definition": "OMI est un pendentif IA open source qui écoute les conversations et les rend cherchables plus tard. Le matériel est ouvert et à petit prix.",
     "extendedDescription": "OMI prend la voie ouverte des wearables. Le matériel écoute au fil de votre journée, et le logiciel open source change ces conversations en un enregistrement cherchable que vous contrôlez.\n\nParce qu'il est open source, vous pouvez vérifier ce qu'il fait de votre audio et en exécuter des parties vous-même. Cette transparence est rare dans une catégorie construite sur des micros toujours actifs.\n\nCapter n'est que la moitié du travail. OMI se souvient de ce qui s'est dit. Il ne rédige pas l'e-mail de suivi, ne crée pas la tâche et ne met pas à jour l'agenda. Se souvenir sans agir vous laisse quand même la liste à faire.",
     "keywords": [
       "omi ai",
@@ -4775,7 +4775,7 @@
     "faqs": [
       {
         "question": "Combien coûte OMI ?",
-        "answer": "Le matériel OMI va de 129 $ à 179 $ selon le modèle. Le logiciel est open source."
+        "answer": "Le matériel OMI est ouvert et à petit prix selon le modèle. Le logiciel est open source."
       },
       {
         "question": "OMI est-il vraiment open source ?",

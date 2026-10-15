@@ -10995,19 +10995,19 @@
   "friend-pendant": {
     "name": "Friend",
     "tagline": "De la compagnie pour votre journée",
-    "description": "Friend est un pendentif à 249 $ qui tient compagnie. GAIA est l'assistant complet qui vide votre boîte mail et tient votre agenda.",
+    "description": "Friend est un pendentif à 249 $ (v2) qui tient compagnie. GAIA est l'assistant complet qui vide votre boîte mail et tient votre agenda.",
     "metaTitle": "GAIA vs Friend : vrai assistant vs pendentif",
-    "metaDescription": "Comparez GAIA et le pendentif Friend. Friend est une compagnie à 249 $, GAIA un assistant open source qui fait le travail.",
+    "metaDescription": "Comparez GAIA et le pendentif Friend. Friend est une compagnie à 249 $ (v2), GAIA un assistant open source qui fait le travail.",
     "keywords": [
       "GAIA vs Friend",
       "Friend vs GAIA",
       "Comparatif pendentif Friend",
       "Avis Friend IA"
     ],
-    "intro": "Friend tient compagnie. Le pendentif à 249 $ écoute votre journée et vous écrit comme quelqu'un qui était là. C'est un vrai réconfort, et c'est aussi tout le produit. Quand un e-mail attend une réponse, une réunion doit bouger ou une tâche doit se faire, Friend vous regarde le faire. GAIA est l'autre moitié : un assistant qui lit votre boîte mail, gère votre calendrier et assure le suivi dans plus de 50 outils. La compagnie, c'est agréable. Une journée bouclée, c'est mieux.",
+    "intro": "Friend tient compagnie. Le pendentif à 249 $ (v2) écoute votre journée et vous écrit comme quelqu'un qui était là. C'est un vrai réconfort, et c'est aussi tout le produit. Quand un e-mail attend une réponse, une réunion doit bouger ou une tâche doit se faire, Friend vous regarde le faire. GAIA est l'autre moitié : un assistant qui lit votre boîte mail, gère votre calendrier et assure le suivi dans plus de 50 outils. La compagnie, c'est agréable. Une journée bouclée, c'est mieux.",
     "rows": [
       {
-        "competitor": "Pendentif à 249 $ qui écoute et vous répond par texte",
+        "competitor": "Pendentif à 249 $ (v2) qui écoute et vous répond par texte",
         "feature": "Approche",
         "gaia": "OS de productivité complet qui agit dans votre vie numérique"
       },
@@ -11041,7 +11041,7 @@
       "Vide votre boîte mail au lieu de discuter de votre journée",
       "Gère calendrier, tâches et suivis de bout en bout",
       "Plus de 50 intégrations avec les outils que vous utilisez déjà",
-      "Open source avec un niveau gratuit, sans matériel à 249 $",
+      "Open source avec un niveau gratuit, sans matériel à 249 $ (v2)",
       "Proactif : agit selon le contexte sans qu'on lui demande deux fois"
     ],
     "competitorAdvantages": [
@@ -11055,7 +11055,7 @@
         "question": "Est-ce que Friend gère les tâches ou les e-mails ?"
       },
       {
-        "answer": "Le pendentif Friend coûte 249 $. GAIA propose un niveau gratuit, et son offre payante est un forfait mensuel fixe, sans matériel à acheter.",
+        "answer": "Le pendentif Friend coûte 249 $ (v2). GAIA propose un niveau gratuit, et son offre payante est un forfait mensuel fixe, sans matériel à acheter.",
         "question": "Combien coûte Friend ?"
       }
     ]
@@ -11095,7 +11095,7 @@
         "gaia": "Aucun matériel : web, bureau, mobile et applis de messagerie"
       },
       {
-        "competitor": "Open source, matériel de 129 $ à 179 $",
+        "competitor": "Open source avec matériel à petit prix",
         "feature": "Ouverture et prix",
         "gaia": "Open source et auto-hébergeable, avec un niveau gratuit"
       },
@@ -11114,7 +11114,7 @@
     ],
     "competitorAdvantages": [
       "Vraiment open source, inspectable jusqu'au firmware",
-      "Entrée abordable : matériel de 129 $ à 179 $"
+      "Entrée abordable : matériel ouvert à petit prix"
     ],
     "verdict": "Choisissez OMI si vous voulez un enregistrement ouvert et portable de vos conversations. Choisissez GAIA si vous voulez un logiciel ouvert qui transforme le contexte en travail terminé.",
     "faqs": [
@@ -11140,30 +11140,30 @@
       "Comparatif assistant Gemini",
       "Avis assistant Android Gemini"
     ],
-    "intro": "Gemini Assistant est bon pour les tâches de téléphone : appeler maman, mettre un minuteur, lancer de la musique, répondre à une question rapide. Personne ne le conteste. La confusion commence quand on attend de lui des tâches de travail. Il ne peut pas lire votre boîte mail, vous briefer avant une réunion ni faire avancer un projet entre Slack, Notion et les e-mails. GAIA vit dans cet écart. Il gère la journée de travail dans plus de 50 outils pendant que votre assistant de téléphone continue de gérer le téléphone.",
+    "intro": "Gemini Assistant est bon pour les tâches de téléphone : appeler maman, mettre un minuteur, lancer de la musique, répondre à une question rapide. Personne ne le conteste. La confusion commence quand on attend de lui des tâches de travail. Dans Gmail, il résume les fils et répond aux questions de votre boîte, mais il ne peut pas vous briefer avant une réunion ni faire avancer un projet entre Slack, Notion et les e-mails. GAIA vit dans cet écart. Il gère la journée de travail dans plus de 50 outils pendant que votre assistant de téléphone continue de gérer le téléphone.",
     "rows": [
       {
-        "competitor": "Assistant vocal intégré aux téléphones Android",
+        "competitor": "Assistant intégré sur Android et iOS, le plus fort dans les apps Google",
         "feature": "Approche",
         "gaia": "OS de productivité complet pour toute votre journée de travail"
       },
       {
-        "competitor": "Appels, minuteurs, musique, réglages, réponses rapides",
+        "competitor": "Appels, minuteurs, musique, réglages, réponses rapides, plus résumés et brouillons Gmail dans Workspace",
         "feature": "Ce qu'il fait",
         "gaia": "Tri des e-mails, briefings, tâches, planification, flux de travail"
       },
       {
-        "competitor": "Aucun contexte de boîte mail ni de projet",
+        "competitor": "Lit et résume dans Gmail et Workspace, mais n'agit pas entre Slack, Notion ni outils hors Google",
         "feature": "Contexte de travail",
         "gaia": "Lit Gmail et Calendar, relie les deux à chaque tâche"
       },
       {
-        "competitor": "Oublie chaque conversation dès qu'elle se termine",
+        "competitor": "Se souvient dans les apps Google, mais sans contexte projet entre les outils",
         "feature": "Mémoire",
         "gaia": "Mémoire persistante en graphe sur des semaines et des outils"
       },
       {
-        "competitor": "Téléphones Android uniquement",
+        "competitor": "Android et iOS, au mieux dans Google",
         "feature": "Plateformes",
         "gaia": "Web, bureau, mobile, WhatsApp, Telegram, Slack, Discord"
       },

@@ -3797,7 +3797,7 @@
     "name": "Friend",
     "tagline": "Behalten Sie die Gesellschaft. Fügen Sie die Fähigkeit hinzu.",
     "metaTitle": "Beste Friend-Alternative: Assistent der handelt",
-    "metaDescription": "Wollen Sie mehr als einen Begleiter für 249 $? GAIA ist die offene Friend-Alternative die Postfach, Kalender und Aufgaben für Sie leert.",
+    "metaDescription": "Wollen Sie mehr als einen Begleiter für 249 $ (v2)? GAIA ist die offene Friend-Alternative die Postfach, Kalender und Aufgaben für Sie leert.",
     "keywords": [
       "friend anhänger alternative",
       "friend ki alternative",
@@ -3807,7 +3807,7 @@
       "begleiter alternative zu friend"
     ],
     "painPoints": [
-      "249 $ kaufen Gesellschaft, keine Fähigkeit: nichts wird getan",
+      "249 $ (v2) kaufen Gesellschaft, keine Fähigkeit: nichts wird getan",
       "Keine E-Mail-, Kalender- oder Aufgaben-Anbindung",
       "Geschlossene Hardware und Software ohne selbst gehosteten Weg",
       "Ständig aktives Mikrofon in der Cloud eines anderen",
@@ -3818,7 +3818,7 @@
       "Sich alles selbst merken nachdem Friend darüber chattete",
       "Pläne von Texten von Hand in Ihren Kalender kopieren",
       "Postfach- und Aufgabenarbeit die Friend nicht berühren kann",
-      "249 $ zahlen für Gesellschaft ohne Fähigkeit"
+      "249 $ (v2) zahlen für Gesellschaft ohne Fähigkeit"
     ],
     "gaiaAdvantages": [
       "Leert Ihr Postfach statt über Ihren Tag zu chatten",
@@ -3839,7 +3839,7 @@
         "question": "Macht Friend echte Arbeit?"
       },
       {
-        "answer": "Der Friend-Anhänger kostet 249 $ plus Ihre Zeit in der Sie alles selbst machen. GAIA hat eine kostenlose Stufe, und Pro ist ein fester Preis von ${{PRO_MONTHLY_PRICE}} im Monat.",
+        "answer": "Der Friend-Anhänger kostet 249 $ (v2) plus Ihre Zeit in der Sie alles selbst machen. GAIA hat eine kostenlose Stufe, und Pro ist ein fester Preis von ${{PRO_MONTHLY_PRICE}} im Monat.",
         "question": "Was spare ich beim Wechsel von Friend?"
       },
       {
@@ -3917,10 +3917,10 @@
       "bester gemini assistant ersatz"
     ],
     "painPoints": [
-      "Gebaut für Geräteaufgaben, nicht Arbeit: kein Postfach- oder Projektkontext",
-      "Vergisst alles zwischen Sprachsitzungen",
+      "Gebaut für Geräteaufgaben zuerst: fasst in Gmail zusammen, arbeitet aber nicht über Slack, Notion oder Nicht-Google-Tools",
+      "Trägt keinen Projektkontext zwischen Tools",
       "Erreicht weder Slack, Notion, Linear noch Ihre Aufgaben-Tools",
-      "Geschlossen und nur Android, an Ihr Google-Konto gebunden",
+      "Geschlossen, Android und iOS, an Ihr Google-Konto gebunden",
       "Mehrstufige Anfragen fallen nach Schritt eins auseinander"
     ],
     "whyPeopleLook": "Niemand kündigt seinen Telefonassistenten; man wächst heraus. Das Muster ist immer gleich: Timer und Anrufe laufen gut, dann bitten Sie ihn Sie auf einen Termin vorzubereiten oder Ihr Postfach zu leeren und er starrt leer zurück. Wer eine Gemini Assistant Alternative sucht, will eine zweite Schicht für Arbeit: Gedächtnis, Tools und Nachverfolgung die eine Sprachfernbedienung nie geben sollte.",

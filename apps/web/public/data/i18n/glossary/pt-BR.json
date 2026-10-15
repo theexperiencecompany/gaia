@@ -4736,8 +4736,8 @@
   "friend-pendant": {
     "term": "Friend Pendant",
     "metaTitle": "O que é Friend Pendant? Wearable de IA",
-    "metaDescription": "Friend é um pingente de IA de US$ 249 que ouve seu dia e escreve como um companheiro. Saiba o que faz e como GAIA difere.",
-    "definition": "Friend é um pingente de IA de US$ 249 que você usa no pescoço. Ouve seu dia e escreve como um companheiro, mas não gerencia seu e-mail nem sua agenda.",
+    "metaDescription": "Friend é um pingente de IA de US$ 249 (v2) que ouve seu dia e escreve como um companheiro. Saiba o que faz e como GAIA difere.",
+    "definition": "Friend é um pingente de IA de US$ 249 (v2) que você usa no pescoço. Ouve seu dia e escreve como um companheiro, mas não gerencia seu e-mail nem sua agenda.",
     "extendedDescription": "Friend está sempre com você, e essa é toda a proposta. O pingente ouve o que você ouve e responde por texto com observações, lembretes e conversa. É companhia, não software.\n\nA troca é o alcance. Friend conhece seu dia porque ouviu. Não lê sua caixa, não vê sua agenda nem conclui tarefas nas suas ferramentas. Quando algo precisa ser feito, é você quem faz.\n\nCompanheiros wearables e assistentes completos atendem necessidades diferentes. Um acompanha seu dia. O outro limpa o trabalho para você aproveitar.",
     "keywords": [
       "friend pendant",
@@ -4750,7 +4750,7 @@
     "faqs": [
       {
         "question": "Quanto custa Friend?",
-        "answer": "O pingente Friend custa US$ 249. Ouve ao longo do dia e fala por texto como um companheiro."
+        "answer": "O pingente Friend custa US$ 249 (v2). Ouve ao longo do dia e fala por texto como um companheiro."
       },
       {
         "question": "Friend gerencia e-mail ou tarefas?",
@@ -4762,7 +4762,7 @@
     "term": "OMI",
     "metaTitle": "O que é OMI? Pingente de IA aberto",
     "metaDescription": "OMI é um pingente de IA open source que grava conversas para lembrar depois. Saiba como funciona e como GAIA age sobre o contexto.",
-    "definition": "OMI é um pingente de IA open source que ouve conversas e deixa para buscar depois. O hardware vai de US$ 129 a US$ 179.",
+    "definition": "OMI é um pingente de IA open source que ouve conversas e deixa para buscar depois. O hardware é aberto e barato.",
     "extendedDescription": "OMI aposta na via aberta em wearables. O hardware ouve seu dia e o software aberto vira essas conversas em um registro pesquisável que você controla.\n\nPor ser open source, você pode conferir o que faz com seu áudio e rodar partes por conta própria. Essa transparência é rara numa categoria feita de microfones sempre ligados.\n\nCapturar é só meia tarefa. OMI lembra o que foi dito. Não redige o e-mail de follow-up, não cria a tarefa nem atualiza a agenda. Lembrar sem agir igual deixa a lista pendente.",
     "keywords": [
       "omi ai",
@@ -4775,7 +4775,7 @@
     "faqs": [
       {
         "question": "Quanto custa OMI?",
-        "answer": "O hardware OMI vai de US$ 129 a US$ 179 conforme o modelo. O software é open source."
+        "answer": "O hardware OMI é aberto e barato conforme o modelo. O software é open source."
       },
       {
         "question": "OMI é mesmo open source?",

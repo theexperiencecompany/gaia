@@ -3797,7 +3797,7 @@
     "name": "Friend",
     "tagline": "Gardez la compagnie. Ajoutez la capacité.",
     "metaTitle": "Meilleure alternative à Friend : un assistant qui agit",
-    "metaDescription": "Envie de plus qu'une compagnie à 249 $ ? GAIA est l'alternative ouverte à Friend qui vide boîte mail, agenda et tâches pour vous.",
+    "metaDescription": "Envie de plus qu'une compagnie à 249 $ (v2) ? GAIA est l'alternative ouverte à Friend qui vide boîte mail, agenda et tâches pour vous.",
     "keywords": [
       "alternative pendentif friend",
       "alternative friend ia",
@@ -3807,7 +3807,7 @@
       "alternative compagnie friend"
     ],
     "painPoints": [
-      "249 $ achètent de la compagnie, pas de la capacité : rien ne se fait",
+      "249 $ (v2) achètent de la compagnie, pas de la capacité : rien ne se fait",
       "Aucune connexion e-mail, calendrier ou tâche",
       "Matériel et logiciel fermés sans voie auto-hébergée",
       "Micro toujours allumé dans le cloud de quelqu'un d'autre",
@@ -3818,7 +3818,7 @@
       "Tout retenir vous-même après que Friend en a discuté",
       "Copier des plans des textos vers votre calendrier à la main",
       "Travail de boîte mail et de tâches que Friend ne peut toucher",
-      "Payer 249 $ pour de la compagnie sans capacité"
+      "Payer 249 $ (v2) pour de la compagnie sans capacité"
     ],
     "gaiaAdvantages": [
       "Vide votre boîte mail au lieu de discuter de votre journée",
@@ -3839,7 +3839,7 @@
         "question": "Est-ce que Friend fait un vrai travail ?"
       },
       {
-        "answer": "Le pendentif Friend coûte 249 $ plus votre temps à tout faire vous-même. GAIA a un niveau gratuit, et Pro est un forfait fixe de ${{PRO_MONTHLY_PRICE}}/mois.",
+        "answer": "Le pendentif Friend coûte 249 $ (v2) plus votre temps à tout faire vous-même. GAIA a un niveau gratuit, et Pro est un forfait fixe de ${{PRO_MONTHLY_PRICE}}/mois.",
         "question": "Qu'est-ce que je gagne à quitter Friend ?"
       },
       {
@@ -3917,10 +3917,10 @@
       "meilleur remplacement gemini assistant"
     ],
     "painPoints": [
-      "Conçu pour les tâches de l'appareil, pas le travail : aucun contexte de boîte mail ni de projet",
-      "Oublie tout entre les sessions vocales",
+      "Conçu pour les tâches de l'appareil d'abord : résume dans Gmail mais ne travaille pas entre Slack, Notion ni outils hors Google",
+      "Sans contexte projet entre les outils",
       "N'atteint ni Slack, ni Notion, ni Linear, ni vos outils de tâches",
-      "Fermé et Android uniquement, lié à votre compte Google",
+      "Fermé, Android et iOS, lié à votre compte Google",
       "Les demandes en plusieurs étapes cassent après la première"
     ],
     "whyPeopleLook": "Personne ne quitte son assistant de téléphone ; on le dépasse. Le schéma est toujours le même : minuteurs et appels marchent bien, puis vous lui demandez de vous préparer pour une réunion ou de vider votre boîte mail et il vous regarde sans comprendre. Chercher une alternative à Gemini Assistant, c'est vouloir une seconde couche pour le travail : mémoire, outils et suivi qu'une télécommande vocale n'a jamais été conçue pour donner.",

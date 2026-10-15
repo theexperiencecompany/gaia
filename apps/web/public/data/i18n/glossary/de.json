@@ -4736,8 +4736,8 @@
   "friend-pendant": {
     "term": "Friend Pendant",
     "metaTitle": "Was ist Friend Pendant? KI-Wearable erklärt",
-    "metaDescription": "Friend ist ein KI-Anhänger für 249 $, der Ihren Tag hört und Ihnen wie ein Begleiter schreibt. Erfahren Sie, was er kann und wie sich GAIA unterscheidet.",
-    "definition": "Friend ist ein KI-Anhänger für 249 $, den Sie um den Hals tragen. Er hört Ihren Tag mit und schreibt Ihnen wie ein Begleiter, verwaltet aber weder Ihre E-Mails noch Ihren Kalender.",
+    "metaDescription": "Friend ist ein KI-Anhänger für 249 $ (v2), der Ihren Tag hört und Ihnen wie ein Begleiter schreibt. Erfahren Sie, was er kann und wie sich GAIA unterscheidet.",
+    "definition": "Friend ist ein KI-Anhänger für 249 $ (v2), den Sie um den Hals tragen. Er hört Ihren Tag mit und schreibt Ihnen wie ein Begleiter, verwaltet aber weder Ihre E-Mails noch Ihren Kalender.",
     "extendedDescription": "Friend ist immer bei Ihnen, und das ist das ganze Versprechen. Der Anhänger hört, was Sie hören, und meldet sich per Text mit Beobachtungen, Erinnerungen und Gesprächen. Es ist Gesellschaft, keine Software.\n\nDer Handel ist der Umfang. Friend kennt Ihren Tag, weil er ihn gehört hat. Es liest weder Ihr Postfach, noch sieht es Ihren Kalender oder erledigt Aufgaben in Ihren Tools. Wenn etwas getan werden muss, tun Sie es selbst.\n\nTragbare Begleiter und volle Assistenten beantworten verschiedene Bedürfnisse. Einer leistet Ihnen Gesellschaft durch den Tag. Der andere räumt die Arbeit weg, damit Sie ihn genießen können.",
     "keywords": [
       "friend pendant",
@@ -4750,7 +4750,7 @@
     "faqs": [
       {
         "question": "Wie viel kostet Friend?",
-        "answer": "Der Friend-Anhänger kostet 249 $. Er hört über den Tag mit und spricht per Text mit Ihnen wie ein Begleiter."
+        "answer": "Der Friend-Anhänger kostet 249 $ (v2). Er hört über den Tag mit und spricht per Text mit Ihnen wie ein Begleiter."
       },
       {
         "question": "Verwaltet Friend E-Mails oder Aufgaben?",
@@ -4762,7 +4762,7 @@
     "term": "OMI",
     "metaTitle": "Was ist OMI? Offener KI-Anhänger erklärt",
     "metaDescription": "OMI ist ein offener KI-Anhänger, der Gespräche für späteres Wiederfinden mitschneidet. Erfahren Sie, wie er arbeitet und wie GAIA auf Kontext handelt.",
-    "definition": "OMI ist ein offener KI-Anhänger, der Gespräche mithört und sie später durchsuchbar macht. Die Hardware kostet von 129 $ bis 179 $.",
+    "definition": "OMI ist ein offener KI-Anhänger, der Gespräche mithört und sie später durchsuchbar macht. Die Hardware ist günstige Open-Source-Hardware.",
     "extendedDescription": "OMI wählt den offenen Weg bei Wearables. Die Hardware hört über Ihren Tag mit, und die offene Software verwandelt diese Gespräche in einen durchsuchbaren Datensatz, den Sie kontrollieren.\n\nWeil es Open Source ist, können Sie prüfen, was es mit Ihrem Audio tut, und Teile selbst betreiben. Diese Transparenz ist selten in einer Kategorie, die auf ständig aktiven Mikrofonen gebaut ist.\n\nMitschneiden ist nur die halbe Arbeit. OMI erinnert sich an das Gesagte. Es entwirft weder die Nachfass-E-Mail, noch erstellt es die Aufgabe oder aktualisiert den Kalender. Erinnerung ohne Handlung lässt Ihnen trotzdem die To-do-Liste.",
     "keywords": [
       "omi ki",
@@ -4775,7 +4775,7 @@
     "faqs": [
       {
         "question": "Wie viel kostet OMI?",
-        "answer": "Die OMI-Hardware kostet je nach Modell von 129 $ bis 179 $. Die Software ist Open Source."
+        "answer": "Die OMI-Hardware ist je nach Modell günstige Open-Source-Hardware. Die Software ist Open Source."
       },
       {
         "question": "Ist OMI wirklich Open Source?",

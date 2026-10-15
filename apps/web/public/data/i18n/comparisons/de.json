@@ -10995,19 +10995,19 @@
   "friend-pendant": {
     "name": "Friend",
     "tagline": "Gesellschaft für Ihren Tag",
-    "description": "Friend ist ein Anhänger für 249 $ für Gesellschaft. GAIA ist der volle Assistent, der Ihr Postfach leert und Ihren Kalender führt.",
+    "description": "Friend ist ein Anhänger für 249 $ (v2) für Gesellschaft. GAIA ist der volle Assistent, der Ihr Postfach leert und Ihren Kalender führt.",
     "metaTitle": "GAIA vs Friend: Vollassistent vs Anhänger",
-    "metaDescription": "Vergleichen Sie GAIA und den Friend-Anhänger. Friend ist Gesellschaft für 249 $, GAIA ist ein Open-Source-Assistent der die Arbeit macht.",
+    "metaDescription": "Vergleichen Sie GAIA und den Friend-Anhänger. Friend ist Gesellschaft für 249 $ (v2), GAIA ist ein Open-Source-Assistent der die Arbeit macht.",
     "keywords": [
       "GAIA vs Friend",
       "Friend vs GAIA",
       "Friend Anhänger Vergleich",
       "Friend KI Test"
     ],
-    "intro": "Friend leistet Gesellschaft. Der Anhänger für 249 $ hört durch Ihren Tag und schreibt Ihnen wie jemand der dabei war. Das ist echter Trost, und es ist auch das ganze Produkt. Wenn eine E-Mail Antwort braucht, ein Termin verschoben oder eine Aufgabe erledigt werden muss, schaut Friend Ihnen dabei zu. GAIA ist die andere Hälfte: ein Assistent der Ihr Postfach liest, Ihren Kalender führt und in über 50 Tools nachhält. Gesellschaft ist schön. Erledigte Arbeit ist schöner.",
+    "intro": "Friend leistet Gesellschaft. Der Anhänger für 249 $ (v2) hört durch Ihren Tag und schreibt Ihnen wie jemand der dabei war. Das ist echter Trost, und es ist auch das ganze Produkt. Wenn eine E-Mail Antwort braucht, ein Termin verschoben oder eine Aufgabe erledigt werden muss, schaut Friend Ihnen dabei zu. GAIA ist die andere Hälfte: ein Assistent der Ihr Postfach liest, Ihren Kalender führt und in über 50 Tools nachhält. Gesellschaft ist schön. Erledigte Arbeit ist schöner.",
     "rows": [
       {
-        "competitor": "Anhänger für 249 $, der zuhört und per Text antwortet",
+        "competitor": "Anhänger für 249 $ (v2), der zuhört und per Text antwortet",
         "feature": "Ansatz",
         "gaia": "Volles Produktivitäts-OS das über Ihr digitales Leben handelt"
       },
@@ -11041,7 +11041,7 @@
       "Leert Ihr Postfach statt über Ihren Tag zu chatten",
       "Führt Kalender, Aufgaben und Nachverfolgung durchgehend",
       "Über 50 Integrationen mit Tools die Sie schon nutzen",
-      "Open Source mit kostenloser Stufe, keine 249 $ Hardware nötig",
+      "Open Source mit kostenloser Stufe, keine 249 $ (v2) Hardware nötig",
       "Proaktiv: handelt aus Kontext ohne zweimal gefragt zu werden"
     ],
     "competitorAdvantages": [
@@ -11055,7 +11055,7 @@
         "question": "Erledigt Friend Aufgaben oder E-Mails?"
       },
       {
-        "answer": "Der Friend-Anhänger kostet 249 $. GAIA hat eine kostenlose Stufe, und der Bezahlplan ist ein fester Monatspreis ohne Hardwarekauf.",
+        "answer": "Der Friend-Anhänger kostet 249 $ (v2). GAIA hat eine kostenlose Stufe, und der Bezahlplan ist ein fester Monatspreis ohne Hardwarekauf.",
         "question": "Was kostet Friend?"
       }
     ]
@@ -11095,7 +11095,7 @@
         "gaia": "Keine Hardware: Web, Desktop, Mobil und Messenger"
       },
       {
-        "competitor": "Open Source, Hardware von 129 $ bis 179 $",
+        "competitor": "Open Source mit günstiger Hardware",
         "feature": "Offenheit und Preis",
         "gaia": "Open Source und selbst hostbar, mit kostenloser Stufe"
       },
@@ -11114,7 +11114,7 @@
     ],
     "competitorAdvantages": [
       "Ehrlich Open Source, prüfbar bis zur Firmware",
-      "Günstiger Einstieg: Hardware von 129 $ bis 179 $"
+      "Günstiger Einstieg: günstige Open-Source-Hardware"
     ],
     "verdict": "Wählen Sie OMI wenn Sie eine offene, tragbare Aufzeichnung Ihrer Gespräche wollen. Wählen Sie GAIA wenn Sie offene Software wollen die Kontext in erledigte Arbeit verwandelt.",
     "faqs": [
@@ -11140,30 +11140,30 @@
       "Gemini Assistent Vergleich",
       "Gemini Android Assistent Test"
     ],
-    "intro": "Gemini Assistant ist gut in Telefonjobs: Mama anrufen, Timer stellen, Musik abspielen, eine kurze Frage beantworten. Das bestreitet niemand. Die Verwirrung beginnt wenn man Arbeitsjobs erwartet. Es kann Ihr Postfach nicht lesen, Sie nicht auf einen Termin vorbereiten und kein Projekt über Slack, Notion und E-Mail am Laufen halten. GAIA lebt in dieser Lücke. Es führt den Arbeitstag über 50 plus Tools während Ihr Telefonassistent weiter das Telefon bedient.",
+    "intro": "Gemini Assistant ist gut in Telefonjobs: Mama anrufen, Timer stellen, Musik abspielen, eine kurze Frage beantworten. Das bestreitet niemand. Die Verwirrung beginnt wenn man Arbeitsjobs erwartet. In Gmail fasst es Threads zusammen und beantwortet Postfachfragen, aber es kann Sie nicht auf einen Termin vorbereiten und kein Projekt über Slack, Notion und E-Mail am Laufen halten. GAIA lebt in dieser Lücke. Es führt den Arbeitstag über 50 plus Tools während Ihr Telefonassistent weiter das Telefon bedient.",
     "rows": [
       {
-        "competitor": "Eingebauter Sprachassistent für Android-Telefone",
+        "competitor": "Eingebauter Assistent für Android und iOS, am stärksten in Google-Apps",
         "feature": "Ansatz",
         "gaia": "Volles Produktivitäts-OS für Ihren ganzen Arbeitstag"
       },
       {
-        "competitor": "Anrufe, Timer, Musik, Geräteeinstellungen, kurze Antworten",
+        "competitor": "Anrufe, Timer, Musik, Geräteeinstellungen, kurze Antworten, plus Gmail-Zusammenfassungen und Entwürfe in Workspace",
         "feature": "Was es tut",
         "gaia": "E-Mail-Triage, Briefings, Aufgaben, Planung, Workflows"
       },
       {
-        "competitor": "Kein Postfach- oder Projektkontext",
+        "competitor": "Liest und fasst in Gmail und Workspace zusammen, handelt aber nicht über Slack, Notion oder Nicht-Google-Tools hinweg",
         "feature": "Arbeitskontext",
         "gaia": "Liest Gmail und Kalender, verknüpft beides mit jeder Aufgabe"
       },
       {
-        "competitor": "Vergisst jedes Gespräch wenn es endet",
+        "competitor": "Erinnert sich in Google-Apps, trägt aber keinen Projektkontext über Tools hinweg",
         "feature": "Gedächtnis",
         "gaia": "Dauerhaftes graphbasiertes Gedächtnis über Wochen und Tools"
       },
       {
-        "competitor": "Nur Android-Telefone",
+        "competitor": "Android und iOS, am besten in Google-Apps",
         "feature": "Plattformen",
         "gaia": "Web, Desktop, Mobil, WhatsApp, Telegram, Slack, Discord"
       },
@@ -11187,7 +11187,7 @@
     "verdict": "Behalten Sie Gemini Assistant für die Telefonjobs die es gut kann. Wählen Sie GAIA für die Arbeitsjobs: Postfach, Kalender, Aufgaben und alles was über eine App hinausgeht.",
     "faqs": [
       {
-        "answer": "Nein. Gemini Assistant macht Geräteaufgaben per Stimme. Es sortiert kein Postfach, bereitet keine Besprechungen vor und führt keine Projekte über Tools.",
+        "answer": "Nein. Gemini Assistant macht Geräteaufgaben per Stimme. In Gmail fasst es zusammen, bereitet aber keine Besprechungen vor und führt keine Projekte über Tools hinweg.",
         "question": "Kann Gemini Assistant meine E-Mails verwalten?"
       },
       {

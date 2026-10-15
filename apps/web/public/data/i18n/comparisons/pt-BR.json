@@ -10995,19 +10995,19 @@
   "friend-pendant": {
     "name": "Friend",
     "tagline": "Companhia para o seu dia",
-    "description": "Friend é um pingente de US$ 249 para fazer companhia. GAIA é o assistente completo que zera sua caixa e cuida da sua agenda.",
+    "description": "Friend é um pingente de US$ 249 (v2) para fazer companhia. GAIA é o assistente completo que zera sua caixa e cuida da sua agenda.",
     "metaTitle": "GAIA vs Friend: assistente total vs pingente",
-    "metaDescription": "Compare GAIA e o pingente Friend. Friend é companhia de US$ 249 para o dia e GAIA é um assistente aberto que faz o trabalho.",
+    "metaDescription": "Compare GAIA e o pingente Friend. Friend é companhia de US$ 249 (v2) para o dia e GAIA é um assistente aberto que faz o trabalho.",
     "keywords": [
       "GAIA vs Friend",
       "Friend vs GAIA",
       "Comparativo do pingente Friend",
       "Avaliação do Friend IA"
     ],
-    "intro": "Friend faz companhia. O pingente de US$ 249 ouve seu dia e escreve como quem esteve lá. É um conforto real, e também é o produto inteiro. Quando um e-mail precisa de resposta, uma reunião precisa mudar ou uma tarefa precisa ser feita, Friend assiste você fazer. GAIA é a outra metade: um assistente que lê sua caixa, cuida da sua agenda e acompanha em mais de 50 ferramentas. Companhia é bom. Conta zerada é melhor.",
+    "intro": "Friend faz companhia. O pingente de US$ 249 (v2) ouve seu dia e escreve como quem esteve lá. É um conforto real, e também é o produto inteiro. Quando um e-mail precisa de resposta, uma reunião precisa mudar ou uma tarefa precisa ser feita, Friend assiste você fazer. GAIA é a outra metade: um assistente que lê sua caixa, cuida da sua agenda e acompanha em mais de 50 ferramentas. Companhia é bom. Conta zerada é melhor.",
     "rows": [
       {
-        "competitor": "Pingente de US$ 249 que ouve e responde por texto",
+        "competitor": "Pingente de US$ 249 (v2) que ouve e responde por texto",
         "feature": "Proposta",
         "gaia": "SO de produtividade total que age na sua vida digital"
       },
@@ -11041,7 +11041,7 @@
       "Zera sua caixa em vez de só conversar sobre seu dia",
       "Cuida de agenda, tarefas e acompanhamentos de ponta a ponta",
       "Mais de 50 integrações com as ferramentas que você já usa",
-      "Open source com plano grátis, sem hardware de US$ 249",
+      "Open source com plano grátis, sem hardware de US$ 249 (v2)",
       "Proativo: age pelo contexto sem pedirem duas vezes"
     ],
     "competitorAdvantages": [
@@ -11055,7 +11055,7 @@
         "question": "Friend cuida de tarefas ou e-mail?"
       },
       {
-        "answer": "O pingente Friend custa US$ 249. GAIA tem plano grátis e o plano pago é mensalidade fixa, sem hardware para comprar.",
+        "answer": "O pingente Friend custa US$ 249 (v2). GAIA tem plano grátis e o plano pago é mensalidade fixa, sem hardware para comprar.",
         "question": "Quanto custa Friend?"
       }
     ]
@@ -11095,7 +11095,7 @@
         "gaia": "Sem hardware: web, desktop, celular e mensageiros"
       },
       {
-        "competitor": "Open source, hardware de US$ 129 a US$ 179",
+        "competitor": "Open source com hardware barato",
         "feature": "Abertura e preço",
         "gaia": "Open source e auto-hospedável, com plano grátis"
       },
@@ -11114,7 +11114,7 @@
     ],
     "competitorAdvantages": [
       "Open source de verdade, auditável até o firmware",
-      "Entrada barata: hardware de US$ 129 a US$ 179"
+      "Entrada barata: hardware aberto e barato"
     ],
     "verdict": "Escolha OMI se quer um registro aberto e vestível das suas conversas. Escolha GAIA se quer software aberto que vira contexto em trabalho concluído.",
     "faqs": [
@@ -11140,30 +11140,30 @@
       "Comparativo do assistente Gemini",
       "Avaliação do assistente Android Gemini"
     ],
-    "intro": "Gemini Assistant é bom em tarefas de telefone: ligar para a mãe, pôr um timer, tocar música, responder uma pergunta rápida. Ninguém discute. A confusão começa quando esperam tarefas de trabalho. Ele não lê sua caixa, não prepara você para reunião nem mantém um projeto andando entre Slack, Notion e e-mail. GAIA vive nesse vão. Cuida da jornada em mais de 50 ferramentas enquanto seu assistente do telefone segue com o telefone.",
+    "intro": "Gemini Assistant é bom em tarefas de telefone: ligar para a mãe, pôr um timer, tocar música, responder uma pergunta rápida. Ninguém discute. A confusão começa quando esperam tarefas de trabalho. No Gmail, resume conversas e responde perguntas da sua caixa, mas não prepara você para reunião nem mantém um projeto andando entre Slack, Notion e e-mail. GAIA vive nesse vão. Cuida da jornada em mais de 50 ferramentas enquanto seu assistente do telefone segue com o telefone.",
     "rows": [
       {
-        "competitor": "Assistente de voz integrado em telefones Android",
+        "competitor": "Assistente integrado em Android e iOS, mais forte dentro do Google",
         "feature": "Proposta",
         "gaia": "SO de produtividade total para sua jornada inteira"
       },
       {
-        "competitor": "Chamadas, timers, música, ajustes e respostas rápidas",
+        "competitor": "Chamadas, timers, música, ajustes, respostas rápidas, mais resumos e rascunhos do Gmail no Workspace",
         "feature": "O que faz",
         "gaia": "Triagem de e-mail, briefings, tarefas, agenda e fluxos"
       },
       {
-        "competitor": "Sem contexto de caixa nem de projetos",
+        "competitor": "Lê e resume no Gmail e Workspace, mas não age entre Slack, Notion ou ferramentas fora do Google",
         "feature": "Contexto de trabalho",
         "gaia": "Lê Gmail e Agenda, conecta os dois a cada tarefa"
       },
       {
-        "competitor": "Esquece cada conversa ao terminar",
+        "competitor": "Lembra dentro dos apps do Google, mas sem contexto de projeto entre ferramentas",
         "feature": "Memória",
         "gaia": "Memória persistente em grafo por semanas e ferramentas"
       },
       {
-        "competitor": "Só telefones Android",
+        "competitor": "Android e iOS, melhor dentro do Google",
         "feature": "Plataformas",
         "gaia": "Web, desktop, celular, WhatsApp, Telegram, Slack e Discord"
       },
