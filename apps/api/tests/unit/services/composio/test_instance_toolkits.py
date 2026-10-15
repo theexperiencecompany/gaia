@@ -31,6 +31,8 @@ from app.services.composio.instance_toolkits import (
     save_toolkit,
 )
 from app.services.integrations.integration_connection_service import build_integrations_config
+from app.services.runtime.config_updates import INSTANCE_TOOLKITS_SCOPE
+from tests.helpers import captured_wide_event
 
 ATTIO = InstanceToolkitRecord(
     slug="attio",
@@ -46,6 +48,7 @@ class FakeInstanceSettings:
     def __init__(self) -> None:
         self.values: dict[str, dict[str, object]] = {}
         self.reads = 0
+        self.published: list[str] = []
 
     async def find_by_key(self, key: str) -> InstanceSettingsDocument | None:
         self.reads += 1
@@ -61,10 +64,9 @@ class FakeInstanceSettings:
 def store(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeInstanceSettings]:
     fake = FakeInstanceSettings()
     monkeypatch.setattr(instance_toolkits, "instance_settings_repository", fake)
-    published: list[str] = []
 
     async def _publish(scope: str) -> None:
-        published.append(scope)
+        fake.published.append(scope)
 
     monkeypatch.setattr(instance_toolkits, "publish_config_update", _publish)
     yield fake
@@ -126,12 +128,17 @@ async def test_a_stored_toolkit_now_defined_in_code_yields_to_the_code_entry(
     gmail = ATTIO.model_copy(update={"slug": "gmail", "name": "Gmail (instance)"})
     store.values[TOOLKITS_SETTING_KEY] = {"gmail": gmail.model_dump(), "attio": ATTIO.model_dump()}
 
-    await load_instance_toolkits()
+    async with captured_wide_event() as event:
+        await load_instance_toolkits()
 
     resolved = get_integration_by_id("gmail")
     assert resolved is not None
     assert resolved.origin == "code"
     assert get_integration_by_id("attio") is not None
+    (warning,) = event["warnings"]
+    assert warning["msg"].endswith("Instance toolkits now defined in code; using the code entries")
+    assert warning["toolkits"] == ["gmail"]
+    assert event["instance_toolkits"] == {"loaded": 1}
 
 
 def test_installing_an_integration_that_shadows_a_code_one_is_refused() -> None:
@@ -147,18 +154,53 @@ async def test_save_then_remove_round_trips_through_the_store(
     saved = await save_toolkit(ATTIO)
 
     assert saved.id == "attio"
+    assert store.published == [INSTANCE_TOOLKITS_SCOPE]
     assert get_integration_by_id("attio") is not None
     assert await remove_toolkit("attio") is True
     assert get_integration_by_id("attio") is None
     assert await remove_toolkit("attio") is False
 
 
-async def test_saving_a_code_toolkit_is_refused(
-    store: FakeInstanceSettings, selfhost: None
+@pytest.mark.parametrize("slug", ["slack", "calcom", "cal", "CAL"])
+async def test_saving_a_code_toolkit_by_its_id_or_toolkit_in_any_case_is_refused(
+    store: FakeInstanceSettings, selfhost: None, slug: str
 ) -> None:
     with pytest.raises(ValueError, match="built-in"):
-        await save_toolkit(ATTIO.model_copy(update={"slug": "slack"}))
+        await save_toolkit(ATTIO.model_copy(update={"slug": slug}))
     assert TOOLKITS_SETTING_KEY not in store.values
+
+
+async def test_gaia_cloud_refuses_to_save_a_toolkit(
+    store: FakeInstanceSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "production")
+
+    with pytest.raises(
+        RuntimeError, match="^This deployment does not enable Composio toolkits at runtime$"
+    ):
+        await save_toolkit(ATTIO)
+    assert store.values == {}
+    assert store.published == []
+
+
+async def test_a_saved_toolkit_that_does_not_load_fails_loud(
+    store: FakeInstanceSettings, selfhost: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(instance_toolkits, "get_integration_by_toolkit", lambda _slug: None)
+
+    with pytest.raises(RuntimeError, match="^Toolkit 'attio' was saved but did not load$"):
+        await save_toolkit(ATTIO)
+
+
+def test_an_instance_toolkit_matches_the_code_catalog_s_upper_case_toolkit_convention() -> None:
+    integration = build_instance_integration(ATTIO)
+
+    assert integration.composio_config is not None
+    assert integration.composio_config.toolkit == "ATTIO"
+    assert integration.subagent_config is not None
+    prompt = integration.subagent_config.system_prompt
+    assert "using Attio through its Composio tools" in prompt
+    assert ATTIO.description in prompt
 
 
 def test_catalog_version_changes_on_every_install() -> None:
