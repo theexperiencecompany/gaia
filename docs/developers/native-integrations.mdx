@@ -1,0 +1,74 @@
+---
+title: "Adding a native integration"
+description: "Define a Composio integration in code, with its own prompt, tools and triggers, instead of enabling it from the catalog"
+icon: "plug"
+---
+
+GAIA's integrations come from two places:
+
+- **The code catalog**, `OAUTH_INTEGRATIONS` in `apps/api/app/config/oauth_config.py`. Every deployment ships these, GAIA Cloud included. Each one can carry a hand-written prompt, custom tools, reviewed destructive-tool lists, triggers and marketplace content.
+- **Instance toolkits.** On a self-hosted instance the admin can enable any toolkit from Composio's catalog (see [Connect integrations](/self-hosting/composio-integrations)). GAIA builds a generic entry for it at runtime (`apps/api/app/services/composio/instance_toolkits.py`). It has a generic prompt and no triggers.
+
+Write a native integration when an app needs more than the generic entry: triggers for workflows, custom tools, or guidance about how its API behaves. Everything reads the merged list through `all_integrations()` in `oauth_config.py`. Never iterate `OAUTH_INTEGRATIONS` directly, because that misses the instance toolkits.
+
+## 1. Declare the integration
+
+Add an `OAuthIntegration` to `OAUTH_INTEGRATIONS`. Todoist is a compact example to copy:
+
+```python
+OAuthIntegration(
+    id="todoist",
+    name="Todoist",
+    description="Manage tasks, projects, and productivity workflows",
+    category="productivity",
+    provider="todoist",
+    scopes=[],
+    available=True,
+    short_name="todoist",
+    managed_by="composio",
+    composio_config=ComposioConfig(
+        auth_config_id="ac_...",  # GAIA Cloud's auth config, in GAIA's Composio project
+        toolkit="TODOIST",
+        toolkit_version="20260227_00",
+    ),
+    destructive_tools=TODOIST_DESTRUCTIVE_TOOLS,
+    associated_triggers=[...],
+    subagent_config=SubAgentConfig(
+        has_subagent=True,
+        agent_name="todoist_agent",
+        tool_space="todoist",
+        domain="task and project management",
+        capabilities="creating tasks, organizing projects, ...",
+        use_cases="task management, project organization, ...",
+        system_prompt=TODOIST_AGENT_SYSTEM_PROMPT,
+        auto_bind_tools=["TODOIST_CUSTOM_GATHER_CONTEXT", "TODOIST_CREATE_TASK", ...],
+        memory_prompt=TODOIST_MEMORY_PROMPT,
+    ),
+    content=TODOIST_CONTENT,
+)
+```
+
+- `id` is the integration id everywhere: in connect URLs, in stored auth configs and in users' connections. Use the lowercase Composio toolkit slug. If an instance admin already enabled that toolkit from the catalog, your code entry takes it over on the next boot, and their stored auth config and users' connections keep working.
+- `composio_config.auth_config_id` is GAIA Cloud's auth config. Self-hosted instances never use it: their admin sets one up in **Settings → Integrations setup**. Until GAIA Cloud has one, ship the entry with `available=False`.
+- `destructive_tools` lists the tool slugs that need approval (`apps/api/app/constants/hil_destructive_tools.py`). Leave it `None` only if nobody has reviewed the tools. GAIA then asks an LLM classifier for every call, which fails closed.
+
+## 2. Prompt, memory and content
+
+- **Prompt.** Add `<NAME>_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(...)` in `apps/api/app/agents/prompts/subagent_prompts.py`. Describe the domain and the API's quirks, not generic agent behaviour: the base prompt already covers that.
+- **Memory.** Add `<NAME>_MEMORY_PROMPT` in `apps/api/app/agents/prompts/memory_prompts.py` if conversations with this app reveal durable facts worth remembering.
+- **Content.** Add the marketplace page content (use cases, how it works, FAQs) in `apps/api/app/config/oauth_content.py`.
+- **Icon.** Add the logo to `libs/shared/ts/src/icons/integration-logos.ts` and an entry in `tool-icon-config.ts`. Instance toolkits use Composio's logo URL instead.
+
+## 3. Custom tools (optional)
+
+Composio's own tools load automatically for `tool_space`. Add custom tools when an app needs a better shape, for example one call that gathers a day's context. They are Composio custom tools: see `apps/api/app/agents/tools/integrations/todoist_tool.py` and register them in `apps/api/app/services/composio/custom_tools/registry.py`. Put the most-used tools in `auto_bind_tools` so they are ready as soon as the integration activates.
+
+## 4. Triggers (optional)
+
+Triggers let workflows and todos start from the app's events. Each `TriggerConfig` names a Composio trigger slug. Its handler lives in `apps/api/app/services/triggers/handlers/` and is registered in `apps/api/app/services/triggers/__init__.py`. Instance toolkits have no triggers, because there is no generic handler.
+
+## 5. Test it
+
+- `apps/api/tests/unit/config/test_composio_integration_config.py` checks every Composio entry's invariants. Run it with `mise test:one tests/unit/config/test_composio_integration_config.py`.
+- Boot the stack with `mise dev --agent`, connect the integration from the integrations page and ask GAIA to use it. The [driving-gaia](https://github.com/theexperiencecompany/gaia/blob/master/.agents/skills/driving-gaia/SKILL.md) cookbook covers driving chat and checking the result in Mongo.
+- On a self-hosted instance, set it up from **Settings → Integrations setup → Set up automatically**. That creates the auth config in the instance's own Composio project.

@@ -203,9 +203,10 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
 
             <p className="rounded-2xl bg-zinc-900 p-3 text-xs text-zinc-400">
               GAIA connects to MCP servers over HTTP (streamable HTTP or SSE).
-              Servers started as a command (stdio) are not supported: run one
-              with its HTTP transport, or behind an HTTP bridge such as
-              supergateway, and add that URL here.
+              Servers started as a command (stdio) can&apos;t be added here: run
+              one with its HTTP transport or behind an HTTP bridge such as
+              supergateway, or connect it from your computer with the device
+              bridge in Settings, Devices.
             </p>
           </div>
         </ModalBody>

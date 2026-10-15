@@ -84,6 +84,7 @@
               "self-hosting/overview",
               "self-hosting/one-click-deploy",
               "self-hosting/composio-integrations",
+              "self-hosting/mcp-servers",
               "self-hosting/bots",
               "self-hosting/desktop-app"
             ]
@@ -122,6 +123,7 @@
               "self-hosting/docker-setup",
               "self-hosting/one-click-deploy",
               "self-hosting/composio-integrations",
+              "self-hosting/mcp-servers",
               "self-hosting/bots",
               "self-hosting/desktop-app",
               "configuration/environment-variables",
@@ -144,6 +146,7 @@
               "developers/commands",
               "developers/testing",
               "developers/logging",
+              "developers/native-integrations",
               "developers/contributing"
             ]
           },
