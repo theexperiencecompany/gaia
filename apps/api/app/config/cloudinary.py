@@ -1,13 +1,14 @@
 """Cloudinary SDK configuration from store-first resolved credentials.
 
-The credential store currently carries a single api_key per provider; the
-cloud name and secret still come from the environment. All three are required
-to configure the SDK, so a partially resolvable setup degrades loudly (WARN
-strategy) instead of configuring the global client with holes.
+The cloud name, API key and API secret resolve together, from the Settings card
+where runtime credentials exist, else the environment. All three are required to
+configure the SDK, so a partial setup degrades loudly (WARN strategy) instead of
+configuring the global client with holes.
 """
 
 import cloudinary
 
+from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.services.providers.provider_credentials_service import (
     cloudinary_account,
@@ -18,6 +19,14 @@ from app.utils.exceptions import ProviderNotConfiguredError
 
 # The provider registry name; the credential-store provider id is a separate key.
 CLOUDINARY_PROVIDER = "cloudinary"
+
+_ENV_FIX = (
+    "Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET "
+    "in apps/api/.env, then restart the API."
+)
+_CARD_FIX = (
+    "Add the cloud name, API key and API secret in Settings → Providers & Tools → Cloudinary."
+)
 
 
 @lazy_provider(
@@ -31,16 +40,14 @@ CLOUDINARY_PROVIDER = "cloudinary"
 def init_cloudinary() -> None:
     """Initialize and configure the Cloudinary service.
 
-    The API key resolves store-first, then env; cloud name and secret are
-    env-only. Raises ProviderNotConfiguredError unless all three resolve; the
-    WARN strategy warns once and retries on next access.
+    Raises ProviderNotConfiguredError unless all three resolve; the WARN
+    strategy warns once and retries on next access.
     """
     account = cloudinary_account(resolved_config("cloudinary"))
     if account is None:
         raise ProviderNotConfiguredError(
             "Cloudinary is not fully configured: cloud name, API key, and "
-            "API secret are all required (a stored credential carries only "
-            "the API key today; cloud name and secret come from env)"
+            "API secret are all required"
         )
     cloudinary.config(
         cloud_name=account.cloud_name,
@@ -59,10 +66,7 @@ def require_cloudinary() -> None:
             "Cloudinary credentials."
         ),
         why="Uploaded files are stored in Cloudinary, and no Cloudinary account is configured.",
-        fix=(
-            "Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET "
-            "in apps/api/.env, then restart the API."
-        ),
+        fix=_CARD_FIX if settings.deployment.runtime_credentials else _ENV_FIX,
         status_code=503,
         code="file_storage_not_configured",
     )

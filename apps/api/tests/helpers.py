@@ -546,10 +546,21 @@ class InMemoryCredentialStore:
         self.configs: dict[str, ProviderConfig] = {}
 
     def save(
-        self, provider: str, *, api_key: str | None = None, base_url: str | None = None
+        self,
+        provider: str,
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        account_id: str | None = None,
+        api_secret: str | None = None,
     ) -> None:
         self.configs[provider] = ProviderConfig(
-            api_key=api_key, base_url=base_url, model=None, preset=None
+            api_key=api_key,
+            base_url=base_url,
+            model=None,
+            preset=None,
+            account_id=account_id,
+            api_secret=api_secret,
         )
 
     async def find_by_provider(self, provider: str) -> SimpleNamespace | None:
@@ -560,3 +571,10 @@ class InMemoryCredentialStore:
             json.dumps(config).encode()
         )
         return SimpleNamespace(provider=provider, data_encrypted=ciphertext.decode())
+
+    async def upsert_encrypted(self, provider: str, data_encrypted: str) -> None:
+        plaintext = Fernet(fernet_key_from(CREDENTIAL_STORE_SECRET)).decrypt(data_encrypted)
+        self.configs[provider] = json.loads(plaintext)
+
+    async def delete(self, provider: str) -> bool:
+        return self.configs.pop(provider, None) is not None

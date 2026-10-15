@@ -9345,6 +9345,18 @@
       "MaskedProvider": {
         "description": "One row of ``GET /setup/providers`` \u2014 a credential with the key masked.",
         "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The non-secret account half, e.g. Cloudinary's cloud name",
+            "title": "Account Id"
+          },
           "api_key_hint": {
             "anyOf": [
               {
@@ -9356,6 +9368,18 @@
             ],
             "description": "Last four characters of the key; the key itself never leaves the server",
             "title": "Api Key Hint"
+          },
+          "api_secret_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last four characters of the second secret, e.g. Cloudinary's API secret",
+            "title": "Api Secret Hint"
           },
           "base_url": {
             "anyOf": [
@@ -13767,6 +13791,17 @@
       "ProviderCredentialBody": {
         "description": "Provider payload shared by upsert and test.\n\n``preset`` prefills the endpoint + default model server-side so configuring\nOpenCode/Nous is paste-an-API-key-only.",
         "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
           "api_key": {
             "anyOf": [
               {
@@ -13777,6 +13812,17 @@
               }
             ],
             "title": "Api Key"
+          },
+          "api_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Secret"
           },
           "base_url": {
             "anyOf": [
@@ -13852,6 +13898,10 @@
       },
       "ProviderPreset": {
         "properties": {
+          "account_id_label": {
+            "title": "Account Id Label",
+            "type": "string"
+          },
           "base_url": {
             "title": "Base Url",
             "type": "string"
@@ -13879,6 +13929,10 @@
           "needs_base_url": {
             "title": "Needs Base Url",
             "type": "boolean"
+          },
+          "second_key_label": {
+            "title": "Second Key Label",
+            "type": "string"
           }
         },
         "required": [
@@ -13888,7 +13942,9 @@
           "base_url",
           "default_model",
           "favicon_domain",
-          "needs_base_url"
+          "needs_base_url",
+          "account_id_label",
+          "second_key_label"
         ],
         "title": "ProviderPreset",
         "type": "object"
@@ -37392,7 +37448,7 @@
         ]
       },
       "put": {
-        "description": "Store (or replace) one provider's credential. Presets prefill server-side.\n\nAdmin-only: rewriting a provider's endpoint redirects every LLM call the\ninstance makes. Stored base_urls must be public (see ``_assert_url_safe``)\nexcept for ``ollama`` which is expected to be local\n(``host.docker.internal`` / ``localhost``) and skips the public-IP check.",
+        "description": "Store (or replace) one provider's credential. Presets prefill server-side.\n\nAdmin-only: rewriting a provider's endpoint redirects every LLM call the\ninstance makes. Validation and the merge live in save_provider_credential.",
         "operationId": "setup_put_provider",
         "parameters": [
           {

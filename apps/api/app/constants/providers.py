@@ -139,6 +139,10 @@ class ProviderPreset(TypedDict):
     default_model: str  # empty ⇒ fetched from the endpoint at configure time
     favicon_domain: str
     needs_base_url: bool  # UI shows the base-URL field (Ollama/custom)
+    account_id_label: str  # empty ⇒ no account field (Cloudinary cloud name, Google client id)
+    second_key_label: (
+        str  # empty ⇒ no second key field (Cloudinary API secret, stored as api_secret)
+    )
 
 
 PRESETS: dict[str, ProviderPreset] = {
@@ -150,6 +154,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": _catalog_chat_model(LLMProviderName.OPENROUTER),
         "favicon_domain": "openrouter.ai",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "gemini": {
         "label": "Google Gemini",
@@ -159,6 +165,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": _catalog_chat_model(LLMProviderName.GEMINI),
         "favicon_domain": "ai.google.dev",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "ollama": {
         "label": "Ollama",
@@ -168,6 +176,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": _catalog_chat_model(LLMProviderName.OLLAMA),
         "favicon_domain": "ollama.com",
         "needs_base_url": True,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     # Custom OpenAI-compatible lane. Presets below prefill base URL + model so
     # configuration is paste-a-key-only; the base-URL field stays editable for
@@ -180,6 +190,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "opencode.ai",
         "needs_base_url": True,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "opencode": {
         "label": "OpenCode",
@@ -189,6 +201,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "deepseek-v4-flash",
         "favicon_domain": "opencode.ai",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "nous": {
         "label": "Nous Research",
@@ -198,6 +212,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "nousresearch.com",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     # Search tool keys (SearXNG: an endpoint) — no LLM endpoint and no live
     # probe (the setup test endpoint rejects every non-chat provider).
@@ -209,6 +225,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "tavily.com",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "exa": {
         "label": "Exa",
@@ -218,6 +236,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "exa.ai",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "brave": {
         "label": "Brave Search",
@@ -227,6 +247,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "search.brave.com",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "searxng": {
         "label": "SearXNG",
@@ -236,6 +258,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "searxng.org",
         "needs_base_url": True,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     # Tool / integration keys — no LLM endpoint, single-credential cards.
     "composio": {
@@ -246,6 +270,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "composio.dev",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "e2b": {
         "label": "E2B Sandbox",
@@ -255,6 +281,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "e2b.dev",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "openai": {
         "label": "OpenAI",
@@ -264,6 +292,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": _catalog_chat_model(LLMProviderName.OPENAI),
         "favicon_domain": "openai.com",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "resend": {
         "label": "Resend Email",
@@ -273,24 +303,30 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "resend.com",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
     "cloudinary": {
         "label": "Cloudinary",
-        "description": "Image upload and storage. Also needs CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_SECRET in .env — the key alone is not enough.",
+        "description": "Image upload and storage. Paste the cloud name, API key and API secret from your Cloudinary console.",
         "key_url": "https://console.cloudinary.com/settings/api-keys",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "cloudinary.com",
         "needs_base_url": False,
+        "account_id_label": "Cloud name",
+        "second_key_label": "API secret",
     },
     "google_oauth": {
         "label": "Google OAuth",
-        "description": "Google account integration (Gmail, Calendar). Also needs GOOGLE_CLIENT_ID in .env — the secret alone cannot connect anything.",
-        "key_url": "",
+        "description": "Google account integration (Gmail, Calendar). Paste the OAuth client ID and client secret from Google Cloud Console.",
+        "key_url": "https://console.cloud.google.com/apis/credentials",
         "base_url": "",
         "default_model": "",
         "favicon_domain": "accounts.google.com",
         "needs_base_url": False,
+        "account_id_label": "Client ID",
+        "second_key_label": "",
     },
     "firecrawl": {
         "label": "Firecrawl",
@@ -300,6 +336,8 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "firecrawl.dev",
         "needs_base_url": False,
+        "account_id_label": "",
+        "second_key_label": "",
     },
 }
 
