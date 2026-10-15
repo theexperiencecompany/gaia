@@ -287,6 +287,7 @@ class TestDevRouterMounting:
                 user_id="u1",
                 todos_created=3,
                 conversations_created=2,
+                postmarks_created=12,
                 platforms_linked=["telegram"],
                 platform_user_ids={"telegram": "dev-telegram-u1"},
                 pro=True,
@@ -301,6 +302,7 @@ class TestDevRouterMounting:
                         "todos": 3,
                         "conversations": 2,
                         "platform_links": ["telegram"],
+                        "postmarks": 12,
                         "pro": True,
                     },
                 )
@@ -309,8 +311,9 @@ class TestDevRouterMounting:
         body = response.json()
         assert body["todos_created"] == 3
         assert body["conversations_created"] == 2
+        assert body["postmarks_created"] == 12
         assert body["pro"] is True
-        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], pro=True)
+        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], postmarks=12, pro=True)
 
 
 # ---------------------------------------------------------------------------

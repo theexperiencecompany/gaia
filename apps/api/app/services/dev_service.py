@@ -42,6 +42,7 @@ from app.schemas.dev_schemas import (
     SeedDevDataResponse,
 )
 from app.services.conversation_service import create_conversation_service
+from app.services.dev_postmarks_seed import seed_dev_postmarks
 from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
 from app.services.payments.plan_cache import invalidate_plan_cache
@@ -136,6 +137,7 @@ async def seed_dev_data(
     conversations: int,
     platform_links: list[str],
     *,
+    postmarks: int = 0,
     pro: bool = False,
 ) -> SeedDevDataResponse:
     """Create deterministic sample data for an existing dev user via real services."""
@@ -214,6 +216,7 @@ async def seed_dev_data(
             for i in range(conversations)
         ),
     )
+    await seed_dev_postmarks(user, postmarks)
 
     log.info(
         f"{LogTag.DEV} seeded dev data",
@@ -221,6 +224,7 @@ async def seed_dev_data(
         user_id=user_id,
         todos=todos,
         conversations=conversations,
+        postmarks=postmarks,
         platforms=platform_links,
     )
     return SeedDevDataResponse(
@@ -228,6 +232,7 @@ async def seed_dev_data(
         user_id=user_id,
         todos_created=todos,
         conversations_created=conversations,
+        postmarks_created=postmarks,
         platforms_linked=platform_links,
         platform_user_ids=platform_user_ids,
         pro=pro,
