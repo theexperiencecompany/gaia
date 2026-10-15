@@ -41,7 +41,7 @@ Prefer a hosting platform? See [Deploy options](/self-hosting/one-click-deploy) 
 
 ## What works out of the box
 
-Only the AI model needs setup. Everything else already works, or stays off until you add a key. Add any key later in **Settings → Providers & Tools**, where each feature shows **Working** or **Off** and which provider it is using.
+Only the AI model needs setup. Everything else already works, or stays off until you add a key; only voice and browser automation can't run on self-host. Add any key later in **Settings → Providers & Tools**, where each feature shows **Working** or **Off** and which provider it is using. The environment variables named below still work instead.
 
 | Feature | Works out of the box with | Optional upgrades |
 | ------- | ------------------------- | ----------------- |
@@ -51,7 +51,11 @@ Only the AI model needs setup. Everything else already works, or stays off until
 | Running code | A local sandbox on your machine's Docker, once turned on with `LOCAL_CODE_SANDBOX=true` (or `gaia up --code-sandbox`). Off otherwise | An E2B key (cloud sandbox) |
 | File storage | Your server's disk | Cloudinary: set `BLOB_STORE=cloudinary`, then add the cloud name, API key and API secret in **Settings → Providers & Tools** |
 | Email | Off | A Resend key |
+| Weather | Off | An OpenWeather key (`OPENWEATHER_API_KEY`) |
+| Reading PDFs and Office files | Text PDFs and Office files, parsed on your server | A LlamaParse key (`LLAMA_INDEX_KEY`) to read scanned PDFs |
+| Skill lookups on GitHub | 60 lookups an hour, no key | A GitHub token (`GITHUB_TOKEN`) for 5000 an hour |
 | Integrations (Gmail, Calendar, Slack, ...) | Off | A Composio key; see [Connect integrations](/self-hosting/composio-integrations) |
+| Voice and browser automation | Not available on self-host | None yet; see [Self-Host vs Cloud](/self-hosting/docker-setup#self-host-vs-cloud) |
 
 ## Changing things later
 

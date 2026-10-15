@@ -97,8 +97,9 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | **File uploads** | Cloudinary (managed) | Local `gaia-selfhost_files` volume by default, no account needed; Cloudinary with `BLOB_STORE=cloudinary` — see [File storage](#file-storage) |
 | **Workspace storage** | Hosted R2 + JuiceFS (managed) | Local `gaia-selfhost_workspace` volume; no object store or FUSE needed — see [File storage](#file-storage) |
 | **Sandbox** | E2B (required) with warm pool | Off until you save an E2B key or opt into the local Docker-socket sandbox with `gaia up --code-sandbox` — see [Local coding sandbox](#local-coding-sandbox) |
-| **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Bring your own LiveKit or leave unset to disable voice |
-| **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | Same providers but opt-in via env; unset skips that lane |
+| **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Not available: the self-host stack ships no voice worker and no LiveKit server. Settings shows voice as unavailable |
+| **Browser automation** | Hosted browser for the agent's browser tasks | Not available: the self-host stack has no browser host, so the agent has no browser tool. Settings shows it as unavailable. Reading web pages still works through the built-in reader |
+| **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | DuckDuckGo with no key. Tavily, Exa, Brave, Firecrawl and your own SearXNG are optional, set in **Settings → Providers & Tools** (or env). A SearXNG you add is tried before DuckDuckGo |
 | **Email** | Resend (managed) | Optional `RESEND_*` — without it email features stay quiet |
 | **Observability** | Loki + Grafana, LogQL over shipped logs | Container `json-file` logs only (10 MB × 3 rotated files); no Loki shipper |
 | **Updates** | Deployed by the team | `gaia update` — moves to the release your CLI ships (pinned images + matching compose files) and restarts; volumes survive |
