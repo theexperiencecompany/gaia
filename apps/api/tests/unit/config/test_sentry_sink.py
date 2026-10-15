@@ -274,3 +274,22 @@ def test_only_an_error_captured_inside_a_langchain_model_call_is_dropped(
     event: Event = {"contexts": {"trace": {"origin": origin, "op": op}}}
 
     assert (sentry_config._drop_llm_attempt_errors(event, {}) is None) is dropped
+
+
+@pytest.mark.parametrize(("env", "rate"), [("production", 0.1), ("development", 1.0)])
+def test_only_production_samples_traces_and_profiles(
+    env: str, rate: float, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sentry_config.settings, "ENV", env)
+    monkeypatch.setattr(sentry_config.settings, "AUTH_MODE", "workos")
+    with (
+        patch.object(sentry_config.settings, "SENTRY_DSN", "https://public@sentry.invalid/1"),
+        patch.object(sentry_config, "_loguru"),
+    ):
+        sentry_config.init_sentry()
+    options = sentry_sdk.get_client().options
+    global_scope = sentry_sdk.get_global_scope()
+    global_scope.clear()
+    global_scope.set_client(None)
+
+    assert (options["traces_sample_rate"], options["profiles_sample_rate"]) == (rate, rate)
