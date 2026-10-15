@@ -14,12 +14,23 @@ const WEB_PORT = process.env.WEB_PORT ?? "3000";
 const API_PORT = process.env.API_PORT ?? "8000";
 
 /**
- * The seeded dev user, matching `mise seed` / `mise dev --sim` defaults. Ports
- * are per-worktree but Mongo is shared, so two worktrees running e2e against the
- * same `DEV_USER` clobber each other's data — run one worktree at a time, or set
- * a distinct `DEV_USER` here AND matching `DEV_AUTH_BYPASS_EMAIL` on its API.
+ * The seeded dev user — `DEV_USER`, defined once in `mise.toml` [env] and shared
+ * with `mise seed` / `mise dev --sim`. Ports are per-worktree but Mongo is
+ * shared, so two worktrees running e2e against the same `DEV_USER` clobber each
+ * other's data — run one worktree at a time, or export a distinct `DEV_USER` for
+ * both this suite and that worktree's API.
  */
-export const DEV_USER = process.env.DEV_USER ?? "dev@gaia.local";
+function requireDevUser(): string {
+  const devUser = process.env.DEV_USER;
+  if (!devUser) {
+    throw new Error(
+      "DEV_USER is unset — it is defined in mise.toml [env]; run the suite through mise (`mise e2e:web`)",
+    );
+  }
+  return devUser;
+}
+
+export const DEV_USER = requireDevUser();
 
 /** Fail loud on malformed seed counts instead of sending NaN/negatives to the API. */
 function seedCount(name: string, fallback: number, min: number): number {

@@ -615,7 +615,7 @@ def _state(result: BrowserResultSnapshot, run: _Run, actor: Actor) -> dict[str, 
 
 
 async def _fresh_pro_user() -> str:
-    email = f"eval-browser-{uuid.uuid4().hex[:10]}@gaia.local"
+    email = f"delivered+eval-browser-{uuid.uuid4().hex[:10]}@resend.dev"
     user = await mint_dev_user(email)
     await grant_pro(email)
     return user.id

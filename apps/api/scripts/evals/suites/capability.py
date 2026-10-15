@@ -1190,7 +1190,7 @@ class CapabilityTransport:
         from app.models.agent_models import AgentUserContext
         from app.services.dev_service import mint_dev_user
 
-        email = f"eval-{uuid.uuid4().hex[:10]}@gaia.local"
+        email = f"delivered+eval-{uuid.uuid4().hex[:10]}@resend.dev"
         user_doc = await mint_dev_user(email)
         user_id = user_doc.id
 

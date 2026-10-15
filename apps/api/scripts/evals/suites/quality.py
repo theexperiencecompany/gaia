@@ -418,7 +418,7 @@ class ChatStreamTransport:
         and agent memory, making results order-dependent and concurrency
         unsafe. capability, gaia_bench and hil already mint per case.
         """
-        return f"{self.user_prefix}-{case.id[:40]}-{uuid.uuid4().hex[:8]}@gaia.local"
+        return f"delivered+{self.user_prefix}-{case.id[:40]}-{uuid.uuid4().hex[:8]}@resend.dev"
 
     async def _mint_user(
         self, client: httpx.AsyncClient, provider: ProviderConfig, email: str

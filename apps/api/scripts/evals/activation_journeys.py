@@ -39,7 +39,7 @@ from scripts.evals.core.paths import RUNS_DIR, under_runs
 
 DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:9330")
 RUN_ID = time.strftime("%H%M%S")
-USER_TEMPLATE = "aj-{slug}-" + RUN_ID + "@gaia.local"
+USER_TEMPLATE = "delivered+aj-{slug}-" + RUN_ID + "@resend.dev"
 #: A connect is delegated now, so either the executor handoff or the card the
 #: executor puts on the stream counts as the ask being actionable.
 CONNECT_TOOLS = ("integration_connection_required", "call_executor")
