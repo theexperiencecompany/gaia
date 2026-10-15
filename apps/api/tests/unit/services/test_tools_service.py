@@ -393,6 +393,69 @@ class TestBuildToolsResponse:
         assert result.total_count == 1
         assert result.tools[0].locked is True
 
+    async def test_a_record_with_no_integration_id_does_not_hide_the_ones_after_it(self):
+        global_mcp = {"my_mcp": {"name": "My MCP", "tools": [{"name": "a_tool"}]}}
+        user_records = [{"integration_id": None}, {"integration_id": "my_mcp", "status": "added"}]
+
+        with self._patch_deps({}, global_mcp, user_records=user_records):
+            result = await _build_tools_response("user_123")
+
+        assert [t.name for t in result.tools] == ["a_tool"]
+
+    async def test_a_registry_integration_is_scoped_and_locked_by_the_workspace(self):
+        registry = {
+            "GMAIL": _mock_category(tools=[_mock_tool("GMAIL_SEND")], require_integration=True),
+            "SLACK": _mock_category(tools=[_mock_tool("SLACK_POST")], require_integration=True),
+            "NOTION": _mock_category(tools=[_mock_tool("NOTION_ADD")], require_integration=True),
+        }
+        user_records = [
+            {"integration_id": "gmail", "status": "connected"},
+            {"integration_id": "slack", "status": "added"},
+        ]
+
+        with self._patch_deps(registry, {}, user_records=user_records):
+            result = await _build_tools_response("user_123")
+
+        assert {t.name: t.locked for t in result.tools} == {
+            "GMAIL_SEND": False,
+            "SLACK_POST": True,
+        }
+
+    async def test_the_wide_event_counts_tools_locked_tools_and_categories(self):
+        global_mcp = {
+            "one": {"name": "One", "tools": [{"name": "t1"}, {"name": "t2"}]},
+            "two": {"name": "Two", "tools": [{"name": "t3"}]},
+        }
+        user_records = [
+            {"integration_id": "one", "status": "connected"},
+            {"integration_id": "two", "status": "added"},
+        ]
+
+        with (
+            self._patch_deps({}, global_mcp, user_records=user_records),
+            patch("app.services.tools.tools_service.log") as mock_log,
+        ):
+            await _build_tools_response("user_123")
+
+        mock_log.set.assert_called_once_with(
+            tools={"total_count": 3, "locked_count": 1, "category_count": 2}
+        )
+
+    async def test_a_nameless_mcp_tool_is_logged_against_the_asking_user(self):
+        global_mcp = {"cust_1": {"name": "Cust", "tools": [{"name": ""}]}}
+        user_records = [{"integration_id": "cust_1", "status": "connected"}]
+
+        with (
+            self._patch_deps({}, global_mcp, user_records=user_records),
+            patch("app.services.tools.tools_service.log") as mock_log,
+        ):
+            await _build_tools_response("user_123")
+
+        assert mock_log.warning.call_args.kwargs == {
+            "integration_id": "cust_1",
+            "user_id": "user_123",
+        }
+
 
 # ---------------------------------------------------------------------------
 # get_tools_by_category
