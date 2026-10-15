@@ -6,11 +6,13 @@ from pathlib import Path
 
 from httpx import AsyncClient
 import pytest
+from tests.conftest import FAKE_USER
+from tests.helpers import captured_wide_event
 
+from app.api.v1.endpoints.blob import get_blob
 from app.config.settings import settings
 from app.constants.files import BlobKind
 from app.services.blob_store import LocalVolumeBlobStore
-from tests.conftest import FAKE_USER
 
 OWNER = FAKE_USER.user_id
 
@@ -42,7 +44,7 @@ async def test_the_owner_gets_the_bytes_with_inert_headers(
     assert resp.headers["content-type"] == "image/png"
     assert resp.headers["x-content-type-options"] == "nosniff"
     assert "sandbox" in resp.headers["content-security-policy"]
-    assert resp.headers["content-disposition"].startswith("inline")
+    assert resp.headers["content-disposition"] == 'inline; filename="pic"'
 
 
 async def test_a_range_request_gets_only_that_slice(
@@ -155,3 +157,22 @@ async def test_requires_auth(unauthed_client: AsyncClient, store: LocalVolumeBlo
         content_type="image/png",
     )
     assert (await unauthed_client.get(url)).status_code == 401
+
+
+async def test_a_read_records_who_read_whose_blob_and_its_type(
+    store: LocalVolumeBlobStore,
+) -> None:
+    await store.put(
+        OWNER,
+        "pic",
+        b"png",
+        resource_type="image",
+        kind=BlobKind.CHAT_UPLOAD,
+        content_type="image/png",
+    )
+
+    async with captured_wide_event() as event:
+        await get_blob(OWNER, "pic", FAKE_USER)
+
+    assert event["user"] == {"id": OWNER}
+    assert event["blob"] == {"operation": "read", "owner_id": OWNER, "content_type": "image/png"}

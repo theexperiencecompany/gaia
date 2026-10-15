@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 import respx
-from tests.helpers import InMemoryCredentialStore
 
 from app.config.settings import settings
 from app.services.providers import provider_credentials_service
@@ -20,6 +19,7 @@ from app.utils.search.providers.brave import BraveProvider
 from app.utils.search.providers.duckduckgo import DuckDuckGoProvider
 from app.utils.search.providers.exa import ExaProvider
 from app.utils.search.providers.searxng import SearxngProvider
+from tests.helpers import InMemoryCredentialStore
 
 _EXA_PAYLOAD = {
     "results": [
@@ -245,6 +245,20 @@ async def test_searxng_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
         "published_date": "2026-06-01",
         "favicon": "",
     }
+
+
+@respx.mock
+async def test_searxng_under_a_path_with_a_trailing_slash_searches_that_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "SEARXNG_BASE_URL", "https://tools.example/searX/")
+    route = respx.get("https://tools.example/searX/search").mock(
+        return_value=httpx.Response(200, json=_SEARXNG_PAYLOAD)
+    )
+
+    await SearxngProvider().search("query", 5)
+
+    assert route.called
 
 
 @respx.mock

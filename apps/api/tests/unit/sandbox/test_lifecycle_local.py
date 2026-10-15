@@ -16,11 +16,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
 import pytest
+from tests.helpers import captured_wide_event
 
 from app.constants.sandbox import CODE_EXECUTION_DISABLED_MESSAGE
 from app.services.sandbox import lifecycle
 from app.services.sandbox.errors import CodeExecutionDisabledError
 from app.services.sandbox.local_sandbox import LocalDockerSandbox
+from app.services.storage.metrics import FsOps, flush_fs_metrics, peek_fs_metrics
 
 
 def _uid() -> str:
@@ -243,3 +245,62 @@ async def test_concurrent_local_acquires_for_one_user_serialize(
     assert order[0].removeprefix("enter-") == order[1].removeprefix("exit-"), (
         f"same-user local acquires must serialize, got {order}"
     )
+
+
+async def test_local_acquires_for_different_users_do_not_block_each_other(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sbx = _fake_local_sandbox()
+    monkeypatch.setattr(lifecycle, "get_local_sandbox", lambda u: sbx)
+    second_entered = asyncio.Event()
+
+    async def first() -> None:
+        async with lifecycle.acquire_sandbox(_uid()):
+            await second_entered.wait()
+
+    async def second() -> None:
+        async with lifecycle.acquire_sandbox(_uid()):
+            second_entered.set()
+
+    with _selfhost_no_key():
+        await asyncio.wait_for(asyncio.gather(first(), second()), timeout=5)
+
+
+async def test_a_local_acquire_records_its_sandbox_and_timing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uid = _uid()
+    sbx = _fake_local_sandbox()
+    monkeypatch.setattr(lifecycle, "get_local_sandbox", lambda u: sbx if u == uid else None)
+    flush_fs_metrics()
+
+    with _selfhost_no_key():
+        async with captured_wide_event() as event:
+            async with lifecycle.acquire_sandbox(uid) as yielded:
+                assert yielded is sbx
+
+    assert event["sandbox"] == {
+        "operation": "acquire",
+        "source": "local_docker",
+        "sandbox_id": "gaia-sandbox-u",
+    }
+    assert peek_fs_metrics()[FsOps.SBX_ACQUIRE]["count"] == 1
+
+
+async def test_a_dead_container_is_recorded_unhealthy_and_a_failed_kill_hides_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uid = _uid()
+    sbx = _fake_local_sandbox(alive=False)
+    sbx.kill = AsyncMock(side_effect=RuntimeError("rm failed"))
+    monkeypatch.setattr(lifecycle, "get_local_sandbox", lambda u: sbx)
+    monkeypatch.setattr(lifecycle, "pop_local_sandbox", MagicMock(return_value=sbx))
+
+    with _selfhost_no_key():
+        async with captured_wide_event() as event:
+            with pytest.raises(RuntimeError, match="container died"):
+                async with lifecycle.acquire_sandbox(uid):
+                    raise RuntimeError("container died")
+
+    assert event["sandbox"]["health_ok"] is False
+    sbx.kill.assert_awaited_once()

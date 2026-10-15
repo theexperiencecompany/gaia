@@ -513,6 +513,7 @@ async def test_connect_refreshes_the_server_side_lifetime_of_a_resumed_sandbox()
     cls = _sandbox_class(sbx)
     with patch.object(lifecycle, "AsyncSandbox", cls):
         assert await lifecycle._connect_sandbox("sbx-old") is sbx
+    assert cls.connect.await_args.args == ("sbx-old",)
     assert cls.connect.await_args.kwargs["timeout"] == SANDBOX_LIFETIME_SECONDS
     # The credential rides on the connect call, resolved store-first.
     assert cls.connect.await_args.kwargs["api_key"] == "test-e2b-key"
