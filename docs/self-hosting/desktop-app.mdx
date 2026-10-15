@@ -7,6 +7,14 @@ icon: "desktop"
 
 The GAIA desktop app works with GAIA Cloud or with your own instance. Once you connect it to your instance, the app loads that instance's web app. The app's screens always match your instance's version, and you sign in with the email and password you use on the instance.
 
+## Get the desktop app
+
+There is one GAIA desktop app for GAIA Cloud and for your own instance. Download it from [heygaia.io/download](https://heygaia.io/download), or pick an installer from the `desktop-v…` releases on [GitHub](https://github.com/theexperiencecompany/gaia/releases). See [Desktop App](/guides/desktop-app) for the installers for macOS, Windows and Linux.
+
+<Warning>
+  **Use my own server** is not in a released desktop app yet. The newest release, Desktop v0.7.1, doesn't have it. It arrives in the first desktop release published after this feature is merged. The app carries its own copy of the sign-in screen, so updating your instance doesn't add the button. Update the desktop app instead: an installed app updates itself when the new release is out.
+</Warning>
+
 ## Before you start
 
 - Your instance is running. Open its address in a browser and check that the GAIA sign-in page loads.
@@ -14,9 +22,19 @@ The GAIA desktop app works with GAIA Cloud or with your own instance. Once you c
 
 ## Connect the app
 
-1. Open GAIA Desktop.
-2. On the sign-in screen, click **Use my own server**.
+1. Open GAIA Desktop. The first screen is the desktop sign-in screen, **Welcome to GAIA Desktop**.
+2. Under **Open Login in Browser**, click **Use my own server**. Skip **Open Login in Browser**: it signs you in to GAIA Cloud.
+
+   <Frame caption="The desktop sign-in screen, with Use my own server under the GAIA Cloud sign-in button">
+     <img src="/images/self-hosting/desktop-login.webp" width="560" alt="Welcome to GAIA Desktop sign-in screen with an Open Login in Browser button and, below it, a Use my own server link" />
+   </Frame>
+
 3. Enter your instance's address and click **Connect**. If you leave out `https://`, the app adds it. If your instance only serves plain HTTP, type `http://` in front of the address.
+
+   <Frame caption="The server form, filled in with an instance's address">
+     <img src="/images/self-hosting/desktop-server-form.webp" width="560" alt="The desktop sign-in screen with a Server address field filled in with https://gaia.example.com, the hint The address you open GAIA at in your browser, and a Connect button" />
+   </Frame>
+
 4. GAIA checks the address and restarts. The sign-in page of your instance opens.
 5. Sign in with your instance's email and password.
 
