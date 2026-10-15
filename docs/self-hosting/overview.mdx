@@ -46,10 +46,10 @@ Only the AI model needs setup. Everything else already works, or stays off until
 | Feature | Works out of the box with | Optional upgrades |
 | ------- | ------------------------- | ----------------- |
 | AI models | Nothing. You need one: an OpenRouter, Gemini or OpenAI key, a local Ollama, or any OpenAI-compatible server | The others work as alternatives or fallbacks |
-| Web search | DuckDuckGo (free, no key) | A Tavily, Exa or Brave key for better results, or the URL of your own SearXNG server |
+| Web search | DuckDuckGo (free, no key) | A Tavily, Exa or Brave key for better results, or the URL of your own SearXNG server. Once added, your SearXNG is tried before DuckDuckGo |
 | Reading web pages | The built-in reader (a headless browser) | A Firecrawl key, which helps with sites that block bots |
 | Running code | A local sandbox on your machine's Docker, once turned on with `LOCAL_CODE_SANDBOX=true` (or `gaia up --code-sandbox`). Off otherwise | An E2B key (cloud sandbox) |
-| File storage | Your server's disk | Cloudinary: set `BLOB_STORE=cloudinary` plus its keys |
+| File storage | Your server's disk | Cloudinary: set `BLOB_STORE=cloudinary`, then add the cloud name, API key and API secret in **Settings → Providers & Tools** |
 | Email | Off | A Resend key |
 | Integrations (Gmail, Calendar, Slack, ...) | Off | A Composio key; see [Connect integrations](/self-hosting/composio-integrations) |
 

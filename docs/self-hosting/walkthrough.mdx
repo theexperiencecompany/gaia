@@ -42,17 +42,32 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
     | Flag | What it does | Default |
     | ---- | ------------ | ------- |
     | `--yes` | Installs git and Docker without asking when they are missing (apt-based Linux). Nothing else in `gaia up` asks a question | Asks before installing |
-    | `--llm-provider <provider>` | Names the AI provider for `--llm-key`: `openrouter`, `gemini`, `openai` or `custom` | None |
-    | `--llm-key <key>` | Saves your AI key on the first start, so you can skip it in the browser | None |
+    | `--llm-provider <provider>` | Saves an AI provider once GAIA is up, so you can skip that step in the browser: `openai`, `openrouter`, `gemini`, `ollama` or `custom` | None |
+    | `--llm-key <key>` | The provider's API key. Required for `openai`, `openrouter`, `gemini` and `custom`. Not used with `ollama` | None |
+    | `--llm-base-url <url>` | The provider's address. Required for `custom`. Optional for `ollama` | `http://host.docker.internal:11434` for `ollama` |
+    | `--llm-model <model>` | The model to use. Required for `custom`. Optional for `ollama` | None |
     | `--web-port <port>` | The port GAIA is served on | 3000 |
     | `--domain <domain>` | Serves GAIA at `https://<domain>` with an automatic certificate. Uses ports 80 and 443 | Off |
     | `-b, --build` | Builds the images from this checkout instead of downloading them | Downloads them |
     | `--code-sandbox` | Turns on the local code sandbox. It is kept on later starts and updates | Off |
     | `--no-code-sandbox` | Turns the local code sandbox off again | Not applicable |
-    | `--no-start` | Sets everything up but does not start GAIA | Starts GAIA |
+    | `--no-start` | Sets everything up but does not start GAIA. Can't be combined with the `--llm-` flags, which save the provider into the running GAIA | Starts GAIA |
     | `--force-dev-tree` | Lets the command run in a developer checkout that is not your recorded install | Off |
 
-    For example, `gaia up --llm-provider openai --llm-key sk-...` starts GAIA with your OpenAI key already saved. The code sandbox is explained in [Run code](#run-code-optional) below.
+    For example, to start GAIA with an AI provider already saved:
+
+    ```bash
+    # OpenAI (or openrouter, gemini): just the key
+    gaia up --llm-provider openai --llm-key sk-...
+
+    # A local Ollama: no key
+    gaia up --llm-provider ollama --llm-model qwen3
+
+    # Any OpenAI-compatible gateway: key, address and model
+    gaia up --llm-provider custom --llm-key sk-... --llm-base-url https://gateway.example.com/v1 --llm-model some-model
+    ```
+
+    The provider is saved the same way the browser setup saves it, so it shows as saved in **Settings → Providers & Tools** and you can change it there. If GAIA doesn't answer in time, `gaia up` stops and says the provider wasn't saved. Once `gaia status` shows GAIA healthy, run the same `gaia up` command again. The code sandbox is explained in [Run code](#run-code-optional) below.
   </Step>
 
   <Step title="Open the printed address">
@@ -74,7 +89,7 @@ You need a server (or your own computer) with 8 GB of RAM and an API key from on
   </Step>
 
   <Step title="Connect an AI provider">
-    GAIA needs one AI provider to think with. If you passed `--llm-key` to `gaia up`, it is already connected and you can press **Continue**. Otherwise, pick a provider and paste its key. GAIA tests the key before saving it.
+    GAIA needs one AI provider to think with. If you passed `--llm-provider` to `gaia up`, it is already connected and you can press **Continue**. Otherwise, pick a provider and paste its key. GAIA tests the key before saving it.
 
     <Frame caption="OpenAI already connected from the gaia up command">
       <img src="/images/self-hosting/setup-ai-provider.webp" width="560" alt="Setup step titled Choose an AI provider, showing OpenAI is connected, set from the server's configuration, with Back and Continue buttons" />

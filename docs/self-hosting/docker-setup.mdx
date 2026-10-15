@@ -18,7 +18,7 @@ Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confir
 - **Git** — only if you start from a clone (see [Quick Start](#quick-start)) (`sudo apt-get install -y git` on Ubuntu/Debian).
 - **8 GB RAM minimum** — plus 2+ CPU cores and 10 GB free disk. The local embedding model loads ~1.8 GB into each of `gaia-backend` and `arq_worker` on first use (see [Memory sizing](#memory-sizing)).
 - **Ports** — only `3000` must be free on the host (override with `WEB_HOST_PORT`); with a domain, `80` and `443` instead (see [HTTPS on your own domain](#https-on-your-own-domain)). The API and every datastore stay on the internal Docker network and are never published to the host.
-- **No API keys to boot** — the stack starts with no provider keys. Pass one to `gaia up --llm-provider openai --llm-key ...`, add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
+- **No API keys to boot** — the stack starts with no provider keys. Pass one to `gaia up --llm-provider openai --llm-key ...` (see the [walkthrough](/self-hosting/walkthrough#install-and-start-gaia) for every provider), add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
 - **No manual `.env` setup, no Infisical** — `gaia up` writes `apps/api/.env` (`ENV=selfhost`, `AUTH_MODE=local`) and generates the three machine secrets (`AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) for you. Never `cp .env.example .env` and self-host never contacts Infisical.
 
 <AccordionGroup>
