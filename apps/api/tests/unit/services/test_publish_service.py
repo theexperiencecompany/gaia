@@ -176,6 +176,23 @@ class TestPublishCustomIntegration:
 
         assert exc_info.value.status_code == 404
 
+    async def test_llm_failure_falls_back_to_deterministic_content(self, mock_deps):
+        """When the LLM returns None, publish still stores tool-grounded content."""
+        mock_deps.repo.get.return_value = _integration()
+        mock_deps.content.return_value = None
+
+        result = await publish_custom_integration(INTEGRATION_ID, USER_ID)
+
+        assert result == "/marketplace/my-integration"
+        content = mock_deps.repo.publish.await_args.kwargs["content"]
+        assert content is not None
+        assert len(content.use_cases) == 5
+        assert len(content.how_it_works) == 3
+        assert len(content.faqs) == 4
+        # Grounded in the integration's real tools, not the generic template.
+        assert any("lookup" in uc for uc in content.use_cases)
+        assert "lookup" in content.faqs[1].answer
+
 
 class TestUnpublishCustomIntegration:
     async def test_unpublishes_and_cleans_marketplace(self, mock_deps):
