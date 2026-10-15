@@ -38,6 +38,10 @@ DESKTOP_TOOL_CATEGORY: str = "desktop"
 DESKTOP_TOOL_SPACE: str = "desktop"
 
 
+#: get_category_of_tool's answer for a tool no category holds.
+UNKNOWN_TOOL_CATEGORY = "unknown"
+
+
 class DynamicToolDict(Mapping[str, BaseTool]):
     """
     A dict-like wrapper that provides live access to the tool registry.
@@ -816,7 +820,7 @@ class ToolRegistry:
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""
         entry = self._tools_by_name.get(tool_name)
-        return entry[0] if entry else "unknown"
+        return entry[0] if entry else UNKNOWN_TOOL_CATEGORY
 
     def get_tool_meta(self, tool_name: str) -> Tool | None:
         """Return the registry ``Tool`` wrapper for a tool name, or None.

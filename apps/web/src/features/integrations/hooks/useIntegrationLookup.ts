@@ -15,10 +15,10 @@ export interface UseIntegrationLookupReturn {
 }
 
 /**
- * Resolves an integration id or tool category to its name / icon.
+ * Resolves an integration id or registry category to its name / icon.
  *
- * Ids match as tool categories do (normalizeCategoryName), so a Composio
- * toolkit's tool category ("ATTIO") finds its integration ("attio").
+ * Ids match as categories do (normalizeCategoryName), so a workflow step's
+ * Composio category ("ATTIO") finds its integration ("attio").
  */
 export const useIntegrationLookup = (): UseIntegrationLookupReturn => {
   const { integrations } = useIntegrations();
