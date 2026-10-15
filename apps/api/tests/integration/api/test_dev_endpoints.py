@@ -22,6 +22,7 @@ from app.constants.briefing import BriefingRunOutcome
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
 from app.services.briefing.service import BriefingGenerationError
+from app.utils.errors import AppError
 from tests.helpers import captured_wide_event
 
 DEV_EMAIL = "dev@gaia.local"
@@ -952,5 +953,25 @@ class TestDevBriefingRun:
 
         body = response.json()
         assert response.status_code == 502
-        assert body["code"] == "briefing_generation_failed"
-        assert body["why"] == reason
+        assert {k: body[k] for k in ("message", "why", "fix", "code")} == {
+            "message": "The daily briefing could not be generated",
+            "why": reason,
+            "fix": "Read the reason and rerun; a recurring one is a prompt or voice-check bug",
+            "code": "briefing_generation_failed",
+        }
+
+    async def test_a_failed_generation_carries_the_user_id_and_cause_for_the_wide_event(self):
+        failure = BriefingGenerationError("the lede contradicts the items")
+        with (
+            patch.dict(_BRIEFING_RUNS, {"weekly": AsyncMock(side_effect=failure)}),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(id="u-brief"),
+            ),
+            pytest.raises(AppError) as caught,
+        ):
+            await run_briefing_now("weekly", DEV_EMAIL)
+
+        assert caught.value.meta == {"user_id": "u-brief"}
+        assert caught.value.__cause__ is failure
