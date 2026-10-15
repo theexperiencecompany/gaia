@@ -36,6 +36,7 @@ from app.services.composio.auth_config_resolver import (
 from app.services.composio.auth_config_setup import composio_key_rejected
 from app.services.composio.composio_service import get_composio_service
 from app.services.composio.instance_toolkits import (
+    UNCATEGORISED_TOOLKIT_CATEGORY,
     InstanceToolkitRecord,
     remove_toolkit,
     save_toolkit,
@@ -186,7 +187,9 @@ async def enable_toolkit(slug: str, credentials: dict[str, str]) -> EnableCompos
                 name=entry.name,
                 description=entry.description,
                 logo=entry.logo,
-                category=entry.categories[0] if entry.categories else "other",
+                category=entry.categories[0]
+                if entry.categories
+                else UNCATEGORISED_TOOLKIT_CATEGORY,
                 auth_scheme=plan.scheme,
             )
         )

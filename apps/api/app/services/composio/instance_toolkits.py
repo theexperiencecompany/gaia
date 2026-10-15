@@ -25,7 +25,7 @@ from shared.py.wide_events import log
 TOOLKITS_SETTING_KEY = "composio_toolkits"
 
 # Composio's own category for toolkits it files under none.
-_UNCATEGORISED = "other"
+UNCATEGORISED_TOOLKIT_CATEGORY = "other"
 
 
 class InstanceToolkitRecord(BaseModel):
@@ -35,7 +35,7 @@ class InstanceToolkitRecord(BaseModel):
     name: str
     description: str
     logo: str | None = None
-    category: str = _UNCATEGORISED
+    category: str = UNCATEGORISED_TOOLKIT_CATEGORY
     auth_scheme: str
 
 
