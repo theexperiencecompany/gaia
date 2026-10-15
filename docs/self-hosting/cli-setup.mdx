@@ -122,7 +122,7 @@ gaia doctor
 It walks the whole stack in order — Docker daemon, ports, containers, API health, each backing service from `GET /health/ready` (MongoDB, PostgreSQL, Redis, RabbitMQ, ChromaDB), setup status (plans seeded, provider configured, admin account created), web reachability, disk and memory headroom, and whether you run the release this CLI ships — and prints what's broken with a specific fix for each problem. It exits 1 only when a blocking check fails.
 
 <Frame caption="gaia doctor on a fresh install, before the admin account exists">
-  <img src="/images/self-hosting/terminal-gaia-doctor.webp" alt="Terminal output of gaia doctor: Docker, ports, containers, API health and each dependency OK, plus two warnings with fixes, one to finish setup in the browser and one to run gaia update" />
+  <img src="/images/self-hosting/terminal-gaia-doctor.webp" alt="Terminal output of gaia doctor: Docker, ports, the 9 running containers, API health, each dependency, setup readiness, the web app, disk and memory all OK, plus one warning to run gaia update" />
 </Frame>
 
 `gaia status` gives the same per-dependency view at a glance:
