@@ -1,5 +1,0 @@
-/* Dev-server chrome and transient toasts (the API is absent during capture) are not product UI. */
-nextjs-portal,
-[data-sileo-toast] {
-  display: none;
-}

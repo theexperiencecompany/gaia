@@ -227,10 +227,6 @@ echo ""
 echo "seeded $DEV_USER (boot with \`mise dev --agent\` or \`mise dev --sim\` — pass DEV_USER=$DEV_USER to bypass-auth as this user)"
 '''
 
-[tasks."web:visual-diff"]
-description = "Screenshot every web surface (tool cards, OpenUI, landing; --app adds the authed app, needs `mise dev --sim`) on a base ref and on this checkout, then write base|head|diff composites, summary.md and a class-change ledger to .context/visual-diff. Usage: mise web:visual-diff [base-ref] [--app]"
-run = "scripts/dev/visual-diff.sh"
-
 [tasks."e2e:web"]
 description = "Run web Playwright e2e against a running dev stack. Start `mise dev --sim` (or `mise dev --agent` for a real LLM) in another terminal first — both boot with the dev auth bypass on. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
 run = "pnpm nx run web:e2e"

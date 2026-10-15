@@ -9,8 +9,6 @@ import { WEB_BASE_URL } from "./e2e/harness";
  */
 export default defineConfig({
   testDir: "./e2e",
-  // The visual diff has its own config and orchestrator (playwright.visual.config.ts).
-  testIgnore: "visual/**",
   globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

@@ -817,8 +817,6 @@ Every rule above that a machine can check is an error, with no warning budget:
 
 An exception lives next to what it exempts: a per-component contract or a per-file override in `.oxlintrc.json`, never a disable comment.
 
-To see what a styling change does to the product, run `mise web:visual-diff [base-ref]`. It screenshots every tool card, the OpenUI samples and every landing route on the base ref and on your checkout, then writes base | head | diff composites, a ranked summary, and a ledger of every class and prop swap to `.context/visual-diff/`. Because a layout shift paints everything below it red, read `changes.md` first: it matches elements by DOM path and lists each real computed-style change (borders and shadows first, then background, spacing, type and color) with a zoomed base | head crop.
-
 ## New Card Checklist
 
 - [ ] Outer: `rounded-3xl bg-zinc-800 p-4` (chat thread cards; settings keep their own `rounded-2xl bg-zinc-900/60` system)
@@ -826,6 +824,6 @@ To see what a styling change does to the product, run `mise web:visual-diff [bas
 - [ ] No `border-`, `ring-`, `outline-` anywhere
 - [ ] Icons from `@icons` only
 - [ ] Status colors are the `-500` shade with `/10` backgrounds
-- [ ] `nx run web:lint:shadcn` and `pnpm exec biome check apps/web` pass; `mise web:visual-diff` shows only the change you meant
+- [ ] `nx run web:lint:shadcn` and `pnpm exec biome check apps/web` pass
 - [ ] Width: `w-fit min-w-[400px]` or `w-full`
 - [ ] If it's a native tool card: registered in `TOOL_RENDERERS`

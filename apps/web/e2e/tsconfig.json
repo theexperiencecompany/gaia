@@ -4,12 +4,7 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["@playwright/test", "node"],
     "moduleResolution": "Bundler",
-    "noEmit": true,
-    "allowImportingTsExtensions": true
+    "noEmit": true
   },
-  "include": [
-    "**/*.ts",
-    "../playwright.config.ts",
-    "../playwright.visual.config.ts"
-  ]
+  "include": ["**/*.ts", "../playwright.config.ts"]
 }
