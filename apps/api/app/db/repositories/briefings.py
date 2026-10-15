@@ -82,7 +82,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         kind: BriefingKind,
         payload: BriefingPayload,
         *,
-        edition_image_url: str,
+        edition_image_url: str | None,
     ) -> BriefingModel:
         """Store the payload (one per user/date/kind).
 

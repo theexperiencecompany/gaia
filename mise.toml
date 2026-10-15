@@ -218,16 +218,17 @@ echo "wt:env → $root/.env.worktree (offset $offset): API_PORT=$api_port WEB_PO
 '''
 
 [tasks.seed]
-description = "Mint + seed the dev bypass user against a running API (override with DEV_USER=email, SEED_TODOS, SEED_CONVERSATIONS)"
+description = "Mint + seed the dev bypass user against a running API (override with DEV_USER=email, SEED_TODOS, SEED_CONVERSATIONS, SEED_POSTMARKS)"
 run = '''
 set -eu
 : "${SEED_TODOS:=5}"
 : "${SEED_CONVERSATIONS:=2}"
+: "${SEED_POSTMARKS:=12}"
 base="http://localhost:${API_PORT:-8000}/api/v1/dev"
 curl -sfS -X POST "$base/users" -H 'content-type: application/json' \
   -d "{\"email\": \"$DEV_USER\"}" > /dev/null
 curl -sfS -X POST "$base/seed" -H 'content-type: application/json' \
-  -d "{\"email\": \"$DEV_USER\", \"todos\": $SEED_TODOS, \"conversations\": $SEED_CONVERSATIONS}"
+  -d "{\"email\": \"$DEV_USER\", \"todos\": $SEED_TODOS, \"conversations\": $SEED_CONVERSATIONS, \"postmarks\": $SEED_POSTMARKS}"
 echo ""
 echo "seeded $DEV_USER (boot with \`mise dev --agent\` or \`mise dev --sim\` — pass DEV_USER=$DEV_USER to bypass-auth as this user)"
 '''
