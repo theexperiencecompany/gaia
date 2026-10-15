@@ -6,8 +6,17 @@ import pytest
 
 from app.config.settings import settings
 from app.constants.llm import LLMProviderName
-from app.constants.providers import BuiltInEngine, CredentialProviderName, ProviderFeature
-from app.services.providers.feature_status import FeatureStatus, feature_statuses
+from app.constants.providers import (
+    BuiltInEngine,
+    CredentialProviderName,
+    FeatureSpec,
+    ProviderFeature,
+)
+from app.services.providers.feature_status import (
+    FeatureStatus,
+    _catalog_engine,
+    feature_statuses,
+)
 from tests.helpers import InMemoryCredentialStore
 
 _KEYED_SETTINGS = (
@@ -158,3 +167,12 @@ async def test_ai_models_follow_the_chat_lane_order(store: InMemoryCredentialSto
 async def test_ai_models_are_off_with_no_chat_lane(store: InMemoryCredentialStore) -> None:
     with patch("app.services.providers.feature_status.chat_routes", return_value=[]):
         assert not (await _status(ProviderFeature.AI_MODELS)).working
+
+
+def test_a_keyless_engine_on_a_feature_without_a_built_in_is_a_catalog_bug() -> None:
+    spec = FeatureSpec(label="AI models", description="x", built_in=None, providers=())
+
+    with pytest.raises(ValueError) as refused:
+        _catalog_engine(spec, "ollama")
+
+    assert str(refused.value) == "AI models has no built-in engine, yet 'ollama' needs no key"

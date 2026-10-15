@@ -81,12 +81,14 @@ class TestSelfHost:
         )
         client = MagicMock(return_value=SimpleNamespace(images=images))
 
+        resolver = AsyncMock(return_value=_openai("sk-store"))
         with (
-            patch(f"{_MOD}.resolve", AsyncMock(return_value=_openai("sk-store"))),
+            patch(f"{_MOD}.resolve", resolver),
             patch(f"{_MOD}.AsyncOpenAI", client),
         ):
             assert await generate_image("a cat") == b"png"
 
+        resolver.assert_awaited_once_with("openai")
         client.assert_called_once_with(api_key="sk-store")
         images.generate.assert_awaited_once_with(
             model="gpt-image-1", prompt="a cat", size="1024x1024"
@@ -98,6 +100,6 @@ class TestSelfHost:
         with (
             patch(f"{_MOD}.resolve", AsyncMock(return_value=_openai("sk-store"))),
             patch(f"{_MOD}.AsyncOpenAI", MagicMock(return_value=SimpleNamespace(images=images))),
-            pytest.raises(ValueError, match="no image data"),
+            pytest.raises(ValueError, match="^OpenAI image generation returned no image data$"),
         ):
             await generate_image("a cat")

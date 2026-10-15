@@ -91,6 +91,7 @@ class TestTranscribeAudio:
 
         assert result == "hi"
         assert mock_client_cls.call_args.kwargs["api_key"] == "sk-stored"
+        mock_resolve.assert_awaited_once_with("openai")
 
     @patch("app.services.audio_transcription_service.AsyncOpenAI")
     @patch("app.services.audio_transcription_service.resolve_openai_config")
@@ -103,11 +104,15 @@ class TestTranscribeAudio:
         # its None result means neither store nor env has a key.
         mock_resolve.return_value = None
 
-        with pytest.raises(RuntimeError, match="OpenAI is not configured"):
+        with pytest.raises(RuntimeError) as refused:
             await transcribe_audio(
                 audio_bytes=b"bytes", filename="voice.ogg", content_type="audio/ogg"
             )
         mock_client_cls.assert_not_called()
+        assert str(refused.value) == (
+            "OpenAI is not configured: store an OpenAI credential in Settings "
+            "or set OPENAI_API_KEY to transcribe audio."
+        )
 
     @patch("app.services.audio_transcription_service.AsyncOpenAI")
     @patch("app.services.audio_transcription_service.resolve_openai_config")
