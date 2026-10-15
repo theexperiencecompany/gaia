@@ -1,11 +1,12 @@
-"""Check the brief's headline and lede against its own items before anything renders.
+"""Check the brief's headline and lede against its items and shown counts before rendering.
 
-The model writes the prose; code builds the items. Prose that claims a need, an
-event, a count or a person the items do not show contradicts the page; prose that
+The model writes the prose; code builds the items and the [COUNTS] it is shown. Prose
+that claims a need, an event, a count or a person neither shows contradicts the page; prose that
 counts zeros or names pipeline vocabulary reads like a report, not a person. Both are
 rejected (service.py regenerates once, then fails loud).
 """
 
+from dataclasses import dataclass
 import re
 
 from app.models.briefing_models import BriefingItemKind, BriefingPayload
@@ -78,6 +79,28 @@ _NOT_NAMES = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class VoicedCounts:
+    """The counts the model is shown as [COUNTS]: the only figures besides the items it may voice."""
+
+    waiting_on_you: int
+    done: int
+    in_progress: int
+    while_away: int
+    open_todos: int
+
+    def shown(self) -> list[tuple[str, int]]:
+        """Label each non-zero count; a zero is never handed to the model to recite."""
+        labelled = (
+            ("waiting on you", self.waiting_on_you),
+            ("done", self.done),
+            ("in progress", self.in_progress),
+            ("while you were away", self.while_away),
+            ("your open todos", self.open_todos),
+        )
+        return [(label, n) for label, n in labelled if n]
+
+
 def _allowed_counts(payload: BriefingPayload) -> set[int]:
     items = [item for section in payload.sections for item in section.items]
     by_kind = [sum(1 for i in items if i.kind == kind) for kind in ("lookback", "gaia", "note")]
@@ -103,8 +126,10 @@ def _claims_a_need(prose: str) -> bool:
     return False
 
 
-def voice_contradictions(headline: str, lede: str, payload: BriefingPayload) -> list[str]:
-    """Return every claim in the headline or lede that the payload's items do not support."""
+def voice_contradictions(
+    headline: str, lede: str, payload: BriefingPayload, counts: VoicedCounts
+) -> list[str]:
+    """Return every claim in the headline or lede that the items and shown counts do not support."""
     prose = f"{headline}. {lede}"
     items = [item for section in payload.sections for item in section.items]
     problems: list[str] = []
@@ -114,14 +139,14 @@ def voice_contradictions(headline: str, lede: str, payload: BriefingPayload) -> 
     if _EVENT_CLAIM.search(prose) and not payload.calendar and not _EMPTY_CALENDAR.search(prose):
         problems.append("the prose mentions an event, but today's calendar is empty")
 
-    allowed = _allowed_counts(payload)
-    counts = [
+    allowed = _allowed_counts(payload) | {n for _, n in counts.shown()}
+    voiced = [
         _NUMBER_WORDS[token] if token in _NUMBER_WORDS else int(token)
         for token in (match.group(1).lower() for match in _COUNT.finditer(prose))
     ]
-    if 0 in counts:
+    if 0 in voiced:
         problems.append("the prose counts 0; leave out what is not there instead of counting it")
-    for count in counts:
+    for count in voiced:
         if count and count not in allowed:
             problems.append(f"the prose counts {count}, which no item count matches")
 
