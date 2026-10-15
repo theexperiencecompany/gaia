@@ -25,6 +25,7 @@ from mcp_use.client.session import MCPSession
 from pydantic import AnyHttpUrl, AnyUrl, BaseModel, ConfigDict, JsonValue
 
 from app.agents.tools.core.registry import get_tool_registry
+from app.config.settings import settings
 from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.execute import TICKET_NAMES
@@ -104,7 +105,7 @@ from app.utils.mcp_utils import (
     source_prefixed_tool_name,
     wrap_tools_with_null_filter,
 )
-from app.utils.url_safety import assert_public_http_url
+from app.utils.url_safety import assert_endpoint_url_allowed
 from mcp import ClientSession
 from mcp.client.auth.exceptions import OAuthRegistrationError
 from mcp.client.auth.oauth2 import PKCEParameters
@@ -738,7 +739,9 @@ class MCPClient:
         # SSRF re-check (DNS-rebinding defense): the schema validator only did a
         # shape check at create/update time. Re-resolved here, before _build_config
         # (which can itself trigger outbound I/O via an OAuth refresh).
-        await assert_public_http_url(mcp_config.server_url)
+        await assert_endpoint_url_allowed(
+            mcp_config.server_url, allow_private=settings.deployment.private_network_endpoints
+        )
 
         config = await self._build_config(integration_id, mcp_config)
 

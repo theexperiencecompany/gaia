@@ -135,6 +135,9 @@ services:
       # re-downloaded from Hugging Face on every container recreate (the model
       # loads lazily on first memory use).
       MEMORY_MODEL_CACHE_DIR: /models
+      # A custom MCP server added as localhost runs on the machine hosting GAIA,
+      # which these containers reach as host.docker.internal (extra_hosts below).
+      LOOPBACK_HOST_ALIAS: host.docker.internal
     # The image CMD runs uvicorn with --proxy-headers --forwarded-allow-ips *.
     # That trust is safe here because port 8000 is never published: the only
     # peers are containers on gaia_network, and the bundled proxy (Caddy)
@@ -143,7 +146,7 @@ services:
     # whenever the browser is on HTTPS.
     expose:
       - "8000"
-    # Lets the container reach host services (e.g. Ollama on :11434).
+    # Lets the container reach host services (e.g. Ollama on :11434, a local MCP server).
     extra_hosts: &host_gateway
       - "host.docker.internal:host-gateway"
     # No Docker socket here: the local coding sandbox is the opt-in
