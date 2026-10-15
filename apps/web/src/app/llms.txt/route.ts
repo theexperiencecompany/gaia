@@ -48,7 +48,7 @@ const STATIC_PAGES: LlmsEntry[] = [
   {
     title: "Download",
     url: `${BASE_URL}/download`,
-    description: "Download GAIA for web, desktop and mobile.",
+    description: "Download GAIA for web and desktop.",
   },
   {
     title: "Marketplace",
