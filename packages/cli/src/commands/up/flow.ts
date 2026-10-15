@@ -28,7 +28,7 @@ import {
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import { delay, runPortChecks } from "../../lib/flow-utils.js";
-import { checkGit, ensureDocker } from "../../lib/prerequisites.js";
+import { checkGit, ensureDocker, ensureGit } from "../../lib/prerequisites.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
 import { cloneRelease, GAIA_REPO_URL } from "../../lib/release.js";
 import {
@@ -108,40 +108,24 @@ export async function runUpFlow(
     createUpAnswerResolver({ flags: options, repoPath: targetPath }),
   );
 
-  // 1. Prerequisites — git (needed when cloning) and Docker (with an
-  //    interactive install offer on apt-based Linux).
+  // 1. Prerequisites — git (needed when cloning) and Docker, each with an
+  //    install offer on apt-based Linux.
   store.setStep("Prerequisites");
   store.setStatus("Checking system requirements...");
-  store.updateData("checks", { git: "pending", docker: "pending" });
-
-  const gitStatus = await checkGit();
-  store.updateData("checks", {
-    ...store.currentState.data.checks,
-    git: gitStatus,
-  });
 
   const needsClone = !isGaiaCheckout(targetPath);
-  if (gitStatus === "error") {
-    if (needsClone) {
-      store.setError(
-        new Error(
-          `Git is required to clone GAIA. Install it from https://git-scm.com/downloads and rerun.`,
-        ),
-      );
-      return;
-    }
-    // Git missing but install exists — cloning isn't needed; proceed.
-    store.updateData("checks", {
-      ...store.currentState.data.checks,
-      git: "missing",
-    });
-  }
-
+  const consent = { assumeYes: options.yes === true };
   try {
-    if (
-      (await ensureDocker(store, { assumeYes: options.yes === true })) ===
-      "relaunch"
-    ) {
+    if (needsClone) {
+      await ensureGit(store, consent);
+    } else {
+      // An existing install needs no clone: git is reported, not required.
+      const gitStatus = await checkGit();
+      store.updateData("checks", {
+        git: gitStatus === "success" ? gitStatus : "missing",
+      });
+    }
+    if ((await ensureDocker(store, consent)) === "relaunch") {
       return;
     }
   } catch (e) {

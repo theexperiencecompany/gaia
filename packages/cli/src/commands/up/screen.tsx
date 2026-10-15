@@ -9,9 +9,9 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { Shell } from "../../ui/components/Shell.js";
 import {
-  DockerInstallConfirmStep,
   EnvSetupSpinnerStep,
   ErrorStep,
+  InstallConfirmStep,
   PortConflictStep,
   RepositoryProgressStep,
   SystemChecksStep,
@@ -133,19 +133,12 @@ const UpFinishedStep: React.FC<{
   );
 };
 
-/** The Docker-install and port-conflict prompts, the only input gaia up asks for. */
+/** The install and port-conflict prompts, the only input gaia up asks for. */
 const UpPromptStep: React.FC<{ state: CLIState; store: CLIStore }> = ({
   state,
   store,
 }) => {
   switch (state.inputRequest?.id) {
-    case "docker_install_confirm":
-      return (
-        <DockerInstallConfirmStep
-          onConfirm={() => store.submitInput("install")}
-          onDecline={() => store.submitInput("decline")}
-        />
-      );
     case "port_conflicts":
       return state.data.portConflicts ? (
         <PortConflictStep
@@ -155,7 +148,13 @@ const UpPromptStep: React.FC<{ state: CLIState; store: CLIStore }> = ({
         />
       ) : null;
     default:
-      return null;
+      return (
+        <InstallConfirmStep
+          inputId={state.inputRequest?.id}
+          onConfirm={() => store.submitInput("install")}
+          onDecline={() => store.submitInput("decline")}
+        />
+      );
   }
 };
 

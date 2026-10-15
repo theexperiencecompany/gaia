@@ -1,11 +1,12 @@
 import { ProgressBar, Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
+import { INSTALL_CONFIRM_INPUT } from "../../lib/prerequisites.js";
 import type { PortCheckResult } from "../../lib/prerequisites.types.js";
 import { THEME_COLOR } from "../constants.js";
 
 export const SystemChecksStep: React.FC<{
-  checks: { git: string; docker: string; mise?: string };
+  checks: { git: string; docker?: string; mise?: string };
 }> = ({ checks }) => (
   <Box
     flexDirection="column"
@@ -19,10 +20,12 @@ export const SystemChecksStep: React.FC<{
         label="Git"
         status={checks.git as "pending" | "success" | "error" | "missing"}
       />
-      <CheckItem
-        label="Docker"
-        status={checks.docker as "pending" | "success" | "error" | "missing"}
-      />
+      {checks.docker && (
+        <CheckItem
+          label="Docker"
+          status={checks.docker as "pending" | "success" | "error" | "missing"}
+        />
+      )}
       {checks.mise && (
         <CheckItem
           label="Mise"
@@ -184,15 +187,24 @@ export const PortConflictStep: React.FC<{
   );
 };
 
-/**
- * Confirmation shown when Docker is missing on an apt-based Linux host.
- * Enter accepts the guided install; Escape declines and the flow aborts
- * with remediation copy.
- */
-export const DockerInstallConfirmStep: React.FC<{
+/** The copy for each install confirmation, by its input id. */
+const INSTALL_PROMPTS: Record<string, { title: string; detail: string }> = {
+  [INSTALL_CONFIRM_INPUT.docker]: {
+    title: "Install Docker Engine now? (recommended)",
+    detail: "Runs the official Docker install script — needs sudo/apt.",
+  },
+  [INSTALL_CONFIRM_INPUT.git]: {
+    title: "Install Git now?",
+    detail: "Installs git with apt — needs sudo.",
+  },
+};
+
+const InstallPrompt: React.FC<{
+  title: string;
+  detail: string;
   onConfirm: () => void;
   onDecline: () => void;
-}> = ({ onConfirm, onDecline }) => {
+}> = ({ title, detail, onConfirm, onDecline }) => {
   useInput((_input, key) => {
     if (key.return) onConfirm();
     if (key.escape) onDecline();
@@ -207,14 +219,31 @@ export const DockerInstallConfirmStep: React.FC<{
       borderColor="yellow"
     >
       <Text bold color="yellow">
-        Install Docker Engine now? (recommended)
+        {title}
       </Text>
       <Box marginTop={1} flexDirection="column">
-        <Text>Runs the official Docker install script — needs sudo/apt.</Text>
+        <Text>{detail}</Text>
         <Text color="gray" dimColor>
           Enter to install · Esc to cancel
         </Text>
       </Box>
     </Box>
+  );
+};
+
+/**
+ * Confirmation shown when a prerequisite (Docker, git) is missing on an
+ * apt-based Linux host; renders nothing for any other input. Enter accepts
+ * the guided install; Escape declines and the flow aborts with remediation copy.
+ */
+export const InstallConfirmStep: React.FC<{
+  inputId: string | undefined;
+  onConfirm: () => void;
+  onDecline: () => void;
+}> = ({ inputId, onConfirm, onDecline }) => {
+  const prompt = inputId === undefined ? undefined : INSTALL_PROMPTS[inputId];
+  if (!prompt) return null;
+  return (
+    <InstallPrompt {...prompt} onConfirm={onConfirm} onDecline={onDecline} />
   );
 };

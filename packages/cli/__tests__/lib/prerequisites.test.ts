@@ -14,7 +14,11 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, existsSync: vi.fn(() => true) };
 });
 
-import { checkModePorts, ensureDocker } from "../../src/lib/prerequisites.js";
+import {
+  checkModePorts,
+  ensureDocker,
+  ensureGit,
+} from "../../src/lib/prerequisites.js";
 import { createStore } from "../../src/ui/store.js";
 
 const mockedExeca = vi.mocked(execa);
@@ -76,8 +80,10 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
 
   it("refuses to install without a terminal or --yes, naming --yes", async () => {
     routeExeca({});
+    const store = createStore();
 
-    await expect(ensureDocker(createStore())).rejects.toThrow(/--yes/);
+    await expect(ensureDocker(store)).rejects.toThrow(/--yes/);
+    expect(store.currentState.data.checks.docker).toBe("error");
   });
 
   /** Docker answers, but its socket refuses this user until the group applies. */
@@ -133,6 +139,39 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
       /log out and back in \(or run 'newgrp docker'\), then rerun/i,
     );
     expect(store.currentState.data.dockerGroupSwitch).toBeUndefined();
+  });
+});
+
+describe("ensureGit on a fresh apt-based Linux box", () => {
+  it("installs git through apt when --yes consented", async () => {
+    let installed = false;
+    const calls = routeExeca({
+      "git --version": () => {
+        if (!installed) throw new Error("ENOENT git");
+        return { stdout: "git version 2.51" };
+      },
+      "sudo apt-get update": () => ({ stdout: "" }),
+      "sudo apt-get install -y git": () => {
+        installed = true;
+        return { stdout: "" };
+      },
+    });
+    const store = createStore();
+
+    await ensureGit(store, { assumeYes: true });
+
+    expect(store.currentState.data.checks.git).toBe("success");
+    expect(
+      calls.map(([cmd, args]) => [cmd, ...(args ?? [])].join(" ")),
+    ).toEqual(expect.arrayContaining(["sudo apt-get install -y git"]));
+  });
+
+  it("refuses to install git without a terminal or --yes, and marks it failed", async () => {
+    routeExeca({});
+    const store = createStore();
+
+    await expect(ensureGit(store)).rejects.toThrow(/--yes/);
+    expect(store.currentState.data.checks.git).toBe("error");
   });
 });
 

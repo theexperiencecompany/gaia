@@ -29,7 +29,7 @@ export type DockerReadiness =
    */
   | "relaunch";
 
-export interface EnsureDockerOptions {
-  /** `--yes`: consent to installing Docker and joining the docker group. */
+export interface InstallConsentOptions {
+  /** `--yes`: consent to installing a missing prerequisite (and joining the docker group). */
   assumeYes?: boolean;
 }
