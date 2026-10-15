@@ -2193,7 +2193,7 @@ class TestDiscoverOAuthConfig:
                     "raw": 'Bearer resource_metadata="https://mcp.example.com/.well-known/prm"',
                     "resource_metadata": "https://mcp.example.com/.well-known/prm",
                 },
-            ),
+            ) as mock_extract,
             patch(
                 "app.services.mcp.oauth_discovery.find_protected_resource_metadata",
                 new_callable=AsyncMock,
@@ -2226,6 +2226,7 @@ class TestDiscoverOAuthConfig:
             patch("app.services.mcp.oauth_discovery.validate_oauth_endpoints"),
         ):
             result = await discover_oauth_config(token_store, INTEGRATION_ID, mcp_config)
+        mock_extract.assert_awaited_once_with(SERVER_URL)
         assert result.discovery_method == "rfc9728_prm"
         assert (
             str(result.as_metadata.authorization_endpoint) == "https://auth.example.com/authorize"
