@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from app.constants.providers import CredentialProviderName
 from app.models.integrations.weather import (
     DailyForecast,
     GeocodedLocation,
@@ -23,6 +24,7 @@ from app.utils.weather_utils import (
     process_forecast_data,
     user_weather,
 )
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers / Factories
@@ -753,18 +755,17 @@ class TestPrepareWeatherData:
 class TestUserWeather:
     """Tests for the top-level user_weather orchestrator."""
 
-    @pytest.fixture(autouse=True)
-    def _patch_log(self) -> None:
-        """Suppress structured logging in tests."""
-        # log.set / log.debug / log.error are called; just let them pass
-
     @pytest.mark.parametrize("api_key", [None, ""])
     async def test_an_unconfigured_instance_says_so_instead_of_returning_data(
         self, api_key: str | None
     ) -> None:
-        with patch("app.utils.weather_utils.resolve", _resolving(api_key)):
-            result = await user_weather(location_name="London")
+        resolving = _resolving(api_key)
+        with patch("app.utils.weather_utils.resolve", resolving):
+            async with captured_wide_event() as event:
+                result = await user_weather(location_name="London")
 
+        resolving.assert_awaited_once_with(CredentialProviderName.OPENWEATHER)
+        assert event["weather"] == {"configured": False}
         assert result == (
             "Weather isn't set up on this GAIA instance, so no weather data is available. "
             "An admin can add an OpenWeather key in Settings → Providers & Tools."
