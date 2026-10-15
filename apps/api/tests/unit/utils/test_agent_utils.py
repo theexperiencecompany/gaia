@@ -623,6 +623,28 @@ class TestGeneralToolCategory:
         assert result == ("notion_int", "notion_int", False)
         mock_resolve.assert_awaited_once_with("notion_tool", "u1")
 
+    @pytest.mark.asyncio
+    async def test_an_unauthenticated_platform_mcp_tool_is_owned_by_its_integration(self) -> None:
+        result = await _general_tool_category(
+            _FakeRegistry({"ask_question": "deepwiki"}),  # type: ignore[arg-type]  # name-keyed stand-in for ToolRegistry
+            "ask_question",
+            None,
+            None,
+        )
+
+        assert result == ("deepwiki", "deepwiki", False)
+
+    @pytest.mark.asyncio
+    async def test_an_internal_integrations_category_is_a_core_tool_not_an_owner(self) -> None:
+        result = await _general_tool_category(
+            _FakeRegistry({"create_todo": "todos"}),  # type: ignore[arg-type]  # name-keyed stand-in for ToolRegistry
+            "create_todo",
+            None,
+            None,
+        )
+
+        assert result == ("todos", None, True)
+
 
 # ---------------------------------------------------------------------------
 # _registry_mcp_ui_metadata
@@ -726,6 +748,22 @@ class TestFormatToolCallEntryCategoryWiring:
         assert result is not None
         assert result["data"]["tool_category"] == "notion_int"
 
+    @pytest.mark.asyncio
+    async def test_a_tool_with_no_integration_never_borrows_an_integrations_icon(self) -> None:
+        registry_patch, ui_patch, _ = self._patches(_FakeRegistry({"vfs_cmd": "files"}))
+        display = patch(
+            "app.utils.agent_utils._integration_display",
+            new_callable=AsyncMock,
+            return_value=("https://stray.example/icon.png", "Stray"),
+        )
+        with registry_patch, ui_patch, display:
+            result = await format_tool_call_entry(
+                {"name": "vfs_cmd", "args": {}, "id": "tc"},  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+            )
+
+        assert result is not None
+        assert (result["data"]["icon_url"], result["data"]["integration_name"]) == (None, None)
+
 
 ATTIO_LOGO = "https://logos.composio.dev/api/attio"
 
@@ -800,6 +838,19 @@ class TestIntegrationIdentityOnToolCalls:
         )
 
         assert (data["tool_category"], data["integration_name"]) == ("gmail", "Gmail")
+
+    @pytest.mark.usefixtures("attio_enabled_from_catalog")
+    async def test_a_subagent_naming_its_integration_but_no_icon_gets_the_catalog_logo(
+        self,
+    ) -> None:
+        data = await _format(
+            _registry_with("ATTIO", "ATTIO_LIST_RECORDS", require_integration=True),
+            "ATTIO_LIST_RECORDS",
+            integration_id="attio",
+            integration_name="Attio",
+        )
+
+        assert (data["icon_url"], data["integration_name"]) == (ATTIO_LOGO, "Attio")
 
     @pytest.mark.usefixtures("attio_enabled_from_catalog")
     async def test_a_catalog_toolkit_tool_carries_its_logo_with_no_subagent_context(
