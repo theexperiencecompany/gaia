@@ -1593,6 +1593,69 @@ class TestSignupTrail:
             }
         ]
 
+    async def test_claiming_an_existing_identity_audits_the_refused_email(
+        self, patched_repos, credential_store, _instance_secret
+    ):
+        patched_repos.by_email["adopted@gaia.dev"] = UserDocument.model_validate(
+            {"id": str(ObjectId()), "email": "adopted@gaia.dev"}
+        )
+
+        response, event = await _post_as_router(
+            "/api/v1/auth/signup", {"email": "adopted@gaia.dev", "password": TEST_PASSWORD}
+        )
+
+        assert response.status_code == 403
+        assert event["audit"] == [
+            {
+                "msg": "signup rejected — registration closed",
+                "actor": AUDIT_ACTOR_UNAUTHENTICATED,
+                "email": "adopted@gaia.dev",
+            }
+        ]
+
+    async def test_losing_the_admin_race_audits_the_refused_email(
+        self, patched_repos, credential_store, _instance_secret
+    ):
+        credential_store.try_create.side_effect = None
+        credential_store.try_create.return_value = None
+
+        response, event = await _post_as_router(
+            "/api/v1/auth/signup", {"email": "loser@gaia.dev", "password": TEST_PASSWORD}
+        )
+
+        assert response.status_code == 403
+        assert event["audit"] == [
+            {
+                "msg": "signup rejected — registration closed",
+                "actor": AUDIT_ACTOR_UNAUTHENTICATED,
+                "email": "loser@gaia.dev",
+            }
+        ]
+
+    async def test_a_password_bcrypt_refuses_is_a_422_before_any_write(
+        self, patched_repos, credential_store
+    ):
+        """The wire model caps the password first; this pins the guard behind it."""
+        import app.api.v1.endpoints.auth_local as auth_local_module
+
+        with pytest.raises(HTTPException) as refused:
+            await auth_local_module.signup(
+                request=MagicMock(),
+                body=SimpleNamespace(
+                    email="admin@gaia.dev",
+                    password=PASSWORD_OVER_BCRYPT_LIMIT,
+                    name=None,
+                    invite=None,
+                ),
+            )
+
+        assert refused.value.status_code == 422
+        assert refused.value.detail == {
+            "message": "Password must be at most 72 bytes (UTF-8 encoded)"
+        }
+        assert patched_repos.created == []
+        assert credential_store.store == {}
+
     async def test_a_member_keeps_the_name_they_signed_up_with(
         self, patched_repos, credential_store, invite_store, settings_store, _instance_secret
     ):
