@@ -10,7 +10,10 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from app.api.v1.dependencies.instance_admin import require_instance_admin
 from app.api.v1.middleware.rate_limiter import limiter
-from app.constants.integrations import COMPOSIO_CATALOG_MAX_PAGE_SIZE
+from app.constants.integrations import (
+    COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE,
+    COMPOSIO_CATALOG_MAX_PAGE_SIZE,
+)
 from app.models.user_models import AuthenticatedUser
 from app.schemas.integrations.composio_setup import (
     ComposioCatalogResponse,
@@ -41,7 +44,9 @@ async def list_composio_toolkits(
     q: Annotated[str, Query(max_length=100, description="Search text")] = "",
     category: Annotated[str | None, Query(max_length=100)] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=COMPOSIO_CATALOG_MAX_PAGE_SIZE)] = 50,
+    limit: Annotated[
+        int, Query(ge=1, le=COMPOSIO_CATALOG_MAX_PAGE_SIZE)
+    ] = COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE,
 ) -> ComposioCatalogResponse:
     """Search Composio's toolkit catalog; each entry says whether it is built in, enabled or available."""
     log.set(

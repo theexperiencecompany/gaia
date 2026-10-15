@@ -11,15 +11,24 @@ import pytest
 
 from app.api.v1.endpoints import setup_composio_toolkits as endpoint_module
 from app.config.oauth_config import set_instance_integrations
+from app.constants.integrations import (
+    COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE,
+    COMPOSIO_CATALOG_MAX_PAGE_SIZE,
+)
 from app.services.composio import auth_config_resolver, toolkit_catalog, toolkit_enablement
 from app.services.integrations.integration_connection_service import build_integrations_config
-from shared.py.analytics.catalog.integrations import IntegrationToolkitEnabled
-from tests.integration.endpoints.conftest import API
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    IntegrationToolkitDisabled,
+    IntegrationToolkitEnabled,
+)
+from tests.helpers import captured_wide_event
+from tests.integration.endpoints.conftest import API, FAKE_USER_ID
 
 TOOLKITS = f"{API}/composio/toolkits"
 
 
-def _item(slug: str, name: str, managed: bool) -> ToolkitListItem:
+def _item(slug: str, name: str, managed: bool, category: str = "crm") -> ToolkitListItem:
     return ToolkitListItem.model_validate(
         {
             "deprecated": {"toolkitId": slug},
@@ -30,7 +39,7 @@ def _item(slug: str, name: str, managed: bool) -> ToolkitListItem:
             "composio_managed_auth_schemes": ["OAUTH2"] if managed else [],
             "no_auth": False,
             "meta": {
-                "categories": [{"id": "crm", "name": "crm"}],
+                "categories": [{"id": category, "name": category}],
                 "created_at": "",
                 "description": f"{name} description",
                 "logo": f"https://logos.composio.dev/api/{slug}",
@@ -140,3 +149,139 @@ async def test_only_the_instance_admin_may_browse_or_enable(
     assert (await nonadmin_client.get(TOOLKITS)).status_code == 403
     assert (await nonadmin_client.post(f"{TOOLKITS}/attio", json={})).status_code == 403
     composio.create_auth_config.assert_not_awaited()
+
+
+async def test_listing_without_paging_returns_the_default_page_from_the_start(
+    client: AsyncClient, composio: SimpleNamespace
+) -> None:
+    count = COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE + 5
+    composio.list_toolkits.return_value = [
+        _item(f"kit{i:03d}", f"Kit {i:03d}", True) for i in range(count)
+    ]
+
+    body = (await client.get(TOOLKITS)).json()
+
+    assert body["total"] == count
+    slugs = [e["slug"] for e in body["items"]]
+    assert slugs == [f"kit{i:03d}" for i in range(COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE)]
+
+
+@pytest.mark.parametrize(
+    ("params", "status"),
+    [
+        ({"limit": 0}, 422),
+        ({"limit": 1}, 200),
+        ({"limit": COMPOSIO_CATALOG_MAX_PAGE_SIZE}, 200),
+        ({"limit": COMPOSIO_CATALOG_MAX_PAGE_SIZE + 1}, 422),
+        ({"offset": -1}, 422),
+        ({"q": "a" * 101}, 422),
+        ({"category": "c" * 101}, 422),
+    ],
+)
+async def test_listing_bounds_the_page_and_the_search_text(
+    client: AsyncClient, composio: SimpleNamespace, params: dict[str, object], status: int
+) -> None:
+    assert (await client.get(TOOLKITS, params=params)).status_code == status
+
+
+async def test_listing_filters_by_category_and_stamps_the_search_shape(
+    client: AsyncClient, composio: SimpleNamespace
+) -> None:
+    composio.list_toolkits.return_value = [
+        _item("attio", "Attio", True),
+        _item("asana", "Asana", True, category="productivity"),
+        _item("affinity", "Affinity", False),
+    ]
+
+    async with captured_wide_event() as live:
+        resp = await client.get(TOOLKITS, params={"q": "a", "category": "crm", "offset": 1})
+        event = dict(live)  # before the boundary stamps its own outcome on exit
+
+    assert [e["slug"] for e in resp.json()["items"]] == ["affinity"]
+    assert event["user"] == {"id": FAKE_USER_ID}
+    assert event["operation"] == "list_composio_toolkits"
+    assert event["composio_catalog"] == {
+        "query_length": 1,
+        "category": "crm",
+        "offset": 1,
+        "total": 3,
+        "matches": 2,
+        "page": 1,
+    }
+    assert event["outcome"] == "success"
+
+
+async def test_reading_a_toolkit_lowercases_the_slug_and_stamps_its_field_count(
+    client: AsyncClient, composio: SimpleNamespace
+) -> None:
+    async with captured_wide_event() as live:
+        resp = await client.get(f"{TOOLKITS}/Affinity")
+        event = dict(live)  # before the boundary stamps its own outcome on exit
+
+    assert resp.status_code == 200
+    composio.get_toolkit.assert_awaited_with("affinity")
+    assert event["user"] == {"id": FAKE_USER_ID}
+    assert event["operation"] == "get_composio_toolkit"
+    assert event["toolkit"] == "Affinity"
+    assert event["composio_toolkit"] == {"fields": 1}
+    assert event["outcome"] == "success"
+
+
+async def test_enabling_a_toolkit_is_audited_and_stamped(
+    client: AsyncClient, composio: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: list[tuple[object, object]] = []
+    monkeypatch.setattr(
+        endpoint_module, "capture", lambda user, event: captured.append((user, event))
+    )
+
+    async with captured_wide_event() as live:
+        resp = await client.post(f"{TOOLKITS}/Attio", json={})
+        event = dict(live)  # before the boundary stamps its own outcome on exit
+
+    assert resp.status_code == 201
+    assert resp.json()["integration_id"] == "attio"
+    assert event["user"] == {"id": FAKE_USER_ID}
+    assert event["operation"] == "enable_composio_toolkit"
+    assert event["toolkit"] == "Attio"
+    assert event["integration"] == {"id": "attio"}
+    assert event["outcome"] == "success"
+    assert event["audit"] == [
+        {
+            "msg": "composio toolkit enabled",
+            "actor": FAKE_USER_ID,
+            "toolkit": "Attio",
+            "integration_id": "attio",
+        }
+    ]
+    assert captured == [
+        (
+            UserId(FAKE_USER_ID),
+            IntegrationToolkitEnabled(toolkit="attio", origin="instance", composio_managed=True),
+        )
+    ]
+
+
+async def test_disabling_a_toolkit_is_audited_and_stamped(
+    client: AsyncClient, composio: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await client.post(f"{TOOLKITS}/attio", json={})
+    captured: list[tuple[object, object]] = []
+    monkeypatch.setattr(
+        endpoint_module, "capture", lambda user, event: captured.append((user, event))
+    )
+
+    async with captured_wide_event() as live:
+        resp = await client.delete(f"{TOOLKITS}/ATTIO")
+        event = dict(live)  # before the boundary stamps its own outcome on exit
+
+    assert resp.status_code == 204
+    assert all(i.id != "attio" for i in build_integrations_config().integrations)
+    assert event["user"] == {"id": FAKE_USER_ID}
+    assert event["operation"] == "disable_composio_toolkit"
+    assert event["toolkit"] == "ATTIO"
+    assert event["outcome"] == "success"
+    assert event["audit"] == [
+        {"msg": "composio toolkit disabled", "actor": FAKE_USER_ID, "toolkit": "ATTIO"}
+    ]
+    assert captured == [(UserId(FAKE_USER_ID), IntegrationToolkitDisabled(toolkit="attio"))]

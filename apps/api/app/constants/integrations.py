@@ -58,6 +58,8 @@ COMPOSIO_AUTH_CONFIG_PAGE_SIZE: Final = 1000
 COMPOSIO_TOOLKIT_PAGE_SIZE: Final = 1000
 # Largest page the admin's catalog browser may ask GAIA for.
 COMPOSIO_CATALOG_MAX_PAGE_SIZE: Final = 200
+# Page the admin's catalog browser gets when it names no limit.
+COMPOSIO_CATALOG_DEFAULT_PAGE_SIZE: Final = 50
 # Label for an account whose provider exposes no identity (no metadata_config).
 FALLBACK_ACCOUNT_LABEL: Final = "{integration} account {number}"
 # What the agent is told when the account a call ran as has lost its connection.
