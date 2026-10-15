@@ -57,6 +57,28 @@ describe("useWeeklyCard", () => {
     await waitFor(() => expect(result.current.card).toEqual(CARD));
   });
 
+  it("asks again in a new local week but never twice in one", async () => {
+    vi.useFakeTimers({
+      shouldAdvanceTime: true,
+      now: new Date(2026, 9, 12, 9),
+    });
+    claimWeeklyCard.mockResolvedValueOnce({ ...CARD, show: false });
+    const { result, rerender } = renderHook(() => useWeeklyCard(), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(claimWeeklyCard).toHaveBeenCalledTimes(1));
+
+    vi.setSystemTime(new Date(2026, 9, 18, 23));
+    rerender();
+    expect(claimWeeklyCard).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(new Date(2026, 9, 19, 9));
+    rerender();
+    await waitFor(() => expect(result.current.card).toEqual(CARD));
+    expect(claimWeeklyCard).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   it("never asks for someone who is not subscribed", () => {
     paid = { isPaid: false, isUnknown: false };
     renderHook(() => useWeeklyCard(), { wrapper: wrapperFor(client) });

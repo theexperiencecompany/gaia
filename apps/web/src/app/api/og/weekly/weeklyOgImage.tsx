@@ -15,11 +15,12 @@ export interface WeeklyOgStats {
   runs: number;
 }
 
-interface WeeklyOgProps extends WeeklyOgStats {
-  baseUrl: string;
+interface StatTileProps {
+  value: string;
+  label: string;
 }
 
-function StatTile({ value, label }: { value: string; label: string }) {
+function StatTile({ value, label }: StatTileProps) {
   return (
     <div
       style={{
@@ -44,6 +45,10 @@ function StatTile({ value, label }: { value: string; label: string }) {
       <span style={{ fontSize: 22, color: colors.mutedLight }}>{label}</span>
     </div>
   );
+}
+
+interface WeeklyOgProps extends WeeklyOgStats {
+  baseUrl: string;
 }
 
 function WeeklyOgCard({
