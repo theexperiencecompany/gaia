@@ -33,14 +33,7 @@ export function ProviderCredentialForm({
 }: ProviderCredentialFormProps) {
   const form = useConfigureProvider({ row, presets, stored, onSaved });
 
-  // A stored key can never be read back (only its last four chars are listed).
-  // Leaving the field empty keeps it: the backend merges a partial save.
-  const storedKeyHint = stored?.api_key_hint;
   const showPresetChips = row.key === "custom";
-  const presetChips: ReadonlyArray<{ id: CustomPresetId; label: string }> = [
-    ...presets.map((p) => ({ id: p.key, label: p.label })),
-    { id: "manual", label: "Manual" },
-  ];
   const isBusy = form.isSaving || form.isTesting;
 
   return (
@@ -58,16 +51,10 @@ export function ProviderCredentialForm({
         <ProviderApiKeyInput
           label={row.api_key_label}
           keyUrl={row.key_url}
-          placeholder={
-            storedKeyHint
-              ? `Stored (${storedKeyHint}), paste to replace`
-              : `Paste your ${row.label} key`
-          }
-          description={
-            storedKeyHint
-              ? "Saved. Leave empty to keep it, or paste to replace."
-              : undefined
-          }
+          {...storedSecretHints(
+            stored?.api_key_hint,
+            `Paste your ${row.label} key`,
+          )}
           value={form.apiKey}
           onValueChange={form.setApiKey}
           autoComplete="off"
@@ -78,16 +65,10 @@ export function ProviderCredentialForm({
         <ProviderApiKeyInput
           label={row.second_key_label}
           keyUrl=""
-          placeholder={
-            stored?.api_secret_hint
-              ? `Stored (${stored.api_secret_hint}), paste to replace`
-              : `Paste your ${row.second_key_label}`
-          }
-          description={
-            stored?.api_secret_hint
-              ? "Saved. Leave empty to keep it, or paste to replace."
-              : undefined
-          }
+          {...storedSecretHints(
+            stored?.api_secret_hint,
+            `Paste your ${row.second_key_label}`,
+          )}
           value={form.apiSecret}
           onValueChange={form.setApiSecret}
           autoComplete="off"
@@ -95,20 +76,11 @@ export function ProviderCredentialForm({
         />
       )}
       {showPresetChips && (
-        <div className="flex flex-wrap gap-2">
-          {presetChips.map((chip) => (
-            <Button
-              key={chip.id}
-              size="sm"
-              radius="full"
-              variant={form.preset === chip.id ? "flat" : "light"}
-              color={form.preset === chip.id ? "primary" : "default"}
-              onPress={() => form.selectPreset(chip.id)}
-            >
-              {chip.label}
-            </Button>
-          ))}
-        </div>
+        <PresetChips
+          presets={presets}
+          selected={form.preset}
+          onSelect={form.selectPreset}
+        />
       )}
       {(row.needs_base_url || showPresetChips) && (
         <Input
@@ -146,48 +118,122 @@ export function ProviderCredentialForm({
           keyUrl={row.key_url}
         />
       )}
-      <div className="flex items-center justify-end gap-2">
-        {isConfigured && (
-          <Button
-            color="danger"
-            variant="light"
-            size="sm"
-            className="mr-auto"
-            isDisabled={isBusy}
-            onPress={() => {
-              void form.remove();
-            }}
-          >
-            Remove
-          </Button>
-        )}
-        {row.connectionTestable && (
-          <Button
-            variant="flat"
-            size="sm"
-            isLoading={form.isTesting}
-            isDisabled={form.isSaving}
-            onPress={() => {
-              void form.test();
-            }}
-          >
-            Test
-          </Button>
-        )}
+      <ProviderFormActions
+        canRemove={isConfigured}
+        testable={row.connectionTestable}
+        isSaving={form.isSaving}
+        isTesting={form.isTesting}
+        onRemove={form.remove}
+        onTest={form.test}
+        onSave={form.save}
+      />
+      <ConfirmationDialog {...form.confirmationProps} />
+    </div>
+  );
+}
+
+/** A stored secret is never read back, only its last four chars; an empty field keeps it since the backend merges partial saves. */
+function storedSecretHints(
+  hint: string | null | undefined,
+  emptyPlaceholder: string,
+): { placeholder: string; description?: string } {
+  if (!hint) return { placeholder: emptyPlaceholder };
+  return {
+    placeholder: `Stored (${hint}), paste to replace`,
+    description: "Saved. Leave empty to keep it, or paste to replace.",
+  };
+}
+
+interface PresetChipsProps {
+  presets: readonly CustomPreset[];
+  selected: CustomPresetId;
+  onSelect: (id: CustomPresetId) => void;
+}
+
+function PresetChips({ presets, selected, onSelect }: PresetChipsProps) {
+  const chips: ReadonlyArray<{ id: CustomPresetId; label: string }> = [
+    ...presets.map((p) => ({ id: p.key, label: p.label })),
+    { id: "manual", label: "Manual" },
+  ];
+  return (
+    <div className="flex flex-wrap gap-2">
+      {chips.map((chip) => (
         <Button
-          color="primary"
-          variant="flat"
+          key={chip.id}
           size="sm"
-          isLoading={form.isSaving}
-          isDisabled={form.isTesting}
+          radius="full"
+          variant={selected === chip.id ? "flat" : "light"}
+          color={selected === chip.id ? "primary" : "default"}
+          onPress={() => onSelect(chip.id)}
+        >
+          {chip.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+interface ProviderFormActionsProps {
+  canRemove: boolean;
+  testable: boolean;
+  isSaving: boolean;
+  isTesting: boolean;
+  onRemove: () => Promise<void>;
+  onTest: () => Promise<unknown>;
+  onSave: () => Promise<void>;
+}
+
+function ProviderFormActions({
+  canRemove,
+  testable,
+  isSaving,
+  isTesting,
+  onRemove,
+  onTest,
+  onSave,
+}: ProviderFormActionsProps) {
+  const isBusy = isSaving || isTesting;
+  return (
+    <div className="flex items-center justify-end gap-2">
+      {canRemove && (
+        <Button
+          color="danger"
+          variant="light"
+          size="sm"
+          className="mr-auto"
+          isDisabled={isBusy}
           onPress={() => {
-            void form.save();
+            void onRemove();
           }}
         >
-          {row.connectionTestable ? "Test & Save" : "Save"}
+          Remove
         </Button>
-      </div>
-      <ConfirmationDialog {...form.confirmationProps} />
+      )}
+      {testable && (
+        <Button
+          variant="flat"
+          size="sm"
+          isLoading={isTesting}
+          isDisabled={isSaving}
+          onPress={() => {
+            void onTest();
+          }}
+        >
+          Test
+        </Button>
+      )}
+      <Button
+        color="primary"
+        variant="flat"
+        size="sm"
+        isLoading={isSaving}
+        isDisabled={isTesting}
+        onPress={() => {
+          void onSave();
+        }}
+      >
+        {testable ? "Test & Save" : "Save"}
+      </Button>
     </div>
   );
 }

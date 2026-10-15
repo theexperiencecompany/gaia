@@ -1,14 +1,14 @@
 import type {
-  ComposioAuthField,
   ComposioCatalogEntry,
   ComposioIntegrationSetup,
+  ComposioToolkitDetailResponse,
 } from "@shared/api/generated";
 import { api } from "@/lib/api/typed";
 
 export type {
-  ComposioAuthField,
   ComposioCatalogEntry,
   ComposioIntegrationSetup,
+  ComposioToolkitDetailResponse,
 };
 
 export const COMPOSIO_SETUP_DOCS_URL =

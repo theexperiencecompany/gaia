@@ -73,7 +73,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
 
 export type CustomPresetId = CustomPresetKey | "manual";
 
-export function resolveProviderRow(
+function resolveProviderRow(
   key: CredentialProvider,
   catalog: ProviderCatalog,
 ): CatalogProviderRow {
