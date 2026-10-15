@@ -80,30 +80,59 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
     await expect(ensureDocker(createStore())).rejects.toThrow(/--yes/);
   });
 
-  it("grants the docker group and asks for a relaunch when the socket refuses the user", async () => {
+  /** Docker answers, but its socket refuses this user until the group applies. */
+  const socketRefused = {
+    "docker --version": () => ({ stdout: "Docker version 29" }),
+    "docker info": () => {
+      throw Object.assign(new Error("exit 1"), {
+        stderr:
+          "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock",
+      });
+    },
+    id: () => ({ stdout: "aryan sudo adm" }),
+    "sudo usermod": () => ({ stdout: "" }),
+  };
+
+  it("grants the docker group and relaunches under sg where the system has it", async () => {
     const calls = routeExeca({
-      "docker --version": () => ({ stdout: "Docker version 29" }),
-      "docker info": () => {
-        throw Object.assign(new Error("exit 1"), {
-          stderr:
-            "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock",
-        });
-      },
-      id: () => ({ stdout: "aryan sudo adm" }),
-      "sudo usermod": () => ({ stdout: "" }),
+      ...socketRefused,
+      'sh -c command -v "$1" sh sg': () => ({ stdout: "/usr/bin/sg" }),
     });
     const store = createStore();
 
     const result = await ensureDocker(store, { assumeYes: true });
 
     expect(result).toBe("relaunch");
-    expect(store.currentState.data.relaunchWithDockerGroup).toBe(true);
+    expect(store.currentState.data.dockerGroupSwitch).toBe("sg");
     expect(
       calls.some(
         ([cmd, args]) =>
           cmd === "sudo" && args?.[0] === "usermod" && args.includes("docker"),
       ),
     ).toBe(true);
+  });
+
+  it("relaunches through sudo -g when there is no sg (Ubuntu 26.04)", async () => {
+    routeExeca({
+      ...socketRefused,
+      "sudo -l -g docker --": () => ({ stdout: process.execPath }),
+    });
+    const store = createStore();
+
+    const result = await ensureDocker(store, { assumeYes: true });
+
+    expect(result).toBe("relaunch");
+    expect(store.currentState.data.dockerGroupSwitch).toBe("sudo");
+  });
+
+  it("tells the user to start a new login session when nothing can switch groups", async () => {
+    routeExeca(socketRefused);
+    const store = createStore();
+
+    await expect(ensureDocker(store, { assumeYes: true })).rejects.toThrow(
+      /log out and back in \(or run 'newgrp docker'\), then rerun/i,
+    );
+    expect(store.currentState.data.dockerGroupSwitch).toBeUndefined();
   });
 });
 

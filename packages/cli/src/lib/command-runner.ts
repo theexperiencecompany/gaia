@@ -14,7 +14,11 @@ import { render } from "ink";
 import React from "react";
 import { App, type CLICommand } from "../ui/app.js";
 import { type CLIStore, createStore } from "../ui/store.js";
-import { relaunchWithDockerGroup, resumedStep } from "./docker-group.js";
+import {
+  type DockerGroupSwitch,
+  relaunchWithDockerGroup,
+  resumedStep,
+} from "./docker-group.js";
 import {
   attachPlainReporter,
   isInteractive,
@@ -81,8 +85,9 @@ async function runPlain(
   }
   try {
     await runtime.runFlow(store);
-    if (needsDockerGroupRelaunch(store)) {
-      await relaunchWithDockerGroup(store.currentState.step);
+    const groupSwitch = dockerGroupRelaunch(store);
+    if (groupSwitch) {
+      await relaunchWithDockerGroup(store.currentState.step, groupSwitch);
     }
     runtime.onPlainComplete?.(store);
   } catch (error) {
@@ -122,18 +127,17 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   // drop the flow's last state (gaia up's summary) from the final frame.
   await new Promise((resolve) => setImmediate(resolve));
   unmount();
-  if (needsDockerGroupRelaunch(store)) {
-    await relaunchWithDockerGroup(store.currentState.step);
+  const groupSwitch = dockerGroupRelaunch(store);
+  if (groupSwitch) {
+    await relaunchWithDockerGroup(store.currentState.step, groupSwitch);
   }
   exitForStore(store);
 }
 
-/** The flow granted the docker group and stopped for a relaunch (ensureDocker). */
-function needsDockerGroupRelaunch(store: CLIStore): boolean {
-  return (
-    !store.currentState.error &&
-    store.currentState.data.relaunchWithDockerGroup === true
-  );
+/** How to relaunch, when the flow granted the docker group and stopped (ensureDocker). */
+function dockerGroupRelaunch(store: CLIStore): DockerGroupSwitch | undefined {
+  if (store.currentState.error) return undefined;
+  return store.currentState.data.dockerGroupSwitch;
 }
 
 /**

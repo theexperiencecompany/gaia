@@ -24,7 +24,7 @@ export type DockerReadiness =
   | "ready"
   /**
    * This user was just granted the docker group, which only a new process
-   * picks up: the command runner relaunches under `sg docker` and the flow
+   * picks up: the command runner relaunches in the docker group and the flow
    * must stop here (see lib/docker-group.ts).
    */
   | "relaunch";

@@ -6,6 +6,7 @@ import { COMPOSE_PROJECT_BY_MODE, getProjectPublishedPorts } from "./docker.js";
 import {
   ensureDockerGroupMembership,
   isDockerSocketPermissionError,
+  resolveDockerGroupSwitch,
 } from "./docker-group.js";
 import {
   DEFAULT_API_PORT,
@@ -227,7 +228,7 @@ export async function ensureDocker(
   if (info.permissionDenied) {
     store.setStatus("Granting this user access to Docker (docker group)...");
     await ensureDockerGroupMembership();
-    store.updateData("relaunchWithDockerGroup", true);
+    store.updateData("dockerGroupSwitch", await resolveDockerGroupSwitch());
     store.setStatus("Docker access granted — restarting to pick it up...");
     return "relaunch";
   }
