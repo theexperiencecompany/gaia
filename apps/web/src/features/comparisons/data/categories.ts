@@ -14,6 +14,7 @@ export const COMPARISON_CATEGORIES: Record<string, string> = {
   "martin-ai": "AI Assistants",
   poke: "AI Assistants",
   "mem-ai": "AI Assistants",
+  bee: "AI Assistants",
   // Automation
   zapier: "Automation",
   n8n: "Automation",

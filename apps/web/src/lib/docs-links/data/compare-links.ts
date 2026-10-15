@@ -7,6 +7,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/comparisons/ai-assistant-vs-automation-tools",
     },
   ],
+  bee: [
+    {
+      title: "AI Agents vs AI Assistants: Autonomy vs Assistance",
+      url: "https://docs.heygaia.io/knowledge/comparisons/ai-agents-vs-assistants",
+    },
+  ],
   akiflow: [
     {
       title: "AI Assistants vs Calendar Apps: From Scheduling to Orchestration",
@@ -68,6 +74,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
     },
   ],
   "chatgpt-teams": [
+    {
+      title: "Why GAIA Isn't a Chatbot: Action vs Conversation",
+      url: "https://docs.heygaia.io/knowledge/comparisons/why-gaia-not-chatbot",
+    },
+  ],
+  "chatgpt-atlas": [
     {
       title: "Why GAIA Isn't a Chatbot: Action vs Conversation",
       url: "https://docs.heygaia.io/knowledge/comparisons/why-gaia-not-chatbot",
