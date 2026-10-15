@@ -954,9 +954,11 @@ class TestInitializeChromaToolsStore:
             patch("app.db.chroma.chroma_tools_store.ChromaClient.get_client", new=AsyncMock()),
             patch(
                 "app.db.chroma.chroma_tools_store.providers.aget",
-                new=AsyncMock(return_value=embeddings),
+                new=AsyncMock(side_effect={"google_embeddings": embeddings}.get),
             ),
-            patch("app.db.chroma.chroma_tools_store.ChromaStore", return_value=mock_store),
+            patch(
+                "app.db.chroma.chroma_tools_store.ChromaStore", return_value=mock_store
+            ) as chroma_store,
             patch(
                 "app.db.chroma.chroma_tools_store._get_current_tools_with_hashes",
                 return_value=current,
@@ -970,6 +972,7 @@ class TestInitializeChromaToolsStore:
             ) as execute,
         ):
             yield SimpleNamespace(
+                chroma_store=chroma_store,
                 store=mock_store,
                 collection=collection,
                 registry=registry,
@@ -1035,6 +1038,25 @@ class TestInitializeChromaToolsStore:
             # The runner suffixes collections (GAIA_CHROMA_COLLECTION_SUFFIX), so name it by the constant.
             "collection": CHROMA_TOOLS_STORE_COLLECTION,
             "embedded_count": 1,
+        }
+
+    @pytest.mark.parametrize(
+        ("embeddings", "dims"),
+        [
+            (SimpleNamespace(embedding_dims=1024), 1024),
+            (object(), 768),
+        ],
+        ids=["local-fastembed-declares-its-size", "google-default"],
+    )
+    async def test_the_collection_is_sized_by_the_embeddings_backend(
+        self, seed_lock_keys, embeddings, dims
+    ):
+        with self._patched(embeddings=embeddings, current={}, existing={}) as p:
+            await self._run()
+        assert p.chroma_store.call_args.kwargs["index"] == {
+            "embed": embeddings,
+            "dims": dims,
+            "fields": ["description"],
         }
 
     async def test_no_diff_does_not_touch_the_store(self):

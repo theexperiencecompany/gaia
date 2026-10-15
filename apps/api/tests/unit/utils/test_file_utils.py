@@ -12,11 +12,14 @@ from PIL import Image
 import pytest
 
 from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
 from app.constants.files import IMAGE_SUMMARY_NO_VISION_PROVIDER, SUMMARY_LLM_MAX_CONCURRENCY
 from app.constants.llm import HELPER_MAX_OUTPUT_TOKENS
+from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 from app.utils import file_utils, local_document_parser
 from app.utils.file_utils import DocumentProcessor, generate_file_summary
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -237,9 +240,28 @@ class TestProcessImage:
         """An upload on an Ollama-only instance must still land, saying why it was not described."""
         no_vision = AsyncMock(side_effect=LLMNotConfiguredError("no vision provider"))
         with patch("app.utils.file_utils.describe_image", no_vision):
-            result = await processor.process_image(_encode_image("PNG"))
+            async with captured_wide_event() as event:
+                result = await processor.process_image(_encode_image("PNG"))
 
         assert result == IMAGE_SUMMARY_NO_VISION_PROVIDER
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} No vision provider for an uploaded image",
+                "error": "no vision provider",
+            }
+        ]
+
+    async def test_the_vision_call_is_metered_to_the_uploader_with_the_document_prompt(
+        self, processor: DocumentProcessor
+    ) -> None:
+        with _mock_vision("desc") as vision:
+            await processor.process_image(_encode_image("PNG"))
+
+        assert vision.call_args.kwargs == {
+            "prompt": DOCUMENT_IMAGE_SUMMARY_PROMPT,
+            "label": "file_image_summary",
+            "user_id": "u-test",
+        }
 
     async def test_the_mime_is_sniffed_from_the_bytes_not_assumed(
         self, processor: DocumentProcessor

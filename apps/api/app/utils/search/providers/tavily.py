@@ -50,23 +50,13 @@ class TavilyProvider(CredentialSearchProvider):
     name = "tavily"
     monthly_free_limit = 1_000
 
-    def __init__(self) -> None:
-        self._client: TavilyClient | None = None
-        self._client_api_key: str | None = None
-
-    def _get_client(self, api_key: str) -> TavilyClient:
-        if self._client is None or self._client_api_key != api_key:
-            self._client_api_key = api_key
-            self._client = TavilyClient(api_key=api_key)
-        return self._client
-
     async def search(self, query: str, count: int) -> SearchResponse:
         """Query Tavily (off the event loop) and map results to the shared shape."""
         api_key = await self._credential()
         # tavily-python is synchronous; off-load it so the event loop keeps moving.
         payload = _TavilyPayload.model_validate(
             await asyncio.to_thread(
-                self._get_client(api_key).search,
+                TavilyClient(api_key=api_key).search,
                 query=query,
                 max_results=count,
                 topic="general",

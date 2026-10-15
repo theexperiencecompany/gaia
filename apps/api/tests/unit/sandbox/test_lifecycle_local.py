@@ -17,7 +17,9 @@ import uuid
 
 import pytest
 
+from app.constants.sandbox import CODE_EXECUTION_DISABLED_MESSAGE
 from app.services.sandbox import lifecycle
+from app.services.sandbox.errors import CodeExecutionDisabledError
 from app.services.sandbox.local_sandbox import LocalDockerSandbox
 
 
@@ -76,9 +78,11 @@ async def test_selfhost_without_the_opt_in_refuses_code_execution_with_the_fix(
     get_local = MagicMock()
     monkeypatch.setattr(lifecycle, "get_local_sandbox", get_local)
     with _selfhost_no_key(local_code_sandbox=False):
-        with pytest.raises(lifecycle.CodeExecutionDisabledError, match="gaia up --code-sandbox"):
+        with pytest.raises(CodeExecutionDisabledError) as refused:
             async with lifecycle.acquire_sandbox(_uid()):
                 pass  # pragma: no cover — never reached
+    assert str(refused.value) == CODE_EXECUTION_DISABLED_MESSAGE
+    assert "gaia up --code-sandbox" in CODE_EXECUTION_DISABLED_MESSAGE
     # No Docker call may be attempted without the socket the opt-in mounts.
     get_local.assert_not_called()
 

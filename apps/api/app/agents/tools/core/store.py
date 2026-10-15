@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.store.base import BaseStore
@@ -7,9 +7,6 @@ from app.agents.tools.core.local_embeddings import FastEmbedEmbeddings
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 
-if TYPE_CHECKING:
-    from app.agents.tools.core.local_embeddings import FastEmbedEmbeddings
-
 
 @lazy_provider(
     name="google_embeddings",
@@ -17,7 +14,7 @@ if TYPE_CHECKING:
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,
 )
-def init_embeddings() -> "GoogleGenerativeAIEmbeddings | FastEmbedEmbeddings":
+def init_embeddings() -> GoogleGenerativeAIEmbeddings | FastEmbedEmbeddings:
     """The embeddings backend for tool/trigger semantic search.
 
     Google Gemini embeddings when a key is configured (hosted + dev default).

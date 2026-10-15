@@ -9,8 +9,6 @@ The class carries ``embedding_dims`` so collection creation can derive the
 vector size instead of hardcoding Google's 768.
 """
 
-from typing import cast
-
 from langchain_core.embeddings import Embeddings
 
 from app.memory.embeddings import _embed_query_sync, _embed_sync
@@ -22,7 +20,7 @@ class FastEmbedEmbeddings(Embeddings):
     embedding_dims = 1024
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return cast("list[list[float]]", _embed_sync(texts))
+        return _embed_sync(texts)
 
     def embed_query(self, text: str) -> list[float]:
-        return cast("list[float]", _embed_query_sync(text))
+        return _embed_query_sync(text)

@@ -30,6 +30,7 @@ import uuid
 
 from e2b import CommandExitException
 import pytest
+from tests.helpers import captured_wide_event
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
@@ -1041,3 +1042,49 @@ async def test_a_finished_acquisition_schedules_the_pause_under_the_user_lock() 
 
     dlock.assert_called_once_with(uid)
     schedule_pause.assert_called_once_with(uid, entry)
+
+
+_E2B_UNCONFIGURED_WARNING = (
+    "E2B is not configured (no stored credential and no E2B_API_KEY): "
+    "hosted sandboxes are unavailable. On self-host, coding tools "
+    "fall back to the local Docker backend."
+)
+
+
+def _resolve_e2b_only(config: dict[str, str] | None) -> AsyncMock:
+    async def _resolve(name: str) -> dict[str, str] | None:
+        if name != "e2b":
+            raise AssertionError(f"pool resolved the wrong provider: {name!r}")
+        return config
+
+    return AsyncMock(side_effect=_resolve)
+
+
+async def test_the_pool_provider_warns_when_no_e2b_credential_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pool_module, "_pool_singleton", None)
+    monkeypatch.setattr(pool_module, "resolve_e2b_config", _resolve_e2b_only(None))
+
+    load_pool = pool_module.init_sandbox_pool().loader_func
+    async with captured_wide_event() as event:
+        pool = await load_pool()
+
+    assert isinstance(pool, SandboxPool)
+    assert pool is get_sandbox_pool()
+    assert [w["msg"] for w in event.get("warnings", [])] == [_E2B_UNCONFIGURED_WARNING]
+
+
+async def test_the_pool_provider_is_silent_when_e2b_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing = SandboxPool()
+    monkeypatch.setattr(pool_module, "_pool_singleton", existing)
+    monkeypatch.setattr(pool_module, "resolve_e2b_config", _resolve_e2b_only({"api_key": "k"}))
+
+    load_pool = pool_module.init_sandbox_pool().loader_func
+    async with captured_wide_event() as event:
+        pool = await load_pool()
+
+    assert pool is existing
+    assert event.get("warnings", []) == []

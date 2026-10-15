@@ -12,6 +12,7 @@ from app.utils.search.providers.base import CredentialSearchProvider
 _ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 _TIMEOUT = 15.0
 _MAX_COUNT = 20
+_AUTH_HEADER = "X-Subscription-Token"
 
 
 class _BraveMetaUrl(BaseModel):
@@ -66,7 +67,7 @@ class BraveProvider(CredentialSearchProvider):
             response = await client.get(
                 _ENDPOINT,
                 headers={
-                    "X-Subscription-Token": api_key,
+                    _AUTH_HEADER: api_key,
                     "Accept": "application/json",
                 },
                 params={"q": query, "count": min(count, _MAX_COUNT)},

@@ -21,6 +21,7 @@ from app.utils.webpage_fetch import (
     _fetch_first_success,
     default_fetchers,
 )
+from tests.helpers import InMemoryCredentialStore
 
 
 def _resolver(host_to_ip: dict[str, str]) -> Callable[[str, int], list[str]]:
@@ -91,14 +92,12 @@ async def test_raises_when_all_engines_fail() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_default_fetchers_resolve_the_firecrawl_key_from_the_store() -> None:
+async def test_default_fetchers_resolve_the_firecrawl_key_from_the_store(
+    selfhost_credential_store: InMemoryCredentialStore,
+) -> None:
     """Reach the engine with the store-configured key; the runtime reads no env var directly."""
-    stored = {"api_key": "fc-stored", "base_url": None, "model": None, "preset": None}
-    with patch(
-        "app.utils.webpage_fetch.resolve_firecrawl_config",
-        new=AsyncMock(return_value=stored),
-    ):
-        fetchers = await default_fetchers()
+    selfhost_credential_store.save("firecrawl", api_key="fc-stored")  # pragma: allowlist secret
+    fetchers = await default_fetchers()
 
     firecrawl = next(f for f in fetchers if isinstance(f, FirecrawlFetcher))
     assert firecrawl.is_configured() is True

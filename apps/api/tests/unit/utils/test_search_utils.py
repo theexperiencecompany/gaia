@@ -249,6 +249,7 @@ class TestTavilyProvider:
             result = await provider.search("test query", 5)
 
         # One general-topic search asking for images and favicons, sized to the caller's count.
+        mock_client_cls.assert_called_once_with(api_key="tvly-key")  # pragma: allowlist secret
         mock_thread.assert_awaited_once_with(
             mock_client_cls.return_value.search,
             query="test query",
