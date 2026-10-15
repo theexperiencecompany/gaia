@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date as date_type, datetime, timedelta
 from difflib import SequenceMatcher
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, TypedDict, Unpack
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
@@ -58,28 +58,28 @@ USER = "user-1"
 NOW = datetime(2026, 8, 24, tzinfo=UTC)
 
 
-def make_fact(
-    content: str = "sam likes green tea",
-    *,
-    kind: MemoryKind = MemoryKind.FACT,
-    shelf_life: MemoryShelfLife = MemoryShelfLife.DURABLE,
-    category_path: str = "preferences",
-    importance: float = 0.5,
-    entities: list[ExtractedEntity] | None = None,
-    edges: list[ExtractedEdge] | None = None,
-    occurred_start: datetime | None = None,
-    occurred_end: datetime | None = None,
-) -> ExtractedFact:
+class _FactFields(TypedDict, total=False):
+    kind: MemoryKind
+    shelf_life: MemoryShelfLife
+    category_path: str
+    importance: float
+    entities: list[ExtractedEntity] | None
+    edges: list[ExtractedEdge] | None
+    occurred_start: datetime | None
+    occurred_end: datetime | None
+
+
+def make_fact(content: str = "sam likes green tea", **fields: Unpack[_FactFields]) -> ExtractedFact:
     return ExtractedFact(
         content=content,
-        kind=kind,
-        shelf_life=shelf_life,
-        category_path=category_path,
-        importance=importance,
-        entities=entities or [],
-        edges=edges or [],
-        occurred_start=occurred_start,
-        occurred_end=occurred_end,
+        kind=fields.get("kind", MemoryKind.FACT),
+        shelf_life=fields.get("shelf_life", MemoryShelfLife.DURABLE),
+        category_path=fields.get("category_path", "preferences"),
+        importance=fields.get("importance", 0.5),
+        entities=fields.get("entities") or [],
+        edges=fields.get("edges") or [],
+        occurred_start=fields.get("occurred_start"),
+        occurred_end=fields.get("occurred_end"),
     )
 
 
