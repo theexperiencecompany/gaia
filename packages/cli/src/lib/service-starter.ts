@@ -124,9 +124,25 @@ function buildSelfhostUpArgs(
     "-d",
     "--remove-orphans",
   ];
-  if (options?.build) upArgs.push("--build");
+  // Without --no-build compose silently builds any image it cannot pull from source.
+  upArgs.push(options?.build ? "--build" : "--no-build");
   if (options?.pull) upArgs.push("--pull", options.pull);
   return upArgs;
+}
+
+/** A GAIA image ref in compose's missing-image errors ("No such image", "failed to resolve reference"). */
+const MISSING_GAIA_IMAGE =
+  /(?:No such image: |failed to resolve reference ")(ghcr\.io\/theexperiencecompany\/gaia[\w-]*:([\w.-]+))/;
+
+/** A `gaia up`/`start` hit a GAIA release whose images were never published. */
+export class UnpublishedImageError extends Error {
+  constructor(imageRef: string, version: string, options?: ErrorOptions) {
+    super(
+      `GAIA ${version} images aren't published (${imageRef}). Run \`gaia update\`, or \`gaia up --build\` to build from source.`,
+      options,
+    );
+    this.name = "UnpublishedImageError";
+  }
 }
 
 export function readStoredDevPid(repoPath: string): number | null {
@@ -183,15 +199,23 @@ export async function startServices(
   const files = selfhostComposeFiles({ build: options?.build });
   const envArgs = getEnvFileArgs(dockerComposePath);
 
-  await runCommand(
-    "docker",
-    buildSelfhostUpArgs(files, envArgs, options),
-    dockerComposePath,
-    undefined,
-    onLog,
-    dockerEnv,
-    resolveStartTimeoutMs(),
-  );
+  try {
+    await runCommand(
+      "docker",
+      buildSelfhostUpArgs(files, envArgs, options),
+      dockerComposePath,
+      undefined,
+      onLog,
+      dockerEnv,
+      resolveStartTimeoutMs(),
+    );
+  } catch (error) {
+    const missing = MISSING_GAIA_IMAGE.exec((error as Error).message);
+    if (missing?.[1] && missing[2]) {
+      throw new UnpublishedImageError(missing[1], missing[2], { cause: error });
+    }
+    throw error;
+  }
   if (await dockerVolumeExists(LEGACY_SANDBOX_VOLUME)) {
     onStatus?.("Moving code-sandbox files into per-user workspaces...");
     await runCommand(

@@ -35,6 +35,7 @@ import {
   detectSetupMode,
   isGaiaCheckout,
   startServices,
+  UnpublishedImageError,
 } from "../../lib/service-starter.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import { CLI_VERSION } from "../../lib/version.js";
@@ -315,6 +316,7 @@ async function startSelfhostServices(
       options.build ? { build: true } : { pull: "missing" },
     );
   } catch (e) {
+    if (e instanceof UnpublishedImageError) throw e;
     const reason = (e as Error).message;
     throw new Error(
       options.build

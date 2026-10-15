@@ -34,6 +34,7 @@ import {
   pullSelfhostImages,
   startServices,
   stopServices,
+  UnpublishedImageError,
 } from "../../src/lib/service-starter.js";
 
 /** A child process that exits 0 on the next tick. */
@@ -221,5 +222,88 @@ describe("startServices code-sandbox isolation", () => {
     await start();
 
     expect(spawn).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** A child process that writes compose's stderr, then exits 1. */
+function failingProcess(stderr: string): () => EventEmitter {
+  return () => {
+    const proc = Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      kill: vi.fn(),
+    });
+    setImmediate(() => {
+      proc.stderr.emit("data", Buffer.from(stderr));
+      proc.emit("close", 1);
+    });
+    return proc;
+  };
+}
+
+function startSelfhost(
+  options?: Parameters<typeof startServices>[5],
+): Promise<void> {
+  return startServices(
+    "/no/such/repo",
+    "selfhost",
+    undefined,
+    undefined,
+    undefined,
+    options,
+  );
+}
+
+describe("startServices never builds from source unless asked", () => {
+  beforeEach(() => {
+    resetMocks();
+    readConfig.mockReturnValue({});
+  });
+
+  it("forbids compose from building a missing image on a pull start", async () => {
+    await startSelfhost({ pull: "missing" });
+
+    const args = spawn.mock.calls[0]?.[1] as string[];
+    expect(args).toContain("--no-build");
+    expect(args).not.toContain("--build");
+  });
+
+  it("builds only when --build was asked for", async () => {
+    await startSelfhost({ build: true });
+
+    const args = spawn.mock.calls[0]?.[1] as string[];
+    expect(args).toContain("--build");
+    expect(args).not.toContain("--no-build");
+  });
+
+  // Both stderr lines are verbatim from docker compose v5.5 `up --no-build`.
+  it.each([
+    "Error response from daemon: No such image: ghcr.io/theexperiencecompany/gaia:0.9.1-rc\n",
+    'Error response from daemon: failed to resolve reference "ghcr.io/theexperiencecompany/gaia-web:0.9.1-rc": ghcr.io/theexperiencecompany/gaia-web:0.9.1-rc: not found\n',
+  ])(
+    "names the unpublished GAIA release instead of compose's error: %s",
+    async (stderr) => {
+      spawn.mockImplementation(failingProcess(stderr));
+
+      const error = await startSelfhost({ pull: "missing" }).catch((e) => e);
+
+      expect(error).toBeInstanceOf(UnpublishedImageError);
+      expect(error.message).toMatch(
+        /^GAIA 0\.9\.1-rc images aren't published \(ghcr\.io\/theexperiencecompany\/gaia(-web)?:0\.9\.1-rc\)\. Run `gaia update`, or `gaia up --build` to build from source\.$/,
+      );
+    },
+  );
+
+  it("keeps compose's own error when a third-party image is missing", async () => {
+    spawn.mockImplementation(
+      failingProcess(
+        "Error response from daemon: No such image: postgres:18-alpine\n",
+      ),
+    );
+
+    const error = await startSelfhost({ pull: "missing" }).catch((e) => e);
+
+    expect(error).not.toBeInstanceOf(UnpublishedImageError);
+    expect(error.message).toContain("No such image: postgres:18-alpine");
   });
 });
