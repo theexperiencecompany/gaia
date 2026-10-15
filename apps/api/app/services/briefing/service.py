@@ -493,13 +493,15 @@ def _build_facts(
     link_targets: dict[int, str] = {}
 
     items = [it for sec in sections for it in sec.items]
-    fact_lines: list[str] = [
-        "[COUNTS] "
-        f"waiting on you: {sum(1 for it in items if it.kind in ('you', 'failed'))} · "
-        f"done: {sum(1 for it in items if it.kind == 'lookback')} · "
-        f"in progress: {sum(1 for it in items if it.kind == 'gaia')} · "
-        f"held results: {sum(1 for it in items if it.kind == 'note')}"
-    ]
+    counts = (
+        ("waiting on you", sum(1 for it in items if it.kind in ("you", "failed"))),
+        ("done", sum(1 for it in items if it.kind == "lookback")),
+        ("in progress", sum(1 for it in items if it.kind == "gaia")),
+        ("while you were away", sum(1 for it in items if it.kind == "note")),
+    )
+    # A zero is left out so the model is never handed a tally of nothing to recite.
+    voiced = " · ".join(f"{label}: {n}" for label, n in counts if n)
+    fact_lines: list[str] = [f"[COUNTS] {voiced}"] if voiced else []
     for sec in sections:
         fact_lines.append(f"[{sec.title}]")
         for it in sec.items:

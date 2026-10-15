@@ -1,8 +1,9 @@
 """Check the brief's headline and lede against its own items before anything renders.
 
 The model writes the prose; code builds the items. Prose that claims a need, an
-event, a count or a person the items do not show is a contradiction the reader sees
-on the same page, so it is rejected (service.py regenerates once, then fails loud).
+event, a count or a person the items do not show contradicts the page; prose that
+counts zeros or names pipeline vocabulary reads like a report, not a person. Both are
+rejected (service.py regenerates once, then fails loud).
 """
 
 import re
@@ -41,6 +42,8 @@ _NEGATED_CLAUSE = re.compile(
     r"\b(?:no|not|none|nothing|nobody|no one|zero|0)\b|n't\b", re.IGNORECASE
 )
 _CLAUSE_BREAK = re.compile(r"[.;:,!?]|\b(?:but|and|while|though|yet)\b", re.IGNORECASE)
+# Pipeline vocabulary the reader never sees as such.
+_INTERNAL_TERM = re.compile(r"\b(?:held results?|lanes?|sections?)\b", re.IGNORECASE)
 _EVENT_CLAIM = re.compile(r"\b(?:events?|meetings?|calls? (?:at|with))\b", re.IGNORECASE)
 _EMPTY_CALENDAR = re.compile(
     r"\b(?:no|nothing|zero|0|clear|free|empty)\b[^.;]*\b(?:events?|meetings?|calendar)\b",
@@ -112,13 +115,22 @@ def voice_contradictions(headline: str, lede: str, payload: BriefingPayload) -> 
         problems.append("the prose mentions an event, but today's calendar is empty")
 
     allowed = _allowed_counts(payload)
-    for match in _COUNT.finditer(prose):
-        token = match.group(1).lower()
-        count = _NUMBER_WORDS[token] if token in _NUMBER_WORDS else int(token)
-        if count not in allowed:
+    counts = [
+        _NUMBER_WORDS[token] if token in _NUMBER_WORDS else int(token)
+        for token in (match.group(1).lower() for match in _COUNT.finditer(prose))
+    ]
+    if 0 in counts:
+        problems.append("the prose counts 0; leave out what is not there instead of counting it")
+    for count in counts:
+        if count and count not in allowed:
             problems.append(f"the prose counts {count}, which no item count matches")
 
-    corpus_words = set(_WORD.findall(_corpus(payload).lower()))
+    corpus = _corpus(payload).lower()
+    for match in _INTERNAL_TERM.finditer(prose):
+        if match.group(0).lower() not in corpus:
+            problems.append(f"the prose names the internal term {match.group(0)!r}")
+
+    corpus_words = set(_WORD.findall(corpus))
     for match in _NAME.finditer(prose):
         name = next(group for group in match.groups() if group)
         if name not in _NOT_NAMES and name.lower() not in corpus_words:
