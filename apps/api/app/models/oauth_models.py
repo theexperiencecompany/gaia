@@ -85,6 +85,9 @@ class OAuthIntegration(BaseModel):
     subagent_config: SubAgentConfig | None = None
     metadata_config: ProviderMetadataConfig | None = None
     content: IntegrationContent | None = None
+    # "instance": a Composio toolkit this instance's admin enabled, not defined in code.
+    origin: Literal["code", "instance"] = "code"
+    icon_url: str | None = None
 
     @model_validator(mode="after")
     def _enforce_composio_invariant(self) -> "OAuthIntegration":
@@ -101,8 +104,14 @@ class OAuthIntegration(BaseModel):
                 f"Integration {self.id!r} has managed_by='composio' but no composio_config."
             )
         # Available with an empty auth_config_id would mint Connect Links against
-        # an empty Composio config; staged integrations keep available=False.
-        if self.available and self.composio_config and not self.composio_config.auth_config_id:
+        # an empty Composio config; staged integrations keep available=False. An
+        # instance toolkit's auth config lives in the instance store, never here.
+        if (
+            self.origin == "code"
+            and self.available
+            and self.composio_config
+            and not self.composio_config.auth_config_id
+        ):
             raise ValueError(
                 f"Integration {self.id!r} is available but has no Composio auth_config_id; "
                 "set it from the Composio dashboard or keep available=False."

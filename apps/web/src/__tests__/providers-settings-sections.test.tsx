@@ -85,6 +85,8 @@ const status = {
     local_code_sandbox: false,
     blob_store: "local",
     gaia_support: false,
+    instance_toolkits: true,
+    private_network_endpoints: true,
   },
   providers: Object.fromEntries(
     CATALOG_LABELS.map(([key]) => [

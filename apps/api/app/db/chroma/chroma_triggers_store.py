@@ -13,7 +13,7 @@ from chromadb.api.types import GetResult
 from langgraph.store.base import PutOp
 
 from app.agents.tools.core.store import embedding_dims
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.chroma import CHROMA_TRIGGERS_STORE_COLLECTION
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -88,7 +88,7 @@ def _get_current_triggers_with_hashes() -> dict[str, IndexedTriggerEntry]:
     """Map every registered trigger's slug to its hash and persisted fields."""
     current_triggers: dict[str, IndexedTriggerEntry] = {}
 
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if not integration.associated_triggers:
             continue
 

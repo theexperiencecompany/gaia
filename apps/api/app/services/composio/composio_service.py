@@ -5,8 +5,15 @@ from typing import cast
 from composio import Composio, after_execute, before_execute, schema_modifier
 from composio.types import Tool
 import composio_client
-from composio_client.types import AuthConfigListParams, ConnectedAccountRetrieveResponse
+from composio_client.types import (
+    AuthConfigListParams,
+    ConnectedAccountRetrieveResponse,
+    ToolkitListParams,
+    ToolkitRetrieveResponse,
+)
+from composio_client.types.auth_config_create_params import AuthConfig
 from composio_client.types.auth_config_list_response import Item as AuthConfigItem
+from composio_client.types.toolkit_list_response import Item as ToolkitListItem
 from composio_client.types.trigger_instance_upsert_response import (
     TriggerInstanceUpsertResponse,
 )
@@ -18,6 +25,7 @@ from app.constants.integrations import (
     COMPOSIO_ACCOUNT_LIST_LIMIT,
     COMPOSIO_AUTH_CONFIG_PAGE_SIZE,
     COMPOSIO_SERVICE_PROVIDER,
+    COMPOSIO_TOOLKIT_PAGE_SIZE,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -51,8 +59,6 @@ from app.utils.exceptions import ProviderNotConfiguredError
 from app.utils.query_utils import add_query_param
 from shared.py.wide_events import log
 
-COMPOSIO_INTEGRATIONS = get_composio_integrations_by_provider()
-
 
 class _ComposioEventTotals(BaseModel):
     """The totals this service accumulates on the wide event's composio namespace."""
@@ -83,10 +89,10 @@ class ComposioService:
     """GAIA's Composio client: connect links, connected accounts, toolkits and triggers."""
 
     def __init__(self, api_key: str):
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
+        from app.config.oauth_config import all_integrations
 
         toolkit_versions: dict[str, str] = {}
-        for integration in OAUTH_INTEGRATIONS:
+        for integration in all_integrations():
             if integration.composio_config and integration.composio_config.toolkit_version:
                 toolkit_name = integration.composio_config.toolkit.lower()
                 toolkit_versions[toolkit_name] = integration.composio_config.toolkit_version
@@ -103,7 +109,7 @@ class ComposioService:
         self, provider: str, user_id: str, state_token: str
     ) -> ComposioConnectLink:
         """Mint a hosted Connect Link for this user; the account stays pending until they authorize it."""
-        integration = COMPOSIO_INTEGRATIONS.get(provider)
+        integration = get_composio_integrations_by_provider().get(provider)
         if integration is None:
             raise ValueError(f"Provider '{provider}' not supported")
         auth_config_id = await auth_config_id_for(integration)
@@ -356,7 +362,7 @@ class ComposioService:
         resolved = await resolve_auth_configs()
         auth_config_provider_map: dict[str, str] = {}
         for provider in providers:
-            integration = COMPOSIO_INTEGRATIONS.get(provider)
+            integration = get_composio_integrations_by_provider().get(provider)
             auth_config = resolved.get(integration.id) if integration else None
             if auth_config is not None:
                 auth_config_provider_map[auth_config.auth_config_id] = provider
@@ -407,6 +413,31 @@ class ComposioService:
                 return configs
             cursor = page.next_cursor
 
+    async def list_toolkits(self) -> list[ToolkitListItem]:
+        """Return Composio's whole toolkit catalog, across all pages."""
+        toolkits: list[ToolkitListItem] = []
+        cursor: str | None = None  # pragma: no mutate — only read for truthiness
+        while True:
+            params: ToolkitListParams = {"limit": COMPOSIO_TOOLKIT_PAGE_SIZE}
+            if cursor:
+                params["cursor"] = cursor
+            page = await asyncio.to_thread(self.composio.client.toolkits.list, **params)
+            toolkits.extend(page.items)
+            if not page.next_cursor:
+                return toolkits
+            cursor = page.next_cursor
+
+    async def get_toolkit(self, slug: str) -> ToolkitRetrieveResponse:
+        """Return one toolkit with its auth schemes and the fields each needs."""
+        return await asyncio.to_thread(self.composio.toolkits.get, slug)
+
+    async def create_auth_config(self, slug: str, options: AuthConfig) -> str:
+        """Create an auth config for the toolkit in this key's project; return its id."""
+        created = await asyncio.to_thread(
+            self.composio.client.auth_configs.create, toolkit={"slug": slug}, auth_config=options
+        )
+        return created.auth_config.id
+
     def get_connected_account_by_id(
         self, connected_account_id: str
     ) -> ConnectedAccountRetrieveResponse | None:
@@ -441,7 +472,7 @@ class ComposioService:
     async def delete_all_connected_accounts(self, user_id: str, provider: str) -> int:
         """Revoke every account, of any status, the user holds on the provider; returns how many."""
         log.set(composio_user_id=user_id, composio_provider=provider)
-        integration = COMPOSIO_INTEGRATIONS.get(provider)
+        integration = get_composio_integrations_by_provider().get(provider)
         if integration is None:
             raise ValueError(f"Provider '{provider}' not supported")
         auth_config_id = await auth_config_id_for(integration)

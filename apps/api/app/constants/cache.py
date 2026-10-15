@@ -114,6 +114,12 @@ OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
 OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery_v2"
 OAUTH_STATUS_KEY = "OAUTH_STATUS"
 
+# Composio's toolkit catalog, shared by every admin; refreshed from Composio after the TTL.
+COMPOSIO_TOOLKIT_CATALOG_KEY = "composio:toolkit_catalog"
+COMPOSIO_TOOLKIT_CATALOG_TTL = SIX_HOUR_TTL
+# One user's integrations-page snapshot; {user_id}="*" matches every user's.
+MY_INTEGRATIONS_SNAPSHOT_KEY = "tools:user:{user_id}:my_snapshot"
+
 # Every cache derived from a user's integration set; ALL must be busted
 # together on any change or the views diverge (a stale OAUTH_STATUS once hid a
 # freshly-connected MCP). `{user_id}` is substituted by CacheInvalidator at call time.

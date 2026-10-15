@@ -15,6 +15,7 @@ RUNTIME_CONFIG_CHANNEL = "gaia:runtime-config-updated"
 # Scope of one provider's credential: PROVIDER_SCOPE_PREFIX + provider name.
 PROVIDER_SCOPE_PREFIX = "provider:"
 COMPOSIO_AUTH_CONFIGS_SCOPE = "composio_auth_configs"
+INSTANCE_TOOLKITS_SCOPE = "instance_toolkits"
 
 
 async def publish_config_update(scope: str) -> None:

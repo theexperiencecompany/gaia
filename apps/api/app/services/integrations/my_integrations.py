@@ -10,7 +10,7 @@ tools are fetched on demand via get_integration_tools.
 import asyncio
 from typing import TypedDict, cast
 
-from app.constants.cache import ONE_DAY_TTL
+from app.constants.cache import MY_INTEGRATIONS_SNAPSHOT_KEY, ONE_DAY_TTL
 from app.decorators.caching import Cacheable
 from app.models.integration_models import UserIntegrationsListResponse
 from app.schemas.integrations.responses import (
@@ -110,7 +110,7 @@ def _apply_live_status_overlay(
 
 
 @Cacheable(
-    key_pattern="tools:user:{user_id}:my_snapshot",
+    key_pattern=MY_INTEGRATIONS_SNAPSHOT_KEY,
     ttl=ONE_DAY_TTL,
     model=MyIntegrationsResponse,
 )
@@ -162,6 +162,8 @@ def _build_my_integrations_response(
                 display_priority=cfg.display_priority,
                 available=cfg.available,
                 slug=cfg.slug,
+                origin=cfg.origin,
+                icon_url=cfg.icon_url,
                 tool_count=tool_count,
             )
         )

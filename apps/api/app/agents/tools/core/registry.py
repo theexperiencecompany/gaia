@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 
 from langchain_core.tools import BaseTool
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.config.settings import settings
 from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
@@ -614,9 +614,14 @@ class ToolRegistry:
         )
         return self._categories[toolkit_name]
 
-    async def populate_provider_catalog(self) -> int:
+    async def populate_provider_catalog(
+        self, only: Sequence[OAuthIntegration] | None = None
+    ) -> int:
         """Index provider-tool METADATA for retrieval and the /tools catalog
         *without* materializing executable StructuredTools.
+
+        only limits the run to those integrations (one the admin just enabled);
+        None indexes the whole catalog.
 
         Replaces an eager warmup that wrapped every one of the ~1.6k catalog
         tools into a StructuredTool (a Pydantic args-model + closure per tool,
@@ -643,7 +648,7 @@ class ToolRegistry:
         # Composio round trips for tools nobody can reach.
         integrations = [
             integration
-            for integration in OAUTH_INTEGRATIONS
+            for integration in (all_integrations() if only is None else only)
             if (
                 integration.available
                 and integration.managed_by == "composio"
@@ -897,7 +902,7 @@ def integration_destructive_tools(name: str) -> set[str] | None:
     """Curated HIL destructive tools for an integration, matched by id or (for
     Composio) toolkit. ``None`` (uncurated) leaves the tools unclassified so the
     HIL LLM classifier resolves them at gate time (fail closed)."""
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         toolkit = integration.composio_config.toolkit if integration.composio_config else None
         if integration.id == name or (toolkit and toolkit.lower() == name.lower()):
             return (

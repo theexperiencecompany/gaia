@@ -139,7 +139,7 @@ Provider and built-in integrations are NOT subagents: the executor loads them in
 ### Core subagent files
 
 - `apps/api/app/agents/core/subagents/__init__.py`
-- `apps/api/app/agents/core/subagents/registry.py` — `all_subagents()` and `get_subagent_by_id()`. **Single source of truth** that combines OAuth-derived subagents + builtins. Process-lifetime `@cache`'d.
+- `apps/api/app/agents/core/subagents/registry.py` — `all_subagents()` and `get_subagent_by_id()`. **Single source of truth** that combines OAuth-derived subagents + builtins. Cached per catalog version (`CatalogCached`), so it rebuilds when the instance admin enables a Composio toolkit.
 - `apps/api/app/agents/core/subagents/builtin_subagents.py` — `BUILTIN_SUBAGENTS` (currently `docgen`, `gaia_knowledge_guide`). Excluded from the marketplace.
 - `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires a scoped worker graph: scoped tool dict, `SubagentMiddleware`, todo tools, MCP/Composio tools, no end-hooks (memory learning runs once per comms turn, not per subagent), checkpointer, and the three pre-model hooks. Reached at runtime only for per-user MCP integrations, spawn workers, and dev direct-invocation.
 - `apps/api/app/agents/core/subagents/provider_subagents.py` — `create_subagent()` (provider graphs; kept for dev/tests — unreachable from `handoff`, which redirects those ids) and `create_subagent_for_user()` (per-user auth MCP; rebuilt on every handoff, no memoization). `register_subagent_providers()` registers lazy loaders.
@@ -163,7 +163,7 @@ Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array
 
 ### OAuth integration definitions (source of subagent configs)
 
-- `apps/api/app/config/oauth_config.py` — `OAUTH_INTEGRATIONS: list[OAuthIntegration]`. Each entry has `subagent_config=SubAgentConfig(has_subagent, agent_name, tool_space, domain, capabilities, use_cases, system_prompt, use_direct_tools, disable_retrieve_tools, auto_bind_tools, include_finish_task)`.
+- `apps/api/app/config/oauth_config.py` — `OAUTH_INTEGRATIONS: list[OAuthIntegration]` (the code catalog) and `all_integrations()`, the one reader: the code catalog plus the Composio toolkits a self-host admin enabled (`app/services/composio/instance_toolkits.py`, loaded at startup and on the `instance_toolkits` runtime-config scope; generic in-context config, no triggers). Each entry has `subagent_config=SubAgentConfig(has_subagent, agent_name, tool_space, domain, capabilities, use_cases, system_prompt, use_direct_tools, disable_retrieve_tools, auto_bind_tools, include_finish_task)`.
 - `apps/api/app/config/oauth_content.py` — per-integration UI content (icons, descriptions, setup screens).
 - `apps/api/app/models/oauth_models.py` — `OAuthIntegration` Pydantic model.
 - `apps/api/app/models/mcp_config.py` — `SubAgentConfig`, `MCPConfig`, `ComposioConfig`, `OAuthScope`, `ProviderMetadataConfig`, `ToolMetadataConfig`, `VariableExtraction`.

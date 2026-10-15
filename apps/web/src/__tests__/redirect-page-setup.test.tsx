@@ -43,6 +43,8 @@ const PENDING: SetupStatus = {
     local_code_sandbox: false,
     blob_store: "local",
     gaia_support: false,
+    instance_toolkits: true,
+    private_network_endpoints: true,
   },
   providers: {},
   features: {},

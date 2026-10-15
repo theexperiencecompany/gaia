@@ -37,6 +37,8 @@ const HOSTED_DEPLOYMENT: DeploymentStatus = {
   local_code_sandbox: false,
   blob_store: "cloudinary",
   gaia_support: true,
+  instance_toolkits: false,
+  private_network_endpoints: false,
 };
 
 /** A self-hosted instance's baseline profile (ENV=selfhost with nothing optional set). */
@@ -46,6 +48,8 @@ const SELFHOST_DEPLOYMENT: DeploymentStatus = {
   local_code_sandbox: false,
   blob_store: "local",
   gaia_support: false,
+  instance_toolkits: true,
+  private_network_endpoints: true,
 };
 
 /**

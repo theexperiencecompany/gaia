@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TypedDict, cast
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_scopes
+from app.config.oauth_config import all_integrations, get_integration_scopes
 from app.config.token_repository import token_repository
 from app.constants.cache import OAUTH_STATUS_KEY
 from app.constants.integrations import (
@@ -68,7 +68,7 @@ async def _get_cached_integrations_status(user_id: str) -> dict[str, bool]:
     composio_providers = []
     composio_id_to_provider = {}
 
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if not integration.available:
             result[integration.id] = False
             continue
@@ -110,10 +110,10 @@ async def _find_stale_mcp_ids(user_id: str, base_statuses: dict[str, bool]) -> s
     catalog). Read-only overlay: no writes, persistence lives on the
     owning failure transitions.
     """
-    platform_ids = {integration.id for integration in OAUTH_INTEGRATIONS}
+    platform_ids = {integration.id for integration in all_integrations()}
     auth_mcp_ids = {
         integration.id
-        for integration in OAUTH_INTEGRATIONS
+        for integration in all_integrations()
         if integration.managed_by == MANAGED_BY_MCP
         and integration.mcp_config
         and integration.mcp_config.requires_auth

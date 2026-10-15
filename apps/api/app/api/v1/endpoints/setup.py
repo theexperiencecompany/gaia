@@ -134,6 +134,12 @@ class DeploymentStatus(BaseModel):
     gaia_support: bool = Field(
         description="Whether in-app support requests reach GAIA's support team"
     )
+    instance_toolkits: bool = Field(
+        description="Whether the admin may enable Composio toolkits beyond the built-in ones"
+    )
+    private_network_endpoints: bool = Field(
+        description="Whether a configured endpoint such as an MCP server may be a private address"
+    )
 
 
 class InstanceBots(BaseModel):
@@ -271,6 +277,8 @@ async def get_setup_status() -> SetupStatusResponse:
             local_code_sandbox=settings.deployment.local_code_sandbox,
             blob_store=settings.deployment.blob_store,
             gaia_support=settings.deployment.gaia_support,
+            instance_toolkits=settings.deployment.instance_toolkits,
+            private_network_endpoints=settings.deployment.private_network_endpoints,
         ),
         providers={
             p: ProviderConfiguredState(

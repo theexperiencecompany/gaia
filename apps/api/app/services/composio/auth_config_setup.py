@@ -38,6 +38,8 @@ async def composio_setup_overview() -> ComposioSetupResponse:
                 auth_config_id=auth_config.auth_config_id if auth_config else None,
                 source=auth_config.source if auth_config else None,
                 detected=detected.get(toolkit.lower(), []),
+                origin=integration.origin,
+                icon_url=integration.icon_url,
             )
         )
     log.set_ns(
@@ -53,16 +55,21 @@ async def _detected_by_toolkit() -> dict[str, list[ComposioAuthConfigCandidate]]
     try:
         configs = await get_composio_service().list_enabled_auth_configs()
     except composio_client.AuthenticationError as e:
-        raise AppError(
-            message="Composio rejected the saved API key",
-            why=str(e),
-            fix="Paste a valid API key from the Composio dashboard",
-            status_code=422,
-            code="composio_key_rejected",
-        ) from e
+        raise composio_key_rejected(e) from e
     by_toolkit: dict[str, list[ComposioAuthConfigCandidate]] = {}
     for config in configs:
         by_toolkit.setdefault(config.toolkit.slug.lower(), []).append(
             ComposioAuthConfigCandidate(id=config.id, name=config.name)
         )
     return by_toolkit
+
+
+def composio_key_rejected(e: composio_client.AuthenticationError) -> AppError:
+    """Build the admin-facing error for a Composio call the saved key may not make."""
+    return AppError(
+        message="Composio rejected the saved API key",
+        why=str(e),
+        fix="Paste a valid API key from the Composio dashboard",
+        status_code=422,
+        code="composio_key_rejected",
+    )

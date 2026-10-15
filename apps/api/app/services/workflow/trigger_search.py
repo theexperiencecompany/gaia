@@ -11,7 +11,7 @@ Triggers are indexed in ChromaDB by chroma_triggers_store.py at startup.
 
 from typing import Any
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.chroma.chroma_triggers_store import (
     TRIGGERS_NAMESPACE,
@@ -93,7 +93,7 @@ class TriggerSearchService:
     @classmethod
     async def get_schema(cls, trigger_slug: str) -> dict[str, Any] | None:
         """Get the configuration schema for a trigger, or None if not found."""
-        for integration in OAUTH_INTEGRATIONS:
+        for integration in all_integrations():
             if not integration.associated_triggers:
                 continue
 

@@ -7,13 +7,13 @@ app.services.composio.auth_config_resolver's call; this only refuses entries
 that could never connect.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from app.models.oauth_models import OAuthIntegration
 
 
 def check_auth_config_ids(
-    integrations: list[OAuthIntegration], auth_configs: Mapping[str, str], *, origin: str
+    integrations: Sequence[OAuthIntegration], auth_configs: Mapping[str, str], *, origin: str
 ) -> None:
     """Raise ValueError when an entry names no Composio integration or has a blank id."""
     composio_ids = {i.id for i in integrations if i.composio_config}

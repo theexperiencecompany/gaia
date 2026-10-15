@@ -4479,6 +4479,65 @@
       }
     },
     {
+      "event": "integration:toolkit_disabled",
+      "class": "IntegrationToolkitDisabled",
+      "owner": "server",
+      "domain": "integration",
+      "description": "A self-host admin removed a Composio toolkit they had enabled.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host admin removed a Composio toolkit they had enabled.",
+        "properties": {
+          "toolkit": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Toolkit",
+            "type": "string"
+          }
+        },
+        "required": ["toolkit"],
+        "title": "IntegrationToolkitDisabled",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:toolkit_enabled",
+      "class": "IntegrationToolkitEnabled",
+      "owner": "server",
+      "domain": "integration",
+      "description": "A self-host admin enabled a Composio toolkit; GAIA created its auth config.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host admin enabled a Composio toolkit; GAIA created its auth config.",
+        "properties": {
+          "toolkit": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Toolkit",
+            "type": "string"
+          },
+          "origin": {
+            "enum": ["code", "instance"],
+            "title": "Origin",
+            "type": "string"
+          },
+          "composio_managed": {
+            "title": "Composio Managed",
+            "type": "boolean"
+          }
+        },
+        "required": ["toolkit", "origin", "composio_managed"],
+        "title": "IntegrationToolkitEnabled",
+        "type": "object"
+      }
+    },
+    {
       "event": "mcp:connection_tested",
       "class": "McpConnectionTested",
       "owner": "server",

@@ -46,6 +46,9 @@ class IntegrationConfigItem(CamelModel):
     requires_auth: bool = False
     source: Literal["platform"] = "platform"
     slug: str  # For platform integrations, this is the same as id
+    # "instance": a Composio toolkit the instance admin enabled; no hand-written tools or triggers.
+    origin: Literal["code", "instance"] = "code"
+    icon_url: str | None = None
 
 
 class IntegrationsConfigResponse(BaseModel):
@@ -148,6 +151,7 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     instance_setup_required: bool = False
     icon_url: str | None = None
     slug: str | None = None
+    origin: Literal["code", "instance"] = "code"
     tool_count: int = 0
     # Custom-integration fields (None/0 for platform entries).
     is_public: bool | None = None

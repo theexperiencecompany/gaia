@@ -40,6 +40,8 @@ def test_production_bills_enforces_and_reads_env_only() -> None:
     assert profile.local_auth is False
     assert profile.hosted_models is True
     assert profile.catalog_composio_auth_configs is True
+    assert profile.instance_toolkits is False
+    assert profile.private_network_endpoints is False
     assert profile.local_workspace is False
     assert profile.blob_store is BlobStoreKind.CLOUDINARY
     assert profile.gaia_support is True
@@ -81,6 +83,8 @@ def test_selfhost_has_no_plans_no_limits_and_a_credential_store() -> None:
     assert profile.local_auth is True
     assert profile.hosted_models is False
     assert profile.catalog_composio_auth_configs is False
+    assert profile.instance_toolkits is True
+    assert profile.private_network_endpoints is True
     assert profile.local_code_sandbox is False
     assert profile.local_workspace is True
     assert profile.blob_store is BlobStoreKind.LOCAL
@@ -136,6 +140,7 @@ def test_development_mirrors_production_enforcement_without_billing() -> None:
     assert profile.enforces_plans is True
     assert profile.enforces_usage_limits is True
     assert profile.runtime_credentials is False
+    assert profile.instance_toolkits is False
     assert profile.hosted_models is False
     assert profile.catalog_composio_auth_configs is True
     assert profile.local_workspace is False
@@ -153,6 +158,7 @@ def test_development_with_local_auth_gets_the_setup_surface() -> None:
 
     assert profile.local_auth is True
     assert profile.runtime_credentials is True
+    assert profile.instance_toolkits is True
     assert profile.enforces_plans is True
 
 

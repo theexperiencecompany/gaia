@@ -86,7 +86,7 @@ class TestGetAllIntegrationsStatus:
         unavailable.managed_by = "composio"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [unavailable],
         ):
             result = await get_all_integrations_status("user123")
@@ -112,7 +112,7 @@ class TestGetAllIntegrationsStatus:
         integration.composio_config = MagicMock()
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
@@ -138,7 +138,7 @@ class TestGetAllIntegrationsStatus:
         integration.composio_config = MagicMock()
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
@@ -166,7 +166,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -201,7 +201,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -235,7 +235,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -267,7 +267,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [],
             ),
             patch(
@@ -302,7 +302,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [],
             ),
             patch(
@@ -330,7 +330,7 @@ class TestGetAllIntegrationsStatus:
         integration.provider = "deepwiki"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
@@ -353,7 +353,7 @@ class TestGetAllIntegrationsStatus:
         integration.provider = "twitter"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
@@ -381,7 +381,7 @@ class TestGetAllIntegrationsStatus:
         integration.provider = "twitter"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
@@ -407,7 +407,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch("app.services.integrations.integration_status.log") as log,
@@ -441,7 +441,7 @@ class TestGetAllIntegrationsStatus:
                 side_effect=ProviderNotConfiguredError("Composio is not configured"),
             ),
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch("app.services.integrations.integration_status.log") as log,
@@ -472,7 +472,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -509,7 +509,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -542,7 +542,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -574,7 +574,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -599,7 +599,7 @@ class TestGetAllIntegrationsStatus:
         )
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [],
         ):
             result = await get_all_integrations_status("user123")
@@ -645,7 +645,7 @@ class TestGetAllIntegrationsStatus:
         mcp_int.managed_by = "mcp"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [notion, slack, disabled, mcp_int],
         ):
             result = await get_all_integrations_status("user123")
