@@ -15,10 +15,10 @@ reach another's.
 from __future__ import annotations
 
 import asyncio
-import codecs
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from encodings.utf_8 import IncrementalDecoder
 import errno
 import hashlib
 import io
@@ -555,7 +555,7 @@ class LocalDockerSandbox:
             callback: Callable[[str], None] | None,
         ) -> None:
             # Incremental, so a multi-byte character split across two reads decodes whole.
-            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+            decoder = IncrementalDecoder(errors="replace")
             while chunk := await stream.read(_STREAM_CHUNK_BYTES):
                 _deliver(decoder.decode(chunk), parts, callback)
             _deliver(decoder.decode(b"", final=True), parts, callback)

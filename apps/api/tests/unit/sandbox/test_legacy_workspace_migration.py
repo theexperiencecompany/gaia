@@ -45,6 +45,7 @@ async def test_each_session_lands_only_in_its_owners_workspace(roots: tuple[Path
     assert report.migrated_sessions == {"convA": "userA", "convB": "userB"}
     assert (workspace / "users/userA/sessions/convA/artifacts/a.txt").read_text() == "A"
     assert (workspace / "users/userB/sessions/convB/scratch/b.txt").read_text() == "B"
+    assert report.copied_files == 2
     assert not (workspace / "users/userA/sessions/convB").exists()
     assert not (workspace / "users/userB/sessions/convA").exists()
 
@@ -95,6 +96,32 @@ async def test_symlinks_are_copied_as_links_never_followed(roots: tuple[Path, Pa
     copied = workspace / "users/userA/sessions/convA/leak"
     assert copied.is_symlink()
     assert str(copied.readlink()) == "/etc/passwd"
+
+
+async def test_a_file_swapped_for_a_symlink_mid_copy_is_never_followed(
+    roots: tuple[Path, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy, workspace = roots
+    secret = tmp_path / "secret.txt"
+    secret.write_text("host secret")
+    decoy = tmp_path / "decoy.txt"
+    decoy.write_text("regular")
+    swapped = legacy / "sessions/convA/swapped"
+    swapped.parent.mkdir(parents=True)
+    swapped.symlink_to(secret)
+    real_lstat = Path.lstat
+
+    def lstat_before_the_swap(path: Path) -> os.stat_result:
+        # The regular file the migration saw, replaced by a link before the copy.
+        return real_lstat(decoy if path == swapped else path)
+
+    monkeypatch.setattr(Path, "lstat", lstat_before_the_swap)
+
+    await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    copied = workspace / "users/userA/sessions/convA/swapped"
+    assert copied.is_symlink()
+    assert copied.readlink() == secret
 
 
 async def test_a_second_run_is_a_no_op_once_the_report_exists(roots: tuple[Path, Path]) -> None:

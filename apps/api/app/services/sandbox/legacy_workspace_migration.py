@@ -57,7 +57,8 @@ def _is_safe_id(value: str) -> bool:
 def _copy_tree_without_overwrite(
     src: Path, dst: Path, legacy_root: Path, report: LegacyWorkspaceReport
 ) -> None:
-    for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
+    # os.walk never descends into a symlinked directory unless followlinks is set.
+    for dirpath, dirnames, filenames in os.walk(src):
         here = Path(dirpath)
         target_dir = dst / here.relative_to(src)
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -77,7 +78,7 @@ def _copy_tree_without_overwrite(
                         source,
                         target,
                         # S_ISREG rules out a symlink; this closes the lstat-to-copy race.
-                        follow_symlinks=False,  # pragma: no mutate
+                        follow_symlinks=False,
                     )
                 else:
                     report.unresolved.append(source.relative_to(legacy_root).as_posix())
