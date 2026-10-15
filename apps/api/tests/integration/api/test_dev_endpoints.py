@@ -16,11 +16,11 @@ from fastapi.responses import JSONResponse
 import httpx
 import pytest
 
-from app.api.v1.endpoints.dev import _BRIEFING_RUNS, run_briefing_now
+from app.api.v1.endpoints.dev import _BRIEFING_RUNS, run_briefing_now, seed_dev_user_data
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.briefing import BriefingRunOutcome
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
+from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataRequest, SeedDevDataResponse
 from app.services.briefing.service import BriefingGenerationError
 from app.utils.errors import AppError
 from tests.helpers import captured_wide_event
@@ -316,6 +316,36 @@ class TestDevRouterMounting:
         assert body["postmarks_created"] == 12
         assert body["pro"] is True
         mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], postmarks=12, pro=True)
+
+    async def test_seed_wide_event_records_the_requested_counts(self):
+        seeded = SeedDevDataResponse(
+            email=DEV_EMAIL,
+            user_id="u1",
+            todos_created=3,
+            conversations_created=2,
+            postmarks_created=12,
+            platforms_linked=[],
+            platform_user_ids={},
+            pro=False,
+        )
+        with patch(
+            "app.api.v1.endpoints.dev.seed_dev_data",
+            new_callable=AsyncMock,
+            return_value=seeded,
+        ):
+            async with captured_wide_event() as event:
+                await seed_dev_user_data(
+                    SeedDevDataRequest(email=DEV_EMAIL, todos=3, conversations=2, postmarks=12)
+                )
+
+        assert event["dev"] == {
+            "operation": "seed",
+            "email": DEV_EMAIL,
+            "todos": 3,
+            "conversations": 2,
+            "postmarks": 12,
+            "user_id": "u1",
+        }
 
 
 # ---------------------------------------------------------------------------
