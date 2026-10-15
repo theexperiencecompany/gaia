@@ -1,32 +1,61 @@
-"""loggable_request_path must keep a secret path parameter out of the logs."""
+"""loggable_request_path must keep a heygaia.link slug out of the logs on every path."""
 
-from fastapi import Depends, FastAPI, Request
+from collections.abc import Awaitable, Callable
+
+from fastapi import FastAPI, Request, Response
 from starlette.testclient import TestClient
 
-from app.utils.loggable_path import log_route_template_as_path, loggable_request_path
+from app.utils.loggable_path import loggable_request_path
 
 
-def _app() -> FastAPI:
+def _logged_paths() -> tuple[TestClient, list[str]]:
+    """Build an app that records the loggable path of every request, routed or not."""
     app = FastAPI()
+    logged: list[str] = []
 
-    @app.get("/l/{slug}/file", dependencies=[Depends(log_route_template_as_path)])
-    async def secret_route(request: Request) -> dict[str, str]:
-        return {"path": loggable_request_path(request)}
+    @app.middleware("http")
+    async def record(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        logged.append(loggable_request_path(request))
+        return response
 
-    @app.get("/plain/{item_id}")
-    async def plain_route(request: Request) -> dict[str, str]:
-        return {"path": loggable_request_path(request)}
+    @app.get("/api/v1/l/{slug}/file")
+    async def short_link_file(slug: str) -> dict[str, str]:
+        return {"slug": slug}
 
-    return app
-
-
-def test_a_route_marked_secret_logs_its_template_not_the_slug() -> None:
-    resp = TestClient(_app()).get("/l/abc123/file")
-
-    assert resp.json() == {"path": "/l/{slug}/file"}
+    return TestClient(app), logged
 
 
-def test_an_unmarked_route_logs_its_url_path() -> None:
-    resp = TestClient(_app()).get("/plain/42")
+def test_a_short_link_request_logs_the_slug_masked() -> None:
+    client, logged = _logged_paths()
 
-    assert resp.json() == {"path": "/plain/42"}
+    client.get("/api/v1/l/abc123/file")
+
+    assert logged == ["/api/v1/l/{slug}/file"]
+
+
+def test_a_short_link_request_refused_before_its_route_runs_still_masks_the_slug() -> None:
+    client, logged = _logged_paths()
+
+    resp = client.post("/api/v1/l/abc123/file")
+
+    assert resp.status_code == 405
+    assert logged == ["/api/v1/l/{slug}/file"]
+
+
+def test_the_unshare_route_is_not_mistaken_for_a_slug() -> None:
+    client, logged = _logged_paths()
+
+    client.post("/api/v1/l/unshare")
+
+    assert logged == ["/api/v1/l/unshare"]
+
+
+def test_a_path_outside_short_links_logs_unchanged() -> None:
+    client, logged = _logged_paths()
+
+    client.get("/api/v1/plain/42")
+
+    assert logged == ["/api/v1/plain/42"]

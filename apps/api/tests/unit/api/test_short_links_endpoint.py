@@ -254,3 +254,14 @@ class TestSlugNeverLoggedInPlaintext:
 
         assert SLUG not in str(event)
         assert [w["path"] for w in event["warnings"]] == [f"{BASE}/{{slug}}"]
+
+    @pytest.mark.asyncio
+    async def test_a_405_refused_before_the_route_runs_never_logs_the_slug(
+        self, client: AsyncClient
+    ) -> None:
+        async with captured_wide_event() as event:
+            response = await client.post(f"{BASE}/{SLUG}/file")
+
+        assert response.status_code == 405
+        assert SLUG not in str(event)
+        assert [w["path"] for w in event["warnings"]] == [f"{BASE}/{{slug}}/file"]
