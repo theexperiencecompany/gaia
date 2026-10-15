@@ -5,7 +5,7 @@
 #   nx run bot-harness:sim -- run apps/bots/harness/scenarios/multi-turn.yaml
 name: multi-turn conversation
 emulate: slack
-user: dev@gaia.local
+user: delivered+bot-harness@resend.dev
 turns:
   - send: "hello there [[say:Hi! How can I help?]]"
     expect:

@@ -59,7 +59,6 @@ from .posthog_api import (
     reader,
 )
 
-DEFAULT_EMAIL = "analytics-e2e@gaia.local"
 # gaia-test receives each event within ~10s, but a query saw it only 6-10 min later (2026-10-09 runs).
 DEFAULT_TIMEOUT_S = 900
 POLL_INTERVAL_S = 10
@@ -491,7 +490,7 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
         ),
         help="the local API the journeys drive",
     )
-    command.add_argument("--email", default=DEFAULT_EMAIL, help="the dev user each run recreates")
+    command.add_argument("--email", required=True, help="the dev user each run recreates")
     command.add_argument(
         "--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="ingestion wait, seconds"
     )

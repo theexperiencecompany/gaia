@@ -65,7 +65,9 @@ DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:9330")
 #: A fresh user per persona AND per run: memory from an earlier run would leak in
 #: and make a cold open look more informed than it is.
 RUN_ID = time.strftime("%H%M%S")
-USER_TEMPLATE = os.environ.get("GAIA_DEV_USER_TEMPLATE", "adv-{slug}-" + RUN_ID + "@gaia.local")
+USER_TEMPLATE = os.environ.get(
+    "GAIA_DEV_USER_TEMPLATE", "delivered+adv-{slug}-" + RUN_ID + "@resend.dev"
+)
 #: Delegated turns ack on the SSE stream and deliver the real answer as a later bot
 #: message. The user sees both, so the judge and the simulated user must too: poll
 #: the saved conversation. Same contract as chat_quality.py.

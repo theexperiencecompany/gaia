@@ -23,7 +23,7 @@ import sys
 import time
 from typing import Any
 
-from .client import DEFAULT_API, DEFAULT_USER, GaiaClient
+from .client import DEFAULT_API, GaiaClient, add_user_argument
 from .observe import Observation, Store, WorkerLog, fire_and_observe
 
 Setup = Callable[[GaiaClient], None]
@@ -249,7 +249,7 @@ def _budget(text: str) -> float:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api", default=DEFAULT_API)
-    parser.add_argument("--user", default=DEFAULT_USER)
+    add_user_argument(parser)
     parser.add_argument("--worker-log", type=Path, required=True)
     parser.add_argument("--only", nargs="*", default=[], metavar="KEY")
     parser.add_argument("--budget-usd", type=_budget, default=1.5)

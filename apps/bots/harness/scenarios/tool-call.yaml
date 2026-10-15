@@ -6,7 +6,7 @@
 #   nx run bot-harness:sim -- run apps/bots/harness/scenarios/tool-call.yaml
 name: scripted tool call
 emulate: whatsapp
-user: dev@gaia.local
+user: delivered+bot-harness@resend.dev
 turns:
   - send: 'add a todo [[tool:create_todo {"title":"Buy milk"}]][[say:Added "Buy milk" to your todos.]]'
     expect:

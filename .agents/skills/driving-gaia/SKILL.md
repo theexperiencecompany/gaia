@@ -19,12 +19,12 @@ One command per intent. Each starts infra in Docker (`nx run docker:docker:up`, 
 
 | You need… | Command | Why |
 |---|---|---|
-| **Agent driving, real LLM** (API + web natively, zero login) | `mise dev --agent` | Dev auth bypass ON — every request is `DEV_USER` (default `dev@gaia.local`), no WorkOS. Hot reload, API on host `:8000`. The default for this skill. JuiceFS-dependent paths raise `JuiceFSUnavailable` here — expected, not a bug. |
+| **Agent driving, real LLM** (API + web natively, zero login) | `mise dev --agent` | Dev auth bypass ON — every request is `DEV_USER` (default `delivered+dev@resend.dev`, from `mise.toml` [env]), no WorkOS. Hot reload, API on host `:8000`. The default for this skill. JuiceFS-dependent paths raise `JuiceFSUnavailable` here — expected, not a bug. |
 | **Deterministic, credential-free** — scripted LLM, no OpenRouter cost | `mise dev --sim` | `--agent` + the scripted LLM stub (`tools/llm-stub`, `:9797`). Bypass also ON. Model replies come from directives in the chat message (§3). Run `mise seed` once the API is up. |
 | **JuiceFS paths** — workspace v2, file uploads, artifact streaming, sandbox file ops | `mise dev:vm --agent` | Runs the API in a container with the FUSE mount; web stays native. `--agent` (or `--sim`, reaching the host stub via `host.docker.internal`) turns on the bypass; plain `mise dev:vm` is real login. Use the moment you hit `JuiceFSUnavailable`. |
 | **Real login flow** (human testing, no bypass) | `mise dev` | Same native stack, no flag — the real WorkOS login, for testing signup/auth as an actual user. Not for agent driving. |
 
-Every bypass command authenticates as `DEV_USER` (default `dev@gaia.local`); set `DEV_USER=<email>` to be someone else (it also becomes the `mise seed` target — §2).
+Every bypass command authenticates as `DEV_USER` (default `delivered+dev@resend.dev`, defined once in `mise.toml` [env] — a Resend test address, because dev shares the production Resend account and a fake domain hard-bounces); set `DEV_USER=delivered+<label>@resend.dev` to be someone else (it also becomes the `mise seed` target — §2).
 
 Single API only: `mise dev:api`. Web only: `mise dev:web`. (See `mise tasks` for the full list.)
 
@@ -39,7 +39,7 @@ services up natively instead:
 sudo ./scripts/dev/sandbox-services.sh up      # mongo, redis, rabbitmq, postgres, chroma
 ./scripts/dev/sandbox-services.sh seed         # the rows the API refuses to boot without
 ./scripts/dev/sandbox-services.sh status
-source scripts/dev/sandbox-env.sh              # there is no .env in a fresh sandbox
+source scripts/dev/sandbox-env.sh              # no .env in a fresh sandbox; also exports DEV_USER from mise.toml
 cd apps/api && uv run uvicorn app.main:app --port 8000
 ```
 
@@ -48,7 +48,7 @@ Then mint the bypass user — **without it every request 401s** with
 
 ```bash
 curl -X POST localhost:8000/api/v1/dev/users \
-  -H 'content-type: application/json' -d '{"email":"dev@gaia.local","name":"Dev User"}'
+  -H 'content-type: application/json' -d "{\"email\":\"$DEV_USER\",\"name\":\"Dev User\"}"
 ```
 
 Three things that will cost you an hour if you don't know them, all encoded in
@@ -67,7 +67,7 @@ broken sink (see `reading-gaia-logs`).
 
 ## 2. Become a user — the dev auth bypass (zero login)
 
-The bypass is enabled by the `--agent` / `--sim` flag, not by editing `.env`. `mise dev --agent`, `mise dev --sim`, and `mise dev:vm --agent` (or `--sim`) each export `DEV_AUTH_BYPASS_EMAIL=${DEV_USER:-dev@gaia.local}` for the API process. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only: the flags run `scripts/dev/assert-not-prod.sh` and abort if `ENV=production`, and `get_settings()` refuses to boot with the var set in prod regardless.
+The bypass is enabled by the `--agent` / `--sim` flag, not by editing `.env`. `mise dev --agent`, `mise dev --sim`, and `mise dev:vm --agent` (or `--sim`) each export `DEV_AUTH_BYPASS_EMAIL=$DEV_USER` for the API process. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only: the flags run `scripts/dev/assert-not-prod.sh` and abort if `ENV=production`, and `get_settings()` refuses to boot with the var set in prod regardless.
 
 `apps/api/.env` keeps `DEV_AUTH_BYPASS_EMAIL` **commented out** on purpose so plain `mise dev` is a real login flow — enable the bypass through the `--agent`/`--sim` flag (pass `DEV_USER=<email>` to change the identity), don't hardcode it back into `.env`.
 
@@ -78,11 +78,11 @@ The user must already exist in Mongo. The dev router (`/api/v1/dev/*`) mints and
 `mise seed` is a thin curl wrapper over the two endpoints below — it `POST`s `/dev/users` then `/dev/seed` against the running API. This is the canonical bootstrap:
 
 ```bash
-mise seed                                   # dev@gaia.local, 5 todos + 2 conversations
-DEV_USER=alice@gaia.local SEED_TODOS=3 mise seed
+mise seed                                   # delivered+dev@resend.dev, 5 todos + 2 conversations
+DEV_USER=delivered+alice@resend.dev SEED_TODOS=3 mise seed
 ```
 
-To act as a non-default user, boot with the **same** `DEV_USER` you seeded (`DEV_USER=alice@gaia.local mise dev --agent`) — that email becomes both the seed target and the server's bypass identity. For a one-off different user against an already-running server, use the `X-Dev-User` header instead (below).
+To act as a non-default user, boot with the **same** `DEV_USER` you seeded (`DEV_USER=delivered+alice@resend.dev mise dev --agent`) — that email becomes both the seed target and the server's bypass identity. For a one-off different user against an already-running server, use the `X-Dev-User` header instead (below).
 
 ### The endpoints directly (`X-Dev-User` for multi-user)
 
@@ -93,18 +93,18 @@ API=http://localhost:${API_PORT:-8000}/api/v1
 
 # Mint — idempotent find-or-create via the real signup path (store_user_info).
 curl -sfS -X POST "$API/dev/users" -H 'content-type: application/json' \
-  -d '{"email":"alice@gaia.local","name":"Alice"}'
-# → {"id":"<mongo_id>","email":"alice@gaia.local","name":"Alice"}
+  -d '{"email":"delivered+alice@resend.dev","name":"Alice"}'
+# → {"id":"<mongo_id>","email":"delivered+alice@resend.dev","name":"Alice"}
 
 # Seed — real service calls (create_todo, create_conversation_service,
 # PlatformLinkService.link_account); also marks onboarding complete so specs
 # land on the app shell, not onboarding. platform_links ∈ discord|slack|telegram|whatsapp.
 curl -sfS -X POST "$API/dev/seed" -H 'content-type: application/json' \
-  -d '{"email":"alice@gaia.local","todos":5,"conversations":2,"platform_links":["telegram"]}'
+  -d '{"email":"delivered+alice@resend.dev","todos":5,"conversations":2,"platform_links":["telegram"]}'
 # → {"email":...,"user_id":...,"todos_created":5,"conversations_created":2,"platforms_linked":["telegram"]}
 
 # Delete — teardown (removes user + owned todos/conversations/projects).
-curl -sfS -X DELETE "$API/dev/users/alice@gaia.local"
+curl -sfS -X DELETE "$API/dev/users/delivered+alice@resend.dev"
 ```
 
 **Impersonation.** With the bypass active, send `X-Dev-User: <email>` on any request to authenticate as that user instead of `DEV_AUTH_BYPASS_EMAIL` — one running server acts as many users, no restart. An email that resolves to no Mongo user **fails loud with 401**: `No GAIA user exists for '<email>' — mint it via POST /api/v1/dev/users`. Mint it (or drop the header) — never work around the 401.
@@ -146,7 +146,7 @@ All routes under `/api/v1`. Under the bypass, add `-H 'X-Dev-User: <email>'` to 
 
 ```bash
 curl -sN -X POST "http://localhost:${API_PORT:-8000}/api/v1/chat-stream" \
-  -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
+  -H 'content-type: application/json' -H 'X-Dev-User: delivered+alice@resend.dev' \
   -d '{"messages":[{"role":"user","content":"[[say:hello from sim]]"}]}'
 # SSE frames stream as `data: ...`; grab X-Stream-Id from the response headers (-D -) to reattach/cancel.
 ```
@@ -157,9 +157,9 @@ curl -sN -X POST "http://localhost:${API_PORT:-8000}/api/v1/chat-stream" \
 **Todos.** `GET /api/v1/todos` (list), `POST /api/v1/todos` (create) (`app/api/v1/endpoints/todos.py`):
 
 ```bash
-curl -sfS "http://localhost:${API_PORT:-8000}/api/v1/todos" -H 'X-Dev-User: alice@gaia.local'
+curl -sfS "http://localhost:${API_PORT:-8000}/api/v1/todos" -H 'X-Dev-User: delivered+alice@resend.dev'
 curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/todos" \
-  -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
+  -H 'content-type: application/json' -H 'X-Dev-User: delivered+alice@resend.dev' \
   -d '{"title":"from curl"}'
 ```
 
@@ -186,12 +186,12 @@ curl -sfS "http://localhost:${API_PORT:-8000}/api/v1/dev/subagents"
 # run the EXECUTOR directly (skips comms entirely)
 curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/executor" \
   -H 'content-type: application/json' \
-  -d '{"email":"dev@gaia.local","task":"[[tool:create_todo {\"title\":\"direct\"}]] [[say:Done.]]"}'
+  -d '{"email":"delivered+dev@resend.dev","task":"[[tool:create_todo {\"title\":\"direct\"}]] [[say:Done.]]"}'
 
 # run ONE subagent directly (skips comms AND the executor)
 curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/subagents/gmail" \
   -H 'content-type: application/json' \
-  -d '{"email":"dev@gaia.local","task":"list unread emails"}'
+  -d '{"email":"delivered+dev@resend.dev","task":"list unread emails"}'
 ```
 
 - Runs reuse the exact production preparation (`prepare_executor_execution` / `prepare_subagent_execution` — the same code the `handoff` tool calls), so a direct run cannot drift from what a real hand-off does.
@@ -216,7 +216,7 @@ E2E_SIM=1 mise e2e:web   # also runs the scripted-chat spec (needs `mise dev --s
 ```
 
 - Start the stack in another terminal first (`mise dev --sim`, or `mise dev --agent` for a real LLM) — `mise e2e:web` does not boot it.
-- **Never run `mise seed` for e2e.** `global-setup.ts` resets → mints → seeds `dev@gaia.local` itself through the real dev endpoints; a manual seed is redundant and fights the reset.
+- **Never run `mise seed` for e2e.** `global-setup.ts` resets → mints → seeds `delivered+dev@resend.dev` itself through the real dev endpoints; a manual seed is redundant and fights the reset.
 - The scripted-chat spec is `test.skip`ped unless `E2E_SIM=1` (it needs the stub's deterministic reply). Ports honor `WEB_PORT` / `API_PORT`.
 
 ---
@@ -230,7 +230,7 @@ Run it via the nx `sim` target (or `pnpm --filter @gaia/bot-harness dev`). The o
 ```bash
 # one-shot: mint+link the dev user, inject one message emulating a platform,
 # print the JSONL transcript (and write it to --out)
-pnpm nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --out t.jsonl "remind me tomorrow"
+pnpm nx run bot-harness:sim -- send --emulate telegram --user "$DEV_USER" --out t.jsonl "remind me tomorrow"
 
 # multi-turn YAML scenario with transcript assertions (exits non-zero on failure)
 pnpm nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml --out run.jsonl
