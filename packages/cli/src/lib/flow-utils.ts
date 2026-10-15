@@ -22,48 +22,26 @@ export const createLogHandler =
   };
 
 /**
- * Runs git and docker prerequisite checks. Docker is ensured (with an
- * interactive install offer on apt-based Linux); sets store error and returns
- * null on hard failure (git missing, or Docker unavailable).
+ * Ensures git and Docker, each with an install offer on apt-based Linux.
+ * Sets the store error and returns false when setup cannot continue (or
+ * stops for a docker-group relaunch).
  */
-export async function runBasePrerequisiteChecks(store: CLIStore): Promise<{
-  gitStatus: string;
-  dockerStatus: string;
-  dockerInfo: Awaited<ReturnType<typeof prereqs.checkDockerDetailed>>;
-} | null> {
-  store.updateData("checks", {
-    git: "pending",
-    docker: "pending",
-  });
+export async function runBasePrerequisiteChecks(
+  store: CLIStore,
+): Promise<boolean> {
+  store.updateData("checks", { git: "pending" });
 
   await delay(500);
 
-  const gitStatus = await prereqs.checkGit();
-  store.updateData("checks", {
-    ...store.currentState.data.checks,
-    git: gitStatus,
-  });
-
-  if (gitStatus === "error") {
-    store.setError(
-      new Error(
-        `Prerequisites failed:\n  • Git: Not installed or not working\n\nInstallation guide:\n  • Git: ${prereqs.PREREQUISITE_URLS.git}`,
-      ),
-    );
-    return null;
-  }
-
   try {
+    await prereqs.ensureGit(store);
     // "relaunch": the command runner restarts this command with the docker
     // group active, so this run stops here without an error.
-    if ((await prereqs.ensureDocker(store)) === "relaunch") return null;
+    return (await prereqs.ensureDocker(store)) === "ready";
   } catch (e) {
     store.setError(e as Error);
-    return null;
+    return false;
   }
-
-  const dockerInfo = await prereqs.checkDockerDetailed();
-  return { gitStatus, dockerStatus: "success", dockerInfo };
 }
 
 /**

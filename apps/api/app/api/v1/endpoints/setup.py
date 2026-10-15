@@ -19,6 +19,7 @@ server-side env still works as a fallback for deployments that prefer it.
 """
 
 import ipaddress
+import re
 from typing import Annotated, Literal, TypedDict, cast
 from urllib.parse import urlparse
 
@@ -31,9 +32,10 @@ from app.api.v1.middleware.rate_limiter import limiter
 from app.config.deployment import BlobStoreKind, DeploymentKind
 from app.config.settings import settings
 from app.constants.auth import RegistrationPolicy
-from app.constants.llm import OPENROUTER_MODELS_URL
+from app.constants.llm import OPENAI_API_URL, OPENROUTER_API_URL, LLMProviderName
 from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
+    LLM_MODEL_PROFILES,
     LLM_PROVIDER_PRIORITY,
     PRESETS,
     PROVIDER_FEATURES,
@@ -75,11 +77,17 @@ _BASE_URL_PROVIDERS = frozenset({"custom", "ollama", "searxng"})
 _PRESET_NAMES = Literal["opencode", "nous"]
 
 _GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-_CANONICAL_MODELS_URLS: dict[str, str] = {
-    "openrouter": OPENROUTER_MODELS_URL,
-    "openai": "https://api.openai.com/v1/models",
+_CANONICAL_API_URLS: dict[str, str] = {
+    "openrouter": OPENROUTER_API_URL,
+    "openai": OPENAI_API_URL,
 }
 _PROBE_TIMEOUT_SECONDS = 10.0
+# OpenAI refuses a cap of 1 (400 "max_tokens ... reached"); reasoning models answer 200 at 16.
+_PROBE_MAX_COMPLETION_TOKENS = 16
+_PROBE_PROMPT = "Reply with OK."
+_AUTH_REJECTED_STATUSES = frozenset({401, 403})
+# OpenAI echoes a rejected key back in its error message.
+_API_KEY_RE = re.compile(r"\bsk-[\w*.-]+")
 
 _PRIVATE_URL_HINT = (
     "This URL looks private or unreachable — use a public endpoint or set "
@@ -207,21 +215,24 @@ class SetupWizardResponse(BaseModel):
 class ProviderTestResponse(BaseModel):
     """``POST /setup/providers/{provider}/test`` — the live connectivity probe."""
 
-    ok: bool = Field(description="Whether the provider answered a models request")
+    ok: bool = Field(description="Whether the provider answered the test request")
     detail: str = Field(description="Human-readable outcome; never contains credentials")
-    models: list[str] = Field(description="Model ids the endpoint advertised")
+    models: list[str] = Field(
+        description="Model ids the endpoint listed; empty for OpenAI-wire providers, "
+        "which are probed with a chat completion"
+    )
 
 
-class _ModelIdEntry(TypedDict, total=False):
-    """One entry of an OpenAI-wire ``/models`` list — ``{"id": "..."}``."""
+class _WireErrorDetail(TypedDict, total=False):
+    """OpenAI-wire ``{"error": {"message": ...}}`` body."""
 
-    id: str
+    message: str
 
 
-class _OpenAIWireModels(TypedDict, total=False):
-    """The ``{"data": [{"id": ...}]}`` envelope every OpenAI-wire endpoint returns."""
+class _WireError(TypedDict, total=False):
+    """An OpenAI-wire error body; the error is an object, or a bare string on a scope failure."""
 
-    data: list[_ModelIdEntry]
+    error: _WireErrorDetail | str
 
 
 class _GeminiModel(TypedDict, total=False):
@@ -558,27 +569,64 @@ async def _probe_openai_wire(
     client: httpx.AsyncClient,
     config: ProviderConfig,
 ) -> tuple[bool, str, list[str]]:
-    # OpenRouter and OpenAI need no configurable endpoint — their models URLs are
+    """Run the one call GAIA makes on this lane: a tiny chat completion on its model.
+
+    Listing models is not it: a restricted OpenAI key lacks api.model.read yet chats fine.
+    """
+    preset: ProviderPreset = PRESETS[provider]
+    label = preset["label"]
+    # OpenRouter and OpenAI need no configurable endpoint — their API roots are
     # canonical; every other OpenAI-wire provider probes its configured base URL.
-    if canonical_url := _CANONICAL_MODELS_URLS.get(provider):
+    if canonical_url := _CANONICAL_API_URLS.get(provider):
         if not config["api_key"]:
-            return False, f"No {provider} API key configured", []
-        url = canonical_url
+            return False, f"No {label} API key configured", []
+        api_url = canonical_url
     else:
-        base_url = config["base_url"]
-        if not base_url:
-            return False, f"No base URL configured for {provider}", []
-        url = f"{base_url.rstrip('/')}/models"
+        if not config["base_url"]:
+            return False, f"No base URL configured for {label}", []
+        api_url = config["base_url"].rstrip("/")
+    model = config["model"] or LLM_MODEL_PROFILES[LLMProviderName(provider)].chat
+    if not model:
+        return False, f"No model configured for {label}", []
     headers = {"Authorization": f"Bearer {config['api_key']}"} if config["api_key"] else {}
-    response = await client.get(url, headers=headers)
-    if response.status_code != 200:
-        return False, f"{provider} returned HTTP {response.status_code}", []
-    # The provider owns this payload's wire shape; we read two fields off it and
-    # skip anything malformed rather than failing the whole probe.
-    payload: _OpenAIWireModels = cast(_OpenAIWireModels, response.json())
-    entries: list[_ModelIdEntry] = payload.get("data", [])
-    models = sorted(str(m["id"]) for m in entries if m.get("id"))
-    return True, f"Connected to {provider}", models
+    response = await client.post(
+        f"{api_url}/chat/completions",
+        headers=headers,
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": _PROBE_PROMPT}],
+            "max_completion_tokens": _PROBE_MAX_COMPLETION_TOKENS,
+        },
+    )
+    if response.is_success:
+        return True, f"Connected to {label}", []
+    reason = _wire_error_reason(response, config["api_key"])
+    if response.status_code in _AUTH_REJECTED_STATUSES:
+        return False, f"{label} rejected the key: {reason}", []
+    return False, f"{label} refused the test request: {reason}", []
+
+
+def _wire_error_reason(response: httpx.Response, api_key: str | None) -> str:
+    """The provider's own error message with any key redacted, else the HTTP status."""
+    fallback = f"HTTP {response.status_code}"
+    try:
+        body = response.json()
+    except ValueError:
+        return fallback
+    if not isinstance(body, dict):
+        return fallback
+    payload: _WireError = cast(_WireError, body)
+    error = payload.get("error")
+    if isinstance(error, dict):
+        detail: _WireErrorDetail = error
+        message = detail.get("message")
+    else:
+        message = error
+    if not message:
+        return fallback
+    if api_key:
+        message = message.replace(api_key, "[redacted]")
+    return _API_KEY_RE.sub("[redacted]", message)
 
 
 async def _probe_gemini(

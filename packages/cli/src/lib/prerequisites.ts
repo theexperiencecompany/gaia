@@ -6,6 +6,7 @@ import { COMPOSE_PROJECT_BY_MODE, getProjectPublishedPorts } from "./docker.js";
 import {
   ensureDockerGroupMembership,
   isDockerSocketPermissionError,
+  resolveDockerGroupSwitch,
 } from "./docker-group.js";
 import {
   DEFAULT_API_PORT,
@@ -13,10 +14,11 @@ import {
   DEFAULT_WEB_PORT,
 } from "./endpoints.js";
 import type { SetupMode } from "./env-parser.js";
+import { isInteractive } from "./non-tty.js";
 import type {
   CheckResult,
   DockerReadiness,
-  EnsureDockerOptions,
+  InstallConsentOptions,
   PortCheckResult,
   PrerequisiteInfo,
 } from "./prerequisites.types.js";
@@ -150,10 +152,131 @@ const ORBSTACK_URL = "https://orbstack.dev";
 const DOCKER_DESKTOP_MAC_URL =
   "https://docs.docker.com/desktop/install/mac-install/";
 
+/** The prerequisites the CLI can install, by their System Checks row. */
+type InstallablePrerequisite = "git" | "docker";
+
+const PREREQUISITE_NAMES: Record<InstallablePrerequisite, string> = {
+  git: "Git",
+  docker: "Docker",
+};
+
+/** Input ids of the install confirmations the screens render (InstallConfirmStep). */
+export const INSTALL_CONFIRM_INPUT = {
+  git: "git_install_confirm",
+  docker: "docker_install_confirm",
+} as const satisfies Record<InstallablePrerequisite, string>;
+
 function isDebianAptLinux(): boolean {
   return (
     fs.existsSync("/usr/bin/apt-get") || fs.existsSync("/etc/debian_version")
   );
+}
+
+function setCheck(
+  store: CLIStore,
+  name: InstallablePrerequisite,
+  result: CheckResult,
+): void {
+  store.updateData("checks", {
+    ...store.currentState.data.checks,
+    [name]: result,
+  });
+}
+
+/** Run a prerequisite step under its System Checks row: pending while it runs, failed if it throws. */
+async function underCheck<T>(
+  store: CLIStore,
+  name: InstallablePrerequisite,
+  step: () => Promise<T>,
+): Promise<T> {
+  setCheck(store, name, "pending");
+  try {
+    return await step();
+  } catch (e) {
+    setCheck(store, name, "error");
+    throw e;
+  }
+}
+
+/**
+ * Consent to installing a missing prerequisite: --yes, else a confirm in the
+ * terminal. Never installs without one of the two.
+ * @throws Error naming --yes and the manual install when neither is given.
+ */
+async function confirmInstall(
+  store: CLIStore,
+  tool: InstallablePrerequisite,
+  options: InstallConsentOptions,
+  manualInstall: string,
+): Promise<void> {
+  if (options.assumeYes) return;
+  const name = PREREQUISITE_NAMES[tool];
+  if (!isInteractive()) {
+    throw new Error(
+      `${name} is required but not installed, and there is no terminal to confirm installation.\n` +
+        `Rerun with --yes to install it, or install ${name} first:\n` +
+        `  ${manualInstall}`,
+    );
+  }
+  store.setStatus(`${name} is not installed.`);
+  const confirmed = await store.waitForInput(INSTALL_CONFIRM_INPUT[tool]);
+  if (confirmed !== "install") {
+    throw new Error(
+      `${name} is required to continue. Install it from ${PREREQUISITE_URLS[tool]} and rerun.`,
+    );
+  }
+}
+
+/** Run a command as root: directly when already root, else through sudo, which can prompt (stdio inherited). */
+async function runAsRoot(command: string, args: string[]): Promise<void> {
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  if (isRoot) {
+    await execa(command, args, { stdio: "inherit" });
+  } else {
+    await execa("sudo", [command, ...args], { stdio: "inherit" });
+  }
+}
+
+/**
+ * Ensure git is installed. Linux apt installs it on consent (a TTY confirm,
+ * or --yes), the same way {@link ensureDocker} installs Docker.
+ * @throws Error with remediation copy when git cannot be made available.
+ */
+export async function ensureGit(
+  store: CLIStore,
+  options: InstallConsentOptions = {},
+): Promise<void> {
+  await underCheck(store, "git", () => makeGitAvailable(store, options));
+  setCheck(store, "git", "success");
+}
+
+async function makeGitAvailable(
+  store: CLIStore,
+  options: InstallConsentOptions,
+): Promise<void> {
+  if ((await checkGit()) === "success") return;
+  const os = await import("node:os");
+  if (os.platform() !== "linux" || !isDebianAptLinux()) {
+    throw new Error(
+      `Git is required but not installed. Install it from ${PREREQUISITE_URLS.git} and rerun.`,
+    );
+  }
+  await confirmInstall(store, "git", options, "sudo apt-get install -y git");
+  store.setStatus("Installing Git...");
+  try {
+    await runAsRoot("apt-get", ["update"]);
+    await runAsRoot("apt-get", ["install", "-y", "git"]);
+  } catch (e) {
+    throw new Error(
+      `Git installation failed: ${(e as Error).message}\n` +
+        `Install it manually following ${PREREQUISITE_URLS.git} and rerun.`,
+    );
+  }
+  if ((await checkGit()) !== "success") {
+    throw new Error(
+      `Git was installed but 'git --version' still fails. Install it manually following ${PREREQUISITE_URLS.git} and rerun.`,
+    );
+  }
 }
 
 /**
@@ -166,13 +289,15 @@ function isDebianAptLinux(): boolean {
  */
 export async function ensureDocker(
   store: CLIStore,
-  options: EnsureDockerOptions = {},
+  options: InstallConsentOptions = {},
 ): Promise<DockerReadiness> {
-  store.updateData("checks", {
-    ...store.currentState.data.checks,
-    docker: "pending",
-  });
+  return underCheck(store, "docker", () => makeDockerAvailable(store, options));
+}
 
+async function makeDockerAvailable(
+  store: CLIStore,
+  options: InstallConsentOptions,
+): Promise<DockerReadiness> {
   let info = await checkDockerDetailed();
 
   if (!info.installed) {
@@ -196,26 +321,12 @@ export async function ensureDocker(
       );
     }
 
-    if (!options.assumeYes) {
-      if (!(process.stdin.isTTY === true && process.stdout.isTTY === true)) {
-        // Fail loud instead of silently continuing without Docker.
-        throw new Error(
-          "Docker is required but not installed, and there is no terminal to confirm installation.\n" +
-            "Rerun with --yes to install it, or install Docker Engine first:\n" +
-            `  curl -fsSL ${DOCKER_INSTALL_SCRIPT_URL} | sudo sh`,
-        );
-      }
-
-      store.setStatus("Docker is not installed.");
-      const confirmed = await store.waitForInput("docker_install_confirm");
-      if (confirmed !== "install") {
-        throw new Error(
-          "Docker is required to continue. Install it from " +
-            `${PREREQUISITE_URLS.docker} and rerun.`,
-        );
-      }
-    }
-
+    await confirmInstall(
+      store,
+      "docker",
+      options,
+      `curl -fsSL ${DOCKER_INSTALL_SCRIPT_URL} | sudo sh`,
+    );
     store.setStatus(
       "Installing Docker Engine (this can take several minutes)...",
     );
@@ -227,16 +338,12 @@ export async function ensureDocker(
   if (info.permissionDenied) {
     store.setStatus("Granting this user access to Docker (docker group)...");
     await ensureDockerGroupMembership();
-    store.updateData("relaunchWithDockerGroup", true);
+    store.updateData("dockerGroupSwitch", await resolveDockerGroupSwitch());
     store.setStatus("Docker access granted — restarting to pick it up...");
     return "relaunch";
   }
 
   if (!info.working) {
-    store.updateData("checks", {
-      ...store.currentState.data.checks,
-      docker: "error",
-    });
     store.updateData("dockerError", info.errorMessage);
     throw new Error(
       info.errorMessage ||
@@ -244,30 +351,22 @@ export async function ensureDocker(
     );
   }
 
-  store.updateData("checks", {
-    ...store.currentState.data.checks,
-    docker: "success",
-  });
+  setCheck(store, "docker", "success");
   return "ready";
 }
 
 /**
  * Run the official Docker Engine convenience script for apt-based distros,
  * downloading it to a temp file so sudo can execute it without a
- * pipe-under-root race. stdio is inherited so sudo can prompt for a password.
+ * pipe-under-root race.
  */
 async function installDockerLinux(): Promise<void> {
   const os = await import("node:os");
   const scriptPath = path.join(os.tmpdir(), "gaia-docker-install.sh");
   await execa("curl", ["-fsSL", DOCKER_INSTALL_SCRIPT_URL, "-o", scriptPath]);
 
-  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
   try {
-    if (isRoot) {
-      await execa("sh", [scriptPath], { stdio: "inherit" });
-    } else {
-      await execa("sudo", ["sh", scriptPath], { stdio: "inherit" });
-    }
+    await runAsRoot("sh", [scriptPath]);
   } catch (e) {
     throw new Error(
       `Docker installation failed: ${(e as Error).message}\n` +
@@ -275,7 +374,6 @@ async function installDockerLinux(): Promise<void> {
     );
   }
 }
-
 export async function installMise(): Promise<boolean> {
   const os = await import("node:os");
   const platform = os.platform();

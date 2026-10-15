@@ -9,9 +9,9 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { Shell } from "../../ui/components/Shell.js";
 import {
-  DockerInstallConfirmStep,
   EnvSetupSpinnerStep,
   ErrorStep,
+  InstallConfirmStep,
   PortConflictStep,
   RepositoryProgressStep,
   SystemChecksStep,
@@ -33,6 +33,7 @@ const UpFinishedStep: React.FC<{
   stillStarting: boolean;
   customProviderNote: boolean;
   codeSandbox: boolean;
+  setupComplete: boolean;
 }> = ({
   webUrl,
   reachableUrls,
@@ -41,6 +42,7 @@ const UpFinishedStep: React.FC<{
   stillStarting,
   customProviderNote,
   codeSandbox,
+  setupComplete,
 }) => {
   const success = !noStart && !stillStarting;
   return (
@@ -93,14 +95,16 @@ const UpFinishedStep: React.FC<{
         </Text>
       </Box>
 
-      <Box marginTop={1}>
-        <Text>
-          Finish setup in your browser:{" "}
-          <Text color="cyan" bold underline>
-            {webUrl}/setup
+      {!setupComplete && (
+        <Box marginTop={1}>
+          <Text>
+            Finish setup in your browser:{" "}
+            <Text color="cyan" bold underline>
+              {webUrl}/setup
+            </Text>
           </Text>
-        </Text>
-      </Box>
+        </Box>
+      )}
 
       <Box marginTop={1}>
         <Text color="gray">{codeSandboxSummary(codeSandbox)}</Text>
@@ -125,29 +129,16 @@ const UpFinishedStep: React.FC<{
           Run 'gaia doctor' anytime · gaia logs · gaia stop · gaia status
         </Text>
       </Box>
-
-      <Box marginTop={1}>
-        <Text dimColor>
-          <Text bold>Enter</Text> to exit
-        </Text>
-      </Box>
     </Box>
   );
 };
 
-/** The Docker-install and port-conflict prompts, the only input gaia up asks for. */
+/** The install and port-conflict prompts, the only input gaia up asks for. */
 const UpPromptStep: React.FC<{ state: CLIState; store: CLIStore }> = ({
   state,
   store,
 }) => {
   switch (state.inputRequest?.id) {
-    case "docker_install_confirm":
-      return (
-        <DockerInstallConfirmStep
-          onConfirm={() => store.submitInput("install")}
-          onDecline={() => store.submitInput("decline")}
-        />
-      );
     case "port_conflicts":
       return state.data.portConflicts ? (
         <PortConflictStep
@@ -157,7 +148,13 @@ const UpPromptStep: React.FC<{ state: CLIState; store: CLIStore }> = ({
         />
       ) : null;
     default:
-      return null;
+      return (
+        <InstallConfirmStep
+          inputId={state.inputRequest?.id}
+          onConfirm={() => store.submitInput("install")}
+          onDecline={() => store.submitInput("decline")}
+        />
+      );
   }
 };
 
@@ -196,6 +193,7 @@ const UpSummaryStep: React.FC<{ state: CLIState }> = ({ state }) => {
       stillStarting={!noStart && state.data.upStillStarting === true}
       customProviderNote={state.data.customProviderNote === true}
       codeSandbox={state.data.upCodeSandbox === true}
+      setupComplete={state.data.upSetupComplete === true}
     />
   );
 };

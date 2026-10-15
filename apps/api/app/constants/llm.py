@@ -356,10 +356,12 @@ OPENAI_MAX_OUTPUT_TOKENS = 16_000
 PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
 PAID_MODEL_NAME = DEFAULT_MODEL_NAME
 
+OPENAI_API_URL = "https://api.openai.com/v1"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
 # Which OpenRouter models accept image input, straight from the live catalog's
 # architecture.input_modalities — vision support needs no per-model curation
 # here (see app/agents/llm/model_catalog.py for the cache).
-OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_MODELS_URL = f"{OPENROUTER_API_URL}/models"
 OPENROUTER_MODEL_CATALOG_TTL_SECONDS = 3600
 OPENROUTER_MODEL_CATALOG_TIMEOUT_SECONDS = 10
 # How long a failed catalog refresh is remembered: the catalog is consulted on

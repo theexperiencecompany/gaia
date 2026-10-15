@@ -24,12 +24,12 @@ export type DockerReadiness =
   | "ready"
   /**
    * This user was just granted the docker group, which only a new process
-   * picks up: the command runner relaunches under `sg docker` and the flow
+   * picks up: the command runner relaunches in the docker group and the flow
    * must stop here (see lib/docker-group.ts).
    */
   | "relaunch";
 
-export interface EnsureDockerOptions {
-  /** `--yes`: consent to installing Docker and joining the docker group. */
+export interface InstallConsentOptions {
+  /** `--yes`: consent to installing a missing prerequisite (and joining the docker group). */
   assumeYes?: boolean;
 }

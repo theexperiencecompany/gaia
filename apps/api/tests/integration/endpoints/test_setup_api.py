@@ -9,6 +9,7 @@ outside respx's transport mock).
 
 from collections.abc import Callable, Iterator
 import ipaddress
+import json
 import socket
 from typing import Any
 
@@ -25,8 +26,12 @@ from app.api.v1.endpoints import setup as setup_endpoint
 from app.api.v1.endpoints.setup import router as setup_router
 from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
-from app.constants.llm import OPENROUTER_MODELS_URL
-from app.constants.providers import CREDENTIAL_PROVIDERS, ProviderFeature
+from app.constants.llm import LLMProviderName
+from app.constants.providers import (
+    CREDENTIAL_PROVIDERS,
+    LLM_MODEL_PROFILES,
+    ProviderFeature,
+)
 from shared.py.wide_events import log
 from tests.integration.endpoints.conftest import (
     API,
@@ -40,6 +45,8 @@ from tests.integration.endpoints.conftest import (
 SECRET_KEY = "sk-live-supersecret-9876"
 STORED_KEY = "sk-stored"
 EVIL_BASE_URL = "https://evil.example"
+CHAT_COMPLETION = {"choices": [{"message": {"role": "assistant", "content": "OK"}}]}
+CUSTOM_PROBE_BODY = {"base_url": "https://gw.test/v1", "model": "m-1"}
 
 # Public IP the DNS stub answers with for every hostname (the guard's
 # ``is_global`` check must pass it).
@@ -589,65 +596,114 @@ class TestDeleteProvider:
 
 
 class TestProviderProbe:
-    async def test_openai_wire_lists_sorted_models(self, client: AsyncClient) -> None:
+    async def test_custom_probes_a_chat_completion_against_its_model(
+        self, client: AsyncClient
+    ) -> None:
         with respx.mock:
-            route = respx.get("https://gw.test/v1/models").mock(
-                return_value=httpx.Response(
-                    200, json={"data": [{"id": "zeta-model"}, {"id": "deepseek-v4-flash"}]}
-                )
+            route = respx.post("https://gw.test/v1/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
             )
             resp = await client.post(
                 f"{API}/providers/custom/test",
-                json={"base_url": "https://gw.test/v1", "api_key": SECRET_KEY},
+                json={"base_url": "https://gw.test/v1", "api_key": SECRET_KEY, "model": "m-1"},
             )
-        assert route.called
-        assert route.calls.last.request.headers["Authorization"] == f"Bearer {SECRET_KEY}"
-        body = resp.json()
-        assert body["ok"] is True
-        assert body["models"] == ["deepseek-v4-flash", "zeta-model"]
+        request = route.calls.last.request
+        assert request.headers["Authorization"] == f"Bearer {SECRET_KEY}"
+        assert json.loads(request.content) == {
+            "model": "m-1",
+            "messages": [{"role": "user", "content": "Reply with OK."}],
+            "max_completion_tokens": setup_endpoint._PROBE_MAX_COMPLETION_TOKENS,
+        }
+        assert resp.json() == {"ok": True, "detail": "Connected to Custom", "models": []}
 
-    async def test_openrouter_uses_canonical_models_url(self, client: AsyncClient) -> None:
+    async def test_custom_without_a_model_is_not_ok(self, client: AsyncClient) -> None:
+        resp = await client.post(
+            f"{API}/providers/custom/test", json={"base_url": "https://gw.test/v1"}
+        )
+        assert resp.json() == {
+            "ok": False,
+            "detail": "No model configured for Custom",
+            "models": [],
+        }
+
+    async def test_openrouter_probes_its_catalog_chat_model(self, client: AsyncClient) -> None:
         with respx.mock:
-            route = respx.get(OPENROUTER_MODELS_URL).mock(
-                return_value=httpx.Response(200, json={"data": [{"id": "m"}]})
+            route = respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
             )
             resp = await client.post(
                 f"{API}/providers/openrouter/test", json={"api_key": SECRET_KEY}
             )
-        assert route.called
+        assert json.loads(route.calls.last.request.content)["model"] == (
+            LLM_MODEL_PROFILES[LLMProviderName.OPENROUTER].chat
+        )
         assert resp.json()["ok"] is True
 
-    async def test_openai_uses_canonical_models_url(self, client: AsyncClient) -> None:
-        with respx.mock:
-            route = respx.get("https://api.openai.com/v1/models").mock(
-                return_value=httpx.Response(200, json={"data": [{"id": "gpt-5.6-luna"}]})
+    async def test_openai_key_without_model_read_scope_passes(self, client: AsyncClient) -> None:
+        """Regression: a restricted key 403s on /v1/models yet runs chat completions."""
+        with respx.mock(assert_all_called=False) as mock:
+            mock.get("https://api.openai.com/v1/models").mock(
+                return_value=httpx.Response(403, json={"error": "Missing scopes: api.model.read."})
+            )
+            chat = mock.post("https://api.openai.com/v1/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
             )
             resp = await client.post(f"{API}/providers/openai/test", json={"api_key": SECRET_KEY})
-        assert route.called
-        assert route.calls.last.request.headers["Authorization"] == f"Bearer {SECRET_KEY}"
+        assert json.loads(chat.calls.last.request.content)["model"] == (
+            LLM_MODEL_PROFILES[LLMProviderName.OPENAI].chat
+        )
+        assert resp.json() == {"ok": True, "detail": "Connected to OpenAI", "models": []}
+
+    async def test_a_rejected_key_reads_the_providers_reason_without_the_key(
+        self, client: AsyncClient
+    ) -> None:
+        with respx.mock:
+            respx.post("https://api.openai.com/v1/chat/completions").mock(
+                return_value=httpx.Response(
+                    401,
+                    json={
+                        "error": {
+                            "message": f"Incorrect API key provided: {SECRET_KEY}.",
+                            "code": "invalid_api_key",
+                        }
+                    },
+                )
+            )
+            resp = await client.post(f"{API}/providers/openai/test", json={"api_key": SECRET_KEY})
+        assert resp.json()["detail"] == (
+            "OpenAI rejected the key: Incorrect API key provided: [redacted]."
+        )
+
+    async def test_a_scope_error_names_the_missing_scope(self, client: AsyncClient) -> None:
+        with respx.mock:
+            respx.post("https://api.openai.com/v1/chat/completions").mock(
+                return_value=httpx.Response(403, json={"error": "Missing scopes: model.request."})
+            )
+            resp = await client.post(f"{API}/providers/openai/test", json={"api_key": SECRET_KEY})
         assert resp.json() == {
-            "ok": True,
-            "detail": "Connected to openai",
-            "models": ["gpt-5.6-luna"],
+            "ok": False,
+            "detail": "OpenAI rejected the key: Missing scopes: model.request.",
+            "models": [],
         }
 
     async def test_stored_key_never_sent_to_caller_supplied_base_url(
         self, client: AsyncClient
     ) -> None:
         """Hit the stored endpoint with the stored key, never the attacker URL."""
-        await provider_service.upsert("custom", api_key=STORED_KEY, base_url="https://good.test/v1")
+        await provider_service.upsert(
+            "custom", api_key=STORED_KEY, base_url="https://good.test/v1", model="m-1"
+        )
         with respx.mock(assert_all_called=False) as mock:
-            good = mock.get("https://good.test/v1/models").mock(
-                return_value=httpx.Response(200, json={"data": []})
+            good = mock.post("https://good.test/v1/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
             )
             evil = mock.route(host="evil.example").mock(
-                return_value=httpx.Response(200, json={"data": []})
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
             )
             resp = await client.post(
                 f"{API}/providers/custom/test", json={"base_url": EVIL_BASE_URL}
             )
         assert evil.called is False
-        assert good.called
         request = good.calls.last.request
         assert request.url.host == "good.test"
         assert request.headers["Authorization"] == f"Bearer {STORED_KEY}"
@@ -656,20 +712,19 @@ class TestProviderProbe:
     async def test_openrouter_stored_key_goes_to_canonical_url_not_evil(
         self, client: AsyncClient
     ) -> None:
-        """Use the canonical models URL with a stored key; a body base_url is never honored."""
+        """Use the canonical chat URL with a stored key; a body base_url is never honored."""
         await provider_service.upsert("openrouter", api_key=STORED_KEY)
         with respx.mock(assert_all_called=False) as mock:
-            canonical = mock.get(OPENROUTER_MODELS_URL).mock(
-                return_value=httpx.Response(200, json={"data": []})
+            canonical = mock.post("https://openrouter.ai/api/v1/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
             )
             evil = mock.route(host="evil.example").mock(
-                return_value=httpx.Response(200, json={"data": []})
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
             )
             resp = await client.post(
                 f"{API}/providers/openrouter/test", json={"base_url": EVIL_BASE_URL}
             )
         assert evil.called is False
-        assert canonical.called
         assert canonical.calls.last.request.headers["Authorization"] == f"Bearer {STORED_KEY}"
         assert resp.json()["ok"] is True
 
@@ -678,14 +733,13 @@ class TestProviderProbe:
     ) -> None:
         """Honor body base_url plus key only for first-time validation; nothing stored yet."""
         with respx.mock:
-            route = respx.get("https://fresh.test/v1/models").mock(
-                return_value=httpx.Response(200, json={"data": []})
+            route = respx.post("https://fresh.test/v1/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
             )
             resp = await client.post(
                 f"{API}/providers/custom/test",
-                json={"base_url": "https://fresh.test/v1", "api_key": "body-key"},
+                json={"base_url": "https://fresh.test/v1", "api_key": "body-key", "model": "m"},
             )
-        assert route.called
         request = route.calls.last.request
         assert request.url.host == "fresh.test"
         assert request.headers["Authorization"] == "Bearer body-key"
@@ -723,10 +777,12 @@ class TestProviderProbe:
 
     async def test_stored_config_used_exclusively_when_present(self, client: AsyncClient) -> None:
         """Use stored base_url plus key exclusively; caller base_url never pairs with a held key."""
-        await provider_service.upsert("custom", api_key=STORED_KEY, base_url="https://old.test/v1")
+        await provider_service.upsert(
+            "custom", api_key=STORED_KEY, base_url="https://old.test/v1", model="m-1"
+        )
         with respx.mock:
-            route = respx.get("https://old.test/v1/models").mock(
-                return_value=httpx.Response(200, json={"data": []})
+            route = respx.post("https://old.test/v1/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
             )
             await client.post(
                 f"{API}/providers/custom/test",
@@ -738,20 +794,24 @@ class TestProviderProbe:
 
     async def test_http_error_reports_not_ok(self, client: AsyncClient) -> None:
         with respx.mock:
-            respx.get("https://gw.test/v1/models").mock(return_value=httpx.Response(401))
-            resp = await client.post(
-                f"{API}/providers/custom/test", json={"base_url": "https://gw.test/v1"}
+            respx.post("https://gw.test/v1/chat/completions").mock(
+                return_value=httpx.Response(500, text="upstream down")
             )
-        body = resp.json()
-        assert body["ok"] is False
-        assert "401" in body["detail"]
-        assert body["models"] == []
+            resp = await client.post(f"{API}/providers/custom/test", json={**CUSTOM_PROBE_BODY})
+        assert resp.json() == {
+            "ok": False,
+            "detail": "Custom refused the test request: HTTP 500",
+            "models": [],
+        }
 
     async def test_unreachable_host_reports_not_ok(self, client: AsyncClient) -> None:
         with respx.mock:
-            respx.get("https://dead.test/v1/models").mock(side_effect=httpx.ConnectError("boom"))
+            respx.post("https://dead.test/v1/chat/completions").mock(
+                side_effect=httpx.ConnectError("boom")
+            )
             resp = await client.post(
-                f"{API}/providers/custom/test", json={"base_url": "https://dead.test/v1"}
+                f"{API}/providers/custom/test",
+                json={"base_url": "https://dead.test/v1", "model": "m"},
             )
         assert resp.json()["ok"] is False
 
@@ -772,9 +832,12 @@ class TestProviderProbe:
 
     async def test_detail_never_leaks_the_api_key(self, client: AsyncClient) -> None:
         with respx.mock:
-            respx.get("https://gw.test/v1/models").mock(return_value=httpx.Response(500))
+            respx.post("https://gw.test/v1/chat/completions").mock(
+                return_value=httpx.Response(500, json={"error": {"message": SECRET_KEY}})
+            )
             resp = await client.post(
-                f"{API}/providers/custom/test", json={"base_url": "https://gw.test/v1"}
+                f"{API}/providers/custom/test",
+                json={**CUSTOM_PROBE_BODY, "api_key": SECRET_KEY},
             )
         assert SECRET_KEY not in resp.text
 

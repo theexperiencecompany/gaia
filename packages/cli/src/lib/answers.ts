@@ -233,7 +233,7 @@ export function createUpAnswerResolver(input: {
       case "port_conflicts":
         return "accept";
       default:
-        // Unknown ids (e.g. "docker_install_confirm", "exit") fall through to
+        // Unknown ids (e.g. the install confirmations, "exit") fall through to
         // the interactive prompt / command-runner auto-resolve handling.
         return undefined;
     }

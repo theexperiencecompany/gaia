@@ -12729,12 +12729,12 @@ export interface components {
             detail: string;
             /**
              * Models
-             * @description Model ids the endpoint advertised
+             * @description Model ids the endpoint listed; empty for OpenAI-wire providers, which are probed with a chat completion
              */
             models: string[];
             /**
              * Ok
-             * @description Whether the provider answered a models request
+             * @description Whether the provider answered the test request
              */
             ok: boolean;
         };

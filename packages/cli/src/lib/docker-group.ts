@@ -4,7 +4,7 @@
  * Docker's install script never adds the invoking user to the `docker` group,
  * and a group granted with usermod only reaches processes started afterwards.
  * So the CLI grants the group, finishes the current UI, and relaunches the
- * same command under `sg docker` — one command still runs end to end.
+ * same command in the docker group — one command still runs end to end.
  * @module lib/docker-group
  */
 
@@ -62,27 +62,88 @@ export async function ensureDockerGroupMembership(): Promise<void> {
   }
 }
 
+/** How the relaunch enters the docker group (see {@link resolveDockerGroupSwitch}). */
+export type DockerGroupSwitch = "sg" | "sudo";
+
+/** An environment variable name sudo's --preserve-env list can carry. */
+const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** True when `command` resolves on PATH; a non-zero `command -v` means absent. */
+async function isOnPath(command: string): Promise<boolean> {
+  try {
+    await execa("sh", ["-c", 'command -v "$1"', "sh", command]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** True when sudo lets this user run the CLI with docker as its primary group. */
+async function sudoCanSwitchGroup(): Promise<boolean> {
+  try {
+    await execa("sudo", ["-l", "-g", DOCKER_GROUP, "--", process.execPath]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pick how to re-run this command in the docker group: sg where the system
+ * ships it (Ubuntu 26.04 does not), else sudo -g, which runs as this same
+ * user with docker as the primary group.
+ * @throws Error telling the user to start a new login session when neither can.
+ */
+export async function resolveDockerGroupSwitch(): Promise<DockerGroupSwitch> {
+  if (await isOnPath("sg")) return "sg";
+  if (await sudoCanSwitchGroup()) return "sudo";
+  throw new Error(
+    `Docker access was granted, but this login session predates it and cannot pick it up ('sg' is missing and sudo cannot switch to the '${DOCKER_GROUP}' group).\n` +
+      `Log out and back in (or run 'newgrp ${DOCKER_GROUP}'), then rerun this command.`,
+  );
+}
+
 /** POSIX single-quote one argument for `sh -c`. */
 function shellQuote(arg: string): string {
   return `'${arg.replaceAll("'", `'\\''`)}'`;
+}
+
+/** The program and arguments that run `argv` in the docker group via `via`. */
+function groupSwitchCommand(
+  via: DockerGroupSwitch,
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv,
+): [file: string, args: string[]] {
+  if (via === "sg") {
+    return ["sg", [DOCKER_GROUP, "-c", argv.map(shellQuote).join(" ")]];
+  }
+  // sudo resets the environment; name every variable so it carries through.
+  const names = Object.keys(env).filter((name) => ENV_NAME_RE.test(name));
+  return [
+    "sudo",
+    [`--preserve-env=${names.join(",")}`, "-g", DOCKER_GROUP, "--", ...argv],
+  ];
 }
 
 /**
  * Re-run this exact command with the docker group active and exit with its
  * status. Call only after the UI has released the terminal.
  */
-export function relaunchWithDockerGroup(currentStep: string): Promise<never> {
-  const command = [process.execPath, ...process.argv.slice(1)]
-    .map(shellQuote)
-    .join(" ");
-  const child = spawn("sg", [DOCKER_GROUP, "-c", command], {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      [RELAUNCHED_ENV]: "1",
-      [RESUMED_STEP_ENV]: currentStep,
-    },
-  });
+export function relaunchWithDockerGroup(
+  currentStep: string,
+  via: DockerGroupSwitch,
+): Promise<never> {
+  const env = {
+    ...process.env,
+    [RELAUNCHED_ENV]: "1",
+    [RESUMED_STEP_ENV]: currentStep,
+  };
+  const [file, args] = groupSwitchCommand(
+    via,
+    [process.execPath, ...process.argv.slice(1)],
+    env,
+  );
+  const child = spawn(file, args, { stdio: "inherit", env });
   return new Promise((_resolve, reject) => {
     child.on("error", reject);
     child.on("exit", (code, signal) => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-/** The wizard explains a locked Continue only once the user has tried it. */
+/** The admin step offers no way on until the account exists; creating it advances the wizard. */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -56,22 +56,11 @@ vi.mock("@/features/setup-wizard/components/steps/AccountStep", () => ({
 
 import { SetupWizard } from "@/features/setup-wizard/components/SetupWizard";
 
-const ACCOUNT_REASON = "Create the admin account above to continue.";
-
 describe("SetupWizard admin step", () => {
-  it("shows no warning before the user tries to continue", () => {
+  it("shows no Continue before the admin account exists", () => {
     render(<SetupWizard />);
 
     expect(screen.getByText("admin form")).toBeTruthy();
-    expect(screen.queryByText(ACCOUNT_REASON)).toBeNull();
-  });
-
-  it("explains why it stays on the step after a Continue attempt", () => {
-    render(<SetupWizard />);
-
-    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
-
-    expect(screen.getByText(ACCOUNT_REASON)).toBeTruthy();
-    expect(screen.getByText("admin form")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /continue/i })).toBeNull();
   });
 });

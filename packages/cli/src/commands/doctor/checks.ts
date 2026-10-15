@@ -28,6 +28,10 @@ import {
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
 import { checkModePorts } from "../../lib/prerequisites.js";
+import {
+  fetchWithTimeout,
+  readSetupEndpoint,
+} from "../../lib/setup-endpoints.js";
 import { GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import type { CheckResult } from "./types";
 
@@ -39,8 +43,6 @@ export const MIN_DISK_HEADROOM_BYTES = 2 * 1024 * 1024 * 1024;
 /** Memory thresholds for the headroom check (bytes). */
 export const MIN_MEMORY_WARN_BYTES = 4 * 1024 * 1024 * 1024;
 export const MIN_MEMORY_FAIL_BYTES = 2 * 1024 * 1024 * 1024;
-
-const HTTP_TIMEOUT_MS = 5000;
 
 // ---------------------------------------------------------------------------
 // Compose project / expected services
@@ -351,13 +353,6 @@ export function unconfiguredInstallCheck(repoPath: string | null): CheckResult {
   };
 }
 
-async function fetchWithTimeout(
-  url: string,
-  init?: RequestInit,
-): Promise<Response> {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
-}
-
 export async function checkApiHealth(apiUrl: string): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "api-health",
@@ -456,22 +451,6 @@ export async function checkWebReachable(webPort: number): Promise<CheckResult> {
       detail: "Connection failed",
       fix: "Start the stack with 'gaia start' (self-host) or 'gaia dev' (developer mode).",
     };
-  }
-}
-
-/** A public setup endpoint's JSON body, or why it could not be read. */
-async function readSetupEndpoint<T>(
-  apiUrl: string,
-  endpoint: "status" | "catalog",
-): Promise<{ data: T } | { detail: string }> {
-  try {
-    const res = await fetchWithTimeout(`${apiUrl}/setup/${endpoint}`);
-    if (!res.ok) {
-      return { detail: `HTTP ${res.status} from /api/v1/setup/${endpoint}` };
-    }
-    return { data: (await res.json()) as T };
-  } catch {
-    return { detail: `Could not read setup ${endpoint}` };
   }
 }
 

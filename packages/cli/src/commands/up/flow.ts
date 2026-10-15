@@ -10,6 +10,7 @@
 
 import { execFile } from "node:child_process";
 import * as os from "node:os";
+import type { SetupStatusResponse } from "@gaia/shared/api/generated";
 import {
   createUpAnswerResolver,
   DEFAULT_INSTALL_DIR,
@@ -27,7 +28,7 @@ import {
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import { delay, runPortChecks } from "../../lib/flow-utils.js";
-import { checkGit, ensureDocker } from "../../lib/prerequisites.js";
+import { checkGit, ensureDocker, ensureGit } from "../../lib/prerequisites.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
 import { cloneRelease, GAIA_REPO_URL } from "../../lib/release.js";
 import {
@@ -35,6 +36,7 @@ import {
   isGaiaCheckout,
   startServices,
 } from "../../lib/service-starter.js";
+import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import { LOG_BUFFER_LINES } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
@@ -106,40 +108,24 @@ export async function runUpFlow(
     createUpAnswerResolver({ flags: options, repoPath: targetPath }),
   );
 
-  // 1. Prerequisites — git (needed when cloning) and Docker (with an
-  //    interactive install offer on apt-based Linux).
+  // 1. Prerequisites — git (needed when cloning) and Docker, each with an
+  //    install offer on apt-based Linux.
   store.setStep("Prerequisites");
   store.setStatus("Checking system requirements...");
-  store.updateData("checks", { git: "pending", docker: "pending" });
-
-  const gitStatus = await checkGit();
-  store.updateData("checks", {
-    ...store.currentState.data.checks,
-    git: gitStatus,
-  });
 
   const needsClone = !isGaiaCheckout(targetPath);
-  if (gitStatus === "error") {
-    if (needsClone) {
-      store.setError(
-        new Error(
-          `Git is required to clone GAIA. Install it from https://git-scm.com/downloads and rerun.`,
-        ),
-      );
-      return;
-    }
-    // Git missing but install exists — cloning isn't needed; proceed.
-    store.updateData("checks", {
-      ...store.currentState.data.checks,
-      git: "missing",
-    });
-  }
-
+  const consent = { assumeYes: options.yes === true };
   try {
-    if (
-      (await ensureDocker(store, { assumeYes: options.yes === true })) ===
-      "relaunch"
-    ) {
+    if (needsClone) {
+      await ensureGit(store, consent);
+    } else {
+      // An existing install needs no clone: git is reported, not required.
+      const gitStatus = await checkGit();
+      store.updateData("checks", {
+        git: gitStatus === "success" ? gitStatus : "missing",
+      });
+    }
+    if ((await ensureDocker(store, consent)) === "relaunch") {
       return;
     }
   } catch (e) {
@@ -251,15 +237,14 @@ export async function runUpFlow(
 
   // Compose returning is not the stack answering. Probe localhost: the proxy
   // answers there even before a GAIA_DOMAIN resolves. A timeout exits 0.
-  const readiness = await waitForUpReadiness(store, {
-    apiUrl: localApiUrl("selfhost", portOverrides),
-    webPort,
-  });
+  const apiUrl = localApiUrl("selfhost", portOverrides);
+  const readiness = await waitForUpReadiness(store, { apiUrl, webPort });
 
   finishUp(store, targetPath, webUrl, reachableUrls, {
     noStart: false,
     customProvider: options.llmProvider === "custom",
     stillStarting: !readiness.ready,
+    setupComplete: readiness.ready && (await isSetupComplete(apiUrl)),
   });
 
   // Auto-open the setup wizard when running interactively on macOS and the
@@ -342,6 +327,16 @@ async function startSelfhostServices(
   store.updateData("dependencyComplete", true);
 }
 
+/**
+ * Whether the browser wizard has nothing left to do (an admin and a working
+ * AI provider exist). An unreadable status counts as not complete, so the
+ * summary keeps pointing at the wizard.
+ */
+async function isSetupComplete(apiUrl: string): Promise<boolean> {
+  const status = await readSetupEndpoint<SetupStatusResponse>(apiUrl, "status");
+  return "data" in status && !status.data.needs_setup;
+}
+
 /** What a finished `gaia up` reached: configured only, started but not answering, or running. */
 export function upHeadline(outcome: {
   noStart: boolean;
@@ -369,6 +364,7 @@ function finishUp(
     noStart?: boolean;
     customProvider?: boolean;
     stillStarting?: boolean;
+    setupComplete?: boolean;
   },
 ): void {
   // A partial update: the saved sandbox choice must survive a finished run.
@@ -389,6 +385,7 @@ function finishUp(
   // Services started but never answered within the readiness budget — the
   // finished screen must say so instead of claiming GAIA is running.
   store.updateData("upStillStarting", flags?.stillStarting === true);
+  store.updateData("upSetupComplete", flags?.setupComplete === true);
   // Custom providers are runtime-configured; no key was written to .env —
   // the finished screen points at the web wizard instead.
   store.updateData("customProviderNote", flags?.customProvider === true);
