@@ -9,12 +9,10 @@ import os
 from typing import TypedDict, cast
 from urllib.parse import urlparse
 
-import httpx
-
 from app.constants.log_tags import LogTag
 from app.models.mcp_config import DCRClientRegistration, MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.utils.mcp_oauth_utils import oauth_token_expiry
+from app.utils.mcp_oauth_utils import mcp_http_client, oauth_token_expiry
 from mcp.shared.auth import OAuthToken
 from shared.py.wide_events import log
 
@@ -96,7 +94,7 @@ async def try_refresh_token(
 
         resource = oauth_config.resource
 
-        async with httpx.AsyncClient() as http_client:
+        async with mcp_http_client() as http_client:
             token_data = {
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
@@ -216,7 +214,7 @@ async def revoke_tokens(
         tokens_to_revoke.append(("access_token", access_token))
 
     try:
-        async with httpx.AsyncClient() as http_client:
+        async with mcp_http_client() as http_client:
             for token_type, token in tokens_to_revoke:
                 data = {"token": token, "token_type_hint": token_type}
                 if client_id:

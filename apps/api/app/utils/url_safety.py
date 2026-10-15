@@ -10,6 +10,7 @@ assert_endpoint_url_allowed / assert_endpoint_url_shape guard an endpoint
 someone configured on purpose (an MCP server, a model provider): the caller
 passes allow_private from the deployment, and link-local and metadata
 addresses and URLs carrying credentials stay refused regardless.
+endpoint_http_client runs that check before every request it sends.
 """
 
 import asyncio
@@ -118,6 +119,19 @@ async def assert_endpoint_url_allowed(url: str, *, allow_private: bool) -> None:
         raise ValueError(f"DNS resolution failed: {e}") from e
     for address in addresses:
         _assert_ip_allowed(ipaddress.ip_address(address), allow_private=allow_private)
+
+
+def endpoint_http_client(*, allow_private: bool) -> httpx.AsyncClient:
+    """Return an AsyncClient that checks every request it sends, redirect hops included.
+
+    For URLs a remote server hands back (OAuth metadata, a page's icon links).
+    A refused URL raises ValueError before anything is dialed.
+    """
+
+    async def _guard(request: httpx.Request) -> None:
+        await assert_endpoint_url_allowed(str(request.url), allow_private=allow_private)
+
+    return httpx.AsyncClient(event_hooks={"request": [_guard]})
 
 
 def _resolve(host: str, port: int) -> list[str]:

@@ -38,8 +38,10 @@ from mcp.types import (
 )
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict
 
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.models.mcp_config import McpAuthChallenge, OAuthErrorResponse
+from app.utils.url_safety import endpoint_http_client
 from shared.py.wide_events import log
 
 # Sent in the MCP-Protocol-Version header on OAuth discovery/token requests for
@@ -68,6 +70,14 @@ _MCP_INITIALIZE_PROBE_REQUEST: dict[str, Any] = JSONRPCRequest(
         clientInfo=Implementation(name="gaia", version="1.0"),
     ).model_dump(by_alias=True, exclude_none=True, mode="json"),
 ).model_dump(by_alias=True, exclude_none=True, mode="json")
+
+
+def mcp_http_client() -> httpx.AsyncClient:
+    """Return the client for MCP and MCP OAuth traffic, checked against the deployment's endpoint policy.
+
+    Self-host reaches private networks, GAIA Cloud only public addresses.
+    """
+    return endpoint_http_client(allow_private=settings.deployment.private_network_endpoints)
 
 
 def oauth_token_expiry(expires_in: int | None) -> datetime | None:
@@ -236,12 +246,13 @@ async def extract_auth_challenge(server_url: str) -> McpAuthChallenge:
     start_time = time.perf_counter()
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+        async with mcp_http_client() as client:
             response = await client.post(
                 server_url,
                 json=_MCP_INITIALIZE_PROBE_REQUEST,
                 headers=headers,
                 timeout=OAUTH_PROBE_TIMEOUT,
+                follow_redirects=True,
             )
             elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -330,7 +341,7 @@ async def find_protected_resource_metadata(server_url: str) -> str | None:
     headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
     start_time = time.perf_counter()
 
-    async with httpx.AsyncClient() as client:
+    async with mcp_http_client() as client:
         for url in candidates:
             try:
                 response = await client.get(url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT)
@@ -367,7 +378,7 @@ async def fetch_protected_resource_metadata(prm_url: str) -> ProtectedResourceMe
     headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
     start_time = time.perf_counter()
 
-    async with httpx.AsyncClient() as client:
+    async with mcp_http_client() as client:
         response = await client.get(prm_url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT)
         response.raise_for_status()
         elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -391,7 +402,7 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> OAuthMetadata:
 
     start_time = time.perf_counter()
 
-    async with httpx.AsyncClient() as client:
+    async with mcp_http_client() as client:
         for url in candidate_urls:
             try:
                 response = await client.send(create_oauth_metadata_request(url))
@@ -472,7 +483,7 @@ async def revoke_token(
             data["client_id"] = client_id
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with mcp_http_client() as client:
             response = await client.post(
                 revocation_endpoint,
                 data=data,
@@ -550,7 +561,7 @@ async def introspect_token(
             data["client_id"] = client_id
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with mcp_http_client() as client:
             response = await client.post(
                 introspection_endpoint,
                 data=data,

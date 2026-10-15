@@ -1,10 +1,13 @@
 """Unit tests for app.utils.favicon_utils — favicon fetching with Redis caching."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+import respx
 
+from app.config.settings import settings
 from app.utils.favicon_utils import (
     IconCandidate,
     _fetch_favicon_impl,
@@ -283,7 +286,7 @@ class TestValidateFaviconUrl:
         """200 response with image content-type returns True."""
         response = MagicMock(status_code=200, headers={"content-type": "image/png"})
         client = _mock_async_client(response)
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _validate_favicon_url("https://example.com/favicon.png") is True
 
     @patch("app.utils.favicon_utils.log")
@@ -291,7 +294,7 @@ class TestValidateFaviconUrl:
         """Non-200 status code returns False."""
         response = MagicMock(status_code=404, headers={"content-type": "text/html"})
         client = _mock_async_client(response)
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _validate_favicon_url("https://example.com/favicon.png") is False
 
     @patch("app.utils.favicon_utils.log")
@@ -299,14 +302,14 @@ class TestValidateFaviconUrl:
         """200 response with non-image content-type returns False."""
         response = MagicMock(status_code=200, headers={"content-type": "text/html"})
         client = _mock_async_client(response)
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _validate_favicon_url("https://example.com/favicon.png") is False
 
     @patch("app.utils.favicon_utils.log")
     async def test_http_error_returns_false(self, _mock_log: MagicMock) -> None:
         """Network error during HEAD request returns False."""
         client = _mock_async_client(head_side_effect=httpx.ConnectError("refused"))
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _validate_favicon_url("https://example.com/favicon.png") is False
 
 
@@ -320,7 +323,7 @@ class TestFetchSmitheryIcon:
 
     async def test_non_smithery_returns_none_without_http(self) -> None:
         """A non-Smithery URL short-circuits to None (no registry call)."""
-        with patch("app.utils.favicon_utils.httpx.AsyncClient") as mock_client:
+        with patch("app.utils.favicon_utils.mcp_http_client") as mock_client:
             assert await _fetch_smithery_icon("https://example.com/x") is None
             mock_client.assert_not_called()
 
@@ -331,7 +334,7 @@ class TestFetchSmitheryIcon:
         response.json.return_value = {"iconUrl": "https://api.smithery.ai/servers/brave/icon"}
         client = _mock_async_client()
         client.get.return_value = response
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             result = await _fetch_smithery_icon("https://server.smithery.ai/brave")
         assert result == "https://api.smithery.ai/servers/brave/icon"
 
@@ -341,7 +344,7 @@ class TestFetchSmitheryIcon:
         response = MagicMock(status_code=403)
         client = _mock_async_client()
         client.get.return_value = response
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _fetch_smithery_icon("https://server.smithery.ai/brave") is None
 
     @patch("app.utils.favicon_utils.log")
@@ -351,7 +354,7 @@ class TestFetchSmitheryIcon:
         response.json.return_value = {"iconUrl": None}
         client = _mock_async_client()
         client.get.return_value = response
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _fetch_smithery_icon("https://server.smithery.ai/brave") is None
 
 
@@ -490,3 +493,60 @@ class TestFetchFaviconImpl:
         mock_legacy.return_value = "https://www.google.com/s2/favicons?domain=example.com&sz=256"
         result = await _fetch_favicon_impl("https://example.com/mcp")
         assert result == "https://www.google.com/s2/favicons?domain=example.com&sz=256"
+
+
+PUBLIC_HOST = "cdn.example.com"
+PRIVATE_HOST = "intranet.example"
+
+
+class TestFaviconFetchSSRF:
+    """The icon lookup on custom-integration create dials only what the deployment allows."""
+
+    @pytest.fixture(autouse=True)
+    def _resolve(self) -> Iterator[None]:
+        addresses = {PUBLIC_HOST: "93.184.216.34", PRIVATE_HOST: "10.0.0.7"}
+        with patch(
+            "app.utils.url_safety._resolve", side_effect=lambda host, _port: [addresses[host]]
+        ):
+            yield
+
+    @respx.mock(assert_all_called=False)
+    async def test_gaia_cloud_never_fetches_a_private_hosts_page(
+        self, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        route = respx_mock.get(f"https://{PRIVATE_HOST}")
+
+        icon = await _fetch_favicon_impl(f"https://{PRIVATE_HOST}/mcp")
+
+        assert not route.called
+        assert icon == legacy_favicon_url(f"https://{PRIVATE_HOST}/mcp")
+
+    @respx.mock(assert_all_called=False)
+    async def test_gaia_cloud_refuses_a_redirect_into_a_private_host(
+        self, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        respx_mock.head(f"https://{PUBLIC_HOST}/icon.png").respond(
+            302, headers={"location": f"https://{PRIVATE_HOST}/icon.png"}
+        )
+        private = respx_mock.head(f"https://{PRIVATE_HOST}/icon.png")
+
+        assert await _validate_favicon_url(f"https://{PUBLIC_HOST}/icon.png") is False
+        assert not private.called
+
+    @respx.mock(assert_all_called=False)
+    async def test_a_selfhost_instance_reads_the_icon_a_server_on_its_network_declares(
+        self, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        respx_mock.get(f"https://{PRIVATE_HOST}").respond(
+            200, html='<link rel="icon" href="/logo.png">'
+        )
+        respx_mock.head(f"https://{PRIVATE_HOST}/logo.png").respond(
+            200, headers={"content-type": "image/png"}
+        )
+
+        assert await _fetch_favicon_impl(f"https://{PRIVATE_HOST}/mcp") == (
+            f"https://{PRIVATE_HOST}/logo.png"
+        )

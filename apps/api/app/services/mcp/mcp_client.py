@@ -18,7 +18,6 @@ import time
 from typing import TypedDict, cast
 import urllib.parse
 
-import httpx
 from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.client.session import MCPSession
@@ -94,6 +93,7 @@ from app.utils.mcp_oauth_utils import (
     OAuthSecurityError,
     get_client_metadata_document_url,
     is_localhost_url,
+    mcp_http_client,
     oauth_token_expiry,
     parse_oauth_error_response,
     parse_rejected_scopes,
@@ -1549,7 +1549,7 @@ class MCPClient:
             as_metadata, client_metadata, registration_endpoint
         )
         try:
-            async with httpx.AsyncClient() as http_client:
+            async with mcp_http_client() as http_client:
                 response = await http_client.send(request)
 
                 # Check for DCR not supported (403/404/405) before the SDK parser,
@@ -1660,7 +1660,7 @@ class MCPClient:
             encoded = base64.b64encode(credentials.encode()).decode()
             headers["Authorization"] = f"Basic {encoded}"
 
-        async with httpx.AsyncClient() as http_client:
+        async with mcp_http_client() as http_client:
             response = await http_client.post(
                 token_endpoint, data=token_data, headers=headers, timeout=30
             )
