@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { Page } from "@playwright/test";
-import type { Rect } from "./dom";
+import type { Rect } from "./types";
 
 /**
  * Screenshots of a visual-diff run and the pixel test that decides whether a

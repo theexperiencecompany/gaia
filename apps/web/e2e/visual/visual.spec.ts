@@ -1,8 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
-import { captureDom, type Side } from "./dom";
+import { captureDom } from "./dom";
 import { collectSurfaces, type SurfaceGroup } from "./surfaces";
+import type { Side } from "./types";
 
 const SIDES: readonly Side[] = ["base", "head"];
 const SIDE = SIDES.find((side) => side === process.env.VISUAL_SIDE);

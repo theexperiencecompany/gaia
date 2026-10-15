@@ -1,4 +1,4 @@
-import type { DomElement } from "./dom";
+import type { DomElement } from "./types";
 
 /**
  * Pairs base and head elements for the style diff. Elements with text pair only

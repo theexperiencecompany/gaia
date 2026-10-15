@@ -8,7 +8,6 @@ import {
 import { join } from "node:path";
 import { chromium, type Page } from "@playwright/test";
 import { nameColors, parseColor } from "./colors.ts";
-import type { DomElement, DomSnapshot, Rect } from "./dom";
 import { matchElements, parentPath, tagOf } from "./match.ts";
 import {
   loadScreenshot,
@@ -16,6 +15,7 @@ import {
   type Screenshot,
   type Visibility,
 } from "./pixels.ts";
+import type { DomElement, DomSnapshot, Rect } from "./types";
 
 /**
  * Element-level style diff of a visual-diff run: matches the base and head DOM
