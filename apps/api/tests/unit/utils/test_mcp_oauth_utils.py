@@ -262,6 +262,18 @@ class TestExtractAuthChallenge:
         assert result["scope"] == "read write"
         assert "raw" in result
 
+    async def test_the_challenge_is_read_past_a_redirect(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/mcp":
+                return httpx.Response(307, headers={"Location": "https://mcp.example.com/mcp/"})
+            return httpx.Response(401, headers={"WWW-Authenticate": 'Bearer scope="read"'})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=client):
+            result = await extract_auth_challenge("https://mcp.example.com/mcp")
+
+        assert result["scope"] == "read"
+
     async def test_401_with_error_fields(self) -> None:
         mock_response = MagicMock()
         mock_response.status_code = 401
