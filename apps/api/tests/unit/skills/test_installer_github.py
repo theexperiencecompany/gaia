@@ -158,6 +158,20 @@ class TestInstallFromGithubValidation:
             with pytest.raises(ValueError, match="No SKILL.md found"):
                 await install_from_github(user_id="u1", repo_url="org/repo/skills/empty")
 
+    async def test_a_rate_limited_lookup_says_how_to_lift_the_limit(self, storage_seams):
+        with respx.mock:
+            respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
+                return_value=httpx.Response(403, json={"message": "API rate limit exceeded"})
+            )
+            with pytest.raises(ValueError) as excinfo:
+                await install_from_github(user_id="u1", repo_url="org/repo/skills/my-skill")
+
+        assert str(excinfo.value) == (
+            "GitHub API rate limit exceeded. Try again later, or add a GitHub token in "
+            "Settings → Providers & Tools (GITHUB_TOKEN in env) for 5000 lookups an hour "
+            "instead of 60."
+        )
+
     async def test_disallowed_target_raises_value_error(self, storage_seams):
         """allowed_targets blocks installing a skill scoped to an integration the user hasn't connected, at the source so agent-tool callers get it too."""
         with respx.mock:
