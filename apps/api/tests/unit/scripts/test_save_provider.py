@@ -40,12 +40,18 @@ async def test_ollama_defaults_to_the_endpoint_its_card_prefills(
 
 
 async def test_custom_stores_the_key_from_the_environment(
-    selfhost_credential_store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
+    selfhost_credential_store: InMemoryCredentialStore,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv(save_provider.API_KEY_ENV, "sk-custom")
     argv = ["--provider", "custom", "--base-url", "https://gateway.example/v1", "--model", "m-1"]
 
     assert await save_provider.run(argv) == 0
+
+    assert capsys.readouterr().out == (
+        "Saved custom. Change it any time in Settings → Providers & Tools.\n"
+    )
 
     config = await resolve("custom")
     assert config is not None
@@ -71,3 +77,33 @@ async def test_a_refused_endpoint_exits_non_zero_naming_why(
         "or set OLLAMA_BASE_URL in your .env for local Ollama (unsupported URL scheme: 'ftp')\n"
     )
     assert await resolve("custom") is None
+
+
+async def test_help_describes_what_the_script_does(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        await save_provider.run(["--help"])
+
+    assert exit_info.value.code == 0
+    assert (
+        "Save one provider credential exactly as the setup wizard does" in capsys.readouterr().out
+    )
+
+
+@pytest.mark.parametrize(
+    ("argv", "complaint"),
+    [
+        ([], "the following arguments are required: --provider"),
+        (["--provider", "anthropic"], "argument --provider: invalid choice: 'anthropic'"),
+    ],
+)
+async def test_a_missing_or_unknown_provider_exits_with_usage(
+    selfhost_credential_store: InMemoryCredentialStore,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    complaint: str,
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        await save_provider.run(argv)
+
+    assert exit_info.value.code == 2
+    assert complaint in capsys.readouterr().err
