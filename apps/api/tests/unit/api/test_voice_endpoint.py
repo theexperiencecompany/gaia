@@ -185,6 +185,10 @@ class TestGetVoiceToken:
         body = resp.json()
         assert body["code"] == "voice_not_available"
         assert body["message"] == "Voice isn't available on this GAIA instance."
+        assert body["why"] == (
+            "Voice needs a LiveKit server and GAIA's voice worker, "
+            "which the self-host install does not include."
+        )
         assert body["fix"] == (
             "See https://docs.heygaia.io/self-hosting/docker-setup#self-host-vs-cloud"
         )
