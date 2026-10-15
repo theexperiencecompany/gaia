@@ -66,9 +66,8 @@ async def get_all_integrations(
         platform_integrations.append(response)
 
     listed = platform_integrations + custom_integrations
-    featured = [i for i in listed if i.is_featured]
-    featured.sort(key=lambda x: (-x.display_priority, x.name))
     listed.sort(key=lambda x: (-x.display_priority, x.name))
+    featured = [i for i in listed if i.is_featured]
 
     return MarketplaceResponse(
         featured=featured,
