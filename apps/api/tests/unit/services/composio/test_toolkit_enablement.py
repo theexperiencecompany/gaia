@@ -10,6 +10,8 @@ import pytest
 
 from app.config.oauth_config import get_integration_by_id, set_instance_integrations
 from app.config.settings import settings
+from app.constants.cache import MY_INTEGRATIONS_SNAPSHOT_KEY
+from app.db.redis import redis_cache
 from app.models.runtime_models import InstanceSettingsDocument
 from app.services.composio import (
     auth_config_resolver,
@@ -282,3 +284,20 @@ async def test_search_ranks_name_prefix_matches_first(composio: FakeComposio) ->
     assert [t.slug for t in found][:2] == ["attio", "affinity"]
     assert [t.slug for t in search_toolkits(toolkits, "hacker", None)] == ["hackernews"]
     assert search_toolkits(toolkits, "", "nothing") == []
+
+
+async def test_a_page_cached_while_composio_creates_the_auth_config_is_dropped(
+    composio: FakeComposio, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot_key = MY_INTEGRATIONS_SNAPSHOT_KEY.format(user_id="u1")
+    create = composio.create_auth_config
+
+    async def create_while_a_page_loads(slug: str, options: dict[str, object]) -> str:
+        await redis_cache.set(snapshot_key, "the integrations page without attio")
+        return await create(slug, options)
+
+    monkeypatch.setattr(composio, "create_auth_config", create_while_a_page_loads)
+
+    await enable_toolkit("attio", {})
+
+    assert await redis_cache.get(snapshot_key) is None

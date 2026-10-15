@@ -16,7 +16,7 @@ export function MarketplaceBanner({
       title="Explore the Marketplace"
       description="Discover community integrations or publish your own for others to use."
       secondaryAction={{
-        label: "Create Custom Integration",
+        label: "Add MCP server",
         icon: <PuzzleIcon className="h-4 w-4" />,
         onPress: onCreateCustomIntegration,
       }}

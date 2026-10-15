@@ -102,6 +102,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           <p className="text-sm leading-relaxed font-light text-zinc-400">
             {integration.description}
           </p>
+          {integration.origin === "instance" && (
+            <p className="rounded-2xl bg-zinc-800 p-3 text-xs text-zinc-400">
+              Added from the Composio catalog by this instance&apos;s admin.
+              GAIA can use all of its tools, but it has no triggers, so
+              workflows cannot start from its events.
+            </p>
+          )}
         </div>
 
         <IntegrationActions

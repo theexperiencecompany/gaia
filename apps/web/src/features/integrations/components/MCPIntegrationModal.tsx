@@ -13,6 +13,7 @@ import {
 } from "@heroui/react";
 import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -45,6 +46,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
 }) => {
   const { isMac, modifierKeyName } = usePlatform();
   const { createCustomIntegration } = useIntegrations();
+  const allowsPrivateServers = useDeployment().private_network_endpoints;
 
   // Use ref to always get latest callback (avoids stale closure in useModalForm)
   const onIntegrationCreatedRef = useRef(onIntegrationCreated);
@@ -181,6 +183,11 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
               value={formData.server_url}
               onValueChange={(v) => updateField("server_url", v)}
               isRequired
+              description={
+                allowsPrivateServers
+                  ? "A server on your network works too. localhost means the machine GAIA runs on."
+                  : undefined
+              }
               startContent={<ConnectIcon width={16} height={16} />}
             />
 
@@ -193,6 +200,13 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
               description="If provided, API key auth will be used. Leave empty for OAuth."
               startContent={<KeyIcon width={16} height={16} />}
             />
+
+            <p className="rounded-2xl bg-zinc-900 p-3 text-xs text-zinc-400">
+              GAIA connects to MCP servers over HTTP (streamable HTTP or SSE).
+              Servers started as a command (stdio) are not supported: run one
+              with its HTTP transport, or behind an HTTP bridge such as
+              supergateway, and add that URL here.
+            </p>
           </div>
         </ModalBody>
 

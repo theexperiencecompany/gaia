@@ -19,7 +19,7 @@ from composio_client.types.toolkit_retrieve_response import ToolkitRetrieveRespo
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import OAUTH_INTEGRATIONS
-from app.constants.cache import MY_INTEGRATIONS_SNAPSHOT_KEY
+from app.constants.cache import ALL_USERS_TOOLS_CACHE_PATTERN
 from app.constants.log_tags import LogTag
 from app.decorators.caching import CacheInvalidator
 from app.models.oauth_models import OAuthIntegration
@@ -46,8 +46,6 @@ from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 _NO_AUTH = "NO_AUTH"
-# Every user's integrations page lists the catalog, so a change here stales them all.
-_ALL_INTEGRATION_PAGES = MY_INTEGRATIONS_SNAPSHOT_KEY.format(user_id="*")
 _PREFERRED_MANAGED_SCHEME = "OAUTH2"
 
 
@@ -156,7 +154,6 @@ def _code_integration(slug: str) -> OAuthIntegration | None:
     )
 
 
-@CacheInvalidator(key=_ALL_INTEGRATION_PAGES)
 async def enable_toolkit(slug: str, credentials: dict[str, str]) -> EnableComposioToolkitResponse:
     """Create the toolkit's auth config and make it connectable on this instance."""
     entry = await _entry(slug)
@@ -180,20 +177,7 @@ async def enable_toolkit(slug: str, credentials: dict[str, str]) -> EnableCompos
             code="composio_auth_config_rejected",
         ) from e
 
-    integration = _code_integration(slug)
-    if integration is None:
-        integration = await save_toolkit(
-            InstanceToolkitRecord(
-                slug=slug,
-                name=entry.name,
-                description=entry.description,
-                logo=entry.logo,
-                category=entry.categories[0] if entry.categories else "other",
-                auth_scheme=plan.scheme,
-            )
-        )
-        spawn_background_task(_index_toolkit_tools(integration))
-    await set_stored_auth_config(integration.id, auth_config_id)
+    integration = await _install(entry, plan.scheme, auth_config_id)
     log.set_ns(
         "composio_toolkit",
         slug=slug,
@@ -210,7 +194,30 @@ async def enable_toolkit(slug: str, credentials: dict[str, str]) -> EnableCompos
     )
 
 
-@CacheInvalidator(key=_ALL_INTEGRATION_PAGES)
+# Invalidates when the writes start, so it wraps only the fast Mongo writes:
+# a page read during the slow Composio call before it would re-cache the old list.
+@CacheInvalidator(key=ALL_USERS_TOOLS_CACHE_PATTERN)
+async def _install(
+    entry: ComposioCatalogEntry, scheme: str, auth_config_id: str
+) -> OAuthIntegration:
+    integration = _code_integration(entry.slug)
+    if integration is None:
+        integration = await save_toolkit(
+            InstanceToolkitRecord(
+                slug=entry.slug,
+                name=entry.name,
+                description=entry.description,
+                logo=entry.logo,
+                category=entry.categories[0] if entry.categories else "other",
+                auth_scheme=scheme,
+            )
+        )
+        spawn_background_task(_index_toolkit_tools(integration))
+    await set_stored_auth_config(integration.id, auth_config_id)
+    return integration
+
+
+@CacheInvalidator(key=ALL_USERS_TOOLS_CACHE_PATTERN)
 async def disable_toolkit(slug: str) -> None:
     """Remove a toolkit the admin enabled; its Composio auth config is left in their project."""
     if not await remove_toolkit(slug):
