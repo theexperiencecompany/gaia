@@ -3681,6 +3681,38 @@
         "answer": "Conecta Gmail y Google Calendar primero para que GAIA tenga contexto. Luego suma Slack, Notion o tu herramienta de tareas. La mayoría delega su primer recado en minutos.",
         "question": "¿Cómo paso de Instinct a GAIA?"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Enfoque central",
+        "gaia": "SO de productividad total que actúa en correo, calendario, tareas y chat",
+        "competitor": "Hace reservas de viajes y encargos por mensajes de texto"
+      },
+      {
+        "feature": "Interfaz",
+        "gaia": "Web, escritorio, móvil, más bots de WhatsApp y Telegram",
+        "competitor": "Charlas por SMS y WhatsApp"
+      },
+      {
+        "feature": "Correo y calendario",
+        "gaia": "Lee Gmail, gestiona Google Calendar, ata ambos a cada pedido",
+        "competitor": "Solo el encargo en mano, sin acceso a tu bandeja"
+      },
+      {
+        "feature": "Memoria",
+        "gaia": "Memoria en grafos que aprende tus hábitos en todas las herramientas",
+        "competitor": "Historial de charla dentro del hilo de textos"
+      },
+      {
+        "feature": "Apertura",
+        "gaia": "Todo código abierto, autoalojable, con plan gratuito",
+        "competitor": "Producto cerrado en lanzamiento por lista de espera"
+      },
+      {
+        "feature": "Configuración",
+        "gaia": "Conecta tus herramientas una vez, luego escribe, habla o teclea desde donde sea",
+        "competitor": "Escribe y listo, nada que configurar"
+      }
     ]
   },
   "openai-dots": {
@@ -3735,6 +3767,38 @@
       {
         "answer": "Empieza con Gmail y Calendar para contexto, luego suma Slack o tu herramienta de tareas. La memoria de GAIA empieza a crecer desde el primer día conectado.",
         "question": "¿Cómo cambio a GAIA?"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Enfoque central",
+        "gaia": "SO de productividad total con memoria, herramientas y seguimiento",
+        "competitor": "Tareas rápidas resueltas dentro del chat"
+      },
+      {
+        "feature": "Memoria",
+        "gaia": "Memoria en grafos que crece con cada charla",
+        "competitor": "Empieza de cero, sin memoria entre tareas"
+      },
+      {
+        "feature": "Integraciones",
+        "gaia": "Más de 50 integraciones en correo, calendario, tareas y chat",
+        "competitor": "Solo lo que el chat deja ver"
+      },
+      {
+        "feature": "Proactividad",
+        "gaia": "Vigila tus herramientas y actúa antes de que pidas",
+        "competitor": "Responde cuando le preguntas"
+      },
+      {
+        "feature": "Apertura",
+        "gaia": "Todo código abierto con hoja de ruta pública y plan gratuito",
+        "competitor": "Producto cerrado, capacidades aún en evolución en 2026"
+      },
+      {
+        "feature": "Configuración",
+        "gaia": "Conecta herramientas una vez, úsalo en web, móvil o mensajes",
+        "competitor": "Nada que montar, vive en el chat"
       }
     ]
   },
@@ -3791,6 +3855,38 @@
         "answer": "Sí. GAIA recuerda tus preferencias e historial en conversaciones y herramientas, y actúa sobre esa memoria en vez de solo charlar.",
         "question": "¿GAIA me recuerda como Dot?"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Estado",
+        "gaia": "Asistente de código abierto con desarrollo activo y plan gratuito",
+        "competitor": "App cerrada de compañía para iOS, cerrada en octubre de 2025"
+      },
+      {
+        "feature": "Memoria",
+        "gaia": "Memoria en grafos que mueve acciones reales entre herramientas",
+        "competitor": "Recordaba chats pasados, solo podía hablar de ellos"
+      },
+      {
+        "feature": "Qué hace",
+        "gaia": "Redacta correos, agenda eventos, gestiona tareas, corre flujos",
+        "competitor": "Solo conversación, sin conexión a herramientas"
+      },
+      {
+        "feature": "Plataformas",
+        "gaia": "Web, escritorio, móvil, más WhatsApp y Telegram",
+        "competitor": "Solo iPhone"
+      },
+      {
+        "feature": "Control de datos",
+        "gaia": "Autoalojable con Docker, tus datos siguen tuyos",
+        "competitor": "Servidores de una empresa, fuera cuando ellos decidieron"
+      },
+      {
+        "feature": "Configuración",
+        "gaia": "Regístrate gratis, conecta Gmail y Calendar, empieza a delegar",
+        "competitor": "Nada, ya no funciona"
+      }
     ]
   },
   "friend-pendant": {
@@ -3845,6 +3941,38 @@
       {
         "answer": "GAIA lee tu correo, lleva tu calendario y crea tareas. Convierte el contexto del que Friend solo charla en trabajo terminado.",
         "question": "¿Qué gano al pasarme a GAIA?"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Enfoque central",
+        "gaia": "SO de productividad total que actúa en tu vida digital",
+        "competitor": "Colgante de 249 $ (v2) que escucha y te responde por texto"
+      },
+      {
+        "feature": "Qué hace",
+        "gaia": "Triaje de correo, gestión de calendario, tareas y flujos",
+        "competitor": "Compañía y charla por texto"
+      },
+      {
+        "feature": "Contexto",
+        "gaia": "Memoria en grafos en correo, calendario, tareas y chats",
+        "competitor": "Sabe tu día porque lo oyó"
+      },
+      {
+        "feature": "Integraciones",
+        "gaia": "Más de 50 integraciones con Gmail, Slack, Notion, Linear",
+        "competitor": "Sin conexión a herramientas, tú haces todo"
+      },
+      {
+        "feature": "Apertura",
+        "gaia": "Todo código abierto, autoalojable, con plan gratuito",
+        "competitor": "Hardware y software cerrados"
+      },
+      {
+        "feature": "Configuración",
+        "gaia": "Regístrate gratis, conecta tus herramientas, delega",
+        "competitor": "Compra el colgante, póntelo, escríbele"
       }
     ]
   },
@@ -3901,6 +4029,38 @@
         "answer": "Sin hardware. GAIA corre en web, escritorio, móvil y mensajería con el teléfono y la laptop que ya tienes.",
         "question": "¿Necesito comprar hardware para GAIA?"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Enfoque central",
+        "gaia": "SO de productividad de código abierto que recuerda y luego actúa",
+        "competitor": "Colgante de código abierto que captura y recuerda audio"
+      },
+      {
+        "feature": "Memoria",
+        "gaia": "Memoria en grafos atada a tareas, correos y eventos",
+        "competitor": "Registro buscable de lo dicho"
+      },
+      {
+        "feature": "Qué hace",
+        "gaia": "Redacta, agenda, crea tareas, corre flujos de varios pasos",
+        "competitor": "Solo recuerdo: sin acciones de correo, calendario ni tareas"
+      },
+      {
+        "feature": "Hardware",
+        "gaia": "Sin hardware: web, escritorio, móvil y apps de mensajes",
+        "competitor": "Exige llevar puesto el colgante"
+      },
+      {
+        "feature": "Apertura y precio",
+        "gaia": "Código abierto y autoalojable, con plan gratuito",
+        "competitor": "Código abierto, hardware abierto de bajo costo"
+      },
+      {
+        "feature": "Configuración",
+        "gaia": "Regístrate gratis, conecta herramientas, delega desde donde sea",
+        "competitor": "Compra el aparato, úsalo a diario, busca luego"
+      }
     ]
   },
   "gemini-assistant": {
@@ -3956,6 +4116,38 @@
         "answer": "Quédate con Gemini Assistant para llamadas y timers. Conecta Gmail y Calendar a GAIA para la capa de trabajo, y usa cada uno donde gana.",
         "question": "¿Debo dejar Gemini Assistant?"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Enfoque central",
+        "gaia": "SO de productividad total para tu jornada entera",
+        "competitor": "Asistente integrado en Android e iOS, lo más hondo en apps de Google"
+      },
+      {
+        "feature": "Qué hace",
+        "gaia": "Triaje de correo, briefings, tareas, agenda, flujos",
+        "competitor": "Llamadas, temporizadores, música, ajustes del aparato, respuestas rápidas, más resúmenes y borradores de Gmail en Workspace"
+      },
+      {
+        "feature": "Contexto de trabajo",
+        "gaia": "Lee Gmail y Calendar, ata ambos a cada tarea",
+        "competitor": "Lee y resume en Gmail y Workspace, pero no actúa en Slack, Notion ni herramientas fuera de Google"
+      },
+      {
+        "feature": "Memoria",
+        "gaia": "Memoria en grafos persistente entre semanas y herramientas",
+        "competitor": "Recuerda en apps de Google, pero no lleva contexto de proyectos entre Slack, Notion e hilos de correo"
+      },
+      {
+        "feature": "Plataformas",
+        "gaia": "Web, escritorio, móvil, WhatsApp, Telegram, Slack, Discord",
+        "competitor": "Android e iOS, mejor dentro de apps de Google"
+      },
+      {
+        "feature": "Apertura",
+        "gaia": "Todo código abierto, autoalojable, con plan gratuito",
+        "competitor": "Cerrado, atado a tu cuenta de Google"
+      }
     ]
   },
   "siri": {
@@ -4010,6 +4202,38 @@
       {
         "answer": "Quédate con Siri para timers y llamadas. Conecta Gmail y Calendar a GAIA, pide un briefing matutino y siente la diferencia en un día.",
         "question": "¿Cómo empiezo con GAIA junto a Siri?"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Enfoque central",
+        "gaia": "SO de productividad proactiva en todas tus herramientas",
+        "competitor": "Comandos de voz integrados en iPhone, iPad y Mac"
+      },
+      {
+        "feature": "Qué hace",
+        "gaia": "Triaje de correo, briefings, agenda, tareas, flujos",
+        "competitor": "Temporizadores, llamadas, mensajes, preguntas rápidas"
+      },
+      {
+        "feature": "Trabajo en varios pasos",
+        "gaia": "Planea y ejecuta trabajo de varios pasos entre herramientas",
+        "competitor": "Comandos sueltos, sin seguimiento"
+      },
+      {
+        "feature": "Memoria",
+        "gaia": "Memoria en grafos que aprende tus hábitos con el tiempo",
+        "competitor": "Sin memoria entre charlas"
+      },
+      {
+        "feature": "Plataformas",
+        "gaia": "Web, escritorio, móvil, WhatsApp, Telegram, Slack, Discord",
+        "competitor": "Solo aparatos Apple"
+      },
+      {
+        "feature": "Apertura",
+        "gaia": "Todo código abierto y autoalojable vía Docker",
+        "competitor": "Cerrado, Apple decide la hoja de ruta"
       }
     ]
   },
@@ -4067,6 +4291,43 @@
         "answer": "Haz inventario de las automatizaciones OpenClaw que de verdad usas, conecta las mismas herramientas a GAIA y describe cada flujo en palabras llanas. GAIA las reconstruye sin código.",
         "question": "¿Cómo muevo mi montaje OpenClaw a GAIA?"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Enfoque central",
+        "gaia": "SO de productividad total con asistente de IA proactiva, listo al momento",
+        "competitor": "Marco de automatización con IA que exige configurar y desarrollar"
+      },
+      {
+        "feature": "Conducta proactiva",
+        "gaia": "Vigila correo, calendario y avisos para actuar antes de que pidas",
+        "competitor": "Ejecuta automatizaciones cuando disparan los triggers que configuraste"
+      },
+      {
+        "feature": "Integraciones",
+        "gaia": "Más de 50 integraciones listas con Gmail, Slack, Notion, GitHub, Linear",
+        "competitor": "Capacidades de integración que piden configuración de desarrollador"
+      },
+      {
+        "feature": "Memoria",
+        "gaia": "Memoria en grafos que aprende tus hábitos, ata tareas a proyectos y suma contexto con el tiempo",
+        "competitor": "Contexto de sesión dentro de cada ejecución"
+      },
+      {
+        "feature": "Multiplataforma",
+        "gaia": "Web, escritorio (macOS, Windows, Linux) y apps móviles",
+        "competitor": "Interfaces pensadas sobre todo para desarrollo"
+      },
+      {
+        "feature": "Código abierto",
+        "gaia": "Todo código abierto y autoalojable con Docker",
+        "competitor": "Código abierto con aportes de la comunidad"
+      },
+      {
+        "feature": "Tiempo de configuración",
+        "gaia": "Regístrate y úsalo al momento, sin desarrollar nada",
+        "competitor": "Exige montaje técnico y configuración"
+      }
     ]
   },
   "poke": {
@@ -4122,6 +4383,43 @@
         "answer": "Conecta Gmail, Calendar y tu herramienta de tareas primero. Luego mueve una rutina Poke a la vez, empezando por la que toca correo.",
         "question": "¿Cómo cambio de Poke a GAIA?"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Enfoque central",
+        "gaia": "SO de productividad de código abierto con IA proactiva que gestiona correo, calendario, tareas y flujos",
+        "competitor": "Asistente de productividad con IA de funciones puntuales"
+      },
+      {
+        "feature": "Automatización proactiva",
+        "gaia": "Vigila tu vida digital 24/7 y actúa antes de que pidas",
+        "competitor": "Responde a lo que pides e interactúas"
+      },
+      {
+        "feature": "Integraciones",
+        "gaia": "Más de 50 integraciones con Gmail, Slack, Notion, GitHub, Todoist, Asana, Linear",
+        "competitor": "Ecosistema de integraciones limitado"
+      },
+      {
+        "feature": "Memoria",
+        "gaia": "Memoria en grafos que conecta tareas, reuniones, documentos y gustos",
+        "competitor": "Historial básico de charlas"
+      },
+      {
+        "feature": "Código abierto",
+        "gaia": "Todo código abierto con autoalojamiento vía Docker",
+        "competitor": "Plataforma propietaria"
+      },
+      {
+        "feature": "Automatización de flujos",
+        "gaia": "Flujos de varios pasos con disparadores listos y orquesta entre herramientas",
+        "competitor": "Ayuda básica en tareas y sugerencias"
+      },
+      {
+        "feature": "Multiplataforma",
+        "gaia": "Web, escritorio (macOS, Windows, Linux), móvil, bots de Discord, Slack, Telegram",
+        "competitor": "Interfaces web y móvil"
+      }
     ]
   },
   "chatgpt-atlas": {
@@ -4176,6 +4474,38 @@
       {
         "question": "¿Qué tan rápido puedo reconstruir mi montaje en GAIA?",
         "answer": "Conecta Gmail y Calendar primero, luego tu herramienta de tareas. GAIA reconstruye la capa de ayuda desde tus datos reales en un día."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Estado",
+        "gaia": "Producto vivo con desarrollo activo y plan gratuito",
+        "competitor": "Cerró en agosto de 2026: el producto ya no existe"
+      },
+      {
+        "feature": "Riesgo de cierre",
+        "gaia": "Código abierto y autoalojable: a prueba de cierres por diseño",
+        "competitor": "Hoja de ruta cerrada que no dio aviso útil para actuar"
+      },
+      {
+        "feature": "Tu contexto",
+        "gaia": "Memoria en grafos que reconstruye tu contexto rápido",
+        "competitor": "Hábitos y contexto creados en Atlas se evaporaron"
+      },
+      {
+        "feature": "Salida",
+        "gaia": "Código abierto con plan gratuito y vía de autoalojamiento",
+        "competitor": "Sin vía de exportación pensada para salir sin dolor"
+      },
+      {
+        "feature": "Alcance",
+        "gaia": "Automatización de correo, calendario y tareas en un lugar",
+        "competitor": "Tareas atadas al navegador que murieron con el navegador"
+      },
+      {
+        "feature": "Cobertura de herramientas",
+        "gaia": "Más de 50 integraciones que cubren lo que Atlas tocaba",
+        "competitor": "Confianza en los planes de IA de una empresa, rota"
       }
     ]
   }

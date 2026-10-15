@@ -3681,6 +3681,38 @@
         "answer": "맥락을 위해 먼저 Gmail과 구글 캘린더를 연결합니다. 다음에 Slack이나 Notion이나 업무 도구를 더합니다. 대부분 몇 분 만에 첫 심부름을 맡깁니다.",
         "question": "Instinct에서 GAIA로 어떻게 옮기나요."
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "이메일과 일정과 할 일과 대화에 움직이는 완전한 생산 OS입니다",
+        "competitor": "문자로 여행 예약과 심부름을 맡습니다"
+      },
+      {
+        "feature": "화면",
+        "gaia": "웹과 데스크톱과 모바일에 WhatsApp과 Telegram 봇까지입니다",
+        "competitor": "SMS와 WhatsApp 대화입니다"
+      },
+      {
+        "feature": "이메일과 일정",
+        "gaia": "Gmail을 읽고 Google 캘린더를 챙기며 둘 다 매 부탁에 잇습니다",
+        "competitor": "눈앞 심부름만 보며 받은함에는 닿지 않습니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "모든 도구에서 버릇을 배우는 그래프 기반 기억입니다",
+        "competitor": "문자 줄기 안의 대화 기록입니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스로 셀프호스팅되며 무료가 딸립니다",
+        "competitor": "대기 줄로 내는 닫힌 제품입니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "도구를 한 번 연결하면 어디서든 문자도 음성도 입력도 됩니다",
+        "competitor": "문자 보내면 끝이며 갖출 것이 없습니다"
+      }
     ]
   },
   "openai-dots": {
@@ -3735,6 +3767,38 @@
       {
         "answer": "맥락을 위해 Gmail과 일정부터 시작하고 다음에 Slack이나 업무 도구를 더합니다. GAIA의 기억은 연결한 첫날부터 쌓이기 시작합니다.",
         "question": "GAIA로 어떻게 바꾸나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "기억과 도구와 마무리를 갖춘 완전한 생산 OS입니다",
+        "competitor": "대화 화면 안에서 빠른 일을 끝냅니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "닿을 때마다 자라는 그래프 기반 기억입니다",
+        "competitor": "매번 백지이며 일 사이 기억이 없습니다"
+      },
+      {
+        "feature": "연결",
+        "gaia": "이메일과 일정과 할 일과 대화를 아우르는 50개가 넘는 연결입니다",
+        "competitor": "대화 화면이 내주는 것에 갇힙니다"
+      },
+      {
+        "feature": "선제",
+        "gaia": "도구를 지켜보며 묻기 전에 움직입니다",
+        "competitor": "시키면 그때 답합니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "공개 계획과 무료 딸림의 완전한 오픈소스입니다",
+        "competitor": "닫힌 제품이며 할 수 있는 일은 2026년에도 자라는 중입니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "도구를 한 번 연결하면 웹도 모바일도 대화 앱도 씁니다",
+        "competitor": "갖출 것이 없으며 대화 안에 삽니다"
       }
     ]
   },
@@ -3791,6 +3855,38 @@
         "answer": "그렇습니다. GAIA는 대화와 도구를 아우르는 취향과 기록을 기억하고 말하는 데서 끝나지 않고 그 기억으로 움직입니다.",
         "question": "GAIA가 Dot처럼 기억하나요."
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "상태",
+        "gaia": "계속 만드는 오픈소스 조수이며 무료가 딸립니다",
+        "competitor": "닫힌 iOS 동행 앱으로 2025년 10월에 닫혔습니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "그래프 기반 기억으로 도구를 넘나드는 진짜 움직임을 냅니다",
+        "competitor": "지난 대화를 기억했지만 말만 할 수 있었습니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "이메일을 쓰고 일정을 잡고 할 일을 챙기며 흐름을 돌립니다",
+        "competitor": "대화뿐이며 도구 연결이 없습니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹과 데스크톱과 모바일에 WhatsApp과 Telegram까지 씁니다",
+        "competitor": "iPhone뿐입니다"
+      },
+      {
+        "feature": "데이터",
+        "gaia": "Docker로 셀프호스팅하며 데이터는 당신의 것으로 남습니다",
+        "competitor": "한 회사의 서버라 그쪽이 정하면 사라집니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "무료로 가입하고 Gmail과 캘린더를 연결해 맡기기 시작합니다",
+        "competitor": "아무것도 없습니다. 더는 움직이지 않습니다"
+      }
     ]
   },
   "friend-pendant": {
@@ -3845,6 +3941,38 @@
       {
         "answer": "GAIA는 이메일을 읽고 캘린더를 챙기며 할 일을 만듭니다. Friend가 말만 하는 맥락을 끝난 업무로 바꿉니다.",
         "question": "GAIA로 옮기면 무엇이 느나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "전자 생활 전체에 움직이는 완전한 생산 OS입니다",
+        "competitor": "듣고 문자로 답하는 249달러(v2) 펜던트입니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "받은함 가르기와 일정 챙김과 할 일과 흐름입니다",
+        "competitor": "문자로 나누는 동행과 대화입니다"
+      },
+      {
+        "feature": "맥락",
+        "gaia": "이메일과 일정과 할 일과 대화를 아우르는 그래프 기반 기억입니다",
+        "competitor": "들었기에 당신의 하루를 압니다"
+      },
+      {
+        "feature": "연결",
+        "gaia": "Gmail과 Slack과 Notion과 Linear를 포함한 50개가 넘는 연결입니다",
+        "competitor": "도구 연결이 없어 하는 이는 당신입니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스로 셀프호스팅되며 무료가 딸립니다",
+        "competitor": "닫힌 기기와 닫힌 프로그램입니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "무료로 가입하고 도구를 연결해 맡깁니다",
+        "competitor": "펜던트를 사고 차고 문자를 보냅니다"
       }
     ]
   },
@@ -3901,6 +4029,38 @@
         "answer": "기계는 필요 없습니다. GAIA는 손에 있는 전화와 책상으로 돕니다. 웹, 책상, 들고 다님, 연락길입니다.",
         "question": "GAIA에 기계를 사야 하나요."
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "기억하고 움직이는 오픈소스 생산 OS입니다",
+        "competitor": "소리를 모아 기억하는 오픈소스 펜던트입니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "할 일과 이메일과 일정에 잇는 그래프 기반 기억입니다",
+        "competitor": "말한 내용의 찾을 수 있는 기록입니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "쓰고 잡고 만들고 여러 단계 흐름을 돌립니다",
+        "competitor": "떠올리기뿐이며 이메일도 일정도 할 일 움직임도 없습니다"
+      },
+      {
+        "feature": "기기",
+        "gaia": "기기 없이 웹과 데스크톱과 모바일과 대화 앱에서 씁니다",
+        "competitor": "펜던트를 몸에 차야 합니다"
+      },
+      {
+        "feature": "개방성과 값",
+        "gaia": "오픈소스이며 셀프호스팅되고 무료가 딸립니다",
+        "competitor": "오픈소스에 부담 적은 열린 기기입니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "무료로 가입하고 도구를 연결해 어디서든 맡깁니다",
+        "competitor": "기기를 사고 매일 차고 나중에 찾습니다"
+      }
     ]
   },
   "gemini-assistant": {
@@ -3956,6 +4116,38 @@
         "answer": "통화와 타이머는 Gemini Assistant에 남깁니다. Gmail과 일정을 GAIA에 연결해 업무의 층을 만들고 이기는 자리에서 나눠 씁니다.",
         "question": "Gemini Assistant를 버리나요."
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "하루 전체를 위한 완전한 생산 OS입니다",
+        "competitor": "Android와 iOS의 내장 조수로 Google 앱에 가장 깊습니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "받은함 가르기와 사전 자료와 할 일과 일정 잡기와 흐름입니다",
+        "competitor": "전화와 타이머와 음악과 기기 설정과 짧은 답에 Workspace 안 Gmail 요약과 쓰기까지입니다"
+      },
+      {
+        "feature": "업무 맥락",
+        "gaia": "Gmail과 캘린더를 읽어 둘 다 매 할 일에 잇습니다",
+        "competitor": "Gmail과 Workspace 안은 읽고 요약하지만 Slack도 Notion도 Google 밖 도구도 움직이지 못합니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "주와 도구를 넘나들며 이어지는 그래프 기반 기억입니다",
+        "competitor": "Google 앱 안은 기억하지만 Slack과 Notion과 이메일 줄기를 가로지르는 일 맥락은 없습니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹과 데스크톱과 모바일에 WhatsApp과 Telegram과 Slack과 Discord입니다",
+        "competitor": "Android와 iOS이며 Google 앱 안에서 가장 좋습니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스로 셀프호스팅되며 무료가 딸립니다",
+        "competitor": "닫혀 있어 Google 계정에 묶입니다"
+      }
     ]
   },
   "siri": {
@@ -4010,6 +4202,38 @@
       {
         "answer": "타이머와 통화는 Siri에 남깁니다. Gmail과 일정을 GAIA에 연결하고 아침 자료를 부탁해 하루 만에 차이를 느낍니다.",
         "question": "Siri와 나란히 GAIA를 어떻게 시작하나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "모든 도구에 걸친 선제 생산 OS입니다",
+        "competitor": "iPhone과 iPad와 Mac의 내장 음성 명령입니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "받은함 가르기와 사전 자료와 일정 잡기와 할 일과 흐름입니다",
+        "competitor": "타이머와 전화와 전언과 짧은 물음입니다"
+      },
+      {
+        "feature": "여러 단계 업무",
+        "gaia": "도구를 넘나드는 여러 단계 일을 짜고 움직입니다",
+        "competitor": "한 번 명령뿐이며 마무리가 없습니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "때와 함께 버릇을 배우는 그래프 기반 기억입니다",
+        "competitor": "대화 사이 기억이 없습니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹과 데스크톱과 모바일에 WhatsApp과 Telegram과 Slack과 Discord입니다",
+        "competitor": "Apple 기기뿐입니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "Docker로 셀프호스팅되는 완전한 오픈소스입니다",
+        "competitor": "닫혀 있어 길을 Apple이 정합니다"
       }
     ]
   },
@@ -4067,6 +4291,43 @@
         "answer": "의지하는 OpenClaw 흐름을 세고 같은 도구를 GAIA에 연결해 흐름마다 평탄한 말로 전합니다. GAIA가 부호 없이 다시 만듭니다.",
         "question": "OpenClaw 설정을 GAIA로 어떻게 옮기나요."
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "바로 쓰는 선제 AI 조수를 갖춘 완전한 생산 OS입니다",
+        "competitor": "다듬기와 만들기가 필요한 AI 자동화 틀입니다"
+      },
+      {
+        "feature": "선제 움직임",
+        "gaia": "이메일과 일정과 알림을 지켜보며 묻기 전에 움직입니다",
+        "competitor": "다듬어 둔 방아쇠가 당겨지면 자동화가 돕니다"
+      },
+      {
+        "feature": "연결",
+        "gaia": "Gmail과 Slack과 Notion과 GitHub과 Linear를 포함한 바로 쓰는 50개가 넘는 연결입니다",
+        "competitor": "연결 힘에 만드는 이의 다듬기가 필요합니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "버릇을 배우고 할 일을 일에 이어 맥락을 때와 함께 기르는 그래프 기반 기억입니다",
+        "competitor": "자동화가 도는 동안의 그 자리 맥락입니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹과 데스크톱(macOS와 Windows와 Linux)과 모바일 앱입니다",
+        "competitor": "주로 만드는 이를 향한 화면입니다"
+      },
+      {
+        "feature": "오픈소스",
+        "gaia": "Docker로 셀프호스팅되는 완전한 오픈소스입니다",
+        "competitor": "여럿이 보태 기르는 오픈소스입니다"
+      },
+      {
+        "feature": "들이는 시간",
+        "gaia": "가입하고 바로 쓰며 만들기가 필요 없습니다",
+        "competitor": "기술 다듬기와 설정이 필요합니다"
+      }
     ]
   },
   "poke": {
@@ -4122,6 +4383,43 @@
         "answer": "먼저 Gmail도 일정도 업무 도구도 연결합니다. 다음에 Poke 흐름을 하나씩 옮기고 이메일에 닿는 것부터 시작합니다.",
         "question": "Poke에서 GAIA로 어떻게 바꾸나요."
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "이메일과 일정과 할 일과 흐름을 챙기는 선제 AI의 오픈소스 생산 OS입니다",
+        "competitor": "겨냥한 기능의 AI 생산 조수입니다"
+      },
+      {
+        "feature": "선제 자동화",
+        "gaia": "전자 생활을 24시간 지켜보며 묻기 전에 움직입니다",
+        "competitor": "당신의 부탁과 손길에 답합니다"
+      },
+      {
+        "feature": "연결",
+        "gaia": "Gmail과 Slack과 Notion과 GitHub과 Todoist와 Asana와 Linear를 포함한 50개가 넘는 연결입니다",
+        "competitor": "연결 세상이 좁습니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "할 일과 회의와 문서와 취향을 잇는 그래프 기반 기억입니다",
+        "competitor": "평범한 대화 기록입니다"
+      },
+      {
+        "feature": "오픈소스",
+        "gaia": "Docker 셀프호스팅 딸린 완전한 오픈소스입니다",
+        "competitor": "닫힌 바탕입니다"
+      },
+      {
+        "feature": "흐름 자동화",
+        "gaia": "영리한 방아쇠와 도구 넘나듦으로 여러 단계 흐름을 냅니다",
+        "competitor": "평범한 일 거듦과 권하기입니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹 앱과 데스크톱(macOS와 Windows와 Linux)과 모바일에 Discord와 Slack과 Telegram 봇입니다",
+        "competitor": "웹과 모바일 화면입니다"
+      }
     ]
   },
   "chatgpt-atlas": {
@@ -4176,6 +4474,38 @@
       {
         "question": "GAIA에서 설정을 얼마나 빨리 다시 쌓을 수 있나요.",
         "answer": "먼저 Gmail과 일정을 연결하고 다음에 업무 도구를 더합니다. GAIA는 실제 손 안에서 도움의 층을 하루 만에 다시 쌓습니다."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "상태",
+        "gaia": "계속 만들며 무료 딸린 살아 있는 제품입니다",
+        "competitor": "2026년 8월에 닫혀 제품 자체가 사라졌습니다"
+      },
+      {
+        "feature": "종료 위험",
+        "gaia": "오픈소스이며 셀프호스팅되어 닫힘에 강한 구조입니다",
+        "competitor": "닫힌 계획 탓에 움직일 만한 알림이 없었습니다"
+      },
+      {
+        "feature": "맥락",
+        "gaia": "그래프 기반 메모리로 당신의 맥락을 빨리 되살립니다",
+        "competitor": "Atlas에서 기른 버릇도 맥락도 사라졌습니다"
+      },
+      {
+        "feature": "나가기",
+        "gaia": "오픈소스에 무료 딸림과 셀프호스팅 길이 있습니다",
+        "competitor": "매끄럽게 나갈 내보내기가 없었습니다"
+      },
+      {
+        "feature": "범위",
+        "gaia": "이메일과 일정과 할 일 자동화가 한곳에 있습니다",
+        "competitor": "브라우저에 묶인 업무라 브라우저와 함께 죽었습니다"
+      },
+      {
+        "feature": "도구 범위",
+        "gaia": "Atlas가 닿던 도구를 덮는 50개가 넘는 연결이 있습니다",
+        "competitor": "한 회사의 AI 계획에 대한 믿음이 깨졌습니다"
       }
     ]
   }

@@ -4857,5 +4857,107 @@
         "answer": "GAIA es de código abierto y autoalojable, así que ningún cierre te la puede quitar. Cubre correo, calendario, tareas y memoria en más de 50 herramientas."
       }
     ]
+  },
+  "smart-scheduling": {
+    "term": "Programación inteligente",
+    "metaTitle": "¿Qué es la programación inteligente? Guía con IA",
+    "metaDescription": "La programación inteligente halla el mejor horario entre calendarios, zonas y prioridades. Mira cómo funciona y cómo GAIA planea tu semana.",
+    "definition": "La programación inteligente elige sola el horario de reunión según disponibilidad, zonas horarias, prioridades y ritmos de trabajo, sin idas y vueltas por correo.",
+    "extendedDescription": "La agenda clásica es un impuesto de negociación. Cada reunión cuesta rondas de correos o enlaces de encuesta para hallar un hueco, y el resultado suele ignorar zonas horarias, foco y tiempos de preparo. La programación inteligente cambia esa negociación por reglas y rangos: cada parte comparte disponibilidad y el sistema propone horarios ordenados por ajuste.\n\nUn programador listo pesa más que bloques libres y ocupados. Revisa colchones de viaje entre lugares, guarda mañanas para el trabajo hondo si ese es tu ritmo, reparte reuniones para evitar bloques de cinco horas y respeta horarios laborales entre zonas. Algunos aprenden tus gustos con el tiempo, como llamadas de clientes por la tarde y revisiones internas los viernes.\n\nLa diferencia con un enlace de reserva es el criterio. Un enlace muestra tu disponibilidad y deja elegir al invitado. Un programador inteligente elige para todos, resuelve choques cuando cambian calendarios y reagenda con contexto si surge algo urgente. Para equipos, eso da menos correos por reunión y agendas que reflejan prioridades en vez de quién pidió primero.",
+    "keywords": [
+      "programación inteligente",
+      "qué es la programación inteligente",
+      "software de programación inteligente",
+      "asistente de agenda con IA",
+      "agendar reuniones automático",
+      "calendario inteligente"
+    ],
+    "howGaiaUsesIt": "GAIA aplica la programación inteligente a tu calendario real. Lee cada fuente conectada, detecta choques antes de que pasen, protege tu foco para el trabajo hondo y propone horarios que calzan con asistentes y prioridades. Si los planes cambian, GAIA reevalúa la agenda en vez de dejarte traslapes.",
+    "faqs": [
+      {
+        "answer": "Un enlace muestra tus huecos libres y cada invitado elige uno. La programación inteligente compara disponibilidad de todos, ordena opciones por ajuste a ritmos y prioridades, y sigue atenta cuando cambian calendarios.",
+        "question": "¿En qué se diferencia de un enlace de reserva?"
+      },
+      {
+        "answer": "Sí, es uno de sus trabajos clave. Convierte las horas laborales de cada asistente a una vista común y solo propone horarios dentro de horas razonables para todos, avisando cuando no hay tal hueco.",
+        "question": "¿Funciona entre zonas horarias?"
+      },
+      {
+        "answer": "Los buenos programadores tratan bloques de foco como citas, no huecos. Agendan alrededor de periodos de trabajo hondo y colchones de preparo, y reparten reuniones para que el día guarde lugar para el trabajo real.",
+        "question": "¿Protege el tiempo de foco?"
+      },
+      {
+        "answer": "Sí. GAIA mete tus calendarios conectados, prioridades y foco en cada decisión, propone horarios que sirven a todos y detecta choques antes de que lleguen a tu bandeja.",
+        "question": "¿GAIA agenda reuniones por mí?"
+      }
+    ]
+  },
+  "meeting-scheduling": {
+    "term": "Programación de reuniones",
+    "metaTitle": "¿Qué es programar reuniones? Cómo la IA lo hace",
+    "metaDescription": "Programar reuniones es hallar un horario que sirva a cada asistente. Mira el proceso manual, las herramientas comunes y cómo GAIA agenda por ti.",
+    "definition": "Programar reuniones es elegir hora, duración y lugar de una reunión que sirva a cada asistente requerido, incluyendo mandar la invitación y manejar cambios.",
+    "extendedDescription": "Toda reunión nace de un lío de coordinación: varias personas ocupadas, varios calendarios y una hora común. La agenda manual lo resuelve con mensajes, encuestas y arqueología de calendario. Funciona, pero escala mal. Cada asistente extra multiplica las idas y vueltas, y las reuniones fijas se desfasan cuando cambian agendas.\n\nLas herramientas aligeran por capas. Los calendarios compartidos muestran disponibilidad. Las páginas de reserva dejan al invitado elegir entre huecos libres. Las encuestas recogen gustos de grupos. Los programadores automáticos van un paso más y eligen el hueco solos, pesando horarios laborales, zonas, colchones y carga de reuniones.\n\nLa buena agenda cubre los bordes: órdenes del día claros para que el invitado sepa por qué hace falta, duraciones exactas en vez de bloques de una hora por defecto, y reagendas que avisan a todos cuando se mueven planes. Los equipos que tratan la agenda como sistema y no como quehacer pierden menos tiempo coordinando y pasan más tiempo en reuniones que importan.",
+    "keywords": [
+      "programación de reuniones",
+      "qué es programar reuniones",
+      "programar reuniones automático",
+      "agendador de reuniones con IA",
+      "agendar reuniones solo",
+      "software para agendar reuniones"
+    ],
+    "howGaiaUsesIt": "GAIA agenda reuniones con contexto total. Compara disponibilidad entre calendarios conectados, respeta zonas horarias y horarios laborales, y propone horas que sirven a cada asistente. GAIA también vigila choques tras mandar la invitación, así las dobles reservas se marcan antes de causar ausencias.",
+    "faqs": [
+      {
+        "answer": "Hallar un hueco que sirva a todos entre calendarios y zonas, y mantenerlo válido cuando cambian agendas. Casi todo el trabajo es costo de coordinación, no la reunión en sí.",
+        "question": "¿Qué es lo más duro de programar reuniones?"
+      },
+      {
+        "answer": "Los horarios fijos bajan el costo de coordinar y crean rutina, pero conviene revisarlos cuando cambian asistentes o zonas. Un programador que marca reuniones fijas rancias evita que se vuelvan basura de calendario.",
+        "question": "¿Deben las reuniones fijas tener horario fijo?"
+      },
+      {
+        "answer": "Lo que pida la decisión o charla, ni más. Los bloques de una hora por defecto botan tiempo. Huecos cortos con agenda clara suelen dar el mismo resultado.",
+        "question": "¿Cuánto deben durar las reuniones?"
+      },
+      {
+        "answer": "Sí. GAIA detecta choques en tus calendarios conectados y los avisa temprano, para mover o declinar reuniones antes de que los traslapes se vuelvan faltas.",
+        "question": "¿GAIA reagenda si aparecen choques?"
+      }
+    ]
+  },
+  "ai-email-management": {
+    "term": "Gestión de correos con IA",
+    "metaTitle": "¿Qué es gestionar correos con IA? Guía clara",
+    "metaDescription": "Gestionar correos con IA ordena, prioriza y redacta respuestas para que la bandeja pida menos de tu día. Mira cómo funciona y qué hace GAIA por ti.",
+    "definition": "Gestionar correos con IA es usar software que lee, clasifica y actúa en tu correo por ti: ordena mensajes por urgencia, archiva lo rutinario, redacta respuestas y solo muestra lo que pide tu criterio.",
+    "extendedDescription": "El lío de la bandeja es volumen más ambigüedad. Cientos de mensajes llegan a diario, mezclando pedidos urgentes con boletines, recibos e hilos donde te copiaron por si acaso. Triar a mano es leer todo para hallar lo poco que importa, y así el correo se come horas de cada jornada.\n\nLa gestión con IA ataca ambas mitades. Los modelos de clasificar ordenan la entrada por urgencia, proyecto y acción pedida. Las herramientas de redactar escriben primeras versiones de respuestas rutinarias desde el contexto del hilo. Los resúmenes condensan hilos largos en decisiones y pendientes. La baja de listas y los filtros automáticos limpian el ruido sin tu atención.\n\nLa línea práctica es el criterio. La IA lleva bien el trabajo de alto volumen y bajo riesgo: archivar avisos, ordenar boletines, redactar respuestas estándar para revisar. Los mensajes delicados, ambiguos o clave en relaciones merecen un humano. Los mejores montajes hacen explícito ese pase, para que nada importante se maneje sin tu revisión.",
+    "keywords": [
+      "gestión de correos con IA",
+      "qué es gestionar correos con IA",
+      "gestor de correos con IA",
+      "automatizar gestión de correos",
+      "bandeja inteligente con IA",
+      "organizador de correos con IA"
+    ],
+    "howGaiaUsesIt": "GAIA gestiona tu correo sin pausa. Clasifica la entrada por urgencia y acción pedida, archiva lo rutinario, te da de baja de listas no deseadas y redacta respuestas para tu revisión. Con el tiempo aprende tus ritmos de comunicar, así lo que te llega es lo que pide tu criterio.",
+    "faqs": [
+      {
+        "answer": "La IA lleva casi todo el volumen: ordenar, archivar, dar de baja y redactar respuestas rutinarias. Los mensajes que piden criterio fino o pesan en relaciones ganan con revisión humana.",
+        "question": "¿Puede la IA gestionar mi bandeja sola?"
+      },
+      {
+        "answer": "Depende de dónde corre la IA y quién manda en los datos. Los montajes autoalojados guardan mensajes en tu propia estructura. En servicios alojados, revisa plazos de guardar datos y si el contenido entrena modelos compartidos.",
+        "question": "¿Es seguro dejar que la IA lea mi correo?"
+      },
+      {
+        "answer": "Los filtros siguen reglas fijas que escribes y mantienes. La gestión con IA clasifica mensajes nuevos nunca vistos por sentido y urgencia, redacta desde el contexto y se adapta cuando cambian tus ritmos.",
+        "question": "¿En qué se diferencian filtros y gestión con IA?"
+      },
+      {
+        "answer": "GAIA marca lo que pide tu atención según remitente, contenido y tu conducta pasada, mientras lo rutinario se ordena o archiva en silencio. Lo urgente sale con contexto en vez de pudrirse en no leídos.",
+        "question": "¿Cómo trata GAIA los correos urgentes?"
+      }
+    ]
   }
 }

@@ -4857,5 +4857,107 @@
         "answer": "GAIA é toda open source e auto-hospedável, então nenhum fim tira ela de você. Cobre e-mail, agenda, tarefas e memória em mais de 50 ferramentas."
       }
     ]
+  },
+  "smart-scheduling": {
+    "term": "Agendamento inteligente",
+    "metaTitle": "O que é agendamento inteligente? Guia com IA",
+    "metaDescription": "O agendamento inteligente acha o melhor horário entre agendas, fusos e prioridades. Veja como funciona e como a GAIA planeja sua semana.",
+    "definition": "O agendamento inteligente escolhe sozinho o horário de reunião segundo disponibilidade, fusos, prioridades e ritmos de trabalho, sem idas e vindas por e-mail.",
+    "extendedDescription": "A agenda clássica é um imposto de negociação. Cada reunião custa rondas de e-mails ou links de enquete para achar um horário, e o resultado costuma ignorar fusos, foco e tempos de preparo. O agendamento inteligente troca essa negociação por regras e faixas: cada parte comparte disponibilidade e o sistema propõe horários em ordem de ajuste.\n\nUm agendador esperto pesa mais que blocos livres e ocupados. Revê folgas de viagem entre lugares, guarda manhãs para o trabalho fundo se esse é seu ritmo, reparte reuniões para evitar blocos de cinco horas e respeita horários de trabalho entre fusos. Alguns aprendem seus gostos com o tempo, como chamadas de clientes à tarde e revisões internas sexta.\n\nA diferença para um link de reserva é o critério. Um link mostra sua disponibilidade e deixa o convidado escolher. Um agendador inteligente escolhe para todos, resolve choques quando mudam agendas e reagenda com contexto se surge algo urgente. Para times, isso dá menos e-mails por reunião e agendas que refletem prioridades em vez de quem pediu primeiro.",
+    "keywords": [
+      "agendamento inteligente",
+      "o que é agendamento inteligente",
+      "software de agendamento inteligente",
+      "assistente de agenda com IA",
+      "agendar reuniões automático",
+      "calendário inteligente"
+    ],
+    "howGaiaUsesIt": "A GAIA aplica o agendamento inteligente à sua agenda real. Lê cada fonte conectada, detecta choques antes que passem, protege seu foco para o trabalho fundo e propõe horários que calçam com convidados e prioridades. Se os planos mudam, a GAIA reavalia a agenda em vez de deixar sobrepor.",
+    "faqs": [
+      {
+        "answer": "Um link mostra seus horários livres e cada convidado escolhe um. O agendamento inteligente compara disponibilidade de todos, ordena opções por ajuste a ritmos e prioridades, e segue atento quando mudam agendas.",
+        "question": "Em que difere de um link de reserva?"
+      },
+      {
+        "answer": "Sim, é um de seus trabalhos-chave. Converte as horas de trabalho de cada convidado numa vista comum e só propõe horários dentro de horas razoáveis para todos, avisando quando não há tal horário.",
+        "question": "Funciona entre fusos horários?"
+      },
+      {
+        "answer": "Bons agendadores tratam blocos de foco como compromissos, não buracos. Agendam ao redor de períodos de trabalho fundo e folgas de preparo, e repartem reuniões para o dia guardar lugar para o trabalho real.",
+        "question": "Protege o tempo de foco?"
+      },
+      {
+        "answer": "Sim. A GAIA mete suas agendas conectadas, prioridades e foco em cada decisão, propõe horários que servem a todos e detecta choques antes que cheguem à sua caixa.",
+        "question": "A GAIA agenda reuniões por mim?"
+      }
+    ]
+  },
+  "meeting-scheduling": {
+    "term": "Agendamento de reuniões",
+    "metaTitle": "O que é agendar reuniões? Como a IA resolve",
+    "metaDescription": "Agendar reuniões é achar um horário que sirva a cada convidado. Veja o processo manual, as ferramentas comuns e como a GAIA agenda por você.",
+    "definition": "Agendar reuniões é escolher hora, duração e lugar de uma reunião que sirva a cada convidado requerido, incluindo mandar o convite e lidar com mudanças.",
+    "extendedDescription": "Toda reunião nasce de um nó de coordenação: várias pessoas ocupadas, várias agendas, uma hora comum. A agenda manual resolve com mensagens, enquetes e arqueologia de agenda. Funciona, mas escala mal. Cada convidado extra multiplica as idas e vindas, e as reuniões fixas desandam quando mudam agendas.\n\nAs ferramentas aliviam em camadas. Agendas partilhadas mostram disponibilidade. Páginas de reserva deixam o convidado escolher entre horários livres. Enquetes colhem gostos de grupos. Agendadores automáticos vão um passo além e escolhem o horário sozinhos, pesando horários de trabalho, fusos, folgas e carga de reuniões.\n\nA boa agenda cobre as bordas: pautas claras para o convidado saber por que faz falta, durações exatas em vez de blocos de uma hora por padrão, e reagendas que avisam todos quando mudam planos. Times que tratam agenda como sistema e não como corveia perdem menos tempo coordenando e passam mais tempo em reuniões que importam.",
+    "keywords": [
+      "agendamento de reuniões",
+      "o que é agendar reuniões",
+      "agendar reuniões automático",
+      "agendador de reuniões com IA",
+      "agendar reuniões sozinho",
+      "software para agendar reuniões"
+    ],
+    "howGaiaUsesIt": "A GAIA agenda reuniões com contexto total. Compara disponibilidade entre agendas conectadas, respeita fusos e horários de trabalho, e propõe horas que servem a cada convidado. A GAIA também vigia choques após mandar o convite, assim reservas duplas saem antes de causar faltas.",
+    "faqs": [
+      {
+        "answer": "Achar um horário que sirva a todos entre agendas e fusos, e manter válido quando mudam agendas. Quase todo o trabalho é custo de coordenação, não a reunião em si.",
+        "question": "O que é o mais duro em agendar reuniões?"
+      },
+      {
+        "answer": "Horários fixos baixam o custo de coordenar e criam rotina, mas convém revisar quando mudam convidados ou fusos. Um agendador que marca reuniões fixas velhas evita que virem lixo de agenda.",
+        "question": "Reuniões fixas devem ter horário fixo?"
+      },
+      {
+        "answer": "O que pedir a decisão ou conversa, nem mais. Blocos de uma hora por padrão jogam tempo fora. Horários curtos com pauta clara costumam dar o mesmo resultado.",
+        "question": "Quanto devem durar as reuniões?"
+      },
+      {
+        "answer": "Sim. A GAIA detecta choques nas suas agendas conectadas e avisa cedo, para mover ou recusar reuniões antes de sobrepor virar falta.",
+        "question": "A GAIA reagenda se aparecem choques?"
+      }
+    ]
+  },
+  "ai-email-management": {
+    "term": "Gestão de e-mails com IA",
+    "metaTitle": "O que é gestão de e-mails com IA? Guia claro",
+    "metaDescription": "A gestão de e-mails com IA ordena, prioriza e redige respostas para a caixa pedir menos do seu dia. Veja como funciona e o que a GAIA faz por você.",
+    "definition": "Gerir e-mails com IA é usar software que lê, classifica e age no seu e-mail por você: ordena mensagens por urgência, arquiva o rotineiro, redige respostas e só mostra o que pede seu critério.",
+    "extendedDescription": "O nó da caixa é volume mais ambiguidade. Centenas de mensagens chegam todo dia, misturando pedidos urgentes com boletins, recibos e fios onde copiaram você por via das dúvidas. Triar à mão é ler tudo para achar o pouco que importa, e assim o e-mail come horas de cada jornada.\n\nA gestão com IA ataca as duas metades. Modelos de classificar ordenam a entrada por urgência, projeto e ação pedida. Ferramentas de redigir escrevem primeiras versões de respostas rotineiras desde o contexto do fio. Resumos condensam fios longos em decisões e pendências. Baixa de listas e filtros automáticos limpam o ruído sem sua atenção.\n\nA linha prática é o critério. A IA leva bem o trabalho de alto volume e baixo risco: arquivar avisos, ordenar boletins, redigir respostas padrão para revisar. Mensagens delicadas, ambíguas ou chave em relações merecem um humano. As melhores montagens fazem explícita essa passa, para nada importante se tratar sem sua revisão.",
+    "keywords": [
+      "gestão de e-mails com IA",
+      "o que é gerir e-mails com IA",
+      "gestor de e-mails com IA",
+      "automatizar gestão de e-mails",
+      "caixa inteligente com IA",
+      "organizador de e-mails com IA"
+    ],
+    "howGaiaUsesIt": "A GAIA gere seu e-mail sem pausa. Classifica a entrada por urgência e ação pedida, arquiva o rotineiro, tira você de listas indesejadas e redige respostas para sua revisão. Com o tempo aprende seus ritmos de comunicar, assim o que chega é o que pede seu critério.",
+    "faqs": [
+      {
+        "answer": "A IA leva quase todo o volume: ordenar, arquivar, sair de listas e redigir respostas rotineiras. Mensagens que pedem critério fino ou pesam em relações ganham com revisão humana.",
+        "question": "A IA pode gerir minha caixa sozinha?"
+      },
+      {
+        "answer": "Depende de onde roda a IA e quem manda nos dados. Montagens auto-hospedadas guardam mensagens na sua própria estrutura. Em serviços hospedados, revise prazos de guardar dados e se o conteúdo treina modelos partilhados.",
+        "question": "É seguro deixar a IA ler meu e-mail?"
+      },
+      {
+        "answer": "Filtros seguem regras fixas que você escreve e mantém. A gestão com IA classifica mensagens novas nunca vistas por sentido e urgência, redige desde o contexto e se adapta quando mudam seus ritmos.",
+        "question": "Em que diferem filtros e gestão com IA?"
+      },
+      {
+        "answer": "A GAIA marca o que pede sua atenção segundo remetente, conteúdo e sua conduta passada, enquanto o rotineiro se ordena ou arquiva em silêncio. O urgente sai com contexto em vez de apodrecer em não lidos.",
+        "question": "Como a GAIA trata e-mails urgentes?"
+      }
+    ]
   }
 }

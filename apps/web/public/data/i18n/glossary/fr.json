@@ -4857,5 +4857,107 @@
         "answer": "GAIA est entièrement open source et auto-hébergeable, aucune fermeture ne peut donc vous l'enlever. Il couvre e-mails, agenda, tâches et mémoire dans plus de 50 outils."
       }
     ]
+  },
+  "smart-scheduling": {
+    "term": "Planification intelligente",
+    "metaTitle": "Planification intelligente : comment l’IA gère ça",
+    "metaDescription": "La planification intelligente trouve le bon créneau entre calendriers, fuseaux et priorités. Voyez comment ça marche et comment GAIA planifie la semaine.",
+    "definition": "La planification intelligente choisit seule l’heure de réunion selon disponibilités, fuseaux horaires, priorités et rythmes de travail, sans allers-retours par e-mail.",
+    "extendedDescription": "La planification classique est une taxe de négociation. Chaque réunion coûte des rondes d’e-mails ou de liens de sondage pour trouver un créneau, et le résultat ignore souvent fuseaux, temps de focus et besoins de préparation. La planification intelligente remplace cette négociation par règles et classements : chacun partage ses disponibilités, et le système propose des heures rangées par adéquation.\n\nUn planificateur malin pèse plus que les blocs libres et occupés. Il vérifie les marges de trajet entre lieux, garde les matins pour le travail profond quand c’est votre rythme, disperse les réunions pour éviter les blocs de cinq heures, et respecte les heures ouvrées entre fuseaux. Certains apprennent vos goûts avec le temps, comme les appels clients l’après-midi et les revues internes le vendredi.\n\nLa différence avec un lien de réservation, c’est le jugement. Un lien montre vos disponibilités et laisse l’invité choisir. Un planificateur intelligent choisit pour tout le monde, résout les conflits quand les calendriers changent, et replanifie avec contexte quand un urgent surgit. Pour les équipes, cela donne moins d’e-mails par réunion et des calendriers qui reflètent les priorités au lieu de qui a demandé en premier.",
+    "keywords": [
+      "planification intelligente",
+      "qu’est-ce que la planification intelligente",
+      "logiciel de planification intelligente",
+      "assistant de planification IA",
+      "planifier réunions automatique",
+      "calendrier intelligent"
+    ],
+    "howGaiaUsesIt": "GAIA applique la planification intelligente à votre vrai calendrier. Il lit chaque source connectée, détecte les conflits avant qu’ils arrivent, protège votre focus pour le travail profond, et propose des heures qui vont aux invités et à vos priorités. Quand les plans changent, GAIA réévalue l’agenda au lieu de vous laisser des chevauchements.",
+    "faqs": [
+      {
+        "answer": "Un lien montre vos créneaux libres et chaque invité en choisit un. La planification intelligente compare les disponibilités de tous, classe les options par adéquation aux rythmes et priorités, et reste vigilante quand les calendriers changent.",
+        "question": "En quoi diffère-t-elle d’un lien de réservation ?"
+      },
+      {
+        "answer": "Oui, c’est l’un de ses travaux clés. Elle convertit les heures ouvrées de chaque invité en une vue commune et ne propose que des heures dans des plages raisonnables pour tous, en signalant quand aucun créneau n’existe.",
+        "question": "Marche-t-elle entre fuseaux horaires ?"
+      },
+      {
+        "answer": "Les bons planificateurs traitent les blocs de focus comme des rendez-vous, pas des trous. Ils planifient autour des périodes de travail profond et des marges de préparation, et dispersent les réunions pour garder de la place pour le vrai travail.",
+        "question": "Protège-t-elle le temps de focus ?"
+      },
+      {
+        "answer": "Oui. GAIA met vos calendriers connectés, priorités et focus dans chaque décision, propose des heures qui vont à tout le monde, et détecte les conflits avant qu’ils n’atteignent votre boîte.",
+        "question": "GAIA planifie-t-elle des réunions pour moi ?"
+      }
+    ]
+  },
+  "meeting-scheduling": {
+    "term": "Planification de réunions",
+    "metaTitle": "Planifier une réunion : comment l’IA s’en charge",
+    "metaDescription": "Planifier une réunion, c’est trouver une heure qui va à chaque invité. Voyez le processus manuel, les outils courants, et comment GAIA planifie pour vous.",
+    "definition": "Planifier une réunion, c’est choisir heure, durée et lieu d’une réunion qui vont à chaque invité requis, y compris envoyer l’invitation et gérer les changements.",
+    "extendedDescription": "Chaque réunion naît d’un casse-tête de coordination : plusieurs gens occupés, plusieurs calendriers, une heure commune. La planification manuelle le résout avec messages, sondages et archéologie de calendrier. Ça marche, mais ça passe mal l’échelle. Chaque invité en plus multiplie les allers-retours, et les réunions fixes dérivent quand les agendas changent.\n\nLes outils allègent par couches. Les calendriers partagés montrent les disponibilités. Les pages de réservation laissent l’invité choisir parmi les créneaux ouverts. Les sondages recueillent les goûts des groupes. Les planificateurs automatiques vont un cran plus loin et choisissent le créneau eux-mêmes, en pesant heures ouvrées, fuseaux, marges et charge de réunions.\n\nLa bonne planification couvre les bords : ordres du jour clairs pour que l’invité sache pourquoi il faut lui, durées exactes au lieu de blocs d’une heure par défaut, et replanifications qui préviennent tout le monde quand les plans bougent. Les équipes qui traitent la planification comme un système plutôt qu’une corvée passent moins de temps à coordonner et plus de temps dans des réunions qui comptent.",
+    "keywords": [
+      "planification de réunions",
+      "qu’est-ce que planifier une réunion",
+      "planifier réunions automatique",
+      "planificateur de réunions IA",
+      "planifier réunions seul",
+      "logiciel pour planifier réunions"
+    ],
+    "howGaiaUsesIt": "GAIA planifie les réunions avec le contexte complet. Il compare les disponibilités entre calendriers connectés, respecte fuseaux horaires et heures ouvrées, et propose des heures qui vont à chaque invité. GAIA surveille aussi les conflits après l’envoi de l’invitation, pour signaler les doubles réservations avant qu’elles ne causent des réunions manquées.",
+    "faqs": [
+      {
+        "answer": "Trouver un créneau qui va à tout le monde entre calendriers et fuseaux, puis le garder valide quand les agendas changent. Presque tout le travail est du coût de coordination, pas la réunion elle-même.",
+        "question": "Quelle est la partie la plus dure ?"
+      },
+      {
+        "answer": "Les créneaux fixes baissent le coût de coordination et créent la routine, mais il faut les revoir quand invités ou fuseaux changent. Un planificateur qui signale les réunions fixes périmées évite qu’elles deviennent du rebut de calendrier.",
+        "question": "Les réunions fixes doivent-elles garder un créneau fixe ?"
+      },
+      {
+        "answer": "Le temps que demandent la décision ou la discussion, pas plus. Les blocs d’une heure par défaut gaspillent du temps. Des créneaux courts avec ordre du jour clair donnent souvent le même résultat.",
+        "question": "Combien de temps doivent durer les réunions ?"
+      },
+      {
+        "answer": "Oui. GAIA détecte les conflits dans vos calendriers connectés et les signale tôt, pour déplacer ou décliner des réunions avant que les chevauchements ne deviennent des engagements manqués.",
+        "question": "GAIA replanifie-t-elle quand des conflits surgissent ?"
+      }
+    ]
+  },
+  "ai-email-management": {
+    "term": "Gestion des e-mails par IA",
+    "metaTitle": "Gérer ses e-mails par IA : guide clair",
+    "metaDescription": "La gestion des e-mails par IA trie, priorise et rédige pour que la boîte prenne moins de votre journée. Voyez comment ça marche et l'aide de GAIA.",
+    "definition": "Gérer ses e-mails par IA, c’est utiliser un logiciel qui lit, classe et agit sur vos e-mails pour vous : trier les messages par urgence, archiver la routine, rédiger des réponses, et ne montrer que ce qui demande votre jugement.",
+    "extendedDescription": "Le problème de la boîte, c’est le volume plus l’ambiguïté. Des centaines de messages arrivent chaque jour, mêlant demandes urgentes, infolettres, reçus et fils où l’on vous a copié au cas où. Le tri manuel veut dire tout lire pour trouver le peu qui compte, et c’est comme ça que l’e-mail mange des heures de chaque journée.\n\nLa gestion par IA attaque les deux moitiés. Les modèles de classement trient l’entrée par urgence, projet et action demandée. Les outils de rédaction écrivent des premières versions de réponses routinières depuis le contexte du fil. Les résumés condensent les longs fils en décisions et points ouverts. Les désinscriptions et filtres automatiques nettoient le bruit récurrent sans attention.\n\nLa ligne pratique, c’est le jugement. L’IA porte bien le travail à fort volume et faible risque : archiver les notifications, trier les infolettres, rédiger des réponses standard à relire. Les messages délicats, ambigus ou clés pour les relations méritent un humain. Les meilleurs montages rendent ce passage explicite, pour que rien d’important ne soit traité sans votre relecture.",
+    "keywords": [
+      "gestion des e-mails par IA",
+      "qu’est-ce que gérer e-mails par IA",
+      "gestionnaire d’e-mails IA",
+      "automatiser gestion e-mails",
+      "boîte intelligente par IA",
+      "organiseur d’e-mails IA"
+    ],
+    "howGaiaUsesIt": "GAIA gère vos e-mails en continu. Il classe l’entrée par urgence et action demandée, archive la routine, vous désinscrit des listes non voulues, et rédige des réponses pour votre relecture. Avec le temps il apprend vos rythmes de communication, pour que ce qui vous atteint demande votre jugement.",
+    "faqs": [
+      {
+        "answer": "L’IA porte presque tout le volume : trier, archiver, désinscrire, rédiger les réponses routinières. Les messages qui demandent un jugement fin ou pèsent dans les relations gagnent à une relecture humaine.",
+        "question": "L’IA peut-elle gérer ma boîte seule ?"
+      },
+      {
+        "answer": "Cela dépend d’où tourne l’IA et qui tient les données. Les montages auto-hébergés gardent les messages sur votre propre infra. Avec les services hébergés, vérifiez les durées de conservation et si le contenu entraîne des modèles partagés.",
+        "question": "Est-ce sûr de laisser l’IA lire mes e-mails ?"
+      },
+      {
+        "answer": "Les filtres suivent des règles fixes que vous écrivez et tenez. La gestion par IA classe les messages nouveaux jamais vus par sens et urgence, rédige depuis le contexte, et s’adapte quand vos rythmes changent.",
+        "question": "Quelle différence entre filtres et gestion par IA ?"
+      },
+      {
+        "answer": "GAIA signale ce qui demande votre attention selon expéditeur, contenu et votre conduite passée, pendant que la routine se trie ou s’archive en silence. L’urgent sort avec contexte au lieu de pourrir dans les non-lus.",
+        "question": "Comment GAIA traite les e-mails urgents ?"
+      }
+    ]
   }
 }

@@ -4857,5 +4857,107 @@
         "answer": "GAIA ist vollständig Open Source und selbst hostbar, keine Abschaltung kann es Ihnen also nehmen. Es deckt E-Mail, Kalender, Aufgaben und Gedächtnis über mehr als 50 Tools ab."
       }
     ]
+  },
+  "smart-scheduling": {
+    "term": "Smarte Terminplanung",
+    "metaTitle": "Was ist smarte Terminplanung? KI-Kalenderplanung",
+    "metaDescription": "Smarte Terminplanung findet die beste Meetingzeit über Kalender, Zeitzonen und Prioritäten. Lernen Sie wie sie läuft und wie GAIA Ihre Woche plant.",
+    "definition": "Smarte Terminplanung wählt Meetingzeiten allein nach Verfügbarkeit, Zeitzonen, Prioritäten und Arbeitsrhythmus, ohne Hin und Her per E-Mail.",
+    "extendedDescription": "Klassisches Planen ist eine Verhandlungssteuer. Jedes Meeting kostet Runden aus E-Mails oder Umfragelinks um einen Slot zu finden, und das Ergebnis ignoriert oft Zeitzonen, Fokus und Vorbereitungsbedarf. Smarte Planung ersetzt die Verhandlung durch Regeln und Ranglisten: Jede Seite teilt Verfügbarkeit und das System schlägt Zeiten sortiert nach Passung vor.\n\nEin kluger Planer wiegt mehr als freie und belegte Blöcke. Er prüft Reisepuffer zwischen Orten, hält Morgen für Tiefenarbeit frei wenn das Ihr Rhythmus ist, streut Meetings um Fünf-Stunden-Blöcke zu meiden und achtet Arbeitszeiten über Zeitzonen. Manche lernen Ihren Geschmack mit der Zeit, etwa Kundenanrufe am Nachmittag und interne Reviews am Freitag.\n\nDer Unterschied zum Buchungslink ist Urteil. Ein Link zeigt Ihre Verfügbarkeit und lässt Gäste wählen. Ein smarter Planer wählt für alle, löst Konflikte wenn Kalender sich ändern und plant mit Kontext um wenn Dringendes kommt. Für Teams heißt das weniger E-Mails pro Meeting und Kalender die Prioritäten spiegeln statt wer zuerst fragte.",
+    "keywords": [
+      "smarte Terminplanung",
+      "was ist smarte Terminplanung",
+      "smarte Terminplanung Software",
+      "KI-Terminassistent",
+      "Meetings automatisch planen",
+      "smarter Kalender"
+    ],
+    "howGaiaUsesIt": "GAIA wendet smarte Planung auf Ihren echten Kalender an. Es liest jede verbundene Quelle, erkennt Konflikte bevor sie kommen, schützt Ihren Fokus für Tiefenarbeit und schlägt Zeiten vor die zu Gästen und Prioritäten passen. Wenn Pläne sich ändern, bewertet GAIA den Plan neu statt Ihnen Überlappungen zu lassen.",
+    "faqs": [
+      {
+        "answer": "Ein Link zeigt Ihre freien Slots und jeder Gast wählt einen. Smarte Planung vergleicht Verfügbarkeit aller, reiht Optionen nach Passung zu Rhythmus und Prioritäten und bleibt wachsam wenn Kalender sich ändern.",
+        "question": "Wie unterscheidet sie sich vom Buchungslink?"
+      },
+      {
+        "answer": "Ja, das ist einer ihrer Kernjobs. Sie legt die Arbeitszeiten jedes Gasts in eine gemeinsame Sicht und schlägt nur Zeiten in vernünftigen Stunden für alle vor, und meldet wenn kein solcher Slot besteht.",
+        "question": "Läuft sie über Zeitzonen?"
+      },
+      {
+        "answer": "Gute Planer behandeln Fokusblöcke als Termine, nicht Lücken. Sie planen um Tiefenarbeit und Vorbereitungspuffer herum und streuen Meetings damit der Tag Raum für echte Arbeit behält.",
+        "question": "Schützt sie Fokuszeit?"
+      },
+      {
+        "answer": "Ja. GAIA steckt Ihre verbundenen Kalender, Prioritäten und Fokus in jede Entscheidung, schlägt Zeiten vor die allen passen und erkennt Konflikte bevor sie Ihr Postfach erreichen.",
+        "question": "Plant GAIA Meetings für mich?"
+      }
+    ]
+  },
+  "meeting-scheduling": {
+    "term": "Meetingplanung",
+    "metaTitle": "Was ist Meetingplanung? Wie KI sie löst",
+    "metaDescription": "Meetingplanung heißt eine Zeit zu finden die jedem Gast passt. Lernen Sie den manuellen Weg, gängige Tools, und wie GAIA Meetings für Sie plant.",
+    "definition": "Meetingplanung heißt Zeit, Dauer und Ort für ein Meeting zu wählen die jedem nötigen Gast passen, samt Einladung senden und Änderungen handhaben.",
+    "extendedDescription": "Jedes Meeting startet mit einem Koordinationsrätsel: mehrere volle Leute, mehrere Kalender, eine gemeinsame Stunde. Manuelles Planen löst es mit Nachrichten, Umfragen und Kalenderarchäologie. Es läuft, aber skaliert schlecht. Jeder Gast mehr vervielfacht das Hin und Her, und feste Meetings driften wenn Pläne sich ändern.\n\nTools nehmen Last in Schichten ab. Geteilte Kalender zeigen Verfügbarkeit. Buchungsseiten lassen Gäste aus offenen Slots wählen. Umfragen sammeln Geschmack aus Gruppen. Automatische Planer gehen einen Schritt weiter und wählen den Slot selbst, und wiegen Arbeitszeiten, Zeitzonen, Puffer und Meetinglast.\n\nGutes Planen deckt die Ränder ab: klare Agenden damit Gäste wissen warum sie nötig sind, exakte Dauern statt Stundenblöcke per Default, und Umplanen das alle meldet wenn Pläne sich bewegen. Teams die Planung als System sehen statt Pflicht verlieren weniger Zeit ans Koordinieren und verbringen mehr Zeit in Meetings die zählen.",
+    "keywords": [
+      "Meetingplanung",
+      "was ist Meetingplanung",
+      "Meetings automatisch planen",
+      "KI-Meetingplaner",
+      "Meetings allein planen",
+      "Meetingplanung Software"
+    ],
+    "howGaiaUsesIt": "GAIA plant Meetings mit vollem Kontext. Es vergleicht Verfügbarkeit über verbundene Kalender, achtet Zeitzonen und Arbeitszeiten und schlägt Zeiten vor die jedem Gast passen. GAIA wacht auch nach der Einladung über Konflikte, damit Doppelbuchungen markiert werden bevor sie verpasste Meetings kosten.",
+    "faqs": [
+      {
+        "answer": "Einen Slot zu finden der allen über Kalender und Zeitzonen passt und ihn gültig zu halten wenn Pläne sich ändern. Fast alle Arbeit ist Koordinationsaufwand, nicht das Meeting selbst.",
+        "question": "Was ist das Schwerste am Meetingplanen?"
+      },
+      {
+        "answer": "Feste Slots senken Koordinationskosten und bauen Routine, gehören aber geprüft wenn Gäste oder Zeitzonen sich ändern. Ein Planer der alte feste Meetings markiert hält sie vom Kalenderballast fern.",
+        "question": "Sollen feste Meetings einen festen Slot haben?"
+      },
+      {
+        "answer": "So lang wie Entscheidung oder Gespräch brauchen, nicht länger. Stundenblöcke per Default vergeuden Zeit. Kürzere Slots mit Zweck und klarer Agenda geben meist gleiche Ergebnisse.",
+        "question": "Wie lang sollen Meetings sein?"
+      },
+      {
+        "answer": "Ja. GAIA erkennt Konflikte über Ihre verbundenen Kalender und meldet sie früh, damit Sie Meetings bewegen oder ablehnen bevor Lücken zu verpassten Zusagen werden.",
+        "question": "Plant GAIA um wenn Konflikte kommen?"
+      }
+    ]
+  },
+  "ai-email-management": {
+    "term": "KI-E-Mail-Management",
+    "metaTitle": "Was ist KI-E-Mail-Management? Ein klarer Leitfaden",
+    "metaDescription": "KI-E-Mail-Management sortiert, priorisiert und entwirft Antworten damit Ihr Postfach weniger Tag braucht. Lernen Sie wie es läuft und was GAIA für Sie tut.",
+    "definition": "KI-E-Mail-Management heißt Software die E-Mails für Sie liest, einordnet und handelt: Nachrichten nach Dringlichkeit sortieren, Routine ablegen, Antworten entwerfen und nur zeigen was Ihr Urteil braucht.",
+    "extendedDescription": "Das Postfachproblem ist Volumen plus Deutung. Hunderte Nachrichten kommen täglich und mischen dringende Bitten mit Newslettern, Belegen und Fäden wo Sie nur zur Sicherheit im CC standen. Manuelle Triage heißt alles lesen um das Wenige zu finden das zählt, und so frisst E-Mail Stunden jedes Arbeitstags.\n\nKI-Management packt beide Hälften an. Klassemodelle sortieren Eingang nach Dringlichkeit, Projekt und nötiger Aktion. Entwurfstools schreiben Erstfassungen routinierter Antworten aus dem Fadenkontext. Zusammenfassungen pressen lange Fäden in Entscheidungen und offene Punkte. Abmelden und Filterautomatik räumen wiederkehrenden Lärm ohne Aufmerksamkeit weg.\n\nDie praktische Linie ist Urteil. KI trägt Hochvolumen mit kleinem Risiko gut: Meldungen ablegen, Newsletter sortieren, Standardantworten zur Prüfung entwerfen. Heikle, deutungsoffene oder beziehungswichtige Nachrichten verdienen einen Menschen. Die besten Aufbauten machen die Übergabe explizit, damit nichts Wichtiges ohne Ihre Prüfung läuft.",
+    "keywords": [
+      "KI-E-Mail-Management",
+      "was ist KI-E-Mail-Management",
+      "KI-E-Mail-Manager",
+      "E-Mail-Management automatisieren",
+      "KI-Posteingang",
+      "KI-E-Mail-Organizer"
+    ],
+    "howGaiaUsesIt": "GAIA führt E-Mail laufend. Es ordnet Eingang nach Dringlichkeit und nötiger Aktion, legt Routine ab, meldet Sie von ungewollten Listen ab und entwirft Antworten für Ihre Prüfung. Mit der Zeit lernt es Ihre Gesprächsrhythmen, damit Sie nur erreicht was Ihr Urteil braucht.",
+    "faqs": [
+      {
+        "answer": "KI trägt fast alles Volumen: Sortieren, Ablegen, Abmelden und routinierte Antworten entwerfen. Nachrichten die feines Urteil brauchen oder Beziehungsgewicht tragen gewinnen mit menschlicher Prüfung.",
+        "question": "Kann KI mein Postfach allein führen?"
+      },
+      {
+        "answer": "Es hängt davon ab wo die KI läuft und wer die Daten hält. Selbst gehostete Aufbauten halten Nachrichten auf Ihrer eigenen Struktur. Bei gehosteten Diensten prüfen Sie Speicherdauern und ob Inhalte geteilte Modelle trainieren.",
+        "question": "Ist es sicher KI meine E-Mails lesen zu lassen?"
+      },
+      {
+        "answer": "Filter folgen festen Regeln die Sie schreiben und pflegen. KI-Management ordnet neue, nie gesehene Nachrichten nach Sinn und Dringlichkeit, entwirft aus Kontext und passt sich an wenn Ihre Rhythmen sich ändern.",
+        "question": "Was trennt Filter und KI-Management?"
+      },
+      {
+        "answer": "GAIA markiert was Ihre Aufmerksamkeit braucht nach Sender, Inhalt und Ihrem früheren Verhalten, während Routine leise sortiert oder abgelegt wird. Dringendes kommt mit Kontext statt im Ungelesen-Stapel zu liegen.",
+        "question": "Wie behandelt GAIA dringende E-Mails?"
+      }
+    ]
   }
 }

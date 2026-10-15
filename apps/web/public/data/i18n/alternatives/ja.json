@@ -3681,6 +3681,38 @@
         "answer": "文脈のため先にGmailとGoogleカレンダーをつなぎます。次にSlackやNotionや仕事の道具を足します。多くは数分で最初の用を任せます。",
         "question": "InstinctからGAIAへどう移りますか。"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "やり方",
+        "gaia": "メールと予定と仕事と雑談に働く完全な生産OS",
+        "competitor": "文面で旅の予約と用足しをこなす"
+      },
+      {
+        "feature": "画面",
+        "gaia": "ウェブとデスクトップとモバイルにWhatsAppとTelegramのボット付き",
+        "competitor": "SMSとWhatsAppの会話"
+      },
+      {
+        "feature": "メールと予定",
+        "gaia": "Gmailを読みGoogleカレンダーを管理し両方を頼みに結ぶ",
+        "competitor": "手元の用だけ見て受信箱には触れない"
+      },
+      {
+        "feature": "記憶",
+        "gaia": "全ての道具で癖を学ぶグラフ型メモリ",
+        "competitor": "文面の糸の中の会話記録"
+      },
+      {
+        "feature": "開放性",
+        "gaia": "完全なオープンソースでセルフホストでき無料あり",
+        "competitor": "待ち行列で出す閉じた品物"
+      },
+      {
+        "feature": "導入",
+        "gaia": "道具を一度つないだら後はどこからでも文面も声も入力も",
+        "competitor": "文面を送れば終わりで整える物はない"
+      }
     ]
   },
   "openai-dots": {
@@ -3735,6 +3767,38 @@
       {
         "answer": "文脈のためGmailと予定から始め、次にSlackか仕事の道具を足します。GAIAの記憶はつないだ初日から積み始めます。",
         "question": "GAIAへどう切り替えますか。"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "やり方",
+        "gaia": "記憶と道具とやり切りを持つ完全な生産OS",
+        "competitor": "雑談画面の中で速い仕事を片付ける"
+      },
+      {
+        "feature": "記憶",
+        "gaia": "触れる度に育つグラフ型メモリ",
+        "competitor": "毎回白紙で仕事の間の記憶がない"
+      },
+      {
+        "feature": "連携",
+        "gaia": "メールと予定と仕事と雑談にまたがる50以上の連携",
+        "competitor": "雑談画面が出す物に限られる"
+      },
+      {
+        "feature": "先回り",
+        "gaia": "道具を見張り聞かれる前に動く",
+        "competitor": "促されてから返事する"
+      },
+      {
+        "feature": "開放性",
+        "gaia": "公開の道筋と無料付きの完全なオープンソース",
+        "competitor": "閉じた品物で出来ることは2026年も育ち途中"
+      },
+      {
+        "feature": "導入",
+        "gaia": "道具を一度つないだらウェブもモバイルも伝え合いアプリも",
+        "competitor": "整える物はなく雑談の中に住む"
       }
     ]
   },
@@ -3791,6 +3855,38 @@
         "answer": "はい。GAIAは会話とツールをまたぐ好みと履歴を覚え、語るだけでなくその記憶で動きます。",
         "question": "GAIAはDotのように覚えますか。"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "状態",
+        "gaia": "開発が続くオープンソースの助手で無料あり",
+        "competitor": "閉じたiOSの話し相手アプリで2025年10月に終了"
+      },
+      {
+        "feature": "記憶",
+        "gaia": "グラフ型メモリが道具をまたぐ本物の動きを生む",
+        "competitor": "昔の雑談を覚えたが語るだけだった"
+      },
+      {
+        "feature": "仕事",
+        "gaia": "メールを下書きし予定を組み仕事を管理し流れを回す",
+        "competitor": "会話だけで道具につながらない"
+      },
+      {
+        "feature": "場所",
+        "gaia": "ウェブとデスクトップとモバイルにWhatsAppとTelegram付き",
+        "competitor": "iPhoneだけ"
+      },
+      {
+        "feature": "データ",
+        "gaia": "Dockerでセルフホストできデータはあなたのまま",
+        "competitor": "一社のサーバーで先方の都合で消えた"
+      },
+      {
+        "feature": "導入",
+        "gaia": "無料で登録しGmailとカレンダーをつなぎ任せ始める",
+        "competitor": "何もない。もう動かない"
+      }
     ]
   },
   "friend-pendant": {
@@ -3845,6 +3941,38 @@
       {
         "answer": "GAIAはメールを読み、カレンダーを回し、仕事を作ります。Friendが語るだけの文脈を終わった仕事に変えます。",
         "question": "GAIAに移すと何が増えますか。"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "やり方",
+        "gaia": "電子生活全体に働く完全な生産OS",
+        "competitor": "聞いて文面で返事する249ドル(v2)のペンダント"
+      },
+      {
+        "feature": "仕事",
+        "gaia": "受信箱の仕分けと予定の管理と仕事と流れ",
+        "competitor": "文面での寄り添いと雑談"
+      },
+      {
+        "feature": "文脈",
+        "gaia": "メールと予定と仕事と雑談をまたぐグラフ型メモリ",
+        "competitor": "聞いたからあなたの一日を知る"
+      },
+      {
+        "feature": "連携",
+        "gaia": "GmailとSlackとNotionとLinearを含む50以上の連携",
+        "competitor": "道具につながらずやるのはあなた"
+      },
+      {
+        "feature": "開放性",
+        "gaia": "完全なオープンソースでセルフホストでき無料あり",
+        "competitor": "閉じた機械と閉じたソフト"
+      },
+      {
+        "feature": "導入",
+        "gaia": "無料で登録し道具をつなぎ任せる",
+        "competitor": "ペンダントを買って身に付け文面を送る"
       }
     ]
   },
@@ -3901,6 +4029,38 @@
         "answer": "機械は要りません。GAIAは手持ちの電話と机で動きます。ウェブ、机、持ち運び、連絡手段です。",
         "question": "GAIAに機械を買う必要がありますか。"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "やり方",
+        "gaia": "覚えて動くオープンソースの生産OS",
+        "competitor": "音を拾って覚えるオープンソースのペンダント"
+      },
+      {
+        "feature": "記憶",
+        "gaia": "仕事とメールと予定に結ぶグラフ型メモリ",
+        "competitor": "話した内容の探せる記録"
+      },
+      {
+        "feature": "仕事",
+        "gaia": "下書きし予定を組み仕事を作り複数段の流れを回す",
+        "competitor": "思い出すだけでメールも予定も仕事の動きもない"
+      },
+      {
+        "feature": "機械",
+        "gaia": "機械なしでウェブとデスクトップとモバイルと伝え合いアプリ",
+        "competitor": "ペンダントを身に付けることが要る"
+      },
+      {
+        "feature": "開放性と値段",
+        "gaia": "オープンソースでセルフホストでき無料あり",
+        "competitor": "オープンソースで手頃な開けた機械"
+      },
+      {
+        "feature": "導入",
+        "gaia": "無料で登録し道具をつないでどこからでも任せる",
+        "competitor": "機械を買って毎日身に付け後で探す"
+      }
     ]
   },
   "gemini-assistant": {
@@ -3956,6 +4116,38 @@
         "answer": "通話と計時はGemini Assistantに残します。Gmailと予定をGAIAにつないで仕事の層を作り、勝つ場所で使い分けます。",
         "question": "Gemini Assistantを捨てますか。"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "やり方",
+        "gaia": "一日全体のための完全な生産OS",
+        "competitor": "AndroidとiOSの内蔵助手でGoogleアプリに一番深い"
+      },
+      {
+        "feature": "仕事",
+        "gaia": "受信箱の仕分けと事前資料と仕事と予定組みと流れ",
+        "competitor": "電話とタイマーと音楽と端末設定と短い答えにWorkspace内のGmail要約と下書き付き"
+      },
+      {
+        "feature": "仕事の文脈",
+        "gaia": "Gmailとカレンダーを読み両方を仕事に結ぶ",
+        "competitor": "GmailとWorkspace内を読みまとめるがSlackにもNotionにもGoogle外の道具にも働かない"
+      },
+      {
+        "feature": "記憶",
+        "gaia": "週と道具をまたぐ続くグラフ型メモリ",
+        "competitor": "Googleアプリ内は覚えるがSlackとNotionとメールの糸にまたがる仕事の文脈は持たない"
+      },
+      {
+        "feature": "場所",
+        "gaia": "ウェブとデスクトップとモバイルにWhatsAppとTelegramとSlackとDiscord",
+        "competitor": "AndroidとiOSでGoogleアプリ内が一番良い"
+      },
+      {
+        "feature": "開放性",
+        "gaia": "完全なオープンソースでセルフホストでき無料あり",
+        "competitor": "閉じていてGoogleアカウントに縛られる"
+      }
     ]
   },
   "siri": {
@@ -4010,6 +4202,38 @@
       {
         "answer": "計時と通話はSiriに残します。Gmailと予定をGAIAにつないで朝の資料を頼み、一日で違いを感じます。",
         "question": "Siriと並べてGAIAをどう始めますか。"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "やり方",
+        "gaia": "全ての道具にまたがる先回りの生産OS",
+        "competitor": "iPhoneとiPadとMacの内蔵の声の命令"
+      },
+      {
+        "feature": "仕事",
+        "gaia": "受信箱の仕分けと事前資料と予定組みと仕事と流れ",
+        "competitor": "タイマーと電話と伝えと短い問い"
+      },
+      {
+        "feature": "複数段の仕事",
+        "gaia": "道具をまたぐ複数段の仕事を段取りし動かす",
+        "competitor": "一回きりの命令でやり切りなし"
+      },
+      {
+        "feature": "記憶",
+        "gaia": "時と共に癖を学ぶグラフ型メモリ",
+        "competitor": "会話の間の記憶がない"
+      },
+      {
+        "feature": "場所",
+        "gaia": "ウェブとデスクトップとモバイルにWhatsAppとTelegramとSlackとDiscord",
+        "competitor": "Appleの機械だけ"
+      },
+      {
+        "feature": "開放性",
+        "gaia": "Dockerでセルフホストできる完全なオープンソース",
+        "competitor": "閉じていて道筋はAppleが決める"
       }
     ]
   },
@@ -4067,6 +4291,43 @@
         "answer": "頼るOpenClawの流れを数え、同じ道具をGAIAにつないで流れごとに平たい言葉で伝えます。GAIAが符号なしで作り直します。",
         "question": "OpenClawの設定をGAIAへどう移しますか。"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "やり方",
+        "gaia": "すぐ使える先回りAI助手を備えた完全な生産OS",
+        "competitor": "整えと作り込みが要るAI自動化の枠組み"
+      },
+      {
+        "feature": "先回りの動き",
+        "gaia": "メールと予定と知らせを見張り聞かれる前に動く",
+        "competitor": "整えた引き金が引かれたら自動化が走る"
+      },
+      {
+        "feature": "連携",
+        "gaia": "GmailとSlackとNotionとGitHubとLinearを含む使える50以上の連携",
+        "competitor": "連携力に作り手の整えが要る"
+      },
+      {
+        "feature": "記憶",
+        "gaia": "癖を学び仕事を企てに結び文脈を時と共に育てるグラフ型メモリ",
+        "competitor": "自動化の走りの間のその場の文脈"
+      },
+      {
+        "feature": "対応場所",
+        "gaia": "ウェブとデスクトップ(macOSとWindowsとLinux)とモバイルアプリ",
+        "competitor": "主に作り手向けの画面"
+      },
+      {
+        "feature": "オープンソース",
+        "gaia": "Dockerでセルフホストできる完全なオープンソース",
+        "competitor": "皆の寄せで育つオープンソース"
+      },
+      {
+        "feature": "導入時間",
+        "gaia": "登録してすぐ使え作り込みはいらない",
+        "competitor": "技術の整えと設定が要る"
+      }
     ]
   },
   "poke": {
@@ -4122,6 +4383,43 @@
         "answer": "先にGmailも予定も仕事の道具もつなぎます。次にPokeの流れを一つずつ移し、メールに触れるものから始めます。",
         "question": "PokeからGAIAへどう切り替えますか。"
       }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "やり方",
+        "gaia": "メールと予定と仕事と流れを預かる先回りAIのオープンソース生産OS",
+        "competitor": "狙いを絞った機能のAI生産助手"
+      },
+      {
+        "feature": "先回りの自動化",
+        "gaia": "電子生活を24時間見張り聞かれる前に動く",
+        "competitor": "あなたの頼みと働きかけに返事する"
+      },
+      {
+        "feature": "連携",
+        "gaia": "GmailとSlackとNotionとGitHubとTodoistとAsanaとLinearを含む50以上の連携",
+        "competitor": "連携の生態が狭い"
+      },
+      {
+        "feature": "記憶",
+        "gaia": "仕事と会議と文書と好みを結ぶグラフ型メモリ",
+        "competitor": "並の会話記録"
+      },
+      {
+        "feature": "オープンソース",
+        "gaia": "Dockerによるセルフホスト付きの完全なオープンソース",
+        "competitor": "閉じた土台"
+      },
+      {
+        "feature": "流れの自動化",
+        "gaia": "利いた引き金と道具またぎの指揮で複数段の流れ",
+        "competitor": "並の仕事の手伝いと勧め"
+      },
+      {
+        "feature": "対応場所",
+        "gaia": "ウェブアプリとデスクトップ(macOSとWindowsとLinux)とモバイルにDiscordとSlackとTelegramのボット",
+        "competitor": "ウェブとモバイルの画面"
+      }
     ]
   },
   "chatgpt-atlas": {
@@ -4176,6 +4474,38 @@
       {
         "question": "GAIAで設定をどれくらい速く作り直せますか。",
         "answer": "先にGmailと予定をつなぎ、次に仕事の道具を足します。GAIAは実際の手元から助けの層を一日で作り直します。"
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "状態",
+        "gaia": "開発が続く現役品で無料あり",
+        "competitor": "2026年8月に終了し品物自体が消えた"
+      },
+      {
+        "feature": "終了リスク",
+        "gaia": "オープンソースでセルフホストでき終了に強い作り",
+        "competitor": "閉じた計画で動ける知らせが出なかった"
+      },
+      {
+        "feature": "文脈",
+        "gaia": "グラフ型メモリであなたの文脈を速く作り直す",
+        "competitor": "Atlasで育てた癖も文脈も消えた"
+      },
+      {
+        "feature": "退出",
+        "gaia": "オープンソースで無料ありセルフホストの道あり",
+        "competitor": "つまずかず出るための書き出し口がなかった"
+      },
+      {
+        "feature": "範囲",
+        "gaia": "メールと予定と仕事の自動化が一か所に",
+        "competitor": "ブラウザに縛られた仕事でブラウザと共に死んだ"
+      },
+      {
+        "feature": "対応道具",
+        "gaia": "Atlasが触った道具を覆う50以上の連携",
+        "competitor": "一社のAI計画への信頼は崩れた"
       }
     ]
   }
