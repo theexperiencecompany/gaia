@@ -62,32 +62,38 @@ This is how most people should use GAIA — you skip standing up Postgres, Mongo
 
 <a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
 
-Prefer your own machines? You get your own keys and models, no caps, and your data on your disks — in exchange for running real infrastructure.
+Your own server, your own keys and models, your data on your disks.
 
 > [!IMPORTANT]
 > The licence is **noncommercial**. Personal and non-profit self-hosting is free; running GAIA inside a business needs an [enterprise licence](https://heygaia.io/contact).
 
+**You need:** a Linux server or Mac with about 8 GB of RAM, and one AI key (OpenAI, OpenRouter, Gemini, or a local Ollama).
+
+**1. Install and start**
+
 ```bash
 curl -fsSL https://heygaia.io/install.sh | sh
-gaia up                       # add --yes for no prompts, --domain gaia.example.com for HTTPS
-# → http://localhost:3000
+gaia up
 ```
 
-`gaia up` checks prerequisites (offering to install [Docker](https://docs.docker.com/get-docker/) if it's missing), clones the repo, generates the configuration, pulls the published images and starts everything behind a single port. You finish setup in the browser — one AI provider key is all it needs (OpenAI, OpenRouter, Gemini, or a local Ollama), or pass it up front with `--llm-provider openai --llm-key sk-...`. Plan for about 8 GB of RAM. After that:
+`gaia up` installs Docker if it's missing, downloads GAIA and starts it on one port.
+
+**2. Open the address it prints** (http://localhost:3000 on your own machine), create your admin account and paste your AI key. That's the whole setup.
+
+**3. Keep it running**
 
 ```bash
-gaia status   # every service and database, with latency
-gaia doctor   # what's broken, with a fix for each problem
-gaia update   # move to the GAIA release this CLI ships
-gaia backup   # dump MongoDB + PostgreSQL
-gaia stop     # stop everything; gaia start brings it back
+gaia status   # is everything healthy?
+gaia doctor   # what's broken, and how to fix it
+gaia update   # upgrade to the latest release
+gaia backup   # save your data
 ```
 
-No terminal? Deploy with [cloud-init on any VPS, Render, Railway, Dokploy or DigitalOcean](https://docs.heygaia.io/self-hosting/one-click-deploy). Code execution and file uploads are opt-in on self-host; the guide says what each needs.
+Want HTTPS on your own domain? `gaia up --domain gaia.example.com`. Every option is in the [walkthrough](https://docs.heygaia.io/self-hosting/walkthrough).
+
+**No terminal?** Deploy on [Render, Railway, DigitalOcean or Coolify](https://docs.heygaia.io/self-hosting/one-click-deploy). Your ongoing cost is model API usage plus an 8 GB server.
 
 Contributing? See [Development Setup](https://docs.heygaia.io/developers/development-setup) for hot-reload local dev.
-
-Your ongoing cost is model API usage plus an 8 GB server — the [one-click deploy guide](https://docs.heygaia.io/self-hosting/one-click-deploy) compares what that costs on each provider.
 
 ## Workflows
 
