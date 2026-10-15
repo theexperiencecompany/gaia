@@ -24,7 +24,7 @@ export default function GetStartedButton({
       <Link href={href}>
         <RaisedButton
           className={cn(
-            "rounded-xl before:rounded-xl duration-400 ease-out group shadow-black hover:scale-110",
+            "rounded-xl before:rounded-xl duration-400 ease-out group hover:scale-110",
             className,
           )}
           color={btnColor}

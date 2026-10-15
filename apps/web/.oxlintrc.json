@@ -81,8 +81,7 @@
               "border-0",
               "outline-none",
               "duration-400",
-              "ease-out",
-              "shadow-black"
+              "ease-out"
             ]
           },
           {
