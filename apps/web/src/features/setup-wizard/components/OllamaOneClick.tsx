@@ -48,7 +48,7 @@ export function OllamaOneClick({
   const command = `ollama pull ${config.default_model} && ollama serve`;
 
   return (
-    <div className="mb-3 rounded-xl bg-zinc-900 p-3">
+    <div className="mb-3 rounded-xl bg-zinc-800 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs font-medium text-zinc-100">
@@ -85,7 +85,7 @@ export function OllamaOneClick({
           ollama.com <SquareArrowUpRight02Icon size={10} />
         </Link>
       </p>
-      <div className="mt-2 flex items-center gap-2 rounded-xl bg-zinc-800 py-1 pr-1 pl-3">
+      <div className="mt-2 flex items-center gap-2 rounded-xl bg-zinc-900 py-1 pr-1 pl-3">
         <code className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-300">
           {command}
         </code>

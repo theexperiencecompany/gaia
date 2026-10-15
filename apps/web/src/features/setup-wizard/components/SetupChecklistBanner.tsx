@@ -1,10 +1,10 @@
 /**
- * Slim dismissible banner at the top of the chat home until the instance's
- * essentials are configured (AI provider, web search, admin account). One
- * missing item is one line with its action; several collapse into a single
- * line that expands to one row per item. Dismissal records WHICH items were
- * pending and only hides those, so the banner re-arms if the instance slips
- * back into an unconfigured state. Renders nothing while loading or on error.
+ * Slim banner at the top of the chat home listing what is left to configure:
+ * the required items, then each optional feature that is still off. One item
+ * is one line with its action; several collapse into a single line that
+ * expands to one row per item. Each item can be dismissed on its own, and a
+ * dismissal lapses once the item is done, so one that comes back shows again.
+ * Renders nothing while loading or on error.
  */
 
 "use client";
@@ -13,14 +13,14 @@ import { Button } from "@heroui/button";
 import { ArrowDown01Icon, Cancel01Icon, Wrench01Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import {
   buildSetupChecklist,
-  isChecklistDismissed,
   type SetupChecklistItem,
+  visibleChecklistItems,
 } from "@/features/setup-wizard/utils/setupChecklist";
 import { cn } from "@/lib/utils";
 import { useSetupChecklistStore } from "@/stores/setupChecklistStore";
@@ -35,6 +35,28 @@ function ChecklistAction({ item }: { item: SetupChecklistItem }) {
       className="shrink-0 font-medium"
     >
       {item.actionLabel}
+    </Button>
+  );
+}
+
+function DismissButton({
+  label,
+  onDismiss,
+}: {
+  label: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <Button
+      isIconOnly
+      size="sm"
+      variant="light"
+      radius="full"
+      aria-label={label}
+      onPress={onDismiss}
+      className="shrink-0 text-zinc-500"
+    >
+      <Cancel01Icon size={14} />
     </Button>
   );
 }
@@ -67,24 +89,24 @@ export function SetupChecklistBanner({
   const isAdmin = useCurrentUser().role === "admin";
   const dismissedKeys = useSetupChecklistStore((s) => s.dismissedKeys);
   const dismiss = useSetupChecklistStore((s) => s.dismiss);
+  const keepPending = useSetupChecklistStore((s) => s.keepPending);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const items = useMemo(
-    () => (status && catalog ? buildSetupChecklist(status, catalog) : []),
+    () => (status && catalog ? buildSetupChecklist(status, catalog) : null),
     [status, catalog],
   );
 
-  if (
-    !isAdmin ||
-    items.length === 0 ||
-    isChecklistDismissed(items, dismissedKeys)
-  )
-    return null;
+  useEffect(() => {
+    if (items) keepPending(items.map((item) => item.key));
+  }, [items, keepPending]);
 
-  const handleDismiss = () => dismiss(items.map((item) => item.key));
+  if (!isAdmin || !items) return null;
+  const visible = visibleChecklistItems(items, dismissedKeys);
+  if (visible.length === 0) return null;
 
-  const [onlyItem] = items;
-  const isSingle = items.length === 1;
+  const [onlyItem] = visible;
+  const isSingle = visible.length === 1;
 
   return (
     <m.div
@@ -101,7 +123,7 @@ export function SetupChecklistBanner({
           ) : (
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <p className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-200">
-                {items.length} setup steps left
+                {visible.length} setup steps left
               </p>
               <Button
                 size="sm"
@@ -123,26 +145,23 @@ export function SetupChecklistBanner({
               </Button>
             </div>
           )}
-          <Button
-            isIconOnly
-            size="sm"
-            variant="light"
-            radius="full"
-            aria-label="Dismiss setup checklist"
-            onPress={handleDismiss}
-            className="shrink-0 text-zinc-500"
-          >
-            <Cancel01Icon size={14} />
-          </Button>
+          <DismissButton
+            label="Dismiss setup checklist"
+            onDismiss={() => dismiss(visible.map((item) => item.key))}
+          />
         </div>
         {!isSingle && isExpanded && (
           <ul className="mt-2 space-y-1.5">
-            {items.map((item) => (
+            {visible.map((item) => (
               <li
                 key={item.key}
-                className="flex items-center rounded-xl bg-zinc-900 py-1.5 pr-1.5 pl-3"
+                className="flex items-center gap-1 rounded-xl bg-zinc-900 py-1.5 pr-1.5 pl-3"
               >
                 <ChecklistLine item={item} />
+                <DismissButton
+                  label={`Dismiss ${item.title}`}
+                  onDismiss={() => dismiss([item.key])}
+                />
               </li>
             ))}
           </ul>

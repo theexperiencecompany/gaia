@@ -53,7 +53,7 @@ export function ProviderSetupCard({
     (!config.needs_base_url || baseUrl.trim().length > 0);
 
   return (
-    <div className="w-full rounded-2xl bg-zinc-800 p-4">
+    <div className="w-full rounded-2xl bg-zinc-900 p-4">
       <div className="mb-1 flex items-center gap-3">
         <ProviderCardIcon config={config} preset={preset} />
         <p className="flex-1 text-sm font-medium text-zinc-100">
@@ -82,6 +82,7 @@ export function ProviderSetupCard({
       <div className="space-y-2">
         {config.showApiKey && (
           <ProviderApiKeyInput
+            label={config.api_key_label}
             keyUrl={config.key_url}
             placeholder="Paste your API key"
             value={apiKey}
@@ -156,7 +157,7 @@ function ProviderCardIcon({
   // A preset-driven card shows a neutral glyph until a gateway is picked.
   if (config.hasPresets && !preset) {
     return (
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-900">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-800">
         <McpServerIcon size={16} className="text-zinc-300" />
       </span>
     );

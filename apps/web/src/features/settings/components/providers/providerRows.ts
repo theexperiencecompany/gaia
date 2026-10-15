@@ -66,6 +66,9 @@ const PROVIDER_ROWS: ProviderRow[] = [
   keyOnlyRow("cloudinary"),
   keyOnlyRow("google_oauth"),
   keyOnlyRow("firecrawl"),
+  keyOnlyRow("openweather"),
+  keyOnlyRow("llamaparse"),
+  keyOnlyRow("github"),
 ];
 
 export type CustomPresetId = CustomPresetKey | "manual";
@@ -79,7 +82,7 @@ export function resolveProviderRow(
   return { ...resolveCatalogProvider(key, catalog), ...row };
 }
 
-/** One feature as Settings shows it: what it runs on now and the providers that can upgrade it. */
+/** One feature as Settings and the wizard show it: what it runs on now and the providers that can upgrade it. */
 export interface FeatureGroup {
   key: ProviderFeature;
   spec: FeatureSpec;
@@ -87,17 +90,23 @@ export interface FeatureGroup {
   rows: CatalogProviderRow[];
 }
 
-/** The catalog's features in order, each with its offered providers, connected ones first. */
-export function groupProvidersByFeature(
+/** Query param that scrolls Settings > Providers & Tools to one feature's card. */
+export const FEATURE_FOCUS_PARAM = "feature";
+
+/** The Settings link that opens one feature's provider card. */
+export function providerFeatureHref(feature: ProviderFeature): string {
+  return `/settings/providers?${FEATURE_FOCUS_PARAM}=${feature}`;
+}
+
+/** One feature with its offered providers, connected ones first. */
+export function resolveFeatureGroup(
+  key: ProviderFeature,
   catalog: ProviderCatalog,
   status: SetupStatus | undefined,
-): FeatureGroup[] {
-  // The API keys features by exactly the ProviderFeature values.
-  const features = Object.entries(catalog.features) as [
-    ProviderFeature,
-    FeatureSpec,
-  ][];
-  return features.map(([key, spec]) => ({
+): FeatureGroup {
+  const spec = catalog.features[key];
+  if (!spec) throw new Error(`Provider catalog has no feature "${key}"`);
+  return {
     key,
     spec,
     status: status?.features[key],
@@ -109,5 +118,25 @@ export function groupProvidersByFeature(
           Number(isProviderConfigured(status, b.key)) -
           Number(isProviderConfigured(status, a.key)),
       ),
-  }));
+  };
+}
+
+/** The catalog's features in order. */
+export function groupProvidersByFeature(
+  catalog: ProviderCatalog,
+  status: SetupStatus | undefined,
+): FeatureGroup[] {
+  // The API keys features by exactly the ProviderFeature values.
+  const keys = Object.keys(catalog.features) as ProviderFeature[];
+  return keys.map((key) => resolveFeatureGroup(key, catalog, status));
+}
+
+/** The provider serving the feature now, else the first connected one, else the first offered. */
+export function initialPickedProvider(
+  group: FeatureGroup,
+): CatalogProviderRow | undefined {
+  const serving = group.status?.in_use.find((engine) =>
+    group.rows.some((row) => row.key === engine),
+  );
+  return group.rows.find((row) => row.key === serving) ?? group.rows[0];
 }

@@ -1,7 +1,7 @@
 /**
- * Wizard step 2 — web search already works keyless; optional Tavily, Exa or
- * Brave keys improve it. Same card pattern as the provider step; entirely
- * skippable.
+ * Wizard step 2 — web search already works on its free built-in engine; the
+ * shared provider picker offers the optional upgrades, one provider at a time.
+ * Entirely skippable.
  */
 
 "use client";
@@ -11,10 +11,9 @@ import type {
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
-import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
-import { MOTION_FADE_UP, SEARCH_PROVIDER_CARDS } from "../../constants";
-import { resolveProviderCard } from "../../utils/providerCards";
-import { ProviderSetupCard } from "../ProviderSetupCard";
+import { FeatureProviderPicker } from "@/features/settings/components/providers/FeatureProviderPicker";
+import { resolveFeatureGroup } from "@/features/settings/components/providers/providerRows";
+import { MOTION_FADE_UP } from "../../constants";
 
 interface SearchStepProps {
   status: SetupStatus;
@@ -24,15 +23,13 @@ interface SearchStepProps {
 
 export function SearchStep({ status, catalog, onSaved }: SearchStepProps) {
   return (
-    <m.div className="flex w-full flex-col gap-3" {...MOTION_FADE_UP}>
-      {SEARCH_PROVIDER_CARDS.map((card) => (
-        <ProviderSetupCard
-          key={card.key}
-          config={resolveProviderCard(card, catalog)}
-          isConfigured={isProviderConfigured(status, card.key)}
-          onSaved={onSaved}
-        />
-      ))}
+    <m.div className="w-full rounded-2xl bg-zinc-900 p-4" {...MOTION_FADE_UP}>
+      <FeatureProviderPicker
+        group={resolveFeatureGroup("web_search", catalog, status)}
+        catalog={catalog}
+        status={status}
+        onSaved={onSaved}
+      />
     </m.div>
   );
 }

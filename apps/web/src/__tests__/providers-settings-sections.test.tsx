@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Settings shows one card per feature: whether it works, what it runs on, and its optional providers. */
+/** Settings shows one card per feature: whether it works, what it runs on, and one picker over its providers. */
 
 import type { FeatureSpec, FeatureStatus } from "@gaia/shared/api/generated";
 import { render, screen, within } from "@testing-library/react";
@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ProviderCatalog,
   SetupStatus,
+  StoredProviderConfig,
 } from "@/features/settings/api/providersApi";
 
 const CATALOG_LABELS: [string, string][] = [
@@ -40,6 +41,9 @@ const catalog: ProviderCatalog = {
         default_model: "",
         favicon_domain: `${key}.example`,
         needs_base_url: key === "searxng",
+        account_id_label: key === "cloudinary" ? "Cloud name" : "",
+        second_key_label: key === "cloudinary" ? "API secret" : "",
+        api_key_label: "API key",
       },
     ]),
   ),
@@ -63,6 +67,17 @@ const catalog: ProviderCatalog = {
     }),
     email: feature("Email", ["resend"]),
     integrations: feature("Integrations", ["composio"]),
+    voice: {
+      ...feature("Voice", [], {
+        engine: "hosted_voice",
+        label: "GAIA voice",
+        description: "Hosted voice.",
+      }),
+      self_host_gap: {
+        reason: "Voice needs GAIA Cloud's LiveKit project.",
+        docs_url: "https://docs.example/voice",
+      },
+    },
   },
 };
 
@@ -70,6 +85,7 @@ const configured = new Set(["openai", "firecrawl"]);
 
 const using = (...in_use: FeatureStatus["in_use"]): FeatureStatus => ({
   working: in_use.length > 0,
+  available: true,
   in_use,
 });
 
@@ -103,6 +119,7 @@ const status = {
     file_storage: using("local_disk"),
     email: using(),
     integrations: using(),
+    voice: { working: false, available: false, in_use: [] },
   },
   plans_seeded: false,
   bots: {
@@ -112,17 +129,34 @@ const status = {
   },
 } as SetupStatus;
 
+const statusQuery: { data: SetupStatus | undefined } = { data: status };
+const storedConfigs: { data: Record<string, StoredProviderConfig> } = {
+  data: {},
+};
+
+const searchParams = { value: new URLSearchParams() };
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => searchParams.value,
+}));
+vi.mock("@/components/shared/ConfirmationDialog", () => ({
+  ConfirmationDialog: () => null,
+}));
 vi.mock("@/features/settings/hooks/useProviderCatalog", () => ({
   useProviderCatalog: () => ({ data: catalog, isError: false }),
 }));
 vi.mock("@/features/settings/hooks/useProviderConfigs", () => ({
-  useProviderConfigs: () => ({ data: {}, isLoading: false, refetch: vi.fn() }),
+  useProviderConfigs: () => ({
+    data: storedConfigs.data,
+    isLoading: false,
+    refetch: vi.fn(),
+  }),
 }));
 vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@/features/settings/hooks/useSetupStatus")
   >()),
-  useSetupStatus: () => ({ data: status, refetch: vi.fn() }),
+  useSetupStatus: () => ({ data: statusQuery.data, refetch: vi.fn() }),
 }));
 
 import { ProvidersSettings } from "@/features/settings/components/ProvidersSettings";
@@ -132,6 +166,9 @@ const card = (title: string) =>
 
 describe("ProvidersSettings", () => {
   beforeEach(() => {
+    statusQuery.data = status;
+    storedConfigs.data = {};
+    searchParams.value = new URLSearchParams();
     render(<ProvidersSettings />);
   });
 
@@ -143,16 +180,30 @@ describe("ProvidersSettings", () => {
       "File storage",
       "Email",
       "Integrations",
+      "Voice",
     ]);
   });
 
-  it("shows keyless web search working, with its keys as optional upgrades", () => {
+  it("shows keyless web search working, with one picker and only the picked provider's key", () => {
     const search = card("Web search");
     expect(search.getByText("Working")).toBeTruthy();
     expect(search.getByText("Using: DuckDuckGo")).toBeTruthy();
-    expect(search.getByText("Optional upgrades")).toBeTruthy();
-    expect(search.getAllByRole("button", { name: "Add key" })).toHaveLength(2);
-    expect(search.getByRole("button", { name: "Add address" })).toBeTruthy();
+    expect(search.getByText("Free, no key needed.")).toBeTruthy();
+    expect(search.getAllByLabelText("Provider", { exact: false })).not.toEqual(
+      [],
+    );
+    expect(search.getAllByLabelText("API key")).toHaveLength(1);
+    expect(search.getByPlaceholderText("Paste your Tavily key")).toBeTruthy();
+    expect(search.queryByPlaceholderText("Paste your Exa key")).toBeNull();
+  });
+
+  it("picks the provider serving a feature and marks it in use", () => {
+    const models = card("AI models");
+    expect(models.getByText("Using: OpenAI")).toBeTruthy();
+    expect(models.getByPlaceholderText("Paste your OpenAI key")).toBeTruthy();
+    expect(
+      models.queryByPlaceholderText("Paste your OpenRouter key"),
+    ).toBeNull();
   });
 
   it("names the engine in use first and the rest as backups", () => {
@@ -166,7 +217,22 @@ describe("ProvidersSettings", () => {
     const email = card("Email");
     expect(email.getByText("Off")).toBeTruthy();
     expect(email.getByText("Not running")).toBeTruthy();
-    expect(email.getByText("Add a provider below to turn it on.")).toBeTruthy();
+    expect(
+      email.getByText("Pick a provider below to turn it on."),
+    ).toBeTruthy();
+  });
+
+  it("explains a feature this instance cannot run, with a docs link and no key field", () => {
+    const voice = card("Voice");
+    expect(voice.getByText("Unavailable")).toBeTruthy();
+    expect(
+      voice.getByText("Voice needs GAIA Cloud's LiveKit project."),
+    ).toBeTruthy();
+    expect(
+      voice.getByText("Read the docs").closest("a")?.getAttribute("href"),
+    ).toBe("https://docs.example/voice");
+    expect(voice.queryByLabelText("API key")).toBeNull();
+    expect(voice.queryByText(/Provider/)).toBeNull();
   });
 
   it("sends Composio to Integrations setup and hides Cloudinary on local storage", () => {
@@ -177,5 +243,59 @@ describe("ProvidersSettings", () => {
         ?.getAttribute("href"),
     ).toBe("/settings/integrations-setup");
     expect(screen.queryByText("Cloudinary")).toBeNull();
+  });
+});
+
+describe("ProvidersSettings before setup status loads", () => {
+  it("picks the serving provider once status arrives after the first render", () => {
+    statusQuery.data = undefined;
+    const { rerender } = render(<ProvidersSettings />);
+
+    statusQuery.data = status;
+    rerender(<ProvidersSettings />);
+
+    const models = card("AI models");
+    expect(models.getByPlaceholderText("Paste your OpenAI key")).toBeTruthy();
+  });
+});
+
+describe("ProvidersSettings for a two-part account", () => {
+  it("asks for Cloudinary's cloud name and API secret, seeding what is stored", () => {
+    statusQuery.data = {
+      ...status,
+      deployment: { ...status.deployment, blob_store: "cloudinary" },
+    };
+    storedConfigs.data = {
+      cloudinary: {
+        configured: true,
+        account_id: "my-cloud",
+        api_key_hint: "...1234",
+        api_secret_hint: "...abcd",
+      } as StoredProviderConfig,
+    };
+    render(<ProvidersSettings />);
+
+    const storage = card("File storage");
+    expect(
+      (storage.getByLabelText("Cloud name") as HTMLInputElement).value,
+    ).toBe("my-cloud");
+    expect(
+      storage.getByPlaceholderText("Stored (...abcd), paste to replace"),
+    ).toBeTruthy();
+    expect(card("Email").queryByLabelText("Cloud name")).toBeNull();
+  });
+});
+
+describe("ProvidersSettings opened for one feature", () => {
+  it("scrolls the linked feature's card into view", () => {
+    statusQuery.data = status;
+    searchParams.value = new URLSearchParams("feature=email");
+    const scrolled: string[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.querySelector("section")?.ariaLabel ?? "");
+    };
+    render(<ProvidersSettings />);
+
+    expect(scrolled).toEqual(["Email"]);
   });
 });

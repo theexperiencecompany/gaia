@@ -8,13 +8,16 @@ import { VisibilityToggleButton } from "@/components/shared/VisibilityToggleButt
 
 interface ProviderApiKeyInputProps
   extends Omit<InputProps, "type" | "label" | "endContent"> {
+  /** The field's name, e.g. "API key" or "API secret". */
+  label: string;
   /** Where the provider issues keys; empty when it has no such page. */
   keyUrl: string;
 }
 
-/** A provider's API key field: masked with a reveal toggle, plus a link to
+/** A provider's secret field: masked with a reveal toggle, plus a link to
  * where the key is issued when the provider has one. */
 export function ProviderApiKeyInput({
+  label,
   keyUrl,
   ...inputProps
 }: ProviderApiKeyInputProps) {
@@ -25,12 +28,12 @@ export function ProviderApiKeyInput({
       <Input
         {...inputProps}
         type={isVisible ? "text" : "password"}
-        label="API key"
+        label={label}
         endContent={
           <VisibilityToggleButton
             visible={isVisible}
             onToggle={() => setIsVisible((visible) => !visible)}
-            subject="API key"
+            subject={label}
           />
         }
       />
