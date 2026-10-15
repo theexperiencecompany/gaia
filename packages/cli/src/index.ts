@@ -17,7 +17,7 @@ import { runStop } from "./commands/stop/handler.js";
 import { runLogs } from "./commands/stream-logs/handler.js";
 import { runUp } from "./commands/up/handler.js";
 import { runUpdate, type UpdateOptions } from "./commands/update/handler.js";
-import { LLM_PROVIDERS, type LlmProvider } from "./lib/answers.js";
+import { LLM_PROVIDERS, type LlmProvider } from "./lib/llm-flags.js";
 import { CLI_VERSION } from "./lib/version.js";
 
 const program = new Command();
@@ -28,6 +28,8 @@ interface UpCliOptions {
   llmKey?: string;
   /** Restricted to LLM_PROVIDERS by the option's choices. */
   llmProvider?: LlmProvider;
+  llmBaseUrl?: string;
+  llmModel?: string;
   webPort?: number;
   domain?: string;
   build?: boolean;
@@ -65,12 +67,23 @@ program
     "--yes",
     "Accept all defaults (no prompts), including installing Docker when missing",
   )
-  .option("--llm-key <key>", "LLM API key for first boot")
   .addOption(
     new Option(
       "--llm-provider <provider>",
-      "LLM provider for --llm-key",
+      "AI provider to save once GAIA is up (as the setup wizard would)",
     ).choices(LLM_PROVIDERS),
+  )
+  .option(
+    "--llm-key <key>",
+    "API key for --llm-provider (openrouter, gemini, openai, custom)",
+  )
+  .option(
+    "--llm-base-url <url>",
+    "Endpoint for --llm-provider ollama (default http://host.docker.internal:11434) or custom",
+  )
+  .option(
+    "--llm-model <model>",
+    "Model for --llm-provider ollama (optional) or custom (required)",
   )
   .option(
     "--web-port <port>",

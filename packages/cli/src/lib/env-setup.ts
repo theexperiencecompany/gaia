@@ -1,10 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { CLIStore } from "../ui/store.js";
-import { type LlmProvider, PROVIDER_ENV_VAR } from "./answers.js";
 import { getDockerSocketGid } from "./docker.js";
 import * as envParser from "./env-parser.js";
 import * as envWriter from "./env-writer.js";
+import type { LlmProvider } from "./llm-flags.js";
 import { collectMachineSecrets } from "./machine-secrets.js";
 import { apiEnvPath, detectSetupMode } from "./service-starter.js";
 
@@ -14,8 +14,6 @@ const delay = (ms: number): Promise<void> =>
 export interface EnvSetupOptions {
   /** Provider selected via `gaia up --llm-provider`. */
   llmProvider?: LlmProvider;
-  /** API key supplied via `gaia up --llm-key`. */
-  llmKey?: string;
   /** Public domain from `gaia up --domain`; GAIA is served at https://<domain>. */
   domain?: string;
 }
@@ -70,7 +68,6 @@ export async function runEnvSetup(
     answers["HOST"] = `https://${options.domain}`;
     answers["FRONTEND_URL"] = `https://${options.domain}`;
   }
-  applyLlmFlagAnswers(answers, options);
 
   if (envMethod === "infisical") {
     await collectInfisicalEnv(store, answers);
@@ -154,15 +151,6 @@ function mergeEnvLayers(layers: {
  * the web wizard — no key is written here; the up flow prints the wizard URL
  * after boot instead.
  */
-function applyLlmFlagAnswers(
-  envValues: Record<string, string>,
-  options?: EnvSetupOptions,
-): void {
-  if (!options?.llmKey || !options.llmProvider) return;
-  if (options.llmProvider === "custom") return;
-  envValues[PROVIDER_ENV_VAR[options.llmProvider]] = options.llmKey;
-}
-
 async function collectInfisicalEnv(
   store: CLIStore,
   envValues: Record<string, string>,

@@ -20,7 +20,11 @@ import { THEME_COLOR } from "../../ui/constants.js";
 import { DependencyInstallStep } from "../../ui/screens/init.js";
 import type { CLIState, CLIStore } from "../../ui/store.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
-import { codeSandboxSummary, upHeadline } from "./flow.js";
+import {
+  codeSandboxSummary,
+  savedProviderSummary,
+  upHeadline,
+} from "./flow.js";
 
 const BUILD_WAIT_HINT =
   "This can take 5-30 min on 4 GB RAM — please do not cancel.";
@@ -31,7 +35,7 @@ const UpFinishedStep: React.FC<{
   apiUrl: string;
   noStart: boolean;
   stillStarting: boolean;
-  customProviderNote: boolean;
+  savedProvider?: string;
   codeSandbox: boolean;
   setupComplete: boolean;
 }> = ({
@@ -40,7 +44,7 @@ const UpFinishedStep: React.FC<{
   apiUrl,
   noStart,
   stillStarting,
-  customProviderNote,
+  savedProvider,
   codeSandbox,
   setupComplete,
 }) => {
@@ -110,11 +114,9 @@ const UpFinishedStep: React.FC<{
         <Text color="gray">{codeSandboxSummary(codeSandbox)}</Text>
       </Box>
 
-      {customProviderNote && (
+      {savedProvider && (
         <Box marginTop={1}>
-          <Text color="gray">
-            Custom LLM providers are configured in the setup wizard.
-          </Text>
+          <Text color="gray">{savedProviderSummary(savedProvider)}</Text>
         </Box>
       )}
 
@@ -191,7 +193,7 @@ const UpSummaryStep: React.FC<{ state: CLIState }> = ({ state }) => {
       apiUrl={state.data.upApiUrl}
       noStart={noStart}
       stillStarting={!noStart && state.data.upStillStarting === true}
-      customProviderNote={state.data.customProviderNote === true}
+      savedProvider={state.data.upSavedProvider}
       codeSandbox={state.data.upCodeSandbox === true}
       setupComplete={state.data.upSetupComplete === true}
     />
