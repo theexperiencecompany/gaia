@@ -1,29 +1,28 @@
-"""The request path as logs may record it, with secret path parameters named.
+"""The request path as logs may record it, with heygaia.link slugs masked.
 
 Kept free of settings: the exception handlers import it, and the embedding
 sidecar boots them without API secrets.
 """
 
+import re
+
 from fastapi import Request
 
+SHORT_LINK_ROUTE_PREFIX = "/l"
+SHORT_LINK_UNSHARE_PATH = "/unshare"
 
-def log_route_template_as_path(request: Request) -> None:
-    """Route dependency: log this request's path with its path parameters named.
-
-    For routes whose path carries a secret (a heygaia.link slug is a working
-    capability), so /api/v1/l/{slug} reaches the logs instead of the live link.
-    """
-    by_value = {value: f"{{{name}}}" for name, value in request.path_params.items()}
-    request.state.loggable_path = "/".join(
-        by_value.get(segment, segment) for segment in request.url.path.split("/")
-    )
+# Matched on the raw URL path, not the routed template, so a request refused
+# before its route runs (405, rate limit, auth) is masked too.
+_SHORT_LINK_SLUG = re.compile(
+    rf"^(/api/v1{SHORT_LINK_ROUTE_PREFIX}/)"
+    rf"(?!{SHORT_LINK_UNSHARE_PATH.lstrip('/')}(?:/|$))[^/]+"
+)
 
 
 def loggable_request_path(request: Request) -> str:
     """Return the request path as logs may record it.
 
-    Parameters named where a route marked its path secret (log_route_template_as_path),
-    the URL path otherwise.
+    A heygaia.link slug is a working capability, so /api/v1/l/<slug> is logged
+    as /api/v1/l/{slug} instead of the live link.
     """
-    path: str = getattr(request.state, "loggable_path", request.url.path)
-    return path
+    return _SHORT_LINK_SLUG.sub(r"\1{slug}", request.url.path)
