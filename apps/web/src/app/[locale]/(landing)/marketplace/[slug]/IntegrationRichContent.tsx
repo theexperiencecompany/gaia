@@ -11,11 +11,13 @@ import { getIntegrationFAQs } from "./faqs";
 interface IntegrationRichContentProps {
   readonly integration: PublicIntegrationResponse;
   readonly comparisonSlug?: string;
+  readonly alternativeSlug?: string;
 }
 
 export function IntegrationRichContent({
   integration,
   comparisonSlug,
+  alternativeSlug,
 }: IntegrationRichContentProps) {
   const howItWorksSteps =
     integration.content?.howItWorks && integration.content.howItWorks.length > 0
@@ -116,17 +118,32 @@ export function IntegrationRichContent({
         </Button>
       </section>
 
-      {/* Cross-link to comparison page when one exists */}
-      {comparisonSlug && (
-        <p className="text-sm text-zinc-500 border-t border-zinc-800/50 pt-4">
-          Evaluating your options?{" "}
-          <Link
-            href={`/compare/${comparisonSlug}`}
-            className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
-          >
-            Compare GAIA vs {name} &rarr;
-          </Link>
-        </p>
+      {/* Cross-links to comparison and alternative guides when they exist */}
+      {(comparisonSlug || alternativeSlug) && (
+        <div className="space-y-2 border-t border-zinc-800/50 pt-4 text-sm text-zinc-500">
+          {comparisonSlug && (
+            <p>
+              Evaluating your options?{" "}
+              <Link
+                href={`/compare/${comparisonSlug}`}
+                className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+              >
+                Compare GAIA vs {name} &rarr;
+              </Link>
+            </p>
+          )}
+          {alternativeSlug && (
+            <p>
+              Looking to switch?{" "}
+              <Link
+                href={`/alternative-to/${alternativeSlug}`}
+                className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+              >
+                Best {name} alternative guide &rarr;
+              </Link>
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

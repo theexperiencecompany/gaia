@@ -18,6 +18,7 @@ import {
 } from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -90,6 +91,7 @@ interface AlternativeArticleProps {
   >;
   readonly slug: string;
   readonly hasComparisonPage: boolean;
+  readonly marketplacePath: string | null;
   readonly relatedAlternatives: Awaited<
     ReturnType<typeof getTranslatedAlternatives>
   >;
@@ -103,6 +105,7 @@ function AlternativeArticle({
   data,
   slug,
   hasComparisonPage,
+  marketplacePath,
   relatedAlternatives,
   relatedComparisons,
 }: AlternativeArticleProps) {
@@ -261,6 +264,25 @@ function AlternativeArticle({
         <FAQAccordion faqs={data.faqs} />
       </section>
 
+      {/* Connect CTA: only rendered when the marketplace page exists */}
+      {marketplacePath && (
+        <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
+          <h2 className="mb-3 text-2xl font-semibold text-white">
+            Connect {data.name} to GAIA
+          </h2>
+          <p className="mb-6 leading-relaxed text-zinc-400">
+            Use {data.name} with your AI assistant: connect it in under two
+            minutes, then automate {data.name} workflows in plain English.
+          </p>
+          <Link
+            href={marketplacePath}
+            className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
+          >
+            Connect {data.name}
+          </Link>
+        </section>
+      )}
+
       {/* More Alternatives to Consider */}
       {relatedAlternatives.length > 0 && (
         <section className="mb-16">
@@ -372,6 +394,9 @@ export default async function AlternativePage({ params }: PageProps) {
     notFound();
   }
 
+  // "Connect {name}" CTA only where the marketplace slug verifiably exists.
+  const marketplacePath = await resolveMarketplacePath(slug);
+
   const hasComparisonPage = comparisonData !== undefined;
 
   const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
@@ -434,6 +459,7 @@ export default async function AlternativePage({ params }: PageProps) {
         data={data}
         slug={slug}
         hasComparisonPage={hasComparisonPage}
+        marketplacePath={marketplacePath}
         relatedAlternatives={relatedAlternatives}
         relatedComparisons={relatedComparisons}
       />

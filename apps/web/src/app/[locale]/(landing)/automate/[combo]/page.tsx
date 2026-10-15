@@ -12,6 +12,7 @@ import {
 } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -115,6 +116,17 @@ export default async function AutomateComboPage({ params }: PageProps) {
   );
 
   const faqSchema = generateFAQSchema(data.faqs);
+
+  // Direct detail links where the marketplace slug verifiably exists;
+  // otherwise the search page stays the fallback (never link a 404).
+  const [toolAPath, toolBPath] = await Promise.all([
+    resolveMarketplacePath(data.toolASlug),
+    resolveMarketplacePath(data.toolBSlug),
+  ]);
+  const toolAHref =
+    toolAPath ?? `/marketplace?search=${encodeURIComponent(data.toolA)}`;
+  const toolBHref =
+    toolBPath ?? `/marketplace?search=${encodeURIComponent(data.toolB)}`;
 
   return (
     <>
@@ -249,7 +261,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
-              href={`/marketplace?search=${encodeURIComponent(data.toolA)}`}
+              href={toolAHref}
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
@@ -260,7 +272,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
               </p>
             </Link>
             <Link
-              href={`/marketplace?search=${encodeURIComponent(data.toolB)}`}
+              href={toolBHref}
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">

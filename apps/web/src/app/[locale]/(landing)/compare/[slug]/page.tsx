@@ -15,6 +15,7 @@ import {
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -118,6 +119,9 @@ export default async function ComparisonPage({ params }: PageProps) {
 
   const faqSchema = generateFAQSchema(data.faqs);
   const productSchema = generateProductSchema();
+
+  // "Connect {name}" CTA only where the marketplace slug verifiably exists.
+  const marketplacePath = await resolveMarketplacePath(slug);
 
   return (
     <>
@@ -232,6 +236,25 @@ export default async function ComparisonPage({ params }: PageProps) {
             {data.verdict}
           </p>
         </section>
+
+        {/* Connect CTA: only rendered when the marketplace page exists */}
+        {marketplacePath && (
+          <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
+            <h2 className="mb-3 text-2xl font-semibold text-white">
+              Connect {data.name} to GAIA
+            </h2>
+            <p className="mb-6 leading-relaxed text-zinc-400">
+              Use {data.name} with your AI assistant: connect it in under two
+              minutes, then automate {data.name} workflows in plain English.
+            </p>
+            <Link
+              href={marketplacePath}
+              className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
+            >
+              Connect {data.name}
+            </Link>
+          </section>
+        )}
 
         {/* FAQ */}
         <section className="mb-16">

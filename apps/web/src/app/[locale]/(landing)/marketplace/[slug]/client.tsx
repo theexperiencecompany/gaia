@@ -15,6 +15,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
@@ -41,10 +42,18 @@ import { ToolCard } from "./ToolCard";
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
   comparisonSlug?: string;
+  alternativeSlug?: string;
   /** Server-fetched so related links render in SSR HTML for crawlers. */
   initialRelatedIntegrations?: CommunityIntegration[];
   /** Server-fetched so related links render in SSR HTML for crawlers. */
   initialRelatedWorkflows?: CommunityWorkflow[];
+  /** Matching automate combos from local JSON (no backend needed). */
+  automateCombos?: Array<{
+    slug: string;
+    toolA: string;
+    toolB: string;
+    tagline: string;
+  }>;
 }
 
 function IntegrationMetaBar({
@@ -163,8 +172,10 @@ function IntegrationMetaBar({
 export function IntegrationDetailClient({
   integration,
   comparisonSlug,
+  alternativeSlug,
   initialRelatedIntegrations,
   initialRelatedWorkflows,
+  automateCombos,
 }: IntegrationDetailClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -397,6 +408,7 @@ export function IntegrationDetailClient({
           <IntegrationRichContent
             integration={integration}
             comparisonSlug={comparisonSlug}
+            alternativeSlug={alternativeSlug}
           />
 
           {/* Related integrations in the same category */}
@@ -406,6 +418,37 @@ export function IntegrationDetailClient({
             integrationName={integration.name}
             initialIntegrations={initialRelatedIntegrations}
           />
+
+          {/* Matching automate guides: detail -> automate cross-links */}
+          {automateCombos && automateCombos.length > 0 && (
+            <section className="space-y-6 rounded-3xl bg-zinc-900/50 p-8 backdrop-blur-md">
+              <div>
+                <h2 className="mb-2 text-2xl font-medium text-foreground">
+                  Automate {integration.name} with other tools
+                </h2>
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  Step-by-step guides for connecting {integration.name} to the
+                  tools you already use.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {automateCombos.map((combo) => (
+                  <Link
+                    key={combo.slug}
+                    href={`/automate/${combo.slug}`}
+                    className="group rounded-3xl bg-zinc-800 p-4 transition-colors select-none hover:bg-zinc-700/50"
+                  >
+                    <h3 className="mb-1 text-base font-medium text-zinc-100 group-hover:text-primary">
+                      {combo.toolA} + {combo.toolB}
+                    </h3>
+                    <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
+                      {combo.tagline}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
 

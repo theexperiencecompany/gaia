@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import JsonLd from "@/components/seo/JsonLd";
+import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
 import { getComparison } from "@/features/comparisons/data/comparisonsData";
+import { getAllCombos } from "@/features/integrations/data/combosData";
 import type {
   CommunityIntegration,
   CommunityIntegrationsResponse,
@@ -304,10 +306,14 @@ export default async function IntegrationPage({ params }: Props) {
 
   // Same-category siblings and related workflows, fetched server-side so
   // crawlers see real links in the SSR HTML instead of client-only orphans.
-  const [relatedIntegrations, relatedWorkflows] = await Promise.all([
-    getRelatedIntegrations(integration.category, slug),
-    getRelatedWorkflows(integration.integrationId),
-  ]);
+  // Combos and the alternative guide come from local JSON (no backend).
+  const [relatedIntegrations, relatedWorkflows, automateCombos, alternative] =
+    await Promise.all([
+      getRelatedIntegrations(integration.category, slug),
+      getRelatedWorkflows(integration.integrationId),
+      getAutomateCombos(slug),
+      getTranslatedAlternative(slug),
+    ]);
 
   return (
     <>
@@ -323,11 +329,35 @@ export default async function IntegrationPage({ params }: Props) {
       <IntegrationDetailClient
         integration={integration}
         comparisonSlug={comparisonSlug}
+        alternativeSlug={alternative ? slug : undefined}
         initialRelatedIntegrations={relatedIntegrations}
         initialRelatedWorkflows={relatedWorkflows}
+        automateCombos={automateCombos}
       />
     </>
   );
+}
+
+/** Automate combos featuring this tool (canonical entries only). */
+async function getAutomateCombos(
+  slug: string,
+): Promise<
+  Array<{ slug: string; toolA: string; toolB: string; tagline: string }>
+> {
+  const combos = await getAllCombos();
+  return combos
+    .filter(
+      (combo) =>
+        !combo.canonicalSlug &&
+        (combo.toolASlug === slug || combo.toolBSlug === slug),
+    )
+    .slice(0, 6)
+    .map((combo) => ({
+      slug: combo.slug,
+      toolA: combo.toolA,
+      toolB: combo.toolB,
+      tagline: combo.tagline,
+    }));
 }
 
 /** Same-category siblings for SSR related-links (excludes the current page). */

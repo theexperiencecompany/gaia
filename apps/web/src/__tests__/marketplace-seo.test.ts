@@ -10,6 +10,8 @@ import {
   generateIntegrationDescription,
   generateIntegrationTitle,
 } from "@/app/[locale]/(landing)/marketplace/[slug]/integrationMeta";
+import { getAllCombos } from "@/features/integrations/data/combosData";
+import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
 import { generateFAQSchema } from "@/lib/seo";
 
 const BANNED_TOKENS = [
@@ -195,5 +197,30 @@ describe("getIntegrationFAQs variance", () => {
       expect(emitted.mainEntity[i].name).toBe(faq.question);
       expect(emitted.mainEntity[i].acceptedAnswer.text).toBe(faq.answer);
     });
+  });
+});
+
+describe("marketplace cross-links", () => {
+  it("finds canonical automate combos for a marketplace tool slug", async () => {
+    const combos = await getAllCombos();
+    expect(combos.length).toBeGreaterThan(0);
+    const slackCombos = combos.filter(
+      (combo) =>
+        !combo.canonicalSlug &&
+        (combo.toolASlug === "slack" || combo.toolBSlug === "slack"),
+    );
+    // The detail page links these; every match must resolve to a real page.
+    expect(slackCombos.length).toBeGreaterThan(0);
+    for (const combo of slackCombos) {
+      expect(combo.slug).toBeTruthy();
+      expect(combo.tagline).toBeTruthy();
+    }
+  });
+
+  it("resolveMarketplacePath never links a 404: null when unverifiable", async () => {
+    await expect(resolveMarketplacePath("")).resolves.toBeNull();
+    await expect(
+      resolveMarketplacePath("definitely-not-a-real-slug-xyz"),
+    ).resolves.toBeNull();
   });
 });
