@@ -285,6 +285,26 @@ def test_each_kind_exposes_its_own_network_surface(
 
 
 @pytest.mark.parametrize(
+    ("kind", "searxng_first", "hosted_only_features"),
+    [
+        (DeploymentKind.PRODUCTION, False, True),
+        (DeploymentKind.DEVELOPMENT, False, True),
+        (DeploymentKind.SELFHOST, True, False),
+    ],
+)
+def test_selfhost_prefers_searxng_and_runs_no_browser_or_voice(
+    kind: DeploymentKind, searxng_first: bool, hosted_only_features: bool
+) -> None:
+    profile = deployment_profile(
+        kind, "workos", unlimited_usage=False, local_code_sandbox=False, blob_store=None
+    )
+
+    assert profile.searxng_before_duckduckgo is searxng_first
+    assert profile.browser_automation is hosted_only_features
+    assert profile.voice is hosted_only_features
+
+
+@pytest.mark.parametrize(
     ("kind", "auth_mode"),
     [
         (DeploymentKind.PRODUCTION, "workos"),

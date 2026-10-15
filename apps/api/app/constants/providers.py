@@ -490,6 +490,11 @@ class FeatureSpec(BaseModel):
 
 _SELF_HOST_VS_CLOUD_DOCS = "https://docs.heygaia.io/self-hosting/docker-setup#self-host-vs-cloud"
 
+VOICE_SELF_HOST_GAP = SelfHostGap(
+    reason="Voice needs a LiveKit server and GAIA's voice worker, which the self-host install does not include.",
+    docs_url=_SELF_HOST_VS_CLOUD_DOCS,
+)
+
 PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {
     ProviderFeature.AI_MODELS: FeatureSpec(
         label="AI models",
@@ -606,10 +611,7 @@ PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {
             description="LiveKit, speech-to-text and text-to-speech run by GAIA.",
         ),
         providers=(),
-        self_host_gap=SelfHostGap(
-            reason="Voice needs a LiveKit server and GAIA's voice worker, which the self-host install does not include.",
-            docs_url=_SELF_HOST_VS_CLOUD_DOCS,
-        ),
+        self_host_gap=VOICE_SELF_HOST_GAP,
     ),
 }
 
@@ -633,4 +635,5 @@ __all__ = [
     "ProviderFeature",
     "ProviderPreset",
     "SelfHostGap",
+    "VOICE_SELF_HOST_GAP",
 ]

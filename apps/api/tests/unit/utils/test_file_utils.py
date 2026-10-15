@@ -366,13 +366,22 @@ class TestProcessDoc:
             "app.utils.file_utils.local_document_parser.classify_pdf",
             return_value=local_document_parser.PdfClassification(needs_ocr=True),
         ):
-            result = await processor.process_file(b"%PDF-scan", "application/pdf", "scan.pdf")
+            async with captured_wide_event() as event:
+                result = await processor.process_file(b"%PDF-scan", "application/pdf", "scan.pdf")
 
         assert result == (
             "scan.pdf is a scanned PDF and was not read: reading scanned pages needs OCR, "
             "which isn't set up on this GAIA instance. An admin can add a LlamaParse key "
             "in Settings → Providers & Tools."
         )
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} Scanned PDF skipped: no OCR provider",
+                "filename": "scan.pdf",
+                "error_type": "ProviderNotConfiguredError",
+                "error": "LlamaParse OCR has no API key",
+            }
+        ]
 
     async def test_aparse_returns_list_unwraps_first(self, processor: DocumentProcessor) -> None:
         """When aparse returns a list, the first element is used (OCR fallback path)."""

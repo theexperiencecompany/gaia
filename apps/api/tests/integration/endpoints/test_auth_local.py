@@ -1738,6 +1738,22 @@ class TestLoginTrail:
             {"msg": "login failed", "actor": AUDIT_ACTOR_UNAUTHENTICATED, "email": "admin@gaia.dev"}
         ]
 
+    async def test_a_login_for_an_unknown_account_is_audited_against_the_attempted_email(
+        self, admin, _instance_secret
+    ):
+        response, event = await _post_as_router(
+            "/api/v1/auth/login", {"email": "nobody@gaia.dev", "password": TEST_PASSWORD}
+        )
+
+        assert response.status_code == 401
+        assert event["audit"] == [
+            {
+                "msg": "login failed",
+                "actor": AUDIT_ACTOR_UNAUTHENTICATED,
+                "email": "nobody@gaia.dev",
+            }
+        ]
+
     @pytest.mark.parametrize("failure", ["unknown_email", "no_credential", "wrong_password"])
     async def test_every_login_failure_costs_exactly_one_bcrypt_verify(
         self, admin, credential_store, _instance_secret, monkeypatch, failure

@@ -30,10 +30,10 @@ def test_a_local_auth_instance_refuses_to_build_a_client(
     monkeypatch.setattr(workos.settings, "ENV", "selfhost")
     monkeypatch.setattr(workos.settings, "AUTH_MODE", "local")
 
-    with pytest.raises(
-        RuntimeError, match="WorkOS is not used under AUTH_MODE=local; no client can be built"
-    ):
+    with pytest.raises(RuntimeError) as excinfo:
         getter()
+
+    assert str(excinfo.value) == "WorkOS is not used under AUTH_MODE=local; no client can be built"
 
 
 @pytest.mark.parametrize(

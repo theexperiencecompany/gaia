@@ -188,6 +188,16 @@ class TestActionableMissingConfig:
         assert "AI Providers" in message
         assert "setup wizard" in message
 
+    def test_a_custom_endpoint_saved_without_a_model_raises_the_actionable_error(self) -> None:
+        client_module._runtime_configs["custom"] = _store_config(
+            api_key="sk-custom", base_url="https://gw.example/v1"
+        )
+
+        with pytest.raises(LLMNotConfiguredError) as excinfo:
+            init_custom_llm().loader_func()
+
+        assert str(excinfo.value) == NO_PROVIDER_CONFIGURED_MESSAGE
+
     def test_ollama_with_explicit_env_is_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Ollama is keyless: an explicitly-set endpoint env var satisfies it."""
         monkeypatch.setattr(client_module.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")

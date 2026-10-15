@@ -513,6 +513,11 @@ def test_a_custom_endpoint_is_usable_only_with_key_endpoint_and_model(
     assert is_usable("custom", _config(**fields)) is usable
 
 
+@pytest.mark.parametrize("provider", ["openrouter", "tavily", "custom", "cloudinary"])
+def test_an_unresolved_provider_is_never_usable(provider: str) -> None:
+    assert is_usable(provider, None) is False
+
+
 class TestResolveCache:
     async def test_hits_within_ttl_and_expires_after(self, repo, fixed_secret, clock) -> None:
         await upsert("tavily", make_provider_config(api_key="tvly-key"))
