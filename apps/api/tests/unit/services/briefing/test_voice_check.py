@@ -158,7 +158,6 @@ class TestTheQuietDay:
             "Nothing needs you today",
             "Nobody is waiting on you this morning",
             "No replies need you, and none need your review",
-            "0 things need you today",
         ],
     )
     def test_saying_nothing_needs_the_user_is_not_a_needs_claim(self, headline: str) -> None:
@@ -167,12 +166,37 @@ class TestTheQuietDay:
         assert voice_contradictions(headline, "A quiet day.", payload) == []
 
     @pytest.mark.parametrize(
-        "lede", ["Zero meetings and 0 things waiting.", "0 events, zero replies owed."]
+        "lede",
+        [
+            "There are 0 items waiting on you, 0 done, and 0 in progress.",
+            "Zero meetings today.",
+        ],
     )
-    def test_a_zero_count_matches_an_empty_day(self, lede: str) -> None:
+    def test_a_zero_count_is_rejected_even_on_an_empty_day(self, lede: str) -> None:
         payload = _payload(sections=[], tallies=_NO_TALLIES)
 
-        assert voice_contradictions("A quiet day", lede, payload) == []
+        assert voice_contradictions("A quiet day", lede, payload) == [
+            "the prose counts 0; leave out what is not there instead of counting it"
+        ]
+
+    @pytest.mark.parametrize("term", ["held results", "lane", "sections"])
+    def test_an_internal_term_is_rejected(self, term: str) -> None:
+        problems = voice_contradictions("A quiet day", f"Nothing in your {term}.", _payload())
+
+        assert problems == [f"the prose names the internal term {term!r}"]
+
+    def test_an_internal_word_quoted_by_an_item_passes(self) -> None:
+        payload = _payload(
+            sections=[
+                {
+                    "numeral": "I",
+                    "title": "GAIA'S WORK",
+                    "items": [{"text": "Bike lane petition", "kind": "lookback"}],
+                }
+            ]
+        )
+
+        assert voice_contradictions("The bike lane petition is drafted", "", payload) == []
 
     def test_a_negation_in_an_earlier_clause_does_not_cancel_a_later_claim(self) -> None:
         problems = voice_contradictions(
@@ -180,17 +204,6 @@ class TestTheQuietDay:
         )
 
         assert any("needs the user" in p for p in problems)
-
-    def test_a_zero_count_is_rejected_when_every_count_is_filled(self) -> None:
-        payload = _payload(
-            sections=_items("lookback", "gaia", "note", "you"),
-            calendar=_SEQUOIA,
-            tallies={"done_by_you": 1, "done_by_gaia": 1},
-        )
-
-        assert voice_contradictions("0 replies drafted", "", payload) == [
-            "the prose counts 0, which no item count matches"
-        ]
 
 
 class TestProblemWording:

@@ -801,6 +801,13 @@ class TestTheDailyRunWiring:
             ("1", "waiting on you"),
         ]
 
+    async def test_a_zero_count_is_never_shown_to_the_model(self, world: World) -> None:
+        world.work = context.TrackedWork(running=[_todo("r1", "Research")])
+
+        await service.run_daily_briefing(_USER)
+
+        assert "[COUNTS] in progress: 1\n" in _prompt(world)
+
     async def test_delivery_opens_the_brief_and_posts_the_image_as_the_daily_brief(
         self, world: World
     ) -> None:
@@ -882,7 +889,7 @@ class TestTheFactsTheModelVoices:
         await service.run_daily_briefing(_USER)
 
         assert (
-            "[COUNTS] waiting on you: 3 · done: 1 · in progress: 2 · held results: 1\n"
+            "[COUNTS] waiting on you: 3 · done: 1 · in progress: 2 · while you were away: 1\n"
             "[Needs you]\n"
             "- Waiting on you: Approve the reply | summary: Draft ready"
             " | artifact holds ~11 chars | waiting on you\n"
@@ -948,8 +955,8 @@ class TestTheFactsTheModelVoices:
     async def test_with_nothing_tracked_the_model_is_told_nothing_ran(self, world: World) -> None:
         await service.run_daily_briefing(_USER)
 
+        assert "\n[COUNTS]" not in _prompt(world)
         assert (
-            "[COUNTS] waiting on you: 0 · done: 0 · in progress: 0 · held results: 0\n"
             "GAIA has no tracked work and no background work ran. Do not claim anything "
             "ran, finished, or is pending beyond what is stated here.\n"
             "The user's own todo list is empty.\n"
