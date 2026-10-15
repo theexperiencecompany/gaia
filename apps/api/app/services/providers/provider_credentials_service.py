@@ -95,10 +95,18 @@ def google_oauth_client(config: ProviderConfig | None) -> GoogleOAuthClient | No
     return GoogleOAuthClient(client_id=client_id, client_secret=client_secret)
 
 
+def _complete_custom_endpoint(config: ProviderConfig | None) -> ProviderConfig | None:
+    """Return the config when the custom lane can dial it: key, endpoint and model all set."""
+    if config and config["api_key"] and config["base_url"] and config["model"]:
+        return config
+    return None
+
+
 # Providers whose consumer needs more than one field of the config to work.
 _COMPLETIONS: dict[str, Callable[[ProviderConfig | None], object | None]] = {
     "cloudinary": cloudinary_account,
     "google_oauth": google_oauth_client,
+    "custom": _complete_custom_endpoint,
 }
 
 

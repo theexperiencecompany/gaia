@@ -490,6 +490,21 @@ class TestCardSavedAccounts:
         assert not is_usable(provider, await resolve(provider))
 
 
+@pytest.mark.parametrize(
+    ("fields", "usable"),
+    [
+        ({"base_url": "http://gw/v1"}, False),
+        ({"base_url": "http://gw/v1", "api_key": "k"}, False),
+        ({"api_key": "k", "model": "m"}, False),
+        ({"base_url": "http://gw/v1", "api_key": "k", "model": "m"}, True),
+    ],
+)
+def test_a_custom_endpoint_is_usable_only_with_key_endpoint_and_model(
+    fields: dict[str, str], usable: bool
+) -> None:
+    assert is_usable("custom", _config(**fields)) is usable
+
+
 class TestResolveCache:
     async def test_hits_within_ttl_and_expires_after(self, repo, fixed_secret, clock) -> None:
         await upsert("tavily", api_key="tvly-key")
