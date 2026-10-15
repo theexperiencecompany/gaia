@@ -118,9 +118,8 @@ class FakeInstanceSettings:
         value = self.values.get(key)
         return None if value is None else InstanceSettingsDocument(key=key, value=value)
 
-    async def put(self, key: str, value: dict[str, object]) -> InstanceSettingsDocument:
+    async def set_value(self, key: str, value: dict[str, object]) -> None:
         self.values[key] = value
-        return InstanceSettingsDocument(key=key, value=value)
 
 
 class FakeSeedState:
@@ -176,7 +175,7 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_module, "feature_statuses", _fake_feature_statuses)
     monkeypatch.setattr(setup_module, "get_registration_policy", _fake_registration_policy)
     monkeypatch.setattr(instance_settings_repository, "find_by_key", instance_settings.find_by_key)
-    monkeypatch.setattr(instance_settings_repository, "put", instance_settings.put)
+    monkeypatch.setattr(instance_settings_repository, "set_value", instance_settings.set_value)
     monkeypatch.setattr(settings, "ENV", "selfhost")
     monkeypatch.setattr(settings, "AUTH_MODE", "local")
 

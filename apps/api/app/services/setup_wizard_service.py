@@ -16,7 +16,7 @@ async def is_setup_wizard_dismissed() -> bool:
 
 async def dismiss_setup_wizard() -> None:
     """Record that the wizard no longer opens itself; the setup banner takes over."""
-    await instance_settings_repository.put(
+    await instance_settings_repository.set_value(
         SETUP_WIZARD_SETTING_KEY,
         SetupWizardSetting(dismissed=True).model_dump(mode="json"),  # pragma: no mutate — bool-only
     )

@@ -7,8 +7,6 @@ service layer owns the short-TTL decrypted-payload cache, and the raw row is
 only read on its miss path.
 """
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
-from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.base import MongoRepository
 from app.models.runtime_models import ProviderCredentialDocument, ProviderCredentialUpdate
 
@@ -29,17 +27,11 @@ class ProviderCredentialsRepository(
 
     async def exists(self, provider: str) -> bool:
         """Whether any stored credential row exists for provider."""
-        collection = get_async_collection(self.collection_name)
-        return await collection.count_documents({"provider": provider}, limit=1) > 0
+        return await self._count({"provider": provider}) > 0
 
     async def upsert_encrypted(self, provider: str, data_encrypted: str) -> None:
         """Insert or replace the ciphertext for provider in one round trip."""
-        await self._apply_raw_update_unfetched(
-            {"provider": provider},
-            {"$set": {"data_encrypted": data_encrypted}},
-            scope=REPO_GLOBAL_SCOPE,
-            upsert=True,
-        )
+        await self.upsert(provider, ProviderCredentialUpdate(data_encrypted=data_encrypted))
 
 
 provider_credentials_repository = ProviderCredentialsRepository()

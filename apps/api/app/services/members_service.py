@@ -59,11 +59,10 @@ async def get_registration_policy() -> RegistrationPolicy:
 
 async def set_registration_policy(policy: RegistrationPolicy) -> RegistrationPolicy:
     """Persist the registration policy."""
-    await instance_settings_repository.put(
+    setting = RegistrationSetting(policy=policy)
+    await instance_settings_repository.set_value(
         REGISTRATION_SETTINGS_KEY,
-        RegistrationSetting(policy=policy).model_dump(
-            mode="json",  # pragma: no mutate — StrEnum-only
-        ),
+        setting.model_dump(mode="json"),  # pragma: no mutate — StrEnum-only
     )
     return policy
 

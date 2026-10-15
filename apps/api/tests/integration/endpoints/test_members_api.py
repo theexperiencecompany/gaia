@@ -121,9 +121,8 @@ class Instance:
         value = self.settings.get(key)
         return None if value is None else InstanceSettingsDocument(key=key, value=value)
 
-    async def put(self, key: str, value: dict[str, object]) -> InstanceSettingsDocument:
+    async def set_value(self, key: str, value: dict[str, object]) -> None:
         self.settings[key] = value
-        return InstanceSettingsDocument(key=key, value=value)
 
     # user_repository
     async def find_by_ids(self, user_ids: list[str]) -> list[UserDocument]:
@@ -148,7 +147,7 @@ def instance(monkeypatch: pytest.MonkeyPatch) -> Instance:
     monkeypatch.setattr(invites, "revoke", store.revoke)
     monkeypatch.setattr(invites, "find_redeemable", store.find_redeemable)
     monkeypatch.setattr(settings_repo, "find_by_key", store.find_by_key)
-    monkeypatch.setattr(settings_repo, "put", store.put)
+    monkeypatch.setattr(settings_repo, "set_value", store.set_value)
     monkeypatch.setattr(users, "find_by_ids", store.find_by_ids)
     monkeypatch.setattr(users, "get", store.get_user)
     return store

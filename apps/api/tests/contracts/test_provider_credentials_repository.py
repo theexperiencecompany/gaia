@@ -9,14 +9,7 @@ from app.db.repositories.provider_credentials import ProviderCredentialsReposito
 
 
 @pytest.fixture
-def repo(
-    raw_collection: AsyncIOMotorCollection, monkeypatch: pytest.MonkeyPatch
-) -> ProviderCredentialsRepository:
-    # exists() reads its collection through its own module's accessor.
-    monkeypatch.setattr(
-        "app.db.repositories.provider_credentials.get_async_collection",
-        lambda _name: raw_collection,
-    )
+def repo(raw_collection: AsyncIOMotorCollection) -> ProviderCredentialsRepository:
     return ProviderCredentialsRepository()
 
 
