@@ -42,6 +42,14 @@ async def test_a_credential_in_another_field_does_not_configure_the_provider(
     assert str(refused.value) == "searxng is not configured. Add it in Settings → Providers."
 
 
+async def test_a_search_runs_with_the_credential_stored_in_its_named_field(
+    selfhost_credential_store: InMemoryCredentialStore,
+) -> None:
+    selfhost_credential_store.save("searxng", base_url="http://searxng:8080")
+
+    assert await SearxngProvider()._credential() == "http://searxng:8080"
+
+
 @pytest.mark.usefixtures("selfhost_credential_store")
 async def test_a_provider_with_no_credential_anywhere_refuses_to_search() -> None:
     assert await _configured(ExaProvider()) is False

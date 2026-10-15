@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 import io
 from pathlib import Path
@@ -9,6 +10,7 @@ import threading
 from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
+import httpx
 import pytest
 
 from app.config.deployment import BlobStoreKind
@@ -177,6 +179,26 @@ class TestCloudinaryBlobStore:
             await CloudinaryBlobStore().delete("u1", "x")
         assert "warnings" not in event
         assert "errors" not in event
+
+    async def test_a_stalled_download_times_out_instead_of_hanging(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _accept_and_stall(
+            _reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+        ) -> None:
+            await asyncio.Event().wait()
+
+        server = await asyncio.start_server(_accept_and_stall, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        monkeypatch.setattr("app.services.blob_store.BLOB_DOWNLOAD_TIMEOUT_SECONDS", 0.05)
+        try:
+            with pytest.raises(httpx.ReadTimeout):
+                await asyncio.wait_for(
+                    CloudinaryBlobStore().read("u1", "x", f"http://127.0.0.1:{port}/x.png"),
+                    timeout=5,
+                )
+        finally:
+            server.close()
 
 
 class TestLocalVolumeBlobStore:

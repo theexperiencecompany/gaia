@@ -41,9 +41,9 @@ def _stub_readiness(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.api.v1.endpoints.readiness.check_readiness", _ready)
 
 
-def _as_deployment(
+def _app_for(
     monkeypatch: pytest.MonkeyPatch, kind: DeploymentKind, metrics_token: str | None
-) -> AsyncClient:
+) -> FastAPI:
     auth_mode = "local" if kind is DeploymentKind.SELFHOST else "workos"
     monkeypatch.setattr(settings, "ENV", kind)
     monkeypatch.setattr(settings, "AUTH_MODE", auth_mode)
@@ -53,7 +53,13 @@ def _as_deployment(
         patch("app.core.app_factory.lifespan", _noop_lifespan),
         patch("app.core.app_factory.configure_middleware", _cors_only),
     ):
-        app = create_app()
+        return create_app()
+
+
+def _as_deployment(
+    monkeypatch: pytest.MonkeyPatch, kind: DeploymentKind, metrics_token: str | None
+) -> AsyncClient:
+    app = _app_for(monkeypatch, kind, metrics_token)
     return AsyncClient(
         transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test"
     )
@@ -130,6 +136,14 @@ async def test_root_routes_document_the_error_envelope(
         schema = (await client.get("/openapi.json")).json()
 
     assert {"4XX", "5XX"} <= set(schema["paths"][path]["get"]["responses"])
+
+
+def test_token_gated_readiness_documents_the_error_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schema = _app_for(monkeypatch, DeploymentKind.PRODUCTION, METRICS_TOKEN).openapi()
+
+    assert {"4XX", "5XX"} <= set(schema["paths"]["/health/ready"]["get"]["responses"])
 
 
 @pytest.mark.parametrize("kind", [DeploymentKind.SELFHOST, DeploymentKind.PRODUCTION])
