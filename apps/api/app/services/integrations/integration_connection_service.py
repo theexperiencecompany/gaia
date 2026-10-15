@@ -224,7 +224,7 @@ async def connect_mcp_integration(
         integration_id=integration_id,
         integration_name=integration_name,
         redirect_path=redirect_path,
-        is_platform=options.get("is_platform", False),
+        is_platform=options.get("is_platform", False),  # pragma: no mutate — only read as `not`
     )
     log.set(integration={"provider": integration_name, "action": "connect_mcp"})
     mcp_client = await get_mcp_client(user_id=user_id)

@@ -269,6 +269,10 @@ class TestLoginWorkOSDesktop:
         )
         response = await client.get(f"{OAUTH_BASE}/login/workos/desktop", follow_redirects=False)
         assert response.status_code == 307
+        assert response.headers["location"] == "https://workos.example.com/desktop"
+        mock_workos.return_value.user_management.get_authorization_url.assert_called_once_with(
+            provider="authkit", redirect_uri=settings.WORKOS_DESKTOP_REDIRECT_URI
+        )
 
 
 # ---------------------------------------------------------------------------

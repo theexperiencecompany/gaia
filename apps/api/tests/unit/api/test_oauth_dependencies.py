@@ -22,7 +22,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.constants.error_codes import NOT_AUTHENTICATED
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, UserDocument
 
 _DEPS = "app.api.v1.dependencies.oauth_dependencies"
 _BACKFILL = f"{_DEPS}._backfill_user_timezone"
@@ -224,6 +224,34 @@ class TestGetCurrentUserWs:
         assert exc.value.reason == "no session cookie or protocol token"
         # The connection's wide event is where a refused dial is counted.
         mock_log.set.assert_called_once_with(disconnect_reason="auth_failure")
+
+    async def test_a_handshake_without_a_subprotocol_header_is_a_policy_violation(self) -> None:
+        websocket = _websocket()
+        websocket.headers = {}
+
+        with pytest.raises(WebSocketException) as exc:
+            await get_current_user_ws(websocket)
+
+        assert exc.value.reason == "no session cookie or protocol token"
+
+    async def test_a_local_session_cookie_yields_its_account(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(oauth_dependencies.settings, "ENV", "selfhost")
+        monkeypatch.setattr(oauth_dependencies.settings, "AUTH_MODE", "local")
+        monkeypatch.setattr(oauth_dependencies.settings, "DEV_AUTH_BYPASS_EMAIL", None)
+        resolve = AsyncMock(return_value="507f1f77bcf86cd799439011")
+        user_doc = UserDocument.model_validate(
+            {"id": "507f1f77bcf86cd799439011", "email": "kid@gaia.dev", "name": "kid"}
+        )
+        with (
+            patch(f"{_DEPS}.resolve_session_token", resolve),
+            patch(f"{_DEPS}.user_repository.get", AsyncMock(return_value=user_doc)),
+        ):
+            user = await get_current_user_ws(_websocket({"gaia_session": "local.jwt"}))
+
+        resolve.assert_awaited_once_with("local.jwt")
+        assert (user.user_id, user.email) == ("507f1f77bcf86cd799439011", "kid@gaia.dev")
 
     async def test_a_rejected_session_is_a_policy_violation(self) -> None:
         with patch(_WS_AUTH, new_callable=AsyncMock, return_value=(None, None)):

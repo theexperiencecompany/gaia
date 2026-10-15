@@ -116,7 +116,10 @@ def _ws_token(websocket: WebSocket, cookie_name: str) -> str | None:
     token = websocket.cookies.get(cookie_name)
     if token:
         return token
-    protocol_header = websocket.headers.get("sec-websocket-protocol", "")
+    protocol_header = websocket.headers.get(
+        "sec-websocket-protocol",
+        "",  # pragma: no mutate — any default without the Bearer prefix reads the same
+    )
     if protocol_header.startswith("Bearer, "):
         return protocol_header[8:]
     return None
