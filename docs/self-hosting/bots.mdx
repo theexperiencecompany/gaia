@@ -29,9 +29,15 @@ None of the three bots needs a public URL or a domain. Telegram and Discord conn
 
 1. In Telegram, message [@BotFather](https://t.me/BotFather) and send `/newbot`. Pick a name and a username.
 2. BotFather replies with a token like `123456789:AA...`. Copy it.
-3. Run `gaia bots add telegram` and paste the token when asked.
+3. Run `gaia bots add telegram` and paste the token when asked. The token doesn't show while you paste it.
 
 GAIA also sets the bot's command menu for you.
+
+`gaia bots add` checks the token with Telegram before it saves anything. A mistyped or revoked token stops there, and nothing changes on your install:
+
+<Frame caption="A token that Telegram rejects is never saved">
+  <img src="/images/self-hosting/terminal-gaia-bots-add.webp" width="537" alt="Terminal output of gaia bots add telegram: it explains where to get a token from @BotFather, asks for the Telegram bot token, checks the credentials, and stops with Error: Telegram rejected the bot token: Unauthorized. Copy it again from @BotFather." />
+</Frame>
 
 ## Discord
 
@@ -71,6 +77,14 @@ gaia bots list     # every bot you added, and whether it is running
 gaia status        # the whole install, bots included
 gaia doctor        # flags a bot that is restarting or never started
 ```
+
+Before you add a bot, `gaia bots list` tells you how to add one:
+
+<Frame caption="gaia bots list on an install with no bots yet">
+  <img src="/images/self-hosting/terminal-gaia-bots-list.webp" width="477" alt="Terminal output of gaia bots list: No chat bots enabled. Add one with: gaia bots add <telegram|discord|slack>" />
+</Frame>
+
+Once a bot is added, `gaia bots list` shows one line per bot with its container state, `gaia status` lists the bot's container next to the others, and `gaia doctor` adds a **Chat bot** check for each bot you added.
 
 A bot that keeps restarting usually has a token that was revoked or reset. Run `gaia bots add <platform>` again with a fresh token. To see the bot's own error, run `docker compose -p gaia-selfhost logs bot-telegram` (use `bot-discord` or `bot-slack` for the others).
 
