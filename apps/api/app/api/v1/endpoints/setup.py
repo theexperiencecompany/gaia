@@ -422,23 +422,18 @@ async def test_provider(
 
     stored: ProviderConfig | None = await resolve_provider_config(provider)
     if stored is not None:
-        config = stored
+        api_key, base_url, model = stored["api_key"], stored["base_url"], stored["model"]
     else:
+        api_key = body.api_key
         base_url, model = apply_preset(body.preset, body.base_url, body.model)
-        config = ProviderConfig(
-            api_key=body.api_key,
-            base_url=base_url,
-            model=model,
-            preset=body.preset,
-            account_id=body.account_id,
-            api_secret=body.api_secret,
-        )
-    ok, detail, models = await _probe(provider, config)
+    ok, detail, models = await _probe(provider, api_key=api_key, base_url=base_url, model=model)
     log.info("Provider connectivity tested", provider=provider, ok=ok)
     return ProviderTestResponse(ok=ok, detail=detail, models=models)
 
 
-async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list[str]]:
+async def _probe(
+    provider: str, *, api_key: str | None, base_url: str | None, model: str | None
+) -> tuple[bool, str, list[str]]:
     """Probe one provider endpoint and return (ok, human detail, sorted models).
 
     Never includes credentials in ``detail`` — only URLs without query strings.
@@ -448,16 +443,16 @@ async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list
     provider is exempt from the public-IP check (see assert_endpoint_safe).
     """
     if provider in BASE_URL_PROVIDERS:
-        await assert_endpoint_safe(
-            config["base_url"], allow_private=allows_private_endpoint(provider)
-        )
+        await assert_endpoint_safe(base_url, allow_private=allows_private_endpoint(provider))
     try:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
             if provider == "gemini":
-                return await _probe_gemini(client, config["api_key"])
+                return await _probe_gemini(client, api_key)
             if provider == "ollama":
-                return await _probe_ollama(client, config["base_url"])
-            return await _probe_openai_wire(provider, client, config)
+                return await _probe_ollama(client, base_url)
+            return await _probe_openai_wire(
+                provider, client, api_key=api_key, base_url=base_url, model=model
+            )
     except httpx.HTTPError as e:
         return False, f"Could not reach {provider}: {type(e).__name__}", []
 
@@ -465,7 +460,10 @@ async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list
 async def _probe_openai_wire(
     provider: str,
     client: httpx.AsyncClient,
-    config: ProviderConfig,
+    *,
+    api_key: str | None,
+    base_url: str | None,
+    model: str | None,
 ) -> tuple[bool, str, list[str]]:
     """Run the one call GAIA makes on this lane: a tiny chat completion on its model.
 
@@ -476,17 +474,17 @@ async def _probe_openai_wire(
     # OpenRouter and OpenAI need no configurable endpoint — their API roots are
     # canonical; every other OpenAI-wire provider probes its configured base URL.
     if canonical_url := _CANONICAL_API_URLS.get(provider):
-        if not config["api_key"]:
+        if not api_key:
             return False, f"No {label} API key configured", []
         api_url = canonical_url
     else:
-        if not config["base_url"]:
+        if not base_url:
             return False, f"No base URL configured for {label}", []
-        api_url = config["base_url"].rstrip("/")
-    model = config["model"] or LLM_MODEL_PROFILES[LLMProviderName(provider)].chat
+        api_url = base_url.rstrip("/")
+    model = model or LLM_MODEL_PROFILES[LLMProviderName(provider)].chat
     if not model:
         return False, f"No model configured for {label}", []
-    headers = {"Authorization": f"Bearer {config['api_key']}"} if config["api_key"] else {}
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     response = await client.post(
         f"{api_url}/chat/completions",
         headers=headers,
@@ -498,7 +496,7 @@ async def _probe_openai_wire(
     )
     if response.is_success:
         return True, f"Connected to {label}", []
-    reason = _wire_error_reason(response, config["api_key"])
+    reason = _wire_error_reason(response, api_key)
     if response.status_code in _AUTH_REJECTED_STATUSES:
         return False, f"{label} rejected the key: {reason}", []
     return False, f"{label} refused the test request: {reason}", []
