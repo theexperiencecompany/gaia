@@ -507,9 +507,15 @@ async function main(): Promise<void> {
     const item = summary.find((entry) => entry.title === head.title);
     const shots = screenshotsOf(item, head.title);
     const measured = await measureGroups(page, groups, shots);
+    // A container that grew because its content grew is a consequence, so style
+    // changes rank before size changes; pixel count orders within a category.
     const visible = measured
       .filter((group) => group.visible)
-      .sort((a, b) => b.changedPixels - a.changedPixels);
+      .sort(
+        (a, b) =>
+          CATEGORY_RANK[a.category] - CATEGORY_RANK[b.category] ||
+          b.changedPixels - a.changedPixels,
+      );
     const computedOnly = measured.filter((group) => !group.visible);
     const lines: string[] = [];
     for (const [index, group] of visible.entries()) {
