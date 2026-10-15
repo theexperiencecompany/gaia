@@ -19,6 +19,7 @@ from app.agents.skills.github_discovery import (
 )
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers, github_url
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.services.providers.provider_credentials_service import resolve
 from tests.helpers import InMemoryCredentialStore
 
@@ -135,10 +136,15 @@ class TestFetchGitTree:
                 return_value=mock_client,
             ),
             patch("app.agents.skills.github_discovery.get_github_headers", return_value={}),
+            patch("app.agents.skills.github_discovery.log") as mock_log,
         ):
             entries, branch = await _fetch_git_tree("owner", "repo", "main")
 
-        assert entries == []
+        assert (entries, branch) == ([], "main")
+        # The operator's only hint that adding a GitHub token would fix discovery.
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.SKILLS} GitHub rate limited; a GitHub token raises the limit"
+        )
 
 
 # ---------------------------------------------------------------------------
