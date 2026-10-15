@@ -99,7 +99,7 @@ Combines configuration, image pull/build and startup into a single command. GAIA
 
 | Flag                     | Description                                                        |
 | ------------------------ | ------------------------------------------------------------------ |
-| `--yes`                  | Accept all defaults (no prompts), including installing Docker on apt-based Linux |
+| `--yes`                  | Install git and Docker without asking when they are missing (apt-based Linux). Nothing else in `gaia up` asks a question |
 | `--llm-key <key>`        | LLM API key for first boot                                         |
 | `--llm-provider <name>`  | Provider for `--llm-key`: `openrouter`, `gemini`, `openai`, or `custom` |
 | `--web-port <port>`      | Host port GAIA is served on (default 3000)                         |

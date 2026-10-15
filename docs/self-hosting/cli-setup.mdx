@@ -22,7 +22,7 @@ curl -fsSL https://heygaia.io/install.sh | sh
 ```
 
 <Frame caption="The standalone installer on a fresh Linux server">
-  <img src="/images/self-hosting/terminal-install.webp" alt="Terminal output of the GAIA install script: it detects Linux, installs Node.js through nvm, installs the GAIA CLI and lists the gaia up, gaia status and gaia --help commands" />
+  <img src="/images/self-hosting/terminal-install.webp" width="579" alt="Terminal output of the GAIA install script: it detects Linux, installs Node.js through nvm, installs the GAIA CLI and lists the gaia up, gaia status and gaia --help commands" />
 </Frame>
 
 ## Quick Start
@@ -31,29 +31,7 @@ curl -fsSL https://heygaia.io/install.sh | sh
 gaia up
 ```
 
-That's the whole setup. When the command finishes it prints `http://localhost:3000` — open it, create your admin account, paste an AI provider key, and start chatting. The browser-side steps are covered in the [self-hosting walkthrough](/self-hosting/walkthrough).
-
-To skip the provider step, hand the key over on the command line. One key is enough, and OpenAI works as well as any:
-
-```bash
-gaia up --yes --llm-provider openai --llm-key sk-...
-```
-
-<Frame caption="gaia up finishes with the addresses to open GAIA at and the link to finish setup in the browser">
-  <img src="/images/self-hosting/terminal-gaia-up.webp" alt="Terminal output of gaia up: every setup step checked, then a GAIA is ready box listing the localhost and local-network addresses, the API address, the browser setup link, and a note that code execution stays off until an E2B key is saved or gaia up reruns with --code-sandbox" />
-</Frame>
-
-Useful flags:
-
-| Flag                 | Effect                                                                                                   |
-| -------------------- | -------------------------------------------------------------------------------------------------------- |
-| `--yes`              | No prompts at all; also consents to installing Docker on apt-based Linux                                  |
-| `--domain <domain>`  | Serve GAIA at `https://<domain>` with an automatic Let's Encrypt certificate (uses ports 80 and 443)        |
-| `--web-port <port>`  | Host port GAIA is served on (default 3000)                                                                |
-| `--llm-provider <p>` + `--llm-key <key>` | Configure the AI provider at first boot: `openai`, `openrouter` or `gemini` (`custom` is set up in the browser) |
-| `--code-sandbox`     | Let the agent run code in local containers through the host Docker socket (root-equivalent; see [Local coding sandbox](/self-hosting/docker-setup#local-coding-sandbox)). Saved, so later starts and updates keep it; `--no-code-sandbox` turns it off |
-| `--build`            | Build the images from your checkout instead of pulling them                                              |
-| `--no-start`         | Write the configuration without starting services                                                         |
+The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: it runs `gaia up` on a fresh server, lists every flag `gaia up` takes, and finishes setup in the browser. [CLI Commands](/cli/commands) is the full reference. The rest of this page explains what `gaia up` does and how to run the install from the terminal afterwards.
 
 ## What `gaia up` Does
 
@@ -122,13 +100,13 @@ gaia doctor
 It walks the whole stack in order — Docker daemon, ports, containers, API health, each backing service from `GET /health/ready` (MongoDB, PostgreSQL, Redis, RabbitMQ, ChromaDB), setup status (plans seeded, provider configured, admin account created), web reachability, disk and memory headroom, and whether you run the release this CLI ships — and prints what's broken with a specific fix for each problem. It exits 1 only when a blocking check fails.
 
 <Frame caption="gaia doctor on a fresh install, before the admin account exists">
-  <img src="/images/self-hosting/terminal-gaia-doctor.webp" alt="Terminal output of gaia doctor: Docker, ports, the 9 running containers, API health, each dependency, setup readiness, the web app, disk and memory all OK, plus one warning to run gaia update" />
+  <img src="/images/self-hosting/terminal-gaia-doctor.webp" width="606" alt="Terminal output of gaia doctor: Docker, ports, the 9 running containers, API health, each dependency, setup readiness, the web app, disk and memory all OK, plus one warning to run gaia update" />
 </Frame>
 
 `gaia status` gives the same per-dependency view at a glance:
 
 <Frame caption="gaia status: every dependency and container">
-  <img src="/images/self-hosting/terminal-gaia-status.webp" width="640" alt="Terminal output of gaia status: 9 of 9 containers running, MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB all OK, and each container running and healthy" />
+  <img src="/images/self-hosting/terminal-gaia-status.webp" width="635" alt="Terminal output of gaia status: 9 of 9 containers running, MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB all OK, and each container running and healthy" />
 </Frame>
 
 ## Updating

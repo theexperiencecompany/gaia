@@ -14,55 +14,62 @@ GAIA uses Docker Compose to orchestrate all the required services. This makes de
 
 Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confirm you have:
 
-- **Docker** — Docker Desktop (macOS/Windows), Docker Engine 20.10+ with Compose v2 (Linux), or OrbStack (macOS). `gaia up` will offer to install Docker if it is missing — see [Docker Installation](#prerequisites-1) below.
-- **Git** — only if you use the `git clone` alternative in step 1 (`sudo apt-get install -y git` on Ubuntu/Debian).
+- **Docker** — Docker Desktop (macOS/Windows), Docker Engine 20.10+ with Compose v2 (Linux), or OrbStack (macOS). `gaia up` will offer to install Docker if it is missing; to install it yourself, see **Docker Installation** below.
+- **Git** — only if you start from a clone (see [Quick Start](#quick-start)) (`sudo apt-get install -y git` on Ubuntu/Debian).
 - **8 GB RAM minimum** — plus 2+ CPU cores and 10 GB free disk. The local embedding model loads ~1.8 GB into each of `gaia-backend` and `arq_worker` on first use (see [Memory sizing](#memory-sizing)).
 - **Ports** — only `3000` must be free on the host (override with `WEB_HOST_PORT`); with a domain, `80` and `443` instead (see [HTTPS on your own domain](#https-on-your-own-domain)). The API and every datastore stay on the internal Docker network and are never published to the host.
 - **No API keys to boot** — the stack starts with no provider keys. Pass one to `gaia up --llm-provider openai --llm-key ...`, add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
 - **No manual `.env` setup, no Infisical** — `gaia up` writes `apps/api/.env` (`ENV=selfhost`, `AUTH_MODE=local`) and generates the three machine secrets (`AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) for you. Never `cp .env.example .env` and self-host never contacts Infisical.
 
-## Quick Start — 2 minutes
+<AccordionGroup>
+  <Accordion icon="docker" title="Docker Installation">
+    **Install Docker Desktop** (recommended for beginners):
+    - [Download for macOS](https://docs.docker.com/desktop/install/mac-install/)
+    - [Download for Windows](https://docs.docker.com/desktop/install/windows-install/)
+    - [Download for Linux](https://docs.docker.com/desktop/install/linux-install/)
 
-<Steps>
-  <Step title="Install the CLI and run gaia up">
-    <CodeGroup>
-
-    ```bash curl
-    curl -fsSL https://heygaia.io/install.sh | sh
-    ```
-
-    ```bash npm
-    npm install -g @heygaia/cli
-    ```
-
-    </CodeGroup>
-
+    **Or install Docker Engine** (for servers):
     ```bash
-    gaia up
+    # Ubuntu/Debian (example)
+    sudo apt-get update
+    sudo apt-get install -y docker.io docker-compose-plugin
+    sudo systemctl enable --now docker
+
+    # Add user to docker group
+    sudo usermod -aG docker $USER
+    newgrp docker
     ```
 
-    This writes the `.env` files (with `ENV=selfhost`), generates machine secrets, and starts the stack. No `cp .env.example .env` and no Infisical — self-host never contacts it. On a server, `gaia up --yes` needs no input at all: it also installs Docker on apt-based Linux and grants a non-root user the `docker` group, relaunching itself under `sg docker` to pick it up. The rest of this guide explains what it started and how to operate it by hand.
+  </Accordion>
 
-    Alternative without the installer — clone first (requires `git`):
+  <Accordion icon="server" title="Recommended system">
+    The minimum is in the list above. Recommended:
+    - 4+ CPU cores
+    - 12+ GB RAM
+    - 50+ GB SSD storage
+    - Regular backups configured
 
-    ```bash
-    git clone https://github.com/theexperiencecompany/gaia.git && cd gaia
-    npm install -g @heygaia/cli # or: curl -fsSL https://heygaia.io/install.sh | sh
-    gaia up                      # or: npx @heygaia/cli up (no global install)
-    ```
-  </Step>
+  </Accordion>
+</AccordionGroup>
 
-  <Step title="Finish setup in the browser">
-    Open `http://localhost:3000/setup` — or `http://YOUR_SERVER_IP:3000/setup` if you are on a remote VM — create your admin account, and paste an API key for one AI provider (or choose Ollama for a keyless local model). See [Self-hosting overview](/self-hosting/overview).
-  </Step>
+## Quick Start
 
-  <Step title="Monitor">
-    ```bash
-    docker compose -f infra/docker/docker-compose.selfhost.yml ps          # container status + health
-    docker compose -f infra/docker/docker-compose.selfhost.yml logs -f     # stream all logs
-    ```
-  </Step>
-</Steps>
+The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start. `gaia up` writes the `.env` files (with `ENV=selfhost`), generates the machine secrets and starts the Compose stack this guide describes. The rest of this guide explains what it started and how to operate it by hand.
+
+To start from a clone instead of the installer (requires `git`):
+
+```bash
+git clone https://github.com/theexperiencecompany/gaia.git && cd gaia
+npm install -g @heygaia/cli # or: curl -fsSL https://heygaia.io/install.sh | sh
+gaia up                      # or: npx @heygaia/cli up (no global install)
+```
+
+Check on the containers:
+
+```bash
+docker compose -f infra/docker/docker-compose.selfhost.yml ps          # container status + health
+docker compose -f infra/docker/docker-compose.selfhost.yml logs -f     # stream all logs
+```
 
 <Tip>
   **Back up in one line** — from the repo root, no manual `docker compose` needed:
@@ -96,46 +103,6 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | **Observability** | Loki + Grafana, LogQL over shipped logs | Container `json-file` logs only (10 MB × 3 rotated files); no Loki shipper |
 | **Updates** | Deployed by the team | `gaia update` — moves to the release your CLI ships (pinned images + matching compose files) and restarts; volumes survive |
 | **Backups** | Managed | `gaia backup` / `gaia restore` — you own the dumps; see [Backups](#backups) |
-
-## Prerequisites
-
-<AccordionGroup>
-  <Accordion icon="docker" title="Docker Installation">
-    **Install Docker Desktop** (recommended for beginners):
-    - [Download for macOS](https://docs.docker.com/desktop/install/mac-install/)
-    - [Download for Windows](https://docs.docker.com/desktop/install/windows-install/)
-    - [Download for Linux](https://docs.docker.com/desktop/install/linux-install/)
-
-    **Or install Docker Engine** (for servers):
-    ```bash
-    # Ubuntu/Debian (example)
-    sudo apt-get update
-    sudo apt-get install -y docker.io docker-compose-plugin
-    sudo systemctl enable --now docker
-
-    # Add user to docker group
-    sudo usermod -aG docker $USER
-    newgrp docker
-    ```
-
-  </Accordion>
-
-  <Accordion icon="server" title="System Requirements">
-    **Minimum Requirements:**
-    - 2 CPU cores
-    - 8 GB RAM
-    - 10GB free disk space
-    - Docker Engine 20.10+
-    - Docker Compose v2.0+
-
-    **Recommended:**
-    - 4+ CPU cores
-    - 12+ GB RAM
-    - 50+ GB SSD storage
-    - Regular backups configured
-
-  </Accordion>
-</AccordionGroup>
 
 ## Project Structure
 
