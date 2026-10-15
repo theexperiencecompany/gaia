@@ -39,6 +39,10 @@ You don't need to set a callback URL in Composio. GAIA sends users back to `{HOS
 
 Click **Browse Composio catalog** in **Settings → Integrations setup**. The button works once your Composio key is saved. As the instance admin, you also see it on the integrations page, in the **Add any app to this instance** banner.
 
+<Frame caption="The Composio catalog. Each app is marked Built in, Available or No sign-in">
+  <img src="/images/self-hosting/composio-catalog.webp" width="560" alt="Composio catalog dialog with a Search 1,600+ apps box, an All categories filter, and a list of apps: Gmail, GitHub, Google Calendar, Notion, Google Sheets and Slack marked Built in, not set up, Composio marked No sign-in and Supabase marked Available, next to an empty pane reading Pick an app to see what enabling it takes" />
+</Frame>
+
 1. Search for the app, or filter by category.
 2. Pick it. The catalog says how its users will sign in:
 
@@ -48,6 +52,12 @@ Click **Browse Composio catalog** in **Settings → Integrations setup**. The bu
    | Each user enters their own credentials when they connect. | Click **Enable**. Each user pastes their key on Composio's connect page when they connect |
    | Composio has no shared app for this app. | Create an OAuth app with that provider, paste its details, then click **Enable** |
    | This app needs no sign-in, which GAIA can't connect yet. | Nothing: it can't be enabled yet |
+
+   <Frame caption="Attio picked from the catalog: its users sign in through Composio, so there is nothing to fill in">
+     <img src="/images/self-hosting/composio-catalog-detail.webp" width="560" alt="Composio catalog searched for Attio, with Attio marked Available and its detail pane: 105 tools in crm, a description, the note Users sign in through Composio's own app. Nothing to fill in, a note that catalog apps have no triggers, and an Enable button" />
+   </Frame>
+
+3. Click **Enable**.
 
 The app shows up on everyone's integrations page right away, with no restart. Users click **Connect** like for any built-in integration, and GAIA can then use every tool the app has in chat and in workflows.
 
