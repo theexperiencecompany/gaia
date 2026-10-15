@@ -1,13 +1,26 @@
 """The deployment profile: one capability set per ENV/AUTH_MODE pair."""
 
+from collections.abc import Iterator
+
 import pytest
 
 from app.config.deployment import (
+    AuthMode,
     BlobStoreKind,
     DeploymentKind,
     InvalidDeploymentError,
+    OriginPolicy,
+    baseline_profile,
     deployment_profile,
 )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_profiles() -> Iterator[None]:
+    """Compute every profile in the test, not read one memoised by app import."""
+    deployment_profile.cache_clear()
+    yield
+    deployment_profile.cache_clear()
 
 
 def test_production_bills_enforces_and_reads_env_only() -> None:
@@ -34,7 +47,14 @@ def test_production_bills_enforces_and_reads_env_only() -> None:
 
 
 def test_production_with_local_auth_is_refused() -> None:
-    with pytest.raises(InvalidDeploymentError, match=r"AUTH_MODE=local.*ENV=production"):
+    with pytest.raises(
+        InvalidDeploymentError,
+        match=(
+            r"^AUTH_MODE=local is set but ENV=production — local username/password "
+            r"auth is a self-host feature and must never run against production\. "
+            r"Use ENV=selfhost for local auth\.$"
+        ),
+    ):
         deployment_profile(
             DeploymentKind.PRODUCTION,
             "local",
@@ -150,7 +170,13 @@ def test_unlimited_usage_lifts_limits_but_keeps_plans() -> None:
 
 
 def test_production_refuses_a_local_blob_store() -> None:
-    with pytest.raises(InvalidDeploymentError, match=r"BLOB_STORE=local.*ENV=production"):
+    with pytest.raises(
+        InvalidDeploymentError,
+        match=(
+            r"^BLOB_STORE=local is set but ENV=production — hosted files are served "
+            r"from Cloudinary and must never land on a container's local disk\.$"
+        ),
+    ):
         deployment_profile(
             DeploymentKind.PRODUCTION,
             "workos",
@@ -210,3 +236,66 @@ def test_development_tolerates_missing_configuration() -> None:
     )
 
     assert profile.fail_fast is False
+
+
+def test_selfhost_may_choose_the_local_blob_store_explicitly() -> None:
+    profile = deployment_profile(
+        DeploymentKind.SELFHOST,
+        "local",
+        unlimited_usage=False,
+        local_code_sandbox=False,
+        blob_store=BlobStoreKind.LOCAL,
+    )
+
+    assert profile.blob_store is BlobStoreKind.LOCAL
+
+
+@pytest.mark.parametrize(
+    ("kind", "origins", "public_readiness", "https_only", "private_endpoints", "dev_tools"),
+    [
+        (DeploymentKind.PRODUCTION, OriginPolicy.GAIA_CLOUD, False, True, False, False),
+        (DeploymentKind.DEVELOPMENT, OriginPolicy.LOCAL_DEVELOPMENT, True, False, True, True),
+        (DeploymentKind.SELFHOST, OriginPolicy.INSTANCE, True, False, True, False),
+    ],
+)
+def test_each_kind_exposes_its_own_network_surface(
+    kind: DeploymentKind,
+    origins: OriginPolicy,
+    public_readiness: bool,
+    https_only: bool,
+    private_endpoints: bool,
+    dev_tools: bool,
+) -> None:
+    profile = deployment_profile(
+        kind, "workos", unlimited_usage=False, local_code_sandbox=False, blob_store=None
+    )
+
+    assert profile.kind is kind
+    assert profile.trusted_origins is origins
+    assert profile.public_readiness is public_readiness
+    assert profile.https_only is https_only
+    assert profile.private_network_endpoints is private_endpoints
+    assert profile.dev_tools is dev_tools
+
+
+@pytest.mark.parametrize(
+    ("kind", "auth_mode"),
+    [
+        (DeploymentKind.PRODUCTION, "workos"),
+        (DeploymentKind.DEVELOPMENT, "workos"),
+        (DeploymentKind.SELFHOST, "local"),
+    ],
+)
+def test_the_baseline_profile_is_the_kind_with_nothing_optional_set(
+    kind: DeploymentKind, auth_mode: AuthMode
+) -> None:
+    baseline = baseline_profile(kind)
+    deployment_profile.cache_clear()
+
+    assert baseline == deployment_profile(
+        kind,
+        auth_mode,
+        unlimited_usage=False,
+        local_code_sandbox=False,
+        blob_store=None,
+    )
