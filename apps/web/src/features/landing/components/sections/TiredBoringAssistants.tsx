@@ -11,7 +11,7 @@ import LargeHeader from "../shared/LargeHeader";
 const TOOL_ICONS = [
   // Ring 1 — core tools, close to center, larger, sharp (no blur)
   {
-    src: "/images/icons/macos/mail.png",
+    src: "/images/icons/macos/mail.webp",
     alt: "Mail",
     size: 66,
     top: "27%",
