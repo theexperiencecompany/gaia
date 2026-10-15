@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 
 from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
 from app.constants.briefing import POSTAL_FAMILY
@@ -20,7 +21,7 @@ SEEDED = 12
 
 
 @pytest.fixture
-async def dev_user(mongo_db) -> AsyncIterator[UserDocument]:
+async def dev_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[UserDocument]:
     user = UserDocument.model_validate({"id": str(ObjectId()), "email": "dev@gaia.local"})
     yield user
     await mongo_db["briefings"].delete_many({"user_id": user.id})
@@ -43,7 +44,7 @@ def hosted_editions(monkeypatch: pytest.MonkeyPatch) -> list[BriefingPayload]:
 
 
 async def test_reseeding_yields_one_delivered_postal_brief_per_distinct_city(
-    dev_user, hosted_editions
+    dev_user: UserDocument, hosted_editions: list[BriefingPayload]
 ) -> None:
     await seed_dev_postmarks(dev_user, SEEDED)
     await seed_dev_postmarks(dev_user, SEEDED)
@@ -69,7 +70,7 @@ async def test_reseeding_yields_one_delivered_postal_brief_per_distinct_city(
 
 
 async def test_asking_for_more_postmarks_than_cities_writes_nothing(
-    dev_user, hosted_editions
+    dev_user: UserDocument, hosted_editions: list[BriefingPayload]
 ) -> None:
     with pytest.raises(AppError) as exc:
         await seed_dev_postmarks(dev_user, len(hosted_stamp_weights()) + 1)
