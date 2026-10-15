@@ -77,6 +77,19 @@ class TestCredentialIndexes:
         stored_member = await collections["auth_credentials"].find_one({"user_id": "m1"})
         assert stored_member is not None and "slot" not in stored_member
 
+    async def test_no_credential_means_no_admin(self, collections):
+        assert await LocalCredentialsRepository().admin_exists() is False
+
+    async def test_accounts_list_oldest_first_whatever_the_insert_order(self, collections):
+        repo = LocalCredentialsRepository()
+        now = datetime.now(UTC)
+        for user_id, age in (("newest", 1), ("oldest", 3), ("middle", 2)):
+            await repo.create(
+                _credential(user_id).model_copy(update={"created_at": now - timedelta(days=age)})
+            )
+
+        assert [c.user_id for c in await repo.list_all()] == ["oldest", "middle", "newest"]
+
     async def test_racing_bootstrap_claims_admit_one(self, collections):
         await create_local_credential_indexes()
         repo = LocalCredentialsRepository()
@@ -186,6 +199,21 @@ class TestInvites:
         await repo.revoke(revoked.id, now)
 
         assert [i.id for i in await repo.list_pending(now)] == [pending.id]
+
+    async def test_pending_invites_list_newest_first_whatever_the_insert_order(self, repo):
+        now = datetime.now(UTC)
+        for token_hash, age in (("middle", 2), ("newest", 1), ("oldest", 3)):
+            await repo.create(
+                self._invite(token_hash, expires_in=timedelta(days=1)).model_copy(
+                    update={"created_at": now - timedelta(days=age)}
+                )
+            )
+
+        assert [i.token_hash for i in await repo.list_pending(now)] == [
+            "newest",
+            "middle",
+            "oldest",
+        ]
 
     async def test_a_used_invite_cannot_be_revoked(self, repo):
         invite = await repo.create(self._invite("h", expires_in=timedelta(days=1)))

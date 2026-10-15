@@ -45,7 +45,10 @@ class LocalCredentialsRepository(MongoRepository[LocalCredentialDocument, LocalC
         loser's DuplicateKeyError becomes None.
         """
         try:
-            return await self._insert(doc, REPO_GLOBAL_SCOPE)
+            return await self._insert(
+                doc,
+                REPO_GLOBAL_SCOPE,  # pragma: no mutate — a cacheless global repo never reads its scope
+            )
         except DuplicateKeyError:
             return None
 
