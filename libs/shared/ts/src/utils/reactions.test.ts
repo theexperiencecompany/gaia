@@ -4,10 +4,12 @@ import { foldReactionAcks, groupReactions, isReactionAck } from "./reactions";
 
 interface ContentMessage extends ReactionFoldable {
   content: string;
+  tool_data?: { tool_name: string }[] | null;
 }
 
 interface TextMessage extends ReactionFoldable {
   text: string;
+  tool_data?: { tool_name: string }[] | null;
 }
 
 function contentMessage(
@@ -24,6 +26,10 @@ function textMessage(
 
 const contentText = (message: ContentMessage): string => message.content;
 const mobileText = (message: TextMessage): string => message.text;
+const contentToolOnly = (message: ContentMessage): ContentMessage | null =>
+  message.tool_data?.length ? { ...message, content: "" } : null;
+const mobileToolOnly = (message: TextMessage): TextMessage | null =>
+  message.tool_data?.length ? { ...message, text: "" } : null;
 
 describe("foldReactionAcks (shared)", () => {
   it("returns the same reference when there are no acks", () => {
@@ -31,7 +37,9 @@ describe("foldReactionAcks (shared)", () => {
       contentMessage({ id: "user-1" }),
       contentMessage({ id: "bot-1" }),
     ];
-    expect(foldReactionAcks(messages, contentText)).toBe(messages);
+    expect(foldReactionAcks(messages, contentText, contentToolOnly)).toBe(
+      messages,
+    );
   });
 
   it("folds an ack onto its target and drops the ack bubble", () => {
@@ -42,7 +50,11 @@ describe("foldReactionAcks (shared)", () => {
       kind: "emoji_ack",
       reacts_to_message_id: "user-1",
     });
-    const result = foldReactionAcks([target, ackMessage], contentText);
+    const result = foldReactionAcks(
+      [target, ackMessage],
+      contentText,
+      contentToolOnly,
+    );
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("user-1");
     expect(result[0].reactions).toEqual([{ emoji: "👍", ackId: "ack-1" }]);
@@ -56,7 +68,11 @@ describe("foldReactionAcks (shared)", () => {
       kind: "emoji_ack",
       reacts_to_message_id: "user-1",
     });
-    const result = foldReactionAcks([target, ackMessage], mobileText);
+    const result = foldReactionAcks(
+      [target, ackMessage],
+      mobileText,
+      mobileToolOnly,
+    );
     expect(result).toHaveLength(1);
     expect(result[0].reactions).toEqual([{ emoji: "✅", ackId: "ack-1" }]);
   });
@@ -74,6 +90,7 @@ describe("foldReactionAcks (shared)", () => {
         }),
       ],
       contentText,
+      contentToolOnly,
     );
     expect(result).toHaveLength(1);
     expect(result[0].reactions).toEqual([{ emoji: "✅", ackId: "ack-1" }]);
@@ -91,6 +108,7 @@ describe("foldReactionAcks (shared)", () => {
         }),
       ],
       contentText,
+      contentToolOnly,
     );
     expect(result).toHaveLength(2);
     expect(result[1].kind).toBe("emoji_ack");
@@ -112,6 +130,7 @@ describe("foldReactionAcks (shared)", () => {
         }),
       ],
       contentText,
+      contentToolOnly,
     );
     expect(result).toHaveLength(1);
     expect(result[0].reactions).toEqual([{ emoji: "👍", ackId: "ack-1" }]);
@@ -135,12 +154,40 @@ describe("foldReactionAcks (shared)", () => {
         }),
       ],
       mobileText,
+      mobileToolOnly,
     );
     expect(result).toHaveLength(1);
     expect(result[0].reactions).toEqual([
       { emoji: "👍", ackId: "ack-1" },
       { emoji: "✅", ackId: "ack-2" },
     ]);
+  });
+
+  it("keeps an ack's tool cards on screen while badging its emoji", () => {
+    const result = foldReactionAcks(
+      [
+        contentMessage({ id: "user-1", content: "draft three emails" }),
+        contentMessage({
+          id: "ack-1",
+          content: "✍️",
+          kind: "emoji_ack",
+          reacts_to_message_id: "user-1",
+          tool_data: [
+            { tool_name: "call_executor" },
+            { tool_name: "GMAIL_CREATE_EMAIL_DRAFT" },
+          ],
+        }),
+      ],
+      contentText,
+      contentToolOnly,
+    );
+    expect(result.map((message) => message.id)).toEqual(["user-1", "ack-1"]);
+    expect(result[0].reactions).toEqual([{ emoji: "✍️", ackId: "ack-1" }]);
+    expect(result[1].content).toBe("");
+    expect(result[1].tool_data).toHaveLength(2);
+    expect(foldReactionAcks(result, contentText, contentToolOnly)).toEqual(
+      result,
+    );
   });
 });
 
