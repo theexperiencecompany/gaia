@@ -1843,6 +1843,10 @@ class TestResolveClientCredentials:
             assert cid == "from_config"
 
 
+def _basic(client_id: str, client_secret: str) -> str:
+    return "Basic " + base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+
+
 class TestTryRefreshToken:
     async def test_successful_refresh(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1872,6 +1876,10 @@ class TestTryRefreshToken:
 
         assert result is True
         token_store.store_oauth_tokens.assert_awaited_once()
+        posted = mock_client.post.await_args
+        # A confidential client authenticates with Basic auth, never a client_id field.
+        assert posted.kwargs["headers"]["Authorization"] == _basic("cid", "csec")
+        assert "client_id" not in posted.kwargs["data"]
 
     async def test_no_refresh_token(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -2116,7 +2124,7 @@ class TestRevokeTokens:
         token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
         posted = mock_client.post.await_args
         assert posted.kwargs["data"]["client_id"] == "dcr_cid"
-        assert posted.kwargs["headers"]["Authorization"].startswith("Basic ")
+        assert posted.kwargs["headers"]["Authorization"] == _basic("dcr_cid", "dcr_sec")
 
     async def test_skips_when_no_endpoint(self):
         token_store = AsyncMock(spec=MCPTokenStore)
