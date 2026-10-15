@@ -198,12 +198,12 @@ class LocalVolumeBlobStore:
         self.ensure_ready()
         key = local_blob_key(public_id)
         blob_dir = self._blob_dir(owner_id, key)
-        meta = LocalBlobMeta(content_type=content_type, kind=kind).model_dump_json()
+        meta = LocalBlobMeta(content_type=content_type, kind=kind).model_dump_json().encode()
 
         def _write() -> None:
             blob_dir.mkdir(parents=True, exist_ok=True)
             (blob_dir / LOCAL_BLOB_DATA_FILENAME).write_bytes(content)
-            (blob_dir / LOCAL_BLOB_META_FILENAME).write_text(meta, encoding="utf-8")
+            (blob_dir / LOCAL_BLOB_META_FILENAME).write_bytes(meta)
 
         await asyncio.to_thread(_write)
         return f"{LOCAL_BLOB_URL_PREFIX}/{owner_id}/{key}"
@@ -235,7 +235,7 @@ class LocalVolumeBlobStore:
             meta = blob_dir / LOCAL_BLOB_META_FILENAME
             if not (data.is_file() and meta.is_file()):
                 return None
-            parsed = LocalBlobMeta.model_validate_json(meta.read_text(encoding="utf-8"))
+            parsed = LocalBlobMeta.model_validate_json(meta.read_bytes())
             return LocalBlob(path=data, content_type=parsed.content_type, kind=parsed.kind)
 
         return await asyncio.to_thread(_read_meta)

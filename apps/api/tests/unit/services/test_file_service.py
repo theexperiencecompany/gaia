@@ -16,6 +16,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 import pytest
+import respx
 
 from app.config.settings import settings
 from app.constants.files import BlobKind
@@ -36,6 +37,7 @@ from app.utils.upload_validation import MAX_UPLOAD_BYTES
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatFileUploaded
 from shared.py.wide_events import FileContext
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.usefixtures("cloudinary_configured")
 
@@ -241,6 +243,7 @@ class TestFileServiceUpload:
         assert result.type == "application/pdf"
         assert result.sandbox_path == "/workspace/user-uploaded/report.pdf"
         assert result.file_id
+        assert mock_cloudinary_upload.call_args.kwargs["resource_type"] == "raw"
         mock_mirror.assert_awaited_once()
         mock_sidecar.assert_awaited_once()
 
@@ -1309,3 +1312,88 @@ class TestFileServiceOnSelfHost:
         )
 
         assert mock_mirror.await_args.kwargs["content"] == b"stored bytes"
+
+
+# ---------------------------------------------------------------------------
+# FileService.seed_uploads (hosted: the stored Cloudinary URL is downloaded)
+# ---------------------------------------------------------------------------
+
+_STORED_URL = "https://cdn.example/doc.pdf"
+
+
+def _stored_for(document: FileDocument | None) -> AsyncMock:
+    """Fake the repository read: document for the owner's own file id, None otherwise."""
+
+    async def get_by_file_id(file_id: str, user_id: str) -> FileDocument | None:
+        return document if (file_id, user_id) == ("f-1", USER_ID) else None
+
+    return AsyncMock(side_effect=get_by_file_id)
+
+
+def _attachment(**overrides: object) -> MessageFileData:
+    data: dict[str, object] = {
+        "fileId": "f-1",
+        "url": "https://attacker.example/x",
+        "filename": "doc.pdf",
+    }
+    data.update(overrides)
+    return MessageFileData.model_validate(data)
+
+
+class TestSeedUploads:
+    @respx.mock
+    async def test_the_stored_blob_is_mirrored_into_the_conversation(
+        self, mock_file_repo, mock_sandbox_mirror
+    ):
+        respx.get(_STORED_URL).respond(200, content=b"stored bytes")
+        mock_file_repo.get_by_file_id = _stored_for(_file_doc())
+        mock_mirror, _ = mock_sandbox_mirror
+
+        await FileService.seed_uploads([_attachment()], USER_ID, "conv-1")
+
+        assert mock_mirror.await_args.kwargs == {
+            "user_id": USER_ID,
+            "conversation_id": "conv-1",
+            "safe_filename": "doc.pdf",
+            "content": b"stored bytes",
+            "content_type": "application/pdf",
+        }
+
+    @respx.mock
+    @pytest.mark.parametrize(
+        ("attachment_type", "content_type"),
+        [("text/csv", "text/csv"), (None, "application/octet-stream")],
+        ids=["the-attachment-type", "a-generic-binary"],
+    )
+    async def test_a_document_without_a_type_falls_back(
+        self, mock_file_repo, mock_sandbox_mirror, attachment_type, content_type
+    ):
+        respx.get(_STORED_URL).respond(200, content=b"x")
+        mock_file_repo.get_by_file_id = _stored_for(_file_doc(type=""))
+        mock_mirror, _ = mock_sandbox_mirror
+
+        await FileService.seed_uploads([_attachment(type=attachment_type)], USER_ID, "conv-1")
+
+        assert mock_mirror.await_args.kwargs["content_type"] == content_type
+
+    @pytest.mark.parametrize(
+        "document", [None, _file_doc(public_id=None)], ids=["no-record", "no-public-id"]
+    )
+    async def test_an_upload_without_a_stored_blob_is_skipped_with_a_warning(
+        self, mock_file_repo, mock_sandbox_mirror, document
+    ):
+        mock_file_repo.get_by_file_id = _stored_for(document)
+        mock_mirror, _ = mock_sandbox_mirror
+
+        async with captured_wide_event() as event:
+            await FileService.seed_uploads([_attachment()], USER_ID, "conv-1")
+
+        mock_mirror.assert_not_awaited()
+        assert event["warnings"] == [
+            {
+                "msg": "[files] seed: no stored upload for file id",
+                "file_id": "f-1",
+                "user_id": USER_ID,
+                "conversation_id": "conv-1",
+            }
+        ]
