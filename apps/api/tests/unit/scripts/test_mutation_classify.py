@@ -584,6 +584,45 @@ class TestTruthValueKeyword:
         assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
 
 
+class TestStripOfCapitals:
+    """A lowercased string holds no ASCII capital, so stripping extra capitals off it changes nothing."""
+
+    _LOWERED = '    return host.lower().rstrip(".") in NAMES'
+
+    def _probe(self, workdir: Path, body: str, mutant: str) -> subprocess.CompletedProcess[str]:
+        (workdir / MODULE_REL).write_text(f"def probe(host):\n{body}\n")
+        _write_mutants(workdir, body, mutant)
+        return _classify(workdir)
+
+    def test_the_xx_wrapped_charset_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._LOWERED, self._LOWERED.replace('"."', '"XX.XX"'))
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_charset_losing_the_dot_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._LOWERED, self._LOWERED.replace('"."', '"XX"'))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_an_added_lowercase_character_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._LOWERED, self._LOWERED.replace('"."', '".a"'))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_none_charset_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._LOWERED, self._LOWERED.replace('"."', "None"))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_the_same_wrap_on_a_string_that_was_never_lowered_is_still_reported(
+        self, workdir: Path
+    ) -> None:
+        body = self._LOWERED.replace(".lower()", "")
+        result = self._probe(workdir, body, body.replace('"."', '"XX.XX"'))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
 class TestProjectionIncludeFlag:
     """Mongo reads every non-zero integer in a $project as an include."""
 
