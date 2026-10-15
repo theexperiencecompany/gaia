@@ -7,6 +7,7 @@ The first signup creates the instance administrator; later signups create
 members when an invite or the open registration policy admits them.
 """
 
+import secrets
 from typing import Never, cast
 
 import bcrypt
@@ -49,7 +50,9 @@ def _burn_one_verification(password: str) -> None:
     """Run one real bcrypt verify against a fixed digest — pure latency."""
     global _dummy_digest
     if _dummy_digest is None:
-        _dummy_digest = bcrypt.hashpw(b"gaia-timing-equalizer", bcrypt.gensalt(BCRYPT_ROUNDS))
+        # pragma: no mutate start — any secret works; only the verify's latency is used
+        _dummy_digest = bcrypt.hashpw(secrets.token_hex(16).encode(), bcrypt.gensalt(BCRYPT_ROUNDS))
+        # pragma: no mutate end
     try:
         bcrypt.checkpw(password.encode(), _dummy_digest)
     except ValueError:

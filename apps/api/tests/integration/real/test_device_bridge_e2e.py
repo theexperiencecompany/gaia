@@ -29,11 +29,13 @@ import re
 import signal
 import subprocess
 import time
+from unittest.mock import AsyncMock
 
 from bson import ObjectId
 import httpx
 import pytest
 
+from app.services.integrations import custom_crud
 from app.workers.tasks.device_tasks import warm_device_servers
 from tests.helpers import pick_free_port
 
@@ -568,6 +570,16 @@ class TestFullDeviceLifecycle:
 class TestDeviceServerRemoval:
     """Remove a device MCP server end to end, through the real daemon and real HTTP (no internal calls)."""
 
+    @pytest.fixture(autouse=True)
+    def _record_chroma_cleanup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Record the Chroma cleanup instead of running it.
+
+        The live app runs without ChromaDB (see _device_bridge_lifespan), so the
+        cleanup's first store access would embed every builtin tool inside the request.
+        """
+        self.chroma_cleanup = AsyncMock()
+        monkeypatch.setattr(custom_crud, "cleanup_integration_chroma_data", self.chroma_cleanup)
+
     async def _pair_and_expose_everything(
         self, daemon: BridgeDaemon, owner: httpx.AsyncClient, api_url: str, entry: Path
     ) -> str:
@@ -645,6 +657,8 @@ class TestDeviceServerRemoval:
 
             deleted = await owner.delete(f"/api/v1/integrations/custom/{integration_id}")
             assert deleted.status_code == 200, deleted.text
+            self.chroma_cleanup.assert_awaited_once()
+            assert self.chroma_cleanup.await_args.args[0] == integration_id
             daemon.mark("integration deleted in cloud")
 
             # The cloud drops the server row immediately...

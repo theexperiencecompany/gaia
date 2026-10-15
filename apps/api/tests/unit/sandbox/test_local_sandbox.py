@@ -775,8 +775,16 @@ async def test_beta_pause_surfaces_failures(recorder: SpawnRecorder) -> None:
 
 
 async def test_kill_reports_true_when_removed(recorder: SpawnRecorder) -> None:
-    recorder._responses = [FakeProcess(returncode=0)]
+    recorder._responses = [FakeProcess(stdout=b"gaia-sandbox-u1\n", returncode=0)]
     assert await _sandbox().kill() is True
+
+
+async def test_kill_is_false_when_a_zero_exit_names_no_removed_container(
+    recorder: SpawnRecorder,
+) -> None:
+    # Docker 29.8 exits 0 with empty output for a forced remove of a missing container.
+    recorder._responses = [FakeProcess(returncode=0)]
+    assert await _sandbox().kill() is False
 
 
 async def test_kill_is_false_for_a_missing_container_on_old_daemons(

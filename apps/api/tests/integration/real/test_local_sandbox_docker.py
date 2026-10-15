@@ -8,17 +8,21 @@ on exit.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 import uuid
 
+from e2b import CommandExitException, NotFoundException, TimeoutException
+from e2b.sandbox.filesystem.filesystem import FileType
 import pytest
 
 from app.config.settings import settings
 from app.services.sandbox import lifecycle, local_sandbox
-from app.services.sandbox.local_sandbox import LocalDockerSandbox
+from app.services.sandbox.lifecycle import acquire_sandbox
+from app.services.sandbox.local_sandbox import LocalDockerSandbox, pop_local_sandbox
 
 pytestmark = pytest.mark.skipif(
     shutil.which("docker") is None, reason="requires the docker CLI + daemon"
@@ -30,7 +34,10 @@ def _uid() -> str:
 
 
 async def _docker(*args: str) -> None:
-    proc = await local_sandbox._spawn_process(["docker", *args])
+    """Drive the daemon directly, never through _spawn_process, which a test may break."""
+    proc = await asyncio.create_subprocess_exec(
+        "docker", *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
     _, stderr = await proc.communicate()
     assert proc.returncode == 0, stderr.decode()
 
@@ -41,6 +48,8 @@ async def throwaway_workspace_volume(monkeypatch: pytest.MonkeyPatch) -> Any:
 
     This process runs on the host, not in the API container, so it cannot see
     the volume to create the subpaths itself the way _prepare_workspace does.
+    A fresh volume's root belongs to root, so the subpaths are made as root and
+    handed to this process's uid, the uid the sandbox container runs as.
     """
     volume = f"gaia-test-workspace-{uuid.uuid4().hex[:12]}"
     monkeypatch.setattr(local_sandbox, "SELFHOST_WORKSPACE_VOLUME", volume)
@@ -58,12 +67,12 @@ async def throwaway_workspace_volume(monkeypatch: pytest.MonkeyPatch) -> Any:
             "--rm",
             "-v",
             f"{volume}:/v",
-            "--user",
-            f"{os.getuid()}:{os.getgid()}",
             "--entrypoint",
-            "mkdir",
+            "sh",
             self.image,
-            "-p",
+            "-c",
+            'mkdir -p "$@" && chown -R "$0" /v',
+            f"{os.getuid()}:{os.getgid()}",
             *dirs,
         )
 
@@ -96,8 +105,6 @@ async def test_a_command_runs_and_captures_output(sbx: LocalDockerSandbox) -> No
 async def test_a_failing_command_raises_command_exit_exception(
     sbx: LocalDockerSandbox,
 ) -> None:
-    from e2b import CommandExitException
-
     with pytest.raises(CommandExitException) as caught:
         await sbx.commands.run("echo oops >&2; echo out; exit 7")
     assert caught.value.exit_code == 7
@@ -108,8 +115,6 @@ async def test_a_failing_command_raises_command_exit_exception(
 async def test_a_timed_out_command_raises_timeout_exception(
     sbx: LocalDockerSandbox,
 ) -> None:
-    from e2b import TimeoutException
-
     # The child must die together with the shell for exec to ever return, so
     # this doubles as proof that the process-group kill works against real PIDs.
     with pytest.raises(TimeoutException):
@@ -160,15 +165,11 @@ async def test_files_write_then_read_round_trip_binary(
 async def test_files_read_missing_path_raises_not_found(
     sbx: LocalDockerSandbox,
 ) -> None:
-    from e2b import NotFoundException
-
     with pytest.raises(NotFoundException):
         await sbx.files.read("/workspace/definitely-not-here.txt")
 
 
 async def test_files_rename_returns_new_entry_info(sbx: LocalDockerSandbox) -> None:
-    from e2b import NotFoundException
-
     src = "/workspace/lsbx-rename/first.txt"
     dst = "/workspace/lsbx-rename/second.txt"
     await sbx.files.make_dir("/workspace/lsbx-rename")
@@ -183,8 +184,6 @@ async def test_files_rename_returns_new_entry_info(sbx: LocalDockerSandbox) -> N
 
 
 async def test_files_make_dir_and_get_info_dir(sbx: LocalDockerSandbox) -> None:
-    from e2b.sandbox.filesystem.filesystem import FileType
-
     target = "/workspace/lsbx-mkdir/nested/deep"
     assert await sbx.files.make_dir(target) is True
     info = await sbx.files.get_info(target)
@@ -197,7 +196,6 @@ async def test_files_remove_is_idempotent(sbx: LocalDockerSandbox) -> None:
     await sbx.files.remove(path)
     # Documented divergence from e2b: removing an absent path succeeds.
     await sbx.files.remove(path)
-    from e2b import NotFoundException
 
     with pytest.raises(NotFoundException):
         await sbx.files.read(path)
@@ -223,12 +221,10 @@ async def test_ensure_started_is_idempotent(sbx: LocalDockerSandbox) -> None:
 async def test_kill_removes_the_container() -> None:
     sandbox = LocalDockerSandbox(_uid())
     await sandbox.ensure_started()
-    name = sandbox.container_name
     assert await sandbox.kill() is True
     assert await sandbox.is_running() is False
     state = await sandbox._container_state()
     assert state.exists is False
-    del name  # kept the variable local for easier debugging of failures
 
 
 async def test_kill_is_false_for_a_container_that_never_existed() -> None:
@@ -277,21 +273,12 @@ async def test_a_broken_daemon_reads_as_not_running(
 
 
 async def test_acquire_sandbox_routes_selfhost_no_key_to_a_real_container() -> None:
-    """End-to-end: tool-style usage through the public entry point."""
-    from unittest.mock import patch
-
-    from e2b import CommandExitException
-
-    from app.services.sandbox.lifecycle import acquire_sandbox
-    from app.services.sandbox.local_sandbox import (
-        LocalDockerSandbox,
-        pop_local_sandbox,
-    )
-
+    """End-to-end: tool-style usage through the public entry point, on a self-host that opted in."""
     uid = _uid()
     try:
         with (
             patch.object(settings, "ENV", "selfhost"),
+            patch.object(settings, "LOCAL_CODE_SANDBOX", True),
             patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
         ):
             async with acquire_sandbox(uid) as sbx:

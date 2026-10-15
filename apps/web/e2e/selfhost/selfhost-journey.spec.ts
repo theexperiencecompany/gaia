@@ -27,9 +27,12 @@ const STUB_MODEL = "gaia-e2e-stub";
 const COMPOSER_PLACEHOLDER = "What can I do for you today?";
 const CHAT_STREAM_PATH = "/chat-stream";
 
-const ADMIN = { email: "admin@selfhost.test", password: "admin-e2e-password" };
+const ADMIN = {
+  email: "admin@selfhost.example",
+  password: "admin-e2e-password",
+};
 const MEMBER = {
-  email: "member@selfhost.test",
+  email: "member@selfhost.example",
   password: "member-e2e-password",
 };
 
@@ -176,7 +179,7 @@ test.describe("self-host journey", () => {
     const stranger = await request.newContext({ baseURL });
     const reused = await stranger.post("/api/v1/auth/signup", {
       data: {
-        email: "second@selfhost.test",
+        email: "second@selfhost.example",
         password: "second-e2e-password",
         invite: inviteToken,
       },

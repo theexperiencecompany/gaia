@@ -62,19 +62,23 @@ export function DoneStep({ status, catalog }: DoneStepProps) {
   useEffect(() => {
     if (!hasLlm) return;
     let cancelled = false;
-    import("canvas-confetti").then(({ default: confetti }) => {
-      if (cancelled) return;
-      confetti({
-        particleCount: 90,
-        spread: 70,
-        origin: { y: 0.65 },
-        ticks: 180,
-        gravity: 1.1,
-        decay: 0.94,
-        scalar: 0.9,
-        colors: ["#00bbff", "#a78bfa", "#34d399", "#f472b6"],
+    import("canvas-confetti")
+      .then(({ default: confetti }) => {
+        if (cancelled) return;
+        confetti({
+          particleCount: 90,
+          spread: 70,
+          origin: { y: 0.65 },
+          ticks: 180,
+          gravity: 1.1,
+          decay: 0.94,
+          scalar: 0.9,
+          colors: ["#00bbff", "#a78bfa", "#34d399", "#f472b6"],
+        });
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load the confetti burst:", error);
       });
-    });
     return () => {
       cancelled = true;
     };

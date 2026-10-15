@@ -147,7 +147,7 @@ def container_name_for(user_id: str) -> str:
     clean = re.sub(r"[^a-zA-Z0-9_.-]+", "-", user_id).strip("-.") or "user"
     if clean != user_id:
         # Non-crypto fingerprint: only disambiguates sanitized names.
-        digest = hashlib.sha1(user_id.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
+        digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:8]
         clean = f"{clean}-{digest}"
     return f"{LOCAL_SANDBOX_CONTAINER_PREFIX}{clean}"
 
@@ -454,11 +454,12 @@ class LocalDockerSandbox:
 
     async def kill(self) -> bool:
         """Force-remove the container. False (never raises) if already gone."""
-        rc, _, stderr = await self._run_docker("rm", "-f", self.container_name)
+        rc, stdout, stderr = await self._run_docker("rm", "-f", self.container_name)
         if rc == 0:
-            # Some daemons exit 0 even when printing "No such container" for a
-            # forced remove of a missing container — trust stderr over rc.
-            if any(m in stderr.lower() for m in _MISSING_CONTAINER_MARKERS):
+            # Docker 29 exits 0 for a forced remove of a missing container, silently or
+            # with "No such container"; only an actual removal echoes the name.
+            removed = stdout.decode("utf-8", errors="replace").strip() == self.container_name
+            if not removed:
                 log.info(
                     f"{LogTag.SANDBOX} local container already gone",
                     container=self.container_name,

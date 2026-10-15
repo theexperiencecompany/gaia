@@ -795,6 +795,7 @@ class TestSsrfGuard:
     ) -> None:
         monkeypatch.undo()
         monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
 
         assert setup_endpoint._allows_private_endpoint(provider) is False
         assert setup_endpoint._allows_private_endpoint("ollama") is True
