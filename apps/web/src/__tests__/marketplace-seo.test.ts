@@ -187,7 +187,7 @@ describe("getIntegrationFAQs variance", () => {
     });
     const schema = generateFAQSchema(faqs);
     expect(schema.mainEntity).toHaveLength(faqs.length);
-    const emitted = JSON.parse(JSON.stringify(schema)) as {
+    const emitted = structuredClone(schema) as {
       mainEntity: Array<{
         name: string;
         acceptedAnswer: { text: string };
