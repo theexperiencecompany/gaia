@@ -13,8 +13,10 @@ from app.models.runtime_models import InstanceSettingsDocument
 import app.services.composio.auth_config_resolver as resolver
 from app.services.composio.auth_config_resolver import (
     integration_for_auth_config,
+    remove_stored_auth_config,
     resolve_auth_configs,
     save_auth_configs,
+    set_stored_auth_config,
 )
 from app.services.runtime.config_updates import (
     COMPOSIO_AUTH_CONFIGS_SCOPE,
@@ -173,6 +175,69 @@ async def test_saving_is_refused_where_the_deployment_reads_env_only(
     assert str(refused.value) == (
         "This deployment reads Composio auth configs from the environment only; "
         "the instance store is not writable here"
+    )
+
+
+async def test_storing_one_id_keeps_the_others_and_strips_it(
+    store: FakeInstanceSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    await save_auth_configs({"gmail": "ac_gmail"})
+
+    await set_stored_auth_config("slack", " ac_slack ")
+
+    assert store.values[resolver.AUTH_CONFIGS_SETTING_KEY] == {
+        "gmail": "ac_gmail",
+        "slack": "ac_slack",
+    }
+
+
+async def test_removing_one_id_keeps_the_others_and_a_missing_one_writes_nothing(
+    store: FakeInstanceSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    await save_auth_configs({"gmail": "ac_gmail", "slack": "ac_slack"})
+
+    await remove_stored_auth_config("slack")
+    assert store.values[resolver.AUTH_CONFIGS_SETTING_KEY] == {"gmail": "ac_gmail"}
+
+    store.values.clear()
+    await remove_stored_auth_config("slack")
+    assert store.values == {}
+
+
+@pytest.mark.parametrize(
+    ("integration_id", "auth_config_id", "message"),
+    [
+        ("nope", "ac_x", "names no Composio integration: ['nope']"),
+        ("gmail", " ", "has an empty auth config id: ['gmail']"),
+    ],
+)
+async def test_storing_an_id_that_could_never_connect_is_refused(
+    store: FakeInstanceSettings,
+    monkeypatch: pytest.MonkeyPatch,
+    integration_id: str,
+    auth_config_id: str,
+    message: str,
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+
+    with pytest.raises(ValueError) as refused:
+        await set_stored_auth_config(integration_id, auth_config_id)
+    assert store.values == {}
+    assert str(refused.value) == f"The auth config {message}"
+
+
+async def test_storing_one_id_is_refused_where_the_deployment_reads_env_only(
+    store: FakeInstanceSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "production")
+
+    with pytest.raises(RuntimeError) as refused:
+        await set_stored_auth_config("gmail", "ac_x")
+    assert store.values == {}
+    assert str(refused.value) == (
+        "This deployment reads Composio auth configs from the environment only"
     )
 
 
