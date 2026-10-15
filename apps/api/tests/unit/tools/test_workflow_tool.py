@@ -420,13 +420,13 @@ class TestSearchTriggers:
         """Returns triggers with connected/not-connected counts."""
         from app.agents.tools.workflow_shared_tools import search_triggers
 
+        triggers = [
+            _trigger_result("calendar_event", is_connected=True),
+            _trigger_result("calendar_reminder", is_connected=True),
+            _trigger_result("slack_message", is_connected=False),
+        ]
         with patch(f"{SHARED_MODULE}.TriggerSearchService") as mock_trigger_svc:
-            mock_trigger_svc.search = AsyncMock(
-                return_value=[
-                    _trigger_result("calendar_event", is_connected=True),
-                    _trigger_result("slack_message", is_connected=False),
-                ]
-            )
+            mock_trigger_svc.search = AsyncMock(return_value=triggers)
 
             result = await search_triggers.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
@@ -434,7 +434,8 @@ class TestSearchTriggers:
             )
 
         assert result["success"] is True
-        assert result["data"]["connected_count"] == 1
+        assert result["data"]["triggers"] == [t.model_dump(mode="json") for t in triggers]
+        assert result["data"]["connected_count"] == 2
         assert result["data"]["not_connected_count"] == 1
 
     async def test_search_failure(self) -> None:
