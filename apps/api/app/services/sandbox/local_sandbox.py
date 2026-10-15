@@ -15,6 +15,7 @@ reach another's.
 from __future__ import annotations
 
 import asyncio
+import codecs
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -121,6 +122,15 @@ def _tar_bytes(name: str, content: bytes) -> bytes:
         info.uid, info.gid = os.getuid(), os.getgid()
         tar.addfile(info, io.BytesIO(content))
     return buffer.getvalue()
+
+
+def _deliver(text: str, parts: list[str], callback: Callable[[str], None] | None) -> None:
+    """Keep a decoded output piece and stream it to the caller; empty pieces are dropped."""
+    if not text:
+        return
+    parts.append(text)
+    if callback is not None:
+        callback(text)
 
 
 def _kill_process_group(pid: int) -> None:
@@ -544,11 +554,11 @@ class LocalDockerSandbox:
             parts: list[str],
             callback: Callable[[str], None] | None,
         ) -> None:
+            # Incremental, so a multi-byte character split across two reads decodes whole.
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
             while chunk := await stream.read(_STREAM_CHUNK_BYTES):
-                text = chunk.decode(errors="replace")
-                parts.append(text)
-                if callback is not None:
-                    callback(text)
+                _deliver(decoder.decode(chunk), parts, callback)
+            _deliver(decoder.decode(b"", final=True), parts, callback)
 
         pumps = [
             asyncio.create_task(pump(proc.stdout, stdout_parts, on_stdout)),

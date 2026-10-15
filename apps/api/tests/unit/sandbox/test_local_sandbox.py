@@ -894,6 +894,29 @@ async def test_undecodable_file_text_is_replaced_not_fatal(recorder: SpawnRecord
     assert await _sandbox().files.read("/workspace/f") == _REPLACED
 
 
+async def test_a_character_split_across_output_chunks_arrives_whole(
+    recorder: SpawnRecorder,
+) -> None:
+    # The first read ends one byte into the two-byte "é".
+    text = "a" * (local_sandbox._STREAM_CHUNK_BYTES - 1) + "é tail"
+    recorder._responses = [FakeProcess(stdout=text.encode(), stderr=text.encode())]
+    streamed: list[str] = []
+
+    result = await _sandbox().commands.run("cat accents", on_stdout=streamed.append)
+
+    assert result.stdout == text
+    assert result.stderr == text
+    assert "".join(streamed) == text
+
+
+async def test_output_cut_mid_character_ends_with_a_replacement_not_silence(
+    recorder: SpawnRecorder,
+) -> None:
+    recorder._responses = [FakeProcess(stdout="done é".encode()[:-1])]
+    result = await _sandbox().commands.run("killed mid-write")
+    assert result.stdout == "done �"
+
+
 async def test_undecodable_command_output_is_replaced_and_every_chunk_is_kept(
     recorder: SpawnRecorder,
 ) -> None:
