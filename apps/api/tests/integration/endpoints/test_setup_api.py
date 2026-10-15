@@ -35,6 +35,7 @@ from app.constants.providers import (
 from app.services.providers import provider_setup_service
 from shared.py.wide_events import log
 from tests.factories import make_provider_config
+from tests.helpers import captured_wide_event
 from tests.integration.endpoints.conftest import (
     API,
     FAKE_USER_ID,
@@ -442,6 +443,13 @@ class TestSetupWizardDismissal:
 
         assert (await client.get(f"{API}/status")).json()["needs_setup"] is True
 
+    async def test_dismissal_stamps_the_admin_on_the_wide_event(self, client: AsyncClient) -> None:
+        async with captured_wide_event() as event:
+            assert (await client.post(f"{API}/wizard/dismiss")).status_code == 200
+
+        assert event["user"] == {"id": FAKE_USER_ID}
+        assert event["operation"] == "setup_wizard_dismiss"
+
 
 class TestProviderCatalog:
     """Serve the Python provider catalog so the wizard and Settings render dynamically.
@@ -510,6 +518,13 @@ class TestProviderCatalog:
         assert not _requires("/catalog", get_current_user)
         assert not _requires("/catalog", require_instance_admin)
 
+    async def test_catalog_stamps_the_request_wide_event(self, anon_client: AsyncClient) -> None:
+        async with captured_wide_event() as event:
+            assert (await anon_client.get(f"{API}/catalog")).status_code == 200
+
+        assert event["operation"] == "setup_catalog"
+        assert event["auth_mode"] == settings.AUTH_MODE
+
 
 class TestProvidersMaskedView:
     async def test_masked_output_never_contains_full_key(self, client: AsyncClient) -> None:
@@ -545,6 +560,31 @@ class TestProvidersMaskedView:
         assert entry["configured"] is False
         assert entry["api_key_hint"] is None
 
+    async def test_an_endpoint_and_model_are_shown_unmasked(self, client: AsyncClient) -> None:
+        await provider_service.upsert(
+            "custom",
+            make_provider_config(api_key=SECRET_KEY, base_url="https://gw.test/v1", model="m-1"),
+        )
+
+        entry = (await client.get(f"{API}/providers")).json()["providers"]["custom"]
+
+        assert (entry["configured"], entry["base_url"], entry["model"]) == (
+            True,
+            "https://gw.test/v1",
+            "m-1",
+        )
+
+    async def test_a_custom_endpoint_without_a_model_is_not_configured(
+        self, client: AsyncClient
+    ) -> None:
+        await provider_service.upsert(
+            "custom", make_provider_config(api_key=SECRET_KEY, base_url="https://gw.test/v1")
+        )
+
+        entry = (await client.get(f"{API}/providers")).json()["providers"]["custom"]
+
+        assert entry["configured"] is False
+
 
 class TestUpsertProvider:
     async def test_preset_fills_opencode_endpoint_and_model(self, client: AsyncClient) -> None:
@@ -579,6 +619,71 @@ class TestUpsertProvider:
         assert resp.status_code == 404
         assert provider_service.configs == {}
 
+    async def test_an_empty_body_is_refused_and_stores_nothing(self, client: AsyncClient) -> None:
+        resp = await client.put(f"{API}/providers/gemini", json={})
+
+        assert resp.status_code == 422
+        assert resp.json()["message"] == "No fields to update"
+        assert provider_service.configs == {}
+
+    async def test_a_partial_update_keeps_every_stored_field_it_omits(
+        self, client: AsyncClient
+    ) -> None:
+        await provider_service.upsert(
+            "custom",
+            make_provider_config(
+                api_key=STORED_KEY,
+                base_url="https://gw.test/v1",
+                model="m-1",
+                preset="opencode",
+                account_id="acct",
+                api_secret="second-secret",
+            ),
+        )
+
+        resp = await client.put(f"{API}/providers/custom", json={"model": "m-2"})
+
+        assert resp.status_code == 200
+        assert provider_service.configs["custom"] == {
+            "api_key": STORED_KEY,
+            "base_url": "https://gw.test/v1",
+            "model": "m-2",
+            "preset": "opencode",
+            "account_id": "acct",
+            "api_secret": "second-secret",
+        }
+
+    async def test_rotating_the_key_keeps_the_stored_model(self, client: AsyncClient) -> None:
+        await provider_service.upsert(
+            "custom",
+            make_provider_config(api_key=STORED_KEY, base_url="https://gw.test/v1", model="m-1"),
+        )
+
+        await client.put(f"{API}/providers/custom", json={"api_key": "rotated-key"})
+
+        stored = provider_service.configs["custom"]
+        assert (stored["api_key"], stored["model"]) == ("rotated-key", "m-1")
+
+    async def test_a_given_field_replaces_the_stored_one(self, client: AsyncClient) -> None:
+        await provider_service.upsert(
+            "cloudinary",
+            make_provider_config(
+                api_key="old-key", account_id="old-cloud", api_secret="old-secret"
+            ),
+        )
+
+        await client.put(
+            f"{API}/providers/cloudinary",
+            json={"api_key": "new-key", "account_id": "new-cloud", "api_secret": "new-secret"},
+        )
+
+        stored = provider_service.configs["cloudinary"]
+        assert (stored["api_key"], stored["account_id"], stored["api_secret"]) == (
+            "new-key",
+            "new-cloud",
+            "new-secret",
+        )
+
     async def test_put_requires_auth_dependency(self) -> None:
         assert _requires("/providers/{provider}", get_current_user)
 
@@ -594,8 +699,12 @@ class TestProviderAudit:
         finally:
             log.reset()
 
-        assert (entry["actor"], entry["provider"]) == (FAKE_USER_ID, "gemini")
-        assert SECRET_KEY not in str(entry)
+        assert entry == {
+            "msg": "provider credential saved",
+            "actor": FAKE_USER_ID,
+            "provider": "gemini",
+            "api_key_changed": True,
+        }
 
     async def test_removing_a_credential_is_audited(self, client: AsyncClient) -> None:
         log.reset()
@@ -605,7 +714,21 @@ class TestProviderAudit:
         finally:
             log.reset()
 
-        assert (entry["actor"], entry["provider"]) == (FAKE_USER_ID, "gemini")
+        assert entry == {
+            "msg": "provider credential removed",
+            "actor": FAKE_USER_ID,
+            "provider": "gemini",
+        }
+
+    async def test_an_update_without_a_key_is_audited_as_keeping_it(
+        self, client: AsyncClient
+    ) -> None:
+        await provider_service.upsert("gemini", make_provider_config(api_key=SECRET_KEY))
+        async with captured_wide_event() as event:
+            await client.put(f"{API}/providers/gemini", json={"model": "gemini-2.5-pro"})
+
+        [entry] = event["audit"]
+        assert entry["api_key_changed"] is False
 
 
 class TestDeleteProvider:
@@ -637,7 +760,10 @@ class TestProviderProbe:
                 json={"base_url": "https://gw.test/v1", "api_key": SECRET_KEY, "model": "m-1"},
             )
         request = route.calls.last.request
-        assert request.headers["Authorization"] == f"Bearer {SECRET_KEY}"
+        assert (b"Authorization", f"Bearer {SECRET_KEY}".encode()) in request.headers.raw
+        assert set(request.extensions["timeout"].values()) == {
+            setup_endpoint._PROBE_TIMEOUT_SECONDS
+        }
         assert json.loads(request.content) == {
             "model": "m-1",
             "messages": [{"role": "user", "content": "Reply with OK."}],
@@ -817,11 +943,12 @@ class TestProviderProbe:
             )
             await client.post(
                 f"{API}/providers/custom/test",
-                json={"base_url": EVIL_BASE_URL, "api_key": "body-key"},
+                json={"base_url": EVIL_BASE_URL, "api_key": "body-key", "model": "body-model"},
             )
         request = route.calls.last.request
         assert request.url.host == "old.test"
         assert request.headers["Authorization"] == f"Bearer {STORED_KEY}"
+        assert json.loads(request.content)["model"] == "m-1"
 
     async def test_http_error_reports_not_ok(self, client: AsyncClient) -> None:
         with respx.mock:
@@ -844,13 +971,106 @@ class TestProviderProbe:
                 f"{API}/providers/custom/test",
                 json={"base_url": "https://dead.test/v1", "model": "m"},
             )
-        assert resp.json()["ok"] is False
+        assert resp.json() == {
+            "ok": False,
+            "detail": "Could not reach custom: ConnectError",
+            "models": [],
+        }
 
     async def test_no_base_url_configured_is_not_ok(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/providers/custom/test", json={})
         body = resp.json()
         assert body["ok"] is False
         assert body["models"] == []
+
+    async def test_a_preset_fills_the_endpoint_and_model_before_anything_is_saved(
+        self, client: AsyncClient
+    ) -> None:
+        with respx.mock:
+            route = respx.post("https://opencode.ai/zen/go/v1/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
+            )
+            resp = await client.post(
+                f"{API}/providers/custom/test", json={"preset": "opencode", "api_key": "k"}
+            )
+        assert json.loads(route.calls.last.request.content)["model"] == "deepseek-v4-flash"
+        assert resp.json()["ok"] is True
+
+    async def test_a_trailing_slash_on_the_base_url_is_not_doubled(
+        self, client: AsyncClient
+    ) -> None:
+        with respx.mock:
+            route = respx.post("https://gw.test/proxyX/chat/completions").mock(
+                return_value=httpx.Response(200, json=CHAT_COMPLETION)
+            )
+            resp = await client.post(
+                f"{API}/providers/custom/test",
+                json={"base_url": "https://gw.test/proxyX/", "model": "m"},
+            )
+        assert route.called
+        assert resp.json()["ok"] is True
+
+    async def test_a_canonical_provider_without_a_key_is_not_ok(self, client: AsyncClient) -> None:
+        resp = await client.post(f"{API}/providers/openai/test", json={})
+        assert resp.json() == {"ok": False, "detail": "No OpenAI API key configured", "models": []}
+
+    async def test_any_key_shaped_token_in_the_reason_is_redacted(
+        self, client: AsyncClient
+    ) -> None:
+        with respx.mock:
+            respx.post("https://api.openai.com/v1/chat/completions").mock(
+                return_value=httpx.Response(
+                    401, json={"error": {"message": "Key sk-proj-ab12****cd34 was revoked."}}
+                )
+            )
+            resp = await client.post(f"{API}/providers/openai/test", json={"api_key": SECRET_KEY})
+        assert resp.json()["detail"] == "OpenAI rejected the key: Key [redacted] was revoked."
+
+    async def test_gemini_reports_its_connection(self, client: AsyncClient) -> None:
+        with respx.mock:
+            respx.get("https://generativelanguage.googleapis.com/v1beta/models").mock(
+                return_value=httpx.Response(200, json={})
+            )
+            resp = await client.post(f"{API}/providers/gemini/test", json={"api_key": "g-key"})
+        assert resp.json() == {"ok": True, "detail": "Connected to Google Gemini", "models": []}
+
+    async def test_gemini_without_a_key_is_not_ok(self, client: AsyncClient) -> None:
+        resp = await client.post(f"{API}/providers/gemini/test", json={})
+        assert resp.json() == {"ok": False, "detail": "No Gemini API key configured", "models": []}
+
+    async def test_gemini_refusing_the_key_is_not_ok(self, client: AsyncClient) -> None:
+        with respx.mock:
+            respx.get("https://generativelanguage.googleapis.com/v1beta/models").mock(
+                return_value=httpx.Response(400, json={})
+            )
+            resp = await client.post(f"{API}/providers/gemini/test", json={"api_key": "g-key"})
+        assert resp.json() == {"ok": False, "detail": "Gemini returned HTTP 400", "models": []}
+
+    async def test_ollama_reports_its_connection_past_a_trailing_slash(
+        self, client: AsyncClient
+    ) -> None:
+        with respx.mock:
+            respx.get("http://localhost:11434/ollamaX/api/tags").mock(
+                return_value=httpx.Response(200, json={})
+            )
+            resp = await client.post(
+                f"{API}/providers/ollama/test", json={"base_url": "http://localhost:11434/ollamaX/"}
+            )
+        assert resp.json() == {"ok": True, "detail": "Connected to Ollama", "models": []}
+
+    async def test_ollama_without_a_base_url_is_not_ok(self, client: AsyncClient) -> None:
+        resp = await client.post(f"{API}/providers/ollama/test", json={})
+        assert resp.json() == {"ok": False, "detail": "No Ollama base URL configured", "models": []}
+
+    async def test_ollama_answering_an_error_is_not_ok(self, client: AsyncClient) -> None:
+        with respx.mock:
+            respx.get("http://localhost:11434/api/tags").mock(
+                return_value=httpx.Response(404, json={})
+            )
+            resp = await client.post(
+                f"{API}/providers/ollama/test", json={"base_url": "http://localhost:11434"}
+            )
+        assert resp.json() == {"ok": False, "detail": "Ollama returned HTTP 404", "models": []}
 
     @pytest.mark.parametrize(
         "provider", sorted(set(CREDENTIAL_PROVIDERS) - set(setup_endpoint._LLM_PROVIDER_KEYS))
@@ -860,6 +1080,9 @@ class TestProviderProbe:
     ) -> None:
         resp = await client.post(f"{API}/providers/{provider}/test", json={"api_key": "k"})
         assert resp.status_code == 422
+        assert resp.json()["message"] == (
+            f"Only chat providers can be connection-tested, not {provider}"
+        )
 
     async def test_detail_never_leaks_the_api_key(self, client: AsyncClient) -> None:
         with respx.mock:
@@ -973,6 +1196,19 @@ class TestSsrfGuard:
         )
         assert resp.status_code == 200
         assert provider_service.configs["ollama"]["base_url"] == "http://localhost:11434"
+
+    async def test_probe_allows_a_local_ollama_endpoint(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning("127.0.0.1"))
+        with respx.mock:
+            respx.get("http://localhost:11434/api/tags").mock(
+                return_value=httpx.Response(200, json={"models": [{"name": "qwen3"}]})
+            )
+            resp = await client.post(
+                f"{API}/providers/ollama/test", json={"base_url": "http://localhost:11434"}
+            )
+        assert resp.json()["ok"] is True
 
     async def test_put_rejects_name_resolving_private(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -1118,6 +1354,24 @@ class TestAuthContract:
     )
     async def test_guarded_routes_depend_on_instance_admin(self, path: str) -> None:
         assert _requires(path, require_instance_admin)
+
+    @pytest.mark.parametrize(
+        ("method", "path", "body"),
+        [
+            ("GET", "/providers", None),
+            ("PUT", "/providers/gemini", {"api_key": "g"}),
+            ("DELETE", "/providers/gemini", None),
+            ("POST", "/providers/ollama/test", {}),
+        ],
+    )
+    async def test_admin_routes_stamp_the_caller_on_the_wide_event(
+        self, client: AsyncClient, method: str, path: str, body: dict[str, str] | None
+    ) -> None:
+        async with captured_wide_event() as event:
+            resp = await client.request(method, f"{API}{path}", json=body)
+
+        assert resp.status_code == 200
+        assert event["user"] == {"id": FAKE_USER_ID}
 
     async def test_requests_carry_the_caller_identity(self, client: AsyncClient) -> None:
         await client.put(f"{API}/providers/gemini", json={"api_key": "g"})
