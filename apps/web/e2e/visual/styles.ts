@@ -6,15 +6,22 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "@playwright/test";
+import { chromium, type Page } from "@playwright/test";
 import { nameColors, parseColor } from "./colors.ts";
 import type { DomElement, DomSnapshot, Rect } from "./dom";
 import { matchElements, parentPath, tagOf } from "./match.ts";
+import {
+  loadScreenshot,
+  measureVisibility,
+  type Screenshot,
+  type Visibility,
+} from "./pixels.ts";
 
 /**
  * Element-level style diff of a visual-diff run: matches the base and head DOM
- * snapshots (dom/<id>.<side>.json) (see match.ts), ranks what changed and
- * writes changes.md plus zoomed base | head crops of the top changes.
+ * snapshots (dom/<id>.<side>.json) (see match.ts), checks which changes alter
+ * pixels (see pixels.ts) and writes changes.md plus zoomed base | head crops of
+ * the largest visible ones.
  * Usage: node e2e/visual/styles.ts <out-dir> <base-label> <head-label>
  */
 
@@ -54,6 +61,9 @@ interface Group {
   text: string;
   occurrences: Occurrence[];
 }
+
+/** A group whose occurrences are ordered most changed pixels first, measured by its first. */
+type MeasuredGroup = Group & Visibility;
 
 interface SummaryItem {
   title: string;
@@ -285,24 +295,42 @@ function groupChanges(base: DomSnapshot, head: DomSnapshot): Group[] {
   );
 }
 
-// PNG stores width and height as big-endian uint32s at bytes 16 and 20.
-function pngSize(path: string): { width: number; height: number } {
-  const header = readFileSync(path).subarray(16, 24);
-  return { width: header.readUInt32BE(0), height: header.readUInt32BE(4) };
-}
-
-interface Screenshot {
-  uri: string;
-  width: number;
-  height: number;
-}
-
-function loadScreenshot(path: string | undefined): Screenshot | null {
-  if (!path || !existsSync(path)) return null;
-  return {
-    uri: `data:image/png;base64,${readFileSync(path).toString("base64")}`,
-    ...pngSize(path),
-  };
+/** Each group's pixel visibility; an unchanged surface's screenshots match, so nothing shows. */
+async function measureGroups(
+  page: Page,
+  groups: Group[],
+  shots: { base: Screenshot; head: Screenshot } | null,
+): Promise<MeasuredGroup[]> {
+  if (!shots)
+    return groups.map((group) => ({
+      ...group,
+      visible: false,
+      changedPixels: 0,
+    }));
+  const occurrences = groups.flatMap((group) => group.occurrences);
+  const measured = await measureVisibility(
+    page,
+    shots.base,
+    shots.head,
+    occurrences.map(({ base, head, subject }) => ({
+      base: (base ?? subject).rect,
+      head: (head ?? subject).rect,
+    })),
+  );
+  let offset = 0;
+  return groups.map((group) => {
+    const ranked = group.occurrences
+      .map((occurrence, i) => ({ occurrence, ...measured[offset + i] }))
+      .sort((a, b) => b.changedPixels - a.changedPixels);
+    offset += group.occurrences.length;
+    return {
+      ...group,
+      occurrences: ranked.map(({ occurrence }) => occurrence),
+      visible: ranked.some(({ visible }) => visible),
+      // The largest occurrence, not the sum: repeated elements are often nested wrappers.
+      changedPixels: ranked[0].changedPixels,
+    };
+  });
 }
 
 const repeats = (group: Group) =>
@@ -322,12 +350,8 @@ interface Crop {
 }
 
 /** The screenshot region around an element's own rect, or null when it was not captured. */
-function cropOf(
-  shot: Screenshot | null,
-  el: DomElement | undefined,
-): Crop | null {
-  if (!shot || !el || el.rect.y >= shot.height || el.rect.x >= shot.width)
-    return null;
+function cropOf(shot: Screenshot, el: DomElement | undefined): Crop | null {
+  if (!el || el.rect.y >= shot.height || el.rect.x >= shot.width) return null;
   const x = Math.max(0, el.rect.x - CROP_CONTEXT_PX);
   const y = Math.max(0, el.rect.y - CROP_CONTEXT_PX);
   const width =
@@ -358,8 +382,8 @@ function cropPanel(
 function cropHtml(
   title: string,
   group: Group,
-  base: Screenshot | null,
-  head: Screenshot | null,
+  base: Screenshot,
+  head: Screenshot,
   labels: [string, string],
 ): string {
   const { base: baseEl, head: headEl, subject } = group.occurrences[0];
@@ -402,32 +426,46 @@ function readSnapshot(path: string): DomSnapshot | null {
     : null;
 }
 
-function changeLine(group: Group, crop: string): string {
+function changeLine(group: MeasuredGroup, crop: string): string {
   const subject = describeElement(group.occurrences[0].subject);
-  return `- **${group.category}** ${group.text}${repeats(group)} · \`${subject}\`${crop}`;
+  const pixels = group.visible ? ` (${group.changedPixels} px changed)` : "";
+  return `- **${group.category}** ${group.text}${repeats(group)} · \`${subject}\`${pixels}${crop}`;
 }
 
-/** A surface's changes: the cropped top ones first, the rest folded under a details block. */
+/** A surface's changes: visible ones by changed pixels, the computed-only rest folded under a details block. */
 function surfaceSection(
   base: DomSnapshot,
   head: DomSnapshot,
-  groups: Group[],
-  cropped: string[],
+  visible: string[],
+  computedOnly: MeasuredGroup[],
 ): string {
-  const rest = groups
-    .slice(cropped.length, GROUPS_LISTED_PER_SURFACE)
+  const rest = computedOnly
+    .slice(0, GROUPS_LISTED_PER_SURFACE)
     .map((group) => changeLine(group, ""));
-  const hidden = groups.length - GROUPS_LISTED_PER_SURFACE;
+  const hidden = computedOnly.length - GROUPS_LISTED_PER_SURFACE;
   if (hidden > 0) rest.push(`- …and ${hidden} more`);
-  const more =
+  const folded =
     rest.length > 0
-      ? `\n\n<details><summary>${groups.length - cropped.length} more changes</summary>\n\n${rest.join("\n")}\n\n</details>`
+      ? `<details><summary>${computedOnly.length} computed-only changes (no pixel difference)</summary>\n\n${rest.join("\n")}\n\n</details>`
       : "";
   const truncated =
     base.truncated || head.truncated
       ? "\n\nSnapshot capped at its element limit; later elements are not compared."
       : "";
-  return `## \`${head.title}\`${truncated}\n\n${cropped.join("\n")}${more}\n`;
+  const body = [visible.join("\n"), folded].filter(Boolean).join("\n\n");
+  return `## \`${head.title}\`${truncated}\n\n${body}\n`;
+}
+
+/** Both screenshots of a changed surface; null when the surface is unchanged and they match. */
+function screenshotsOf(
+  item: SummaryItem | undefined,
+  title: string,
+): { base: Screenshot; head: Screenshot } | null {
+  if (item?.outcome === "unchanged") return null;
+  const { base, head } = item?.images ?? {};
+  if (!base || !head)
+    throw new Error(`${title}: summary.json lists no base and head screenshot`);
+  return { base: loadScreenshot(base), head: loadScreenshot(head) };
 }
 
 async function main(): Promise<void> {
@@ -454,7 +492,10 @@ async function main(): Promise<void> {
     viewport: { width: CROP_PANEL_MAX_PX * 2 + 80, height: 600 },
   });
   const sections: string[] = [];
+  const counts: string[] = [];
   let compared = 0;
+  let visibleTotal = 0;
+  let computedOnlyTotal = 0;
   for (const id of ids) {
     const base = readSnapshot(join(domDir, `${id}.base.json`));
     const head = readSnapshot(join(domDir, `${id}.head.json`));
@@ -463,24 +504,36 @@ async function main(): Promise<void> {
     const groups = groupChanges(base, head);
     if (groups.length === 0) continue;
 
-    const basePath = join(outDir, "baseline", `${id}.png`);
     const item = summary.find((entry) => entry.title === head.title);
-    const baseShot = loadScreenshot(basePath);
-    const headShot = loadScreenshot(
-      item?.images.head ??
-        (item?.outcome === "unchanged" ? basePath : undefined),
-    );
-    const cropped: string[] = [];
-    for (const [index, group] of groups.slice(0, CROPS_PER_SURFACE).entries()) {
+    const shots = screenshotsOf(item, head.title);
+    const measured = await measureGroups(page, groups, shots);
+    const visible = measured
+      .filter((group) => group.visible)
+      .sort((a, b) => b.changedPixels - a.changedPixels);
+    const computedOnly = measured.filter((group) => !group.visible);
+    const lines: string[] = [];
+    for (const [index, group] of visible.entries()) {
+      if (!shots || index >= CROPS_PER_SURFACE) {
+        lines.push(changeLine(group, ""));
+        continue;
+      }
       const file = `${id}-${index + 1}.png`;
       await page.setContent(
-        cropHtml(head.title, group, baseShot, headShot, [baseLabel, headLabel]),
+        cropHtml(head.title, group, shots.base, shots.head, [
+          baseLabel,
+          headLabel,
+        ]),
         { waitUntil: "load" },
       );
       await page.locator("#card").screenshot({ path: join(changesDir, file) });
-      cropped.push(changeLine(group, ` · [crop](changes/${file})`));
+      lines.push(changeLine(group, ` · [crop](changes/${file})`));
     }
-    sections.push(surfaceSection(base, head, groups, cropped));
+    sections.push(surfaceSection(base, head, lines, computedOnly));
+    counts.push(
+      `| \`${head.title}\` | ${visible.length} | ${computedOnly.length} |`,
+    );
+    visibleTotal += visible.length;
+    computedOnlyTotal += computedOnly.length;
   }
   await browser.close();
 
@@ -490,13 +543,21 @@ async function main(): Promise<void> {
     [
       `# Style changes: ${baseLabel} → ${headLabel}`,
       "",
-      `${compared} surfaces compared · ${changed} with element-level changes. Elements with text are matched by tag and identical text under the same anchor, textless ones by structural path; position shifts alone are ignored.`,
+      `${compared} surfaces compared · ${changed} with element-level changes · ${visibleTotal} visible, ${computedOnlyTotal} computed-only. Elements with text are matched by tag and identical text under the same anchor, textless ones by structural path; position shifts alone are ignored. A change is visible when its element's base and head screenshot crops differ in size or in more than 0.5% (and at least 20) of their pixels.`,
       "",
-      ...(changed ? sections : ["No element-level style changes."]),
+      ...(changed
+        ? [
+            "| Surface | Visible | Computed-only |",
+            "| --- | --- | --- |",
+            ...counts,
+            "",
+            ...sections,
+          ]
+        : ["No element-level style changes."]),
     ].join("\n"),
   );
   console.info(
-    `style diff: ${compared} surfaces compared, ${changed} with changes`,
+    `style diff: ${compared} surfaces compared, ${changed} with changes (${visibleTotal} visible, ${computedOnlyTotal} computed-only)`,
   );
 }
 
