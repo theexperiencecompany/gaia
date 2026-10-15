@@ -20,6 +20,10 @@ import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 import { IntegrationDetailClient } from "./client";
 import { getIntegrationFAQs } from "./faqs";
+import {
+  generateIntegrationDescription,
+  generateIntegrationTitle,
+} from "./integrationMeta";
 
 export const revalidate = 60;
 
@@ -147,59 +151,6 @@ export const dynamicParams = true;
 
 interface Props {
   readonly params: Promise<{ readonly slug: string }>;
-}
-
-function generateIntegrationDescription(integration: {
-  name: string;
-  category: string;
-  description?: string;
-  toolCount?: number;
-}): string {
-  const name = integration.name;
-  const toolCount = integration.toolCount || 0;
-  const toolsNote = toolCount > 0 ? ` ${toolCount} actions available.` : "";
-
-  const categoryDescriptions: Record<string, string> = {
-    email: `GAIA reads and triages your ${name} inbox, drafts context-aware replies, auto-labels threads, and creates tasks from emails, automatically, without manual prompts.${toolsNote}`,
-    calendar: `GAIA schedules meetings, prepares pre-meeting briefings, finds free slots, and manages your ${name} calendar proactively, triggered by email, conversation, or automation.${toolsNote}`,
-    task: `GAIA creates, updates, and prioritizes ${name} tasks automatically from your emails, calendar events, and conversations, no copy-pasting required.${toolsNote}`,
-    tasks: `GAIA creates, updates, and prioritizes ${name} tasks automatically from your emails, calendar events, and conversations, no copy-pasting required.${toolsNote}`,
-    productivity: `GAIA connects ${name} to your email, calendar, and workflows, automating the repetitive parts so you can focus on deep work.${toolsNote}`,
-    communication: `GAIA monitors your ${name} channels, summarizes threads, surfaces what needs your attention, and creates tasks from messages, automatically.${toolsNote}`,
-    crm: `GAIA updates ${name} contacts and deals automatically from email threads, meeting notes, and calendar events, keeping your CRM current without manual entry.${toolsNote}`,
-    notes: `GAIA saves meeting notes, email summaries, and task context directly to ${name}, automatically building your knowledge base without copy-pasting.${toolsNote}`,
-    development: `GAIA creates ${name} issues from email threads, tracks PR status, prepares standup summaries, and syncs your engineering workflow with your calendar.${toolsNote}`,
-    automation: `GAIA triggers ${name} workflows from natural language, describe what you want to automate, and GAIA handles the execution across your connected tools.${toolsNote}`,
-    storage: `GAIA organizes files and documents in ${name} automatically, saving meeting notes, email attachments, and project artifacts in the right place.${toolsNote}`,
-    finance: `GAIA tracks ${name} activity, summarizes transactions, creates follow-up tasks from financial events, and integrates your financial data into your workflow.${toolsNote}`,
-    marketing: `GAIA automates ${name} tasks from email campaigns, tracks results, and creates follow-up workflows, connecting your marketing tool to your full productivity stack.${toolsNote}`,
-  };
-
-  const categoryKey = integration.category?.toLowerCase();
-  if (categoryKey && categoryDescriptions[categoryKey]) {
-    return categoryDescriptions[categoryKey];
-  }
-
-  return `Connect ${name} to GAIA and automate your workflows with AI. GAIA proactively manages your email, calendar, tasks, and connected tools, including ${name}.${toolsNote} Free MCP integration.`;
-}
-
-function generateIntegrationTitle(name: string, category: string): string {
-  // The layout title template appends "| GAIA" — never include the brand here,
-  // and keep titles short enough to survive SERP truncation (~60 chars).
-  const categoryTitles: Record<string, string> = {
-    email: `${name} AI Email Integration: Auto-Triage & Replies`,
-    calendar: `${name} AI Calendar Integration: Smart Scheduling`,
-    task: `${name} AI Task Integration: Auto-Create Tasks`,
-    tasks: `${name} AI Task Integration: Auto-Create Tasks`,
-    communication: `${name} AI Integration: Monitor & Summarize Messages`,
-    crm: `${name} AI CRM Integration: Auto-Update Contacts & Deals`,
-    development: `${name} AI Integration: Automate Engineering Workflows`,
-    notes: `${name} AI Notes Integration: Auto-Save Notes & Summaries`,
-  };
-  const key = category?.toLowerCase();
-  return (
-    categoryTitles[key] ?? `${name} AI Integration: Automate ${name} Workflows`
-  );
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
