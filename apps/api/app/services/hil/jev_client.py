@@ -9,18 +9,20 @@ from collections.abc import Mapping
 
 import httpx
 
-from app.config.settings import settings
 from app.constants.hil import HIL_JEV_MODEL_NAME, HIL_JEV_TIMEOUT_SECONDS, HIL_JEV_URL
+from app.constants.providers import CredentialProviderName
 from app.models.jev_models import JevDecisionsResponse
+from app.services.providers.provider_credentials_service import resolve
 
 
 async def post_decisions(
     state: Mapping[str, object], questions: Mapping[str, Mapping[str, object]]
 ) -> JevDecisionsResponse:
-    """One Decisions call; raises on a missing key, transport failure, or a malformed body."""
-    key = settings.OPENROUTER_API_KEY
+    """One Decisions call on the saved or env OpenRouter key; raises on a missing key, transport failure, or a malformed body."""
+    config = await resolve(CredentialProviderName.OPENROUTER)
+    key = config["api_key"] if config else None
     if not key:
-        raise RuntimeError("OPENROUTER_API_KEY unset; cannot reach the JEV judge")
+        raise RuntimeError("No OpenRouter key saved or set; cannot reach the JEV judge")
     async with httpx.AsyncClient(timeout=HIL_JEV_TIMEOUT_SECONDS) as client:
         resp = await client.post(
             HIL_JEV_URL,

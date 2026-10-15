@@ -1,18 +1,15 @@
-"""SSRF guards for HTTP(S) URLs.
-
-Server-side fetch/connect paths must not let a user-supplied URL reach
-loopback, private, link-local (incl. 169.254.169.254), or otherwise
-reserved addresses.
+"""SSRF guards for HTTP(S) URLs; the single source of truth for SSRF policy.
 
 assert_public_http_url resolves DNS off the loop and rejects any non-public
-address; call it immediately before every outbound request so DNS-rebinding
-can't slip an address past an earlier check (assert_public_http_url_sync is
-the same for callers that can't await). assert_safe_url_shape is a cheap
-sync pre-check (bad schemes, missing hosts, literal private IPs) for
-contexts that can't await at all. open_public_http_url applies the guard
-across a redirect chain.
+address; call it immediately before every outbound request so DNS rebinding
+cannot slip past an earlier check (assert_public_http_url_sync for callers that
+cannot await, assert_safe_url_shape as the non-resolving pre-check).
+open_public_http_url applies the guard across a redirect chain.
 
-Single source of truth for SSRF policy; the async web-fetch guard delegates here.
+assert_endpoint_url_allowed / assert_endpoint_url_shape guard an endpoint
+someone configured on purpose (an MCP server, a model provider): the caller
+passes allow_private from the deployment, and link-local and metadata
+addresses and URLs carrying credentials stay refused regardless.
 """
 
 import asyncio
@@ -67,6 +64,60 @@ def _assert_ip_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None
     # (100.64.0.0/10) and benchmarking (198.18.0.0/15) ranges.
     if not ip.is_global:
         raise ValueError(f"refusing to connect to non-public address {ip}")
+
+
+# Resolve to the metadata service; refused before any lookup so a sync shape check sees them.
+_METADATA_HOSTNAMES = frozenset({"metadata.google.internal", "metadata"})
+
+
+def _assert_ip_allowed(
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address, *, allow_private: bool
+) -> None:
+    mapped = ip.ipv4_mapped if isinstance(ip, ipaddress.IPv6Address) else None
+    effective = mapped or ip
+    if effective.is_link_local or effective.is_multicast or effective.is_unspecified:
+        raise ValueError(f"refusing to connect to link-local or reserved address {ip}")
+    if not allow_private:
+        _assert_ip_public(effective)
+
+
+def _endpoint_host_port(url: str) -> tuple[str, int]:
+    host, port = _parse_http_host_port(url)
+    parsed = httpx.URL(url)
+    if parsed.username or parsed.password:
+        raise ValueError("URL must not embed credentials")
+    if host.lower().rstrip(".") in _METADATA_HOSTNAMES:
+        raise ValueError(f"refusing to connect to metadata host {host}")
+    return host, port
+
+
+def assert_endpoint_url_shape(url: str, *, allow_private: bool) -> None:
+    """Sync, non-resolving check of a configured endpoint URL; raise ValueError when refused.
+
+    Checks scheme, host, embedded credentials, metadata hostnames and literal IP
+    hosts. Hostnames are resolved and checked by assert_endpoint_url_allowed.
+    """
+    host, _ = _endpoint_host_port(url)
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return
+    _assert_ip_allowed(ip, allow_private=allow_private)
+
+
+async def assert_endpoint_url_allowed(url: str, *, allow_private: bool) -> None:
+    """Raise ValueError unless url is an http(s) endpoint this process may dial.
+
+    Every resolved address is checked: without allow_private all must be public;
+    with it private, loopback and LAN addresses pass, link-local and metadata never.
+    """
+    host, port = _endpoint_host_port(url)
+    try:
+        addresses = await asyncio.to_thread(_resolve, host, port)
+    except OSError as e:
+        raise ValueError(f"DNS resolution failed: {e}") from e
+    for address in addresses:
+        _assert_ip_allowed(ipaddress.ip_address(address), allow_private=allow_private)
 
 
 def _resolve(host: str, port: int) -> list[str]:

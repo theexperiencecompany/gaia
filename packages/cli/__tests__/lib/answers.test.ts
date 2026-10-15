@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createUpAnswerResolver,
-  PROVIDER_ENV_VAR,
   portOverridesFromFlags,
-  type UpFlags,
-  validateLlmFlags,
 } from "../../src/lib/answers.js";
 import { readConfig } from "../../src/lib/config.js";
 
@@ -21,55 +18,15 @@ beforeEach(() => {
   mockedReadConfig.mockReturnValue(null);
 });
 
-function makeResolver(
-  flags: UpFlags,
-  opts?: {
-    interactive?: boolean;
-    savedValues?: Record<string, string>;
-  },
-) {
+function makeResolver(opts?: {
+  interactive?: boolean;
+  savedValues?: Record<string, string>;
+}) {
   return createUpAnswerResolver({
-    flags,
     repoPath: "/tmp/gaia-target",
     interactive: opts?.interactive ?? true,
   });
 }
-
-describe("validateLlmFlags", () => {
-  it("accepts a complete openrouter pair", () => {
-    expect(() =>
-      validateLlmFlags({ llmKey: "sk", llmProvider: "openrouter" }),
-    ).not.toThrow();
-  });
-
-  it("accepts a complete openai pair", () => {
-    expect(() =>
-      validateLlmFlags({ llmKey: "sk", llmProvider: "openai" }),
-    ).not.toThrow();
-  });
-
-  it("fails loud naming --llm-provider and every accepted provider when only the key is given", () => {
-    expect(() => validateLlmFlags({ llmKey: "sk" })).toThrow(
-      "--llm-key requires --llm-provider <openrouter|gemini|openai|custom>.",
-    );
-  });
-
-  it("fails loud naming --llm-key when only the provider is given", () => {
-    expect(() => validateLlmFlags({ llmProvider: "openrouter" })).toThrow(
-      /--llm-key/,
-    );
-  });
-
-  it("rejects a key with the runtime-configured custom provider", () => {
-    expect(() =>
-      validateLlmFlags({ llmKey: "sk", llmProvider: "custom" }),
-    ).toThrow(/--llm-key is not used/);
-  });
-
-  it("allows bare custom provider (wizard configures it)", () => {
-    expect(() => validateLlmFlags({ llmProvider: "custom" })).not.toThrow();
-  });
-});
 
 describe("portOverridesFromFlags", () => {
   it("maps the web port to the proxy's default port", () => {
@@ -89,45 +46,13 @@ describe("portOverridesFromFlags", () => {
 });
 
 describe("createUpAnswerResolver precedence", () => {
-  it("resolves env vars: CLI flags beat saved values and defaults", () => {
-    mockedReadConfig.mockReturnValue(
-      makeConfig({
-        values: { OPENROUTER_API_KEY: "saved-key" },
-      }),
-    );
-    const resolve = makeResolver({
-      llmKey: "flag-key",
-      llmProvider: "openrouter",
-    });
-
-    const answer = resolve("env_alternatives") as {
-      selectedGroups: string[];
-      values: Record<string, string>;
-    };
-    expect(answer.values.OPENROUTER_API_KEY).toBe("flag-key");
-    // And per-var resolution agrees:
-    expect(resolve("env_var", { varName: PROVIDER_ENV_VAR.openrouter })).toBe(
-      "flag-key",
-    );
-  });
-
-  it("writes the --llm-key to OPENAI_API_KEY for --llm-provider openai", () => {
-    const resolve = makeResolver({
-      llmKey: "sk-openai",
-      llmProvider: "openai",
-    });
-
-    expect(resolve("env_var", { varName: "OPENAI_API_KEY" })).toBe("sk-openai");
-    expect(resolve("env_var", { varName: "OPENROUTER_API_KEY" })).toBe("");
-  });
-
-  it("falls back to saved config values when no flag applies", () => {
+  it("resolves env vars from saved config values first", () => {
     mockedReadConfig.mockReturnValue(
       makeConfig({
         values: { TAVILY_API_KEY: "saved-tavily" },
       }),
     );
-    const resolve = makeResolver({});
+    const resolve = makeResolver();
 
     expect(resolve("env_var", { varName: "TAVILY_API_KEY" })).toBe(
       "saved-tavily",
@@ -135,7 +60,7 @@ describe("createUpAnswerResolver precedence", () => {
   });
 
   it("falls back to mode defaults last (deployment vars resolve; infra is pre-applied)", () => {
-    const resolve = makeResolver({});
+    const resolve = makeResolver();
     // Deployment var: resolved from DEPLOYMENT_DEFAULTS via the defaults tier.
     expect(resolve("env_var", { varName: "GAIA_BACKEND_URL" })).toBe(
       "http://gaia-backend:8000",
@@ -146,7 +71,7 @@ describe("createUpAnswerResolver precedence", () => {
   });
 
   it("answers flow-control prompt ids so up never blocks", () => {
-    const resolve = makeResolver({});
+    const resolve = makeResolver();
     expect(resolve("setup_mode")).toBe("selfhost");
     expect(resolve("env_method")).toBe("manual");
     expect(resolve("repo_path")).toBe("/tmp/gaia-target");
@@ -159,19 +84,19 @@ describe("createUpAnswerResolver precedence", () => {
   });
 
   it("skips infrastructure vars in per-var answers (pre-applied)", () => {
-    const resolve = makeResolver({});
+    const resolve = makeResolver();
     expect(resolve("env_var", { varName: "POSTGRES_URL" })).toBe("");
   });
 
   it("returns '' for unknown optional vars instead of blocking", () => {
-    const resolve = makeResolver({});
+    const resolve = makeResolver();
     expect(resolve("env_var", { varName: "SOME_RANDOM_VAR" })).toBe("");
   });
 
   it("does not throw for schema-required vars that resolve from defaults", () => {
     // MONGO_DB is the only schema-required family today and always resolves
     // at the defaults layer — never throws, even non-interactively.
-    const resolve = makeResolver({}, { interactive: false });
+    const resolve = makeResolver({ interactive: false });
     expect(() => resolve("env_var", { varName: "MONGO_DB" })).not.toThrow();
   });
 });

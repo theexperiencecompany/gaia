@@ -323,7 +323,9 @@ def serve_jev(answer: dict[str, Any] | Exception) -> Iterator[AsyncMock]:
         client.post.return_value = response
     with (
         patch(f"{JEV_CLIENT_MODULE}.httpx.AsyncClient", return_value=client),
-        patch(f"{JEV_CLIENT_MODULE}.settings") as settings,
+        patch(
+            f"{JEV_CLIENT_MODULE}.resolve",
+            AsyncMock(return_value={"api_key": "or-key"}),  # pragma: allowlist secret
+        ),
     ):
-        settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         yield client

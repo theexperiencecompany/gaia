@@ -406,6 +406,9 @@ _SIMPLE_ENV_KEYS = {
     "openai": "OPENAI_API_KEY",
     "resend": "RESEND_API_KEY",
     "firecrawl": "FIRECRAWL_API_KEY",
+    "openweather": "OPENWEATHER_API_KEY",
+    "llamaparse": "LLAMA_INDEX_KEY",
+    "github": "GITHUB_TOKEN",
 }
 
 # Providers with bespoke rules above, by name.

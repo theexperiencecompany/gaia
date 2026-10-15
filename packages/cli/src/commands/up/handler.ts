@@ -3,10 +3,15 @@
  * @module commands/up/handler
  */
 
-import type { LlmProvider } from "../../lib/answers.js";
 import { runCommandUI } from "../../lib/command-runner.js";
+import type { LlmProvider } from "../../lib/llm-flags.js";
 import type { CLIStore } from "../../ui/store.js";
-import { codeSandboxSummary, runUpFlow, upHeadline } from "./flow.js";
+import {
+  codeSandboxSummary,
+  runUpFlow,
+  savedProviderSummary,
+  upHeadline,
+} from "./flow.js";
 
 export function printUpSummary(store: CLIStore): void {
   const data = store.currentState.data;
@@ -32,6 +37,9 @@ export function printUpSummary(store: CLIStore): void {
   if (data.upSetupComplete !== true) {
     console.info(`Finish setup in your browser: ${webUrl}/setup`);
   }
+  if (data.upSavedProvider) {
+    console.info(savedProviderSummary(data.upSavedProvider as string));
+  }
   console.info(codeSandboxSummary(data.upCodeSandbox === true));
   console.info(
     "Next: gaia doctor — run 'gaia doctor' anytime to verify your installation",
@@ -43,6 +51,8 @@ export async function runUp(
     yes?: boolean;
     llmKey?: string;
     llmProvider?: LlmProvider;
+    llmBaseUrl?: string;
+    llmModel?: string;
     domain?: string;
     webPort?: number;
     build?: boolean;

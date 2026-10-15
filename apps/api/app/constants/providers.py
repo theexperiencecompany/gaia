@@ -139,6 +139,7 @@ class ProviderPreset(TypedDict):
     default_model: str  # empty ⇒ fetched from the endpoint at configure time
     favicon_domain: str
     needs_base_url: bool  # UI shows the base-URL field (Ollama/custom)
+    api_key_label: str  # what the card calls api_key, e.g. Google's client secret
     account_id_label: str  # empty ⇒ no account field (Cloudinary cloud name, Google client id)
     second_key_label: (
         str  # empty ⇒ no second key field (Cloudinary API secret, stored as api_secret)
@@ -154,6 +155,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": _catalog_chat_model(LLMProviderName.OPENROUTER),
         "favicon_domain": "openrouter.ai",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -165,6 +167,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": _catalog_chat_model(LLMProviderName.GEMINI),
         "favicon_domain": "ai.google.dev",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -176,6 +179,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": _catalog_chat_model(LLMProviderName.OLLAMA),
         "favicon_domain": "ollama.com",
         "needs_base_url": True,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -190,6 +194,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "opencode.ai",
         "needs_base_url": True,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -201,6 +206,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "deepseek-v4-flash",
         "favicon_domain": "opencode.ai",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -212,6 +218,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "nousresearch.com",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -225,6 +232,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "tavily.com",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -236,6 +244,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "exa.ai",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -247,6 +256,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "search.brave.com",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -258,6 +268,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "searxng.org",
         "needs_base_url": True,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -270,6 +281,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "composio.dev",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -281,6 +293,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "e2b.dev",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -292,6 +305,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": _catalog_chat_model(LLMProviderName.OPENAI),
         "favicon_domain": "openai.com",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -303,6 +317,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "resend.com",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -314,6 +329,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "cloudinary.com",
         "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "Cloud name",
         "second_key_label": "API secret",
     },
@@ -325,6 +341,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "accounts.google.com",
         "needs_base_url": False,
+        "api_key_label": "Client secret",
         "account_id_label": "Client ID",
         "second_key_label": "",
     },
@@ -336,6 +353,43 @@ PRESETS: dict[str, ProviderPreset] = {
         "default_model": "",
         "favicon_domain": "firecrawl.dev",
         "needs_base_url": False,
+        "api_key_label": "API key",
+        "account_id_label": "",
+        "second_key_label": "",
+    },
+    "openweather": {
+        "label": "OpenWeather",
+        "description": "Current weather and forecasts for any place.",
+        "key_url": "https://home.openweathermap.org/api_keys",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "openweathermap.org",
+        "needs_base_url": False,
+        "api_key_label": "API key",
+        "account_id_label": "",
+        "second_key_label": "",
+    },
+    "llamaparse": {
+        "label": "LlamaParse",
+        "description": "Reads scanned PDFs and images of documents (OCR).",
+        "key_url": "https://cloud.llamaindex.ai/api-key",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "llamaindex.ai",
+        "needs_base_url": False,
+        "api_key_label": "API key",
+        "account_id_label": "",
+        "second_key_label": "",
+    },
+    "github": {
+        "label": "GitHub",
+        "description": "A personal access token lifts GitHub's limit of 60 skill lookups an hour.",
+        "key_url": "https://github.com/settings/tokens",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "github.com",
+        "needs_base_url": False,
+        "api_key_label": "API key",
         "account_id_label": "",
         "second_key_label": "",
     },
@@ -362,6 +416,9 @@ class CredentialProviderName(StrEnum):
     CLOUDINARY = "cloudinary"
     GOOGLE_OAUTH = "google_oauth"
     FIRECRAWL = "firecrawl"
+    OPENWEATHER = "openweather"
+    LLAMAPARSE = "llamaparse"
+    GITHUB = "github"
 
 
 CREDENTIAL_PROVIDERS: tuple[str, ...] = tuple(p.value for p in CredentialProviderName)
@@ -377,6 +434,11 @@ class ProviderFeature(StrEnum):
     FILE_STORAGE = "file_storage"
     EMAIL = "email"
     INTEGRATIONS = "integrations"
+    WEATHER = "weather"
+    SCANNED_DOCUMENTS = "scanned_documents"
+    SKILL_INSTALLS = "skill_installs"
+    BROWSER = "browser"
+    VOICE = "voice"
 
 
 class BuiltInEngine(StrEnum):
@@ -386,6 +448,11 @@ class BuiltInEngine(StrEnum):
     PAGE_READER = "page_reader"
     LOCAL_SANDBOX = "local_sandbox"
     LOCAL_DISK = "local_disk"
+    LOCAL_PARSER = "local_parser"
+    PUBLIC_GITHUB = "public_github"
+    # Run by the deployment's own operator, not configured by a key in Settings.
+    HOSTED_BROWSER = "hosted_browser"
+    HOSTED_VOICE = "hosted_voice"
 
 
 class BuiltInOption(BaseModel):
@@ -398,6 +465,15 @@ class BuiltInOption(BaseModel):
     description: str
 
 
+class SelfHostGap(BaseModel):
+    """Why a feature cannot run on a self-hosted instance, and where the docs explain it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    reason: str
+    docs_url: str
+
+
 class FeatureSpec(BaseModel):
     """One feature: what it does, its keyless engine if any, and the providers that upgrade it."""
 
@@ -407,7 +483,10 @@ class FeatureSpec(BaseModel):
     description: str
     built_in: BuiltInOption | None  # None ⇒ the feature is off until a provider is added
     providers: tuple[CredentialProviderName, ...]  # the optional upgrades, in display order
+    self_host_gap: SelfHostGap | None = None  # set ⇒ unavailable on self-host, whatever is saved
 
+
+_SELF_HOST_VS_CLOUD_DOCS = "https://docs.heygaia.io/self-hosting/docker-setup#self-host-vs-cloud"
 
 PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {
     ProviderFeature.AI_MODELS: FeatureSpec(
@@ -476,6 +555,60 @@ PROVIDER_FEATURES: dict[ProviderFeature, FeatureSpec] = {
             CredentialProviderName.GOOGLE_OAUTH,
         ),
     ),
+    ProviderFeature.WEATHER: FeatureSpec(
+        label="Weather",
+        description="Checks the weather and forecast for a place.",
+        built_in=None,
+        providers=(CredentialProviderName.OPENWEATHER,),
+    ),
+    ProviderFeature.SCANNED_DOCUMENTS: FeatureSpec(
+        label="Scanned documents",
+        description="Reads PDFs that are scanned pages or photos of text.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.LOCAL_PARSER,
+            label="Built-in parser",
+            description="Reads text PDFs and Office files on this server; scanned pages need OCR.",
+        ),
+        providers=(CredentialProviderName.LLAMAPARSE,),
+    ),
+    ProviderFeature.SKILL_INSTALLS: FeatureSpec(
+        label="Skill installs",
+        description="Finds and installs skills published on GitHub.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.PUBLIC_GITHUB,
+            label="Public GitHub",
+            description="No key needed, limited to 60 lookups an hour.",
+        ),
+        providers=(CredentialProviderName.GITHUB,),
+    ),
+    ProviderFeature.BROWSER: FeatureSpec(
+        label="Browser automation",
+        description="Lets GAIA open and use websites in a real browser.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.HOSTED_BROWSER,
+            label="GAIA's browser service",
+            description="Runs on GAIA's own browser hosts.",
+        ),
+        providers=(),
+        self_host_gap=SelfHostGap(
+            reason="Browser automation needs GAIA's browser host service, which the self-host install does not include.",
+            docs_url=_SELF_HOST_VS_CLOUD_DOCS,
+        ),
+    ),
+    ProviderFeature.VOICE: FeatureSpec(
+        label="Voice",
+        description="Talk to GAIA out loud and hear it answer.",
+        built_in=BuiltInOption(
+            engine=BuiltInEngine.HOSTED_VOICE,
+            label="GAIA's voice service",
+            description="LiveKit, speech-to-text and text-to-speech run by GAIA.",
+        ),
+        providers=(),
+        self_host_gap=SelfHostGap(
+            reason="Voice needs a LiveKit server and GAIA's voice worker, which the self-host install does not include.",
+            docs_url=_SELF_HOST_VS_CLOUD_DOCS,
+        ),
+    ),
 }
 
 FAVICON_URL_TEMPLATE = "https://www.google.com/s2/favicons?domain={domain}&sz=128"
@@ -496,4 +629,5 @@ __all__ = [
     "LLMModelProfile",
     "ProviderFeature",
     "ProviderPreset",
+    "SelfHostGap",
 ]

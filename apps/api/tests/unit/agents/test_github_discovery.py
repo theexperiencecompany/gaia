@@ -17,7 +17,29 @@ from app.agents.skills.github_discovery import (
     discover_skills_from_repo,
     get_skill_from_repo,
 )
-from app.agents.skills.utils import GITHUB_API_BASE, github_url
+from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers, github_url
+from app.config.settings import settings
+from app.services.providers.provider_credentials_service import resolve
+from tests.helpers import InMemoryCredentialStore
+
+
+async def test_github_requests_carry_the_token_saved_in_settings(
+    selfhost_credential_store: InMemoryCredentialStore,
+) -> None:
+    selfhost_credential_store.save("github", api_key="ghp_saved")  # pragma: allowlist secret
+    await resolve("github")
+
+    assert get_github_headers()["Authorization"] == "token ghp_saved"
+
+
+async def test_github_requests_are_anonymous_without_a_token(
+    selfhost_credential_store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", None)
+    await resolve("github")
+
+    assert "Authorization" not in get_github_headers()
+
 
 # ---------------------------------------------------------------------------
 # DiscoveredSkill

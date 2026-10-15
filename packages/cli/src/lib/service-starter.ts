@@ -230,6 +230,15 @@ export async function startServices(
   onStatus?.("All services started in Docker!");
 }
 
+/** `docker compose` plus the self-host install's files and env file, run from dockerDir. */
+export function selfhostComposeArgs(dockerDir: string): string[] {
+  return [
+    "compose",
+    ...composeFileArgs(selfhostComposeFiles()),
+    ...getEnvFileArgs(dockerDir),
+  ];
+}
+
 /** Run a one-off command in a fresh container of a self-host service. */
 export async function runSelfhostOneOff(
   repoPath: string,
@@ -241,9 +250,7 @@ export async function runSelfhostOneOff(
   await runCommand(
     "docker",
     [
-      "compose",
-      ...composeFileArgs(selfhostComposeFiles()),
-      ...getEnvFileArgs(dockerComposePath),
+      ...selfhostComposeArgs(dockerComposePath),
       "run",
       "--rm",
       "--no-deps",

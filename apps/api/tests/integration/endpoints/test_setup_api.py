@@ -160,12 +160,19 @@ class TestStatus:
             "cloudinary",
             "google_oauth",
             "firecrawl",
+            "openweather",
+            "llamaparse",
+            "github",
         }
         assert all(
             set(v) == {"configured", "source", "env_shadowed"} for v in body["providers"].values()
         )
         assert set(body["features"]) == set(ProviderFeature)
-        assert body["features"]["web_search"] == {"working": True, "in_use": ["duckduckgo"]}
+        assert body["features"]["web_search"] == {
+            "available": True,
+            "working": True,
+            "in_use": ["duckduckgo"],
+        }
 
     @pytest.mark.parametrize("blob_store", list(BlobStoreKind))
     async def test_status_reports_the_instances_blob_store(
@@ -460,6 +467,7 @@ class TestProviderCatalog:
                 "default_model",
                 "favicon_domain",
                 "needs_base_url",
+                "api_key_label",
                 "account_id_label",
                 "second_key_label",
             }

@@ -7079,7 +7079,7 @@ export interface components {
          * @description An engine a feature runs on with no credential at all.
          * @enum {string}
          */
-        BuiltInEngine: "duckduckgo" | "page_reader" | "local_sandbox" | "local_disk";
+        BuiltInEngine: "duckduckgo" | "page_reader" | "local_sandbox" | "local_disk" | "local_parser" | "public_github" | "hosted_browser" | "hosted_voice";
         /**
          * BuiltInOption
          * @description What a feature runs on with no key, as the UI names it.
@@ -8279,7 +8279,7 @@ export interface components {
          * @description A provider the credential store can hold, in display order.
          * @enum {string}
          */
-        CredentialProviderName: "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "exa" | "brave" | "searxng" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "google_oauth" | "firecrawl";
+        CredentialProviderName: "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "exa" | "brave" | "searxng" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "google_oauth" | "firecrawl" | "openweather" | "llamaparse" | "github";
         /**
          * CredentialSource
          * @description Where a provider's active credential comes from: a saved one wins over env.
@@ -8991,6 +8991,7 @@ export interface components {
             label: string;
             /** Providers */
             providers: components["schemas"]["CredentialProviderName"][];
+            self_host_gap?: components["schemas"]["SelfHostGap"] | null;
         };
         /**
          * FeatureStage
@@ -9003,6 +9004,11 @@ export interface components {
          * @description Whether one feature works and what it runs on.
          */
         FeatureStatus: {
+            /**
+             * Available
+             * @description Whether this deployment can run the feature at all; false means its catalog self_host_gap explains why
+             */
+            available: boolean;
             /**
              * In Use
              * @description What the feature runs on, in the order it tries them; the first serves
@@ -12701,7 +12707,7 @@ export interface components {
          * @description What a provider is for, as Settings and the setup wizard group them.
          * @enum {string}
          */
-        ProviderFeature: "ai_models" | "web_search" | "page_reading" | "code_running" | "file_storage" | "email" | "integrations";
+        ProviderFeature: "ai_models" | "web_search" | "page_reading" | "code_running" | "file_storage" | "email" | "integrations" | "weather" | "scanned_documents" | "skill_installs" | "browser" | "voice";
         /** ProviderListResponse */
         ProviderListResponse: {
             /**
@@ -12716,6 +12722,8 @@ export interface components {
         ProviderPreset: {
             /** Account Id Label */
             account_id_label: string;
+            /** Api Key Label */
+            api_key_label: string;
             /** Base Url */
             base_url: string;
             /** Default Model */
@@ -13591,6 +13599,16 @@ export interface components {
             steps: components["schemas"]["WorkflowStepOutput"][];
             /** Title */
             title: string;
+        };
+        /**
+         * SelfHostGap
+         * @description Why a feature cannot run on a self-hosted instance, and where the docs explain it.
+         */
+        SelfHostGap: {
+            /** Docs Url */
+            docs_url: string;
+            /** Reason */
+            reason: string;
         };
         /**
          * SelfPairRequest
@@ -16992,6 +17010,7 @@ export type SearchResultsResponse = components['schemas']['SearchResultsResponse
 export type SelectedCalendarEventData = components['schemas']['SelectedCalendarEventData'];
 export type SelectedWorkflowDataInput = components['schemas']['SelectedWorkflowDataInput'];
 export type SelectedWorkflowDataOutput = components['schemas']['SelectedWorkflowDataOutput'];
+export type SelfHostGap = components['schemas']['SelfHostGap'];
 export type SelfPairRequest = components['schemas']['SelfPairRequest'];
 export type SelfPairResponse = components['schemas']['SelfPairResponse'];
 export type SendDraftResponse = components['schemas']['SendDraftResponse'];

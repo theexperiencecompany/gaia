@@ -8,8 +8,9 @@
  * `CLIStore.pushAnswerResolver`) so the existing env-setup pipeline runs
  * unchanged — it simply never blocks.
  *
- * Secrets are never defaulted silently: a secret-shaped value that cannot be
- * resolved fails loudly naming the flag that provides it.
+ * Secrets are never defaulted silently: a required value that cannot be
+ * resolved fails loudly. The AI provider flags are not env answers at all —
+ * see lib/llm-flags.
  * @module lib/answers
  */
 
@@ -23,24 +24,13 @@ import {
   loadVendoredSchema,
   type SetupMode,
 } from "./env-parser.js";
+import type { LlmFlags } from "./llm-flags.js";
 import { isInteractive } from "./non-tty.js";
 import { isGaiaCheckout } from "./service-starter.js";
 
-/** Providers `gaia up --llm-provider` accepts. */
-export const LLM_PROVIDERS = [
-  "openrouter",
-  "gemini",
-  "openai",
-  "custom",
-] as const;
-
-export type LlmProvider = (typeof LLM_PROVIDERS)[number];
-
-export interface UpFlags {
+export interface UpFlags extends LlmFlags {
   /** Accept all defaults — implied for every prompt `up` can resolve. */
   yes?: boolean;
-  llmKey?: string;
-  llmProvider?: LlmProvider;
   webPort?: number;
   /** Public domain; the proxy serves HTTPS for it on 80/443. */
   domain?: string;
@@ -55,26 +45,6 @@ export interface UpFlags {
   forceDevTree?: boolean;
 }
 
-/** Env var each provider flag writes for first boot ("custom" writes none). */
-export const PROVIDER_ENV_VAR: Record<
-  Exclude<LlmProvider, "custom">,
-  string
-> = {
-  openrouter: "OPENROUTER_API_KEY",
-  gemini: "GOOGLE_API_KEY",
-  openai: "OPENAI_API_KEY",
-};
-
-/**
- * Maps env vars to the flag that sources them — used to fail loud naming the
- * flag instead of silently continuing when a value is missing in non-TTY runs.
- */
-const ENV_VAR_FLAG_HINTS: Record<string, string> = Object.fromEntries(
-  Object.entries(PROVIDER_ENV_VAR).map(([provider, envVar]) => [
-    envVar,
-    `--llm-key --llm-provider ${provider}`,
-  ]),
-);
 const HTTP_PORT = 80;
 const HTTPS_PORT = 443;
 
@@ -89,31 +59,6 @@ export const DEFAULT_INSTALL_DIR = path.join(os.homedir(), "gaia");
 export function resolveRecordedInstall(): string | null {
   const recorded = readConfig()?.repoPath;
   return recorded && isGaiaCheckout(recorded) ? recorded : null;
-}
-
-/**
- * Validate flag combinations before any side effect. Every failure names the
- * flag that fixes it — no silent defaults for secrets.
- */
-export function validateLlmFlags(flags: UpFlags): void {
-  if (flags.llmProvider === "custom") {
-    if (flags.llmKey) {
-      throw new Error(
-        "--llm-key is not used with --llm-provider custom. Custom providers are configured at runtime in the web setup wizard after boot.",
-      );
-    }
-    return;
-  }
-  if (flags.llmKey && !flags.llmProvider) {
-    throw new Error(
-      `--llm-key requires --llm-provider <${LLM_PROVIDERS.join("|")}>.`,
-    );
-  }
-  if (flags.llmProvider && !flags.llmKey) {
-    throw new Error(
-      `--llm-provider ${flags.llmProvider} requires an API key: add --llm-key <key>.`,
-    );
-  }
 }
 
 /**
@@ -149,21 +94,18 @@ function findSchemaVar(name: string) {
 
 /**
  * Build the store answer resolver implementing the precedence chain:
- * CLI flags → saved config values → INFRASTRUCTURE_DEFAULTS.
+ * saved config values → INFRASTRUCTURE_DEFAULTS.
  *
  * `interactive` reflects TTY availability at call time; in non-interactive
- * runs a schema-required variable that no layer can resolve throws naming
- * the flag that provides it instead of blocking forever or writing a silent
- * default.
+ * runs a schema-required variable that no layer can resolve throws instead
+ * of blocking forever or writing a silent default.
  */
 export function createUpAnswerResolver(input: {
-  flags: UpFlags;
   repoPath: string;
   interactive?: boolean;
   setupMode?: SetupMode;
 }): (id: string, meta?: unknown) => unknown {
   const {
-    flags,
     repoPath,
     interactive = isInteractive(),
     setupMode = "selfhost",
@@ -178,26 +120,15 @@ export function createUpAnswerResolver(input: {
     return schemaCache.get(name) === true;
   };
 
-  const flagEnvValues: Record<string, string> = {};
-  if (flags.llmKey && flags.llmProvider && flags.llmProvider !== "custom") {
-    flagEnvValues[PROVIDER_ENV_VAR[flags.llmProvider]] = flags.llmKey;
-  }
-
   const resolveEnvVar = (name: string): string => {
-    const layered =
-      flagEnvValues[name] ??
-      savedValues[name] ??
-      getDefaultValue(name, setupMode);
+    const layered = savedValues[name] ?? getDefaultValue(name, setupMode);
     if (layered) return layered;
 
     // Nothing resolved. In non-TTY runs, refuse to guess for variables the
-    // schema marks required AND that a known flag could have provided.
+    // schema marks required.
     if (!interactive && isRequired(name)) {
-      const hint = ENV_VAR_FLAG_HINTS[name];
       throw new Error(
-        hint
-          ? `${name} is required but missing in non-interactive mode — rerun with ${hint}, or use an interactive terminal.`
-          : `${name} is required but could not be resolved in non-interactive mode — provide it via a GAIA flag or an apps/api/.env file.`,
+        `${name} is required but could not be resolved in non-interactive mode — provide it via a GAIA flag or an apps/api/.env file.`,
       );
     }
     // Optional (or interactive-but-skipped) variables resolve to "" which the
@@ -212,9 +143,8 @@ export function createUpAnswerResolver(input: {
       case "env_method":
         return "manual";
       case "env_alternatives":
-        // Provider selection moves to the web wizard; flag-supplied keys are
-        // merged into env values directly.
-        return { selectedGroups: [], values: { ...flagEnvValues } };
+        // Provider selection is the web wizard's, or --llm-provider's after boot.
+        return { selectedGroups: [], values: {} };
       case "env_group":
         // Multi-var groups are wizard material; skip entirely.
         return {};

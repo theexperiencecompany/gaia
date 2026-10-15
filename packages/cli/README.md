@@ -59,7 +59,10 @@ One-command self-hosted setup: checks prerequisites (installing Docker on apt-ba
 | `--yes` | No prompts; also consents to installing Docker |
 | `--domain <domain>` | Serve at `https://<domain>` with an automatic certificate (ports 80 and 443) |
 | `--web-port <port>` | Host port GAIA is served on (default 3000) |
-| `--llm-key <key>` / `--llm-provider <name>` | LLM key for first boot (`openai`, `openrouter`, `gemini`, or `custom`) |
+| `--llm-provider <name>` | AI provider to save once GAIA is up, as the setup wizard would: `openrouter`, `gemini`, `openai`, `ollama` or `custom`. Not with `--no-start` |
+| `--llm-key <key>` | API key for `openrouter`, `gemini`, `openai` and `custom` |
+| `--llm-base-url <url>` | Endpoint for `ollama` (default `http://host.docker.internal:11434`) or `custom` (required) |
+| `--llm-model <model>` | Model for `ollama` (optional) or `custom` (required) |
 | `--code-sandbox` / `--no-code-sandbox` | Run agent code in local containers through the host Docker socket (root-equivalent; saved for later starts and updates) |
 | `--build` | Build images from the checkout instead of pulling |
 | `--no-start` | Configure only |

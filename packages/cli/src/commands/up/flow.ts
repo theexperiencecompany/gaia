@@ -17,7 +17,6 @@ import {
   portOverridesFromFlags,
   resolveRecordedInstall,
   type UpFlags,
-  validateLlmFlags,
 } from "../../lib/answers.js";
 import { readConfig, updateConfig } from "../../lib/config.js";
 import {
@@ -28,6 +27,7 @@ import {
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import { delay, runPortChecks } from "../../lib/flow-utils.js";
+import { saveLlmProvider, validateLlmFlags } from "../../lib/llm-flags.js";
 import { checkGit, ensureDocker, ensureGit } from "../../lib/prerequisites.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
 import { cloneRelease, GAIA_REPO_URL } from "../../lib/release.js";
@@ -105,9 +105,7 @@ export async function runUpFlow(
 
   // Seed the values layer BEFORE any waitForInput can block: every prompt the
   // pipeline raises resolves from flags → saved config → defaults.
-  store.pushAnswerResolver(
-    createUpAnswerResolver({ flags: options, repoPath: targetPath }),
-  );
+  store.pushAnswerResolver(createUpAnswerResolver({ repoPath: targetPath }));
 
   // 1. Prerequisites — git (needed when cloning) and Docker, each with an
   //    install offer on apt-based Linux.
@@ -205,7 +203,6 @@ export async function runUpFlow(
   //    never block because the answer resolver covers them.
   await runEnvSetup(store, targetPath, "selfhost", portOverrides, {
     llmProvider: options.llmProvider,
-    llmKey: options.llmKey,
     domain: options.domain,
   });
   if (store.currentState.error) {
@@ -222,10 +219,7 @@ export async function runUpFlow(
     store.setStatus(
       "Environment configured. Start services later with 'gaia start'.",
     );
-    finishUp(store, targetPath, webUrl, reachableUrls, {
-      noStart: true,
-      customProvider: options.llmProvider === "custom",
-    });
+    finishUp(store, targetPath, webUrl, reachableUrls, { noStart: true });
     return;
   }
 
@@ -241,23 +235,66 @@ export async function runUpFlow(
   const apiUrl = localApiUrl("selfhost", portOverrides);
   const readiness = await waitForUpReadiness(store, { apiUrl, webPort });
 
+  if (
+    !(await saveFlaggedProvider(store, targetPath, options, readiness.ready))
+  ) {
+    return;
+  }
+
   finishUp(store, targetPath, webUrl, reachableUrls, {
     noStart: false,
-    customProvider: options.llmProvider === "custom",
+    savedProvider: options.llmProvider,
     stillStarting: !readiness.ready,
     setupComplete: readiness.ready && (await isSetupComplete(apiUrl)),
   });
 
-  // Auto-open the setup wizard when running interactively on macOS and the
-  // stack is actually ready. Non-blocking, errors are ignored — the URL is
-  // already printed in both the success screen and the plain summary.
-  if (readiness.ready) {
-    const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
-    if (!options.yes && isTTY && os.platform() === "darwin") {
-      const setupUrl = `${webUrl}/setup`;
-      execFile("open", [setupUrl], () => undefined);
-    }
+  if (readiness.ready) openSetupWizard(webUrl, options);
+}
+
+/**
+ * Auto-open the setup wizard when running interactively on macOS. Non-blocking,
+ * errors are ignored: the URL is already printed on the success screen and in
+ * the plain summary.
+ */
+function openSetupWizard(webUrl: string, options: UpFlags): void {
+  const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
+  if (!options.yes && isTTY && os.platform() === "darwin") {
+    execFile("open", [`${webUrl}/setup`], () => undefined);
   }
+}
+
+/**
+ * Save the `--llm-provider` the run was given into the now-running instance.
+ * Returns false after recording the error when it could not be saved.
+ */
+async function saveFlaggedProvider(
+  store: CLIStore,
+  repoPath: string,
+  options: UpFlags,
+  ready: boolean,
+): Promise<boolean> {
+  const { llmProvider } = options;
+  if (!llmProvider) return true;
+  if (!ready) {
+    store.setError(
+      new Error(
+        `GAIA did not answer in time, so --llm-provider ${llmProvider} was not saved. Once 'gaia status' shows it healthy, run 'gaia up' again with the same flags.`,
+      ),
+    );
+    return false;
+  }
+  store.setStatus("Saving the AI provider...");
+  try {
+    await saveLlmProvider(repoPath, { ...options, llmProvider });
+  } catch (e) {
+    store.setError(
+      new Error(
+        `Could not save --llm-provider ${llmProvider}: ${(e as Error).message}`,
+      ),
+    );
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -349,6 +386,11 @@ export function upHeadline(outcome: {
   return "GAIA is ready!";
 }
 
+/** One line on the finished screen naming the AI provider `--llm-provider` saved. */
+export function savedProviderSummary(provider: string): string {
+  return `AI provider: ${provider} saved (change it any time in Settings → Providers & Tools)`;
+}
+
 /** One line on the finished screen saying how agent code runs on this instance. */
 export function codeSandboxSummary(enabled: boolean): string {
   return enabled
@@ -364,7 +406,7 @@ function finishUp(
   reachableUrls: string[],
   flags?: {
     noStart?: boolean;
-    customProvider?: boolean;
+    savedProvider?: string;
     stillStarting?: boolean;
     setupComplete?: boolean;
   },
@@ -388,9 +430,7 @@ function finishUp(
   // finished screen must say so instead of claiming GAIA is running.
   store.updateData("upStillStarting", flags?.stillStarting === true);
   store.updateData("upSetupComplete", flags?.setupComplete === true);
-  // Custom providers are runtime-configured; no key was written to .env —
-  // the finished screen points at the web wizard instead.
-  store.updateData("customProviderNote", flags?.customProvider === true);
+  store.updateData("upSavedProvider", flags?.savedProvider);
   store.updateData("finished", true);
   store.setStep("Finished");
 }

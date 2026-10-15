@@ -547,11 +547,12 @@ class ToolRegistry:
         )
         # browser_task is gated by HIL: the executor must get user approval before
         # spinning up a browser ("do you want me to use a browser for this?").
-        self._add_category(
-            "browser",
-            tools=[browser_tool.browser_task],
-            risk=CategoryRisk(destructive_tools={"browser_task"}),
-        )
+        if settings.deployment.browser_automation:
+            self._add_category(
+                "browser",
+                tools=[browser_tool.browser_task],
+                risk=CategoryRisk(destructive_tools={"browser_task"}),
+            )
         # Desktop-executed tools live in their own space so discovery can be
         # gated to conversations that originate from the desktop app. They act on
         # the user's own machine and are reversible, so none are destructive.

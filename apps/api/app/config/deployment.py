@@ -90,6 +90,10 @@ class DeploymentProfile:
     # The operator's own SearXNG answers before the keyless DuckDuckGo scrape, so
     # a privacy-minded self-host never leaks queries; GAIA Cloud keeps SearXNG as its floor.
     searxng_before_duckduckgo: bool
+    # GAIA's browser hosts and voice stack (LiveKit + the voice worker) serve this
+    # deployment; the self-host install ships neither.
+    browser_automation: bool
+    voice: bool
     # The auth bypass, dev router, open API docs, model selector and custom lane.
     dev_tools: bool
 
@@ -165,5 +169,7 @@ def deployment_profile(
         https_only=kind is DeploymentKind.PRODUCTION,
         private_network_endpoints=kind is not DeploymentKind.PRODUCTION,
         searxng_before_duckduckgo=kind is DeploymentKind.SELFHOST,
+        browser_automation=kind is not DeploymentKind.SELFHOST,
+        voice=kind is not DeploymentKind.SELFHOST,
         dev_tools=kind is DeploymentKind.DEVELOPMENT,
     )

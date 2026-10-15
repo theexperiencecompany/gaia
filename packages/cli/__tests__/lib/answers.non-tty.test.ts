@@ -63,21 +63,14 @@ beforeEach(() => {
 describe("createUpAnswerResolver fail-loud (non-TTY, simulated required secret)", () => {
   const makeResolver = (interactive: boolean) =>
     createUpAnswerResolver({
-      flags: {},
       repoPath: "/tmp/gaia-target",
       interactive,
     });
 
-  it("throws naming the providing flag when unresolved in non-TTY", () => {
+  it("throws for a required var unresolved in non-TTY", () => {
     expect(() =>
       makeResolver(false)("env_var", { varName: "OPENROUTER_API_KEY" }),
-    ).toThrow(/--llm-key --llm-provider openrouter/);
-  });
-
-  it("names the openai flag pair for a missing OPENAI_API_KEY", () => {
-    expect(() =>
-      makeResolver(false)("env_var", { varName: "OPENAI_API_KEY" }),
-    ).toThrow(/--llm-key --llm-provider openai/);
+    ).toThrow(/OPENROUTER_API_KEY is required but could not be resolved/);
   });
 
   it("does not throw interactively — returns skip value instead", () => {

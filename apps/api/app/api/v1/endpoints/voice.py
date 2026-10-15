@@ -13,6 +13,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.api.v1.middleware.agent_auth import create_agent_token
 from app.config.settings import settings
+from app.constants.providers import PROVIDER_FEATURES, ProviderFeature
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
@@ -32,6 +33,7 @@ from app.services.voice_service import (
     set_user_voice,
     set_voice_star,
 )
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.properties import Identifier
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
@@ -67,6 +69,15 @@ async def get_token(
         operation="get_voice_token",
         has_conversation_id=bool(conversation_id),
     )
+    if not settings.deployment.voice:
+        gap = PROVIDER_FEATURES[ProviderFeature.VOICE].self_host_gap
+        raise AppError(
+            message="Voice isn't available on this GAIA instance.",
+            why=gap.reason if gap else "",
+            fix=f"See {gap.docs_url}" if gap else "",
+            status_code=501,
+            code="voice_not_available",
+        )
 
     room_name = f"voice_session_{user_id}_{uuid.uuid4().hex}"
 
