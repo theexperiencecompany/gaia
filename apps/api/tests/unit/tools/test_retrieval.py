@@ -473,6 +473,7 @@ class TestRetrieveToolsBinding:
         with patch(
             "app.agents.tools.core.retrieval.get_tool_registry",
             new_callable=AsyncMock,
+            return_value=MagicMock(),
         ):
             # The real no-usable-argument call is an empty list (a plain-array schema can't send
             # null); it returns corrective guidance instead of raising, so a recoverable model
