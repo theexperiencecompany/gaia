@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
+import type {
+  CommunityIntegration,
+  CommunityIntegrationsResponse,
+} from "@/features/integrations/types";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -9,6 +13,7 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 import { IntegrationsPageClient } from "./client";
 
@@ -37,7 +42,26 @@ export const metadata: Metadata = generatePageMetadata({
 
 export const revalidate = 3600;
 
-export default function MarketplacePage() {
+/** Most popular integrations for the ItemList rich result (real URLs). */
+async function getTopIntegrations(): Promise<CommunityIntegration[]> {
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return [];
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/integrations/community?sort=popular&limit=10`,
+      { next: { revalidate: 3600 } },
+    );
+    if (!response.ok) return [];
+    const data = (await response.json()) as CommunityIntegrationsResponse;
+    return (data.integrations ?? []).slice(0, 10);
+  } catch (error) {
+    console.error("[marketplace] Failed to fetch top integrations:", error);
+    return [];
+  }
+}
+
+export default async function MarketplacePage() {
   const webPageSchema = generateWebPageSchema(
     "AI Integration Marketplace - Connect Your Tools to AI",
     "Browse 50+ AI integrations for productivity, communication, and developer tools. Automate Gmail, Slack, Notion, GitHub and more with GAIA's AI-powered MCP integration marketplace.",
@@ -51,47 +75,33 @@ export default function MarketplacePage() {
     { name: "Home", url: siteConfig.url },
     { name: "Marketplace", url: `${siteConfig.url}/marketplace` },
   ]);
-  const itemListSchema = generateItemListSchema(
-    [
-      {
-        name: "Email AI Integrations",
-        url: `${siteConfig.url}/marketplace`,
-        description:
-          "Automate Gmail, Outlook, and email workflows with AI. Let GAIA triage, draft, and manage your inbox.",
-      },
-      {
-        name: "Calendar AI Integrations",
-        url: `${siteConfig.url}/marketplace`,
-        description:
-          "AI-powered calendar management for Google Calendar and Outlook. Automate scheduling and meeting prep.",
-      },
-      {
-        name: "Productivity AI Integrations",
-        url: `${siteConfig.url}/marketplace`,
-        description:
-          "Connect Notion, Todoist, Linear, and Asana to AI. Automate task management and project workflows.",
-      },
-      {
-        name: "Developer AI Integrations",
-        url: `${siteConfig.url}/marketplace`,
-        description:
-          "AI integrations for GitHub, GitLab, and developer tools. Automate code reviews, issues, and CI/CD.",
-      },
-      {
-        name: "Communication AI Integrations",
-        url: `${siteConfig.url}/marketplace`,
-        description:
-          "Connect Slack, Discord, and Teams to AI. Automate messages, notifications, and team communication.",
-      },
-    ],
-    "Product",
-  );
+  // ItemList must point at crawlable integration URLs, not the hub itself.
+  // When the backend is unreachable at build time, omit it rather than
+  // emitting self-referential entries.
+  const topIntegrations = await getTopIntegrations();
+  const itemListSchema =
+    topIntegrations.length > 0
+      ? generateItemListSchema(
+          topIntegrations.map((integration) => ({
+            name: `${integration.name} AI Integration`,
+            url: `${siteConfig.url}/marketplace/${integration.slug}`,
+            description: integration.description,
+          })),
+          "Product",
+        )
+      : null;
 
   return (
     <>
       {/* No FAQPage schema here: this list page renders no visible FAQs,
           and FAQ rich results require the questions to be on the page. */}
-      <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
+      <JsonLd
+        data={
+          itemListSchema
+            ? [webPageSchema, breadcrumbSchema, itemListSchema]
+            : [webPageSchema, breadcrumbSchema]
+        }
+      />
       <Suspense>
         <IntegrationsPageClient />
       </Suspense>

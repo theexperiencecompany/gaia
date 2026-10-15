@@ -27,9 +27,13 @@ import { IntegrationRelatedIntegrations } from "@/features/integrations/componen
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import type { PublicIntegrationResponse } from "@/features/integrations/types";
+import type {
+  CommunityIntegration,
+  PublicIntegrationResponse,
+} from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
 import { toast } from "@/lib/toast";
+import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 import { IntegrationRichContent } from "./IntegrationRichContent";
 import { IntegrationUseCases } from "./IntegrationUseCases";
 import { ToolCard } from "./ToolCard";
@@ -37,6 +41,10 @@ import { ToolCard } from "./ToolCard";
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
   comparisonSlug?: string;
+  /** Server-fetched so related links render in SSR HTML for crawlers. */
+  initialRelatedIntegrations?: CommunityIntegration[];
+  /** Server-fetched so related links render in SSR HTML for crawlers. */
+  initialRelatedWorkflows?: CommunityWorkflow[];
 }
 
 function IntegrationMetaBar({
@@ -155,6 +163,8 @@ function IntegrationMetaBar({
 export function IntegrationDetailClient({
   integration,
   comparisonSlug,
+  initialRelatedIntegrations,
+  initialRelatedWorkflows,
 }: IntegrationDetailClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -380,6 +390,7 @@ export function IntegrationDetailClient({
             integrationId={integration.integrationId}
             integrationName={integration.name}
             variant="section"
+            initialWorkflows={initialRelatedWorkflows}
           />
 
           {/* Rich content sections for SEO and user education */}
@@ -393,6 +404,7 @@ export function IntegrationDetailClient({
             currentSlug={integration.slug}
             category={integration.category}
             integrationName={integration.name}
+            initialIntegrations={initialRelatedIntegrations}
           />
         </div>
       </div>

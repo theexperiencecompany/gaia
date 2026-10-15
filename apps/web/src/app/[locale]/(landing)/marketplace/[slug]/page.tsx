@@ -17,6 +17,7 @@ import {
   siteConfig,
 } from "@/lib/seo";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
+import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 
 import { IntegrationDetailClient } from "./client";
 import { getIntegrationFAQs } from "./faqs";
@@ -301,6 +302,13 @@ export default async function IntegrationPage({ params }: Props) {
 
   const comparisonSlug = comparison ? slug : undefined;
 
+  // Same-category siblings and related workflows, fetched server-side so
+  // crawlers see real links in the SSR HTML instead of client-only orphans.
+  const [relatedIntegrations, relatedWorkflows] = await Promise.all([
+    getRelatedIntegrations(integration.category, slug),
+    getRelatedWorkflows(integration.integrationId),
+  ]);
+
   return (
     <>
       <JsonLd
@@ -315,7 +323,62 @@ export default async function IntegrationPage({ params }: Props) {
       <IntegrationDetailClient
         integration={integration}
         comparisonSlug={comparisonSlug}
+        initialRelatedIntegrations={relatedIntegrations}
+        initialRelatedWorkflows={relatedWorkflows}
       />
     </>
   );
+}
+
+/** Same-category siblings for SSR related-links (excludes the current page). */
+async function getRelatedIntegrations(
+  category: string,
+  slug: string,
+): Promise<CommunityIntegration[]> {
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return [];
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/integrations/community?category=${encodeURIComponent(category)}&sort=popular&limit=7`,
+      { next: { revalidate: 60 } },
+    );
+    if (!response.ok) return [];
+    const data = (await response.json()) as CommunityIntegrationsResponse;
+    return (data.integrations ?? [])
+      .filter((integration) => integration.slug !== slug)
+      .slice(0, 6);
+  } catch (error) {
+    console.error(
+      `[marketplace/${slug}] Failed to fetch related integrations:`,
+      error,
+    );
+    return [];
+  }
+}
+
+/** Community workflows using this integration, for SSR related-links. */
+async function getRelatedWorkflows(
+  integrationId: string,
+): Promise<CommunityWorkflow[]> {
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return [];
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/integrations/public/${encodeURIComponent(integrationId)}/workflows?limit=4`,
+      { next: { revalidate: 60 } },
+    );
+    if (!response.ok) return [];
+    const data = (await response.json()) as {
+      workflows?: CommunityWorkflow[];
+    };
+    return (data.workflows ?? []).slice(0, 4);
+  } catch (error) {
+    console.error(
+      `[marketplace/${integrationId}] Failed to fetch related workflows:`,
+      error,
+    );
+    return [];
+  }
 }
