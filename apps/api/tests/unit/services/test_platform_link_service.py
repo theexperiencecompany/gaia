@@ -924,6 +924,9 @@ class TestStartPlatformConnect:
 
         assert exc_info.value.status_code == 501
         assert exc_info.value.message == "telegram connect is not configured"
+        assert exc_info.value.fix == (
+            "The instance administrator adds a Telegram bot with 'gaia bots add telegram'."
+        )
 
     async def test_whatsapp_manual_flow_builds_the_wa_me_link(self):
         with patch("app.services.platform_link_service.settings") as mock_settings:

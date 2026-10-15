@@ -9,13 +9,15 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import resend
 
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.services.email.models import EmailMessage
 from app.services.email.providers.resend_provider import ResendEmailProvider
 from app.services.email.service import render_email_template, send_email
-from tests.helpers import captured_wide_event
+from tests.helpers import InMemoryCredentialStore, captured_wide_event
 
 SERVICE_MOD = "app.services.email.service"
 SENDERS_MOD = "app.services.email.senders"
@@ -67,6 +69,40 @@ def mock_resend():
         m_settings.RESEND_API_KEY = "re_fake"
         m_settings.RESEND_AUDIENCE_ID = ""
         yield m_settings, m_send, m_contact
+
+
+class TestResendCredential:
+    @pytest.fixture(autouse=True)
+    def _isolated_sdk_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(resend, "api_key", None)
+        monkeypatch.setattr(settings, "RESEND_API_KEY", None)
+
+    async def test_the_stored_resend_key_is_the_one_the_sdk_sends_with(
+        self, selfhost_credential_store: InMemoryCredentialStore
+    ) -> None:
+        selfhost_credential_store.save("resend", api_key="re-stored")  # pragma: allowlist secret
+        with patch(f"{PROVIDER_MOD}.resend.Emails.send", new_callable=MagicMock):
+            await ResendEmailProvider().send(
+                EmailMessage(sender="a@b.c", to=["d@e.f"], subject="s", html="<p>h</p>")
+            )
+
+        assert resend.api_key == "re-stored"  # pragma: allowlist secret
+
+    @pytest.mark.usefixtures("selfhost_credential_store")
+    async def test_no_key_anywhere_refuses_to_send_naming_both_fixes(self) -> None:
+        with (
+            patch(f"{PROVIDER_MOD}.resend.Emails.send", new_callable=MagicMock) as send,
+            pytest.raises(RuntimeError) as raised,
+        ):
+            await ResendEmailProvider().send(
+                EmailMessage(sender="a@b.c", to=["d@e.f"], subject="s", html="<p>h</p>")
+            )
+
+        assert str(raised.value) == (
+            "Resend is not configured: store a Resend credential in "
+            "Settings or set RESEND_API_KEY to send email."
+        )
+        send.assert_not_called()
 
 
 class TestResendProviderSend:

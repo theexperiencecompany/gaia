@@ -315,12 +315,14 @@ class TestRunNurtureSequence:
             patch(
                 "app.services.nurture.service.resolve_resend_config",
                 new=AsyncMock(
-                    return_value={
-                        "api_key": "re-stored",
-                        "base_url": None,
-                        "model": None,
-                        "preset": None,
-                    }
+                    side_effect={
+                        "resend": {
+                            "api_key": "re-stored",
+                            "base_url": None,
+                            "model": None,
+                            "preset": None,
+                        }
+                    }.get
                 ),
             ),
             patch(

@@ -26,6 +26,7 @@ from app.constants.memory import (
     EPISODE_ENTRY_DEDUPE_RATIO,
     FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN,
     FREE_MEMORY_FACT_LIMIT,
+    RECENT_FACTS_LIMIT,
     RECONCILE_SIMILARITY_THRESHOLD,
     STATE_FACT_TTL_DAYS,
     TRANSCRIPT_CHUNK_MAX_CHARS,
@@ -1325,6 +1326,8 @@ class TestRetain:
         assert kwargs["recent_facts"] == ["sam likes tea"]
         assert kwargs["journaled_today"] == ["already journaled"]
         assert kwargs["extraction_hints"] == "focus on preferences"
+        boundaries.get_folder_tree.assert_awaited_once_with(USER)
+        boundaries.get_recent_facts.assert_awaited_once_with(USER, limit=RECENT_FACTS_LIMIT)
 
     async def test_anonymous_caller_gets_the_default_user_name(
         self, boundaries: Boundaries
@@ -2355,3 +2358,72 @@ class TestJournalNearDuplicateGate:
 
         boundaries.append_episode_entries.assert_not_awaited()
         assert result.episode_entries == 0
+
+
+async def test_retain_reports_every_count_the_apply_step_produced(boundaries: Boundaries) -> None:
+    parent = make_row()
+    boundaries.get_memories_by_ids.return_value = [parent]
+    sam, berlin = uuid.uuid4(), uuid.uuid4()
+    boundaries.supersede_memory.return_value = make_row()
+    boundaries.upsert_entities.return_value = {"sam carter": sam, "berlin": berlin}
+    boundaries.insert_edges.side_effect = lambda _user, edges, _record_id: len(edges)
+    linked = make_fact(
+        "sam lives in berlin",
+        entities=[
+            ExtractedEntity(name="Sam Carter", entity_type="person"),
+            ExtractedEntity(name="Berlin", entity_type="place"),
+        ],
+        edges=[ExtractedEdge(source="Sam Carter", relationship="lives_in", target="Berlin")],
+    )
+    extends, dupe = make_fact("extends one"), make_fact("dupe one")
+    boundaries.extract_memories.return_value = ExtractedMemoryBatch(facts=[linked, extends, dupe])
+    boundaries.reconcile.return_value = [
+        make_reconciled(linked, embedding=[1.0]),
+        make_reconciled(
+            extends, ReconcileOutcome.EXTENDS, embedding=[2.0], target_memory_id=str(parent.id)
+        ),
+        make_reconciled(dupe, ReconcileOutcome.DUPLICATE, embedding=[3.0], target_memory_id="old"),
+    ]
+
+    result = await retain(
+        USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+    )
+
+    counts = (
+        result.new,
+        result.updated,
+        result.extended,
+        result.duplicates,
+        result.entities_linked,
+        result.edges_added,
+    )
+    assert counts == (1, 0, 1, 1, 2, 1)
+
+
+async def test_a_live_retain_stamps_its_facts_with_an_aware_utc_instant(
+    boundaries: Boundaries,
+) -> None:
+    fact = make_fact("sam likes tea")
+    boundaries.extract_memories.return_value = ExtractedMemoryBatch(facts=[fact])
+    boundaries.reconcile.return_value = [make_reconciled(fact, embedding=[1.0])]
+
+    await retain(
+        USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+    )
+
+    (record,) = boundaries.inserted_records
+    assert record.mentioned_at is not None
+    assert record.mentioned_at.utcoffset() == timedelta(0)
+
+
+async def test_the_free_cap_is_read_for_the_retaining_user(boundaries: Boundaries) -> None:
+    TestRetainFreePlanCap._two_new_facts(boundaries)
+    plan, cached, *rest = TestRetainFreePlanCap._free_plan(cached_live=0, counted_live=0)
+
+    with plan as plan_lookup, cached as cached_lookup, rest[0], rest[1], rest[2]:
+        await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+    plan_lookup.assert_awaited_with(USER)
+    cached_lookup.assert_awaited_with(USER)
