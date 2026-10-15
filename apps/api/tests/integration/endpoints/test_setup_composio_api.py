@@ -163,7 +163,11 @@ async def test_a_key_composio_rejects_is_a_422_naming_the_key(
     resp = await client.get(COMPOSIO)
 
     assert resp.status_code == 422
-    assert resp.json()["code"] == "composio_key_rejected"
+    body = resp.json()
+    assert body["code"] == "composio_key_rejected"
+    assert body["message"] == "Composio rejected the saved API key"
+    assert body["why"] == "bad key"
+    assert body["fix"] == "Paste a valid API key from the Composio dashboard"
 
 
 async def test_only_the_instance_admin_may_read_or_save(
@@ -200,9 +204,15 @@ async def test_reading_the_setup_stamps_the_wide_event(
     client: AsyncClient, seams: SimpleNamespace
 ) -> None:
     async with captured_wide_event() as live:
-        assert (await client.get(COMPOSIO)).status_code == 200
+        resp = await client.get(COMPOSIO)
         event = dict(live)  # before the boundary stamps its own outcome on exit
 
+    assert resp.status_code == 200
+    assert event["composio_setup"] == {
+        "integrations": len(resp.json()["integrations"]),
+        "set_up": 0,
+        "detected_toolkits": 2,
+    }
     assert event["user"] == {"id": FAKE_USER_ID}
     assert event["operation"] == "get_composio_setup"
     assert event["outcome"] == "success"

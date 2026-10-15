@@ -9,6 +9,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.models.health_models import DependencyStatus, ReadinessResponse
+from tests.helpers import captured_wide_event
 
 
 class TestHealthEndpoints:
@@ -77,8 +78,10 @@ class TestReadinessEndpoint:
 
         monkeypatch.setattr("app.api.v1.endpoints.readiness.check_readiness", not_ready)
 
-        resp = await unauthed_client.get("/health/ready")
+        async with captured_wide_event() as event:
+            resp = await unauthed_client.get("/health/ready")
 
         assert resp.status_code == 503
         failed = [d["name"] for d in resp.json()["dependencies"] if not d["ok"]]
         assert failed == ["mongodb"]
+        assert event["readiness"] == {"status": "not_ready", "failed": ["mongodb"]}
