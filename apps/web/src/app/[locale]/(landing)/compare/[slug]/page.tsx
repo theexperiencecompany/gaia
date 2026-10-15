@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import ComparisonTable from "@/components/seo/ComparisonTable";
+import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
@@ -333,30 +334,10 @@ export default async function ComparisonPage({ params }: PageProps) {
           </section>
         )}
 
-        {/* Guides in the Docs */}
-        {docsGuides.length > 0 && (
-          <section className="mb-16">
-            <h2 className="mb-6 text-3xl font-semibold text-white">
-              {t("common.docs_guides")}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {docsGuides.map((guide) => (
-                <a
-                  key={guide.url}
-                  href={guide.url}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                    {guide.title}
-                  </h3>
-                  <p className="text-sm leading-relaxed text-zinc-400">
-                    docs.heygaia.io
-                  </p>
-                </a>
-              ))}
-            </div>
-          </section>
-        )}
+        <DocsGuidesSection
+          heading={t("common.docs_guides")}
+          guides={docsGuides}
+        />
 
         {/* Explore More */}
         <section className="mb-16">
