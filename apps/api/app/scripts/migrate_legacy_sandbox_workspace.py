@@ -25,7 +25,9 @@ from app.services.sandbox.legacy_workspace_migration import (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--legacy-root", type=Path, required=True)
     args = parser.parse_args()
 

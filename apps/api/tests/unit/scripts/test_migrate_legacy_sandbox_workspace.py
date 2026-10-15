@@ -99,5 +99,8 @@ def test_help_describes_the_migration_from_the_module_docstring(
         script.main()
 
     assert exited.value.code == 0
-    help_text = " ".join(capsys.readouterr().out.split())
-    assert "Copy the pre-isolation shared sandbox volume into per-user workspaces." in help_text
+    help_lines = [line.strip() for line in capsys.readouterr().out.splitlines()]
+    assert "Copy the pre-isolation shared sandbox volume into per-user workspaces." in help_lines
+    # The example keeps its own lines, so it can be copied straight into a shell.
+    assert "docker compose -f docker-compose.selfhost.yml run --rm --no-deps \\" in help_lines
+    assert "--legacy-root /legacy-sandbox-workspace" in help_lines
