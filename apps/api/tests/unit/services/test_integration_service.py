@@ -2538,21 +2538,27 @@ class TestConnectMcpIntegration:
         mock_client.connect.side_effect = RuntimeError("server unreachable")
         mock_get_client.return_value = mock_client
 
-        result = await connect_mcp_integration(
-            user_id=USER_ID,
-            integration_id=INTEGRATION_ID,
-            integration_name="Test",
-            requires_auth=False,
-            redirect_path="/integrations",
-            server_url=SERVER_URL,
-            probe_result={},
-        )
+        async with captured_wide_event() as event:
+            result = await connect_mcp_integration(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                requires_auth=False,
+                redirect_path="/integrations",
+                server_url=SERVER_URL,
+                probe_result={},
+            )
 
         assert (result.status, result.error, result.message) == (
             "error",
             "server unreachable",
             "Connection failed",
         )
+        assert event["integration"] == {
+            "provider": "Test",
+            "action": "connect_mcp",
+            "status": "error",
+        }
         mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
 
     @patch(
@@ -2827,10 +2833,11 @@ class TestConnectComposioIntegration:
             result = await self._connect()
         auth_config_resolver.invalidate_auth_config_cache()
 
-        assert (event["integration"]["provider"], event["integration"]["status"]) == (
-            "slack",
-            "not_set_up",
-        )
+        assert event["integration"] == {
+            "provider": "slack",
+            "action": "connect_composio",
+            "status": "not_set_up",
+        }
         assert result.status == "error"
         assert result.error == (
             "Slack is not set up on this instance. An admin can add it in "
