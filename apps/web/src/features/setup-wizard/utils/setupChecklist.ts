@@ -2,13 +2,12 @@ import type {
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
-import {
-  isAnyLlmConfigured,
-  isFeatureWorking,
-} from "@/features/settings/hooks/useSetupStatus";
+import { isAnyLlmConfigured } from "@/features/settings/hooks/useSetupStatus";
+
+type SetupChecklistKey = "llm" | "admin";
 
 export interface SetupChecklistItem {
-  key: string;
+  key: SetupChecklistKey;
   title: string;
   description: string;
   actionLabel: string;
@@ -28,15 +27,6 @@ export function buildSetupChecklist(
       description: "Add a key or use local Ollama to start chatting.",
       actionLabel: "Connect",
       href: "/setup",
-    });
-  }
-  if (!isFeatureWorking(status, "web_search")) {
-    items.push({
-      key: "search",
-      title: "Enable web search",
-      description: "Add a search provider so GAIA can look things up online.",
-      actionLabel: "Enable",
-      href: "/settings/providers",
     });
   }
   if (!status.has_admin_account) {

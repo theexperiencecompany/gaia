@@ -1,6 +1,6 @@
 /**
  * Slim dismissible banner at the top of the chat home until the instance's
- * essentials are configured (AI provider, web search, admin account). One
+ * essentials are configured (AI provider, admin account). One
  * missing item is one line with its action; several collapse into a single
  * line that expands to one row per item. Dismissal records WHICH items were
  * pending and only hides those, so the banner re-arms if the instance slips

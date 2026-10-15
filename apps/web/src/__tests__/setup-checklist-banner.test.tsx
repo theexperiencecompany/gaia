@@ -48,7 +48,7 @@ function persistedDismissedKeys(): unknown {
   return JSON.parse(raw).state?.dismissedKeys;
 }
 
-/** Providers in configured are set up; "web_search" there means search works. */
+/** Providers in configured are set up; web search is off, which must not matter. */
 function statusWith(configured: string[], hasAdmin: boolean): SetupStatus {
   return {
     auth_mode: "local",
@@ -56,9 +56,7 @@ function statusWith(configured: string[], hasAdmin: boolean): SetupStatus {
     providers: Object.fromEntries(
       configured.map((key) => [key, { configured: true }]),
     ),
-    features: {
-      web_search: { working: configured.includes("web_search"), in_use: [] },
-    },
+    features: { web_search: { working: false, in_use: [] } },
   } as unknown as SetupStatus;
 }
 
@@ -78,18 +76,26 @@ afterEach(() => vi.clearAllMocks());
 
 describe("SetupChecklistBanner", () => {
   it("renders nothing once every essential is configured", () => {
-    state.status = statusWith(["openai", "web_search"], true);
+    state.status = statusWith(["openai"], true);
     renderBanner();
     expect(screen.queryByLabelText("Dismiss setup checklist")).toBeNull();
   });
 
-  it("shows a single missing item as one line with its action", () => {
+  it("never asks to enable web search, which always runs keyless", () => {
     state.status = statusWith(["openai"], true);
     renderBanner();
 
-    expect(screen.getByText("Enable web search")).toBeTruthy();
-    const action = screen.getByRole("button", { name: "Enable" });
-    expect(action.getAttribute("href")).toBe("/settings/providers");
+    expect(screen.queryByLabelText("Dismiss setup checklist")).toBeNull();
+    expect(screen.queryByText("Enable web search")).toBeNull();
+  });
+
+  it("shows a single missing item as one line with its action", () => {
+    state.status = statusWith(["openai"], false);
+    renderBanner();
+
+    expect(screen.getByText("Create the admin account")).toBeTruthy();
+    const action = screen.getByRole("button", { name: "Create" });
+    expect(action.getAttribute("href")).toBe("/signup");
     expect(screen.queryByText(/setup steps left/)).toBeNull();
   });
 
@@ -97,50 +103,50 @@ describe("SetupChecklistBanner", () => {
     state.status = statusWith([], false);
     renderBanner();
 
-    expect(screen.getByText("3 setup steps left")).toBeTruthy();
+    expect(screen.getByText("2 setup steps left")).toBeTruthy();
     expect(screen.queryByText("Connect an AI provider")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Show" }));
 
-    const hrefs = ["Connect", "Enable", "Create"].map((name) =>
+    const hrefs = ["Connect", "Create"].map((name) =>
       screen.getByRole("button", { name }).getAttribute("href"),
     );
-    expect(hrefs).toEqual(["/setup", "/settings/providers", "/signup"]);
+    expect(hrefs).toEqual(["/setup", "/signup"]);
     expect(screen.getByText("Create the admin account")).toBeTruthy();
   });
 
   it("persists a dismissal of exactly the pending items and hides", () => {
-    state.status = statusWith(["openai"], false);
+    state.status = statusWith([], false);
     renderBanner();
 
     fireEvent.click(screen.getByLabelText("Dismiss setup checklist"));
 
     expect(screen.queryByText(/setup steps left/)).toBeNull();
-    expect(persistedDismissedKeys()).toEqual(["search", "admin"]);
+    expect(persistedDismissedKeys()).toEqual(["llm", "admin"]);
   });
 
   it("re-arms when an item returns after a dismissal", () => {
-    dismissedBefore(["search"]);
-    state.status = statusWith([], true);
+    dismissedBefore(["admin"]);
+    state.status = statusWith([], false);
     renderBanner();
 
     expect(screen.getByText("2 setup steps left")).toBeTruthy();
   });
 
   it("re-arms when the pending set shrinks after a dismissal", () => {
-    dismissedBefore(["search", "admin"]);
-    state.status = statusWith(["openai"], true);
+    dismissedBefore(["llm", "admin"]);
+    state.status = statusWith(["openai"], false);
     renderBanner();
 
-    expect(screen.getByText("Enable web search")).toBeTruthy();
+    expect(screen.getByText("Create the admin account")).toBeTruthy();
   });
 
   it("stays hidden while the dismissed set still matches", () => {
-    dismissedBefore(["search"]);
-    state.status = statusWith(["openai"], true);
+    dismissedBefore(["admin"]);
+    state.status = statusWith(["openai"], false);
     renderBanner();
 
-    expect(screen.queryByText("Enable web search")).toBeNull();
+    expect(screen.queryByText("Create the admin account")).toBeNull();
   });
 
   it("is never shown to a member", () => {
@@ -148,7 +154,7 @@ describe("SetupChecklistBanner", () => {
     state.status = statusWith([], false);
     renderBanner();
 
-    expect(screen.queryByText("3 setup steps left")).toBeNull();
+    expect(screen.queryByText("2 setup steps left")).toBeNull();
   });
 
   it("stays hidden while the role is still loading", () => {
@@ -156,6 +162,6 @@ describe("SetupChecklistBanner", () => {
     state.status = statusWith([], false);
     renderBanner();
 
-    expect(screen.queryByText("3 setup steps left")).toBeNull();
+    expect(screen.queryByText("2 setup steps left")).toBeNull();
   });
 });
