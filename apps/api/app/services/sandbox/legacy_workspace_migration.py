@@ -73,7 +73,12 @@ def _copy_tree_without_overwrite(
                     # Recreated verbatim; it resolves inside the owner's own sandbox view.
                     target.symlink_to(source.readlink())
                 elif stat.S_ISREG(mode):
-                    shutil.copy2(source, target, follow_symlinks=False)
+                    shutil.copy2(
+                        source,
+                        target,
+                        # S_ISREG rules out a symlink; this closes the lstat-to-copy race.
+                        follow_symlinks=False,  # pragma: no mutate
+                    )
                 else:
                     report.unresolved.append(source.relative_to(legacy_root).as_posix())
                     continue
@@ -123,7 +128,7 @@ async def migrate_legacy_sandbox_workspace(legacy_root: Path) -> LegacyWorkspace
         report.migrated_sessions[session.name] = user_id
 
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    marker.write_bytes(report.model_dump_json(indent=2).encode())
     log.set(
         legacy_workspace_migration={
             "sessions": len(report.migrated_sessions),

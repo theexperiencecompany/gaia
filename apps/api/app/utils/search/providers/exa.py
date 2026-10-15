@@ -9,6 +9,7 @@ from app.utils.search.providers.base import CredentialSearchProvider
 _ENDPOINT = "https://api.exa.ai/search"
 _TIMEOUT = 20.0
 _MAX_TEXT_CHARS = 2000
+_AUTH_HEADER = "x-api-key"
 
 
 class _ExaResult(BaseModel):
@@ -47,7 +48,7 @@ class ExaProvider(CredentialSearchProvider):
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.post(
                 _ENDPOINT,
-                headers={"x-api-key": api_key},
+                headers={_AUTH_HEADER: api_key},
                 json={
                     "query": query,
                     "numResults": count,

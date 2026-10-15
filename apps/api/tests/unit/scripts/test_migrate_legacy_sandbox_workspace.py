@@ -88,3 +88,16 @@ def test_the_legacy_root_is_required(
 
     assert exited.value.code == 2
     assert "--legacy-root" in capsys.readouterr().err
+
+
+def test_help_describes_the_migration_from_the_module_docstring(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["migrate_legacy_sandbox_workspace", "--help"])
+
+    with pytest.raises(SystemExit) as exited:
+        script.main()
+
+    assert exited.value.code == 0
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "Copy the pre-isolation shared sandbox volume into per-user workspaces." in help_text

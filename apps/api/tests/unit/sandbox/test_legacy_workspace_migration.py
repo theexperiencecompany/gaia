@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
+from tests.helpers import captured_wide_event
 
 from app.config.settings import settings
 from app.services.sandbox import legacy_workspace_migration as migration
@@ -108,3 +110,154 @@ async def test_a_second_run_is_a_no_op_once_the_report_exists(roots: tuple[Path,
     assert not (workspace / "users/userA/sessions/convA/a.txt").exists()
     saved = json.loads((workspace / migration.MIGRATION_REPORT_RELPATH).read_text())
     assert saved["migrated_sessions"] == {"convA": "userA"}
+
+
+async def test_every_existing_file_is_counted_as_skipped(roots: tuple[Path, Path]) -> None:
+    legacy, workspace = roots
+    for name in ("a.txt", "b.txt"):
+        _write(legacy / "sessions/convA" / name, "legacy")
+        _write(workspace / "users/userA/sessions/convA" / name, "newer")
+    _write(legacy / "sessions/convA/nested/c.txt", "C")
+
+    report = await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    assert report is not None
+    assert (report.skipped_existing, report.copied_files) == (2, 1)
+    assert (workspace / "users/userA/sessions/convA/nested/c.txt").read_text() == "C"
+
+
+async def test_a_symlinked_directory_is_copied_as_a_link_and_never_descended(
+    roots: tuple[Path, Path], tmp_path: Path
+) -> None:
+    legacy, workspace = roots
+    outside = tmp_path / "outside"
+    _write(outside / "secret.txt", "not the session's")
+    (legacy / "sessions/convA").mkdir(parents=True)
+    (legacy / "sessions/convA/linked").symlink_to(outside, target_is_directory=True)
+
+    report = await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    copied = workspace / "users/userA/sessions/convA/linked"
+    assert copied.is_symlink()
+    assert copied.readlink() == outside
+    assert report is not None
+    assert (report.copied_files, report.skipped_existing) == (1, 0)
+
+
+async def test_special_files_are_reported_by_their_legacy_path_and_not_copied(
+    roots: tuple[Path, Path],
+) -> None:
+    legacy, workspace = roots
+    (legacy / "sessions/convA").mkdir(parents=True)
+    for name in ("pipe-1", "pipe-2"):
+        os.mkfifo(legacy / "sessions/convA" / name)
+    _write(legacy / "sessions/convA/a.txt", "A")
+
+    report = await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    assert report is not None
+    assert sorted(report.unresolved) == ["sessions/convA/pipe-1", "sessions/convA/pipe-2"]
+    assert report.copied_files == 1
+    assert not (workspace / "users/userA/sessions/convA/pipe-1").exists()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 file")
+async def test_unreadable_files_are_reported_by_their_legacy_path_and_left_behind(
+    roots: tuple[Path, Path],
+) -> None:
+    legacy, workspace = roots
+    for name in ("locked-1.bin", "locked-2.bin"):
+        _write(legacy / "sessions/convA" / name, "x")
+        (legacy / "sessions/convA" / name).chmod(0)
+    _write(legacy / "sessions/convA/a.txt", "A")
+
+    report = await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    assert report is not None
+    assert sorted(report.unreadable) == [
+        "sessions/convA/locked-1.bin",
+        "sessions/convA/locked-2.bin",
+    ]
+    assert report.copied_files == 1
+    assert (workspace / "users/userA/sessions/convA/a.txt").read_text() == "A"
+
+
+async def test_a_symlinked_sessions_root_is_never_walked(
+    roots: tuple[Path, Path], tmp_path: Path
+) -> None:
+    legacy, workspace = roots
+    _write(tmp_path / "elsewhere/convA/a.txt", "A")
+    legacy.mkdir()
+    (legacy / "sessions").symlink_to(tmp_path / "elsewhere", target_is_directory=True)
+
+    report = await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    assert report is not None
+    assert report.migrated_sessions == {}
+    assert not (workspace / "users/userA").exists()
+
+
+async def test_a_symlinked_session_is_reported_and_never_followed(
+    roots: tuple[Path, Path], tmp_path: Path
+) -> None:
+    legacy, workspace = roots
+    _write(tmp_path / "elsewhere/a.txt", "A")
+    (legacy / "sessions").mkdir(parents=True)
+    (legacy / "sessions/convA").symlink_to(tmp_path / "elsewhere", target_is_directory=True)
+
+    report = await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    assert report is not None
+    assert report.unresolved == ["sessions/convA"]
+    assert report.migrated_sessions == {}
+    assert not (workspace / "users/userA").exists()
+
+
+async def test_an_unowned_session_does_not_stop_the_ones_after_it(
+    roots: tuple[Path, Path],
+) -> None:
+    legacy, workspace = roots
+    _write(legacy / "sessions/aaaUnknown/x.txt", "orphan")
+    _write(legacy / "sessions/convA/a.txt", "A")
+
+    report = await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    assert report is not None
+    assert report.migrated_sessions == {"convA": "userA"}
+    assert (workspace / "users/userA/sessions/convA/a.txt").read_text() == "A"
+
+
+async def test_the_report_lands_beside_earlier_migrations_and_on_the_wide_event(
+    roots: tuple[Path, Path],
+) -> None:
+    legacy, workspace = roots
+    (workspace / "_migrations").mkdir()
+    _write(legacy / "notes.md", "whose?")
+    _write(legacy / "sessions/convA/a.txt", "A")
+
+    async with captured_wide_event() as event:
+        report = await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    assert report is not None
+    saved = (workspace / migration.MIGRATION_REPORT_RELPATH).read_text()
+    assert saved == report.model_dump_json(indent=2)
+    assert event["legacy_workspace_migration"] == {
+        "sessions": 1,
+        "copied_files": 1,
+        "unresolved": 1,
+        "unreadable": 0,
+    }
+
+
+async def test_the_report_creates_its_directory_on_a_fresh_workspace(
+    roots: tuple[Path, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy, _ = roots
+    fresh = tmp_path / "fresh/volume"
+    monkeypatch.setattr(settings, "JUICEFS_HOST_MOUNT_PATH", str(fresh))
+    _write(legacy / "notes.md", "whose?")
+
+    report = await migration.migrate_legacy_sandbox_workspace(legacy)
+
+    assert report is not None
+    assert (fresh / migration.MIGRATION_REPORT_RELPATH).is_file()

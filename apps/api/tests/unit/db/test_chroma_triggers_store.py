@@ -469,3 +469,41 @@ class TestInitializeChromaTriggersStore:
         written = mock_store.abatch.await_args.args[0]
         assert [op.key for op in written] == ["new_slug"]
         assert mock_log.info.call_args.kwargs["label"] == "triggers_store"
+
+    @pytest.mark.parametrize(
+        ("embeddings", "dims"),
+        [
+            (SimpleNamespace(embedding_dims=1024), 1024),
+            (object(), 768),
+        ],
+        ids=["local-fastembed-declares-its-size", "google-default"],
+    )
+    async def test_the_collection_is_sized_by_the_embeddings_backend(self, embeddings, dims):
+        mock_store = AsyncMock()
+        mock_store._get_collection = AsyncMock(return_value=AsyncMock())
+
+        with (
+            patch("app.db.chroma.chroma_triggers_store.ChromaClient.get_client", new=AsyncMock()),
+            patch(
+                "app.db.chroma.chroma_triggers_store.providers.aget",
+                new=AsyncMock(side_effect={"google_embeddings": embeddings}.get),
+            ),
+            patch(
+                "app.db.chroma.chroma_triggers_store.ChromaStore", return_value=mock_store
+            ) as chroma_store,
+            patch(
+                "app.db.chroma.chroma_triggers_store._get_current_triggers_with_hashes",
+                return_value={},
+            ),
+            patch(
+                "app.db.chroma.chroma_triggers_store._get_existing_triggers_from_chroma",
+                new=AsyncMock(return_value={}),
+            ),
+        ):
+            await initialize_chroma_triggers_store().loader_func()
+
+        assert chroma_store.call_args.kwargs["index"] == {
+            "embed": embeddings,
+            "dims": dims,
+            "fields": ["rich_description"],
+        }
