@@ -1,8 +1,12 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
+import { useSearchParams } from "next/navigation";
 import { ProviderFeatureSection } from "@/features/settings/components/providers/ProviderFeatureSection";
-import { groupProvidersByFeature } from "@/features/settings/components/providers/providerRows";
+import {
+  FEATURE_FOCUS_PARAM,
+  groupProvidersByFeature,
+} from "@/features/settings/components/providers/providerRows";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
@@ -11,6 +15,7 @@ export function ProvidersSettings() {
   const { data: status, refetch: refetchStatus } = useSetupStatus();
   const { data: catalog, isError: isCatalogError } = useProviderCatalog();
   const groups = catalog ? groupProvidersByFeature(catalog, status) : [];
+  const focusedFeature = useSearchParams().get(FEATURE_FOCUS_PARAM);
 
   return (
     <SettingsPage>
@@ -27,6 +32,7 @@ export function ProvidersSettings() {
             group={group}
             catalog={catalog}
             status={status}
+            isFocused={group.key === focusedFeature}
             onSaved={() => {
               void refetchStatus();
             }}

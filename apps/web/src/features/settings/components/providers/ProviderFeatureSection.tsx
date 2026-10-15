@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type {
   ProviderCatalog,
   SetupStatus,
@@ -13,6 +14,8 @@ interface ProviderFeatureSectionProps {
   group: FeatureGroup;
   catalog: ProviderCatalog;
   status: SetupStatus | undefined;
+  /** Scroll this card into view: the page was opened to configure it. */
+  isFocused: boolean;
   onSaved: () => void;
 }
 
@@ -21,28 +24,41 @@ export function ProviderFeatureSection({
   group,
   catalog,
   status,
+  isFocused,
   onSaved,
 }: ProviderFeatureSectionProps) {
   const working = group.status?.working === true;
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isFocused) {
+      sectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, [isFocused]);
 
   return (
-    <SettingsSection
-      title={group.spec.label}
-      titleAccessory={
-        group.status && (
-          <StatusBadge label={working ? "Working" : "Off"} active={working} />
-        )
-      }
-      description={group.spec.description}
-    >
-      <div className="px-4 py-3.5">
-        <FeatureProviderPicker
-          group={group}
-          catalog={catalog}
-          status={status}
-          onSaved={onSaved}
-        />
-      </div>
-    </SettingsSection>
+    <div ref={sectionRef} className="scroll-mt-6">
+      <SettingsSection
+        title={group.spec.label}
+        titleAccessory={
+          group.status && (
+            <StatusBadge label={working ? "Working" : "Off"} active={working} />
+          )
+        }
+        description={group.spec.description}
+      >
+        <div className="px-4 py-3.5">
+          <FeatureProviderPicker
+            group={group}
+            catalog={catalog}
+            status={status}
+            onSaved={onSaved}
+          />
+        </div>
+      </SettingsSection>
+    </div>
   );
 }

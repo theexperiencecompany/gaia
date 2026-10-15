@@ -1,10 +1,18 @@
+import type { ProviderFeature } from "@gaia/shared/api/generated";
 import type {
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
-import { isAnyLlmConfigured } from "@/features/settings/hooks/useSetupStatus";
+import { providerFeatureHref } from "@/features/settings/components/providers/providerRows";
+import {
+  isAnyLlmConfigured,
+  isFeatureWorking,
+} from "@/features/settings/hooks/useSetupStatus";
 
-type SetupChecklistKey = "llm" | "admin";
+/** Chat itself; the required AI-provider item already asks for it. */
+const REQUIRED_FEATURE: ProviderFeature = "ai_models";
+
+type SetupChecklistKey = "llm" | "admin" | ProviderFeature;
 
 export interface SetupChecklistItem {
   key: SetupChecklistKey;
@@ -14,7 +22,7 @@ export interface SetupChecklistItem {
   href: string;
 }
 
-/** The instance essentials still missing, in the order an admin should fix them. */
+/** What is still left to configure: the required items first, then each optional feature with no free default that is off. */
 export function buildSetupChecklist(
   status: SetupStatus,
   catalog: ProviderCatalog,
@@ -38,19 +46,30 @@ export function buildSetupChecklist(
       href: "/signup",
     });
   }
+  // The API keys features by exactly the ProviderFeature values.
+  const features = Object.entries(catalog.features) as [
+    ProviderFeature,
+    ProviderCatalog["features"][string],
+  ][];
+  for (const [feature, spec] of features) {
+    if (feature === REQUIRED_FEATURE || spec.built_in) continue;
+    if (isFeatureWorking(status, feature)) continue;
+    items.push({
+      key: feature,
+      title: spec.label,
+      description: spec.description,
+      actionLabel: "Set up",
+      href: providerFeatureHref(feature),
+    });
+  }
   return items;
 }
 
-/** Hidden only while the pending set matches what was dismissed; any new or
- * returning item (LLM unconfigured again) re-arms the checklist. */
-export function isChecklistDismissed(
+/** The pending items the admin has not dismissed. */
+export function visibleChecklistItems(
   items: SetupChecklistItem[],
   dismissedKeys: string[],
-): boolean {
+): SetupChecklistItem[] {
   const dismissed = new Set(dismissedKeys);
-  return (
-    items.length > 0 &&
-    dismissed.size === items.length &&
-    items.every((item) => dismissed.has(item.key))
-  );
+  return items.filter((item) => !dismissed.has(item.key));
 }

@@ -120,6 +120,11 @@ const storedConfigs: { data: Record<string, StoredProviderConfig> } = {
   data: {},
 };
 
+const searchParams = { value: new URLSearchParams() };
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => searchParams.value,
+}));
 vi.mock("@/components/shared/ConfirmationDialog", () => ({
   ConfirmationDialog: () => null,
 }));
@@ -149,6 +154,7 @@ describe("ProvidersSettings", () => {
   beforeEach(() => {
     statusQuery.data = status;
     storedConfigs.data = {};
+    searchParams.value = new URLSearchParams();
     render(<ProvidersSettings />);
   });
 
@@ -249,5 +255,19 @@ describe("ProvidersSettings for a two-part account", () => {
       storage.getByPlaceholderText("Stored (...abcd), paste to replace"),
     ).toBeTruthy();
     expect(card("Email").queryByLabelText("Cloud name")).toBeNull();
+  });
+});
+
+describe("ProvidersSettings opened for one feature", () => {
+  it("scrolls the linked feature's card into view", () => {
+    statusQuery.data = status;
+    searchParams.value = new URLSearchParams("feature=email");
+    const scrolled: string[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.querySelector("section")?.ariaLabel ?? "");
+    };
+    render(<ProvidersSettings />);
+
+    expect(scrolled).toEqual(["Email"]);
   });
 });

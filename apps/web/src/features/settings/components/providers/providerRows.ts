@@ -87,6 +87,14 @@ export interface FeatureGroup {
   rows: CatalogProviderRow[];
 }
 
+/** Query param that scrolls Settings > Providers & Tools to one feature's card. */
+export const FEATURE_FOCUS_PARAM = "feature";
+
+/** The Settings link that opens one feature's provider card. */
+export function providerFeatureHref(feature: ProviderFeature): string {
+  return `/settings/providers?${FEATURE_FOCUS_PARAM}=${feature}`;
+}
+
 /** One feature with its offered providers, connected ones first. */
 export function resolveFeatureGroup(
   key: ProviderFeature,
