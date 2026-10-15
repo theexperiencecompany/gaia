@@ -346,9 +346,9 @@ async def test_missing_posthog_is_not_warned_about_in_production() -> None:
     async with captured_wide_event() as event:
         validator.log_validation_results()
 
-    warned = {warning["group_name"] for warning in event["warnings"]}
+    warned = {warning["group_name"]: warning["severity"] for warning in event["warnings"]}
     assert POSTHOG_GROUP not in warned
-    assert "MongoDB Connection" in warned
+    assert warned["MongoDB Connection"] == "CRITICAL"
 
 
 async def test_missing_posthog_is_warned_about_outside_production() -> None:
@@ -361,6 +361,9 @@ async def test_missing_posthog_is_warned_about_outside_production() -> None:
 
     posthog_warnings = [w for w in event["warnings"] if w["group_name"] == POSTHOG_GROUP]
     assert [set(w["missing_keys"]) for w in posthog_warnings] == [POSTHOG_FIELDS]
+    # Off GAIA Cloud nothing is CRITICAL, required groups included.
+    assert "MongoDB Connection" in {w["group_name"] for w in event["warnings"]}
+    assert {w["severity"] for w in event["warnings"]} == {"WARNING"}
 
 
 def _group(validator: SettingsValidator, name: str) -> SettingsGroup:
