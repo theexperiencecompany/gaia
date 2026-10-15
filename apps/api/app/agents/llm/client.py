@@ -217,15 +217,25 @@ def _schedule_runtime_config_refresh() -> None:
     task.add_done_callback(_on_refresh_done)
 
 
-def _require_provider_config(provider: LLMProviderName, *fields: str) -> ProviderConfig:
-    """Return the provider's config for building a client, or raise.
+def _config_serves(provider: LLMProviderName, config: ProviderConfig) -> bool:
+    """Whether config holds what provider's client needs.
 
-    Raises the actionable self-host error when it cannot serve one — either
-    nothing is configured at all, or a field the client construction needs is
-    missing.
+    Ollama needs only an endpoint, the custom endpoint needs both, and every hosted
+    lane needs an API key.
     """
+    match provider:
+        case LLMProviderName.OLLAMA:
+            return bool(config.get("base_url"))
+        case LLMProviderName.CUSTOM:
+            return bool(config.get("api_key") and config.get("base_url"))
+        case _:
+            return bool(config.get("api_key"))
+
+
+def _require_provider_config(provider: LLMProviderName) -> ProviderConfig:
+    """Return the provider's config for building a client; raise the actionable self-host error when it cannot serve one."""
     config: ProviderConfig | None = resolved_config(provider)
-    if config is None or any(not config.get(field) for field in fields):
+    if config is None or not _config_serves(provider, config):
         raise LLMNotConfiguredError(NO_PROVIDER_CONFIGURED_MESSAGE)
     return config
 
@@ -234,14 +244,11 @@ def chat_model(provider: LLMProviderName) -> str | None:
     """Return the model a provider's chat lane runs: the operator's configured one, else the catalog's.
 
     None only when neither exists (a custom endpoint saved without a model).
-    Production's comms-only providers always run the catalog model.
+    Production reads env alone, which never names a model, so it runs the catalog's.
     """
-    catalog = LLM_MODEL_PROFILES[provider].chat
-    if _is_hosted_comms_only(provider):
-        return catalog
     config: ProviderConfig | None = resolved_config(provider)
     configured = config["model"] if config else None
-    return configured or catalog
+    return configured or LLM_MODEL_PROFILES[provider].chat
 
 
 def _is_hosted_comms_only(provider: LLMProviderName) -> bool:
@@ -315,7 +322,7 @@ def init_gemini_llm() -> LanguageModelLike:
     """Initialize Gemini LLM with default model."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    config: ProviderConfig = _require_provider_config(LLMProviderName.GEMINI, "api_key")
+    config: ProviderConfig = _require_provider_config(LLMProviderName.GEMINI)
     llm = ChatGoogleGenerativeAI(
         model=config.get("model") or LLM_MODEL_PROFILES[LLMProviderName.GEMINI].chat,
         temperature=DEFAULT_LLM_TEMPERATURE,
@@ -373,7 +380,7 @@ def init_openrouter_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER, "api_key")
+    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER)
     # No base_url kwarg unless the resolved config carries one: passing None
     # would override the field's OPENROUTER_API_BASE env default_factory.
     # Redirecting to the stub is sim mode's job (_sim_llm).
@@ -423,7 +430,7 @@ def init_ollama_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    config: ProviderConfig = _require_provider_config(LLMProviderName.OLLAMA, "base_url")
+    config: ProviderConfig = _require_provider_config(LLMProviderName.OLLAMA)
     llm = ChatOpenAI(
         model=config.get("model") or LLM_MODEL_PROFILES[LLMProviderName.OLLAMA].chat,
         temperature=DEFAULT_LLM_TEMPERATURE,
@@ -464,13 +471,14 @@ def init_custom_llm() -> LanguageModelLike:
 
 def _custom_endpoint() -> CustomEndpoint:
     """Return the configured custom endpoint; the model is required, since the catalog has no default for it."""
-    config: ProviderConfig = _require_provider_config(
-        LLMProviderName.CUSTOM, "api_key", "base_url", "model"
-    )
+    config: ProviderConfig = _require_provider_config(LLMProviderName.CUSTOM)
+    model = config["model"]
+    if not model:
+        raise LLMNotConfiguredError(NO_PROVIDER_CONFIGURED_MESSAGE)
     return CustomEndpoint(
         base_url=str(config["base_url"]),
         api_key=str(config["api_key"]),
-        model=str(config["model"]),
+        model=model,
         api=DevLLMApi(settings.DEV_LLM_API),
     )
 
@@ -494,7 +502,7 @@ def init_openai_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENAI, "api_key")
+    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENAI)
     llm = without_sdk_retry(
         ChatOpenAI(
             model=chat_model(LLMProviderName.OPENAI),
@@ -589,26 +597,14 @@ def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
 
 
 def provider_configured(provider_name: LLMProviderName) -> bool:
-    """Report whether provider_name can serve a request under the active runtime config.
-
-    Ollama needs only an endpoint, the custom endpoint needs both, and every hosted
-    lane needs an API key.
-    """
+    """Report whether provider_name can serve a request under the active runtime config."""
     if settings.GAIA_SIM_MODE:
         # Sim mode pins EVERY lane to the scripted stub (the loaders return
         # _sim_llm), mirroring the old behavior where the stub key satisfied
         # every import-time required_keys list.
         return True
     config: ProviderConfig | None = resolved_config(provider_name)
-    if config is None:
-        return False
-    match provider_name:
-        case LLMProviderName.OLLAMA:
-            return bool(config.get("base_url"))
-        case LLMProviderName.CUSTOM:
-            return bool(config.get("api_key") and config.get("base_url"))
-        case _:
-            return bool(config.get("api_key"))
+    return config is not None and _config_serves(provider_name, config)
 
 
 def chat_routes() -> list[tuple[LLMProviderName, str]]:
@@ -834,16 +830,10 @@ def resolve_model(
                 else (),
             )
         case LLMProviderName.GEMINI:
-            config: ProviderConfig = _require_provider_config(
-                provider,
-                "api_key",  # pragma: no mutate — one_shot_route only routes a configured provider
-            )
+            config: ProviderConfig = _require_provider_config(provider)
             return _build_gemini_one_shot(model, temperature, api_key=str(config["api_key"]))
         case LLMProviderName.OPENAI:
-            config = _require_provider_config(
-                provider,
-                "api_key",  # pragma: no mutate — one_shot_route only routes a configured provider
-            )
+            config = _require_provider_config(provider)
             effort = OPENAI_REASONING_EFFORT[reasoning or ReasoningLevel.OFF]
             return _build_openai_wire_one_shot(
                 model,
@@ -854,10 +844,7 @@ def resolve_model(
                 reasoning_effort=effort,
             )
         case LLMProviderName.OLLAMA:
-            config = _require_provider_config(
-                provider,
-                "base_url",  # pragma: no mutate — one_shot_route only routes a configured provider
-            )
+            config = _require_provider_config(provider)
             return _build_openai_wire_one_shot(
                 model,
                 temperature,
@@ -888,10 +875,7 @@ def _openrouter_one_shot(
     fallback_model_names ride OpenRouter's models array, tried in order on
     transport errors only, with the provider order the client already carries.
     """
-    config: ProviderConfig = _require_provider_config(
-        LLMProviderName.OPENROUTER,
-        "api_key",  # pragma: no mutate — one_shot_route only routes a configured provider
-    )
+    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER)
     base = _build_default_llm(
         temperature, api_key=str(config["api_key"]), base_url=config.get("base_url")
     )
