@@ -4315,6 +4315,21 @@ class TestProbeMcpConnectionSSRF:
         assert "error" in result
         mock_extract.assert_not_awaited()
 
+    @pytest.mark.parametrize(("env", "probed"), [("selfhost", True), ("production", False)])
+    @patch("app.services.mcp.oauth_discovery.extract_auth_challenge", new_callable=AsyncMock)
+    async def test_a_lan_server_is_probed_only_where_the_deployment_allows_private_endpoints(
+        self, mock_extract: AsyncMock, monkeypatch: pytest.MonkeyPatch, env: str, probed: bool
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", env)
+        mock_extract.return_value = {}
+
+        result = await probe_mcp_connection("http://10.0.0.5/mcp")
+
+        assert ("error" not in result) is probed
+        assert mock_extract.await_args_list == (
+            [((("http://10.0.0.5/mcp",), {}))] if probed else []
+        )
+
 
 # Mutation-hardening: exact assertions on log writes, dict-key writes,
 # outbound HTTP args, and raised exceptions.
