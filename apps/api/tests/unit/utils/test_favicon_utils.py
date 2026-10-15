@@ -9,6 +9,8 @@ import respx
 
 from app.config.settings import settings
 from app.utils.favicon_utils import (
+    BROWSER_UA,
+    HTTP_TIMEOUT,
     IconCandidate,
     _fetch_favicon_impl,
     _fetch_smithery_icon,
@@ -18,6 +20,7 @@ from app.utils.favicon_utils import (
     _parse_icons_from_html,
     _select_best_icon,
     _smithery_qualified_name,
+    _try_html_link_parsing,
     _validate_favicon_url,
     fetch_favicon_from_url,
     legacy_favicon_url,
@@ -550,3 +553,46 @@ class TestFaviconFetchSSRF:
         assert await _fetch_favicon_impl(f"https://{PRIVATE_HOST}/mcp") == (
             f"https://{PRIVATE_HOST}/logo.png"
         )
+
+
+class TestFaviconProbesPresentAsABrowser:
+    """Both probes send a browser UA under the 3s budget and follow redirects to the real icon."""
+
+    @pytest.fixture(autouse=True)
+    def _public(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+        monkeypatch.setattr(settings, "ENV", "production")
+        with patch("app.utils.url_safety._resolve", return_value=["93.184.216.34"]):
+            yield
+
+    @staticmethod
+    def _assert_browser_request(request: httpx.Request) -> None:
+        assert request.headers["user-agent"] == BROWSER_UA
+        assert request.extensions["timeout"] == httpx.Timeout(HTTP_TIMEOUT).as_dict()
+
+    @respx.mock(assert_all_called=False)
+    async def test_the_icon_check_follows_a_moved_icon(self, respx_mock: respx.MockRouter) -> None:
+        moved = respx_mock.head(f"https://{PUBLIC_HOST}/icon.png").respond(
+            301, headers={"location": f"https://{PUBLIC_HOST}/v2/icon.png"}
+        )
+        final = respx_mock.head(f"https://{PUBLIC_HOST}/v2/icon.png").respond(
+            200, headers={"content-type": "image/png"}
+        )
+
+        assert await _validate_favicon_url(f"https://{PUBLIC_HOST}/icon.png") is True
+        self._assert_browser_request(moved.calls.last.request)
+        self._assert_browser_request(final.calls.last.request)
+
+    @respx.mock(assert_all_called=False)
+    async def test_the_page_read_follows_a_moved_page(self, respx_mock: respx.MockRouter) -> None:
+        moved = respx_mock.get(f"https://{PUBLIC_HOST}/").respond(
+            302, headers={"location": f"https://{PUBLIC_HOST}/home"}
+        )
+        final = respx_mock.get(f"https://{PUBLIC_HOST}/home").respond(
+            200, html='<link rel="icon" href="/logo.png">'
+        )
+
+        assert await _try_html_link_parsing(f"https://{PUBLIC_HOST}/") == (
+            f"https://{PUBLIC_HOST}/logo.png"
+        )
+        self._assert_browser_request(moved.calls.last.request)
+        self._assert_browser_request(final.calls.last.request)
