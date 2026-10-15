@@ -1,5 +1,5 @@
-export const MAX_META_DESCRIPTION_LENGTH = 155;
-export const MIN_META_DESCRIPTION_LENGTH = 120;
+const MAX_META_DESCRIPTION_LENGTH = 155;
+const MIN_META_DESCRIPTION_LENGTH = 120;
 
 /** Pads sub-120-char descriptions. Matches the FAQ: community integrations ship with every plan. */
 const SHORT_DESCRIPTION_PAD = " Connect free with any GAIA plan.";
