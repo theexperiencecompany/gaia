@@ -1328,3 +1328,15 @@ def test_consolidate_labels_a_reused_lane(
         == 0
     )
     assert "reused — passed at abc in run 7" in capsys.readouterr().out
+
+
+def test_an_edit_run_with_an_every_event_job_still_reads_as_an_edit() -> None:
+    # main.yml's changelog-sync runs on title/body edits too; unless it is named
+    # non-gating, two edit runs mirror each other's failure forever (PR #1244).
+    jobs = [
+        {"name": "test-typescript", "conclusion": "skipped"},
+        {"name": "changelog-sync", "conclusion": "success"},
+        {"name": "quality-gate", "conclusion": "failure"},
+    ]
+    assert not verdict._is_plain_edit_run(jobs, "quality-gate", frozenset())
+    assert verdict._is_plain_edit_run(jobs, "quality-gate", frozenset({"changelog-sync"}))

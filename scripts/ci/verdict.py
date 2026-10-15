@@ -1266,14 +1266,18 @@ def _run_jobs(repo: str, run_id: int) -> list[dict[str, Any]]:
     return list((jobs or {}).get("jobs", []))
 
 
-def _is_plain_edit_run(jobs: list[dict[str, Any]], gate_job: str) -> bool:
+def _is_plain_edit_run(
+    jobs: list[dict[str, Any]], gate_job: str, non_gating: frozenset[str]
+) -> bool:
     """Say whether this run only republished some other run's verdict.
 
     Every lane sits behind the same edited-event guard, so a title or body edit
     skips all of them and leaves the gate mirroring alone. A run with no lane at
     all fails closed instead: an unreadable job listing is not an edit.
     """
-    lanes = [job for job in jobs if job.get("name") != gate_job]
+    lanes = [
+        job for job in jobs if job.get("name") != gate_job and job.get("name") not in non_gating
+    ]
     return bool(lanes) and all(job.get("conclusion") == "skipped" for job in lanes)
 
 
@@ -1299,7 +1303,9 @@ class _MirrorDecision(NamedTuple):
     message: str
 
 
-def _mirror_once(repo: str, sha: str, workflow: str, gate_job: str, run_id: int) -> _MirrorDecision:
+def _mirror_once(
+    repo: str, sha: str, workflow: str, gate_job: str, run_id: int, non_gating: frozenset[str]
+) -> _MirrorDecision:
     listing = _gh_json(f"repos/{repo}/actions/workflows/{workflow}/runs?head_sha={sha}&per_page=50")
     if listing is None:
         return _MirrorDecision(
@@ -1314,7 +1320,7 @@ def _mirror_once(repo: str, sha: str, workflow: str, gate_job: str, run_id: int)
         if candidate == run_id:
             continue
         jobs = _run_jobs(repo, candidate)
-        if _is_plain_edit_run(jobs, gate_job):
+        if _is_plain_edit_run(jobs, gate_job, non_gating):
             continue
         conclusion = _gate_conclusion(jobs, gate_job)
         if conclusion is None:
@@ -1359,6 +1365,13 @@ def cmd_mirror_previous_gate(args: list[str]) -> int:
     parser.add_argument("--job", required=True, help="the gate job's `name:`")
     parser.add_argument("--run-id", required=True, type=int, help="this run, excluded")
     parser.add_argument(
+        "--non-gating",
+        action="append",
+        default=[],
+        metavar="JOB",
+        help="a job outside the gate that also runs on edits (e.g. changelog-sync); repeatable",
+    )
+    parser.add_argument(
         "--wait-seconds",
         type=int,
         default=0,
@@ -1371,7 +1384,9 @@ def cmd_mirror_previous_gate(args: list[str]) -> int:
 
     deadline = time.monotonic() + opts.wait_seconds
     while True:
-        decision = _mirror_once(opts.repo, opts.sha, opts.workflow, opts.job, opts.run_id)
+        decision = _mirror_once(
+            opts.repo, opts.sha, opts.workflow, opts.job, opts.run_id, frozenset(opts.non_gating)
+        )
         if decision.code is not None or time.monotonic() >= deadline:
             print(decision.message)
             return 1 if decision.code is None else decision.code

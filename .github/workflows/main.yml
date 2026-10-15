@@ -1103,7 +1103,7 @@ jobs:
         if: ${{ github.event.action == 'edited' && github.event.changes.base == '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/ci/verdict.py mirror-previous-gate --repo "$GITHUB_REPOSITORY" --sha "${{ github.event.pull_request.head.sha }}" --workflow main.yml --job quality-gate --run-id "$GITHUB_RUN_ID" --wait-seconds 2400
+        run: python3 scripts/ci/verdict.py mirror-previous-gate --repo "$GITHUB_REPOSITORY" --sha "${{ github.event.pull_request.head.sha }}" --workflow main.yml --job quality-gate --run-id "$GITHUB_RUN_ID" --non-gating changelog-sync --wait-seconds 2400
 
   # --- Docker phase, split so the long part runs parallel to the gate -------
   # build-images starts right after detect (master only) and builds/publishes
