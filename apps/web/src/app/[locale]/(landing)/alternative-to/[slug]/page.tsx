@@ -19,8 +19,8 @@ import {
 } from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
-import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
 import { ALTERNATIVE_DOCS_LINKS, type DocsGuideLink } from "@/lib/docs-links";
+import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,

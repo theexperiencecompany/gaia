@@ -16,8 +16,8 @@ import {
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
-import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
 import { COMPARE_DOCS_LINKS } from "@/lib/docs-links";
+import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
