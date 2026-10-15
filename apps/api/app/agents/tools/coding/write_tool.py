@@ -141,7 +141,7 @@ async def write(
     # SSE `artifact_data` chunk during the active turn, so the card renders
     # immediately — no polling, no dependence on the sandbox-side watcher.
     short_url = await publish_artifact_write(
-        user_id, role, role_conv, abs_path, content, len(encoded), real_mtime
+        user_id, role, role_conv, abs_path, content, real_mtime
     )
     links = {posixpath.basename(abs_path): short_url} if short_url else {}
 

@@ -198,7 +198,7 @@ async def test_do_edit_single_occurrence_replaces_with_exact_payloads() -> None:
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "def foo():\n    return 2\n", 24, MTIME
+        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "def foo():\n    return 2\n", MTIME
     )
 
 
@@ -220,7 +220,7 @@ async def test_do_edit_replace_all_replaces_every_occurrence() -> None:
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "X b X c X", 9, MTIME
+        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "X b X c X", MTIME
     )
 
 
@@ -282,7 +282,7 @@ async def test_do_edit_size_counts_bytes_not_characters() -> None:
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "coffee☕", 9, MTIME
+        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "coffee☕", MTIME
     )
 
 
@@ -337,7 +337,7 @@ async def test_edit_replaces_file_with_exact_payloads() -> None:
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "def foo():\n    return 2\n", 24, MTIME
+        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "def foo():\n    return 2\n", MTIME
     )
 
 
