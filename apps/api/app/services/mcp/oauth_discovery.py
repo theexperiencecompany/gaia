@@ -65,7 +65,7 @@ async def discover_oauth_config(
             error_type=type(e).__name__,
         )
 
-    challenge = challenge_data or await extract_auth_challenge(server_url)
+    challenge: McpAuthChallenge = challenge_data or await extract_auth_challenge(server_url)
     initial_scope = challenge.get("scope")
 
     # Try RFC 9728 Protected Resource Metadata
@@ -157,7 +157,7 @@ async def probe_mcp_connection(server_url: str) -> McpProbeResult:
             server_url, allow_private=settings.deployment.private_network_endpoints
         )
 
-        challenge = await extract_auth_challenge(server_url)
+        challenge: McpAuthChallenge = await extract_auth_challenge(server_url)
 
         # Empty dict => the probe got a non-401 response: no auth required.
         if not challenge:

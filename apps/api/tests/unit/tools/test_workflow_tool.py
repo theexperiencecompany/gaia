@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.workflow_tool."""
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.constants.integrations import (
@@ -8,6 +8,7 @@ from app.constants.integrations import (
     MAX_MY_INTEGRATIONS_RESULTS,
 )
 from app.constants.log_tags import LogTag
+from app.models.trigger_config import TriggerSearchResult
 from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
     MyIntegrationItem,
@@ -400,6 +401,18 @@ class TestExecuteWorkflow:
 # ---------------------------------------------------------------------------
 
 
+def _trigger_result(slug: str, *, is_connected: bool) -> TriggerSearchResult:
+    return TriggerSearchResult(
+        trigger_slug=slug,
+        trigger_name=slug,
+        description=None,
+        integration_id="googlecalendar",
+        integration_name="Google Calendar",
+        is_connected=is_connected,
+        config_fields={},
+    )
+
+
 class TestSearchTriggers:
     """Tests for the search_triggers shared tool."""
 
@@ -410,8 +423,8 @@ class TestSearchTriggers:
         with patch(f"{SHARED_MODULE}.TriggerSearchService") as mock_trigger_svc:
             mock_trigger_svc.search = AsyncMock(
                 return_value=[
-                    {"name": "calendar_event", "is_connected": True},
-                    {"name": "slack_message", "is_connected": False},
+                    _trigger_result("calendar_event", is_connected=True),
+                    _trigger_result("slack_message", is_connected=False),
                 ]
             )
 
@@ -578,7 +591,7 @@ def _my_integration(
     integration_id: str,
     *,
     connected: bool = False,
-    source: str = "platform",
+    source: Literal["platform", "custom"] = "platform",
 ) -> MyIntegrationItem:
     """One of the user's integrations, as the shared matcher returns it."""
     return MyIntegrationItem(

@@ -46,6 +46,7 @@ from app.services.device.device_service import (
 )
 from app.services.integrations.connect_steps import connect_step
 from app.services.integrations.custom_crud import (
+    CustomConnectionResult,
     create_and_connect_custom_integration,
     create_custom_integration,
 )
@@ -496,6 +497,7 @@ async def _create_and_report_custom_server(
     resolved_type = cast(
         AuthType | None, probed_type if probed_type in ("none", "oauth", "bearer") else None
     )
+    connection: CustomConnectionResult
     integration, connection = await create_and_connect_custom_integration(
         user_id,
         CreateCustomIntegrationRequest(
@@ -531,11 +533,9 @@ async def add_custom_mcp_server(
 ) -> str:
     try:
         log.set(tool={"name": "add_custom_mcp_server", "action": "create"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
-        user_id = str(user_id)
 
         # Cheap, non-resolving shape guard that also points a loopback URL at the
         # host alias; the DNS-resolving guard fires again inside probe/connect.
@@ -558,7 +558,7 @@ async def add_custom_mcp_server(
         # Probe and persist the exact user-provided URL: normalization is for
         # dedup only, and some servers distinguish /mcp from /mcp/.
         original_url = server_url
-        probe = await mcp_client.probe_connection(original_url)
+        probe: McpProbeResult = await mcp_client.probe_connection(original_url)
         if probe.get("error"):
             return f"❌ Couldn't reach that MCP server: {probe['error']}"
 
@@ -575,12 +575,11 @@ async def add_custom_mcp_server(
 async def list_devices(config: RunnableConfig) -> ListDevicesResult | str:
     try:
         log.set(tool={"name": "list_devices", "action": "list"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        devices = await list_devices_service(str(user_id))
+        devices = await list_devices_service(user_id)
         device_ids = [d.id for d in devices]
         online = await online_device_ids(device_ids)
         servers_by_device = await list_device_servers(device_ids)
@@ -663,14 +662,13 @@ def _full_disk_access_hint(device: Device) -> str:
 @with_doc(RUN_ON_DEVICE)
 async def run_on_device(device_id: str, command: str, config: RunnableConfig) -> str:
     log.set(tool={"name": "run_on_device", "action": "exec"})
-    configurable = agent_configurable(config)
-    user_id = configurable.get("user_id") if configurable else None
+    user_id = _configured_user_id(config)
     if not user_id:
         return "Error: User ID not found in configuration."
 
     # Authz: the device must belong to this user. Never trust a device_id the
     # model produced — a wrong or spoofed id must not reach another user's machine.
-    devices = await list_devices_service(str(user_id))
+    devices = await list_devices_service(user_id)
     device = next((d for d in devices if d.id == device_id), None)
     if device is None:
         return (

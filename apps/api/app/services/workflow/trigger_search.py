@@ -9,13 +9,16 @@ This module provides functionality to:
 Triggers are indexed in ChromaDB by chroma_triggers_store.py at startup.
 """
 
-from typing import Any
-
 from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.chroma.chroma_triggers_store import (
     TRIGGERS_NAMESPACE,
     get_triggers_store,
+)
+from app.models.trigger_config import (
+    IndexedTriggerValue,
+    TriggerSearchConfigField,
+    TriggerSearchResult,
 )
 from shared.py.wide_events import log
 
@@ -29,11 +32,8 @@ class TriggerSearchService:
         query: str,
         user_id: str,
         limit: int = 15,
-    ) -> list[dict[str, Any]]:
-        """Search for triggers matching the query via ChromaDB semantic search.
-
-        Returns trigger dicts enriched with connection status and config_fields.
-        """
+    ) -> list[TriggerSearchResult]:
+        """Search for triggers matching the query via ChromaDB semantic search, with connection status and config_fields."""
         from app.services.oauth.oauth_service import check_integration_status
 
         store = await get_triggers_store()
@@ -46,13 +46,12 @@ class TriggerSearchService:
         )
 
         # Enrich with connection status and config_fields
-        enriched = []
+        enriched: list[TriggerSearchResult] = []
         checked_integrations: dict[str, bool] = {}
 
         for item in results:
-            value = item.value
-            trigger_slug = value.get("slug")
-            integration_id = value.get("integration_id", "")
+            value = IndexedTriggerValue.model_validate(item.value)
+            integration_id = value.integration_id
 
             # Cache connection checks per integration
             if integration_id not in checked_integrations:
@@ -69,64 +68,38 @@ class TriggerSearchService:
                     )
                     checked_integrations[integration_id] = False
 
-            # Get config schema for this trigger (embedded in results)
-            config_fields: dict[str, Any] = {}
-            if isinstance(trigger_slug, str):
-                schema = await cls.get_schema(trigger_slug)
-                if schema:
-                    config_fields = schema.get("config_fields", {})
-
             enriched.append(
-                {
-                    "trigger_slug": trigger_slug,
-                    "trigger_name": value.get("name"),
-                    "description": value.get("description"),
-                    "integration_id": integration_id,
-                    "integration_name": value.get("integration_name"),
-                    "is_connected": checked_integrations.get(integration_id, False),
-                    "config_fields": config_fields,
-                }
+                TriggerSearchResult(
+                    trigger_slug=value.slug,
+                    trigger_name=value.name,
+                    description=value.description,
+                    integration_id=integration_id,
+                    integration_name=value.integration_name,
+                    is_connected=checked_integrations[integration_id],
+                    config_fields=cls.config_fields(value.slug),
+                )
             )
 
         return enriched
 
-    @classmethod
-    async def get_schema(cls, trigger_slug: str) -> dict[str, Any] | None:
-        """Get the configuration schema for a trigger, or None if not found."""
+    @staticmethod
+    def config_fields(trigger_slug: str) -> dict[str, TriggerSearchConfigField]:
+        """Return the trigger's config fields by name; empty when the trigger is unknown or has none."""
         for integration in all_integrations():
-            if not integration.associated_triggers:
-                continue
-
-            for trigger in integration.associated_triggers:
-                if trigger.slug == trigger_slug:
-                    schema: dict[str, Any] = {
-                        "trigger_slug": trigger.slug,
-                        "trigger_name": trigger.name,
-                        "description": trigger.description,
-                        "integration_id": integration.id,
-                        "integration_name": integration.name,
-                        "config_fields": {},
-                    }
-
-                    # Extract config schema if available
-                    if (
-                        trigger.workflow_trigger_schema
-                        and trigger.workflow_trigger_schema.config_schema
-                    ):
-                        # Use sentinel to distinguish missing default from explicit None
-                        _sentinel = object()
-                        for (
-                            field_name,
-                            field_config,
-                        ) in trigger.workflow_trigger_schema.config_schema.items():
-                            default_val = getattr(field_config, "default", _sentinel)
-                            schema["config_fields"][field_name] = {
-                                "type": getattr(field_config, "type", "string"),
-                                "description": getattr(field_config, "description", ""),
-                                "default": None if default_val is _sentinel else default_val,
-                                "required": default_val is _sentinel,
-                            }
-
-                    return schema
-
-        return None
+            for trigger in integration.associated_triggers or []:
+                if trigger.slug != trigger_slug:
+                    continue
+                schema = trigger.workflow_trigger_schema
+                if schema is None:
+                    return {}
+                # Every config field carries a default, so none is required.
+                return {
+                    name: TriggerSearchConfigField(
+                        type=field.type,
+                        description=field.description,
+                        default=field.default,
+                        required=False,
+                    )
+                    for name, field in schema.config_schema.items()
+                }
+        return {}

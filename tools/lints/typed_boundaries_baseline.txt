@@ -44,7 +44,6 @@ apps/api/app/agents/tools/discovery_tools.py	TB001
 apps/api/app/agents/tools/discovery_tools.py	TB002
 apps/api/app/agents/tools/file_tools.py	TB002
 apps/api/app/agents/tools/integration_instructions_tools.py	TB002
-apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; master's custom-MCP add path (#1208) reads the untyped connection dict create_and_connect_custom_integration returns; typing it changes custom_crud's return shape, a product change kept out of this merge (decided 2026-09-14)
 apps/api/app/agents/tools/playbook_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/playbook_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/workflow_shared_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
@@ -108,7 +107,6 @@ apps/api/app/services/device/device_auth.py	TB002
 apps/api/app/services/device/revoke_listener.py	TB002
 apps/api/app/services/device/up_listener.py	TB002
 apps/api/app/services/device_token_service.py	TB002
-apps/api/app/services/files/store.py	TB002
 apps/api/app/services/files/summaries.py	TB002
 apps/api/app/services/gaia_knowledge_service.py	TB002	deferred-until=2026-10-15; master's #1240 reads chromadb's GetResult TypedDict with .get, a shape chromadb owns; a typed wrapper over the Chroma client is its own change (decided 2026-09-16)
 apps/api/app/services/hil/classification.py	TB002
@@ -119,7 +117,6 @@ apps/api/app/services/llm_metering.py	TB002	deferred-until=2026-12-31; 37 string
 apps/api/app/services/mail/email_importance_service.py	TB001
 apps/api/app/services/mcp/device_connector.py	TB002
 apps/api/app/services/mcp/device_exec.py	TB002
-apps/api/app/services/mcp/oauth_discovery.py	TB002
 apps/api/app/services/mcp/resilient_adapter.py	TB001
 apps/api/app/services/mcp/resilient_adapter.py	TB002
 apps/api/app/services/nurture/predicates.py	TB002
@@ -131,7 +128,6 @@ apps/api/app/services/photon/photon_client.py	TB001
 apps/api/app/services/photon/photon_client.py	TB002
 apps/api/app/services/storage/metrics.py	TB002
 apps/api/app/services/storage/sessions/meta.py	TB002
-apps/api/app/services/support_service.py	TB002
 apps/api/app/services/triggers/condition_matching.py	TB001
 apps/api/app/services/triggers/handlers/asana.py	TB001
 apps/api/app/services/triggers/handlers/calendar.py	TB001
@@ -151,8 +147,6 @@ apps/api/app/services/workflow/playbook/scripted_model.py	TB001
 apps/api/app/services/workflow/queue_service.py	TB001
 apps/api/app/services/workflow/subagent_output.py	TB001
 apps/api/app/services/workflow/subagent_output.py	TB002
-apps/api/app/services/workflow/trigger_search.py	TB001
-apps/api/app/services/workflow/trigger_search.py	TB002
 apps/api/app/workers/config/log_config.py	TB002
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB002

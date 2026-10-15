@@ -35,7 +35,7 @@ from app.constants.files import (
 from app.constants.log_tags import LogTag
 from app.constants.providers import CredentialProviderName
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
-from app.services.providers.provider_credentials_service import resolved_config
+from app.services.providers.provider_credentials_service import ProviderConfig, resolved_config
 from app.utils import local_document_parser
 from app.utils.exceptions import ProviderNotConfiguredError
 from app.utils.image_codec import ImageCodec, InvalidImageError
@@ -100,7 +100,7 @@ class DocumentProcessor:
         Raises ProviderNotConfiguredError when no key is saved or set in env.
         """
         if self._parser is None:
-            config = resolved_config(CredentialProviderName.LLAMAPARSE)
+            config: ProviderConfig | None = resolved_config(CredentialProviderName.LLAMAPARSE)
             api_key = config["api_key"] if config else None
             if not api_key:
                 raise ProviderNotConfiguredError("LlamaParse OCR has no API key")

@@ -22,7 +22,7 @@ from app.models.integrations.weather import (
     WeatherLocation,
     WeatherReport,
 )
-from app.services.providers.provider_credentials_service import resolve
+from app.services.providers.provider_credentials_service import ProviderConfig, resolve
 from shared.py.wide_events import log
 
 # Said to the model in place of data, so it tells the user instead of inventing a forecast.
@@ -152,7 +152,7 @@ async def get_location_data(
 async def user_weather(location_name: str | None = None) -> WeatherReport | str:
     """Fetch weather data for a specified location."""
     log.set(operation="user_weather", location_name=location_name)
-    config = await resolve(CredentialProviderName.OPENWEATHER)
+    config: ProviderConfig | None = await resolve(CredentialProviderName.OPENWEATHER)
     api_key = config["api_key"] if config else None
     if not api_key:
         log.set(weather={"configured": False})
