@@ -86,7 +86,7 @@ function botContainerStatuses(...statuses: string[]): void {
 function platformAnswers(body: object): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => ({ json: async () => body })),
+    vi.fn(async () => Response.json(body)),
   );
 }
 
