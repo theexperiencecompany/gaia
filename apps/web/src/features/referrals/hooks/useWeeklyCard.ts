@@ -7,7 +7,7 @@ import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { referralsApi } from "../api/referralsApi";
 
 /** One claim per local week: a new week is a new key, so last week's answer never carries over. */
-export function weeklyCardKey(now: Date): readonly string[] {
+function weeklyCardKey(now: Date): readonly string[] {
   return [
     "referrals",
     "weekly-card",
