@@ -274,7 +274,8 @@
           "text-[3.2rem]",
           "sm:text-[5.75rem]",
           "pt-[12vh]",
-          "tracking-[0.2em]"
+          "tracking-[0.2em]",
+          "sm:px-[10vw]"
         ],
         "message": "Stay on the scale for {{className}} \u2014 use {{suggestions|a scale step}} instead. Colors: use a theme token or declare --color-<name> in {{file|your theme CSS}}."
       }

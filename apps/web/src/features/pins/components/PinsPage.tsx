@@ -31,7 +31,7 @@ export default function Pins() {
           </div>
         ) : (
           <div className="flex flex-wrap justify-center gap-4 pb-8">
-            <div className="flex flex-wrap justify-center gap-4 pb-8 sm:px-10">
+            <div className="flex flex-wrap justify-center gap-4 pb-8 sm:px-[10vw]">
               {filteredResults && filteredResults.length > 0 ? (
                 <div className="grid grid-cols-1 gap-4 pt-10 pb-24 sm:grid-cols-3 sm:pb-20">
                   {filteredResults.map((result) => (
