@@ -88,6 +88,15 @@ for (const surface of collectSurfaces(process.env.VISUAL_APP === "1")) {
     await settle(page);
 
     await page.addStyleTag({ path: SCREENSHOT_CSS });
+    // Settle animations the way the screenshot's animations: "disabled" does, so the
+    // DOM snapshot never records a mid-frame value: finite ones end, infinite ones reset.
+    await page.evaluate(() => {
+      for (const animation of document.getAnimations()) {
+        if (animation.effect?.getComputedTiming().endTime === Infinity)
+          animation.cancel();
+        else animation.finish();
+      }
+    });
     const snapshot = await captureDom(page, {
       id: surface.id,
       title,

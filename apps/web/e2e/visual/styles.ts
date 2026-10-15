@@ -6,13 +6,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { chromium, type Page } from "@playwright/test";
-import tailwindColors from "tailwindcss/colors";
+import { chromium } from "@playwright/test";
+import { nameColors, parseColor } from "./colors.ts";
 import type { DomElement, DomSnapshot, Rect } from "./dom";
+import { matchElements, parentPath, tagOf } from "./match.ts";
 
 /**
  * Element-level style diff of a visual-diff run: matches the base and head DOM
- * snapshots (dom/<id>.<side>.json) by structural key, ranks what changed and
+ * snapshots (dom/<id>.<side>.json) (see match.ts), ranks what changed and
  * writes changes.md plus zoomed base | head crops of the top changes.
  * Usage: node e2e/visual/styles.ts <out-dir> <base-label> <head-label>
  */
@@ -74,41 +75,24 @@ const CROP_CONTEXT_PX = 24;
 const CROP_ZOOM = 2;
 const CROP_PANEL_MAX_PX = 640;
 const CROP_SOURCE_MAX_HEIGHT_PX = 400;
-const COLOR_FUNCTION = /(?:rgba?|oklch|oklab|lab|lch|hsla?|color)\([^()]*\)/g;
 const TRANSPARENT = "rgba(0, 0, 0, 0)";
+const COLOR_IN_SHADOW = /^(?:\w+\([^()]*\)|transparent)/;
 
-/** Map each Tailwind palette color to the exact string Chromium computes for it. */
-async function resolvePalette(page: Page): Promise<Map<string, string>> {
-  const entries: [string, string][] = [];
-  for (const [family, shades] of Object.entries(tailwindColors)) {
-    if (typeof shades === "string") entries.push([family, shades]);
-    else
-      for (const [shade, value] of Object.entries(shades))
-        entries.push([`${family}-${shade}`, value]);
-  }
-  const computed = await page.evaluate((pairs) => {
-    const probe = document.createElement("div");
-    document.body.append(probe);
-    return pairs.map(([name, value]) => {
-      probe.style.color = "";
-      probe.style.color = value;
-      return [getComputedStyle(probe).color, name] as const;
+/** A box-shadow without the transparent and zero-size layers that render nothing, colors named. */
+function shadow(value: string): string {
+  if (value === "none") return "none";
+  const layers = value
+    .split(/,(?![^(]*\))/)
+    .map((layer) => layer.trim())
+    .filter((layer) => {
+      const color = layer.match(COLOR_IN_SHADOW)?.[0];
+      const visible = !color || parseColor(color)?.alpha !== 0;
+      const lengths = layer.match(/-?[\d.]+px/g) ?? [];
+      return (
+        visible && lengths.some((length) => Number.parseFloat(length) !== 0)
+      );
     });
-  }, entries);
-  const palette = new Map<string, string>(computed);
-  palette.set(TRANSPARENT, "transparent");
-  return palette;
-}
-
-/** Replace exact palette colors in a computed value with their Tailwind names. */
-function named(value: string, palette: Map<string, string>): string {
-  return value.replace(COLOR_FUNCTION, (color) => {
-    const exact = palette.get(color);
-    if (exact) return exact;
-    const alpha = color.match(/^(\w+\(.*?) \/ ([\d.]+)\)$/);
-    const opaque = alpha && palette.get(`${alpha[1]})`);
-    return opaque ? `${opaque}/${Math.round(Number(alpha[2]) * 100)}` : color;
-  });
+  return layers.length > 0 ? nameColors(layers.join(", ")) : "none";
 }
 
 /** CSS shorthand for four box values: "16px", "8px 16px" or all four. */
@@ -119,15 +103,11 @@ function box(values: string[]): string {
   return values.join(" ");
 }
 
-function borderSide(
-  styles: Record<string, string>,
-  side: string,
-  palette: Map<string, string>,
-): string {
+function borderSide(styles: Record<string, string>, side: string): string {
   const style = styles[`border-${side}-style`];
   const width = styles[`border-${side}-width`];
   if (style === "none" || style === "hidden" || width === "0px") return "none";
-  return `${style} ${width} ${named(styles[`border-${side}-color`], palette)}`;
+  return `${style} ${width} ${nameColors(styles[`border-${side}-color`])}`;
 }
 
 function outline(styles: Record<string, string>): string {
@@ -148,11 +128,7 @@ function hasBorder(styles: Record<string, string>): boolean {
 }
 
 /** Every style change of one matched element, one line per property family. */
-function describe(
-  base: DomElement,
-  head: DomElement,
-  palette: Map<string, string>,
-): Line[] {
+function describe(base: DomElement, head: DomElement): Line[] {
   const lines: Line[] = [];
   const push = (
     category: Category,
@@ -166,12 +142,8 @@ function describe(
   const toggled = (from: string, to: string): Category =>
     from === "none" || to === "none" ? "border toggled" : "border";
 
-  const baseBorders = SIDES.map((side) =>
-    borderSide(base.styles, side, palette),
-  );
-  const headBorders = SIDES.map((side) =>
-    borderSide(head.styles, side, palette),
-  );
+  const baseBorders = SIDES.map((side) => borderSide(base.styles, side));
+  const headBorders = SIDES.map((side) => borderSide(head.styles, side));
   if (
     baseBorders.every((b) => b === baseBorders[0]) &&
     headBorders.every((b) => b === headBorders[0])
@@ -195,8 +167,8 @@ function describe(
   const baseOutline = outline(base.styles);
   const headOutline = outline(head.styles);
   push(toggled(baseOutline, headOutline), "outline", baseOutline, headOutline);
-  const baseShadow = named(base.styles["box-shadow"], palette);
-  const headShadow = named(head.styles["box-shadow"], palette);
+  const baseShadow = shadow(base.styles["box-shadow"]);
+  const headShadow = shadow(head.styles["box-shadow"]);
   push(toggled(baseShadow, headShadow), "shadow", baseShadow, headShadow);
   const radius = (el: DomElement) =>
     box(CORNERS.map((corner) => el.styles[`border-${corner}-radius`]));
@@ -205,8 +177,8 @@ function describe(
   push(
     "background",
     "background",
-    named(base.styles["background-color"], palette),
-    named(head.styles["background-color"], palette),
+    nameColors(base.styles["background-color"]),
+    nameColors(head.styles["background-color"]),
   );
   push(
     "background",
@@ -234,8 +206,8 @@ function describe(
   push(
     "typography",
     "color",
-    named(base.styles.color, palette),
-    named(head.styles.color, palette),
+    nameColors(base.styles.color),
+    nameColors(head.styles.color),
   );
   return lines;
 }
@@ -252,20 +224,20 @@ function sizeLine(base: Rect, head: Rect): Line | null {
     : null;
 }
 
-const keyOf = (el: DomElement) => `${el.path}|${el.label}`;
-const parentPath = (path: string) => path.slice(0, path.lastIndexOf(">"));
-
 function describeElement(el: DomElement): string {
-  const tag = el.path.slice(el.path.lastIndexOf(">") + 1).split(":")[0];
+  const tag = tagOf(el);
   return el.label ? `${tag} "${el.label}"` : tag;
 }
 
+// Absent from snapshots captured before animation-name was recorded.
+const isAnimated = (el: DomElement) => {
+  const name = el.styles["animation-name"];
+  return name !== undefined && name !== "none";
+};
+
 /** Elements on one side only that a reader would notice, topmost of each added or removed subtree. */
-function unmatched(
-  from: DomElement[],
-  other: Map<string, DomElement>,
-): DomElement[] {
-  const missing = from.filter((el) => !other.has(keyOf(el)));
+function unmatched(from: DomElement[], paired: Set<DomElement>): DomElement[] {
+  const missing = from.filter((el) => !paired.has(el));
   const missingPaths = new Set(missing.map((el) => el.path));
   return missing.filter(
     (el) =>
@@ -278,11 +250,7 @@ function unmatched(
 }
 
 /** Collapse identical change sets across elements, highest priority and most frequent first. */
-function groupChanges(
-  base: DomSnapshot,
-  head: DomSnapshot,
-  palette: Map<string, string>,
-): Group[] {
+function groupChanges(base: DomSnapshot, head: DomSnapshot): Group[] {
   const groups = new Map<string, Group>();
   const add = (category: Category, text: string, occurrence: Occurrence) => {
     const key = `${category}|${text}`;
@@ -290,33 +258,24 @@ function groupChanges(
     group.occurrences.push(occurrence);
     groups.set(key, group);
   };
-  const baseByKey = new Map(base.elements.map((el) => [keyOf(el), el]));
-  const headByKey = new Map(head.elements.map((el) => [keyOf(el), el]));
-  for (const headEl of head.elements) {
-    const baseEl = baseByKey.get(keyOf(headEl));
-    if (!baseEl) continue;
-    const lines = describe(baseEl, headEl, palette);
+  const pairs = matchElements(base.elements, head.elements);
+  for (const [baseEl, headEl] of pairs) {
+    // A running animation's computed values are whatever frame the capture landed on.
+    if (isAnimated(baseEl) || isAnimated(headEl)) continue;
+    const occurrence = { base: baseEl, head: headEl, subject: headEl };
+    const lines = describe(baseEl, headEl);
     if (lines.length > 0) {
       const top = lines.reduce((a, b) =>
         CATEGORY_RANK[b.category] < CATEGORY_RANK[a.category] ? b : a,
       );
-      add(top.category, lines.map((line) => line.text).join("; "), {
-        base: baseEl,
-        head: headEl,
-        subject: headEl,
-      });
+      add(top.category, lines.map((line) => line.text).join("; "), occurrence);
     }
     const size = sizeLine(baseEl.rect, headEl.rect);
-    if (size)
-      add(size.category, size.text, {
-        base: baseEl,
-        head: headEl,
-        subject: headEl,
-      });
+    if (size) add(size.category, size.text, occurrence);
   }
-  for (const el of unmatched(base.elements, headByKey))
+  for (const el of unmatched(base.elements, new Set(pairs.keys())))
     add("element", `removed ${describeElement(el)}`, { base: el, subject: el });
-  for (const el of unmatched(head.elements, baseByKey))
+  for (const el of unmatched(head.elements, new Set(pairs.values())))
     add("element", `added ${describeElement(el)}`, { head: el, subject: el });
   return [...groups.values()].sort(
     (a, b) =>
@@ -443,6 +402,34 @@ function readSnapshot(path: string): DomSnapshot | null {
     : null;
 }
 
+function changeLine(group: Group, crop: string): string {
+  const subject = describeElement(group.occurrences[0].subject);
+  return `- **${group.category}** ${group.text}${repeats(group)} · \`${subject}\`${crop}`;
+}
+
+/** A surface's changes: the cropped top ones first, the rest folded under a details block. */
+function surfaceSection(
+  base: DomSnapshot,
+  head: DomSnapshot,
+  groups: Group[],
+  cropped: string[],
+): string {
+  const rest = groups
+    .slice(cropped.length, GROUPS_LISTED_PER_SURFACE)
+    .map((group) => changeLine(group, ""));
+  const hidden = groups.length - GROUPS_LISTED_PER_SURFACE;
+  if (hidden > 0) rest.push(`- …and ${hidden} more`);
+  const more =
+    rest.length > 0
+      ? `\n\n<details><summary>${groups.length - cropped.length} more changes</summary>\n\n${rest.join("\n")}\n\n</details>`
+      : "";
+  const truncated =
+    base.truncated || head.truncated
+      ? "\n\nSnapshot capped at its element limit; later elements are not compared."
+      : "";
+  return `## \`${head.title}\`${truncated}\n\n${cropped.join("\n")}${more}\n`;
+}
+
 async function main(): Promise<void> {
   const [outDir, baseLabel = "base", headLabel = "head"] =
     process.argv.slice(2);
@@ -466,7 +453,6 @@ async function main(): Promise<void> {
   const page = await browser.newPage({
     viewport: { width: CROP_PANEL_MAX_PX * 2 + 80, height: 600 },
   });
-  const palette = await resolvePalette(page);
   const sections: string[] = [];
   let compared = 0;
   for (const id of ids) {
@@ -474,7 +460,7 @@ async function main(): Promise<void> {
     const head = readSnapshot(join(domDir, `${id}.head.json`));
     if (!base || !head) continue;
     compared += 1;
-    const groups = groupChanges(base, head, palette);
+    const groups = groupChanges(base, head);
     if (groups.length === 0) continue;
 
     const basePath = join(outDir, "baseline", `${id}.png`);
@@ -484,37 +470,17 @@ async function main(): Promise<void> {
       item?.images.head ??
         (item?.outcome === "unchanged" ? basePath : undefined),
     );
-    const lines: string[] = [];
-    for (const [index, group] of groups
-      .slice(0, GROUPS_LISTED_PER_SURFACE)
-      .entries()) {
-      let crop = "";
-      if (index < CROPS_PER_SURFACE) {
-        const file = `${id}-${index + 1}.png`;
-        await page.setContent(
-          cropHtml(head.title, group, baseShot, headShot, [
-            baseLabel,
-            headLabel,
-          ]),
-          { waitUntil: "load" },
-        );
-        await page
-          .locator("#card")
-          .screenshot({ path: join(changesDir, file) });
-        crop = ` · [crop](changes/${file})`;
-      }
-      const subject = describeElement(group.occurrences[0].subject);
-      lines.push(
-        `- **${group.category}** ${group.text}${repeats(group)} · \`${subject}\`${crop}`,
+    const cropped: string[] = [];
+    for (const [index, group] of groups.slice(0, CROPS_PER_SURFACE).entries()) {
+      const file = `${id}-${index + 1}.png`;
+      await page.setContent(
+        cropHtml(head.title, group, baseShot, headShot, [baseLabel, headLabel]),
+        { waitUntil: "load" },
       );
+      await page.locator("#card").screenshot({ path: join(changesDir, file) });
+      cropped.push(changeLine(group, ` · [crop](changes/${file})`));
     }
-    const hidden = groups.length - GROUPS_LISTED_PER_SURFACE;
-    if (hidden > 0) lines.push(`- …and ${hidden} more`);
-    const truncated =
-      base.truncated || head.truncated
-        ? "\n\nSnapshot capped at its element limit; later elements are not compared."
-        : "";
-    sections.push(`## \`${head.title}\`${truncated}\n\n${lines.join("\n")}\n`);
+    sections.push(surfaceSection(base, head, groups, cropped));
   }
   await browser.close();
 
@@ -524,7 +490,7 @@ async function main(): Promise<void> {
     [
       `# Style changes: ${baseLabel} → ${headLabel}`,
       "",
-      `${compared} surfaces compared · ${changed} with element-level changes. Elements are matched by structural path and own text; position shifts alone are ignored.`,
+      `${compared} surfaces compared · ${changed} with element-level changes. Elements with text are matched by tag and identical text under the same anchor, textless ones by structural path; position shifts alone are ignored.`,
       "",
       ...(changed ? sections : ["No element-level style changes."]),
     ].join("\n"),

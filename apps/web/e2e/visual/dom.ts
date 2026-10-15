@@ -16,6 +16,9 @@ export interface DomElement {
   path: string;
   /** Own text (first 40 chars), else aria-label or alt; empty when it has none. */
   label: string;
+  /** The id and role attributes when set; snapshots from before they were recorded lack them. */
+  id?: string;
+  role?: string;
   rect: Rect;
   styles: Record<string, string>;
 }
@@ -56,6 +59,7 @@ export const STYLE_PROPERTIES = [
   "outline-style",
   "outline-width",
   "opacity",
+  "animation-name",
 ] as const;
 
 const MAX_ELEMENTS = 4000;
@@ -128,9 +132,12 @@ export async function captureDom(
         }
         styles["background-image"] =
           styles["background-image"] === "none" ? "none" : "set";
+        const role = element.getAttribute("role");
         found.push({
           path: pathOf(element),
           label: labelOf(element),
+          ...(element.id && { id: element.id }),
+          ...(role && { role }),
           rect,
           styles,
         });
