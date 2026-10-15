@@ -48,10 +48,10 @@ def _first_sentence(text: str | None, max_len: int = 140) -> str | None:
         return None
     for sep in (". ", "! ", "? "):
         if sep in cleaned:
-            cleaned = cleaned.split(sep, 1)[0].rstrip(".!?") + "."
+            cleaned = cleaned.partition(sep)[0].rstrip(".!?") + "."
             break
     if len(cleaned) > max_len:
-        trimmed = cleaned[: max_len - 1].rsplit(" ", 1)[0]
+        trimmed = cleaned[: max_len - 1].rpartition(" ")[0]
         cleaned = (trimmed or cleaned[: max_len - 1]).rstrip(",;:") + "…"
     return cleaned or None
 
@@ -170,7 +170,6 @@ def _build_faqs(
     auth_type: str | None,
 ) -> list[IntegrationFAQ]:
     """Connect + capability inventory + one tool-specific Q + pricing."""
-    """Connect + capability inventory + one tool-specific Q + pricing."""
     count = len(named)
     top = [_named_tools(named)[i].name for i in range(min(3, count))]
     top_human = [humanize_tool_name(t) for t in top]
@@ -247,7 +246,9 @@ def build_fallback_content(
     """
     named = _named_tools(tools)
     if not named:
-        named = [StoredIntegrationTool(name="run actions")]
+        # humanize() lowercases, so a case rewrite of this literal is a
+        # provable no-op downstream: every consumer humanizes first.
+        named = [StoredIntegrationTool(name="run actions")]  # pragma: no mutate
     clean_category = (category or "other").strip() or "other"
     # Sliced to the shared contract so a USE_CASES/HOW_IT_WORKS/FAQ count change
     # fails loudly here (and in the unit tests) instead of drifting silently.

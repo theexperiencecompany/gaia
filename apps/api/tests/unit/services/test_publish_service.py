@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.integration_models import Integration, StoredIntegrationTool
+from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent
 from app.services.integrations.publish_service import (
     PublishError,
@@ -192,6 +193,36 @@ class TestPublishCustomIntegration:
         # Grounded in the integration's real tools, not the generic template.
         assert any("lookup" in uc for uc in content.use_cases)
         assert "lookup" in content.faqs[1].answer
+        # The fallback carries this integration's identity, not blanks.
+        assert content.faqs[0].question == "How do I connect My Integration to GAIA?"
+        assert content.faqs[1].answer.startswith("A handy tool")
+        assert "productivity stack" in content.how_it_works[2].body
+        # No auth configured anywhere: the generic connect copy.
+        assert "if asked" in content.how_it_works[0].body
+
+    async def test_fallback_prefers_mcp_config_auth(self, mock_deps):
+        """mcp_config.auth_type wins over the legacy top-level mirror."""
+        mock_deps.repo.get.return_value = _integration(
+            mcp_config=MCPConfig(server_url="https://mcp.example.com", auth_type="oauth"),
+            auth_type="bearer",
+        )
+        mock_deps.content.return_value = None
+
+        await publish_custom_integration(INTEGRATION_ID, USER_ID)
+
+        content = mock_deps.repo.publish.await_args.kwargs["content"]
+        assert "OAuth consent" in content.how_it_works[0].body
+        assert "OAuth consent" in content.faqs[0].answer
+
+    async def test_fallback_uses_legacy_auth_without_mcp_config(self, mock_deps):
+        """Older documents without mcp_config still resolve auth from the mirror."""
+        mock_deps.repo.get.return_value = _integration(mcp_config=None, auth_type="bearer")
+        mock_deps.content.return_value = None
+
+        await publish_custom_integration(INTEGRATION_ID, USER_ID)
+
+        content = mock_deps.repo.publish.await_args.kwargs["content"]
+        assert "API token" in content.how_it_works[0].body
 
 
 class TestUnpublishCustomIntegration:
