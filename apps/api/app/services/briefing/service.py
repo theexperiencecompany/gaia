@@ -84,7 +84,7 @@ from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.shuffle_bag import draw
 from app.services.briefing.skim import brief_path, build_skim, full_brief_url
-from app.services.briefing.voice_check import voice_contradictions
+from app.services.briefing.voice_check import VoicedCounts, voice_contradictions
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
@@ -459,6 +459,7 @@ class _Facts:
 
     sections: list[BriefingSection]
     stats: list[BriefingStat]
+    counts: VoicedCounts
     block: str
     carried_ids: list[str]
 
@@ -477,7 +478,8 @@ def _build_facts(
     work: context.TrackedWork,
     held: list[PendingBriefItemDocument],
     artifacts: dict[str, _ArtifactFact],
-    user_todos_note: str,
+    open_todos: int,
+    notes: str,
 ) -> _Facts:
     """Assemble sections + stats deterministically from tracked-work state and held results.
 
@@ -487,14 +489,14 @@ def _build_facts(
     built = _work_sections(work, held)
     sections, left_out = built.sections, built.left_out
     items = [it for sec in sections for it in sec.items]
-    counts = (
-        ("waiting on you", sum(1 for it in items if it.kind in ("you", "failed"))),
-        ("done", sum(1 for it in items if it.kind == "lookback")),
-        ("in progress", sum(1 for it in items if it.kind == "gaia")),
-        ("while you were away", sum(1 for it in items if it.kind == "note")),
+    counts = VoicedCounts(
+        waiting_on_you=sum(1 for it in items if it.kind in ("you", "failed")),
+        done=sum(1 for it in items if it.kind == "lookback"),
+        in_progress=sum(1 for it in items if it.kind == "gaia"),
+        while_away=sum(1 for it in items if it.kind == "note"),
+        open_todos=open_todos,
     )
-    # A zero is left out so the model is never handed a tally of nothing to recite.
-    voiced = " · ".join(f"{label}: {n}" for label, n in counts if n)
+    voiced = " · ".join(f"{label}: {n}" for label, n in counts.shown())
     fact_lines: list[str] = [f"[COUNTS] {voiced}"] if voiced else []
     for sec in sections:
         fact_lines.append(f"[{sec.title}]")
@@ -510,8 +512,8 @@ def _build_facts(
             "GAIA has no tracked work and no background work ran. Do not claim anything "
             "ran, finished, or is pending beyond what is stated here."
         )
-    fact_lines.append(user_todos_note)
-    return _Facts(sections, _work_stats(work), "\n".join(fact_lines), built.carried_ids)
+    fact_lines.append(notes)
+    return _Facts(sections, _work_stats(work), counts, "\n".join(fact_lines), built.carried_ids)
 
 
 class _Voice(BaseModel):
@@ -627,8 +629,8 @@ def _user_todos_note(open_count: int, open_titles: list[str]) -> str:
         return "The user's own todo list is empty."
     first_few = f" (first few: {'; '.join(open_titles)})" if open_titles else ""
     return (
-        f"The user's own open todo list holds {open_count} item(s){first_few}"
-        ". Only a count of 0 may be voiced as a clear or empty list."
+        f"The user's own open todos{first_few} are counted in [COUNTS]"
+        "; never voice that list as clear or empty."
     )
 
 
@@ -636,9 +638,10 @@ async def _voice_checked_against_items(
     user: AuthenticatedUser,
     clock: UserClock,
     prompt: str,
+    counts: VoicedCounts,
     build: Callable[[_Voice], BriefingPayload],
 ) -> BriefingPayload:
-    """Voice the brief, then check the headline and lede against its final items.
+    """Voice the brief, then check the headline and lede against its final items and counts.
 
     A contradiction is sent back to the model once with the problems named; a second
     one fails the run before anything is stored or sent.
@@ -651,7 +654,7 @@ async def _voice_checked_against_items(
                 await _run_silent(user, clock, attempt_prompt, conversation_key=BRIEFING_KIND_DAILY)
             )
         )
-        problems = voice_contradictions(payload.headline, payload.lede, payload)
+        problems = voice_contradictions(payload.headline, payload.lede, payload, counts)
         if not problems:
             return payload
         log.warning("briefing.voice_contradicted_items", problems=problems)
@@ -797,6 +800,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         work,
         held,
         artifacts,
+        open_count,
         _user_todos_note(open_count, open_titles) + "\n" + _calendar_note(calendar),
     )
 
@@ -824,6 +828,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         build_user_context(user, auth_provider=None),
         clock,
         prompt,
+        facts.counts,
         lambda voice: _daily_payload(
             clock, voice, facts.sections, facts.stats, winback.is_winback
         ).model_copy(update={"calendar": calendar, "tallies": tallies}),

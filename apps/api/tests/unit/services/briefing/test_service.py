@@ -710,6 +710,35 @@ class TestTheProseMatchesTheItems:
 
         _assert_nothing_sent(world)
 
+    async def test_a_count_the_model_was_shown_may_be_voiced(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: 5 open todos were shown to the model, then rejected when it said 5."""
+        monkeypatch.setattr(
+            service.context, "user_open_todo_summary", AsyncMock(return_value=(5, ["Gym"]))
+        )
+        monkeypatch.setattr(service.context, "gather_calendar", AsyncMock(return_value=[]))
+        world.agent.return_value = _voiced("5 open todos, a quiet morning", "Nothing else today.")
+
+        await service.run_daily_briefing(_USER)
+
+        assert "[COUNTS] your open todos: 5\n" in _prompt(world)
+        assert world.agent.await_count == 1
+        assert _stored_payload(world).headline == "5 open todos, a quiet morning"
+
+    async def test_a_count_the_model_was_not_shown_is_still_rejected(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            service.context, "user_open_todo_summary", AsyncMock(return_value=(5, []))
+        )
+        world.agent.return_value = _voiced("6 open todos", "A quiet morning.")
+
+        with pytest.raises(service.BriefingGenerationError, match="counts 6"):
+            await service.run_daily_briefing(_USER)
+
+        _assert_nothing_sent(world)
+
 
 def _brief_work() -> context.TrackedWork:
     return context.TrackedWork(
@@ -964,17 +993,19 @@ class TestTheFactsTheModelVoices:
         ) in _prompt(world)
 
     @pytest.mark.parametrize(
-        ("summary", "note"),
+        ("summary", "counts", "note"),
         [
             (
                 (2, ["Gym", "Taxes"]),
-                "The user's own open todo list holds 2 item(s) (first few: Gym; Taxes)."
-                " Only a count of 0 may be voiced as a clear or empty list.\n",
+                "[COUNTS] your open todos: 2\n",
+                "The user's own open todos (first few: Gym; Taxes) are counted in [COUNTS]"
+                "; never voice that list as clear or empty.\n",
             ),
             (
                 (3, []),
-                "The user's own open todo list holds 3 item(s)."
-                " Only a count of 0 may be voiced as a clear or empty list.\n",
+                "[COUNTS] your open todos: 3\n",
+                "The user's own open todos are counted in [COUNTS]"
+                "; never voice that list as clear or empty.\n",
             ),
         ],
     )
@@ -983,6 +1014,7 @@ class TestTheFactsTheModelVoices:
         world: World,
         monkeypatch: pytest.MonkeyPatch,
         summary: tuple[int, list[str]],
+        counts: str,
         note: str,
     ) -> None:
         monkeypatch.setattr(
@@ -991,6 +1023,7 @@ class TestTheFactsTheModelVoices:
 
         await service.run_daily_briefing(_USER)
 
+        assert counts in _prompt(world)
         assert note in _prompt(world)
 
     async def test_an_untimed_event_reads_all_day_and_none_reads_empty(
