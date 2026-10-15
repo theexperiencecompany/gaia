@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date as date_type, datetime, timedelta
 from difflib import SequenceMatcher
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, TypedDict, Unpack
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
@@ -58,28 +58,28 @@ USER = "user-1"
 NOW = datetime(2026, 8, 24, tzinfo=UTC)
 
 
-def make_fact(
-    content: str = "sam likes green tea",
-    *,
-    kind: MemoryKind = MemoryKind.FACT,
-    shelf_life: MemoryShelfLife = MemoryShelfLife.DURABLE,
-    category_path: str = "preferences",
-    importance: float = 0.5,
-    entities: list[ExtractedEntity] | None = None,
-    edges: list[ExtractedEdge] | None = None,
-    occurred_start: datetime | None = None,
-    occurred_end: datetime | None = None,
-) -> ExtractedFact:
+class _FactFields(TypedDict, total=False):
+    kind: MemoryKind
+    shelf_life: MemoryShelfLife
+    category_path: str
+    importance: float
+    entities: list[ExtractedEntity] | None
+    edges: list[ExtractedEdge] | None
+    occurred_start: datetime | None
+    occurred_end: datetime | None
+
+
+def make_fact(content: str = "sam likes green tea", **fields: Unpack[_FactFields]) -> ExtractedFact:
     return ExtractedFact(
         content=content,
-        kind=kind,
-        shelf_life=shelf_life,
-        category_path=category_path,
-        importance=importance,
-        entities=entities or [],
-        edges=edges or [],
-        occurred_start=occurred_start,
-        occurred_end=occurred_end,
+        kind=fields.get("kind", MemoryKind.FACT),
+        shelf_life=fields.get("shelf_life", MemoryShelfLife.DURABLE),
+        category_path=fields.get("category_path", "preferences"),
+        importance=fields.get("importance", 0.5),
+        entities=fields.get("entities") or [],
+        edges=fields.get("edges") or [],
+        occurred_start=fields.get("occurred_start"),
+        occurred_end=fields.get("occurred_end"),
     )
 
 
@@ -2013,6 +2013,66 @@ class TestRetainAgendaSideEffects:
             )
 
         assert "agenda_ms" in event["memory"]["timings"]
+
+    async def test_the_completion_event_reports_the_counts_and_every_stage(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch(
+            facts=[make_fact("sam likes green tea"), make_fact("sam lives in pune")]
+        )
+        boundaries.reconcile.side_effect = lambda _user, facts, embeddings: [
+            make_reconciled(fact, embedding=embedding) for fact, embedding in zip(facts, embeddings)
+        ]
+
+        async with captured_wide_event() as event:
+            result = await retain(
+                USER,
+                [{"role": "user", "content": "hi"}],
+                source_type=MemorySourceType.CONVERSATION,
+            )
+
+        memory = event["memory"]
+        assert result.new == 2
+        assert {key: memory[key] for key in ("operation", "source_type", "success")} == {
+            "operation": "retain",
+            "source_type": MemorySourceType.CONVERSATION.value,
+            "success": True,
+        }
+        assert memory["facts_extracted"] == 2
+        assert memory["new_count"] == 2
+        assert memory["result_count"] == result.new + result.updated + result.extended
+        assert memory["episode_entries"] == result.episode_entries
+        assert memory["episode_entries_deduped"] == 0
+        assert set(memory["timings"]) == {
+            "context_ms",
+            "extract_ms",
+            "embed_ms",
+            "reconcile_ms",
+            "apply_ms",
+            "episodes_ms",
+            "chunks_ms",
+            "agenda_ms",
+            "total_ms",
+        }
+
+    async def test_an_empty_extraction_still_reports_a_successful_retain(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch()
+
+        async with captured_wide_event() as event:
+            await retain(
+                USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.EMAIL
+            )
+
+        memory = event["memory"]
+        assert (memory["facts_extracted"], memory["result_count"], memory["success"]) == (
+            0,
+            0,
+            True,
+        )
+        assert memory["source_type"] == MemorySourceType.EMAIL.value
+        assert "timings" not in memory or not memory["timings"]
 
 
 @pytest.mark.unit

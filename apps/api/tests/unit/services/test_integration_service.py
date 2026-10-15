@@ -60,6 +60,7 @@ from app.services.integrations.custom_crud import (
 )
 from app.services.integrations.integration_connection_service import (
     _handle_auth_required,
+    _McpConnectTarget,
     _redirect_to_oauth,
     build_integrations_config,
     connect_composio_integration,
@@ -3348,6 +3349,15 @@ class TestRedirectToOauth:
         assert kwargs["challenge_data"] == challenge
 
 
+_PLATFORM_TARGET = _McpConnectTarget(
+    user_id="u1",
+    integration_id="int-1",
+    integration_name="gmail",
+    redirect_path="/cb",
+    is_platform=True,
+)
+
+
 class TestHandleAuthRequired:
     """Direct tests for _handle_auth_required: bearer vs OAuth routing."""
 
@@ -3355,14 +3365,7 @@ class TestHandleAuthRequired:
         mcp_client = AsyncMock()
 
         response = await _handle_auth_required(
-            "u1",
-            "int-1",
-            "gmail",
-            "/cb",
-            is_platform=True,
-            detected_auth_type="bearer",
-            probe_result=None,
-            mcp_client=mcp_client,
+            _PLATFORM_TARGET, mcp_client, detected_auth_type="bearer", probe_result=None
         )
 
         assert response.status == "error"
@@ -3376,14 +3379,7 @@ class TestHandleAuthRequired:
         probe = {"oauth_challenge": {"state": "s"}}
 
         response = await _handle_auth_required(
-            "u1",
-            "int-1",
-            "gmail",
-            "/cb",
-            is_platform=True,
-            detected_auth_type="oauth",
-            probe_result=probe,
-            mcp_client=mcp_client,
+            _PLATFORM_TARGET, mcp_client, detected_auth_type="oauth", probe_result=probe
         )
 
         assert response.status == "redirect"

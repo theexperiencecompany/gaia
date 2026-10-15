@@ -15,7 +15,17 @@ async function fetchJson<T>(url: string, init: RequestInit): Promise<T> {
     ...init,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  return (await response.json()) as T;
+  // A rejected token still answers JSON with the platform's reason, which the
+  // callers report; any other failure is an outage page with no body to read.
+  const isJson = response.headers
+    .get("content-type")
+    ?.includes("application/json");
+  if (response.ok || isJson) {
+    return (await response.json()) as T;
+  }
+  throw new Error(
+    `${new URL(url).hostname} answered HTTP ${response.status}. Try again in a minute.`,
+  );
 }
 
 interface TelegramGetMe {

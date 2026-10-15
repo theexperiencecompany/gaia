@@ -15,6 +15,11 @@ import { useRouter } from "@/i18n/navigation";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 import type { Integration } from "../types";
 
+const ITEM_SIZE_CLASSES = {
+  small: "gap-2 rounded-xl p-2",
+  default: "gap-3 rounded-2xl p-4",
+} as const;
+
 interface IntegrationsCardProps {
   onClose?: () => void;
   onIntegrationClick?: (integrationId: string) => void;
@@ -25,7 +30,7 @@ const IntegrationItem: React.FC<{
   integration: Integration;
   onConnect: (id: string) => void;
   onClick: (id: string) => void;
-  size?: "default" | "small";
+  size: keyof typeof ITEM_SIZE_CLASSES;
 }> = ({ integration, onConnect, onClick, size }) => {
   const state = integrationConnectionState(integration.status);
   const isConnected = state === "connected";
@@ -43,12 +48,9 @@ const IntegrationItem: React.FC<{
     onConnect(integration.id);
   };
 
-  const paddingClass = size === "small" ? "p-2" : "p-4";
-  const gapClass = size === "small" ? "gap-2" : "gap-3";
-
   return (
     <div
-      className={`flex min-h-12 items-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
+      className={`flex min-h-12 items-center overflow-hidden ${ITEM_SIZE_CLASSES[size]} bg-zinc-800/40 transition hover:bg-zinc-700`}
     >
       <button
         type="button"

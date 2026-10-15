@@ -52,6 +52,9 @@ export function DesktopLoginClient({
       ?.getDesktopSettings()
       .then(({ settings }) => {
         if (!cancelled) setSelfHostOrigin(settings.selfHostOrigin);
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to read the desktop settings:", error);
       });
     return () => {
       cancelled = true;
