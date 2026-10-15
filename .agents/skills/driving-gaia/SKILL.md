@@ -39,7 +39,7 @@ services up natively instead:
 sudo ./scripts/dev/sandbox-services.sh up      # mongo, redis, rabbitmq, postgres, chroma
 ./scripts/dev/sandbox-services.sh seed         # the rows the API refuses to boot without
 ./scripts/dev/sandbox-services.sh status
-source scripts/dev/sandbox-env.sh              # there is no .env in a fresh sandbox
+source scripts/dev/sandbox-env.sh              # no .env in a fresh sandbox; also exports DEV_USER from mise.toml
 cd apps/api && uv run uvicorn app.main:app --port 8000
 ```
 
@@ -48,7 +48,7 @@ Then mint the bypass user — **without it every request 401s** with
 
 ```bash
 curl -X POST localhost:8000/api/v1/dev/users \
-  -H 'content-type: application/json' -d '{"email":"delivered+dev@resend.dev","name":"Dev User"}'
+  -H 'content-type: application/json' -d "{\"email\":\"$DEV_USER\",\"name\":\"Dev User\"}"
 ```
 
 Three things that will cost you an hour if you don't know them, all encoded in
@@ -67,7 +67,7 @@ broken sink (see `reading-gaia-logs`).
 
 ## 2. Become a user — the dev auth bypass (zero login)
 
-The bypass is enabled by the `--agent` / `--sim` flag, not by editing `.env`. `mise dev --agent`, `mise dev --sim`, and `mise dev:vm --agent` (or `--sim`) each export `DEV_AUTH_BYPASS_EMAIL=${DEV_USER:-delivered+dev@resend.dev}` for the API process. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only: the flags run `scripts/dev/assert-not-prod.sh` and abort if `ENV=production`, and `get_settings()` refuses to boot with the var set in prod regardless.
+The bypass is enabled by the `--agent` / `--sim` flag, not by editing `.env`. `mise dev --agent`, `mise dev --sim`, and `mise dev:vm --agent` (or `--sim`) each export `DEV_AUTH_BYPASS_EMAIL=$DEV_USER` for the API process. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only: the flags run `scripts/dev/assert-not-prod.sh` and abort if `ENV=production`, and `get_settings()` refuses to boot with the var set in prod regardless.
 
 `apps/api/.env` keeps `DEV_AUTH_BYPASS_EMAIL` **commented out** on purpose so plain `mise dev` is a real login flow — enable the bypass through the `--agent`/`--sim` flag (pass `DEV_USER=<email>` to change the identity), don't hardcode it back into `.env`.
 
