@@ -74,8 +74,8 @@ async def test_web_search_lists_stored_and_env_providers_in_waterfall_order(
     assert status.in_use == [
         CredentialProviderName.EXA,
         CredentialProviderName.BRAVE,
-        BuiltInEngine.DUCKDUCKGO,
         CredentialProviderName.SEARXNG,
+        BuiltInEngine.DUCKDUCKGO,
     ]
 
 

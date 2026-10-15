@@ -4565,9 +4565,7 @@ export interface paths {
          * @description Store (or replace) one provider's credential. Presets prefill server-side.
          *
          *     Admin-only: rewriting a provider's endpoint redirects every LLM call the
-         *     instance makes. Stored base_urls must be public (see ``_assert_url_safe``)
-         *     except for ``ollama`` which is expected to be local
-         *     (``host.docker.internal`` / ``localhost``) and skips the public-IP check.
+         *     instance makes. Validation and the merge live in save_provider_credential.
          */
         put: operations["setup_put_provider"];
         post?: never;
@@ -10458,10 +10456,20 @@ export interface components {
          */
         MaskedProvider: {
             /**
+             * Account Id
+             * @description The non-secret account half, e.g. Cloudinary's cloud name
+             */
+            account_id?: string | null;
+            /**
              * Api Key Hint
              * @description Last four characters of the key; the key itself never leaves the server
              */
             api_key_hint?: string | null;
+            /**
+             * Api Secret Hint
+             * @description Last four characters of the second secret, e.g. Cloudinary's API secret
+             */
+            api_secret_hint?: string | null;
             /**
              * Base Url
              * @description Configured endpoint, if any
@@ -12675,8 +12683,12 @@ export interface components {
          *     OpenCode/Nous is paste-an-API-key-only.
          */
         ProviderCredentialBody: {
+            /** Account Id */
+            account_id?: string | null;
             /** Api Key */
             api_key?: string | null;
+            /** Api Secret */
+            api_secret?: string | null;
             /** Base Url */
             base_url?: string | null;
             /** Model */
@@ -12702,6 +12714,8 @@ export interface components {
         };
         /** ProviderPreset */
         ProviderPreset: {
+            /** Account Id Label */
+            account_id_label: string;
             /** Base Url */
             base_url: string;
             /** Default Model */
@@ -12716,6 +12730,8 @@ export interface components {
             label: string;
             /** Needs Base Url */
             needs_base_url: boolean;
+            /** Second Key Label */
+            second_key_label: string;
         };
         /**
          * ProviderTestResponse

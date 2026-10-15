@@ -18,10 +18,8 @@ metadata and link-local addresses stay refused. ``OLLAMA_BASE_URL``
 server-side env still works as a fallback for deployments that prefer it.
 """
 
-import ipaddress
 import re
 from typing import Annotated, Literal, TypedDict, cast
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 import httpx
@@ -56,11 +54,18 @@ from app.services.providers.provider_credentials_service import (
     invalidate as invalidate_provider_cache,
     is_usable,
     resolve as resolve_provider_config,
-    upsert as upsert_provider_config,
+)
+from app.services.providers.provider_setup_service import (
+    BASE_URL_PROVIDERS,
+    PresetName,
+    allows_private_endpoint,
+    apply_preset,
+    assert_endpoint_safe,
+    ensure_known_provider,
+    save_provider_credential,
 )
 from app.services.setup_wizard_service import dismiss_setup_wizard, is_setup_wizard_dismissed
 from app.services.startup_validation import is_payment_setup
-from app.utils.url_safety import assert_public_http_url, assert_safe_url_shape
 from shared.py.wide_events import log
 
 router = APIRouter(tags=["Setup"])
@@ -68,13 +73,6 @@ router = APIRouter(tags=["Setup"])
 # Providers that constitute a working LLM lane for needs_setup. The search,
 # tool, and integration keys configured here too cannot serve chat.
 _LLM_PROVIDER_KEYS: tuple[str, ...] = tuple(p.value for p in LLM_PROVIDER_PRIORITY)
-
-# Providers whose outbound traffic targets a caller-configurable base_url — the
-# only stored base_urls the SSRF guard applies to (openrouter/gemini dial
-# canonical endpoints; the tool keys carry no endpoint).
-_BASE_URL_PROVIDERS = frozenset({"custom", "ollama", "searxng"})
-
-_PRESET_NAMES = Literal["opencode", "nous"]
 
 _GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 _CANONICAL_API_URLS: dict[str, str] = {
@@ -89,11 +87,6 @@ _AUTH_REJECTED_STATUSES = frozenset({401, 403})
 # OpenAI echoes a rejected key back in its error message.
 _API_KEY_RE = re.compile(r"\bsk-[\w*.-]+")
 
-_PRIVATE_URL_HINT = (
-    "This URL looks private or unreachable — use a public endpoint or set "
-    "OLLAMA_BASE_URL in your .env for local Ollama"
-)
-
 
 class ProviderCredentialBody(BaseModel):
     """Provider payload shared by upsert and test.
@@ -102,10 +95,12 @@ class ProviderCredentialBody(BaseModel):
     OpenCode/Nous is paste-an-API-key-only.
     """
 
-    preset: _PRESET_NAMES | None = None
+    preset: PresetName | None = None
     base_url: str | None = None
     api_key: str | None = None
     model: str | None = None
+    account_id: str | None = None
+    api_secret: str | None = None
 
 
 class ProviderConfiguredState(BaseModel):
@@ -199,6 +194,12 @@ class MaskedProvider(BaseModel):
     model: str | None = Field(None, description="Configured model, if any")
     api_key_hint: str | None = Field(
         None, description="Last four characters of the key; the key itself never leaves the server"
+    )
+    account_id: str | None = Field(
+        None, description="The non-secret account half, e.g. Cloudinary's cloud name"
+    )
+    api_secret_hint: str | None = Field(
+        None, description="Last four characters of the second secret, e.g. Cloudinary's API secret"
     )
 
 
@@ -348,13 +349,14 @@ async def list_providers(
     masked: dict[str, MaskedProvider] = {}
     for provider in CREDENTIAL_PROVIDERS:
         config: ProviderConfig | None = await resolve_provider_config(provider)
-        api_key = config.get("api_key") if config else None
         masked[provider] = MaskedProvider(
             provider=CredentialProviderName(provider),
             configured=is_usable(provider, config),
-            base_url=config.get("base_url") if config else None,
-            model=config.get("model") if config else None,
-            api_key_hint=f"...{api_key[-4:]}" if api_key else None,
+            base_url=config["base_url"] if config else None,
+            model=config["model"] if config else None,
+            api_key_hint=_hint(config["api_key"] if config else None),
+            account_id=config["account_id"] if config else None,
+            api_secret_hint=_hint(config["api_secret"] if config else None),
         )
     return ProviderListResponse(providers=masked)
 
@@ -370,44 +372,17 @@ async def put_provider(
     """Store (or replace) one provider's credential. Presets prefill server-side.
 
     Admin-only: rewriting a provider's endpoint redirects every LLM call the
-    instance makes. Stored base_urls must be public (see ``_assert_url_safe``)
-    except for ``ollama`` which is expected to be local
-    (``host.docker.internal`` / ``localhost``) and skips the public-IP check.
+    instance makes. Validation and the merge live in save_provider_credential.
     """
     log.set(user={"id": user.user_id})
-    _ensure_known_provider(provider)
-    if (
-        body.preset is None
-        and body.api_key is None
-        and body.base_url is None
-        and body.model is None
-    ):
-        raise HTTPException(status_code=422, detail="No fields to update")
-    stored: ProviderConfig | None = await resolve_provider_config(provider)
-    # Merge omitted fields with stored config — a partial PUT (e.g. base_url
-    # only) must not erase the existing api_key. None means "not provided",
-    # not "clear".
-    api_key = (
-        body.api_key if body.api_key is not None else (stored.get("api_key") if stored else None)
-    )
-    base_url_raw, model_raw = _apply_preset(body.preset, body.base_url, body.model)
-    if base_url_raw is None and stored is not None:
-        base_url_raw = stored.get("base_url")
-    if model_raw is None and stored is not None:
-        model_raw = stored.get("model")
-    preset = body.preset if body.preset is not None else (stored.get("preset") if stored else None)
-    base_url = base_url_raw
-    model = model_raw
-    if provider in _BASE_URL_PROVIDERS:
-        # Only these providers' endpoints drive outbound traffic; openrouter and
-        # gemini dial canonical URLs and ignore whatever is stored.
-        await _assert_url_safe(base_url, allow_private=_allows_private_endpoint(provider))
-    await upsert_provider_config(
+    await save_provider_credential(
         provider,
-        api_key=api_key,
-        base_url=base_url,
-        model=model,
-        preset=preset,
+        preset=body.preset,
+        api_key=body.api_key,
+        base_url=body.base_url,
+        model=body.model,
+        account_id=body.account_id,
+        api_secret=body.api_secret,
     )
     await invalidate_provider_cache(provider)
     log.audit(
@@ -428,7 +403,7 @@ async def remove_provider(
 ) -> dict[str, bool]:
     """Drop one provider's stored credential."""
     log.set(user={"id": user.user_id})
-    _ensure_known_provider(provider)
+    ensure_known_provider(provider)
     await delete_provider_config(provider)
     await invalidate_provider_cache(provider)
     log.audit("provider credential removed", actor=user.user_id, provider=provider)
@@ -454,7 +429,7 @@ async def test_provider(
     422 by the SSRF guard inside ``_probe``.
     """
     log.set(user={"id": user.user_id})
-    _ensure_known_provider(provider)
+    ensure_known_provider(provider)
     if provider not in _LLM_PROVIDER_KEYS:
         raise HTTPException(
             status_code=422, detail=f"Only chat providers can be connection-tested, not {provider}"
@@ -464,82 +439,18 @@ async def test_provider(
     if stored is not None:
         config = stored
     else:
-        base_url, model = _apply_preset(body.preset, body.base_url, body.model)
+        base_url, model = apply_preset(body.preset, body.base_url, body.model)
         config = ProviderConfig(
             api_key=body.api_key,
             base_url=base_url,
             model=model,
             preset=body.preset,
+            account_id=body.account_id,
+            api_secret=body.api_secret,
         )
     ok, detail, models = await _probe(provider, config)
     log.info("Provider connectivity tested", provider=provider, ok=ok)
     return ProviderTestResponse(ok=ok, detail=detail, models=models)
-
-
-def _allows_private_endpoint(provider: str) -> bool:
-    """Whether a provider's base_url may be a private address.
-
-    Ollama always may; where the deployment allows private-network endpoints any
-    admin-configured one may too, so a LAN vLLM or LM Studio server works.
-    """
-    return provider == "ollama" or settings.deployment.private_network_endpoints
-
-
-def _is_link_local(hostname: str) -> bool:
-    """Whether hostname is a literal link-local IP (169.254/16, fe80::/10), the cloud-metadata range."""
-    try:
-        return ipaddress.ip_address(hostname).is_link_local
-    except ValueError:
-        return False
-
-
-async def _assert_url_safe(base_url: str | None, *, allow_private: bool = False) -> None:
-    """Refuse ``base_url`` values this router must not send requests to (SSRF).
-
-    Applied wherever an outbound provider URL enters the system: at save time
-    (only public endpoints get stored) and again in ``_probe`` right before
-    anything is dialed — which also covers credentials saved before save-time
-    validation existed, and env-fallback configs. The string checks below are
-    the cheap fast-fails; the actual allow/deny policy delegates to
-    ``app.utils.url_safety`` (``assert_safe_url_shape`` then
-    ``assert_public_http_url``), the repo's single SSRF source of truth: it
-    rejects literal private-IP hosts without a lookup, resolves DNS off the
-    event loop, and validates EVERY resolved address, so decimal IP shorthands
-    (``http://2130706433/``, ``http://127.1/``) that no string check sees as
-    private, and public-looking names answering with private addresses
-    (``127.0.0.1.nip.io``), are all rejected. Unresolvable hosts fail closed.
-
-    ``allow_private`` (see ``_allows_private_endpoint``): the URL may point at
-    a private address such as ``host.docker.internal``, ``localhost`` or a LAN
-    host — only the scheme/host/credential/metadata/link-local checks are
-    enforced, and the public-IP DNS validation is skipped.
-    """
-    if not base_url:
-        return
-    parsed = urlparse(base_url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise HTTPException(status_code=422, detail="base_url must be an http(s) URL")
-    if parsed.username or parsed.password or (parsed.port and parsed.port in (0, 1)):
-        raise HTTPException(status_code=422, detail="base_url must not embed credentials")
-    if parsed.hostname in ("169.254.169.254", "metadata.google.internal") or _is_link_local(
-        parsed.hostname
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail=f"{_PRIVATE_URL_HINT} (refusing metadata address {parsed.hostname})",
-        )
-
-    if allow_private:
-        # Scheme, host, credential and metadata checks above still apply.
-        return
-
-    try:
-        # Literal private IPs are rejected here without a DNS round-trip;
-        # hostnames are resolved and every answer validated off the event loop.
-        assert_safe_url_shape(base_url)
-        await assert_public_http_url(base_url)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=f"{_PRIVATE_URL_HINT} ({e})") from e
 
 
 async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list[str]]:
@@ -549,10 +460,12 @@ async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list
     Refuses with a 422 rather than a soft failure when the configured endpoint
     of a base-url-driven provider is not public (SSRF guard; also catches
     stored configs from before save-time validation existed). The ``ollama``
-    provider is exempt from the public-IP check (see ``_assert_url_safe``).
+    provider is exempt from the public-IP check (see assert_endpoint_safe).
     """
-    if provider in _BASE_URL_PROVIDERS:
-        await _assert_url_safe(config["base_url"], allow_private=_allows_private_endpoint(provider))
+    if provider in BASE_URL_PROVIDERS:
+        await assert_endpoint_safe(
+            config["base_url"], allow_private=allows_private_endpoint(provider)
+        )
     try:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
             if provider == "gemini":
@@ -659,18 +572,5 @@ async def _probe_ollama(
     return True, "Connected to Ollama", models
 
 
-def _ensure_known_provider(provider: str) -> None:
-    if provider not in CREDENTIAL_PROVIDERS:
-        raise HTTPException(status_code=404, detail=f"Unknown provider: {provider}")
-
-
-def _apply_preset(
-    preset: Literal["opencode", "nous"] | None,
-    base_url: str | None,
-    model: str | None,
-) -> tuple[str | None, str | None]:
-    """Explicit values win; a preset fills whatever the caller omitted."""
-    if preset is None:
-        return base_url, model
-    spec: ProviderPreset = PRESETS[preset]
-    return base_url or (spec["base_url"] or None), model or (spec["default_model"] or None)
+def _hint(secret: str | None) -> str | None:
+    return f"...{secret[-4:]}" if secret else None

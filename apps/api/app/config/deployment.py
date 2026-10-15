@@ -87,6 +87,9 @@ class DeploymentProfile:
     https_only: bool
     # A provider endpoint the admin configures may be a private-network address.
     private_network_endpoints: bool
+    # The operator's own SearXNG answers before the keyless DuckDuckGo scrape, so
+    # a privacy-minded self-host never leaks queries; GAIA Cloud keeps SearXNG as its floor.
+    searxng_before_duckduckgo: bool
     # The auth bypass, dev router, open API docs, model selector and custom lane.
     dev_tools: bool
 
@@ -161,5 +164,6 @@ def deployment_profile(
         trusted_origins=_TRUSTED_ORIGINS[kind],
         https_only=kind is DeploymentKind.PRODUCTION,
         private_network_endpoints=kind is not DeploymentKind.PRODUCTION,
+        searxng_before_duckduckgo=kind is DeploymentKind.SELFHOST,
         dev_tools=kind is DeploymentKind.DEVELOPMENT,
     )

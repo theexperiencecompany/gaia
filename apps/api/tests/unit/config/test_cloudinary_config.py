@@ -1,8 +1,8 @@
 """Unit tests for the Cloudinary global-context configuration.
 
-init_cloudinary is a sync lazy loader resolving its API key through the
+init_cloudinary is a sync lazy loader resolving the whole account through the
 credential service runtime snapshot (store, then env), like the LLM lanes.
-Cloud name and secret always come from env; all three are required.
+Cloud name, API key and secret are all required.
 """
 
 from typing import Any
@@ -19,8 +19,17 @@ MOD = "app.config.cloudinary"
 SERVICE_MOD = "app.services.providers.provider_credentials_service"
 
 
-def _stored(api_key: str | None) -> dict[str, str | None]:
-    return {"api_key": api_key, "base_url": None, "model": None, "preset": None}
+def _stored(
+    api_key: str | None, *, cloud_name: str | None = "stored-cloud", secret: str | None = "s"
+) -> dict[str, str | None]:
+    return {
+        "api_key": api_key,
+        "base_url": None,
+        "model": None,
+        "preset": None,
+        "account_id": cloud_name,
+        "api_secret": secret,
+    }
 
 
 def _patch_env(settings_mock: Any, **overrides: str | None) -> None:
@@ -63,28 +72,28 @@ class TestInitCloudinary:
 
         assert config_mock.call_args.kwargs["api_key"] == "stored-key"
 
-    @pytest.mark.parametrize("missing", ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET"])
+    @pytest.mark.parametrize("missing", ["cloud_name", "secret"])
     def test_partial_configuration_fails_loud_and_configures_nothing(self, missing: str):
-        """Raise on partial config; a stored key alone cannot drive the SDK."""
+        """Raise on partial config, even with the missing half set in env: a saved account is whole."""
         config_mock = MagicMock()
         with (
-            patch(f"{MOD}.resolved_config", return_value=_stored("stored-key")),
+            patch(f"{MOD}.resolved_config", return_value=_stored("stored-key", **{missing: None})),
             patch(f"{SERVICE_MOD}.settings") as mock_settings,
             patch(f"{MOD}.cloudinary.config", config_mock),
         ):
-            _patch_env(mock_settings, **{missing: None})
+            _patch_env(mock_settings)
             with pytest.raises(ProviderNotConfiguredError) as refused:
                 init_cloudinary().loader_func()
         config_mock.assert_not_called()
         assert refused.value.message == (
             "Cloudinary is not fully configured: cloud name, API key, and "
-            "API secret are all required (a stored credential carries only "
-            "the API key today; cloud name and secret come from env)"
+            "API secret are all required"
         )
 
 
 class TestRequireCloudinary:
     def test_an_unconfigured_instance_refuses_uploads_naming_the_fix(self):
+        init_cloudinary()  # registers the provider; under random order nothing else may have
         providers.reset(CLOUDINARY_PROVIDER)
         with (
             patch(f"{MOD}.resolved_config", return_value=None),
@@ -109,3 +118,21 @@ class TestRequireCloudinary:
             "Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET "
             "in apps/api/.env, then restart the API."
         )
+
+
+def test_a_self_host_without_cloudinary_is_pointed_at_its_settings_card(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
+    init_cloudinary()
+    providers.reset(CLOUDINARY_PROVIDER)
+    with patch(f"{MOD}.resolved_config", return_value=None), pytest.raises(AppError) as refused:
+        require_cloudinary()
+    providers.reset(CLOUDINARY_PROVIDER)
+
+    assert refused.value.fix == (
+        "Add the cloud name, API key and API secret in Settings → Providers & Tools → Cloudinary."
+    )

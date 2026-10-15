@@ -119,6 +119,8 @@ class TestTokenRepositoryInit:
                     "base_url": None,
                     "model": None,
                     "preset": None,
+                    "account_id": "client_id",
+                    "api_secret": None,
                 }
             ),
         ):
@@ -154,6 +156,8 @@ class TestTokenRepositoryInit:
             "base_url": None,
             "model": None,
             "preset": None,
+            "account_id": "env_id",
+            "api_secret": None,
         }
         with patch(
             "app.config.token_repository.resolve_provider_config",
@@ -274,6 +278,8 @@ class TestResolveGoogleOauthCredentials:
                     "base_url": None,
                     "model": None,
                     "preset": None,
+                    "account_id": "cid",
+                    "api_secret": None,
                 }
             ),
         ):
@@ -297,6 +303,8 @@ class TestResolveGoogleOauthCredentials:
                     "base_url": None,
                     "model": None,
                     "preset": None,
+                    "account_id": None,
+                    "api_secret": None,
                 }
             ),
         ):

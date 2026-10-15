@@ -32,6 +32,7 @@ from app.constants.providers import (
     LLM_MODEL_PROFILES,
     ProviderFeature,
 )
+from app.services.providers import provider_setup_service
 from shared.py.wide_events import log
 from tests.integration.endpoints.conftest import (
     API,
@@ -341,52 +342,50 @@ class TestStatus:
         }
 
     @pytest.mark.parametrize(
-        ("provider", "missing_env"),
+        ("provider", "body"),
         [
-            ("cloudinary", "CLOUDINARY_CLOUD_NAME"),
-            ("cloudinary", "CLOUDINARY_API_SECRET"),
-            ("google_oauth", "GOOGLE_CLIENT_ID"),
+            (
+                "cloudinary",
+                {"api_key": STORED_KEY, "account_id": "my-cloud", "api_secret": "cl-secret"},
+            ),
+            ("google_oauth", {"api_key": STORED_KEY, "account_id": "id.apps.example"}),
         ],
     )
-    async def test_a_saved_key_missing_its_env_half_is_not_configured(
+    async def test_a_card_saved_account_is_configured_with_no_env(
         self,
         client: AsyncClient,
         monkeypatch: pytest.MonkeyPatch,
         provider: str,
-        missing_env: str,
+        body: dict[str, str],
     ) -> None:
-        for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET", "GOOGLE_CLIENT_ID"):
-            monkeypatch.setattr(settings, name, "env-value")
-        for name in ("CLOUDINARY_API_KEY", "GOOGLE_CLIENT_SECRET", missing_env):
+        for name in (
+            "CLOUDINARY_CLOUD_NAME",
+            "CLOUDINARY_API_KEY",
+            "CLOUDINARY_API_SECRET",
+            "GOOGLE_CLIENT_ID",
+            "GOOGLE_CLIENT_SECRET",
+        ):
             monkeypatch.setattr(settings, name, None)
-        provider_service.configs[provider] = {
-            "api_key": STORED_KEY,
-            "base_url": None,
-            "model": None,
-            "preset": None,
-        }
 
+        assert (await client.put(f"{API}/providers/{provider}", json=body)).status_code == 200
         status = (await client.get(f"{API}/status")).json()["providers"][provider]
         listed = (await client.get(f"{API}/providers")).json()["providers"][provider]
 
-        assert status == {"configured": False, "source": "stored", "env_shadowed": False}
-        assert listed["configured"] is False
+        assert status == {"configured": True, "source": "stored", "env_shadowed": False}
+        assert listed["configured"] is True
+        assert listed["account_id"] == body["account_id"]
 
     @pytest.mark.parametrize("provider", ["cloudinary", "google_oauth"])
-    async def test_a_saved_key_with_its_env_half_is_configured(
+    async def test_a_saved_key_alone_is_not_configured(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch, provider: str
     ) -> None:
         for name in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_SECRET", "GOOGLE_CLIENT_ID"):
             monkeypatch.setattr(settings, name, "env-value")
-        provider_service.configs[provider] = {
-            "api_key": STORED_KEY,
-            "base_url": None,
-            "model": None,
-            "preset": None,
-        }
 
-        body = (await client.get(f"{API}/status")).json()
-        assert body["providers"][provider]["configured"] is True
+        await client.put(f"{API}/providers/{provider}", json={"api_key": STORED_KEY})
+
+        status = (await client.get(f"{API}/status")).json()["providers"][provider]
+        assert status["configured"] is False
 
     async def test_an_unconfigured_provider_reports_unset(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -461,6 +460,8 @@ class TestProviderCatalog:
                 "default_model",
                 "favicon_domain",
                 "needs_base_url",
+                "account_id_label",
+                "second_key_label",
             }
         assert body["providers"]["openrouter"]["label"] == "OpenRouter"
         assert body["providers"]["ollama"]["default_model"] == "llama3.2"
@@ -513,7 +514,19 @@ class TestProvidersMaskedView:
             "base_url": None,
             "model": None,
             "api_key_hint": f"...{SECRET_KEY[-4:]}",
+            "account_id": None,
+            "api_secret_hint": None,
         }
+
+    async def test_a_second_secret_is_masked_like_the_key(self, client: AsyncClient) -> None:
+        await provider_service.upsert(
+            "cloudinary", api_key="cl-key", account_id="my-cloud", api_secret=SECRET_KEY
+        )
+
+        resp = await client.get(f"{API}/providers")
+
+        assert SECRET_KEY not in resp.text
+        assert resp.json()["providers"]["cloudinary"]["api_secret_hint"] == f"...{SECRET_KEY[-4:]}"
 
     async def test_unconfigured_provider_is_none_everywhere(self, client: AsyncClient) -> None:
         entry = (await client.get(f"{API}/providers")).json()["providers"]["custom"]
@@ -534,6 +547,8 @@ class TestUpsertProvider:
             "base_url": "https://opencode.ai/zen/go/v1",
             "model": "deepseek-v4-flash",
             "preset": "opencode",
+            "account_id": None,
+            "api_secret": None,
         }
 
     async def test_explicit_base_url_wins_over_preset(self, client: AsyncClient) -> None:
@@ -848,9 +863,10 @@ class TestSsrfGuard:
     @pytest.fixture(autouse=True)
     def _public_only_policy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Apply production's policy: the routes 403 in production, so the guard is driven under it here."""
-        monkeypatch.setattr(
-            setup_endpoint, "_allows_private_endpoint", lambda provider: provider == "ollama"
-        )
+        for module in (provider_setup_service, setup_endpoint):
+            monkeypatch.setattr(
+                module, "allows_private_endpoint", lambda provider: provider == "ollama"
+            )
 
     @pytest.mark.parametrize("provider", ["custom", "openrouter"])
     def test_production_keeps_non_ollama_endpoints_public(
@@ -860,8 +876,8 @@ class TestSsrfGuard:
         monkeypatch.setattr(settings, "ENV", "production")
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
 
-        assert setup_endpoint._allows_private_endpoint(provider) is False
-        assert setup_endpoint._allows_private_endpoint("ollama") is True
+        assert provider_setup_service.allows_private_endpoint(provider) is False
+        assert provider_setup_service.allows_private_endpoint("ollama") is True
 
     async def test_decimal_ip_shorthand_resolving_private_is_rejected(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch

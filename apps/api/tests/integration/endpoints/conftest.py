@@ -25,6 +25,7 @@ from app.db.repositories.instance_settings import instance_settings_repository
 from app.models.auth_models import LocalCredentialDocument
 from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import AuthenticatedUser
+from app.services.providers import provider_setup_service
 from app.services.providers.feature_status import FeatureStatus
 from app.services.providers.provider_credentials_service import (
     CredentialResolution,
@@ -67,12 +68,16 @@ class FakeProviderService:
         base_url: str | None = None,
         model: str | None = None,
         preset: str | None = None,
+        account_id: str | None = None,
+        api_secret: str | None = None,
     ) -> None:
         self.configs[provider] = {
             "api_key": api_key,
             "base_url": base_url,
             "model": model,
             "preset": preset,
+            "account_id": account_id,
+            "api_secret": api_secret,
         }
 
     async def delete(self, provider: str) -> None:
@@ -168,7 +173,8 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setattr(setup_module, "resolve_provider_config", provider_service.resolve)
     monkeypatch.setattr(setup_module, "inspect_credential", provider_service.inspect)
-    monkeypatch.setattr(setup_module, "upsert_provider_config", provider_service.upsert)
+    monkeypatch.setattr(provider_setup_service, "resolve", provider_service.resolve)
+    monkeypatch.setattr(provider_setup_service, "upsert", provider_service.upsert)
     monkeypatch.setattr(setup_module, "delete_provider_config", provider_service.delete)
     monkeypatch.setattr(setup_module, "invalidate_provider_cache", provider_service.invalidate)
     monkeypatch.setattr(setup_module, "local_credentials_repository", local_credentials_repo)

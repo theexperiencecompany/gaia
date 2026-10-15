@@ -24,11 +24,14 @@ import app.services.providers.provider_credentials_service as service_module
 from app.services.providers.provider_credentials_service import (
     CloudinaryAccount,
     CredentialResolution,
+    GoogleOAuthClient,
     cloudinary_account,
     delete,
     env_config,
+    google_oauth_client,
     inspect_credential,
     invalidate,
+    is_usable,
     resolve,
     upsert,
 )
@@ -223,6 +226,8 @@ class TestUpsertResolveRoundtrip:
             base_url="https://or.example/v1",
             model="m1",
             preset=None,
+            account_id=None,
+            api_secret=None,
         )
 
         config = await resolve("openrouter")
@@ -232,6 +237,8 @@ class TestUpsertResolveRoundtrip:
             "base_url": "https://or.example/v1",
             "model": "m1",
             "preset": None,
+            "account_id": None,
+            "api_secret": None,
         }
 
     async def test_preset_only_config_roundtrips(self, repo, fixed_secret) -> None:
@@ -244,6 +251,8 @@ class TestUpsertResolveRoundtrip:
             "base_url": None,
             "model": None,
             "preset": "opencode",
+            "account_id": None,
+            "api_secret": None,
         }
 
     async def test_ciphertext_never_contains_raw_api_key(self, repo, fixed_secret) -> None:
@@ -287,6 +296,8 @@ class TestResolvePrecedenceAndFallbacks:
             "base_url": "http://localhost:9999/v1",
             "model": None,
             "preset": None,
+            "account_id": None,
+            "api_secret": None,
         }
 
     async def test_gemini_env_fallback(self, repo) -> None:
@@ -305,6 +316,8 @@ class TestResolvePrecedenceAndFallbacks:
             "base_url": "http://localhost:11434",
             "model": None,
             "preset": None,
+            "account_id": None,
+            "api_secret": None,
         }
 
     async def test_ollama_without_an_endpoint_is_not_configured(self, repo, monkeypatch) -> None:
@@ -332,6 +345,8 @@ class TestResolvePrecedenceAndFallbacks:
             "base_url": "http://llm.example/v1",
             "model": "deepseek-x",
             "preset": None,
+            "account_id": None,
+            "api_secret": None,
         }
 
     async def test_custom_outside_development_is_none(self, repo) -> None:
@@ -419,6 +434,60 @@ class TestToolProviderEnvFallbacks:
 # ---------------------------------------------------------------------------
 # resolve — 60s TTL cache
 # ---------------------------------------------------------------------------
+
+
+class TestCardSavedAccounts:
+    """Cloudinary and Google OAuth work from what their Settings card saves, with no .env."""
+
+    @pytest.fixture(autouse=True)
+    def _no_env_halves(self) -> None:
+        for name in (
+            "CLOUDINARY_CLOUD_NAME",
+            "CLOUDINARY_API_KEY",
+            "CLOUDINARY_API_SECRET",
+            "GOOGLE_CLIENT_ID",
+            "GOOGLE_CLIENT_SECRET",
+        ):
+            setattr(settings, name, None)
+
+    async def test_a_saved_cloudinary_account_works_without_env(self, repo, fixed_secret) -> None:
+        await upsert(
+            "cloudinary",
+            api_key="cl-key",
+            account_id="my-cloud",
+            api_secret="cl-secret",  # pragma: allowlist secret
+        )
+
+        config = await resolve("cloudinary")
+
+        assert is_usable("cloudinary", config)
+        assert cloudinary_account(config) == CloudinaryAccount(
+            cloud_name="my-cloud", api_key="cl-key", api_secret="cl-secret"
+        )
+
+    async def test_a_saved_google_client_works_without_env(self, repo, fixed_secret) -> None:
+        await upsert("google_oauth", api_key="GOCSPX-secret", account_id="id.apps.example")
+
+        config = await resolve("google_oauth")
+
+        assert google_oauth_client(config) == GoogleOAuthClient(
+            client_id="id.apps.example", client_secret="GOCSPX-secret"
+        )
+
+    @pytest.mark.parametrize(
+        ("provider", "fields"),
+        [
+            ("cloudinary", {"api_key": "k", "account_id": "c"}),
+            ("cloudinary", {"api_key": "k", "api_secret": "s"}),
+            ("google_oauth", {"api_key": "s"}),
+        ],
+    )
+    async def test_a_partial_saved_account_is_not_usable(
+        self, repo, fixed_secret, provider: str, fields: dict[str, str]
+    ) -> None:
+        await upsert(provider, **fields)
+
+        assert not is_usable(provider, await resolve(provider))
 
 
 class TestResolveCache:
@@ -524,7 +593,14 @@ class TestInvalidate:
         stale_at = time.monotonic()
         service_module._cache["openrouter"] = (
             stale_at - 3600,
-            {"api_key": "sk-stale", "base_url": None, "model": None, "preset": None},
+            {
+                "api_key": "sk-stale",
+                "base_url": None,
+                "model": None,
+                "preset": None,
+                "account_id": None,
+                "api_secret": None,
+            },
         )
 
         await upsert("openrouter", api_key="sk-v1")
@@ -664,11 +740,19 @@ class TestInspectCredential:
 
 
 def _config(**fields: str | None) -> dict[str, str | None]:
-    return {"api_key": None, "base_url": None, "model": None, "preset": None, **fields}
+    return {
+        "api_key": None,
+        "base_url": None,
+        "model": None,
+        "preset": None,
+        "account_id": None,
+        "api_secret": None,
+        **fields,
+    }
 
 
 class TestEnvConfigShapes:
-    """Every env fallback is the full four-key config the consumers index into."""
+    """Every env fallback is the full config the consumers index into."""
 
     def test_searxng(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings, "SEARXNG_BASE_URL", "http://searx:8080")
@@ -680,16 +764,17 @@ class TestEnvConfigShapes:
         settings.CLOUDINARY_API_KEY = "ck"
         settings.CLOUDINARY_API_SECRET = "cs"  # pragma: allowlist secret
 
-        assert env_config("cloudinary") == _config(api_key="ck")
-        assert cloudinary_account(_config(api_key="stored")) == CloudinaryAccount(
-            cloud_name="cloud", api_key="stored", api_secret="cs"
+        assert env_config("cloudinary") == _config(
+            api_key="ck",
+            account_id="cloud",
+            api_secret="cs",  # pragma: allowlist secret
         )
 
     def test_google_oauth(self) -> None:
         settings.GOOGLE_CLIENT_ID = "gid"
         settings.GOOGLE_CLIENT_SECRET = "gsecret"  # pragma: allowlist secret
 
-        assert env_config("google_oauth") == _config(api_key="gsecret")
+        assert env_config("google_oauth") == _config(api_key="gsecret", account_id="gid")
 
     def test_a_single_key_tool(self) -> None:
         settings.TAVILY_API_KEY = "tvly"

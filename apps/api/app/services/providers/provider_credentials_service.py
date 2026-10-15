@@ -45,6 +45,10 @@ class ProviderConfig(TypedDict):
     base_url: str | None
     model: str | None
     preset: str | None  # e.g. "opencode" | "nous"
+    # The non-secret account half: Cloudinary's cloud name, Google's OAuth client id.
+    account_id: str | None
+    # A second secret beside api_key: Cloudinary's API secret.
+    api_secret: str | None
 
 
 class CredentialResolution(NamedTuple):
@@ -57,7 +61,7 @@ class CredentialResolution(NamedTuple):
 
 
 class CloudinaryAccount(NamedTuple):
-    """Everything the Cloudinary SDK needs; the store carries only the API key."""
+    """Everything the Cloudinary SDK needs."""
 
     cloud_name: str
     api_key: str
@@ -65,43 +69,44 @@ class CloudinaryAccount(NamedTuple):
 
 
 class GoogleOAuthClient(NamedTuple):
-    """The OAuth client pair; the store carries only the secret, as api_key."""
+    """The OAuth client pair; the secret travels as api_key, the client id as account_id."""
 
     client_id: str
     client_secret: str
 
 
 def cloudinary_account(config: ProviderConfig | None) -> CloudinaryAccount | None:
-    """Complete a resolved Cloudinary key with its env-only cloud name and secret; None unless all three."""
-    api_key = config["api_key"] if config else None
-    cloud_name = settings.CLOUDINARY_CLOUD_NAME
-    api_secret = settings.CLOUDINARY_API_SECRET
+    """Return the Cloudinary account a resolved config names; None unless all three fields are set."""
+    if config is None:
+        return None
+    cloud_name, api_key, api_secret = config["account_id"], config["api_key"], config["api_secret"]
     if not (cloud_name and api_key and api_secret):
         return None
     return CloudinaryAccount(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
 
 
 def google_oauth_client(config: ProviderConfig | None) -> GoogleOAuthClient | None:
-    """Complete a resolved Google client secret with its env-only client id; None unless both."""
-    client_secret = config["api_key"] if config else None
-    client_id = settings.GOOGLE_CLIENT_ID
+    """Return the OAuth client a resolved config names; None unless both halves are set."""
+    if config is None:
+        return None
+    client_id, client_secret = config["account_id"], config["api_key"]
     if not (client_id and client_secret):
         return None
     return GoogleOAuthClient(client_id=client_id, client_secret=client_secret)
 
 
-# Providers whose consumer needs env-only fields beyond the stored credential.
-_ENV_COMPLETIONS: dict[str, Callable[[ProviderConfig | None], object | None]] = {
+# Providers whose consumer needs more than one field of the config to work.
+_COMPLETIONS: dict[str, Callable[[ProviderConfig | None], object | None]] = {
     "cloudinary": cloudinary_account,
     "google_oauth": google_oauth_client,
 }
 
 
 def is_usable(provider: str, config: ProviderConfig | None) -> bool:
-    """Whether a resolved config can serve its consumer, env-only fields included."""
+    """Whether a resolved config can serve its consumer, multi-field accounts included."""
     if config is None:
         return False
-    complete = _ENV_COMPLETIONS.get(provider)
+    complete = _COMPLETIONS.get(provider)
     return complete is None or complete(config) is not None
 
 
@@ -185,9 +190,9 @@ async def inspect_credential(provider: str) -> CredentialResolution:
     return CredentialResolution(from_env, source, shadows_env=False)
 
 
-def _credential_of(config: ProviderConfig) -> tuple[str | None, str | None]:
-    """Return the part of a config that names an account: its key and endpoint."""
-    return config["api_key"], config["base_url"]
+def _credential_of(config: ProviderConfig) -> tuple[str | None, ...]:
+    """Return the part of a config that names an account: its keys, endpoint and account id."""
+    return config["api_key"], config["base_url"], config["account_id"], config["api_secret"]
 
 
 async def upsert(
@@ -197,11 +202,20 @@ async def upsert(
     base_url: str | None = None,
     model: str | None = None,
     preset: str | None = None,
+    account_id: str | None = None,
+    api_secret: str | None = None,
 ) -> None:
     """Store (or replace) a provider's encrypted credential and fan out invalidation."""
     _ensure_writable(provider)
     payload = json.dumps(
-        ProviderConfig(api_key=api_key, base_url=base_url, model=model, preset=preset)
+        ProviderConfig(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            preset=preset,
+            account_id=account_id,
+            api_secret=api_secret,
+        )
     )
     data_encrypted = await _encrypt(payload)
     await provider_credentials_repository.upsert_encrypted(provider, data_encrypted)
@@ -299,13 +313,22 @@ def _openrouter_env() -> ProviderConfig | None:
         base_url=settings.OPENROUTER_BASE_URL,
         model=None,
         preset=None,
+        account_id=None,
+        api_secret=None,
     )
 
 
 def _ollama_env() -> ProviderConfig | None:
     if not settings.OLLAMA_BASE_URL:
         return None
-    return ProviderConfig(api_key=None, base_url=settings.OLLAMA_BASE_URL, model=None, preset=None)
+    return ProviderConfig(
+        api_key=None,
+        base_url=settings.OLLAMA_BASE_URL,
+        model=None,
+        preset=None,
+        account_id=None,
+        api_secret=None,
+    )
 
 
 def _custom_env() -> ProviderConfig | None:
@@ -319,13 +342,22 @@ def _custom_env() -> ProviderConfig | None:
         base_url=settings.DEV_LLM_BASE_URL,
         model=settings.DEV_LLM_MODEL,
         preset=None,
+        account_id=None,
+        api_secret=None,
     )
 
 
 def _searxng_env() -> ProviderConfig | None:
     if not settings.SEARXNG_BASE_URL:
         return None
-    return ProviderConfig(api_key=None, base_url=settings.SEARXNG_BASE_URL, model=None, preset=None)
+    return ProviderConfig(
+        api_key=None,
+        base_url=settings.SEARXNG_BASE_URL,
+        model=None,
+        preset=None,
+        account_id=None,
+        api_secret=None,
+    )
 
 
 def _cloudinary_env() -> ProviderConfig | None:
@@ -336,8 +368,10 @@ def _cloudinary_env() -> ProviderConfig | None:
         and settings.CLOUDINARY_API_SECRET
     ):
         return None
-    return ProviderConfig(
-        api_key=settings.CLOUDINARY_API_KEY, base_url=None, model=None, preset=None
+    return _key_config(
+        settings.CLOUDINARY_API_KEY,
+        account_id=settings.CLOUDINARY_CLOUD_NAME,
+        api_secret=settings.CLOUDINARY_API_SECRET,
     )
 
 
@@ -345,11 +379,19 @@ def _google_oauth_env() -> ProviderConfig | None:
     # The client id/secret pair only works as a pair.
     if not (settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET):
         return None
+    return _key_config(settings.GOOGLE_CLIENT_SECRET, account_id=settings.GOOGLE_CLIENT_ID)
+
+
+def _key_config(
+    api_key: str | None, *, account_id: str | None = None, api_secret: str | None = None
+) -> ProviderConfig:
     return ProviderConfig(
-        api_key=settings.GOOGLE_CLIENT_SECRET,
+        api_key=api_key,
         base_url=None,
         model=None,
         preset=None,
+        account_id=account_id,
+        api_secret=api_secret,
     )
 
 
@@ -386,7 +428,7 @@ def env_config(provider: str) -> ProviderConfig | None:
         api_key = getattr(settings, key_name)
         if not api_key:
             return None
-        return ProviderConfig(api_key=api_key, base_url=None, model=None, preset=None)
+        return _key_config(api_key)
     return None
 
 
@@ -419,7 +461,7 @@ async def _decrypt_config(data_encrypted: str) -> ProviderConfig | None:
 
 
 def _coerce_config(raw: dict[str, object]) -> ProviderConfig:
-    """Project a decrypted dict onto the four-field config shape."""
+    """Project a decrypted dict onto the config shape; a field the row predates reads as None."""
 
     def opt_str(key: str) -> str | None:
         value = raw.get(key)
@@ -430,4 +472,6 @@ def _coerce_config(raw: dict[str, object]) -> ProviderConfig:
         base_url=opt_str("base_url"),
         model=opt_str("model"),
         preset=opt_str("preset"),
+        account_id=opt_str("account_id"),
+        api_secret=opt_str("api_secret"),
     )
