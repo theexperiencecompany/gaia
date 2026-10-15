@@ -40,13 +40,6 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
   { key: "custom", showApiKey: true, showModel: true, hasPresets: true },
 ];
 
-/** Optional search upgrades; search itself already works keyless. */
-export const SEARCH_PROVIDER_CARDS: ProviderCardConfig[] = [
-  keyOnlyCard("tavily"),
-  keyOnlyCard("exa"),
-  keyOnlyCard("brave"),
-];
-
 /**
  * Tool / integration keys the wizard offers. google_oauth and cloudinary are
  * deliberately absent: a pasted key alone cannot make them work (Google also
@@ -90,7 +83,7 @@ export const WIZARD_STEPS: WizardStepMeta[] = [
     id: "search",
     title: "Web search",
     subtitle:
-      "Web search already works (free, via DuckDuckGo). For better results add a Tavily, Exa or Brave key.",
+      "Optional. Search works out of the box for free; pick a provider for better results.",
   },
   {
     id: "integrations",

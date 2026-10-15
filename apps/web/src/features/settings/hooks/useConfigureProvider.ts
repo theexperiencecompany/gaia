@@ -23,7 +23,7 @@ interface UseConfigureProviderArgs {
 }
 
 /**
- * Draft state and actions for one provider's configure dialog, connected
+ * Draft state and actions for one provider's credential form, connected
  * through the shared flow. Seeded once from what is stored; the caller
  * remounts per provider. The catalog model stays a placeholder: storing it
  * would pin it past a default change.
@@ -79,7 +79,10 @@ export function useConfigureProvider({
     return body;
   };
 
-  const save = () => connection.connect(buildBody());
+  const save = async () => {
+    // A stored key never lingers in the field; the masked hint stands in for it.
+    if (await connection.connect(buildBody())) setApiKey("");
+  };
 
   const remove = async () => {
     const confirmed = await confirm({

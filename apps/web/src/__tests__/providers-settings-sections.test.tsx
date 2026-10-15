@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Settings shows one card per feature: whether it works, what it runs on, and its optional providers. */
+/** Settings shows one card per feature: whether it works, what it runs on, and one picker over its providers. */
 
 import type { FeatureSpec, FeatureStatus } from "@gaia/shared/api/generated";
 import { render, screen, within } from "@testing-library/react";
@@ -112,6 +112,11 @@ const status = {
   },
 } as SetupStatus;
 
+const statusQuery: { data: SetupStatus | undefined } = { data: status };
+
+vi.mock("@/components/shared/ConfirmationDialog", () => ({
+  ConfirmationDialog: () => null,
+}));
 vi.mock("@/features/settings/hooks/useProviderCatalog", () => ({
   useProviderCatalog: () => ({ data: catalog, isError: false }),
 }));
@@ -122,7 +127,7 @@ vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@/features/settings/hooks/useSetupStatus")
   >()),
-  useSetupStatus: () => ({ data: status, refetch: vi.fn() }),
+  useSetupStatus: () => ({ data: statusQuery.data, refetch: vi.fn() }),
 }));
 
 import { ProvidersSettings } from "@/features/settings/components/ProvidersSettings";
@@ -132,6 +137,7 @@ const card = (title: string) =>
 
 describe("ProvidersSettings", () => {
   beforeEach(() => {
+    statusQuery.data = status;
     render(<ProvidersSettings />);
   });
 
@@ -146,13 +152,26 @@ describe("ProvidersSettings", () => {
     ]);
   });
 
-  it("shows keyless web search working, with its keys as optional upgrades", () => {
+  it("shows keyless web search working, with one picker and only the picked provider's key", () => {
     const search = card("Web search");
     expect(search.getByText("Working")).toBeTruthy();
     expect(search.getByText("Using: DuckDuckGo")).toBeTruthy();
-    expect(search.getByText("Optional upgrades")).toBeTruthy();
-    expect(search.getAllByRole("button", { name: "Add key" })).toHaveLength(2);
-    expect(search.getByRole("button", { name: "Add address" })).toBeTruthy();
+    expect(search.getByText("Free, no key needed.")).toBeTruthy();
+    expect(search.getAllByLabelText("Provider", { exact: false })).not.toEqual(
+      [],
+    );
+    expect(search.getAllByLabelText("API key")).toHaveLength(1);
+    expect(search.getByPlaceholderText("Paste your Tavily key")).toBeTruthy();
+    expect(search.queryByPlaceholderText("Paste your Exa key")).toBeNull();
+  });
+
+  it("picks the provider serving a feature and marks it in use", () => {
+    const models = card("AI models");
+    expect(models.getByText("Using: OpenAI")).toBeTruthy();
+    expect(models.getByPlaceholderText("Paste your OpenAI key")).toBeTruthy();
+    expect(
+      models.queryByPlaceholderText("Paste your OpenRouter key"),
+    ).toBeNull();
   });
 
   it("names the engine in use first and the rest as backups", () => {
@@ -166,7 +185,9 @@ describe("ProvidersSettings", () => {
     const email = card("Email");
     expect(email.getByText("Off")).toBeTruthy();
     expect(email.getByText("Not running")).toBeTruthy();
-    expect(email.getByText("Add a provider below to turn it on.")).toBeTruthy();
+    expect(
+      email.getByText("Pick a provider below to turn it on."),
+    ).toBeTruthy();
   });
 
   it("sends Composio to Integrations setup and hides Cloudinary on local storage", () => {
@@ -177,5 +198,18 @@ describe("ProvidersSettings", () => {
         ?.getAttribute("href"),
     ).toBe("/settings/integrations-setup");
     expect(screen.queryByText("Cloudinary")).toBeNull();
+  });
+});
+
+describe("ProvidersSettings before setup status loads", () => {
+  it("picks the serving provider once status arrives after the first render", () => {
+    statusQuery.data = undefined;
+    const { rerender } = render(<ProvidersSettings />);
+
+    statusQuery.data = status;
+    rerender(<ProvidersSettings />);
+
+    const models = card("AI models");
+    expect(models.getByPlaceholderText("Paste your OpenAI key")).toBeTruthy();
   });
 });

@@ -20,7 +20,7 @@ interface AccountStepProps {
 export function AccountStep({ onCreated }: AccountStepProps) {
   return (
     <m.div className="w-full" {...MOTION_FADE_UP}>
-      <div className="w-full rounded-2xl bg-zinc-800 p-4">
+      <div className="w-full rounded-2xl bg-zinc-900 p-4">
         <SignupForm onCreated={onCreated} />
       </div>
     </m.div>

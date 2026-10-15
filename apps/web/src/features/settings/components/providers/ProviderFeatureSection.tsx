@@ -1,83 +1,48 @@
 "use client";
 
 import type {
-  CredentialProvider,
   ProviderCatalog,
   SetupStatus,
 } from "@/features/settings/api/providersApi";
-import { ProviderSettingsRow } from "@/features/settings/components/providers/ProviderSettingsRow";
+import { FeatureProviderPicker } from "@/features/settings/components/providers/FeatureProviderPicker";
 import type { FeatureGroup } from "@/features/settings/components/providers/providerRows";
 import { StatusBadge } from "@/features/settings/components/providers/StatusBadge";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import {
-  isProviderConfigured,
-  savedCredentialOverridesEnv,
-} from "@/features/settings/hooks/useSetupStatus";
-import { featureEngineLabel } from "@/features/settings/utils/providerCatalog";
 
 interface ProviderFeatureSectionProps {
   group: FeatureGroup;
   catalog: ProviderCatalog;
   status: SetupStatus | undefined;
-  isDisabled: boolean;
-  onConfigure: (key: CredentialProvider) => void;
+  onSaved: () => void;
 }
 
-/** One feature's card: whether it works, what it runs on, and the providers that upgrade it. */
+/** One feature's card: whether it works, then its provider picker. */
 export function ProviderFeatureSection({
   group,
   catalog,
   status,
-  isDisabled,
-  onConfigure,
+  onSaved,
 }: ProviderFeatureSectionProps) {
-  const { spec, status: featureStatus, rows } = group;
-  const working = featureStatus?.working === true;
-  const [primary, ...backups] = (featureStatus?.in_use ?? []).map((engine) =>
-    featureEngineLabel(engine, spec, catalog),
-  );
-  const builtIn = spec.built_in;
-
-  const usingDescription = (): string | undefined => {
-    if (!primary) {
-      return builtIn
-        ? `${builtIn.label}: ${builtIn.description}`
-        : "Add a provider below to turn it on.";
-    }
-    if (backups.length > 0) return `Backup: ${backups.join(", ")}`;
-    return primary === builtIn?.label ? builtIn.description : undefined;
-  };
+  const working = group.status?.working === true;
 
   return (
     <SettingsSection
-      title={spec.label}
+      title={group.spec.label}
       titleAccessory={
-        featureStatus && (
+        group.status && (
           <StatusBadge label={working ? "Working" : "Off"} active={working} />
         )
       }
-      description={spec.description}
+      description={group.spec.description}
     >
-      <SettingsRow
-        label={primary ? `Using: ${primary}` : "Not running"}
-        description={usingDescription()}
-      />
-      {rows.length > 0 && (
-        <p className="px-4 pt-3 pb-1 text-xs font-medium text-zinc-500">
-          {builtIn ? "Optional upgrades" : "Providers"}
-        </p>
-      )}
-      {rows.map((row) => (
-        <ProviderSettingsRow
-          key={row.key}
-          row={row}
-          isConnected={isProviderConfigured(status, row.key)}
-          overridesEnv={savedCredentialOverridesEnv(status, row.key)}
-          isDisabled={isDisabled}
-          onConfigure={() => onConfigure(row.key)}
+      <div className="px-4 py-3.5">
+        <FeatureProviderPicker
+          group={group}
+          catalog={catalog}
+          status={status}
+          onSaved={onSaved}
         />
-      ))}
+      </div>
     </SettingsSection>
   );
 }

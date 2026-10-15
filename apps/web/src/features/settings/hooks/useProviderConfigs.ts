@@ -8,8 +8,8 @@ const PROVIDER_CONFIGS_QUERY_KEY = ["setup", "providers"] as const;
 /**
  * Admin-only masked provider listing (GET /setup/providers) — the stored
  * base_url/model/key-hint per provider, as saved in the credential store.
- * Feeds the Settings → Providers & Tools configure modal so it seeds from what is
- * actually stored instead of card defaults.
+ * Feeds the provider credential forms so they seed from what is actually
+ * stored instead of catalog defaults.
  */
 export function useProviderConfigs() {
   return useQuery({
