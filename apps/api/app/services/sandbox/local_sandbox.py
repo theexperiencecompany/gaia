@@ -113,7 +113,7 @@ def _raise_filetool_error(op: str, path: str, exit_code: int, stderr: str) -> No
 def _tar_bytes(name: str, content: bytes) -> bytes:
     """Build an in-memory single-file tar for docker cp upload."""
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as tar:
+    with tarfile.open(fileobj=buffer, mode="w") as tar:
         info = tarfile.TarInfo(name=name)
         info.size = len(content)
         info.mtime = int(time.time())
@@ -147,7 +147,7 @@ def container_name_for(user_id: str) -> str:
     clean = re.sub(r"[^a-zA-Z0-9_.-]+", "-", user_id).strip("-.") or "user"
     if clean != user_id:
         # Non-crypto fingerprint: only disambiguates sanitized names.
-        digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:8]
+        digest = hashlib.sha256(user_id.encode()).hexdigest()[:8]
         clean = f"{clean}-{digest}"
     return f"{LOCAL_SANDBOX_CONTAINER_PREFIX}{clean}"
 
@@ -161,13 +161,16 @@ class _ContainerState:
     layout: str = ""
 
 
+_MISSING_CONTAINER = _ContainerState(exists=False, running=False)
+
+
 @dataclass(frozen=True)
 class _WorkspaceMount:
     """One subtree of the workspace volume and where the container sees it."""
 
     source: Path
     target: str
-    read_only: bool
+    read_only: bool = False
 
 
 # The container's view of the workspace volume, mirroring mount_juicefs.sh's
@@ -175,7 +178,7 @@ class _WorkspaceMount:
 # files read-only on top. Nothing else on the volume is ever mounted.
 def _workspace_mounts(user_id: str) -> tuple[_WorkspaceMount, ...]:
     return (
-        _WorkspaceMount(user_workspace_path(user_id), LOCAL_SANDBOX_WORKSPACE_MOUNT, False),
+        _WorkspaceMount(user_workspace_path(user_id), LOCAL_SANDBOX_WORKSPACE_MOUNT),
         _WorkspaceMount(
             user_skills_path(user_id), f"{LOCAL_SANDBOX_WORKSPACE_MOUNT}/{SKILLS_DIRNAME}", True
         ),
@@ -197,10 +200,10 @@ def _make_mount_sources(user_id: str) -> None:
     """Create every mounted subpath and nested mountpoint; the daemon refuses missing ones."""
     user_root = user_workspace_path(user_id)
     for mount in _workspace_mounts(user_id):
-        mount.source.mkdir(parents=True, exist_ok=True)
+        mount.source.mkdir(exist_ok=True)
         if mount.target != LOCAL_SANDBOX_WORKSPACE_MOUNT:
             nested = posixpath.relpath(mount.target, LOCAL_SANDBOX_WORKSPACE_MOUNT)
-            (user_root / nested).mkdir(parents=True, exist_ok=True)
+            (user_root / nested).mkdir(exist_ok=True)
 
 
 async def _spawn_process(
@@ -256,7 +259,7 @@ class LocalDockerSandbox:
         """Run docker with the given args on the host and return exit code and output."""
         proc = await _spawn_process(["docker", *args], stdin=stdin)
         stdout, stderr = await proc.communicate(stdin)
-        return proc.returncode or 0, stdout, stderr.decode("utf-8", errors="replace")
+        return proc.returncode or 0, stdout, stderr.decode(errors="replace")
 
     async def _exec_argv(
         self,
@@ -276,17 +279,9 @@ class LocalDockerSandbox:
             argv += ["--workdir", cwd]
         return [*argv, self.container_name, *cmd_args]
 
-    async def _exec_capture(
-        self,
-        cmd_args: list[str],
-        *,
-        user: str | None = None,
-        envs: dict[str, str] | None = None,
-        cwd: str | None = None,
-    ) -> tuple[int, bytes, str]:
+    async def _exec_capture(self, cmd_args: list[str]) -> tuple[int, bytes, str]:
         """Run a command inside the container, capturing (exit_code, stdout, stderr)."""
-        argv = await self._exec_argv(cmd_args, user=user, envs=envs, cwd=cwd)
-        return await self._run_docker(*argv)
+        return await self._run_docker(*await self._exec_argv(cmd_args))
 
     # ── container lifecycle ──────────────────────────────────────────────
 
@@ -301,11 +296,11 @@ class LocalDockerSandbox:
         if rc != 0:
             stderr_lower = stderr.lower()
             if any(marker in stderr_lower for marker in _MISSING_CONTAINER_MARKERS):
-                return _ContainerState(exists=False, running=False)
+                return _MISSING_CONTAINER
             raise LocalSandboxError(
                 f"docker inspect failed for {self.container_name}: {stderr.strip()}"
             )
-        running, _, layout = stdout.decode("utf-8", errors="replace").strip().partition(" ")
+        running, _, layout = stdout.decode(errors="replace").strip().partition(" ")
         return _ContainerState(exists=True, running=running.lower() == "true", layout=layout)
 
     async def _prepare_workspace(self) -> None:
@@ -396,7 +391,7 @@ class LocalDockerSandbox:
                     layout=state.layout,
                 )
                 await self.kill()
-                state = _ContainerState(exists=False, running=False)
+                state = _MISSING_CONTAINER
             if not state.running:
                 if state.exists:
                     rc, _, stderr = await self._run_docker("start", self.container_name)
@@ -458,7 +453,7 @@ class LocalDockerSandbox:
         if rc == 0:
             # Docker 29 exits 0 for a forced remove of a missing container, silently or
             # with "No such container"; only an actual removal echoes the name.
-            removed = stdout.decode("utf-8", errors="replace").strip() == self.container_name
+            removed = stdout.decode(errors="replace").strip() == self.container_name
             if not removed:
                 log.info(
                     f"{LogTag.SANDBOX} local container already gone",
@@ -509,13 +504,13 @@ class LocalDockerSandbox:
         self,
         cmd: str,
         *,
-        background: bool | None = None,
-        envs: dict[str, str] | None = None,
-        user: str | None = None,
-        cwd: str | None = None,
-        on_stdout: Callable[[str], None] | None = None,
-        on_stderr: Callable[[str], None] | None = None,
-        timeout: float | None = 60,
+        background: bool | None,
+        envs: dict[str, str] | None,
+        user: str | None,
+        cwd: str | None,
+        on_stdout: Callable[[str], None] | None,
+        on_stderr: Callable[[str], None] | None,
+        timeout: float | None,
     ) -> CommandResult:
         """Run a command in the container through a login shell.
 
@@ -528,7 +523,7 @@ class LocalDockerSandbox:
                 "commands.run(background=True) is not supported by the local "
                 "sandbox; detach inside the command itself (nohup … &)"
             )
-        deadline = timeout if timeout and timeout > 0 else None
+        deadline = timeout if timeout is not None and timeout > 0 else None
         # e2b runs commands through a login shell (`bash -l -c`) so profile
         # environment is present — mirror it exactly.
         shell = ["/bin/bash", "-l", "-c", cmd]
@@ -538,7 +533,8 @@ class LocalDockerSandbox:
         loop = asyncio.get_running_loop()
         started = loop.time()
         proc = await _spawn_process(argv)
-        assert proc.stdout is not None and proc.stderr is not None
+        # _spawn_process always pipes both streams; this only narrows the types.
+        assert proc.stdout is not None and proc.stderr is not None  # pragma: no mutate
 
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
@@ -549,7 +545,7 @@ class LocalDockerSandbox:
             callback: Callable[[str], None] | None,
         ) -> None:
             while chunk := await stream.read(_STREAM_CHUNK_BYTES):
-                text = chunk.decode("utf-8", errors="replace")
+                text = chunk.decode(errors="replace")
                 parts.append(text)
                 if callback is not None:
                     callback(text)
@@ -608,7 +604,7 @@ class LocalDockerSandbox:
             exit_code, stdout, stderr = await self._sandbox._exec_capture(["cat", "--", path])
             if exit_code != 0:
                 _raise_filetool_error("files.read", path, exit_code, stderr)
-            return stdout.decode("utf-8", errors="replace") if format == "text" else stdout
+            return stdout.decode(errors="replace") if format == "text" else stdout
 
         async def write(self, path: str, data: str | bytes) -> WriteInfo:
             """Write content via tar stream; parents are created first like E2B.
@@ -675,7 +671,7 @@ class LocalDockerSandbox:
             )
             if exit_code != 0:
                 _raise_filetool_error("files.get_info", path, exit_code, stderr)
-            fields = stdout.decode("utf-8", errors="replace").strip().split("|")
+            fields = stdout.decode(errors="replace").strip().split("|")
             if len(fields) != 7:
                 raise LocalSandboxError(f"unexpected stat output for {path}: {stdout!r}")
             size_s, mode_hex, perms, owner, group, epoch_s, kind = fields
