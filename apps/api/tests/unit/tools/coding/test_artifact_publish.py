@@ -129,6 +129,22 @@ async def test_small_textual_file_is_inlined() -> None:
     assert ev.get("body") == "tiny"
 
 
+async def test_textual_file_exactly_at_the_inline_cap_is_inlined() -> None:
+    mock, events = _capture()
+    at_cap = "x" * INLINE_ARTIFACT_MAX_BYTES
+    with patch.object(_artifacts, "publish_artifact_event", mock):
+        await publish_artifact_write(
+            "u1",
+            MountRole.ARTIFACTS,
+            "c1",
+            "/workspace/sessions/c1/artifacts/a.md",
+            at_cap,
+            1.0,
+        )
+    _, ev = events[0]
+    assert ev.get("body") == at_cap, "the inline cap is inclusive"
+
+
 async def test_large_textual_file_is_not_inlined() -> None:
     mock, events = _capture()
     big = INLINE_ARTIFACT_MAX_BYTES + 1
