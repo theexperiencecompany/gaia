@@ -32,6 +32,7 @@ from app.api.v1.middleware.client_type import (
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME, POSTHOG_SESSION_HEADER
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
+from app.constants.log_tags import LogTag
 from app.core.request_context import get_authenticated_user
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.analytics_service import capture
@@ -254,6 +255,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         data = resp.json()
         assert data["authenticated"] is True
         assert data["user"]["impersonated"] is True
+        assert data["user"]["auth_provider"] == "workos"
 
     def test_agent_token_invalid_returns_unauthenticated(self) -> None:
         app = _build_test_app()
@@ -1010,3 +1012,212 @@ class TestDevBypassWithAMongoUser:
             resp = TestClient(app).get("/api/v1/whoami")
 
         assert resp.json() == {"user_id": "507f1f77bcf86cd799439011"}
+
+
+# ---------------------------------------------------------------------------
+# AUTH_MODE=local: the self-host session path
+# ---------------------------------------------------------------------------
+
+
+LOCAL_USER = UserDocument.model_validate(
+    {"id": "507f1f77bcf86cd799439011", "email": "kid@gaia.dev", "name": "Kid"}
+)
+LOCAL_PUBLIC_PATHS = (
+    "/api/v1/auth/signup",
+    "/api/v1/auth/login",
+    "/api/v1/setup/status",
+    "/api/v1/setup/catalog",
+)
+
+
+@pytest.fixture
+def local_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+
+def _build_local_probe_app() -> FastAPI:
+    """Every path reports the request.state the middleware left, "unset" where it set nothing."""
+    app = FastAPI()
+
+    @app.api_route("/{path:path}", methods=["GET", "POST"])
+    async def probe(request: Request) -> dict[str, object]:
+        user = getattr(request.state, "user", "unset")
+        return {
+            "user": user if user in (None, "unset") else user.email,
+            "auth_provider": getattr(user, "auth_provider", None),
+            "authenticated": getattr(request.state, "authenticated", "unset"),
+            "new_session": getattr(request.state, "new_session", "unset"),
+            "auth_failure": getattr(request.state, "auth_failure", None),
+        }
+
+    app.add_middleware(WorkOSAuthMiddleware)
+    return app
+
+
+@pytest.mark.usefixtures("local_mode")
+class TestLocalSessionDispatch:
+    @pytest.mark.parametrize("path", LOCAL_PUBLIC_PATHS)
+    def test_the_pre_auth_surfaces_are_public_by_exact_path_only(self, path: str) -> None:
+        client = TestClient(_build_local_probe_app())
+
+        public = client.get(path).json()
+        suffixed = client.get(f"{path}/evil").json()
+
+        assert public["authenticated"] == "unset"
+        assert suffixed["authenticated"] is False
+
+    def test_a_prefix_exclusion_covers_its_subpaths(self) -> None:
+        resp = TestClient(_build_local_probe_app()).get("/api/v1/dev/seed")
+
+        assert resp.json()["authenticated"] == "unset"
+
+    def test_no_session_leaves_an_anonymous_request(self) -> None:
+        resp = TestClient(_build_local_probe_app()).get("/api/v1/protected")
+
+        assert resp.json() == {
+            "user": None,
+            "auth_provider": None,
+            "authenticated": False,
+            "new_session": None,
+            "auth_failure": None,
+        }
+
+    @pytest.mark.parametrize("carrier", ["cookie", "bearer"])
+    def test_a_session_token_authenticates_as_an_email_account(self, carrier: str) -> None:
+        resolve = AsyncMock(return_value=LOCAL_USER.id)
+        with (
+            patch("app.api.v1.middleware.auth.resolve_session_token", resolve),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.get",
+                AsyncMock(return_value=LOCAL_USER),
+            ),
+        ):
+            client = TestClient(_build_local_probe_app())
+            if carrier == "cookie":
+                client.cookies.set("gaia_session", "session jwt")
+                resp = client.get("/api/v1/protected")
+            else:
+                # Verbatim after the first space, the same as the WorkOS path.
+                resp = client.get(
+                    "/api/v1/protected", headers={"Authorization": "Bearer session jwt"}
+                )
+
+        resolve.assert_awaited_once_with("session jwt")
+        assert (resp.json()["user"], resp.json()["auth_provider"]) == ("kid@gaia.dev", "email")
+
+    def test_a_non_bearer_authorization_header_is_not_a_session(self) -> None:
+        resolve = AsyncMock(return_value=LOCAL_USER.id)
+        with patch("app.api.v1.middleware.auth.resolve_session_token", resolve):
+            resp = TestClient(_build_local_probe_app()).get(
+                "/api/v1/protected", headers={"Authorization": "Basic session.jwt"}
+            )
+
+        resolve.assert_not_awaited()
+        assert resp.json()["authenticated"] is False
+
+    def test_a_rejected_token_is_flagged_for_the_route_layer(self) -> None:
+        with patch(
+            "app.api.v1.middleware.auth.resolve_session_token", AsyncMock(return_value=None)
+        ):
+            client = TestClient(_build_local_probe_app())
+            client.cookies.set("gaia_session", "stale.jwt")
+            resp = client.get("/api/v1/protected")
+
+        assert resp.json()["auth_failure"] == "invalid_or_expired_session"
+
+    def test_a_token_naming_no_account_is_flagged_for_the_route_layer(self) -> None:
+        with (
+            patch(
+                "app.api.v1.middleware.auth.resolve_session_token",
+                AsyncMock(return_value=LOCAL_USER.id),
+            ),
+            patch("app.api.v1.middleware.auth.user_repository.get", AsyncMock(return_value=None)),
+        ):
+            client = TestClient(_build_local_probe_app())
+            client.cookies.set("gaia_session", "ghost.jwt")
+            resp = client.get("/api/v1/protected")
+
+        assert resp.json()["auth_failure"] == "unknown_local_session_user"
+
+    async def test_a_broken_secret_store_is_an_error_not_a_silent_401(self) -> None:
+        with patch(
+            "app.api.v1.middleware.auth.resolve_session_token",
+            AsyncMock(side_effect=RuntimeError("secret store down")),
+        ):
+            async with captured_wide_event() as event:
+                async with AsyncClient(
+                    transport=ASGITransport(app=_build_local_probe_app()), base_url="http://t"
+                ) as client:
+                    client.cookies.set("gaia_session", "session.jwt")
+                    resp = await client.get("/api/v1/protected")
+
+        assert resp.json()["auth_failure"] == "invalid_or_expired_session"
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.API} local session verification error",
+                "auth_failure": "RuntimeError",
+                "path": "/api/v1/protected",
+                "method": "GET",
+                "error": "secret store down",
+            }
+        ]
+
+    async def test_a_failed_account_lookup_is_an_error_on_the_wide_event(self) -> None:
+        with (
+            patch(
+                "app.api.v1.middleware.auth.resolve_session_token",
+                AsyncMock(return_value=LOCAL_USER.id),
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.get",
+                AsyncMock(side_effect=ValueError("bad id")),
+            ),
+        ):
+            async with captured_wide_event() as event:
+                async with AsyncClient(
+                    transport=ASGITransport(app=_build_local_probe_app()), base_url="http://t"
+                ) as client:
+                    client.cookies.set("gaia_session", "session.jwt")
+                    resp = await client.get("/api/v1/protected")
+
+        assert resp.json()["auth_failure"] == "unknown_local_session_user"
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.API} Invalid user_id in local session token",
+                "error_type": "ValueError",
+                "error": "bad id",
+            }
+        ]
+
+    def test_an_agent_token_authenticates_as_an_email_account(self) -> None:
+        with (
+            patch(
+                "app.api.v1.middleware.auth.verify_agent_token",
+                return_value=AgentTokenInfo(user_id=LOCAL_USER.id),
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.get",
+                AsyncMock(return_value=LOCAL_USER),
+            ),
+        ):
+            resp = TestClient(_build_local_probe_app()).post(
+                "/api/v1/chat-stream", headers={"Authorization": "Bearer agent.jwt"}
+            )
+
+        assert (resp.json()["user"], resp.json()["auth_provider"]) == ("kid@gaia.dev", "email")
+
+
+class TestWorkOSClientChoice:
+    def test_an_injected_client_is_the_one_used(self) -> None:
+        injected = MagicMock()
+
+        assert WorkOSAuthMiddleware(app=MagicMock(), workos_client=injected).workos is injected
+
+    def test_local_mode_builds_no_workos_client(self, local_mode: None) -> None:
+        with patch("app.api.v1.middleware.auth.get_async_workos_client") as build:
+            middleware = WorkOSAuthMiddleware(app=MagicMock())
+
+        assert middleware.workos is None
+        build.assert_not_called()

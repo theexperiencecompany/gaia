@@ -213,7 +213,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie.
         self.agent_only_paths = ["/api/v1/chat-stream"]
-        self.agent_only_path_prefixes: tuple[str, ...] = ()
         self.user_cache_expiry = 3600
         self.dev_bypass_email = (
             settings.DEV_AUTH_BYPASS_EMAIL if settings.deployment.dev_tools else None
@@ -312,12 +311,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         but only on the agent-only paths. auth_provider names which session
         system the request would otherwise have used.
         """
-        if getattr(request.state, "authenticated", False):
-            return
-        accepts_agent_token = request.url.path in self.agent_only_paths or any(
-            request.url.path.startswith(p) for p in self.agent_only_path_prefixes
-        )
-        if not accepts_agent_token:
+        if request.state.authenticated or request.url.path not in self.agent_only_paths:
             return
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
