@@ -33,59 +33,11 @@ All state lives in Docker volumes, so stopping containers or upgrading later kee
 - 2+ CPU cores, **8 GB RAM**, 10 GB+ disk. The stack boots in less, but the local embedding model loads about 1.8 GB into both the API and the worker the first time memory is used, so smaller machines run out of memory then, not at boot
 - One AI provider to power chat: an API key from OpenAI, OpenRouter or Google Gemini, any OpenAI-compatible gateway (OpenCode, Nous Research, …) — or [Ollama](https://ollama.com) running locally, which needs no key at all
 
-## Quick start
+## Install
 
-<Steps>
-  <Step title="Install the GAIA CLI">
-    <CodeGroup>
+The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: install the CLI, run `gaia up`, create the admin account and pick an AI provider in the browser, with a screenshot of every step.
 
-    ```bash curl
-    curl -fsSL https://heygaia.io/install.sh | sh
-    ```
-
-    ```bash npm
-    npm install -g @heygaia/cli
-    ```
-
-    </CodeGroup>
-  </Step>
-
-  <Step title="Start GAIA">
-    ```bash
-    gaia up
-    ```
-
-    One command, zero prompts on a normal machine. It checks prerequisites (offering to install Docker if it's missing), clones GAIA if you don't have it yet, picks free ports, generates the required machine secrets automatically, pulls the published images, and starts every service. When it finishes it prints the URL — open it in your browser.
-
-    On a server, `gaia up --yes` runs with no prompts at all, including installing Docker on apt-based Linux. Add `--llm-provider openai --llm-key sk-...` to configure the AI provider in the same command. To serve GAIA over HTTPS on your own domain, add `--domain gaia.example.com` — see [HTTPS on your own domain](/self-hosting/docker-setup#https-on-your-own-domain).
-
-    No terminal? See [One-click deploy](/self-hosting/one-click-deploy) for cloud-init, Render, Railway, DigitalOcean and Coolify.
-  </Step>
-
-  <Step title="Create your admin account">
-    Open http://localhost:3000/setup and sign up with your email and a password. The first account created becomes the instance admin. After that, sign-up is invite-only: in **Settings → Members** you create invite links for the people you want to add, or switch on open sign-up. Every member gets their own chats, tasks and connected apps; the AI provider keys are shared, and only the admin can change them.
-  </Step>
-
-  <Step title="Pick an AI provider">
-    Choose one provider and paste its API key — that's the whole configuration. Base URLs and default models are prefilled where they apply, and a live connection test verifies the key before saving.
-
-    | Provider       | What you provide                                                                                       |
-    | -------------- | ------------------------------------------------------------------------------------------------------ |
-    | OpenAI         | API key                                                                                                |
-    | OpenRouter     | API key                                                                                                |
-    | Google Gemini  | API key                                                                                                |
-    | Ollama         | Nothing to paste — the base URL is prefilled to `http://host.docker.internal:11434` and the model list is fetched live from your local Ollama |
-    | Custom gateway | Any OpenAI-compatible endpoint; presets prefill OpenCode and Nous Research                             |
-
-    You can also skip this step and add a provider later — chat just stays quiet until one is configured.
-  </Step>
-
-  <Step title="(Optional) search and connections">
-    Add a Tavily API key to give GAIA web search, and connect apps like Gmail or GitHub through your own Composio project ([guide](/self-hosting/composio-integrations)). Both are optional and can be skipped.
-  </Step>
-</Steps>
-
-That's it — you land in chat.
+Prefer a hosting platform? See [Deploy options](/self-hosting/one-click-deploy) for DigitalOcean, Coolify, Render and Railway, and how far each is tested.
 
 ## What works out of the box
 
@@ -103,7 +55,7 @@ Only the AI model needs setup. Everything else already works, or stays off until
 
 ## Changing things later
 
-Everything the setup wizard asks can be changed afterwards in **Settings → Providers & Tools**: add, replace, or remove providers any time. Changes apply immediately — no restart needed. Keys are stored encrypted and validated with a live test before saving.
+Everything the setup wizard asks can be changed afterwards in **Settings → Providers & Tools**: add, replace, or remove providers any time. Changes apply immediately — no restart needed. Keys are stored encrypted. An AI provider key gets a live connection test, and only a key that answers is saved. Other keys, such as Tavily, Exa, Brave Search, Firecrawl or Resend, have no test and are saved as you enter them.
 
 App integrations like Gmail, Calendar and GitHub connect through your own Composio project. Set them up in **Settings → Integrations setup**; see [Connect integrations](/self-hosting/composio-integrations).
 
@@ -164,8 +116,8 @@ MongoDB holds your accounts, chats and the encrypted provider keys; PostgreSQL h
   <Card title="Docker Setup" icon="docker" href="/self-hosting/docker-setup">
     Advanced Docker operations and workspace storage
   </Card>
-  <Card title="One-click deploy" icon="cloud" href="/self-hosting/one-click-deploy">
-    Cloud-init, Render, Railway, DigitalOcean and Coolify, with costs
+  <Card title="Deploy options" icon="cloud" href="/self-hosting/one-click-deploy">
+    DigitalOcean, Coolify, Render and Railway, with costs and test status
   </Card>
   <Card title="Connect Integrations" icon="plug" href="/self-hosting/composio-integrations">
     Gmail, Calendar, GitHub and more through your own Composio project
