@@ -50,4 +50,19 @@ describe("gaia up summary", () => {
   it("says ready once the started stack answers", () => {
     expect(summaryFor({ upNoStart: false })).toContain("GAIA is ready!");
   });
+
+  it("points at the browser wizard while setup is still owed", () => {
+    const out = summaryFor({ upNoStart: false, upSetupComplete: false });
+
+    expect(out).toContain(
+      "Finish setup in your browser: http://localhost:3000/setup",
+    );
+  });
+
+  it("only says where to open GAIA once setup is complete", () => {
+    const out = summaryFor({ upNoStart: false, upSetupComplete: true });
+
+    expect(out).toContain("Open GAIA at:");
+    expect(out).not.toContain("/setup");
+  });
 });

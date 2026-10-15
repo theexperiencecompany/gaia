@@ -29,7 +29,9 @@ export function printUpSummary(store: CLIStore): void {
     }
     console.info(`  API: ${apiUrl}`);
   }
-  console.info(`Finish setup in your browser: ${webUrl}/setup`);
+  if (data.upSetupComplete !== true) {
+    console.info(`Finish setup in your browser: ${webUrl}/setup`);
+  }
   console.info(codeSandboxSummary(data.upCodeSandbox === true));
   console.info(
     "Next: gaia doctor — run 'gaia doctor' anytime to verify your installation",

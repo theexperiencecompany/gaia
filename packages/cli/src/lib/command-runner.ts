@@ -118,6 +118,9 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
     await store.waitForInput("exit");
   }
 
+  // React commits a store change on a later tick; unmounting first would
+  // drop the flow's last state (gaia up's summary) from the final frame.
+  await new Promise((resolve) => setImmediate(resolve));
   unmount();
   if (needsDockerGroupRelaunch(store)) {
     await relaunchWithDockerGroup(store.currentState.step);

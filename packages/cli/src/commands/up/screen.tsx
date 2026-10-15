@@ -33,6 +33,7 @@ const UpFinishedStep: React.FC<{
   stillStarting: boolean;
   customProviderNote: boolean;
   codeSandbox: boolean;
+  setupComplete: boolean;
 }> = ({
   webUrl,
   reachableUrls,
@@ -41,6 +42,7 @@ const UpFinishedStep: React.FC<{
   stillStarting,
   customProviderNote,
   codeSandbox,
+  setupComplete,
 }) => {
   const success = !noStart && !stillStarting;
   return (
@@ -93,14 +95,16 @@ const UpFinishedStep: React.FC<{
         </Text>
       </Box>
 
-      <Box marginTop={1}>
-        <Text>
-          Finish setup in your browser:{" "}
-          <Text color="cyan" bold underline>
-            {webUrl}/setup
+      {!setupComplete && (
+        <Box marginTop={1}>
+          <Text>
+            Finish setup in your browser:{" "}
+            <Text color="cyan" bold underline>
+              {webUrl}/setup
+            </Text>
           </Text>
-        </Text>
-      </Box>
+        </Box>
+      )}
 
       <Box marginTop={1}>
         <Text color="gray">{codeSandboxSummary(codeSandbox)}</Text>
@@ -123,12 +127,6 @@ const UpFinishedStep: React.FC<{
       <Box marginTop={1}>
         <Text color="gray">
           Run 'gaia doctor' anytime · gaia logs · gaia stop · gaia status
-        </Text>
-      </Box>
-
-      <Box marginTop={1}>
-        <Text dimColor>
-          <Text bold>Enter</Text> to exit
         </Text>
       </Box>
     </Box>
@@ -196,6 +194,7 @@ const UpSummaryStep: React.FC<{ state: CLIState }> = ({ state }) => {
       stillStarting={!noStart && state.data.upStillStarting === true}
       customProviderNote={state.data.customProviderNote === true}
       codeSandbox={state.data.upCodeSandbox === true}
+      setupComplete={state.data.upSetupComplete === true}
     />
   );
 };
