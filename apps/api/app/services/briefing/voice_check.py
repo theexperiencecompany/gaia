@@ -12,6 +12,7 @@ from app.models.briefing_models import BriefingItemKind, BriefingPayload
 _NEEDS_YOU_KINDS: frozenset[BriefingItemKind] = frozenset({"you", "failed"})
 
 _NUMBER_WORDS = {
+    "zero": 0,
     "one": 1,
     "two": 2,
     "three": 3,
@@ -35,9 +36,14 @@ _NEEDS_CLAIM = re.compile(
     r"\bneeds? (?:you|your)\b|\bwaiting on you\b|\byour (?:call|review|approval|reply)\b",
     re.IGNORECASE,
 )
+# A negation in the phrase's own clause ("nothing needs you", "0 things need you") denies it.
+_NEGATED_CLAUSE = re.compile(
+    r"\b(?:no|not|none|nothing|nobody|no one|zero|0)\b|n't\b", re.IGNORECASE
+)
+_CLAUSE_BREAK = re.compile(r"[.;:,!?]|\b(?:but|and|while|though|yet)\b", re.IGNORECASE)
 _EVENT_CLAIM = re.compile(r"\b(?:events?|meetings?|calls? (?:at|with))\b", re.IGNORECASE)
 _EMPTY_CALENDAR = re.compile(
-    r"\b(?:no|nothing|clear|free|empty)\b[^.;]*\b(?:events?|meetings?|calendar)\b",
+    r"\b(?:no|nothing|zero|0|clear|free|empty)\b[^.;]*\b(?:events?|meetings?|calendar)\b",
     re.IGNORECASE,
 )
 # A name: a capitalised word inside a sentence, or a possessive one opening it.
@@ -76,7 +82,7 @@ def _allowed_counts(payload: BriefingPayload) -> set[int]:
     tallies = payload.tallies
     done = [tallies.done_by_you, tallies.done_by_gaia, tallies.done_by_you + tallies.done_by_gaia]
     in_text = {int(n) for n in re.findall(r"\d+", _corpus(payload))}
-    return {len(items), needs_you, len(payload.calendar), *by_kind, *done, *in_text} - {0}
+    return {len(items), needs_you, len(payload.calendar), *by_kind, *done, *in_text}
 
 
 def _corpus(payload: BriefingPayload) -> str:
@@ -85,13 +91,22 @@ def _corpus(payload: BriefingPayload) -> str:
     return " ".join(items + events)
 
 
+def _claims_a_need(prose: str) -> bool:
+    """Report whether a needs-you phrase is asserted, not denied by a negation in its clause."""
+    for match in _NEEDS_CLAIM.finditer(prose):
+        clause = _CLAUSE_BREAK.split(prose[: match.start()])[-1]
+        if not _NEGATED_CLAUSE.search(clause):
+            return True
+    return False
+
+
 def voice_contradictions(headline: str, lede: str, payload: BriefingPayload) -> list[str]:
     """Return every claim in the headline or lede that the payload's items do not support."""
     prose = f"{headline}. {lede}"
     items = [item for section in payload.sections for item in section.items]
     problems: list[str] = []
 
-    if _NEEDS_CLAIM.search(prose) and not any(i.kind in _NEEDS_YOU_KINDS for i in items):
+    if _claims_a_need(prose) and not any(i.kind in _NEEDS_YOU_KINDS for i in items):
         problems.append("the prose says something needs the user, but no item needs them")
     if _EVENT_CLAIM.search(prose) and not payload.calendar and not _EMPTY_CALENDAR.search(prose):
         problems.append("the prose mentions an event, but today's calendar is empty")
@@ -99,7 +114,7 @@ def voice_contradictions(headline: str, lede: str, payload: BriefingPayload) -> 
     allowed = _allowed_counts(payload)
     for match in _COUNT.finditer(prose):
         token = match.group(1).lower()
-        count = _NUMBER_WORDS.get(token) or int(token)
+        count = _NUMBER_WORDS[token] if token in _NUMBER_WORDS else int(token)
         if count not in allowed:
             problems.append(f"the prose counts {count}, which no item count matches")
 

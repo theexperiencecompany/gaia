@@ -23,7 +23,11 @@ from app.schemas.dev_schemas import (
     SeedDevDataRequest,
     SeedDevDataResponse,
 )
-from app.services.briefing.service import run_daily_briefing, run_weekly_digest
+from app.services.briefing.service import (
+    BriefingGenerationError,
+    run_daily_briefing,
+    run_weekly_digest,
+)
 from app.services.dev_agent_service import (
     list_dev_subagents,
     run_executor_direct,
@@ -35,6 +39,7 @@ from app.services.dev_service import (
     mint_dev_user,
     seed_dev_data,
 )
+from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/dev", tags=["Dev"])
@@ -167,7 +172,18 @@ async def run_briefing_now(kind: str, email: str) -> JSONResponse:
             status_code=404,
             detail=f"No GAIA user exists for '{email}' — mint it via POST /api/v1/dev/users",
         )
-    outcome = await run(user.id)
+    try:
+        outcome = await run(user.id)
+    except BriefingGenerationError as e:
+        # The model's output failed validation: an upstream failure the harness must see.
+        raise create_error(
+            message=f"The {kind} briefing could not be generated",
+            why=str(e),
+            fix="Read the reason and rerun; a recurring one is a prompt or voice-check bug",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="briefing_generation_failed",
+            user_id=user.id,
+        ) from e
     log.set(dev={"user_id": user.id, "outcome": outcome.value})
     return JSONResponse(
         content={"user_id": user.id, "kind": kind, "status": "completed", "outcome": outcome.value}

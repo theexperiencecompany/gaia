@@ -21,6 +21,7 @@ from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.briefing import BriefingRunOutcome
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
+from app.services.briefing.service import BriefingGenerationError
 from tests.helpers import captured_wide_event
 
 DEV_EMAIL = "dev@gaia.local"
@@ -930,3 +931,26 @@ class TestDevBriefingRun:
             "No GAIA user exists for 'ghost@gaia.local' — mint it via POST /api/v1/dev/users"
         )
         run_daily.assert_not_awaited()
+
+    async def test_a_failed_generation_is_an_envelope_naming_the_reason(self, monkeypatch):
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
+        reason = "The brief's headline and lede contradict its items: x"
+        run_daily = AsyncMock(side_effect=BriefingGenerationError(reason))
+        with (
+            patch.dict(_BRIEFING_RUNS, {"daily": run_daily}),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(id="u-brief"),
+            ),
+        ):
+            client = await _client(_build_app())
+            async with client:
+                response = await client.post(f"/api/v1/dev/briefing/daily/{DEV_EMAIL}")
+
+        body = response.json()
+        assert response.status_code == 502
+        assert body["code"] == "briefing_generation_failed"
+        assert body["why"] == reason
