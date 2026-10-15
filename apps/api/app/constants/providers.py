@@ -118,9 +118,10 @@ HOSTED_ONE_SHOT_PROVIDERS: dict[ModelUse, LLMProviderName] = {
 }
 
 
-def _catalog_chat_model(provider: LLMProviderName) -> str:
-    """Return the chat model a setup card prefills; empty when the operator must choose one."""
-    return LLM_MODEL_PROFILES[provider].chat or ""
+# The chat model a setup card prefills; empty when the operator must choose one.
+_CATALOG_CHAT_MODELS: dict[LLMProviderName, str] = {
+    provider: profile.chat or "" for provider, profile in LLM_MODEL_PROFILES.items()
+}
 
 
 class CredentialSource(StrEnum):
@@ -154,7 +155,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "description": "One key for every major model. Easiest way to start.",
         "key_url": "https://openrouter.ai/keys",
         "base_url": "",
-        "default_model": _catalog_chat_model(LLMProviderName.OPENROUTER),
+        "default_model": _CATALOG_CHAT_MODELS[LLMProviderName.OPENROUTER],
         "favicon_domain": "openrouter.ai",
         "needs_base_url": False,
         "api_key_label": "API key",
@@ -166,7 +167,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "description": "Google's models, with a generous free tier.",
         "key_url": "https://aistudio.google.com/apikey",
         "base_url": "",
-        "default_model": _catalog_chat_model(LLMProviderName.GEMINI),
+        "default_model": _CATALOG_CHAT_MODELS[LLMProviderName.GEMINI],
         "favicon_domain": "ai.google.dev",
         "needs_base_url": False,
         "api_key_label": "API key",
@@ -178,7 +179,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "description": "Run models locally — no API key needed.",
         "key_url": "",
         "base_url": "http://host.docker.internal:11434",
-        "default_model": _catalog_chat_model(LLMProviderName.OLLAMA),
+        "default_model": _CATALOG_CHAT_MODELS[LLMProviderName.OLLAMA],
         "favicon_domain": "ollama.com",
         "needs_base_url": True,
         "api_key_label": "API key",
@@ -304,7 +305,7 @@ PRESETS: dict[str, ProviderPreset] = {
         "description": "GPT models directly from OpenAI. Also powers voice-note transcription.",
         "key_url": "https://platform.openai.com/api-keys",
         "base_url": "",
-        "default_model": _catalog_chat_model(LLMProviderName.OPENAI),
+        "default_model": _CATALOG_CHAT_MODELS[LLMProviderName.OPENAI],
         "favicon_domain": "openai.com",
         "needs_base_url": False,
         "api_key_label": "API key",
