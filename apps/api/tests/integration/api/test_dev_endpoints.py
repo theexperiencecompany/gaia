@@ -435,9 +435,14 @@ class TestDevServiceLogic:
             patch.object(
                 dev_service.PlatformLinkService, "link_account", new_callable=AsyncMock
             ) as mock_link,
+            patch.object(dev_service, "seed_dev_postmarks", new_callable=AsyncMock) as mock_stamps,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=3, conversations=2, platform_links=["telegram", "slack"]
+                DEV_EMAIL,
+                todos=3,
+                conversations=2,
+                platform_links=["telegram", "slack"],
+                postmarks=4,
             )
 
         assert mock_todo.await_count == 3
@@ -453,6 +458,8 @@ class TestDevServiceLogic:
         assert result.conversations_created == 2
         assert result.platforms_linked == ["telegram", "slack"]
         assert result.user_id == str(oid)
+        mock_stamps.assert_awaited_once_with(user, 4)
+        assert result.postmarks_created == 4
 
         # Seeding marks onboarding complete via the gated repository method.
         assert mock_complete.await_args.args[0] == str(oid)
