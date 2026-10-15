@@ -127,7 +127,6 @@ apps/web/src/features/workflows/triggers/handlers/SlackSettings.tsx:SlackTrigger
 apps/web/src/features/workflows/utils/creator.ts:ResolvableCreator=AuthorDetails
 # Owned by the concurrent lib/api migration, which deletes ErrorBody outright.
 apps/web/src/lib/blog.types.ts:Author=AuthorDetails
-apps/web/src/lib/blog.types.ts:BlogContentPost=BlogPost
 apps/web/src/lib/db/chatDb.ts:IConversation=ConversationDocument
 apps/web/src/lib/db/chatDb.ts:IMessage=ReplyToMessageData
 apps/web/src/lib/seo.ts:PageMetadataOptions=SupportRequestCreate
@@ -224,3 +223,5 @@ libs/shared/ts/src/types/workflow.ts:ContentCreator=AuthorDetails
 libs/shared/ts/src/types/workflow.ts:CreateWorkflowPayload=SelectedWorkflowDataInput
 libs/shared/ts/src/workflows/triggers.ts:TriggerFieldSchema=TriggerConfigFieldSchema
 libs/shared/ts/src/workflows/triggers.ts:TriggerSchema=WorkflowTriggerResponse
+
+apps/web/src/app/llms.txt/route.ts:LlmsEntry=URLResponse
