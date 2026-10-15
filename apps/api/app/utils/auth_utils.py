@@ -26,7 +26,11 @@ def session_cookie_secure(connection: HTTPConnection) -> bool:
     """
     if settings.deployment.https_only:
         return True
-    forwarded = (connection.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    proto_header = connection.headers.get(
+        "x-forwarded-proto",
+        "",  # pragma: no mutate — any default other than "https" reads the same
+    )
+    forwarded = proto_header.split(",")[0].strip()
     return forwarded == "https" or connection.url.scheme == "https"
 
 

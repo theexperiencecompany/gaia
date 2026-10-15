@@ -1034,3 +1034,37 @@ class TestAuthenticateWorkosSessionFailureLogs:
             error="bad seal",
             error_type="ValueError",
         )
+
+
+def _connection(scheme: str, forwarded_proto: str | None = None) -> Request:
+    headers = [] if forwarded_proto is None else [(b"x-forwarded-proto", forwarded_proto.encode())]
+    return Request(
+        {"type": "http", "scheme": scheme, "path": "/", "headers": headers, "server": ("t", 80)}
+    )
+
+
+class TestSessionCookieSecure:
+    @pytest.mark.parametrize(
+        ("scheme", "forwarded", "secure"),
+        [
+            ("http", None, False),
+            ("https", None, True),
+            ("http", "https", True),
+            ("http", "https, http", True),
+            ("http", "http, https", False),
+        ],
+        ids=["plain-http", "direct-https", "proxied-https", "first-hop-https", "first-hop-http"],
+    )
+    def test_off_gaia_cloud_it_follows_the_callers_real_transport(
+        self, monkeypatch: pytest.MonkeyPatch, scheme: str, forwarded: str | None, secure: bool
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        assert auth_utils.session_cookie_secure(_connection(scheme, forwarded)) is secure
+
+    def test_gaia_cloud_is_always_secure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+
+        assert auth_utils.session_cookie_secure(_connection("http")) is True
