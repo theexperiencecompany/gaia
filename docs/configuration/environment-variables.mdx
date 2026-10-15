@@ -59,6 +59,10 @@ GAIA uses Pydantic settings to load environment variables with validation. Setti
 
 ## API Environment Variables
 
+<Note>
+  On a self-hosted instance, the provider and tool keys (AI providers, search, Firecrawl, OpenWeather, LlamaParse, GitHub, Cloudinary, Google OAuth, Composio, Resend, E2B) can be set in **Settings → Providers & Tools** instead, where they are stored encrypted. The environment variable is used when nothing is saved there.
+</Note>
+
 ### Always Required
 
 These are required in **every** mode:
@@ -186,7 +190,7 @@ OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are
 | Variable              | Description                      |
 | --------------------- | -------------------------------- |
 | `TAVILY_API_KEY`      | Tavily search API                |
-| `LLAMA_INDEX_KEY`     | LlamaIndex/LlamaCloud API        |
+| `LLAMA_INDEX_KEY`     | LlamaParse, for reading scanned PDFs (text PDFs and Office files need no key) |
 | `FIRECRAWL_API_KEY`   | Firecrawl web scraping           |
 | `OPENWEATHER_API_KEY` | OpenWeather API for weather data |
 

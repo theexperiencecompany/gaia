@@ -18,7 +18,7 @@ Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confir
 - **Git** — only if you start from a clone (see [Quick Start](#quick-start)) (`sudo apt-get install -y git` on Ubuntu/Debian).
 - **8 GB RAM minimum** — plus 2+ CPU cores and 10 GB free disk. The local embedding model loads ~1.8 GB into each of `gaia-backend` and `arq_worker` on first use (see [Memory sizing](#memory-sizing)).
 - **Ports** — only `3000` must be free on the host (override with `WEB_HOST_PORT`); with a domain, `80` and `443` instead (see [HTTPS on your own domain](#https-on-your-own-domain)). The API and every datastore stay on the internal Docker network and are never published to the host.
-- **No API keys to boot** — the stack starts with no provider keys. Pass one to `gaia up --llm-provider openai --llm-key ...`, add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
+- **No API keys to boot** — the stack starts with no provider keys. Pass one to `gaia up --llm-provider openai --llm-key ...` (see the [walkthrough](/self-hosting/walkthrough#install-and-start-gaia) for every provider), add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
 - **No manual `.env` setup, no Infisical** — `gaia up` writes `apps/api/.env` (`ENV=selfhost`, `AUTH_MODE=local`) and generates the three machine secrets (`AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) for you. Never `cp .env.example .env` and self-host never contacts Infisical.
 
 <AccordionGroup>
@@ -97,8 +97,9 @@ Same codebase, different operating profile. Self-host runs with `ENV=selfhost` a
 | **File uploads** | Cloudinary (managed) | Local `gaia-selfhost_files` volume by default, no account needed; Cloudinary with `BLOB_STORE=cloudinary` — see [File storage](#file-storage) |
 | **Workspace storage** | Hosted R2 + JuiceFS (managed) | Local `gaia-selfhost_workspace` volume; no object store or FUSE needed — see [File storage](#file-storage) |
 | **Sandbox** | E2B (required) with warm pool | Off until you save an E2B key or opt into the local Docker-socket sandbox with `gaia up --code-sandbox` — see [Local coding sandbox](#local-coding-sandbox) |
-| **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Bring your own LiveKit or leave unset to disable voice |
-| **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | Same providers but opt-in via env; unset skips that lane |
+| **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Not available: the self-host stack ships no voice worker and no LiveKit server. Settings shows voice as unavailable |
+| **Browser automation** | Hosted browser for the agent's browser tasks | Not available: the self-host stack has no browser host, so the agent has no browser tool. Settings shows it as unavailable. Reading web pages still works through the built-in reader |
+| **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | DuckDuckGo with no key. Tavily, Exa, Brave, Firecrawl and your own SearXNG are optional, set in **Settings → Providers & Tools** (or env). A SearXNG you add is tried before DuckDuckGo |
 | **Email** | Resend (managed) | Optional `RESEND_*` — without it email features stay quiet |
 | **Observability** | Loki + Grafana, LogQL over shipped logs | Container `json-file` logs only (10 MB × 3 rotated files); no Loki shipper |
 | **Updates** | Deployed by the team | `gaia update` — moves to the release your CLI ships (pinned images + matching compose files) and restarts; volumes survive |

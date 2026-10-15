@@ -100,19 +100,27 @@ Combines configuration, image pull/build and startup into a single command. GAIA
 | Flag                     | Description                                                        |
 | ------------------------ | ------------------------------------------------------------------ |
 | `--yes`                  | Install git and Docker without asking when they are missing (apt-based Linux). Nothing else in `gaia up` asks a question |
-| `--llm-key <key>`        | LLM API key for first boot                                         |
-| `--llm-provider <name>`  | Provider for `--llm-key`: `openrouter`, `gemini`, `openai`, or `custom` |
+| `--llm-provider <name>`  | AI provider to save once GAIA is up, as the setup wizard would: `openrouter`, `gemini`, `openai`, `ollama` or `custom` |
+| `--llm-key <key>`        | API key for `--llm-provider`. Required for `openrouter`, `gemini`, `openai` and `custom`; refused for `ollama` |
+| `--llm-base-url <url>`   | Endpoint for `ollama` (optional, default `http://host.docker.internal:11434`) or `custom` (required) |
+| `--llm-model <model>`    | Model for `ollama` (optional) or `custom` (required) |
 | `--web-port <port>`      | Host port GAIA is served on (default 3000)                         |
 | `--domain <domain>`      | Serve GAIA at `https://<domain>` with an automatic certificate (uses ports 80 and 443) |
 | `-b, --build`            | Build images locally before starting                               |
 | `--code-sandbox`         | Run agent code in local containers through the host Docker socket (root-equivalent; saved for later starts and updates) — see [Local coding sandbox](/self-hosting/docker-setup#local-coding-sandbox) |
 | `--no-code-sandbox`      | Turn the local code sandbox off again                              |
-| `--no-start`             | Configure environment only; do not start services                  |
+| `--no-start`             | Configure environment only; do not start services. Refused with `--llm-provider` |
 | `--force-dev-tree`       | Allow operating on a developer checkout that is not the install    |
 
 ```bash
 # Fully non-interactive first boot
 gaia up --yes --llm-provider openai --llm-key <key>
+
+# A local Ollama, no key
+gaia up --yes --llm-provider ollama --llm-model qwen3
+
+# Any OpenAI-compatible gateway
+gaia up --llm-provider custom --llm-key <key> --llm-base-url https://gateway.example.com/v1 --llm-model <model>
 
 # Public server with HTTPS (DNS must already point at this host)
 gaia up --yes --domain gaia.example.com
