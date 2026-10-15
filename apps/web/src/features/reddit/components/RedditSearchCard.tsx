@@ -5,6 +5,7 @@ import { ArrowUp02Icon, BubbleChatIcon } from "@icons";
 import Link from "next/link";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { RedditIcon } from "@/components/shared/icons";
+import { MetaDot } from "@/components/shared/MetaDot";
 import { track } from "@/lib/analytics";
 import type { RedditSearchData } from "@/types/features/redditTypes";
 
@@ -87,7 +88,9 @@ export default function RedditSearchCard({
                         <span className="font-semibold text-orange-500">
                           {post.subreddit}
                         </span>
+                        <MetaDot />
                         <span className="text-zinc-500">u/{post.author}</span>
+                        <MetaDot />
                         <span className="text-zinc-500">
                           {formatTime(post.created_utc)}
                         </span>

@@ -3,6 +3,7 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { useMemo } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { GoogleCalendarIcon } from "@/components/shared/icons";
+import { MetaDot } from "@/components/shared/MetaDot";
 import type { CalendarFetchData } from "@/types/features/calendarTypes";
 import { groupFetchDataByDate } from "@/utils/calendar/eventGrouping";
 import {
@@ -84,6 +85,7 @@ export default function CalendarListCard({
                           {/* Time and Calendar Name */}
                           <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
                             {timeLabel && <span>{timeLabel}</span>}
+                            {timeLabel && event.calendar_name && <MetaDot />}
                             {event.calendar_name && (
                               <span className="text-zinc-400">
                                 {event.calendar_name}

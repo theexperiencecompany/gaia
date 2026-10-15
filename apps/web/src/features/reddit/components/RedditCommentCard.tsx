@@ -9,6 +9,7 @@ import {
   UserCircle02Icon,
 } from "@icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { MetaDot } from "@/components/shared/MetaDot";
 import type { RedditCommentData } from "@/types/features/redditTypes";
 
 interface RedditCommentCardProps {
@@ -82,6 +83,7 @@ export default function RedditCommentCard({
                         OP
                       </span>
                     )}
+                    <MetaDot />
                     <span className="text-zinc-500">
                       {formatTime(comment.created_utc)}
                     </span>

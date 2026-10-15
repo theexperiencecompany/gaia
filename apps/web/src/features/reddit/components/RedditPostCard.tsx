@@ -10,6 +10,7 @@ import {
   LinkSquare02Icon,
 } from "@icons";
 import Link from "next/link";
+import { MetaDot } from "@/components/shared/MetaDot";
 import { track } from "@/lib/analytics";
 import type { RedditPostData } from "@/types/features/redditTypes";
 
@@ -77,7 +78,9 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
               <span className="font-semibold text-orange-500">
                 {post.subreddit}
               </span>
+              <MetaDot />
               <span className="text-zinc-400">u/{post.author}</span>
+              <MetaDot />
               <span className="text-zinc-500">
                 {formatTime(post.created_utc)}
               </span>

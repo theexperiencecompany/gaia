@@ -3,6 +3,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { CheckmarkCircle02Icon } from "@icons";
 import { useRouter } from "next/navigation";
+import { MetaDot } from "@/components/shared/MetaDot";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import TodoItem from "@/features/todo/components/TodoItem";
 import { useTodoStore } from "@/stores/todoStore";
@@ -162,7 +163,10 @@ function TodoProjectsView({
                 <span>{project.todo_count} tasks</span>
               )}
               {project.completion_percentage !== undefined && (
-                <span>{Math.round(project.completion_percentage)}%</span>
+                <>
+                  {project.todo_count !== undefined && <MetaDot />}
+                  <span>{Math.round(project.completion_percentage)}%</span>
+                </>
               )}
             </div>
           </button>
