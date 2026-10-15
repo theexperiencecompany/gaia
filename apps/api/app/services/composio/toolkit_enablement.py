@@ -154,6 +154,7 @@ def _code_integration(slug: str) -> OAuthIntegration | None:
     )
 
 
+@CacheInvalidator(key=ALL_USERS_TOOLS_CACHE_PATTERN)
 async def enable_toolkit(slug: str, credentials: dict[str, str]) -> EnableComposioToolkitResponse:
     """Create the toolkit's auth config and make it connectable on this instance."""
     entry = await _entry(slug)
@@ -177,7 +178,20 @@ async def enable_toolkit(slug: str, credentials: dict[str, str]) -> EnableCompos
             code="composio_auth_config_rejected",
         ) from e
 
-    integration = await _install(entry, plan.scheme, auth_config_id)
+    integration = _code_integration(slug)
+    if integration is None:
+        integration = await save_toolkit(
+            InstanceToolkitRecord(
+                slug=entry.slug,
+                name=entry.name,
+                description=entry.description,
+                logo=entry.logo,
+                category=entry.categories[0] if entry.categories else "other",
+                auth_scheme=plan.scheme,
+            )
+        )
+        spawn_background_task(_index_toolkit_tools(integration))
+    await set_stored_auth_config(integration.id, auth_config_id)
     log.set_ns(
         "composio_toolkit",
         slug=slug,
@@ -192,29 +206,6 @@ async def enable_toolkit(slug: str, credentials: dict[str, str]) -> EnableCompos
         origin=integration.origin,
         composio_managed=plan.composio_managed,
     )
-
-
-# Invalidates when the writes start, so it wraps only the fast Mongo writes:
-# a page read during the slow Composio call before it would re-cache the old list.
-@CacheInvalidator(key=ALL_USERS_TOOLS_CACHE_PATTERN)
-async def _install(
-    entry: ComposioCatalogEntry, scheme: str, auth_config_id: str
-) -> OAuthIntegration:
-    integration = _code_integration(entry.slug)
-    if integration is None:
-        integration = await save_toolkit(
-            InstanceToolkitRecord(
-                slug=entry.slug,
-                name=entry.name,
-                description=entry.description,
-                logo=entry.logo,
-                category=entry.categories[0] if entry.categories else "other",
-                auth_scheme=scheme,
-            )
-        )
-        spawn_background_task(_index_toolkit_tools(integration))
-    await set_stored_auth_config(integration.id, auth_config_id)
-    return integration
 
 
 @CacheInvalidator(key=ALL_USERS_TOOLS_CACHE_PATTERN)

@@ -1,5 +1,6 @@
 """Unit tests for the Redis caching decorators (app/decorators/caching.py)."""
 
+import asyncio
 import re
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -393,3 +394,59 @@ class TestCacheInvalidatorAsyncKeyGenerator:
             assert await mutate("x") == "done"
 
         assert [c.args[0] for c in mock_delete.await_args_list] == ["bust:a", "bust:b"]
+
+
+class TestCacheInvalidatorOrdering:
+    """The invalidation lands after the write, or a read during the write re-caches the old value."""
+
+    async def test_a_read_interleaved_with_the_write_does_not_leave_stale_data_cached(self):
+        db = {"name": "old"}
+        store: dict[str, object] = {"profile:u1": "old"}
+        write_started = asyncio.Event()
+        read_done = asyncio.Event()
+
+        async def get_cache(key: str, model: object = None) -> object:
+            return store.get(key)
+
+        async def set_cache(key: str, value: object, ttl: int, model: object = None) -> bool:
+            store[key] = value
+            return True
+
+        async def delete_cache(key: str) -> None:
+            store.pop(key, None)
+
+        @Cacheable(key_pattern="profile:{user_id}")
+        async def read_profile(user_id: str) -> str:
+            return db["name"]
+
+        @CacheInvalidator(key_patterns=["profile:{user_id}"])
+        async def rename(user_id: str, name: str) -> None:
+            write_started.set()
+            await read_done.wait()
+            db["name"] = name
+
+        async def read_during_write() -> None:
+            await write_started.wait()
+            await read_profile("u1")
+            read_done.set()
+
+        with (
+            patch("app.decorators.caching.get_cache", get_cache),
+            patch("app.decorators.caching.set_cache", set_cache),
+            patch("app.decorators.caching.delete_cache", delete_cache),
+        ):
+            await asyncio.gather(rename("u1", "new"), read_during_write())
+            assert await read_profile("u1") == "new"
+
+    async def test_a_failed_write_leaves_the_cache_untouched(self):
+        @CacheInvalidator(key="profile:u1")
+        async def rename() -> None:
+            raise RuntimeError("write failed")
+
+        with (
+            patch("app.decorators.caching.delete_cache", new_callable=AsyncMock) as mock_delete,
+            pytest.raises(RuntimeError, match="write failed"),
+        ):
+            await rename()
+
+        mock_delete.assert_not_called()
