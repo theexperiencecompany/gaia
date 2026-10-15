@@ -57,6 +57,7 @@ def test_the_admin_keeps_their_account_and_signs_in_with_the_new_password(
     password = reset_admin_credential(credentials)
 
     assert password is not None
+    assert len(password) == 24  # 18 random bytes, url-safe base64
     admin = credentials.find_one({"slot": ADMIN_CREDENTIAL_SLOT})
     assert admin is not None and admin["user_id"] == ADMIN_ID
     assert bcrypt.checkpw(password.encode(), admin["password_hash"].encode())

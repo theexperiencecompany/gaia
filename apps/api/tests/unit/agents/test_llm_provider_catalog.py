@@ -269,6 +269,7 @@ class TestGeminiOnly:
         lane, _ = await resolve_lane(None, role)
 
         assert (lane.provider, lane.model) == ("gemini", "gemini-3.1-flash-lite")
+        assert (lane.reasoning, lane.max_input_tokens) == (None, DEFAULT_MAX_TOKENS)
 
     @pytest.mark.parametrize("use", list(ModelUse))
     def test_every_one_shot_role_runs_on_gemini(self, use: ModelUse) -> None:

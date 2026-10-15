@@ -823,8 +823,12 @@ class TestGetComposioService:
         ):
             mock_providers.get.return_value = None
 
-            with pytest.raises(ProviderNotConfiguredError, match="COMPOSIO_KEY"):
+            with pytest.raises(ProviderNotConfiguredError) as refused:
                 mod.get_composio_service()
+
+        assert refused.value.message == (
+            "COMPOSIO_KEY is not set in settings and no composio credential is stored"
+        )
 
     def test_a_key_whose_service_failed_to_build_is_a_real_failure(self):
         from app.services.composio import composio_service as mod
