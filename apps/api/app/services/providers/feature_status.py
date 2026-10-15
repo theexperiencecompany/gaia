@@ -82,8 +82,8 @@ def _available(feature: ProviderFeature) -> bool:
 
 
 def _hosted_browser() -> list[str]:
-    usable = is_usable("openrouter", resolved_config("openrouter"))
-    return [BuiltInEngine.HOSTED_BROWSER] if usable else []
+    keyed = resolved_config(CredentialProviderName.OPENROUTER) is not None
+    return [BuiltInEngine.HOSTED_BROWSER] if keyed else []
 
 
 def _hosted_voice() -> list[str]:

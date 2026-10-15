@@ -245,3 +245,25 @@ async def test_gaia_cloud_runs_browser_and_voice_on_its_own_services(
 
     assert statuses[ProviderFeature.BROWSER].in_use == [BuiltInEngine.HOSTED_BROWSER]
     assert statuses[ProviderFeature.VOICE].in_use == [BuiltInEngine.HOSTED_VOICE]
+
+
+@pytest.mark.parametrize("missing", ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"])
+async def test_gaia_cloud_voice_needs_every_livekit_setting(
+    monkeypatch: pytest.MonkeyPatch, missing: str
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+    for name in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+        monkeypatch.setattr(settings, name, None if name == missing else "set")
+
+    assert (await _status(ProviderFeature.VOICE)).in_use == []
+
+
+async def test_gaia_cloud_browser_needs_an_openrouter_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", None)
+
+    assert (await _status(ProviderFeature.BROWSER)).in_use == []
