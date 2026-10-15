@@ -9,6 +9,7 @@ import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslate
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { LEARN_DOCS_LINKS } from "@/lib/docs-links";
 import {
   generateBreadcrumbSchema,
   generateDefinedTermSchema,
@@ -107,6 +108,8 @@ export default async function GlossaryTermPage({ params }: PageProps) {
     data.definition,
     `${siteConfig.url}/learn/${term}`,
   );
+
+  const docsGuides = LEARN_DOCS_LINKS[term] ?? [];
 
   // Fetch related terms and comparisons in parallel
   const [relatedTerms, relatedComparisonData] = await Promise.all([
@@ -230,6 +233,31 @@ export default async function GlossaryTermPage({ params }: PageProps) {
                   </h3>
                   <p className="text-xs text-zinc-400">{comparison.tagline}</p>
                 </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Guides in the Docs */}
+        {docsGuides.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-3xl font-semibold text-white">
+              {t("common.docs_guides")}
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {docsGuides.map((guide) => (
+                <a
+                  key={guide.url}
+                  href={guide.url}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                    {guide.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    docs.heygaia.io
+                  </p>
+                </a>
               ))}
             </div>
           </section>

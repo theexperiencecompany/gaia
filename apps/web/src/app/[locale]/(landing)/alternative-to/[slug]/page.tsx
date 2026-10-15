@@ -19,6 +19,7 @@ import {
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
+import { ALTERNATIVE_DOCS_LINKS, type DocsGuideLink } from "@/lib/docs-links";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -98,6 +99,7 @@ interface AlternativeArticleProps {
   readonly relatedComparisons: Awaited<
     ReturnType<typeof getTranslatedComparisons>
   >;
+  readonly docsGuides: readonly DocsGuideLink[];
 }
 
 function AlternativeArticle({
@@ -108,6 +110,7 @@ function AlternativeArticle({
   marketplacePath,
   relatedAlternatives,
   relatedComparisons,
+  docsGuides,
 }: AlternativeArticleProps) {
   return (
     <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
@@ -329,6 +332,31 @@ function AlternativeArticle({
         </section>
       )}
 
+      {/* Guides in the Docs */}
+      {docsGuides.length > 0 && (
+        <section className="mb-16">
+          <h2 className="mb-6 text-3xl font-semibold text-white">
+            {t("common.docs_guides")}
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {docsGuides.map((guide) => (
+              <a
+                key={guide.url}
+                href={guide.url}
+                className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+              >
+                <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                  {guide.title}
+                </h3>
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  docs.heygaia.io
+                </p>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Cross-link to comparison page */}
       {hasComparisonPage && (
         <section className="mb-16 border-t border-zinc-800 pt-8">
@@ -411,6 +439,8 @@ export default async function AlternativePage({ params }: PageProps) {
     .filter((a) => a.slug !== slug && a.category === data.category)
     .slice(0, 3);
 
+  const docsGuides = ALTERNATIVE_DOCS_LINKS[slug] ?? [];
+
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
     data.metaDescription,
@@ -462,6 +492,7 @@ export default async function AlternativePage({ params }: PageProps) {
         marketplacePath={marketplacePath}
         relatedAlternatives={relatedAlternatives}
         relatedComparisons={relatedComparisons}
+        docsGuides={docsGuides}
       />
 
       <FinalSection />

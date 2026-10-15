@@ -13,6 +13,7 @@ import {
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
+import { AUTOMATE_DOCS_LINKS } from "@/lib/docs-links";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -88,6 +89,8 @@ export default async function AutomateComboPage({ params }: PageProps) {
           c.toolBSlug === data.toolASlug),
     )
     .slice(0, 3);
+
+  const docsGuides = AUTOMATE_DOCS_LINKS[combo] ?? [];
 
   const pageUrl = `${siteConfig.url}/automate/${combo}`;
 
@@ -303,6 +306,31 @@ export default async function AutomateComboPage({ params }: PageProps) {
                   </h3>
                   <p className="text-xs text-zinc-400">{related.tagline}</p>
                 </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Guides in the Docs */}
+        {docsGuides.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-2xl font-semibold text-white">
+              {t("common.docs_guides")}
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {docsGuides.map((guide) => (
+                <a
+                  key={guide.url}
+                  href={guide.url}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                    {guide.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    docs.heygaia.io
+                  </p>
+                </a>
               ))}
             </div>
           </section>

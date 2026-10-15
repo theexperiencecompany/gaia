@@ -16,6 +16,7 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { resolveMarketplacePath } from "@/lib/marketplaceLinks";
+import { COMPARE_DOCS_LINKS } from "@/lib/docs-links";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -93,6 +94,8 @@ export default async function ComparisonPage({ params }: PageProps) {
       ),
     )
   ).filter((p): p is NonNullable<typeof p> => p !== undefined);
+
+  const docsGuides = COMPARE_DOCS_LINKS[slug] ?? [];
 
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
@@ -325,6 +328,31 @@ export default async function ComparisonPage({ params }: PageProps) {
                     {persona.metaDescription}
                   </p>
                 </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Guides in the Docs */}
+        {docsGuides.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-3xl font-semibold text-white">
+              {t("common.docs_guides")}
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {docsGuides.map((guide) => (
+                <a
+                  key={guide.url}
+                  href={guide.url}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                    {guide.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    docs.heygaia.io
+                  </p>
+                </a>
               ))}
             </div>
           </section>
