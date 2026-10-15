@@ -148,6 +148,85 @@ class TestGetInstanceSecretGeneration:
         assert await get_instance_secret() == "winner-secret"
 
 
+class TestGetInstanceSecretRefusals:
+    """Every refusal says what is wrong and how to recover, and never regenerates."""
+
+    async def test_a_doc_without_the_secret_names_the_field_and_the_restore(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(settings, "INSTANCE_SECRET", None)
+        repo = make_repo(monkeypatch)
+        repo.docs[SECRETS_KEY] = {}
+
+        with pytest.raises(AppError) as refused:
+            await get_instance_secret()
+
+        assert refused.value.message == (
+            "The 'secrets' instance-settings document carries no 'instance_secret' value"
+        )
+        assert refused.value.why == (
+            "regenerating the secret here would orphan every credential "
+            "encrypted and session signed under the previous one"
+        )
+        assert refused.value.fix == (
+            "restore 'instance_secret' into the 'secrets' document "
+            "(or set INSTANCE_SECRET in the environment to the original secret)"
+        )
+        assert repo.set_if_absent_calls == []
+
+    async def test_a_non_string_secret_is_not_a_secret(self, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "INSTANCE_SECRET", None)
+        repo = make_repo(monkeypatch)
+        repo.docs[SECRETS_KEY] = {SECRET_FIELD: 12345}
+
+        with pytest.raises(AppError):
+            await get_instance_secret()
+
+    async def test_a_lost_race_with_no_winner_row_says_so(self, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "INSTANCE_SECRET", None)
+        repo = make_repo(monkeypatch)
+
+        async def _lose_without_a_row(key: str, value: dict[str, object]) -> bool:
+            return False
+
+        monkeypatch.setattr(repo, "set_if_absent", _lose_without_a_row)
+
+        with pytest.raises(AppError) as refused:
+            await get_instance_secret()
+
+        assert refused.value.message == (
+            "Lost the instance-secret insert race but found no persisted secret"
+        )
+        assert refused.value.why == (
+            "the 'secrets' document vanished between the failed insert and the re-read"
+        )
+        assert refused.value.fix == (
+            "retry; if it persists, check for something deleting instance_settings rows"
+        )
+
+    async def test_a_lost_race_to_a_malformed_winner_says_so(self, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "INSTANCE_SECRET", None)
+        repo = make_repo(monkeypatch)
+        repo.lost_race_secret = ""
+
+        with pytest.raises(AppError) as refused:
+            await get_instance_secret()
+
+        assert refused.value.message == (
+            "The raced 'secrets' instance-settings document carries no 'instance_secret' value"
+        )
+        assert refused.value.why == "a concurrent writer stored a malformed secrets document"
+        assert refused.value.fix == (
+            "inspect the 'secrets' document and restore a valid instance secret"
+        )
+
+    async def test_a_generated_secret_carries_48_random_bytes(self, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "INSTANCE_SECRET", None)
+        make_repo(monkeypatch)
+
+        assert len(await get_instance_secret()) == 64  # 48 bytes, url-safe base64
+
+
 # ---------------------------------------------------------------------------
 # fernet_key_from
 # ---------------------------------------------------------------------------

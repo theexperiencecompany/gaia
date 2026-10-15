@@ -494,10 +494,28 @@ class TestInvalidate:
         """Cross-pod refresh degrades loudly; local consistency work already done."""
         redis_fake.fail_publish = True
 
-        await invalidate("gemini")
+        async with captured_wide_event() as event:
+            await invalidate("gemini")
 
         assert "gemini" not in service_module._cache
         assert aux_cache_calls == [1]
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.API} Failed to publish runtime-config update",
+                "channel": RUNTIME_CONFIG_CHANNEL,
+                "scope": "provider:gemini",
+                "error": "redis down",
+                "error_type": "ConnectionError",
+            }
+        ]
+
+    async def test_without_redis_the_update_stays_local(self, monkeypatch) -> None:
+        monkeypatch.setattr(redis_cache, "redis", None)
+
+        async with captured_wide_event() as event:
+            await invalidate("gemini")
+
+        assert "errors" not in event
 
     async def test_upsert_invalidates_its_own_cache(
         self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls
