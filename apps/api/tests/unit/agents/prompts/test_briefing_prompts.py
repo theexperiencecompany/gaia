@@ -117,7 +117,7 @@ def test_the_correction_note_lists_each_problem_on_its_own_line_between_header_a
         "They did not match today's facts:",
         "- headline names Dhruv",
         "- lede counts 3 drafts",
-        "Write them again from today's facts and [COUNTS] only, then return the whole JSON.",
+        "Write them again from today's facts only, then return the whole JSON.",
     ]
 
 

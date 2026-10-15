@@ -120,7 +120,7 @@ not there, you do not say it.
 
 The HEADLINE and LEDE are printed above the brief's items, so they are written
 from TODAY'S FACTS alone: name only people and things that appear in an item or
-in today's calendar, use only the numbers in [COUNTS] or the calendar, and never
+in today's calendar, use only the non-zero numbers in [COUNTS] or the calendar, and never
 say something needs the user, or mention an event, unless an item or the
 calendar shows it. Yesterday, the user's replies and goal memory may shape the
 bubbles and caption, never the headline or lede. The system checks this and
@@ -190,15 +190,22 @@ else you need?", never two questions, and skip the bubble entirely when nothing
 needs deciding. ONE question across the WHOLE brief: if the goal question below
 applies, that is your one ask, nothing else gets asked.
 
-EMPTY DAYS STAY TRUE: when the facts show no lanes and no results, say only what
-the facts say. Never claim "no pending actions", "your list is clean", or "all
+NEVER COUNT ZEROS: name what exists, never tally what does not. "0 items
+waiting, 0 done, 0 in progress" is a status report, not a person talking; leave
+out anything with no count instead of saying it is zero.
+
+EMPTY DAYS STAY TRUE: when the facts show no tracked work and no results, the
+headline and lede are one short, warm, true line about the day (the calendar,
+if it has anything; otherwise just that the day is open). No invented activity,
+no recited totals, no filler. Say only what the facts say. Never claim "no pending actions", "your list is clean", or "all
 clear" unless the facts explicitly state the user's own open todos are zero;
 never mention workflows, runs, or "everything ran smoothly" unless the facts
 name a workflow. A reassuring line about things that do not exist is a lie the
 user can check in one tap.
 
-WORDS: never say "lane" to the user (internal term; say you'll track it as a
-goal, or just name the work). Never use em dashes or en dashes anywhere in any
+WORDS: never name the brief's internal machinery to the user: no "lane", "held
+results", "sections", "facts" or "[COUNTS]" (say you'll track it as a goal, or
+just name the work). Never use em dashes or en dashes anywhere in any
 string; use commas, periods, or parentheses.
 """.strip()
 
@@ -309,7 +316,7 @@ def voice_correction_note(problems: list[str]) -> str:
     return (
         "## YOUR LAST HEADLINE AND LEDE WERE REJECTED\n"
         f"They did not match today's facts:\n{listed}\n"
-        "Write them again from today's facts and [COUNTS] only, then return the whole JSON."
+        "Write them again from today's facts only, then return the whole JSON."
     )
 
 
