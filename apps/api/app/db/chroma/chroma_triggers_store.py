@@ -12,6 +12,7 @@ from chromadb.api.models.AsyncCollection import AsyncCollection
 from chromadb.api.types import GetResult
 from langgraph.store.base import PutOp
 
+from app.agents.tools.core.store import embedding_dims
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.chroma import CHROMA_TRIGGERS_STORE_COLLECTION
 from app.constants.log_tags import LogTag
@@ -242,7 +243,7 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
     if embeddings is None:
         raise RuntimeError("Embeddings not available for triggers store")
 
-    dims = getattr(embeddings, "embedding_dims", 768)
+    dims = embedding_dims(embeddings)
 
     store = ChromaStore(
         client=chroma_client,

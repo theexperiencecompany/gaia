@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.tools.core.local_embeddings import FastEmbedEmbeddings
+from app.constants.chroma import GEMINI_EMBEDDING_DIMS
+from app.constants.memory import EMBEDDING_DIM
 from app.db.chroma.chroma_store import ChromaBatchWriteError
 from app.db.chroma.chroma_triggers_store import (
     TRIGGERS_NAMESPACE,
@@ -473,8 +476,8 @@ class TestInitializeChromaTriggersStore:
     @pytest.mark.parametrize(
         ("embeddings", "dims"),
         [
-            (SimpleNamespace(embedding_dims=1024), 1024),
-            (object(), 768),
+            (FastEmbedEmbeddings(), EMBEDDING_DIM),
+            (object(), GEMINI_EMBEDDING_DIMS),
         ],
         ids=["local-fastembed-declares-its-size", "google-default"],
     )

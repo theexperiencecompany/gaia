@@ -11,6 +11,7 @@ from langgraph.store.base import PutOp
 
 from app.agents.core.subagents.registry import all_subagents
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.agents.tools.core.store import embedding_dims
 from app.constants.chroma import (
     CHROMA_TOOLS_STORE_COLLECTION,
     TOOLS_INDEX_CACHE_TTL_SECONDS,
@@ -537,7 +538,7 @@ async def initialize_chroma_tools_store() -> ChromaStore:
     if embeddings is None:
         raise RuntimeError("Embeddings not available")
 
-    dims = getattr(embeddings, "embedding_dims", 768)
+    dims = embedding_dims(embeddings)
 
     store = ChromaStore(
         client=chroma_client,

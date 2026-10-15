@@ -9,8 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langgraph.store.base import PutOp
 import pytest
 
+from app.agents.tools.core.local_embeddings import FastEmbedEmbeddings
 from app.constants.chroma import (
     CHROMA_TOOLS_STORE_COLLECTION,
+    GEMINI_EMBEDDING_DIMS,
     TOOLS_INDEX_CACHE_TTL_SECONDS,
     TOOLS_SEED_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     TOOLS_SEED_LOCK_KEY_PREFIX,
@@ -19,6 +21,7 @@ from app.constants.chroma import (
     TOOLS_SEED_LOCK_RENEW_SECONDS,
 )
 from app.constants.log_tags import LogTag
+from app.constants.memory import EMBEDDING_DIM
 from app.db.chroma import chroma_tools_store
 from app.db.chroma.chroma_store import ChromaBatchWriteError
 from app.db.chroma.chroma_tools_store import (
@@ -1043,8 +1046,8 @@ class TestInitializeChromaToolsStore:
     @pytest.mark.parametrize(
         ("embeddings", "dims"),
         [
-            (SimpleNamespace(embedding_dims=1024), 1024),
-            (object(), 768),
+            (FastEmbedEmbeddings(), EMBEDDING_DIM),
+            (object(), GEMINI_EMBEDDING_DIMS),
         ],
         ids=["local-fastembed-declares-its-size", "google-default"],
     )
