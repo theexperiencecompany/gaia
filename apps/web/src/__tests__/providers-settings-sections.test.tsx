@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ProviderCatalog,
   SetupStatus,
+  StoredProviderConfig,
 } from "@/features/settings/api/providersApi";
 
 const CATALOG_LABELS: [string, string][] = [
@@ -40,6 +41,8 @@ const catalog: ProviderCatalog = {
         default_model: "",
         favicon_domain: `${key}.example`,
         needs_base_url: key === "searxng",
+        account_id_label: key === "cloudinary" ? "Cloud name" : "",
+        second_key_label: key === "cloudinary" ? "API secret" : "",
       },
     ]),
   ),
@@ -113,6 +116,9 @@ const status = {
 } as SetupStatus;
 
 const statusQuery: { data: SetupStatus | undefined } = { data: status };
+const storedConfigs: { data: Record<string, StoredProviderConfig> } = {
+  data: {},
+};
 
 vi.mock("@/components/shared/ConfirmationDialog", () => ({
   ConfirmationDialog: () => null,
@@ -121,7 +127,11 @@ vi.mock("@/features/settings/hooks/useProviderCatalog", () => ({
   useProviderCatalog: () => ({ data: catalog, isError: false }),
 }));
 vi.mock("@/features/settings/hooks/useProviderConfigs", () => ({
-  useProviderConfigs: () => ({ data: {}, isLoading: false, refetch: vi.fn() }),
+  useProviderConfigs: () => ({
+    data: storedConfigs.data,
+    isLoading: false,
+    refetch: vi.fn(),
+  }),
 }));
 vi.mock("@/features/settings/hooks/useSetupStatus", async (importOriginal) => ({
   ...(await importOriginal<
@@ -138,6 +148,7 @@ const card = (title: string) =>
 describe("ProvidersSettings", () => {
   beforeEach(() => {
     statusQuery.data = status;
+    storedConfigs.data = {};
     render(<ProvidersSettings />);
   });
 
@@ -211,5 +222,32 @@ describe("ProvidersSettings before setup status loads", () => {
 
     const models = card("AI models");
     expect(models.getByPlaceholderText("Paste your OpenAI key")).toBeTruthy();
+  });
+});
+
+describe("ProvidersSettings for a two-part account", () => {
+  it("asks for Cloudinary's cloud name and API secret, seeding what is stored", () => {
+    statusQuery.data = {
+      ...status,
+      deployment: { ...status.deployment, blob_store: "cloudinary" },
+    };
+    storedConfigs.data = {
+      cloudinary: {
+        configured: true,
+        account_id: "my-cloud",
+        api_key_hint: "...1234",
+        api_secret_hint: "...abcd",
+      } as StoredProviderConfig,
+    };
+    render(<ProvidersSettings />);
+
+    const storage = card("File storage");
+    expect(
+      (storage.getByLabelText("Cloud name") as HTMLInputElement).value,
+    ).toBe("my-cloud");
+    expect(
+      storage.getByPlaceholderText("Stored (...abcd), paste to replace"),
+    ).toBeTruthy();
+    expect(card("Email").queryByLabelText("Cloud name")).toBeNull();
   });
 });

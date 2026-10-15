@@ -42,10 +42,9 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
 
 /**
  * Tool / integration keys the wizard offers. google_oauth and cloudinary are
- * deliberately absent: a pasted key alone cannot make them work (Google also
- * needs its client id, Cloudinary its cloud name + secret, all env-only), so
- * offering them here would report "Connected" for a dead integration. They
- * stay configurable in Settings, where the cards say what else they need.
+ * deliberately absent: each needs a multi-part account (Google a client id and
+ * secret, Cloudinary a cloud name, key and secret) that only optional setups
+ * use, so first-run setup leaves them to their Settings cards.
  */
 export const TOOL_PROVIDER_CARDS: ProviderCardConfig[] = [
   keyOnlyCard("composio"),

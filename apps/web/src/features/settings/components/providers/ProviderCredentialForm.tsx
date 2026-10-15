@@ -45,8 +45,18 @@ export function ProviderCredentialForm({
 
   return (
     <div className="flex flex-col gap-3">
+      {row.account_id_label && (
+        <Input
+          label={row.account_id_label}
+          value={form.accountId}
+          onValueChange={form.setAccountId}
+          autoComplete="off"
+          isDisabled={isBusy}
+        />
+      )}
       {row.showApiKey && (
         <ProviderApiKeyInput
+          label="API key"
           keyUrl={row.key_url}
           placeholder={
             storedKeyHint
@@ -60,6 +70,26 @@ export function ProviderCredentialForm({
           }
           value={form.apiKey}
           onValueChange={form.setApiKey}
+          autoComplete="off"
+          isDisabled={isBusy}
+        />
+      )}
+      {row.second_key_label && (
+        <ProviderApiKeyInput
+          label={row.second_key_label}
+          keyUrl=""
+          placeholder={
+            stored?.api_secret_hint
+              ? `Stored (${stored.api_secret_hint}), paste to replace`
+              : `Paste your ${row.second_key_label}`
+          }
+          description={
+            stored?.api_secret_hint
+              ? "Saved. Leave empty to keep it, or paste to replace."
+              : undefined
+          }
+          value={form.apiSecret}
+          onValueChange={form.setApiSecret}
           autoComplete="off"
           isDisabled={isBusy}
         />

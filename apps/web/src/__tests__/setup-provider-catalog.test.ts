@@ -44,6 +44,8 @@ const entry = (overrides: Partial<ProviderCatalog["providers"][string]>) => ({
   default_model: "",
   favicon_domain: "",
   needs_base_url: false,
+  account_id_label: "",
+  second_key_label: "",
   ...overrides,
 });
 

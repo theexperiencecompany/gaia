@@ -36,6 +36,9 @@ export function useConfigureProvider({
 }: UseConfigureProviderArgs) {
   const { confirm, confirmationProps } = useConfirmation();
   const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+  // The account half is not secret, so it seeds from what is stored.
+  const [accountId, setAccountId] = useState(() => stored?.account_id ?? "");
   const [baseUrl, setBaseUrl] = useState(
     () => stored?.base_url || row.base_url,
   );
@@ -73,6 +76,12 @@ export function useConfigureProvider({
   const buildBody = (): ProviderConfigBody => {
     const body: ProviderConfigBody = {};
     if (apiKey.trim()) body.api_key = apiKey.trim();
+    if (row.second_key_label && apiSecret.trim()) {
+      body.api_secret = apiSecret.trim();
+    }
+    if (row.account_id_label && accountId.trim()) {
+      body.account_id = accountId.trim();
+    }
     if (preset !== "manual") body.preset = preset;
     if (baseUrl.trim()) body.base_url = baseUrl.trim();
     if (row.showModelField && model.trim()) body.model = model.trim();
@@ -80,8 +89,11 @@ export function useConfigureProvider({
   };
 
   const save = async () => {
-    // A stored key never lingers in the field; the masked hint stands in for it.
-    if (await connection.connect(buildBody())) setApiKey("");
+    // A stored secret never lingers in its field; the masked hint stands in for it.
+    if (await connection.connect(buildBody())) {
+      setApiKey("");
+      setApiSecret("");
+    }
   };
 
   const remove = async () => {
@@ -107,6 +119,10 @@ export function useConfigureProvider({
   return {
     apiKey,
     setApiKey: editField(setApiKey),
+    apiSecret,
+    setApiSecret: editField(setApiSecret),
+    accountId,
+    setAccountId: editField(setAccountId),
     baseUrl,
     setBaseUrl: editField(setBaseUrl),
     model,
