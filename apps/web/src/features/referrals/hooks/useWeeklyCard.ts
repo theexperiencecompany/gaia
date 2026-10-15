@@ -2,17 +2,27 @@
 
 import type { ReferralWeeklyCardResponse } from "@shared/api/generated";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { format, startOfISOWeek } from "date-fns";
+import { addWeeks, format, startOfISOWeek } from "date-fns";
+import { useEffect, useState } from "react";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { referralsApi } from "../api/referralsApi";
 
-/** One claim per local week: a new week is a new key, so last week's answer never carries over. */
-function weeklyCardKey(now: Date): readonly string[] {
-  return [
-    "referrals",
-    "weekly-card",
-    format(startOfISOWeek(now), "yyyy-MM-dd"),
-  ];
+function localWeekStart(now: Date): string {
+  return format(startOfISOWeek(now), "yyyy-MM-dd");
+}
+
+/** The current local ISO week, which rolls over at Monday 00:00 even on a page left open. */
+function useLocalWeek(): string {
+  const [week, setWeek] = useState(() => localWeekStart(new Date()));
+  useEffect(() => {
+    const nextWeek = addWeeks(startOfISOWeek(new Date()), 1);
+    const timer = setTimeout(
+      () => setWeek(localWeekStart(new Date())),
+      nextWeek.getTime() - Date.now(),
+    );
+    return () => clearTimeout(timer);
+  }, [week]);
+  return week;
 }
 
 /**
@@ -22,7 +32,8 @@ function weeklyCardKey(now: Date): readonly string[] {
 export function useWeeklyCard() {
   const queryClient = useQueryClient();
   const { isPaid, isUnknown } = useIsPaid();
-  const key = weeklyCardKey(new Date());
+  // One claim per local week: a new week is a new key, so last week's answer never carries over.
+  const key = ["referrals", "weekly-card", useLocalWeek()];
   const claim = useQuery({
     queryKey: key,
     queryFn: referralsApi.claimWeeklyCard,

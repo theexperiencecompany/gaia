@@ -57,24 +57,25 @@ describe("useWeeklyCard", () => {
     await waitFor(() => expect(result.current.card).toEqual(CARD));
   });
 
-  it("asks again in a new local week but never twice in one", async () => {
-    vi.useFakeTimers({
-      shouldAdvanceTime: true,
-      now: new Date(2026, 9, 12, 9),
-    });
+  it("asks once per local week and rolls over at Monday on a page left open", async () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 12, 9) });
     claimWeeklyCard.mockResolvedValueOnce({ ...CARD, show: false });
-    const { result, rerender } = renderHook(() => useWeeklyCard(), {
+    const { result } = renderHook(() => useWeeklyCard(), {
       wrapper: wrapperFor(client),
     });
-    await waitFor(() => expect(claimWeeklyCard).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(claimWeeklyCard).toHaveBeenCalledTimes(1));
 
-    vi.setSystemTime(new Date(2026, 9, 18, 23));
-    rerender();
+    // Sunday 23:00, still the same week: no second claim.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync((6 * 24 + 14) * 60 * 60 * 1000);
+    });
     expect(claimWeeklyCard).toHaveBeenCalledTimes(1);
 
-    vi.setSystemTime(new Date(2026, 9, 19, 9));
-    rerender();
-    await waitFor(() => expect(result.current.card).toEqual(CARD));
+    // Past Monday 00:00 with no re-render: the new week claims and shows its card.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000);
+    });
+    await vi.waitFor(() => expect(result.current.card).toEqual(CARD));
     expect(claimWeeklyCard).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
