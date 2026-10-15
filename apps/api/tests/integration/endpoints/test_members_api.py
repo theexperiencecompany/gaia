@@ -28,8 +28,10 @@ from app.models.auth_models import (
 from app.models.runtime_models import InstanceSettingsDocument
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services import member_offboarding, members_service
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceInviteCreated
+from tests.helpers import captured_wide_event
 
 API = "/api/v1/members"
 
@@ -94,6 +96,19 @@ class Instance:
             if i.used_at is None and i.revoked_at is None and i.expires_at > now
         ]
 
+    async def find_redeemable(self, token_hash: str, now: datetime) -> LocalInviteDocument | None:
+        return next(
+            (
+                i
+                for i in self.invites.values()
+                if i.token_hash == token_hash
+                and i.used_at is None
+                and i.revoked_at is None
+                and i.expires_at > now
+            ),
+            None,
+        )
+
     async def revoke(self, invite_id: str, now: datetime) -> bool:
         invite = self.invites.get(invite_id)
         if invite is None or invite.used_at is not None or invite.revoked_at is not None:
@@ -131,6 +146,7 @@ def instance(monkeypatch: pytest.MonkeyPatch) -> Instance:
     monkeypatch.setattr(invites, "create", store.create_invite)
     monkeypatch.setattr(invites, "list_pending", store.list_pending)
     monkeypatch.setattr(invites, "revoke", store.revoke)
+    monkeypatch.setattr(invites, "find_redeemable", store.find_redeemable)
     monkeypatch.setattr(settings_repo, "find_by_key", store.find_by_key)
     monkeypatch.setattr(settings_repo, "put", store.put)
     monkeypatch.setattr(users, "find_by_ids", store.find_by_ids)
@@ -219,9 +235,15 @@ class TestOverview:
 
         body = (await admin_client.get(API)).json()
 
-        assert [(m["email"], m["role"]) for m in body["members"]] == [
-            ("admin@gaia.dev", "admin"),
-            ("kid@gaia.dev", "member"),
+        assert body["members"] == [
+            {
+                "user_id": account.id,
+                "email": account.email,
+                "name": account.name,
+                "role": account.role,
+                "created_at": account.created_at.isoformat().replace("+00:00", "Z"),
+            }
+            for account in (admin, member)
         ]
         assert body["invites"] == []
         assert body["registration_policy"] == "invite_only"
@@ -231,10 +253,42 @@ class TestOverview:
     ) -> None:
         instance.users[member.id] = member.model_copy(update={"role": None})
 
-        resp = await admin_client.get(API)
+        async with captured_wide_event() as event:
+            resp = await admin_client.get(API)
 
         assert resp.status_code == 500
-        assert resp.json()["message"] == "A local account has no role"
+        assert [e["error"]["user_id"] for e in event["errors"]] == [member.id]
+        body = resp.json()
+        assert body["message"] == "A local account has no role"
+        assert body["why"] == "every local signup stores a role and boot backfills the first admin"
+        assert body["fix"] == (
+            "restart the API so the role backfill runs, then inspect the users row"
+        )
+
+    async def test_a_credential_without_an_account_row_is_skipped_not_fatal(
+        self, admin_client: AsyncClient, admin: UserDocument, instance
+    ) -> None:
+        orphan = instance.add_account("orphan@gaia.dev", InstanceRole.MEMBER)
+        del instance.users[orphan.id]
+        instance.credentials = {
+            orphan.id: instance.credentials[orphan.id],
+            admin.id: instance.credentials[admin.id],
+        }
+
+        body = (await admin_client.get(API)).json()
+
+        assert [m["user_id"] for m in body["members"]] == [admin.id]
+
+    async def test_listing_stamps_the_wide_event(
+        self, admin_client: AsyncClient, admin: UserDocument, member: UserDocument
+    ) -> None:
+        async with captured_wide_event() as event:
+            assert (await admin_client.get(API)).status_code == 200
+
+        assert event["user"] == {"id": admin.id}
+        assert event["operation"] == "members_list"
+        assert event["member_count"] == 2
+        assert event["invite_count"] == 0
 
 
 @pytest.mark.integration
@@ -255,6 +309,21 @@ class TestInvites:
         captured.assert_called_once_with(UserId(admin.id), InstanceInviteCreated())
         listed = (await admin_client.get(API)).json()["invites"]
         assert [i["id"] for i in listed] == [body["invite"]["id"]]
+        assert listed[0]["created_at"] == body["invite"]["created_at"]
+        assert body["invite"]["created_at"] is not None
+
+    async def test_creating_an_invite_is_audited(
+        self, admin_client: AsyncClient, admin: UserDocument, instance, captured
+    ) -> None:
+        async with captured_wide_event() as event:
+            invite_id = (await admin_client.post(f"{API}/invites")).json()["invite"]["id"]
+
+        assert event["user"] == {"id": admin.id}
+        assert event["operation"] == "members_create_invite"
+        assert event["invite_id"] == invite_id
+        assert event["audit"] == [
+            {"msg": "invite created", "actor": admin.id, "invite_id": invite_id}
+        ]
 
     async def test_revoke_removes_the_invite_once(
         self, admin_client: AsyncClient, instance, captured
@@ -266,7 +335,38 @@ class TestInvites:
 
         assert first.status_code == 204
         assert second.status_code == 404
+        assert second.json()["message"] == "Invite not found"
+        assert instance.invites[invite_id].revoked_at.utcoffset() == timedelta(0)
         assert (await admin_client.get(API)).json()["invites"] == []
+
+    async def test_revoking_an_invite_is_audited(
+        self, admin_client: AsyncClient, admin: UserDocument, instance, captured
+    ) -> None:
+        invite_id = (await admin_client.post(f"{API}/invites")).json()["invite"]["id"]
+
+        async with captured_wide_event() as event:
+            assert (await admin_client.delete(f"{API}/invites/{invite_id}")).status_code == 204
+
+        assert event["user"] == {"id": admin.id}
+        assert event["operation"] == "members_revoke_invite"
+        assert event["invite_id"] == invite_id
+        assert event["audit"] == [
+            {"msg": "invite revoked", "actor": admin.id, "invite_id": invite_id}
+        ]
+
+    async def test_a_revoked_invite_is_refused_at_signup(
+        self, admin_client: AsyncClient, instance, captured
+    ) -> None:
+        token = (await admin_client.post(f"{API}/invites")).json()["token"]
+        await members_service.ensure_invite_redeemable(token)
+        (invite_id,) = instance.invites
+        await admin_client.delete(f"{API}/invites/{invite_id}")
+
+        with pytest.raises(AppError) as refused:
+            await members_service.ensure_invite_redeemable(token)
+
+        assert refused.value.status_code == 403
+        assert refused.value.message == "This invite link was already used or has expired"
 
 
 @pytest.mark.integration
@@ -279,6 +379,19 @@ class TestRegistrationPolicy:
 
         closed = await admin_client.put(f"{API}/registration", json={"policy": "invite_only"})
         assert closed.json() == {"policy": "invite_only"}
+
+    async def test_changing_the_policy_is_audited(
+        self, admin_client: AsyncClient, admin: UserDocument, instance
+    ) -> None:
+        async with captured_wide_event() as event:
+            await admin_client.put(f"{API}/registration", json={"policy": "open"})
+
+        assert event["user"] == {"id": admin.id}
+        assert event["operation"] == "members_set_registration"
+        assert event["policy"] == "open"
+        assert event["audit"] == [
+            {"msg": "registration policy changed", "actor": admin.id, "policy": "open"}
+        ]
 
     async def test_unknown_policy_is_422(self, admin_client: AsyncClient, instance) -> None:
         resp = await admin_client.put(f"{API}/registration", json={"policy": "everyone"})
@@ -294,7 +407,7 @@ class TestRemoveMember:
         resp = await admin_client.delete(f"{API}/{member.id}")
 
         assert resp.status_code == 204
-        assert instance.credentials[member.id].disabled_at is not None
+        assert instance.credentials[member.id].disabled_at.utcoffset() == timedelta(0)
         assert member.id in instance.users
         listed = (await admin_client.get(API)).json()["members"]
         assert member.id not in [m["user_id"] for m in listed]
@@ -306,6 +419,7 @@ class TestRemoveMember:
 
         assert resp.status_code == 409
         assert resp.json()["code"] == "cannot_remove_admin"
+        assert resp.json()["message"] == "An administrator cannot be removed"
         assert instance.credentials[admin.id].disabled_at is None
 
     async def test_removal_stops_everything_running_for_the_member(
@@ -364,5 +478,21 @@ class TestRemoveMember:
     async def test_an_unknown_member_is_404(
         self, admin_client: AsyncClient, offboarding: AsyncMock
     ) -> None:
-        assert (await admin_client.delete(f"{API}/{ObjectId()}")).status_code == 404
+        resp = await admin_client.delete(f"{API}/{ObjectId()}")
+
+        assert resp.status_code == 404
+        assert resp.json()["message"] == "Member not found"
         offboarding.assert_not_awaited()
+
+    async def test_removing_a_member_is_audited(
+        self, admin_client: AsyncClient, admin: UserDocument, member: UserDocument
+    ) -> None:
+        async with captured_wide_event() as event:
+            assert (await admin_client.delete(f"{API}/{member.id}")).status_code == 204
+
+        assert event["user"] == {"id": admin.id}
+        assert event["operation"] == "members_remove"
+        assert event["target_user_id"] == member.id
+        assert event["audit"] == [
+            {"msg": "member removed", "actor": admin.id, "target_user_id": member.id}
+        ]
