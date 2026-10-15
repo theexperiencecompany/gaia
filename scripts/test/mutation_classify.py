@@ -18,6 +18,7 @@ import ast
 import json
 from pathlib import Path
 import re
+import string
 import sys
 from typing import NamedTuple
 from urllib.parse import urlparse
@@ -975,6 +976,63 @@ def _unobservable_projection_include(
     return False
 
 
+_STRIP_METHODS = frozenset({"strip", "lstrip", "rstrip"})
+
+
+def _is_lower_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "lower"
+        and not node.args
+        and not node.keywords
+    )
+
+
+def _unobservable_strip_of_capitals(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """Return True when the mutation only added ASCII capitals to the charset stripped off a .lower().
+
+    host.lower().rstrip(".") and host.lower().rstrip("XX.XX") strip the same
+    characters: a lowercased string holds no ASCII capital, so mutmut's XX wrap
+    adds nothing the strip can ever meet. Dropping an original character, any
+    other added character, or a receiver that is not a literal .lower() call
+    stays reported.
+    """
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in _STRIP_METHODS
+            and _is_lower_call(node.func.value)
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            continue
+        chars = node.args[0]
+        if not (isinstance(chars, ast.Constant) and isinstance(chars.value, str)):
+            continue
+        span = _node_span(chars)
+        if not _within(span, line_no, col):
+            continue
+        replacement = _mutated_token(span, line_no, orig_line, mut_line)
+        try:
+            mutated = ast.literal_eval((replacement or "").strip())
+        except (ValueError, SyntaxError):
+            return False
+        if not isinstance(mutated, str):
+            return False
+        original = set(chars.value)
+        added = set(mutated) - original
+        return original <= set(mutated) and added <= set(string.ascii_uppercase)
+    return False
+
+
 def _unreachable_match_arm(path: str, line_no: int) -> bool:
     """Return True when line_no sits in a ``case _: assert_never(...)`` arm.
 
@@ -1351,6 +1409,7 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
             or _unobservable_falsy_assignment(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_truth_value_keyword(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_projection_include(real_path, line_no, col, orig_raw[i], mut_raw[i])
+            or _unobservable_strip_of_capitals(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_response_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_case_insensitive_heading(

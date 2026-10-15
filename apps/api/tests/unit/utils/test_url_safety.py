@@ -233,10 +233,11 @@ def test_endpoint_shape_refuses_metadata_link_local_and_credentials_even_when_al
 
 
 async def test_endpoint_allows_a_name_resolving_to_a_lan_address_only_when_allowed() -> None:
-    with patch("app.utils.url_safety._resolve", return_value=["192.168.65.254"]):
+    with patch("app.utils.url_safety._resolve", return_value=["192.168.65.254"]) as resolve:
         await assert_endpoint_url_allowed(
             "http://host.docker.internal:8931/mcp", allow_private=True
         )
+        resolve.assert_called_once_with("host.docker.internal", 8931)
         with pytest.raises(ValueError):
             await assert_endpoint_url_allowed(
                 "http://host.docker.internal:8931/mcp", allow_private=False
@@ -253,5 +254,41 @@ async def test_endpoint_refuses_a_name_resolving_to_the_metadata_address_even_wh
 
 async def test_endpoint_wraps_dns_failure_as_value_error() -> None:
     with patch("app.utils.url_safety._resolve", side_effect=OSError("nxdomain")):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"^DNS resolution failed: nxdomain$"):
             await assert_endpoint_url_allowed("http://nope.invalid/", allow_private=True)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://user@192.168.1.20/mcp",
+        "http://:secret@192.168.1.20/mcp",
+        "http://user:secret@192.168.1.20/mcp",
+    ],
+)
+def test_endpoint_refuses_a_username_or_a_password_on_its_own(url: str) -> None:
+    with pytest.raises(ValueError, match=r"^URL must not embed credentials$"):
+        assert_endpoint_url_shape(url, allow_private=True)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://metadata.google.internal./computeMetadata/v1",
+        "http://METADATA/",
+        "http://metadata../",
+    ],
+)
+def test_endpoint_refuses_a_metadata_hostname_written_with_trailing_dots_or_capitals(
+    url: str,
+) -> None:
+    with pytest.raises(ValueError, match=r"^refusing to connect to metadata host metadata"):
+        assert_endpoint_url_shape(url, allow_private=True)
+
+
+def test_endpoint_names_the_link_local_address_it_refuses() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"^refusing to connect to link-local or reserved address 169\.254\.169\.254$",
+    ):
+        assert_endpoint_url_shape("http://169.254.169.254/latest/meta-data", allow_private=True)
