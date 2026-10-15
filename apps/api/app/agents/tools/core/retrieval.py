@@ -1196,9 +1196,7 @@ def _search_hit_stats(results: list[SearchTaskResult | BaseException]) -> _Searc
             public_hits += len(result)
             continue
         chroma_hits += len(result)
-        for item in result:
-            if not hasattr(item, "namespace"):
-                continue
+        for item in cast(list[SearchItem], result):
             ns = "::".join(item.namespace) if item.namespace else "default"
             per_namespace_hits[ns] = per_namespace_hits.get(ns, 0) + 1
 
@@ -1216,7 +1214,7 @@ def _search_hit_stats(results: list[SearchTaskResult | BaseException]) -> _Searc
 
 async def _discover_tools(
     store: BaseStore,
-    query: str | None,
+    query: str,
     scope: _RetrievalScope,
     tool_registry: ToolRegistry,
     global_tool_names: set[str],
@@ -1233,7 +1231,7 @@ async def _discover_tools(
     # Build and execute search tasks
     active_namespaces = await _active_tool_spaces(scope.conversation_id)
     search_tasks = _build_search_tasks(
-        store, query or "", scope, user_namespaces, limit, active_namespaces
+        store, query, scope, user_namespaces, limit, active_namespaces
     )
 
     results = await asyncio.gather(*search_tasks, return_exceptions=True)
@@ -1354,12 +1352,6 @@ def get_retrieve_tools_function(
             include_subagents=include_subagents,
             user_id=user_id,
         )
-        if not query and not exact_tool_names:
-            # A no-usable-argument call (e.g. exact_tool_names=[]) must NOT crash
-            # the run — that aborts the whole turn over a recoverable model slip.
-            # Return a corrective hint so the caller self-corrects next step.
-            return RetrieveToolsResult(tools_to_bind=[], response=[_NO_USABLE_ARGUMENT_HINT])
-
         tool_registry = await get_tool_registry()
         global_tool_names = set(tool_registry.get_tool_names())
         log.info(
@@ -1386,7 +1378,14 @@ def get_retrieve_tools_function(
             return await _bind_exact_tools(
                 scope, tool_registry, global_tool_names, exact_tool_names, bindable_tool_names
             )
-        return await _discover_tools(store, query, scope, tool_registry, global_tool_names, limit)
+        if query:
+            return await _discover_tools(
+                store, query, scope, tool_registry, global_tool_names, limit
+            )
+        # A no-usable-argument call (e.g. exact_tool_names=[]) must NOT crash
+        # the run — that aborts the whole turn over a recoverable model slip.
+        # Return a corrective hint so the caller self-corrects next step.
+        return RetrieveToolsResult(tools_to_bind=[], response=[_NO_USABLE_ARGUMENT_HINT])
 
     # The LLM-facing docstring is a static constant: no subagent section,
     # since the handoff tool's own description covers provider handoff.
