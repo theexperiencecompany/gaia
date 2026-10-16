@@ -366,7 +366,8 @@
       "AIアシスタント対チャットボット",
       "パーソナルAIアシスタント",
       "デジタルアシスタント",
-      "インテリジェントアシスタント"
+      "インテリジェントアシスタント",
+      "チャットボットとは"
     ],
     "howGaiaUsesIt": "GAIAは、カテゴリを再定義するパーソナルAIアシスタントです。プロンプトに応答する会話型アシスタントとは異なり、GAIAは50以上の統合ツール全体でメール、カレンダー、タスク、ワークフローをプロアクティブに管理します。デジタルチーフオブスタッフとして機能します。受信トレイのトリアージ、スケジュールの準備、タスクの作成と完了、マルチステップワークフローのオーケストレーションを行います。GAIAは、チャットボットの会話インターフェースと、完全な自動化プラットフォームのアクション機能を組み合わせています。",
     "faqs": [
@@ -377,6 +378,10 @@
       {
         "question": "AIアシスタントはチャットボットより優れていますか？",
         "answer": "AIアシスタントは、会話を超えて、あなたの代わりにアクションを実行します。GAIAは、スケジュールに関する質問に答えるだけでなく、カレンダーを積極的に管理し、メールからタスクを作成し、返信をドラフトし、接続されたツール全体でワークフローを自動化します。"
+      },
+      {
+        "question": "チャットボットとは何ですか？",
+        "answer": "チャットボットはテキストで会話するソフトウェアです。台本どおりの返答や生成された返答で質問に答えますが、代わりに行動することはできません。GAIAのようなAIアシスタントは言葉の先の仕事をこなします。メールの仕分け、カレンダー管理、50以上の連携ツールにまたがるワークフローの実行まで行います。"
       }
     ]
   },
@@ -1689,7 +1694,8 @@
       "copilot definition",
       "AI assistant copilot",
       "GitHub Copilot",
-      "GAIA copilot"
+      "GAIA copilot",
+      "microsoft copilot 代替"
     ],
     "howGaiaUsesIt": "GAIA operates as an AI copilot across your productivity workflow. It drafts email replies for your review, suggests meeting agenda items, surfaces relevant context before your calls, recommends task priorities, and proposes workflow automations. For each category of action, you choose whether GAIA acts as a copilot (suggests, you approve) or operates autonomously (acts, then notifies). Most users start with copilot mode and expand autonomy as they build confidence in GAIA's judgment.",
     "faqs": [
@@ -1700,6 +1706,10 @@
       {
         "question": "Is GAIA a copilot or an agent?",
         "answer": "GAIA is both, depending on how you configure it. For drafting emails and suggesting calendar changes, GAIA acts as a copilot that presents options for your approval. For inbox triage, task creation, and routine workflows, GAIA acts as an autonomous agent. You control the level of autonomy."
+      },
+      {
+        "question": "GAIAはMicrosoft Copilotの代替になりますか？",
+        "answer": "はい、範囲が異なります。Microsoft CopilotはMicrosoft 365アプリ内での支援です。GAIAはスタック全体で働きます。Gmail、カレンダー、Slackなど50以上のツールに対応し、オープンなプラットフォームで無料プランもあります。仕事がWordやTeamsの外にあるなら、より広い代替策がGAIAです。"
       }
     ]
   },
@@ -2946,6 +2956,10 @@
       {
         "question": "Why does idempotency matter for email automation?",
         "answer": "Without idempotency, a single incoming email could trigger task creation multiple times if the webhook is retried. GAIA's idempotent email processing ensures each email creates at most one task, regardless of how many times the event notification is received."
+      },
+      {
+        "question": "冪等性とは何ですか？",
+        "answer": "冪等性とは、操作を2回実行しても1回と同じ結果になる性質です。これによりリトライが安全になります。Webhookが重複して届いても、冪等なシステムは1回だけ処理して重複を無視します。GAIAは受信イベントごとにキーを付与し、重複が余計な作業を生まないようにします。"
       }
     ]
   },
@@ -3930,6 +3944,10 @@
       {
         "question": "Does GAIA handle long email threads?",
         "answer": "GAIA uses summarization for very long threads, condensing earlier history to fit within the LLM context window while preserving the most relevant context. This allows it to handle threads of any length effectively."
+      },
+      {
+        "question": "メールスレッドとは何ですか？",
+        "answer": "メールスレッドとは、同じ件名への返信や転送をすべて一つの会話にまとめることです。ばらばらのメッセージを探す代わりに、やり取り全体を順番に読めます。GAIAは返信の下書き前にスレッド全体を読み、文脈を見失いません。"
       }
     ]
   },
@@ -4256,6 +4274,10 @@
       {
         "question": "Can GAIA add buffer time to existing back-to-back meetings?",
         "answer": "GAIA can identify back-to-back meeting patterns in your calendar and suggest adjustments to create buffer space. For ongoing scheduling, GAIA enforces your buffer preferences automatically when creating new events."
+      },
+      {
+        "question": "バッファータイムとは何ですか？",
+        "answer": "バッファータイムとは、会議の間に意図的に空けておく時間です。リセットや準備、フォローアップの余裕が生まれ、連続した会議が混ざり合わなくなります。GAIAはスケジュール時にこの余白を自動で確保します。"
       }
     ]
   },
@@ -4602,7 +4624,8 @@
       "ics file",
       "calendar sharing format",
       "calendar subscription",
-      "iCal vs Google Calendar"
+      "iCal vs Google Calendar",
+      "icalとは"
     ],
     "howGaiaUsesIt": "GAIA supports iCal subscription URLs for importing external calendars — conference schedules, team rosters, project timelines — directly into your unified calendar view. When GAIA creates calendar events and exports them to connected tools, it uses the iCalendar format to ensure compatibility across Google Calendar, Outlook, and Apple Calendar. GAIA also parses iCal data to understand recurring event patterns and attendee lists when performing calendar analysis.",
     "faqs": [
@@ -4621,6 +4644,10 @@
       {
         "question": "Is iCal the same as Google Calendar?",
         "answer": "No. iCalendar (iCal) is an open file format standard, while Google Calendar is a calendar application. Google Calendar supports iCalendar — it can export .ics files and accept iCal subscription URLs — but the two are distinct. iCal is the format; Google Calendar is one of many apps that uses it."
+      },
+      {
+        "question": "iCalとは何ですか？",
+        "answer": "iCalはiCalendarの通称で、カレンダーデータ共有のためのオープン標準(RFC 5545)です。iCalフィードを使えば、GoogleカレンダーからOutlook、Appleカレンダーまで、あらゆるアプリが同じ予定を購読して同期できます。GAIAはこれらのフィードを読み取り、外部カレンダーを統合スケジュールに表示します。"
       }
     ]
   },

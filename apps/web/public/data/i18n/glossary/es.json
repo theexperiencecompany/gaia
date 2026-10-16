@@ -366,7 +366,8 @@
       "asistente de IA vs chatbot",
       "asistente personal de IA",
       "asistente digital",
-      "asistente inteligente"
+      "asistente inteligente",
+      "qué es un chatbot"
     ],
     "howGaiaUsesIt": "GAIA es un asistente personal de IA que redefine la categoría. A diferencia de los asistentes conversacionales que solo responden a indicaciones, GAIA gestiona de forma proactiva tu correo electrónico, calendario, tareas y flujos de trabajo en más de 50 herramientas integradas. Actúa como un jefe de gabinete digital: organiza tu bandeja de entrada, prepara tu agenda, crea y completa tareas, y coordina flujos de trabajo de varios pasos. GAIA combina la interfaz conversacional de un chatbot con las capacidades de acción de una plataforma de automatización completa.",
     "faqs": [
@@ -377,6 +378,10 @@
       {
         "question": "¿Es mejor un asistente de IA que un chatbot?",
         "answer": "Un asistente de IA va más allá de la conversación y realiza acciones en tu nombre. GAIA no solo responde preguntas sobre tu agenda. Gestiona activamente tu calendario, crea tareas a partir de correos electrónicos, redacta respuestas y automatiza flujos de trabajo en todas tus herramientas conectadas."
+      },
+      {
+        "question": "¿Qué es un chatbot?",
+        "answer": "Un chatbot es un software que mantiene una conversación por texto. Responde preguntas con respuestas programadas o generadas, pero no actúa en tu nombre. Un asistente de IA como GAIA hace el trabajo detrás de las palabras: organiza tu correo, gestiona tu calendario y ejecuta flujos en más de 50 herramientas conectadas."
       }
     ]
   },
@@ -1679,8 +1684,8 @@
   },
   "ai-copilot": {
     "term": "Copiloto de IA",
-    "metaTitle": "¿Qué es un Copiloto de IA? Definición y Ejemplos",
-    "metaDescription": "Un copiloto de IA asiste a las personas sugiriendo acciones, redactando contenido y mejorando las decisiones sin tomar control autónomo total. Descubre cómo GAIA funciona como tu copiloto de IA.",
+    "metaTitle": "Copiloto IA vs Microsoft Copilot: diferencias",
+    "metaDescription": "Compara tu copiloto de IA con Microsoft Copilot, atado a Microsoft 365. GAIA asiste en Gmail, Calendar y Slack, con plan gratuito.",
     "definition": "Un copiloto de IA es un sistema de inteligencia artificial que trabaja junto a un usuario humano, proporcionando sugerencias, redactando contenido, mostrando información relevante y automatizando tareas secundarias, mientras que la decisión final permanece bajo control del humano.",
     "extendedDescription": "La metáfora del copiloto capta una distinción importante en la asistencia de la IA: la IA es un colaborador experto, no un sustituto. Un copiloto en aviación asiste al piloto, se encarga de tareas rutinarias, supervisa sistemas y aporta información crucial, pero quien pilota la aeronave es el piloto. Los copilotos de IA funcionan de manera similar: gestionan los aspectos mecánicos y repetitivos del trabajo intelectual, mientras que el humano se concentra en el juicio, la creatividad y las decisiones que requieren perspicacia humana.\n\nGitHub Copilot popularizó el término al ayudar a los desarrolladores a escribir código mediante sugerencias en línea. El concepto se ha extendido a todos los ámbitos del trabajo intelectual: copilotos de IA para redacción, diseño, asuntos legales, finanzas, ventas y gestión de productividad. El hilo común es el diseño humano en el circuito, donde la IA complementa, en lugar de reemplazar, el juicio humano.\n\nLa diferencia entre un copiloto y un agente totalmente autónomo radica en el modelo de aprobación. Un copiloto sugiere y el humano aprueba. Un agente autónomo actúa y puede informar a posteriori. La mayoría de los sistemas de IA, incluido GAIA, ofrecen comportamientos configurables a lo largo de este espectro: actuar de forma autónoma en tareas rutinarias de bajo riesgo y requerir aprobación para acciones significativas o delicadas.\n\nLos copilotos de IA eficaces brindan sugerencias proactivas sin abrumar al usuario. Presentan la información adecuada en el momento justo, redactan contenidos que se ajustan a la intención del usuario y facilitan aceptar, modificar o rechazar sugerencias con la mínima fricción.",
     "keywords": [
@@ -1689,7 +1694,9 @@
       "definición de copiloto",
       "copiloto asistente de IA",
       "GitHub Copilot",
-      "copiloto de GAIA"
+      "copiloto de GAIA",
+      "copiloto vs microsoft copilot",
+      "alternativa a microsoft copilot"
     ],
     "howGaiaUsesIt": "GAIA funciona como un copiloto de IA a lo largo de tu flujo de productividad. Redacta respuestas de correo electrónico para tu revisión, sugiere temas para la agenda de reuniones, muestra contexto relevante antes de tus llamadas, recomienda prioridades de tareas y propone automatizaciones de flujo de trabajo. Para cada categoría de acción, puedes elegir si GAIA actúa como copiloto (sugiere, tú apruebas) u opera de forma autónoma (actúa y luego notifica). La mayoría de los usuarios comienzan en modo copiloto y amplían la autonomía conforme ganan confianza en el criterio de GAIA.",
     "faqs": [
@@ -1700,6 +1707,10 @@
       {
         "question": "¿GAIA es un copiloto o un agente?",
         "answer": "GAIA es ambos, dependiendo de cómo lo configures. Para redactar correos electrónicos y sugerir cambios en el calendario, GAIA actúa como copiloto y presenta opciones para tu aprobación. Para la organización del correo, la creación de tareas y flujos de trabajo rutinarios, GAIA actúa como un agente autónomo. Tú controlas el nivel de autonomía."
+      },
+      {
+        "question": "¿Es GAIA una alternativa a Microsoft Copilot?",
+        "answer": "Sí, con otro alcance. Microsoft Copilot asiste dentro de las apps de Microsoft 365. GAIA trabaja en toda tu pila: Gmail, Calendar, Slack y más de 50 herramientas, en una plataforma abierta con plan gratuito. Si tu trabajo vive fuera de Word y Teams, GAIA es la alternativa más amplia."
       }
     ]
   },
@@ -2946,6 +2957,10 @@
       {
         "question": "¿Por qué es importante la idempotencia en la automatización de correos electrónicos?",
         "answer": "Sin idempotencia, un solo correo electrónico entrante podría desencadenar la creación de tareas varias veces si el webhook se reintenta. El procesamiento idempotente de correos electrónicos de GAIA garantiza que cada correo solo cree una tarea como máximo, sin importar cuántas veces se reciba la notificación del evento."
+      },
+      {
+        "question": "¿Qué es la idempotencia?",
+        "answer": "La idempotencia significa que ejecutar una operación dos veces tiene el mismo efecto que una vez. Eso hace que los reintentos sean seguros: si un webhook llega duplicado, un sistema idempotente lo procesa una vez e ignora la copia. GAIA marca cada evento entrante para que las repeticiones nunca creen trabajo extra."
       }
     ]
   },
@@ -3930,6 +3945,10 @@
       {
         "question": "¿GAIA maneja hilos de correo largos?",
         "answer": "GAIA utiliza la resumidera para hilos muy largos, condensando el historial anterior para que quepa en la ventana de contexto del LLM y conservando la información más relevante. Esto le permite gestionar hilos de cualquier longitud de manera eficaz."
+      },
+      {
+        "question": "¿Qué son los hilos de correo electrónico?",
+        "answer": "Los hilos agrupan todas las respuestas y reenvíos sobre el mismo tema en una sola conversación. En vez de buscar mensajes sueltos, lees todo el intercambio en orden. GAIA lee el hilo completo antes de redactar cada respuesta para no perder el contexto."
       }
     ]
   },
@@ -4256,6 +4275,10 @@
       {
         "question": "¿GAIA puede añadir tiempo de margen a reuniones consecutivas ya programadas?",
         "answer": "GAIA puede identificar patrones de reuniones seguidas en tu calendario y sugerir ajustes para crear espacios de margen. En el calendario futuro, GAIA aplica automáticamente tus preferencias de margen al programar nuevos eventos."
+      },
+      {
+        "question": "¿Qué es el tiempo de margen?",
+        "answer": "El tiempo de margen es el espacio vacío que dejas entre reuniones a propósito. Da aire para respirar, preparar y dar seguimiento sin empalmar llamadas. GAIA añade estos huecos automáticamente al planificar."
       }
     ]
   },
@@ -4602,7 +4625,8 @@
       "archivo ics",
       "formato para compartir calendarios",
       "suscripción a calendario",
-      "iCal vs Google Calendar"
+      "iCal vs Google Calendar",
+      "qué es ical"
     ],
     "howGaiaUsesIt": "GAIA admite URLs de suscripción de iCal para importar calendarios externos — horarios de conferencias, listas de equipos, cronogramas de proyectos — directamente en tu vista de calendario unificada. Cuando GAIA crea eventos de calendario y los exporta a herramientas conectadas, utiliza el formato iCalendar para garantizar la compatibilidad con Google Calendar, Outlook y Apple Calendar. GAIA también analiza los datos iCal para comprender patrones de eventos recurrentes y listas de asistentes cuando realiza análisis de calendarios.",
     "faqs": [
@@ -4621,6 +4645,10 @@
       {
         "question": "¿iCal es lo mismo que Google Calendar?",
         "answer": "No. iCalendar (iCal) es un estándar de formato de archivo abierto, mientras que Google Calendar es una aplicación de calendario. Google Calendar es compatible con iCalendar — puede exportar archivos .ics y aceptar URLs de suscripción iCal — pero son diferentes. iCal es el formato; Google Calendar es una de muchas aplicaciones que lo utilizan."
+      },
+      {
+        "question": "¿Qué es iCal?",
+        "answer": "iCal es el nombre común de iCalendar, el estándar abierto (RFC 5545) para compartir datos de calendario. Un feed iCal permite que cualquier app, desde Google Calendar hasta Outlook y Apple Calendar, siga los mismos eventos en sincronía. GAIA lee estos feeds para mostrar tus calendarios externos en tu vista unificada."
       }
     ]
   },

@@ -366,7 +366,8 @@
       "KI-Assistent vs. Chatbot",
       "persönlicher KI-Assistent",
       "digitaler Assistent",
-      "intelligenter Assistent"
+      "intelligenter Assistent",
+      "was ist ein chatbot"
     ],
     "howGaiaUsesIt": "GAIA ist ein persönlicher KI-Assistent, der die Kategorie neu definiert. Anders als konversationelle Assistenten, die nur auf Aufforderungen reagieren, steuert GAIA proaktiv Ihre E-Mails, Ihren Kalender, Aufgaben und Workflows über mehr als 50 integrierte Tools hinweg. Es agiert wie ein digitaler Chief of Staff: sortiert Ihren Posteingang, bereitet Ihren Terminplan vor, erstellt und erledigt Aufgaben und koordiniert mehrstufige Workflows. GAIA kombiniert die Konversationsoberfläche eines Chatbots mit den Handlungsmöglichkeiten einer vollständigen Automatisierungsplattform.",
     "faqs": [
@@ -377,6 +378,10 @@
       {
         "question": "Ist ein KI-Assistent besser als ein Chatbot?",
         "answer": "Ein KI-Assistent geht über einfache Konversation hinaus und handelt aktiv in Ihrem Namen. GAIA beantwortet nicht nur Fragen zu Ihrem Kalender, sondern verwaltet diesen proaktiv, erstellt Aufgaben aus E-Mails, entwirft Antworten und automatisiert Arbeitsabläufe über alle verbundenen Tools hinweg."
+      },
+      {
+        "question": "Was ist ein Chatbot?",
+        "answer": "Ein Chatbot ist Software für Textgespräche. Er beantwortet Fragen mit vorgegebenen oder generierten Antworten, kann aber nicht für dich handeln. Ein KI-Assistent wie GAIA erledigt die Arbeit dahinter: E-Mails sortieren, Kalender verwalten und Workflows über mehr als 50 verbundene Tools ausführen."
       }
     ]
   },
@@ -1689,7 +1694,8 @@
       "Copilot-Definition",
       "KI-Assistenz Copilot",
       "GitHub Copilot",
-      "GAIA Copilot"
+      "GAIA Copilot",
+      "microsoft copilot alternative"
     ],
     "howGaiaUsesIt": "GAIA funktioniert als KI-Copilot in deinem gesamten Produktivitäts-Workflow. Die KI verfasst E-Mail-Antworten zur Überprüfung, schlägt Tagesordnungspunkte vor, liefert relevante Informationen vor Anrufen, empfiehlt Prioritäten und schlägt Workflow-Automatisierungen vor. Bei jeder Aktion entscheidest du, ob GAIA als Copilot (Vorschläge, du entscheidest) oder autonom (handelt und benachrichtigt dich anschließend) arbeitet. Die meisten Nutzer starten im Copilot-Modus und weiten die Autonomie aus, sobald sie Vertrauen in GAIA's Entscheidungen gewinnen.",
     "faqs": [
@@ -1700,6 +1706,10 @@
       {
         "question": "Ist GAIA ein Copilot oder ein Agent?",
         "answer": "GAIA kann beides sein – je nachdem, wie Sie es konfigurieren. Beim Verfassen von E-Mails oder Vorschlägen für Kalenderänderungen agiert GAIA als Copilot und präsentiert Ihnen Optionen zur Freigabe. Bei der Bearbeitung des Posteingangs, der Erstellung von Aufgaben und anderen Routineabläufen handelt GAIA als autonomer Agent. Sie bestimmen, wie viel Autonomie GAIA hat."
+      },
+      {
+        "question": "Ist GAIA eine Alternative zu Microsoft Copilot?",
+        "answer": "Ja, mit anderem Fokus. Microsoft Copilot hilft in den Microsoft-365-Apps. GAIA arbeitet in deinem ganzen Stack: Gmail, Kalender, Slack und über 50 Tools, auf einer offenen Plattform mit kostenlosem Tarif. Wenn deine Arbeit nicht in Word und Teams stattfindet, ist GAIA die breitere Alternative."
       }
     ]
   },
@@ -2946,6 +2956,10 @@
       {
         "question": "Warum ist Idempotenz bei der E-Mail-Automatisierung wichtig?",
         "answer": "Ohne Idempotenz könnte eine einzelne eingehende E-Mail, bei wiederholtem Webhook-Aufruf, die Aufgabe mehrmals auslösen. Die idempotente E-Mail-Verarbeitung von GAIA stellt sicher, dass jede E-Mail höchstens eine Aufgabe erstellt – unabhängig davon, wie oft die Ereignisbenachrichtigung empfangen wird."
+      },
+      {
+        "question": "Was ist Idempotenz?",
+        "answer": "Idempotenz bedeutet: Eine Operation zweimal auszuführen hat dieselbe Wirkung wie einmal. Das macht Wiederholungen sicher. Kommt ein Webhook doppelt an, verarbeitet ein idempotentes System ihn einmal und ignoriert das Duplikat. GAIA versieht jedes eingehende Ereignis mit einem Schlüssel, sodass Wiederholungen nie Mehrarbeit erzeugen."
       }
     ]
   },
@@ -3930,6 +3944,10 @@
       {
         "question": "Kann GAIA auch mit langen E-Mail-Threads umgehen?",
         "answer": "GAIA nutzt Zusammenfassungen für sehr lange Threads, um den bisherigen Verlauf innerhalb des LLM-Kontextfensters komprimiert darzustellen und dabei die wichtigsten Informationen zu erhalten. So kann sie Threads beliebiger Länge effektiv bearbeiten."
+      },
+      {
+        "question": "Was ist E-Mail-Threading?",
+        "answer": "E-Mail-Threading fasst alle Antworten und Weiterleitungen zum selben Thema in einer Unterhaltung zusammen. Statt einzelne Nachrichten zu suchen, liest du den ganzen Verlauf der Reihe nach. GAIA liest den vollständigen Verlauf, bevor sie jede Antwort entwirft, damit nichts den Kontext verliert."
       }
     ]
   },
@@ -4256,6 +4274,10 @@
       {
         "question": "Kann GAIA auch für bereits vorhandene Back-to-Back-Meetings Pufferzeit hinzufügen?",
         "answer": "GAIA erkennt Muster von Back-to-Back-Meetings in Ihrem Kalender und schlägt Anpassungen vor, um Puffer zwischen den Terminen zu schaffen. Für zukünftige Terminplanungen wird Ihre Pufferpräferenz von GAIA automatisch bei der Erstellung neuer Ereignisse berücksichtigt."
+      },
+      {
+        "question": "Was ist Pufferzeit?",
+        "answer": "Pufferzeit ist bewusst freigehaltener Raum zwischen Meetings. Er gibt dir Luft zum Durchatmen, Vorbereiten und Nacharbeiten, damit Termine nicht ineinanderfließen. GAIA fügt diese Lücken beim Planen automatisch ein."
       }
     ]
   },
@@ -4602,7 +4624,8 @@
       "ICS-Datei",
       "Kalender-Sharing-Format",
       "Kalenderabonnement",
-      "iCal vs. Google Kalender"
+      "iCal vs. Google Kalender",
+      "was ist ical"
     ],
     "howGaiaUsesIt": "GAIA unterstützt iCal-Abonnement-URLs zum Importieren externer Kalender – zum Beispiel Konferenzpläne, Teamübersichten oder Projektzeitpläne – direkt in Ihre einheitliche Kalenderansicht. Wenn GAIA Kalendereinträge erstellt und sie an angeschlossene Tools exportiert, wird das iCalendar-Format verwendet, um Kompatibilität mit Google Kalender, Outlook und Apple Kalender sicherzustellen. GAIA analysiert zudem iCal-Daten, um wiederkehrende Ereignismuster und Teilnehmerlisten bei der Kalenderauswertung zu verstehen.",
     "faqs": [
@@ -4621,6 +4644,10 @@
       {
         "question": "Ist iCal dasselbe wie Google Kalender?",
         "answer": "Nein. iCalendar (iCal) ist ein offener Dateiformatstandard, während Google Kalender eine Kalenderanwendung ist. Google Kalender unterstützt iCalendar – es kann .ics-Dateien exportieren und iCal-Abonnement-URLs akzeptieren –, aber die beiden sind unterschiedlich. iCal ist das Format; Google Kalender ist eine von vielen Apps, die dieses Format nutzt."
+      },
+      {
+        "question": "Was ist iCal?",
+        "answer": "iCal ist der gängige Name für iCalendar, den offenen Standard (RFC 5545) für Kalenderdaten. Ein iCal-Feed lässt jede Kalender-App, von Google Kalender über Outlook bis Apple Kalender, dieselben Termine abonnieren und synchron halten. GAIA liest diese Feeds, sodass externe Kalender in deiner Gesamtansicht erscheinen."
       }
     ]
   },
