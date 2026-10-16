@@ -5,9 +5,20 @@ import BestAssistantHub, {
   generateBestHubMetadata,
 } from "@/components/seo/BestAssistantHub";
 
+// GAIA excluded (it is row #1, "our pick"). Every slug must exist in
+// public/data/comparisons/{slug}.json. Missing slugs throw at render.
+// Hoisted so the "Top N" copy below always equals GAIA + ranked runners-up.
+const RANKED_SLUGS = [
+  "superhuman",
+  "sanebox",
+  "shortwave",
+  "missive",
+  "spark",
+] as const;
+
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-email-assistant",
-  pageTitle: "Best AI Email Assistant: 6 Top Picks for 2026",
+  pageTitle: `Best AI Email Assistant: ${RANKED_SLUGS.length + 1} Top Picks for 2026`,
   pageDescription:
     "We ranked 5 AI email assistants by how much inbox work they take off your plate. GAIA is our pick for triage, drafts, and follow-ups.",
   keywords: [
@@ -21,7 +32,7 @@ const CONFIG: BestHubConfig = {
     "best AI email assistant 2026",
   ],
   breadcrumbName: "Best AI Email Assistant",
-  heading: "Best AI Email Assistant: Our Top 6 for 2026",
+  heading: `Best AI Email Assistant: Our Top ${RANKED_SLUGS.length + 1} for 2026`,
   subheading:
     "Ranked by how much inbox work each assistant takes off your plate, not by hype. GAIA is our pick. The rest are described fairly, with links to our full comparisons so you can check our work.",
   intro: (
@@ -47,8 +58,8 @@ const CONFIG: BestHubConfig = {
       </p>
     </>
   ),
-  tableAriaLabel: "Top 6 AI email assistants ranked",
-  tableTitle: "The top 6 at a glance",
+  tableAriaLabel: `Top ${RANKED_SLUGS.length + 1} AI email assistants ranked`,
+  tableTitle: `The top ${RANKED_SLUGS.length + 1} at a glance`,
   gaiaBestFor: "Proactive inbox work",
   gaiaTake:
     "Triages urgency, drafts replies, and creates tasks across 50+ tools before you ask.",
@@ -60,9 +71,7 @@ const CONFIG: BestHubConfig = {
   pickCompareLabel: "See GAIA vs Superhuman head-to-head",
   pickAlternativeHref: "/alternative-to/superhuman",
   pickAlternativeLabel: "Best Superhuman alternative guide",
-  // GAIA excluded (it is row #1, "our pick"). Every slug must exist in
-  // public/data/comparisons/{slug}.json. Missing slugs throw at render.
-  rankedSlugs: ["superhuman", "sanebox", "shortwave", "missive", "spark"],
+  rankedSlugs: RANKED_SLUGS,
   bestFor: {
     superhuman: "Blazing through Gmail and Outlook by keyboard",
     sanebox: "Filtering any inbox into smart folders",

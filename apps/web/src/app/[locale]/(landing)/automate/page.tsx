@@ -131,7 +131,7 @@ export default async function AutomateHubPage({ params }: PageProps) {
       url: `${siteConfig.url}/automate/${c.slug}`,
       description: c.tagline,
     })),
-    "Article",
+    "WebPage",
   );
 
   // Group by first letter of toolA

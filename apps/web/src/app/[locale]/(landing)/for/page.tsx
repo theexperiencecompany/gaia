@@ -71,7 +71,7 @@ export default async function PersonasHubPage() {
       url: `${siteConfig.url}/for/${p.slug}`,
       description: p.metaDescription,
     })),
-    "Article",
+    "WebPage",
   );
 
   const heroPersona = personas.find((p) => p.slug === "startup-founders");

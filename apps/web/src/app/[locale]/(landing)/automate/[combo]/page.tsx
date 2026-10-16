@@ -6,6 +6,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
+import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllComboSlugs } from "@/features/integrations/data/combosData";
 import {
   getTranslatedCombo,
@@ -70,11 +72,14 @@ export async function generateMetadata({
 export default async function AutomateComboPage({ params }: PageProps) {
   const { locale, combo } = await params;
   setRequestLocale(locale);
-  const [t, data, allCombos] = await Promise.all([
-    getTranslations(),
-    getTranslatedCombo(combo),
-    getTranslatedCombos(),
-  ]);
+  const [t, data, allCombos, comparisonSlugs, alternativeSlugs] =
+    await Promise.all([
+      getTranslations(),
+      getTranslatedCombo(combo),
+      getTranslatedCombos(),
+      getAllComparisonSlugs(),
+      getAllAlternativeSlugs(),
+    ]);
 
   if (!data) {
     notFound();
@@ -131,6 +136,18 @@ export default async function AutomateComboPage({ params }: PageProps) {
     toolAPath ?? `/marketplace?search=${encodeURIComponent(data.toolA)}`;
   const toolBHref =
     toolBPath ?? `/marketplace?search=${encodeURIComponent(data.toolB)}`;
+
+  // Head-to-head and alternative guides keyed by the same tool slugs the
+  // combo datasets use; only link pages that verifiably exist (never a 404).
+  const compareHrefFor = (toolSlug: string): string | null => {
+    if (comparisonSlugs.includes(toolSlug)) return `/compare/${toolSlug}`;
+    if (alternativeSlugs.includes(toolSlug)) {
+      return `/alternative-to/${toolSlug}`;
+    }
+    return null;
+  };
+  const toolACompareHref = compareHrefFor(data.toolASlug);
+  const toolBCompareHref = compareHrefFor(data.toolBSlug);
 
   return (
     <>
@@ -288,6 +305,43 @@ export default async function AutomateComboPage({ params }: PageProps) {
             </Link>
           </div>
         </section>
+
+        {/* Compare the tools */}
+        {(toolACompareHref || toolBCompareHref) && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-2xl font-semibold text-white">
+              Compare the tools
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {toolACompareHref && (
+                <Link
+                  href={toolACompareHref}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                    GAIA vs {data.toolA}: full comparison
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    See how GAIA compares to {data.toolA} head-to-head.
+                  </p>
+                </Link>
+              )}
+              {toolBCompareHref && (
+                <Link
+                  href={toolBCompareHref}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                    GAIA vs {data.toolB}: full comparison
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    See how GAIA compares to {data.toolB} head-to-head.
+                  </p>
+                </Link>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Related Automations */}
         {relatedCombos.length > 0 && (

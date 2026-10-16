@@ -97,7 +97,7 @@ export default async function LearnHubPage({ params }: PageProps) {
       url: `${siteConfig.url}/learn/${term.slug}`,
       description: term.definition,
     })),
-    "Article",
+    "DefinedTerm",
   );
 
   return (

@@ -4,7 +4,9 @@ import {
   ALTERNATIVE_DOCS_LINKS,
   COMPARE_DOCS_LINKS,
   getAutomateDocsLinks,
+  getMarketplaceFallbackGuides,
   LEARN_DOCS_LINKS,
+  MARKETPLACE_DOCS_LINKS,
 } from "@/lib/docs-links";
 
 const DOCS = "https://docs.heygaia.io";
@@ -27,6 +29,7 @@ describe("docs-links", () => {
       LEARN_DOCS_LINKS,
       COMPARE_DOCS_LINKS,
       ALTERNATIVE_DOCS_LINKS,
+      MARKETPLACE_DOCS_LINKS,
     ]) {
       for (const [slug, guides] of Object.entries(section)) {
         expect(guides.length, slug).toBeLessThanOrEqual(2);
@@ -59,6 +62,28 @@ describe("docs-links", () => {
   it("falls back to the workflow guide for unmapped tool pairs", () => {
     expect(getAutomateDocsLinks("zoom", "hubspot").map((g) => g.url)).toEqual([
       `${DOCS}/guides/building-workflows`,
+    ]);
+  });
+
+  it("maps curated marketplace slugs to verified docs URLs", () => {
+    expect(MARKETPLACE_DOCS_LINKS.gmail?.map((g) => g.url)).toContain(
+      `${DOCS}/guides/managing-email`,
+    );
+    expect(MARKETPLACE_DOCS_LINKS.slack?.map((g) => g.url)).toContain(
+      `${DOCS}/guides/slack-bot`,
+    );
+    expect(MARKETPLACE_DOCS_LINKS.googlecalendar?.map((g) => g.url)).toContain(
+      `${DOCS}/knowledge/how/ai-calendar-scheduling`,
+    );
+    expect(MARKETPLACE_DOCS_LINKS.notion?.map((g) => g.url)).toContain(
+      `${DOCS}/guides/tasks-todos`,
+    );
+  });
+
+  it("falls back to community guides for unmapped marketplace slugs", () => {
+    expect(getMarketplaceFallbackGuides().map((g) => g.url)).toEqual([
+      `${DOCS}/guides/adding-mcp-integrations`,
+      `${DOCS}/guides/marketplace`,
     ]);
   });
 });

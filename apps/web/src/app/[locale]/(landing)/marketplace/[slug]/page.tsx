@@ -12,6 +12,10 @@ import type {
   PublicIntegrationResponse,
 } from "@/features/integrations/types";
 import {
+  getMarketplaceFallbackGuides,
+  MARKETPLACE_DOCS_LINKS,
+} from "@/lib/docs-links";
+import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generateHowToSchema,
@@ -333,6 +337,9 @@ export default async function IntegrationPage({ params }: Props) {
         initialRelatedIntegrations={relatedIntegrations}
         initialRelatedWorkflows={relatedWorkflows}
         automateCombos={automateCombos}
+        docsGuides={
+          MARKETPLACE_DOCS_LINKS[slug] ?? getMarketplaceFallbackGuides()
+        }
       />
     </>
   );

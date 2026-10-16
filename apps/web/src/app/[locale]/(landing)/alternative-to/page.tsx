@@ -142,7 +142,7 @@ export default async function AlternativesHubPage() {
       url: `${siteConfig.url}/alternative-to/${a.slug}`,
       description: a.tagline,
     })),
-    "Article",
+    "WebPage",
   );
 
   return (

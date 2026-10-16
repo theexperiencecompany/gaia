@@ -377,6 +377,14 @@ export default async function PersonaPage({ params }: PageProps) {
     } catch {
       notFound();
     }
+    // Special pages render a bespoke client component but share the same
+    // persona JSON: surface its relatedComparisons grid identically to the
+    // generic branch. Meta/FAQs stay hardcoded above (JSON copy is dated).
+    const [t, personaData] = await Promise.all([
+      getTranslations(),
+      getTranslatedPersona(persona),
+    ]);
+    const relatedComparisons = personaData?.relatedComparisons ?? [];
     return (
       <>
         <JsonLd
@@ -393,6 +401,37 @@ export default async function PersonaPage({ params }: PageProps) {
           ]}
         />
         <Client />
+        {relatedComparisons.length > 0 && (
+          <div className="mx-auto max-w-4xl px-6 pb-24">
+            <section className="mb-16">
+              <h2 className="mb-6 text-3xl font-semibold text-white">
+                {t("personas.tools_compare", { role: personaData?.role ?? "" })}
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-3">
+                {relatedComparisons.map((slug) => (
+                  <Link
+                    key={slug}
+                    href={`/compare/${slug}`}
+                    className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+                  >
+                    <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                      GAIA vs{" "}
+                      {slug
+                        .split("-")
+                        .map(
+                          (w: string) => w.charAt(0).toUpperCase() + w.slice(1),
+                        )
+                        .join(" ")}
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      {t("personas.see_full_comparison")}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
       </>
     );
   }

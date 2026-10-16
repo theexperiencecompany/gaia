@@ -68,7 +68,7 @@ export default async function UseCasesPage() {
       description: workflow.description || "",
     });
   }
-  const itemListSchema = generateItemListSchema(itemListInput, "Article");
+  const itemListSchema = generateItemListSchema(itemListInput, "HowTo");
 
   return (
     <div className="relative h-fit min-h-screen pt-16 sm:pt-24">

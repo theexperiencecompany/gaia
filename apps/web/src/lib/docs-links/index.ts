@@ -18,3 +18,7 @@ export { getAutomateDocsLinks } from "./automate-links";
 export { ALTERNATIVE_DOCS_LINKS } from "./data/alternative-links";
 export { COMPARE_DOCS_LINKS } from "./data/compare-links";
 export { LEARN_DOCS_LINKS } from "./data/learn-links";
+export {
+  getMarketplaceFallbackGuides,
+  MARKETPLACE_DOCS_LINKS,
+} from "./data/marketplace-links";

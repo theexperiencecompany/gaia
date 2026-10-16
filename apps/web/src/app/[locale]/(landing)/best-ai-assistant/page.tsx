@@ -5,9 +5,26 @@ import BestAssistantHub, {
   generateBestHubMetadata,
 } from "@/components/seo/BestAssistantHub";
 
+// GAIA excluded (it is row #1, "our pick"). Every slug must exist in
+// public/data/comparisons/{slug}.json. Missing slugs throw at render.
+// Hoisted so the "Top N" copy below always equals GAIA + ranked runners-up.
+const RANKED_SLUGS = [
+  "chatgpt",
+  "claude",
+  "gemini",
+  "copilot",
+  "perplexity",
+  "grok",
+  "deepseek",
+  "google-assistant",
+  "lindy-ai",
+  "cursor-ai",
+  "notion-ai",
+] as const;
+
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-assistant",
-  pageTitle: "Best AI Assistant: 12 Top Picks for 2026",
+  pageTitle: `Best AI Assistant: ${RANKED_SLUGS.length + 1} Top Picks for 2026`,
   pageDescription:
     "We ranked 12 AI assistants by how much real work they take off your plate. GAIA is our pick for email, calendar, and tasks. Compare all 12.",
   keywords: [
@@ -21,7 +38,7 @@ const CONFIG: BestHubConfig = {
     "proactive AI assistant",
   ],
   breadcrumbName: "Best AI Assistant",
-  heading: "Best AI Assistant: Our Top 12 for 2026",
+  heading: `Best AI Assistant: Our Top ${RANKED_SLUGS.length + 1} for 2026`,
   subheading:
     "Ranked by how much real work each assistant takes off your plate, not by hype. GAIA is our pick. The rest are described fairly, with links to our full comparisons so you can check our work.",
   intro: (
@@ -46,8 +63,8 @@ const CONFIG: BestHubConfig = {
       </p>
     </>
   ),
-  tableAriaLabel: "Top 12 AI assistants ranked",
-  tableTitle: "The top 12 at a glance",
+  tableAriaLabel: `Top ${RANKED_SLUGS.length + 1} AI assistants ranked`,
+  tableTitle: `The top ${RANKED_SLUGS.length + 1} at a glance`,
   gaiaBestFor: "Proactive daily work",
   gaiaTake:
     "Monitors email, calendar, and tasks across 50+ tools and acts before you ask.",
@@ -59,21 +76,7 @@ const CONFIG: BestHubConfig = {
   pickCompareLabel: "See GAIA vs ChatGPT head-to-head",
   pickAlternativeHref: "/alternative-to/chatgpt",
   pickAlternativeLabel: "Best ChatGPT alternative guide",
-  // GAIA excluded (it is row #1, "our pick"). Every slug must exist in
-  // public/data/comparisons/{slug}.json. Missing slugs throw at render.
-  rankedSlugs: [
-    "chatgpt",
-    "claude",
-    "gemini",
-    "copilot",
-    "perplexity",
-    "grok",
-    "deepseek",
-    "google-assistant",
-    "lindy-ai",
-    "cursor-ai",
-    "notion-ai",
-  ],
+  rankedSlugs: RANKED_SLUGS,
   bestFor: {
     chatgpt: "On-demand answers, drafts, and code",
     claude: "Reasoning and long-form writing",

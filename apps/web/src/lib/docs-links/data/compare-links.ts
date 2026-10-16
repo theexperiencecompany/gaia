@@ -7,6 +7,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/comparisons/ai-assistant-vs-automation-tools",
     },
   ],
+  airtable: [
+    {
+      title: "Integrations",
+      url: "https://docs.heygaia.io/integrations",
+    },
+  ],
   bee: [
     {
       title: "AI Agents vs AI Assistants: Autonomy vs Assistance",
@@ -49,10 +55,22 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/comparisons/gaia-vs-task-managers",
     },
   ],
+  bear: [
+    {
+      title: "How Does AI Memory Work?",
+      url: "https://docs.heygaia.io/knowledge/how/ai-memory-works",
+    },
+  ],
   cal: [
     {
       title: "AI Assistants vs Calendar Apps: From Scheduling to Orchestration",
       url: "https://docs.heygaia.io/knowledge/comparisons/ai-assistant-vs-calendars",
+    },
+  ],
+  capacities: [
+    {
+      title: "How Does AI Memory Work?",
+      url: "https://docs.heygaia.io/knowledge/how/ai-memory-works",
     },
   ],
   calendly: [
@@ -103,6 +121,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/use-cases/time-management",
     },
   ],
+  coda: [
+    {
+      title: "Managing Tasks & Todos",
+      url: "https://docs.heygaia.io/guides/tasks-todos",
+    },
+  ],
   clockwise: [
     {
       title: "AI Assistants vs Calendar Apps: From Scheduling to Orchestration",
@@ -113,6 +137,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
     {
       title: "Why GAIA Isn't a Chatbot: Action vs Conversation",
       url: "https://docs.heygaia.io/knowledge/comparisons/why-gaia-not-chatbot",
+    },
+  ],
+  craft: [
+    {
+      title: "How Does AI Memory Work?",
+      url: "https://docs.heygaia.io/knowledge/how/ai-memory-works",
     },
   ],
   "cursor-ai": [
@@ -131,6 +161,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
     {
       title: "Async Communication Workflow",
       url: "https://docs.heygaia.io/knowledge/workflows/async-communication",
+    },
+  ],
+  evernote: [
+    {
+      title: "How Does AI Memory Work?",
+      url: "https://docs.heygaia.io/knowledge/how/ai-memory-works",
     },
   ],
   "dot-app": [
@@ -241,6 +277,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/comparisons/gaia-vs-task-managers",
     },
   ],
+  lark: [
+    {
+      title: "Async Communication Workflow",
+      url: "https://docs.heygaia.io/knowledge/workflows/async-communication",
+    },
+  ],
   "limitless-ai": [
     {
       title: "AI Agents vs AI Assistants: Autonomy vs Assistance",
@@ -251,6 +293,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
     {
       title: "AI Agents vs AI Assistants: Autonomy vs Assistance",
       url: "https://docs.heygaia.io/knowledge/comparisons/ai-agents-vs-assistants",
+    },
+  ],
+  logseq: [
+    {
+      title: "What is a Knowledge Graph?",
+      url: "https://docs.heygaia.io/knowledge/glossary/knowledge-graph",
     },
   ],
   linear: [
@@ -313,6 +361,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/comparisons/gaia-vs-notion-ai",
     },
   ],
+  obsidian: [
+    {
+      title: "What is a Knowledge Graph?",
+      url: "https://docs.heygaia.io/knowledge/glossary/knowledge-graph",
+    },
+  ],
   "notion-ai": [
     {
       title: "GAIA vs Notion AI: Beyond Smart Documents to True Automation",
@@ -361,6 +415,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
       url: "https://docs.heygaia.io/knowledge/comparisons/why-gaia-not-chatbot",
     },
   ],
+  "reflect-app": [
+    {
+      title: "How Does AI Memory Work?",
+      url: "https://docs.heygaia.io/knowledge/how/ai-memory-works",
+    },
+  ],
   "pi-ai": [
     {
       title: "Why GAIA Isn't a Chatbot: Action vs Conversation",
@@ -389,6 +449,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
     {
       title: "AI Assistants vs Automation Tools: Understanding vs Executing",
       url: "https://docs.heygaia.io/knowledge/comparisons/ai-assistant-vs-automation-tools",
+    },
+  ],
+  "roam-research": [
+    {
+      title: "What is a Knowledge Graph?",
+      url: "https://docs.heygaia.io/knowledge/glossary/knowledge-graph",
     },
   ],
   rescuetime: [
@@ -443,6 +509,12 @@ export const COMPARE_DOCS_LINKS: Record<string, readonly DocsGuideLink[]> = {
     {
       title: "AI Assistants vs Calendar Apps: From Scheduling to Orchestration",
       url: "https://docs.heygaia.io/knowledge/comparisons/ai-assistant-vs-calendars",
+    },
+  ],
+  tana: [
+    {
+      title: "What is a Knowledge Graph?",
+      url: "https://docs.heygaia.io/knowledge/glossary/knowledge-graph",
     },
   ],
   superhuman: [

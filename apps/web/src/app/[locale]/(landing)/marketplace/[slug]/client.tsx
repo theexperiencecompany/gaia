@@ -18,6 +18,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -33,6 +34,7 @@ import type {
   PublicIntegrationResponse,
 } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
+import type { DocsGuideLink } from "@/lib/docs-links";
 import { toast } from "@/lib/toast";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 import { IntegrationRichContent } from "./IntegrationRichContent";
@@ -54,6 +56,8 @@ interface IntegrationDetailClientProps {
     toolB: string;
     tagline: string;
   }>;
+  /** Curated docs guides for this slug (server-resolved, fallback included). */
+  docsGuides?: readonly DocsGuideLink[];
 }
 
 function IntegrationMetaBar({
@@ -176,6 +180,7 @@ export function IntegrationDetailClient({
   initialRelatedIntegrations,
   initialRelatedWorkflows,
   automateCombos,
+  docsGuides,
 }: IntegrationDetailClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -448,6 +453,15 @@ export function IntegrationDetailClient({
                 ))}
               </div>
             </section>
+          )}
+
+          {/* Curated docs guides for this integration (server-resolved). */}
+          {docsGuides && docsGuides.length > 0 && (
+            <DocsGuidesSection
+              heading="Guides in the docs"
+              guides={docsGuides}
+              headingClassName="mb-2 text-2xl font-medium text-foreground"
+            />
           )}
         </div>
       </div>

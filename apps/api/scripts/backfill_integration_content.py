@@ -97,6 +97,7 @@ async def _generate_for_docs(docs: list[dict[str, Any]], dry_run: bool) -> tuple
             tools=doc.get("tools", []),
             server_url=(doc.get("mcp_config") or {}).get("server_url", ""),
             category=doc.get("category", "other"),
+            user_id="system:content-backfill",
         )
         if content is None:
             print(f"⚠️  Skipped (generation failed): {name} ({doc.get('integration_id')})")

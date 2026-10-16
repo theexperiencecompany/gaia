@@ -17,6 +17,7 @@ import {
   generateArticleSchema,
   generateBreadcrumbSchema,
   generateFAQSchema,
+  generateItemListSchema,
 } from "@/lib/seo";
 
 const ROLE_FAQ_SETS = {
@@ -90,6 +91,61 @@ describe("getIntegrationFAQs", () => {
     // FAQPage schema, so they cannot drift.
     const schema = generateFAQSchema(faqs);
     expect(schema.mainEntity).toHaveLength(faqs.length);
+  });
+});
+
+describe("generateItemListSchema", () => {
+  it("emits an ItemList whose entries carry the requested item type", () => {
+    const schema = generateItemListSchema(
+      [
+        {
+          name: "GAIA vs Notion",
+          url: "https://heygaia.io/compare/notion",
+          description: "Head-to-head comparison.",
+        },
+        {
+          name: "GAIA",
+          url: "https://heygaia.io",
+        },
+      ],
+      "WebPage",
+    );
+
+    expect(schema["@context"]).toBe("https://schema.org");
+    expect(schema["@type"]).toBe("ItemList");
+    const emitted = JSON.parse(JSON.stringify(schema)) as {
+      itemListElement: Array<{
+        "@type": string;
+        position: number;
+        item: { "@type": string; name: string; url: string };
+      }>;
+    };
+    expect(emitted.itemListElement).toHaveLength(2);
+    expect(emitted.itemListElement[0].position).toBe(1);
+    expect(emitted.itemListElement[0].item["@type"]).toBe("WebPage");
+    expect(emitted.itemListElement[0].item.name).toBe("GAIA vs Notion");
+    expect(emitted.itemListElement[1].item["@type"]).toBe("WebPage");
+  });
+
+  it("supports every hub item type without falling back", () => {
+    for (const listType of [
+      "BlogPosting",
+      "Article",
+      "Product",
+      "WebPage",
+      "DefinedTerm",
+      "SoftwareApplication",
+      "HowTo",
+    ] as const) {
+      const schema = generateItemListSchema(
+        [{ name: "Entry", url: "https://heygaia.io/x" }],
+        listType,
+      );
+      const emitted = JSON.parse(JSON.stringify(schema)) as {
+        itemListElement: Array<{ item: { "@type": string } }>;
+      };
+      expect(emitted.itemListElement[0].item["@type"]).toBe(listType);
+    }
   });
 });
 

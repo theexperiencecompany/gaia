@@ -152,7 +152,7 @@ export default async function BestAssistantHub({
         description: pick.data.tagline,
       })),
     ],
-    "Article",
+    "WebPage",
   );
 
   const faqSchema = generateFAQSchema(config.faqs);

@@ -77,7 +77,7 @@ export default async function ComparisonsHubPage({ params }: PageProps) {
       url: `${siteConfig.url}/compare/${c.slug}`,
       description: c.description,
     })),
-    "Article",
+    "WebPage",
   );
 
   // Group comparisons by category

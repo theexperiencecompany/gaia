@@ -6,9 +6,20 @@ import BestAssistantHub, {
   generateBestHubMetadata,
 } from "@/components/seo/BestAssistantHub";
 
+// GAIA excluded (it is row #1, "our pick"). Every slug must exist in
+// public/data/comparisons/{slug}.json. Missing slugs throw at render.
+// Hoisted so the "Top N" copy below always equals GAIA + ranked runners-up.
+const RANKED_SLUGS = [
+  "motion",
+  "reclaim",
+  "sunsama",
+  "akiflow",
+  "clockwise",
+] as const;
+
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-calendar-assistant",
-  pageTitle: "Best AI Calendar Assistant: 6 Top Picks for 2026",
+  pageTitle: `Best AI Calendar Assistant: ${RANKED_SLUGS.length + 1} Top Picks for 2026`,
   pageDescription:
     "We ranked 5 AI calendar assistants by how much scheduling busywork they remove. GAIA is our pick for auto-scheduling, buffers, and prep.",
   keywords: [
@@ -21,7 +32,7 @@ const CONFIG: BestHubConfig = {
     "best AI calendar assistant 2026",
   ],
   breadcrumbName: "Best AI Calendar Assistant",
-  heading: "Best AI Calendar Assistant: Our Top 6 for 2026",
+  heading: `Best AI Calendar Assistant: Our Top ${RANKED_SLUGS.length + 1} for 2026`,
   subheading:
     "Ranked by how much scheduling busywork each assistant removes, not by hype. GAIA is our pick. The rest are described fairly, with links to our full comparisons so you can check our work.",
   intro: (
@@ -56,8 +67,8 @@ const CONFIG: BestHubConfig = {
       </p>
     </>
   ),
-  tableAriaLabel: "Top 6 AI calendar assistants ranked",
-  tableTitle: "The top 6 at a glance",
+  tableAriaLabel: `Top ${RANKED_SLUGS.length + 1} AI calendar assistants ranked`,
+  tableTitle: `The top ${RANKED_SLUGS.length + 1} at a glance`,
   gaiaBestFor: "Proactive calendar work",
   gaiaTake:
     "Schedules, buffers, preps, and follows up across 50+ tools before you ask.",
@@ -69,9 +80,7 @@ const CONFIG: BestHubConfig = {
   pickCompareLabel: "See GAIA vs Motion head-to-head",
   pickAlternativeHref: "/alternative-to/motion",
   pickAlternativeLabel: "Best Motion alternative guide",
-  // GAIA excluded (it is row #1, "our pick"). Every slug must exist in
-  // public/data/comparisons/{slug}.json. Missing slugs throw at render.
-  rankedSlugs: ["motion", "reclaim", "sunsama", "akiflow", "clockwise"],
+  rankedSlugs: RANKED_SLUGS,
   bestFor: {
     motion: "Auto-scheduling tasks into your calendar",
     reclaim: "Defending focus time for busy teams",

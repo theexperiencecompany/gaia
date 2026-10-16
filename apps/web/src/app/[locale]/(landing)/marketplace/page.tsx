@@ -1,3 +1,4 @@
+import type { IntegrationsConfigResponse } from "@shared/api/generated";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
@@ -42,6 +43,83 @@ export const metadata: Metadata = generatePageMetadata({
 
 export const revalidate = 3600;
 
+interface InitialMarketplace {
+  readonly native: CommunityIntegration[];
+  readonly community: CommunityIntegration[];
+  readonly total: number;
+}
+
+/**
+ * First grid page, fetched server-side so crawlers see real detail links in
+ * the SSR HTML instead of a client-only grid. Mirrors the client's
+ * getNativeIntegrations mapping and the community first page (sort=popular,
+ * limit=18). Dedupes by integrationId; fail-safe returns null (client-only
+ * fallback, ItemList already does this).
+ */
+async function getInitialMarketplace(): Promise<InitialMarketplace | null> {
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return null;
+
+  try {
+    const [configResponse, communityResponse] = await Promise.all([
+      fetch(`${baseUrl}/integrations/config`, {
+        next: { revalidate: 3600 },
+      }),
+      fetch(`${baseUrl}/integrations/community?sort=popular&limit=18`, {
+        next: { revalidate: 3600 },
+      }),
+    ]);
+    if (!configResponse.ok || !communityResponse.ok) return null;
+
+    const config = (await configResponse.json()) as IntegrationsConfigResponse;
+    const community =
+      (await communityResponse.json()) as CommunityIntegrationsResponse;
+
+    const native: CommunityIntegration[] = config.integrations
+      .filter((item) => item.source === "platform" && item.available !== false)
+      .sort((a, b) => b.displayPriority - a.displayPriority)
+      .map((item) => ({
+        integrationId: item.id,
+        slug: item.slug,
+        name: item.name,
+        description: item.description,
+        category: item.category,
+        // The config endpoint carries no icon or tool list; cards resolve the
+        // icon by slug and the tool list is fetched per integration on demand.
+        iconUrl: null,
+        cloneCount: 0,
+        toolCount: 0,
+        tools: [],
+        publishedAt: null,
+        creator: null,
+        source: "platform" as const,
+      }));
+
+    const nativeIds = new Set(native.map((item) => item.integrationId));
+    const seen = new Set<string>();
+    const communityItems = (community.integrations ?? []).filter((item) => {
+      if (
+        !item ||
+        nativeIds.has(item.integrationId) ||
+        seen.has(item.integrationId)
+      ) {
+        return false;
+      }
+      seen.add(item.integrationId);
+      return true;
+    });
+
+    return {
+      native,
+      community: communityItems,
+      total: community.total ?? communityItems.length,
+    };
+  } catch (error) {
+    console.error("[marketplace] Failed to fetch initial grid:", error);
+    return null;
+  }
+}
+
 /** Most popular integrations for the ItemList rich result (real URLs). */
 async function getTopIntegrations(): Promise<CommunityIntegration[]> {
   const baseUrl = getServerApiBaseUrl();
@@ -61,7 +139,14 @@ async function getTopIntegrations(): Promise<CommunityIntegration[]> {
   }
 }
 
-export default async function MarketplacePage() {
+export default async function MarketplacePage({
+  searchParams,
+}: {
+  readonly searchParams?: Promise<{
+    readonly search?: string;
+    readonly category?: string;
+  }>;
+}) {
   const webPageSchema = generateWebPageSchema(
     "AI Integration Marketplace - Connect Your Tools to AI",
     "Browse 50+ AI integrations for productivity, communication, and developer tools. Automate Gmail, Slack, Notion, GitHub and more with GAIA's AI-powered MCP integration marketplace.",
@@ -87,9 +172,18 @@ export default async function MarketplacePage() {
             url: `${siteConfig.url}/marketplace/${integration.slug}`,
             description: integration.description,
           })),
-          "Product",
+          "SoftwareApplication",
         )
       : null;
+
+  // SSR the first grid page only for the unfiltered view: with ?search= or a
+  // ?category= the client filters locally, so server initials would mismatch
+  // and cause a hydration flash. Backend down => client-only fallback.
+  const params = (await searchParams) ?? {};
+  const hasFilter =
+    (params.search ?? "") !== "" ||
+    (params.category !== undefined && params.category !== "all");
+  const initial = hasFilter ? null : await getInitialMarketplace();
 
   return (
     <>
@@ -103,7 +197,11 @@ export default async function MarketplacePage() {
         }
       />
       <Suspense>
-        <IntegrationsPageClient />
+        <IntegrationsPageClient
+          initialNativeIntegrations={initial?.native}
+          initialIntegrations={initial?.community}
+          initialTotal={initial?.total}
+        />
       </Suspense>
     </>
   );
