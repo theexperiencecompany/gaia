@@ -1318,5 +1318,20 @@
     "file": "i18n/comparisons/pt-BR.json",
     "path": ["zoho", "rows", 11, "competitor"],
     "competitor_prices": 1
+  },
+  {
+    "file": "alternatives/airtable.json",
+    "path": ["comparisonRows", 11, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "alternatives/notion-ai.json",
+    "path": ["comparisonRows", 8, "competitor"],
+    "competitor_prices": 1
+  },
+  {
+    "file": "alternatives/sunsama.json",
+    "path": ["comparisonRows", 9, "competitor"],
+    "competitor_prices": 1
   }
 ]
