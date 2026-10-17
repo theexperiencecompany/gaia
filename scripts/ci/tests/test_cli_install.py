@@ -112,18 +112,17 @@ def test_no_node_yet_is_info_and_says_nvm_comes_next(fresh_server: dict[str, str
         "[info]\033[0m No Node.js package manager yet (npm, pnpm, or bun), "
         "so installing Node.js via nvm..."
     ) in result.stdout
-    assert "Node.js v22.0.0 installed successfully" in result.stdout
+    assert "Node.js v22.0.0 installed\n" in result.stdout
 
 
-def test_nvm_install_prints_the_full_path_command_not_bare_gaia_up(
+def test_nvm_install_prints_a_command_that_loads_nvm_then_runs_gaia_up(
     fresh_server: dict[str, str],
 ) -> None:
     result = _run(fresh_server)
 
     assert result.returncode == 0, result.stdout + result.stderr
     nvm_dir = Path(fresh_server["HOME"]) / ".nvm"
-    assert f"{nvm_dir}/bin/gaia up" in result.stdout
-    assert f'. "{nvm_dir}/nvm.sh"' in result.stdout
+    assert f'. "{nvm_dir}/nvm.sh" && gaia up' in result.stdout
     assert GET_STARTED_UP not in result.stdout
 
 
@@ -150,10 +149,10 @@ def test_gaia_already_on_path_keeps_the_get_started_list(
     assert result.returncode == 0, result.stdout + result.stderr
     assert GET_STARTED_UP in result.stdout
     assert "gaia status" in result.stdout
-    assert "not on your" not in result.stdout
+    assert "cannot find gaia" not in result.stdout
 
 
-def test_npm_prefix_off_path_prints_the_full_path_command_and_the_path_fix(
+def test_npm_prefix_off_path_prints_the_path_fix_then_gaia_up(
     fresh_server: dict[str, str], tmp_path: Path
 ) -> None:
     prefix = tmp_path / "npm-global"
@@ -164,8 +163,7 @@ def test_npm_prefix_off_path_prints_the_full_path_command_and_the_path_fix(
     result = _run(fresh_server)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert f"{prefix}/bin/gaia up" in result.stdout
-    assert f'export PATH="{prefix}/bin:$PATH"' in result.stdout
+    assert f'export PATH="{prefix}/bin:$PATH" && gaia up' in result.stdout
     assert GET_STARTED_UP not in result.stdout
 
 

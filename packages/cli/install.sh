@@ -31,6 +31,15 @@ detect_os() {
   esac
 }
 
+os_label() {
+  case "$1" in
+    linux)   echo "Linux" ;;
+    macos)   echo "macOS" ;;
+    windows) echo "Windows" ;;
+    *)       echo "$1" ;;
+  esac
+}
+
 detect_arch() {
   case "$(uname -m)" in
     x86_64|amd64)  echo "x64" ;;
@@ -75,7 +84,7 @@ install_node() {
   if ! check_command node; then
     error "Node.js installation failed. Please install manually: https://nodejs.org"
   fi
-  success "Node.js $(node --version) installed successfully"
+  success "Node.js $(node --version) installed"
 }
 
 npm_install_cli() {
@@ -90,16 +99,15 @@ global_bin_dir() {
   esac
 }
 
-# The user's shell cannot run a bare `gaia` yet: give the command that works now
-# and the PATH fix that makes `gaia` work from then on.
+# The user's shell cannot run a bare `gaia` yet: print the one command that
+# works in it now, then how later shells find gaia. A full path to gaia is not
+# enough under nvm: its shebang needs node on PATH too.
 show_not_on_path_help() {
-  GAIA_BIN="$1"
-  PATH_FIX="$2"
-  warn "GAIA CLI is installed, but 'gaia' is not on your shell's PATH yet."
-  printf "\n${BOLD}Get started:${NC}\n"
-  printf "  Run it now:  ${GREEN}%s up${NC}\n" "$GAIA_BIN"
-  printf "  Or fix PATH: ${BOLD}%s${NC}\n" "$PATH_FIX"
-  printf "               then run ${GREEN}gaia up${NC}\n\n"
+  RUN_NOW="$1"
+  LATER="$2"
+  printf "\n${BOLD}Get started${NC} (this terminal cannot find gaia yet, so load it first):\n"
+  printf "  ${GREEN}%s${NC}\n\n" "$RUN_NOW"
+  printf "%s\n\n" "$LATER"
 }
 
 main() {
@@ -107,7 +115,7 @@ main() {
 
   OS=$(detect_os)
   ARCH=$(detect_arch)
-  info "Detected: $OS ($ARCH)"
+  info "Detected: $(os_label "$OS") ($ARCH)"
 
   if [ "$OS" = "unknown" ]; then
     error "Unsupported operating system"
@@ -142,19 +150,19 @@ main() {
     bun)  run_quiet "bun install -g @heygaia/cli" bun install -g --ignore-scripts @heygaia/cli ;;
   esac
   rm -f "$LOG_FILE"
-  success "GAIA CLI installed successfully!"
+  success "GAIA CLI installed"
 
   # nvm only changed this installer's PATH, never the shell that piped it in.
   if [ "$NODE_INSTALLED_VIA_NVM" = "1" ]; then
     check_command gaia || error "nvm's npm installed @heygaia/cli but no 'gaia' binary is on nvm's PATH"
-    show_not_on_path_help "$(command -v gaia)" ". \"$NVM_DIR/nvm.sh\"  (or open a new terminal)"
+    show_not_on_path_help ". \"$NVM_DIR/nvm.sh\" && gaia up" "New terminals find gaia on their own."
     return
   fi
 
   if ! check_command gaia; then
     BIN_DIR=$(global_bin_dir "$PKG_MGR")
     [ -x "$BIN_DIR/gaia" ] || error "$PKG_MGR installed @heygaia/cli but $BIN_DIR/gaia does not exist"
-    show_not_on_path_help "$BIN_DIR/gaia" "export PATH=\"$BIN_DIR:\$PATH\"  (add it to ~/.bashrc or ~/.zshrc to keep it)"
+    show_not_on_path_help "export PATH=\"$BIN_DIR:\$PATH\" && gaia up" "To keep it, add that export line to ~/.bashrc or ~/.zshrc."
     return
   fi
 
