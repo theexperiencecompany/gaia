@@ -10,6 +10,7 @@ so the pin also waits for the gate to pass on it.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -64,6 +65,16 @@ GATE_PASSED: dict[str, JobState] = {"quality-gate": ("completed", "success")}
 
 
 MainRuns = dict[int, dict[str, JobState]]
+
+
+@dataclass(frozen=True)
+class GitHubState:
+    """What the stubbed registry and Actions API report: images, late images, gate runs."""
+
+    present: list[str] = field(default_factory=list)
+    late: dict[str, int] = field(default_factory=dict)
+    main_runs: MainRuns = field(default_factory=lambda: {1: GATE_PASSED})
+    pr_runs: MainRuns = field(default_factory=dict)
 
 
 def _write_main_runs(workspace: Path, runs_by_event: dict[str, MainRuns]) -> None:
@@ -127,21 +138,13 @@ def _run(
     workspace: Path,
     subcommand: str,
     *,
-    present: list[str] | None = None,
-    late: dict[str, int] | None = None,
-    main_runs: MainRuns | None = None,
-    pr_runs: MainRuns | None = None,
+    github: GitHubState | None = None,
     env_extra: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    _write_main_runs(
-        workspace,
-        {
-            "push": {1: GATE_PASSED} if main_runs is None else main_runs,
-            "pull_request": pr_runs or {},
-        },
-    )
-    (workspace / "present.txt").write_text("".join(f"{r}\n" for r in present or []))
-    (workspace / "late.txt").write_text("".join(f"{r} {n}\n" for r, n in (late or {}).items()))
+    state = github or GitHubState()
+    _write_main_runs(workspace, {"push": state.main_runs, "pull_request": state.pr_runs})
+    (workspace / "present.txt").write_text("".join(f"{r}\n" for r in state.present))
+    (workspace / "late.txt").write_text("".join(f"{r} {n}\n" for r, n in state.late.items()))
     env = dict(os.environ)
     env.update(
         PATH=f"{workspace / 'bin'}{os.pathsep}{env['PATH']}",
@@ -169,24 +172,13 @@ def _run(
 
 def _pin(
     workspace: Path,
+    github: GitHubState,
     *,
-    present: list[str],
-    late: dict[str, int] | None = None,
-    main_runs: MainRuns | None = None,
-    pr_runs: MainRuns | None = None,
     version: str = "0.6.0",
     env_extra: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = {"VERSION": version, "SHA": _head(workspace), **(env_extra or {})}
-    return _run(
-        workspace,
-        "pin-selfhost-release",
-        present=present,
-        late=late,
-        main_runs=main_runs,
-        pr_runs=pr_runs,
-        env_extra=env,
-    )
+    return _run(workspace, "pin-selfhost-release", github=github, env_extra=env)
 
 
 def _created(workspace: Path) -> list[str]:
@@ -199,7 +191,7 @@ def _release_images(sha: str, *, without: str = "") -> list[str]:
 
 def test_the_release_pins_the_images_of_its_own_commit(workspace: Path) -> None:
     sha = _head(workspace)
-    result = _pin(workspace, present=_release_images(sha))
+    result = _pin(workspace, GitHubState(present=_release_images(sha)))
 
     assert result.returncode == 0, result.stderr
     assert _created(workspace) == [
@@ -211,8 +203,10 @@ def test_the_pin_waits_for_a_build_still_in_flight(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_release_images(sha, without="gaia-web"),
-        late={f"{NAMESPACE}/gaia-web:{sha}": 2},
+        GitHubState(
+            present=_release_images(sha, without="gaia-web"),
+            late={f"{NAMESPACE}/gaia-web:{sha}": 2},
+        ),
     )
 
     assert result.returncode == 0, result.stderr
@@ -223,7 +217,7 @@ def test_a_missing_image_times_out_loud_and_tags_nothing(workspace: Path) -> Non
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=[f"{NAMESPACE}/gaia:{sha}"],
+        GitHubState(present=[f"{NAMESPACE}/gaia:{sha}"]),
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
 
@@ -238,7 +232,7 @@ def test_a_release_without_its_bot_images_times_out_loud_and_tags_nothing(
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_release_images(sha, without="gaia-bot-slack"),
+        GitHubState(present=_release_images(sha, without="gaia-bot-slack")),
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
 
@@ -250,8 +244,7 @@ def test_a_release_without_its_bot_images_times_out_loud_and_tags_nothing(
 def test_an_existing_release_tag_is_never_moved(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(
-        workspace,
-        present=[f"{NAMESPACE}/gaia:v0.6.0", *_release_images(sha)],
+        workspace, GitHubState(present=[f"{NAMESPACE}/gaia:v0.6.0", *_release_images(sha)])
     )
 
     assert result.returncode == 0, result.stderr
@@ -264,7 +257,7 @@ def test_a_sha_other_than_the_checked_out_release_is_refused(workspace: Path) ->
     other = "0" * 40
     result = _pin(
         workspace,
-        present=[f"{NAMESPACE}/gaia:{other}", f"{NAMESPACE}/gaia-web:{other}"],
+        GitHubState(present=[f"{NAMESPACE}/gaia:{other}", f"{NAMESPACE}/gaia-web:{other}"]),
         env_extra={"SHA": other},
     )
 
@@ -274,7 +267,7 @@ def test_a_sha_other_than_the_checked_out_release_is_refused(workspace: Path) ->
 
 def test_the_pin_asks_for_the_quality_gate_of_the_release_commit(workspace: Path) -> None:
     sha = _head(workspace)
-    result = _pin(workspace, present=_release_images(sha))
+    result = _pin(workspace, GitHubState(present=_release_images(sha)))
 
     assert result.returncode == 0, result.stderr
     calls = (workspace / "gh-calls.txt").read_text()
@@ -287,8 +280,9 @@ def test_a_failed_quality_gate_refuses_the_release_and_tags_nothing(workspace: P
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_release_images(sha),
-        main_runs={7: {"quality-gate": ("completed", "failure")}},
+        GitHubState(
+            present=_release_images(sha), main_runs={7: {"quality-gate": ("completed", "failure")}}
+        ),
     )
 
     assert result.returncode != 0
@@ -300,8 +294,9 @@ def test_a_gate_that_never_finishes_times_out_loud_and_tags_nothing(workspace: P
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_release_images(sha),
-        main_runs={7: {"quality-gate": ("in_progress", None)}},
+        GitHubState(
+            present=_release_images(sha), main_runs={7: {"quality-gate": ("in_progress", None)}}
+        ),
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
 
@@ -314,8 +309,7 @@ def test_a_commit_main_yml_never_ran_on_is_not_released(workspace: Path) -> None
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_release_images(sha),
-        main_runs={},
+        GitHubState(present=_release_images(sha), main_runs={}),
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
 
@@ -327,13 +321,15 @@ def test_a_passed_gate_releases_even_when_a_non_gating_job_failed(workspace: Pat
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_release_images(sha),
-        main_runs={
-            7: {
-                "changelog-sync": ("completed", "failure"),
-                "quality-gate": ("completed", "success"),
-            }
-        },
+        GitHubState(
+            present=_release_images(sha),
+            main_runs={
+                7: {
+                    "changelog-sync": ("completed", "failure"),
+                    "quality-gate": ("completed", "success"),
+                }
+            },
+        ),
     )
 
     assert result.returncode == 0, result.stderr
@@ -344,9 +340,7 @@ def test_a_beta_cut_from_a_pr_head_is_judged_by_that_prs_gate(workspace: Path) -
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_release_images(sha),
-        main_runs={},
-        pr_runs={8: GATE_PASSED},
+        GitHubState(present=_release_images(sha), main_runs={}, pr_runs={8: GATE_PASSED}),
         version="0.7.0-beta.1",
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
@@ -361,9 +355,11 @@ def test_a_beta_cut_from_a_pr_head_is_judged_by_that_prs_gate(workspace: Path) -
 def test_a_beta_whose_pr_gate_failed_is_refused_and_tags_nothing(workspace: Path) -> None:
     result = _pin(
         workspace,
-        present=_release_images(_head(workspace)),
-        main_runs={},
-        pr_runs={8: {"quality-gate": ("completed", "failure")}},
+        GitHubState(
+            present=_release_images(_head(workspace)),
+            main_runs={},
+            pr_runs={8: {"quality-gate": ("completed", "failure")}},
+        ),
         version="0.7.0-beta.1",
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
@@ -378,9 +374,11 @@ def test_a_beta_whose_pr_gate_is_still_running_times_out_and_tags_nothing(
 ) -> None:
     result = _pin(
         workspace,
-        present=_release_images(_head(workspace)),
-        main_runs={},
-        pr_runs={8: {"quality-gate": ("in_progress", None)}},
+        GitHubState(
+            present=_release_images(_head(workspace)),
+            main_runs={},
+            pr_runs={8: {"quality-gate": ("in_progress", None)}},
+        ),
         version="0.7.0-beta.1",
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
@@ -393,9 +391,7 @@ def test_a_stable_release_never_accepts_a_pr_gate(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_release_images(sha),
-        main_runs={},
-        pr_runs={8: GATE_PASSED},
+        GitHubState(present=_release_images(sha), main_runs={}, pr_runs={8: GATE_PASSED}),
         env_extra={"PIN_WAIT_SECONDS": "0"},
     )
 
@@ -408,7 +404,7 @@ def test_an_unreadable_actions_api_fails_the_pin_loud(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(
         workspace,
-        present=_release_images(sha),
+        GitHubState(present=_release_images(sha)),
         env_extra={"GH_FIXTURES": str(workspace / "absent"), "PIN_WAIT_SECONDS": "0"},
     )
 
