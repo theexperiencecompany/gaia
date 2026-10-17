@@ -110,6 +110,34 @@ describe("UpScreen on an 80x24 terminal", () => {
   });
 });
 
+describe("UpScreen when the start fails", () => {
+  it("names the log once, inside the error", async () => {
+    const store = new CLIStore();
+    const { written, app } = renderOn(
+      createElement(UpScreen, { store }),
+      100,
+      40,
+      { debug: true },
+    );
+    initSteps(store, STEPS);
+    startStep(store, "start");
+    store.updateData("logPath", "/tmp/compose-up.log");
+    store.setError(
+      new Error(
+        "The image gaia-missing:v1 was never built on this machine.\nFull log: /tmp/compose-up.log\nBuild the images here: gaia up --build.",
+      ),
+    );
+    store.flush();
+    await tick();
+    app.unmount();
+
+    const lastFrame =
+      stripVTControlCharacters(written()).split("GAIA v0.0.1-test").at(-1) ??
+      "";
+    expect(lastFrame.match(/Full log:/g)).toHaveLength(1);
+  });
+});
+
 describe("UpScreen after a docker-group relaunch", () => {
   afterEach(() => {
     vi.unstubAllEnvs();

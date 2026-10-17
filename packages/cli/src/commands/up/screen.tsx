@@ -187,7 +187,7 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         status={state.status}
       />
       <UpPrompt state={state} store={store} />
-      {logPath && !finished && (
+      {logPath && !finished && !state.error && (
         <Box marginTop={1} marginLeft={2}>
           <Text color="gray">Full log: {homeRelative(logPath)}</Text>
         </Box>
