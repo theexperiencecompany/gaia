@@ -149,6 +149,22 @@ def test_gaia_already_on_path_gets_one_next_step(
     assert "\033[" not in result.stdout  # piped: no colour codes
 
 
+def test_a_cli_without_up_is_pointed_at_init(fresh_server: dict[str, str], tmp_path: Path) -> None:
+    bin_dir = Path(fresh_server["PATH"])
+    pre_up_cli = (
+        f"    mkdir -p '{bin_dir}'\n"
+        f"    printf '#!/bin/sh\\n[ \"$1\" = up ] && exit 1\\nexit 0\\n' > '{bin_dir}/gaia'\n"
+        f"    chmod +x '{bin_dir}/gaia'"
+    )
+    _write_executable(bin_dir / "npm", _fake_npm(tmp_path, pre_up_cli))
+
+    result = _run(fresh_server)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "gaia init" in result.stdout
+    assert "gaia up" not in result.stdout
+
+
 def test_npm_prefix_off_path_prints_the_path_fix_then_gaia_up(
     fresh_server: dict[str, str], tmp_path: Path
 ) -> None:

@@ -102,7 +102,7 @@ global_bin_dir() {
   esac
 }
 
-# Offer to run `gaia up` right away when there is a person at a terminal to
+# Offer to run the first command right away when there is a person at a terminal to
 # answer; the installer already knows where gaia is, so no PATH step is needed.
 offer_setup() {
   GAIA_BIN="$1"
@@ -111,7 +111,7 @@ offer_setup() {
   printf "\n  Set up GAIA now? [Y/n] "
   read -r ANSWER </dev/tty || return 0
   case "$ANSWER" in
-    ""|y|Y|yes|YES) exec "$GAIA_BIN" up </dev/tty ;;
+    ""|y|Y|yes|YES) exec "$GAIA_BIN" "$FIRST_COMMAND" </dev/tty ;;
   esac
 }
 
@@ -174,19 +174,23 @@ main() {
   fi
   done_line "GAIA CLI $("$GAIA_BIN" --version 2>/dev/null) installed" "$(step_took)"
 
+  # CLIs before 0.7.0 have no `up`; they start with `init`.
+  FIRST_COMMAND="up"
+  "$GAIA_BIN" up --help >/dev/null 2>&1 || FIRST_COMMAND="init"
+
   # nvm only changed this installer's PATH, never the shell that piped it in.
   if [ "$NODE_INSTALLED_VIA_NVM" = "1" ]; then
     offer_setup "$GAIA_BIN"
-    next_step ". \"$NVM_DIR/nvm.sh\" && gaia up" "(this terminal needs nvm loaded first; new terminals find gaia on their own)"
+    next_step ". \"$NVM_DIR/nvm.sh\" && gaia $FIRST_COMMAND" "(this terminal needs nvm loaded first; new terminals find gaia on their own)"
     return
   fi
   if [ -n "${BIN_DIR:-}" ]; then
     offer_setup "$GAIA_BIN"
-    next_step "export PATH=\"$BIN_DIR:\$PATH\" && gaia up" "(to keep it, add that export line to ~/.bashrc or ~/.zshrc)"
+    next_step "export PATH=\"$BIN_DIR:\$PATH\" && gaia $FIRST_COMMAND" "(to keep it, add that export line to ~/.bashrc or ~/.zshrc)"
     return
   fi
   offer_setup "$GAIA_BIN"
-  next_step "gaia up" ""
+  next_step "gaia $FIRST_COMMAND" ""
 }
 
 main
