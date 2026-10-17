@@ -23,6 +23,7 @@ from app.services.nurture.service import (
     _within_frequency_caps,
     run_nurture_sequence,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import NurtureEmailSent
 
@@ -316,12 +317,9 @@ class TestRunNurtureSequence:
                 "app.services.nurture.service.resolve_resend_config",
                 new=AsyncMock(
                     side_effect={
-                        "resend": {
-                            "api_key": "re-stored",
-                            "base_url": None,
-                            "model": None,
-                            "preset": None,
-                        }
+                        "resend": ProviderConfig(
+                            api_key="re-stored",
+                        )
                     }.get
                 ),
             ),

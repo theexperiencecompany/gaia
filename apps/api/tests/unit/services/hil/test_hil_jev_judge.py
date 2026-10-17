@@ -40,7 +40,6 @@ from app.services.hil.jev_judge import (
 from app.services.hil.prompts import JEV_FORBID_QUESTION
 from app.services.hil.utils import PriorCall
 from app.services.providers.provider_credentials_service import ProviderConfig
-from tests.factories import make_provider_config
 
 MODULE = "app.services.hil.jev_judge"
 # The Decisions transport: the network boundary every JEV question crosses.
@@ -578,7 +577,7 @@ def _openrouter_key(key: str | None) -> AbstractContextManager[AsyncMock]:
     async def resolve(provider: str) -> ProviderConfig | None:
         if key is None or provider != CredentialProviderName.OPENROUTER:
             return None
-        return make_provider_config(api_key=key)
+        return ProviderConfig(api_key=key)
 
     return patch(f"{CLIENT_MODULE}.resolve", AsyncMock(side_effect=resolve))
 

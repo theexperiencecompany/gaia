@@ -8,6 +8,7 @@ budget-capped, so search can never incur a bill while it is reachable.
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import CredentialSearchProvider
 
@@ -42,7 +43,11 @@ class SearxngProvider(CredentialSearchProvider):
 
     name = "searxng"
     monthly_free_limit = None
-    credential_field = "base_url"
+
+    @staticmethod
+    def credential_of(config: ProviderConfig) -> str | None:
+        """Return the self-hosted instance's base URL; SearXNG has no key."""
+        return config.base_url
 
     async def search(self, query: str, count: int) -> SearchResponse:
         """Query the SearXNG JSON API and map results to the shared shape."""

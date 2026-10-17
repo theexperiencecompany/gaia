@@ -568,13 +568,13 @@ class InMemoryCredentialStore:
         if config is None:
             return None
         ciphertext = Fernet(fernet_key_from(CREDENTIAL_STORE_SECRET)).encrypt(
-            json.dumps(config).encode()
+            json.dumps(config.model_dump()).encode()
         )
         return SimpleNamespace(provider=provider, data_encrypted=ciphertext.decode())
 
     async def upsert_encrypted(self, provider: str, data_encrypted: str) -> None:
         plaintext = Fernet(fernet_key_from(CREDENTIAL_STORE_SECRET)).decrypt(data_encrypted)
-        self.configs[provider] = json.loads(plaintext)
+        self.configs[provider] = ProviderConfig.model_validate_json(plaintext)
 
     async def delete(self, provider: str) -> bool:
         return self.configs.pop(provider, None) is not None

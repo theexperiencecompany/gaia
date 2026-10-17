@@ -59,9 +59,9 @@ async def run(argv: list[str]) -> int:
         if args.provider in LLM_PROVIDER_KEYS:
             ok, detail, _ = await probe_provider(
                 args.provider,
-                api_key=config["api_key"],
-                base_url=config["base_url"],
-                model=config["model"],
+                api_key=config.api_key,
+                base_url=config.base_url,
+                model=config.model,
             )
             if not ok:
                 print(f"Could not save {args.provider}: {detail}", file=sys.stderr)

@@ -150,9 +150,9 @@ class TestGetAvailableProviders:
     # Availability follows the resolved config; these tests pin the REGISTRY
     # half of the lookup, so they seed stored configs for every provider whose
     # availability isn't under test.
-    _CONFIGURED: ClassVar[dict[str, dict[str, str | None]]] = {
-        "gemini": {"api_key": "g-key", "base_url": None, "model": None, "preset": None},
-        "openrouter": {"api_key": "sk-or", "base_url": None, "model": None, "preset": None},
+    _CONFIGURED: ClassVar[dict[str, ProviderConfig]] = {
+        "gemini": ProviderConfig(api_key="g-key"),
+        "openrouter": ProviderConfig(api_key="sk-or"),
     }
 
     @patch("app.agents.llm.client.providers")
@@ -209,12 +209,9 @@ class TestGetAvailableProviders:
 
         custom_configured = {
             **self._CONFIGURED,
-            "custom": {
-                "api_key": "sk-custom",
-                "base_url": "http://localhost:1",
-                "model": "test/model",
-                "preset": None,
-            },
+            "custom": ProviderConfig(
+                api_key="sk-custom", base_url="http://localhost:1", model="test/model"
+            ),
         }
         with (
             patch("app.agents.llm.client.providers", registry),

@@ -56,7 +56,7 @@ class FakeProviderService:
         """Mirrors the real precedence: a saved config wins over the environment."""
         from_env = env_config(provider)
         if stored := self.configs.get(provider):
-            shadows_env = from_env is not None and from_env["api_key"] != stored["api_key"]
+            shadows_env = from_env is not None and from_env.api_key != stored.api_key
             return CredentialResolution(stored, CredentialSource.STORED, shadows_env)
         source = CredentialSource.UNSET if from_env is None else CredentialSource.ENV
         return CredentialResolution(from_env, source, shadows_env=False)

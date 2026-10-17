@@ -297,11 +297,11 @@ async def list_providers(
         masked[provider] = MaskedProvider(
             provider=CredentialProviderName(provider),
             configured=is_usable(provider, config),
-            base_url=config["base_url"] if config else None,
-            model=config["model"] if config else None,
-            api_key_hint=_hint(config["api_key"] if config else None),
-            account_id=config["account_id"] if config else None,
-            api_secret_hint=_hint(config["api_secret"] if config else None),
+            base_url=config.base_url if config else None,
+            model=config.model if config else None,
+            api_key_hint=_hint(config.api_key if config else None),
+            account_id=config.account_id if config else None,
+            api_secret_hint=_hint(config.api_secret if config else None),
         )
     return ProviderListResponse(providers=masked)
 
@@ -374,7 +374,7 @@ async def test_provider(
 
     stored: ProviderConfig | None = await resolve_provider_config(provider)
     if stored is not None:
-        api_key, base_url, model = stored["api_key"], stored["base_url"], stored["model"]
+        api_key, base_url, model = stored.api_key, stored.base_url, stored.model
     else:
         api_key = body.api_key
         base_url, model = apply_preset(body.preset, body.base_url, body.model)

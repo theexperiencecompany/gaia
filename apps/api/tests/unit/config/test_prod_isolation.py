@@ -594,7 +594,7 @@ async def test_production_resolve_never_reads_the_credential_store(
     config = await service.resolve("resend")
 
     assert config is not None
-    assert config["api_key"] == "env-resend-key"
+    assert config.api_key == "env-resend-key"
     store_read.assert_not_awaited()
 
 
@@ -615,7 +615,7 @@ def test_production_snapshot_ignores_a_stored_credential(
     config = service.resolved_config("composio")
 
     assert config is not None
-    assert config["api_key"] == "env-composio-key"
+    assert config.api_key == "env-composio-key"
 
 
 async def test_production_refuses_to_store_a_credential(production_profile: None) -> None:
@@ -658,11 +658,11 @@ async def test_production_comms_uses_the_env_openai_key_over_a_stored_one(
     resolved = await service.resolve("openai")
 
     assert resolved is not None
-    assert resolved["api_key"] == "env-openai-key"
+    assert resolved.api_key == "env-openai-key"
     # The LLM client reads this same snapshot when it builds the comms client.
     snapshot = service.resolved_configs["openai"]
     assert snapshot is not None
-    assert snapshot["api_key"] == "env-openai-key"
+    assert snapshot.api_key == "env-openai-key"
     store_read.assert_not_awaited()
 
 

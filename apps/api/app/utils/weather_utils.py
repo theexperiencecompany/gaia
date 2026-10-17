@@ -153,7 +153,7 @@ async def user_weather(location_name: str | None = None) -> WeatherReport | str:
     """Fetch weather data for a specified location."""
     log.set(operation="user_weather", location_name=location_name)
     config: ProviderConfig | None = await resolve(CredentialProviderName.OPENWEATHER)
-    api_key = config["api_key"] if config else None
+    api_key = config.api_key if config else None
     if not api_key:
         log.set(weather={"configured": False})
         return WEATHER_NOT_CONFIGURED

@@ -16,6 +16,7 @@ from app.models.integrations.weather import (
     ResolvedLocation,
     WeatherReport,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.weather_utils import (
     fetch_weather_data,
     geocode_location,
@@ -35,7 +36,7 @@ FAKE_API_KEY = "test-api-key-12345"  # pragma: allowlist secret
 
 def _resolving(api_key: str | None) -> AsyncMock:
     """Stand in for the credential store's resolve of the openweather provider."""
-    return AsyncMock(return_value={"api_key": api_key} if api_key is not None else None)
+    return AsyncMock(return_value=ProviderConfig(api_key=api_key) if api_key is not None else None)
 
 
 _LOCATION = {"city": "London", "country": "GB", "region": "England"}

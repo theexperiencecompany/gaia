@@ -5,8 +5,6 @@ both build what they store with merge_provider_credential, so gaia up accepts
 exactly what the wizard and Settings accept.
 """
 
-from typing import Literal
-
 from app.config.settings import settings
 from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS, PresetName, ProviderPreset
 from app.schemas.providers import ProviderCredentialBody
@@ -72,14 +70,9 @@ async def assert_endpoint_safe(base_url: str | None, *, allow_private: bool = Fa
         raise AppError(message=f"{_PRIVATE_URL_HINT} ({e})", status_code=_UNPROCESSABLE) from e
 
 
-_ConfigField = Literal["api_key", "base_url", "model", "preset", "account_id", "api_secret"]
-
-
-def _kept(given: str | None, stored: ProviderConfig | None, field: _ConfigField) -> str | None:
+def _kept(given: str | None, stored: str | None) -> str | None:
     """Return the given value, else the stored one; None means "not provided", never "clear"."""
-    if given is not None or stored is None:
-        return given
-    return stored[field]
+    return stored if given is None else given
 
 
 async def merge_provider_credential(provider: str, body: ProviderCredentialBody) -> ProviderConfig:
@@ -87,18 +80,18 @@ async def merge_provider_credential(provider: str, body: ProviderCredentialBody)
     ensure_known_provider(provider)
     if all(v is None for v in body.model_dump().values()):
         raise AppError(message="No fields to update", status_code=_UNPROCESSABLE)
-    stored = await resolve(provider)
+    stored = await resolve(provider) or ProviderConfig()
     preset_base_url, preset_model = apply_preset(body.preset, body.base_url, body.model)
-    merged_base_url = _kept(preset_base_url, stored, "base_url")
+    merged_base_url = _kept(preset_base_url, stored.base_url)
     if provider in BASE_URL_PROVIDERS:
         await assert_endpoint_safe(merged_base_url, allow_private=allows_private_endpoint(provider))
     return ProviderConfig(
-        api_key=_kept(body.api_key, stored, "api_key"),
+        api_key=_kept(body.api_key, stored.api_key),
         base_url=merged_base_url,
-        model=_kept(preset_model, stored, "model"),
-        preset=_kept(body.preset, stored, "preset"),
-        account_id=_kept(body.account_id, stored, "account_id"),
-        api_secret=_kept(body.api_secret, stored, "api_secret"),
+        model=_kept(preset_model, stored.model),
+        preset=_kept(body.preset, stored.preset),
+        account_id=_kept(body.account_id, stored.account_id),
+        api_secret=_kept(body.api_secret, stored.api_secret),
     )
 
 

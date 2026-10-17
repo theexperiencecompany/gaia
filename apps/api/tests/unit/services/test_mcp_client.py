@@ -69,6 +69,7 @@ from app.services.mcp.token_management import (
     revoke_tokens,
     try_refresh_token,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.mcp_oauth_utils import MCP_PROTOCOL_VERSION
 from shared.py.wide_events import log
 
@@ -330,12 +331,9 @@ class TestMCPClientBuildConfig:
         composio_url = "https://backend.composio.dev/v3/mcp/abc/mcp"
         mcp_config = _make_mcp_config(server_url=composio_url)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        stored = {
-            "api_key": "stored-composio-key",
-            "base_url": None,
-            "model": None,
-            "preset": None,
-        }
+        stored = ProviderConfig(
+            api_key="stored-composio-key",
+        )
         resolver = AsyncMock(return_value=stored)
         with patch("app.services.mcp.mcp_client.resolve_composio_config", new=resolver):
             config = await client._build_config(INTEGRATION_ID, mcp_config)

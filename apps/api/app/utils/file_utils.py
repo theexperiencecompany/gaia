@@ -101,7 +101,7 @@ class DocumentProcessor:
         """
         if self._parser is None:
             config: ProviderConfig | None = resolved_config(CredentialProviderName.LLAMAPARSE)
-            api_key = config["api_key"] if config else None
+            api_key = config.api_key if config else None
             if not api_key:
                 raise ProviderNotConfiguredError("LlamaParse OCR has no API key")
             from llama_cloud_services import (  # noqa: PLC0415 -- ~0.7s SDK import; only the scanned-PDF OCR fallback needs it

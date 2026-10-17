@@ -22,7 +22,7 @@ class ResendEmailProvider:
         runtime applies without a restart.
         """
         config: ProviderConfig | None = await resolve_resend_config("resend")
-        api_key = config["api_key"] if config else None
+        api_key = config.api_key if config else None
         if not api_key:
             raise RuntimeError(
                 "Resend is not configured: store a Resend credential in "

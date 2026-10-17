@@ -25,6 +25,7 @@ from app.services.providers.provider_credentials_service import (
     CloudinaryAccount,
     CredentialResolution,
     GoogleOAuthClient,
+    ProviderConfig,
     cloudinary_account,
     delete,
     env_config,
@@ -37,7 +38,6 @@ from app.services.providers.provider_credentials_service import (
 )
 from app.services.runtime.config_updates import RUNTIME_CONFIG_CHANNEL
 from app.services.runtime.secrets_store import fernet_key_from
-from tests.factories import make_provider_config
 from tests.helpers import captured_wide_event
 
 INSTANCE_SECRET = "test-instance-secret"
@@ -223,43 +223,32 @@ class TestUpsertResolveRoundtrip:
     async def test_stored_config_resolves_back(self, repo, fixed_secret) -> None:
         await upsert(
             "openrouter",
-            make_provider_config(
+            ProviderConfig(
                 api_key="sk-or-live-1",
                 base_url="https://or.example/v1",
                 model="m1",
-                preset=None,
-                account_id=None,
-                api_secret=None,
             ),
         )
 
         config = await resolve("openrouter")
 
-        assert config == {
-            "api_key": "sk-or-live-1",
-            "base_url": "https://or.example/v1",
-            "model": "m1",
-            "preset": None,
-            "account_id": None,
-            "api_secret": None,
-        }
+        assert config == ProviderConfig(
+            api_key="sk-or-live-1",
+            base_url="https://or.example/v1",
+            model="m1",
+        )
 
     async def test_preset_only_config_roundtrips(self, repo, fixed_secret) -> None:
-        await upsert("custom", make_provider_config(preset="opencode"))
+        await upsert("custom", ProviderConfig(preset="opencode"))
 
         config = await resolve("custom")
 
-        assert config == {
-            "api_key": None,
-            "base_url": None,
-            "model": None,
-            "preset": "opencode",
-            "account_id": None,
-            "api_secret": None,
-        }
+        assert config == ProviderConfig(
+            preset="opencode",
+        )
 
     async def test_ciphertext_never_contains_raw_api_key(self, repo, fixed_secret) -> None:
-        await upsert("gemini", make_provider_config(api_key="AIzaSUPERSECRET-VALUE"))
+        await upsert("gemini", ProviderConfig(api_key="AIzaSUPERSECRET-VALUE"))
 
         ciphertext = repo.ciphertexts["gemini"]
         assert "AIzaSUPERSECRET-VALUE" not in ciphertext
@@ -267,11 +256,41 @@ class TestUpsertResolveRoundtrip:
         assert decrypt_payload(ciphertext)["api_key"] == "AIzaSUPERSECRET-VALUE"
 
     async def test_upsert_overwrites_previous_value(self, repo, fixed_secret) -> None:
-        await upsert("tavily", make_provider_config(api_key="tvly-old"))
-        await upsert("tavily", make_provider_config(api_key="tvly-new"))
+        await upsert("tavily", ProviderConfig(api_key="tvly-old"))
+        await upsert("tavily", ProviderConfig(api_key="tvly-new"))
 
         assert len(repo.upsert_calls) == 2
         assert decrypt_payload(repo.ciphertexts["tavily"])["api_key"] == "tvly-new"
+
+    async def test_a_row_written_in_the_typeddict_shape_round_trips_byte_for_byte(
+        self, repo, fixed_secret
+    ) -> None:
+        fernet = Fernet(fernet_key_from(INSTANCE_SECRET))
+        legacy = {
+            "api_key": "sk-legacy",
+            "base_url": "https://gw.example/v1",
+            "model": "m-1",
+            "preset": "opencode",
+            "account_id": None,
+            "api_secret": None,
+        }
+        repo.ciphertexts["custom"] = fernet.encrypt(json.dumps(legacy).encode()).decode()
+
+        config = await resolve("custom")
+        assert config is not None
+        await upsert("custom", config)
+
+        rewritten = fernet.decrypt(repo.ciphertexts["custom"].encode())
+        assert rewritten == json.dumps(legacy).encode()
+
+    async def test_a_row_predating_the_account_fields_resolves_them_as_none(
+        self, repo, fixed_secret
+    ) -> None:
+        fernet = Fernet(fernet_key_from(INSTANCE_SECRET))
+        legacy = {"api_key": "sk-old", "base_url": None, "model": None, "preset": None}
+        repo.ciphertexts["openrouter"] = fernet.encrypt(json.dumps(legacy).encode()).decode()
+
+        assert await resolve("openrouter") == ProviderConfig(api_key="sk-old")
 
 
 # ---------------------------------------------------------------------------
@@ -282,11 +301,11 @@ class TestUpsertResolveRoundtrip:
 class TestResolvePrecedenceAndFallbacks:
     async def test_db_credential_beats_env(self, repo, fixed_secret) -> None:
         settings.OPENROUTER_API_KEY = "sk-env-key"
-        await upsert("openrouter", make_provider_config(api_key="sk-db-key"))
+        await upsert("openrouter", ProviderConfig(api_key="sk-db-key"))
 
         config = await resolve("openrouter")
 
-        assert config is not None and config["api_key"] == "sk-db-key"
+        assert config is not None and config.api_key == "sk-db-key"
 
     async def test_openrouter_env_fallback_includes_base_url(self, repo) -> None:
         settings.OPENROUTER_API_KEY = "sk-env-key"
@@ -294,34 +313,25 @@ class TestResolvePrecedenceAndFallbacks:
 
         config = await resolve("openrouter")
 
-        assert config == {
-            "api_key": "sk-env-key",
-            "base_url": "http://localhost:9999/v1",
-            "model": None,
-            "preset": None,
-            "account_id": None,
-            "api_secret": None,
-        }
+        assert config == ProviderConfig(
+            api_key="sk-env-key",
+            base_url="http://localhost:9999/v1",
+        )
 
     async def test_gemini_env_fallback(self, repo) -> None:
         settings.GOOGLE_API_KEY = "g-emini-key"
 
         config = await resolve("gemini")
 
-        assert config is not None and config["api_key"] == "g-emini-key"
+        assert config is not None and config.api_key == "g-emini-key"
 
     async def test_ollama_env_fallback_returns_base_url(self, repo, monkeypatch) -> None:
         monkeypatch.setattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
         config = await resolve("ollama")
 
-        assert config == {
-            "api_key": None,
-            "base_url": "http://localhost:11434",
-            "model": None,
-            "preset": None,
-            "account_id": None,
-            "api_secret": None,
-        }
+        assert config == ProviderConfig(
+            base_url="http://localhost:11434",
+        )
 
     async def test_ollama_without_an_endpoint_is_not_configured(self, repo, monkeypatch) -> None:
         """A guessed default endpoint would die on connect from a bare instance."""
@@ -333,7 +343,7 @@ class TestResolvePrecedenceAndFallbacks:
 
         config = await resolve("tavily")
 
-        assert config is not None and config["api_key"] == "tvly-env-key"
+        assert config is not None and config.api_key == "tvly-env-key"
 
     async def test_custom_dev_env_fallback(self, repo) -> None:
         settings.ENV = "development"
@@ -343,14 +353,11 @@ class TestResolvePrecedenceAndFallbacks:
 
         config = await resolve("custom")
 
-        assert config == {
-            "api_key": "sk-dev",
-            "base_url": "http://llm.example/v1",
-            "model": "deepseek-x",
-            "preset": None,
-            "account_id": None,
-            "api_secret": None,
-        }
+        assert config == ProviderConfig(
+            api_key="sk-dev",
+            base_url="http://llm.example/v1",
+            model="deepseek-x",
+        )
 
     async def test_custom_outside_development_is_none(self, repo) -> None:
         assert await resolve("custom") is None
@@ -385,7 +392,7 @@ class TestToolProviderEnvFallbacks:
 
         config = await resolve(provider)
 
-        assert config is not None and config["api_key"] == value
+        assert config is not None and config.api_key == value
 
     async def test_cloudinary_resolves_with_all_three_fields(self, repo) -> None:
         settings.CLOUDINARY_CLOUD_NAME = "my-cloud"
@@ -394,7 +401,7 @@ class TestToolProviderEnvFallbacks:
 
         config = await resolve("cloudinary")
 
-        assert config is not None and config["api_key"] == "cl-key"
+        assert config is not None and config.api_key == "cl-key"
 
     @pytest.mark.parametrize(
         ("cloud_name", "key", "secret"),
@@ -419,7 +426,7 @@ class TestToolProviderEnvFallbacks:
 
         config = await resolve("google_oauth")
 
-        assert config is not None and config["api_key"] == "GOCSPID-test"
+        assert config is not None and config.api_key == "GOCSPID-test"
 
     @pytest.mark.parametrize(
         ("client_id", "client_secret"),
@@ -456,7 +463,7 @@ class TestCardSavedAccounts:
     async def test_a_saved_cloudinary_account_works_without_env(self, repo, fixed_secret) -> None:
         await upsert(
             "cloudinary",
-            make_provider_config(
+            ProviderConfig(
                 api_key="cl-key",
                 account_id="my-cloud",
                 api_secret="cl-secret",  # pragma: allowlist secret
@@ -473,7 +480,7 @@ class TestCardSavedAccounts:
     async def test_a_saved_google_client_works_without_env(self, repo, fixed_secret) -> None:
         await upsert(
             "google_oauth",
-            make_provider_config(api_key="GOCSPX-secret", account_id="id.apps.example"),
+            ProviderConfig(api_key="GOCSPX-secret", account_id="id.apps.example"),
         )
 
         config = await resolve("google_oauth")
@@ -493,7 +500,7 @@ class TestCardSavedAccounts:
     async def test_a_partial_saved_account_is_not_usable(
         self, repo, fixed_secret, provider: str, fields: dict[str, str]
     ) -> None:
-        await upsert(provider, make_provider_config(**fields))
+        await upsert(provider, ProviderConfig.model_validate(fields))
 
         assert not is_usable(provider, await resolve(provider))
 
@@ -510,7 +517,7 @@ class TestCardSavedAccounts:
 def test_a_custom_endpoint_is_usable_only_with_key_endpoint_and_model(
     fields: dict[str, str], usable: bool
 ) -> None:
-    assert is_usable("custom", _config(**fields)) is usable
+    assert is_usable("custom", ProviderConfig.model_validate(fields)) is usable
 
 
 @pytest.mark.parametrize("provider", ["openrouter", "tavily", "custom", "cloudinary"])
@@ -520,7 +527,7 @@ def test_an_unresolved_provider_is_never_usable(provider: str) -> None:
 
 class TestResolveCache:
     async def test_hits_within_ttl_and_expires_after(self, repo, fixed_secret, clock) -> None:
-        await upsert("tavily", make_provider_config(api_key="tvly-key"))
+        await upsert("tavily", ProviderConfig(api_key="tvly-key"))
 
         await resolve("tavily")
         await resolve("tavily")
@@ -621,26 +628,19 @@ class TestInvalidate:
         stale_at = time.monotonic()
         service_module._cache["openrouter"] = (
             stale_at - 3600,
-            {
-                "api_key": "sk-stale",
-                "base_url": None,
-                "model": None,
-                "preset": None,
-                "account_id": None,
-                "api_secret": None,
-            },
+            ProviderConfig(api_key="sk-stale"),
         )
 
-        await upsert("openrouter", make_provider_config(api_key="sk-v1"))
+        await upsert("openrouter", ProviderConfig(api_key="sk-v1"))
 
         assert registry_reset_calls == ["openrouter_llm"]
         _, cached = service_module._cache["openrouter"]
-        assert cached["api_key"] == "sk-v1"
+        assert cached.api_key == "sk-v1"
 
     async def test_delete_invalidates_too(
         self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls, monkeypatch
     ) -> None:
-        await upsert("ollama", make_provider_config(base_url="http://o/v1"))
+        await upsert("ollama", ProviderConfig(base_url="http://o/v1"))
         registry_reset_calls.clear()
         aux_cache_calls.clear()
 
@@ -694,7 +694,7 @@ class TestValidation:
     @pytest.mark.parametrize("provider", ["not-a-provider", "", "OpenRouter"])
     async def test_upsert_rejects_unknown_providers(self, repo, fixed_secret, provider) -> None:
         with pytest.raises(ValueError):
-            await upsert(provider, make_provider_config(api_key="sk-x"))
+            await upsert(provider, ProviderConfig(api_key="sk-x"))
         assert repo.upsert_calls == []
 
     @pytest.mark.parametrize("provider", ["not-a-provider", "", "OpenRouter"])
@@ -714,7 +714,7 @@ class TestInspectCredential:
         self, repo, fixed_secret
     ) -> None:
         settings.GOOGLE_API_KEY = "env-key"
-        await upsert("gemini", make_provider_config(api_key="saved-key"))
+        await upsert("gemini", ProviderConfig(api_key="saved-key"))
 
         async with captured_wide_event() as event:
             resolution = await inspect_credential("gemini")
@@ -727,7 +727,7 @@ class TestInspectCredential:
         self, repo, fixed_secret
     ) -> None:
         settings.GOOGLE_API_KEY = "same-key"
-        await upsert("gemini", make_provider_config(api_key="same-key"))
+        await upsert("gemini", ProviderConfig(api_key="same-key"))
 
         resolution = await inspect_credential("gemini")
 
@@ -744,13 +744,13 @@ class TestInspectCredential:
         resolution = await inspect_credential("gemini")
 
         assert resolution.source is CredentialSource.ENV
-        assert resolution.config is not None and resolution.config["api_key"] == "env-key"
+        assert resolution.config is not None and resolution.config.api_key == "env-key"
 
     async def test_without_runtime_credentials_the_store_is_never_reported(
         self, repo, fixed_secret, monkeypatch
     ) -> None:
         settings.GOOGLE_API_KEY = "env-key"
-        await upsert("gemini", make_provider_config(api_key="saved-key"))
+        await upsert("gemini", ProviderConfig(api_key="saved-key"))
         monkeypatch.setattr(settings, "ENV", "production")
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
         repo.find_calls = 0
@@ -767,32 +767,20 @@ class TestInspectCredential:
 # ---------------------------------------------------------------------------
 
 
-def _config(**fields: str | None) -> dict[str, str | None]:
-    return {
-        "api_key": None,
-        "base_url": None,
-        "model": None,
-        "preset": None,
-        "account_id": None,
-        "api_secret": None,
-        **fields,
-    }
-
-
 class TestEnvConfigShapes:
     """Every env fallback is the full config the consumers index into."""
 
     def test_searxng(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings, "SEARXNG_BASE_URL", "http://searx:8080")
 
-        assert env_config("searxng") == _config(base_url="http://searx:8080")
+        assert env_config("searxng") == ProviderConfig(base_url="http://searx:8080")
 
     def test_cloudinary(self) -> None:
         settings.CLOUDINARY_CLOUD_NAME = "cloud"
         settings.CLOUDINARY_API_KEY = "ck"
         settings.CLOUDINARY_API_SECRET = "cs"  # pragma: allowlist secret
 
-        assert env_config("cloudinary") == _config(
+        assert env_config("cloudinary") == ProviderConfig(
             api_key="ck",
             account_id="cloud",
             api_secret="cs",  # pragma: allowlist secret
@@ -802,12 +790,12 @@ class TestEnvConfigShapes:
         settings.GOOGLE_CLIENT_ID = "gid"
         settings.GOOGLE_CLIENT_SECRET = "gsecret"  # pragma: allowlist secret
 
-        assert env_config("google_oauth") == _config(api_key="gsecret", account_id="gid")
+        assert env_config("google_oauth") == ProviderConfig(api_key="gsecret", account_id="gid")
 
     def test_a_single_key_tool(self) -> None:
         settings.TAVILY_API_KEY = "tvly"
 
-        assert env_config("tavily") == _config(api_key="tvly")
+        assert env_config("tavily") == ProviderConfig(api_key="tvly")
 
     @pytest.mark.parametrize(
         "present",
@@ -826,7 +814,7 @@ class TestEnvConfigShapes:
 class TestOperatorFacingFailures:
     async def test_a_shadowed_env_key_warning_names_the_fix(self, repo, fixed_secret) -> None:
         settings.GOOGLE_API_KEY = "env-key"
-        await upsert("gemini", make_provider_config(api_key="saved-key"))
+        await upsert("gemini", ProviderConfig(api_key="saved-key"))
 
         async with captured_wide_event() as event:
             await inspect_credential("gemini")
@@ -869,7 +857,7 @@ class TestOperatorFacingFailures:
         self, repo, fixed_secret
     ) -> None:
         with pytest.raises(ValueError) as refused:
-            await upsert("bogus", make_provider_config(api_key="sk-x"))
+            await upsert("bogus", ProviderConfig(api_key="sk-x"))
 
         assert str(refused.value) == (
             f"Unknown provider 'bogus' — expected one of {', '.join(CREDENTIAL_PROVIDERS)}"
@@ -882,7 +870,7 @@ class TestOperatorFacingFailures:
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
 
         with pytest.raises(RuntimeError) as refused:
-            await upsert("gemini", make_provider_config(api_key="sk-x"))
+            await upsert("gemini", ProviderConfig(api_key="sk-x"))
 
         assert str(refused.value) == (
             "This deployment reads provider credentials from the environment only; "
@@ -899,7 +887,7 @@ class TestCacheLifecycle:
         assert repo.find_calls == 2
 
     async def test_a_delete_leaves_the_cache_warm(self, repo, fixed_secret, redis_fake) -> None:
-        await upsert("tavily", make_provider_config(api_key="tvly-key"))
+        await upsert("tavily", ProviderConfig(api_key="tvly-key"))
         await delete("tavily")
         reads = repo.find_calls
 

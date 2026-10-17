@@ -87,7 +87,7 @@ async def _resolved_e2b_api_key() -> str | None:
     wins over the env var without a restart, and resolutions cache for 60s.
     """
     config: ProviderConfig | None = await resolve_e2b_config("e2b")
-    return config["api_key"] if config else None
+    return config.api_key if config else None
 
 
 async def use_local_sandbox() -> bool:

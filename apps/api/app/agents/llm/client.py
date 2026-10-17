@@ -225,11 +225,11 @@ def _config_serves(provider: LLMProviderName, config: ProviderConfig) -> bool:
     """
     match provider:
         case LLMProviderName.OLLAMA:
-            return bool(config.get("base_url"))
+            return bool(config.base_url)
         case LLMProviderName.CUSTOM:
-            return bool(config.get("api_key") and config.get("base_url"))
+            return bool(config.api_key and config.base_url)
         case _:
-            return bool(config.get("api_key"))
+            return bool(config.api_key)
 
 
 def _require_provider_config(provider: LLMProviderName) -> ProviderConfig:
@@ -247,7 +247,7 @@ def chat_model(provider: LLMProviderName) -> str | None:
     Production reads env alone, which never names a model, so it runs the catalog's.
     """
     config: ProviderConfig | None = resolved_config(provider)
-    configured = config["model"] if config else None
+    configured = config.model if config else None
     return configured or LLM_MODEL_PROFILES[provider].chat
 
 
@@ -324,10 +324,10 @@ def init_gemini_llm() -> LanguageModelLike:
         return _sim_llm()
     config: ProviderConfig = _require_provider_config(LLMProviderName.GEMINI)
     llm = ChatGoogleGenerativeAI(
-        model=config.get("model") or LLM_MODEL_PROFILES[LLMProviderName.GEMINI].chat,
+        model=config.model or LLM_MODEL_PROFILES[LLMProviderName.GEMINI].chat,
         temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
-        google_api_key=config["api_key"],
+        google_api_key=config.api_key,
     )
     # Every chat LLM must carry the context-window profile — fractional-token
     # middleware (summarization/compaction triggers) raises without it. Same
@@ -384,18 +384,18 @@ def init_openrouter_llm() -> LanguageModelLike:
     # No base_url kwarg unless the resolved config carries one: passing None
     # would override the field's OPENROUTER_API_BASE env default_factory.
     # Redirecting to the stub is sim mode's job (_sim_llm).
-    base_url = config["base_url"]
+    base_url = config.base_url
     base_url_kwargs: dict[str, Any] = {"base_url": base_url} if base_url else {}
     llm = without_sdk_retry(
         ChatOpenRouter(
-            model=config.get("model") or LLM_MODEL_PROFILES[LLMProviderName.OPENROUTER].chat,
+            model=config.model or LLM_MODEL_PROFILES[LLMProviderName.OPENROUTER].chat,
             temperature=DEFAULT_LLM_TEMPERATURE,
             streaming=True,
             stream_usage=True,
             # Output cap; must stay well under the model's shared input+output context
             # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
             max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-            api_key=SecretStr(config["api_key"]),
+            api_key=SecretStr(config.api_key),
             **base_url_kwargs,
             # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
             # these as dedicated params (NOT `default_headers`, which it forwards to
@@ -432,7 +432,7 @@ def init_ollama_llm() -> LanguageModelLike:
         return _sim_llm()
     config: ProviderConfig = _require_provider_config(LLMProviderName.OLLAMA)
     llm = ChatOpenAI(
-        model=config.get("model") or LLM_MODEL_PROFILES[LLMProviderName.OLLAMA].chat,
+        model=config.model or LLM_MODEL_PROFILES[LLMProviderName.OLLAMA].chat,
         temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
         base_url=_ollama_openai_url(config),
@@ -472,12 +472,12 @@ def init_custom_llm() -> LanguageModelLike:
 def _custom_endpoint() -> CustomEndpoint:
     """Return the configured custom endpoint; the model is required, since the catalog has no default for it."""
     config: ProviderConfig = _require_provider_config(LLMProviderName.CUSTOM)
-    model = config["model"]
+    model = config.model
     if not model:
         raise LLMNotConfiguredError(NO_PROVIDER_CONFIGURED_MESSAGE)
     return CustomEndpoint(
-        base_url=str(config["base_url"]),
-        api_key=str(config["api_key"]),
+        base_url=str(config.base_url),
+        api_key=str(config.api_key),
         model=model,
         api=DevLLMApi(settings.DEV_LLM_API),
     )
@@ -485,7 +485,7 @@ def _custom_endpoint() -> CustomEndpoint:
 
 def _ollama_openai_url(config: ProviderConfig) -> str:
     """Return Ollama's OpenAI-wire API root for a config whose base_url is already required."""
-    return f"{str(config['base_url']).rstrip('/')}/v1"
+    return f"{str(config.base_url).rstrip('/')}/v1"
 
 
 @lazy_provider(
@@ -512,7 +512,7 @@ def init_openai_llm() -> LanguageModelLike:
             stream_usage=True,
             max_completion_tokens=OPENAI_MAX_OUTPUT_TOKENS,
             max_retries=0,
-            api_key=SecretStr(str(config["api_key"])),
+            api_key=SecretStr(str(config.api_key)),
         )
     )
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
@@ -831,7 +831,7 @@ def resolve_model(
             )
         case LLMProviderName.GEMINI:
             config: ProviderConfig = _require_provider_config(provider)
-            return _build_gemini_one_shot(model, temperature, api_key=str(config["api_key"]))
+            return _build_gemini_one_shot(model, temperature, api_key=str(config.api_key))
         case LLMProviderName.OPENAI:
             config = _require_provider_config(provider)
             effort = OPENAI_REASONING_EFFORT[reasoning or ReasoningLevel.OFF]
@@ -839,7 +839,7 @@ def resolve_model(
                 model,
                 # OpenAI reasoning models reject a temperature once reasoning is on.
                 temperature if effort == OPENAI_REASONING_EFFORT[ReasoningLevel.OFF] else None,
-                api_key=str(config["api_key"]),
+                api_key=str(config.api_key),
                 base_url=None,
                 reasoning_effort=effort,
             )
@@ -876,9 +876,7 @@ def _openrouter_one_shot(
     transport errors only, with the provider order the client already carries.
     """
     config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER)
-    base = _build_default_llm(
-        temperature, api_key=str(config["api_key"]), base_url=config.get("base_url")
-    )
+    base = _build_default_llm(temperature, api_key=str(config.api_key), base_url=config.base_url)
     update: dict[str, object] = {"max_tokens": HELPER_MAX_OUTPUT_TOKENS, "model_name": model_name}
     if reasoning is not None:
         update["reasoning"] = {"effort": OPENROUTER_REASONING_EFFORT[reasoning]}

@@ -20,6 +20,7 @@ from fastapi import HTTPException
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.services.providers.provider_credentials_service import ProviderConfig
 from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
@@ -114,14 +115,10 @@ class TestTokenRepositoryInit:
         with patch(
             "app.config.token_repository.resolve_provider_config",
             new=AsyncMock(
-                return_value={
-                    "api_key": "stored-secret",
-                    "base_url": None,
-                    "model": None,
-                    "preset": None,
-                    "account_id": "client_id",
-                    "api_secret": None,
-                }
+                return_value=ProviderConfig(
+                    api_key="stored-secret",
+                    account_id="client_id",
+                )
             ),
         ):
             assert await repo._ensure_google_client() is registered_client
@@ -151,14 +148,10 @@ class TestTokenRepositoryInit:
 
         repo = TokenRepository()
 
-        env_config = {
-            "api_key": "env_secret",  # pragma: allowlist secret
-            "base_url": None,
-            "model": None,
-            "preset": None,
-            "account_id": "env_id",
-            "api_secret": None,
-        }
+        env_config = ProviderConfig(
+            api_key="env_secret",  # pragma: allowlist secret
+            account_id="env_id",
+        )
         with patch(
             "app.config.token_repository.resolve_provider_config",
             new=AsyncMock(return_value=env_config),
@@ -273,14 +266,10 @@ class TestResolveGoogleOauthCredentials:
         with patch(
             "app.config.token_repository.resolve_provider_config",
             new=AsyncMock(
-                return_value={
-                    "api_key": "stored_secret",
-                    "base_url": None,
-                    "model": None,
-                    "preset": None,
-                    "account_id": "cid",
-                    "api_secret": None,
-                }
+                return_value=ProviderConfig(
+                    api_key="stored_secret",
+                    account_id="cid",
+                )
             ),
         ):
             result = await resolve_google_oauth_credentials()
@@ -298,14 +287,9 @@ class TestResolveGoogleOauthCredentials:
         with patch(
             "app.config.token_repository.resolve_provider_config",
             new=AsyncMock(
-                return_value={
-                    "api_key": "stored_secret",
-                    "base_url": None,
-                    "model": None,
-                    "preset": None,
-                    "account_id": None,
-                    "api_secret": None,
-                }
+                return_value=ProviderConfig(
+                    api_key="stored_secret",
+                )
             ),
         ):
             assert await resolve_google_oauth_credentials() is None

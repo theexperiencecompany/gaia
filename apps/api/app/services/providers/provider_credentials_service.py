@@ -10,9 +10,10 @@ never read. Writes invalidate locally and publish so other pods rebuild too.
 from collections.abc import Callable
 import json
 from time import monotonic
-from typing import NamedTuple, TypedDict
+from typing import NamedTuple
 
 from cryptography.fernet import Fernet, InvalidToken
+from pydantic import BaseModel, ConfigDict
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -38,17 +39,19 @@ _REGISTRY_RESET_KEYS: dict[str, str] = {
 }
 
 
-class ProviderConfig(TypedDict):
-    """A decrypted provider payload."""
+class ProviderConfig(BaseModel):
+    """A decrypted provider payload; a field a stored row predates reads as None."""
 
-    api_key: str | None
-    base_url: str | None
-    model: str | None
-    preset: str | None  # e.g. "opencode" | "nous"
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    api_key: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    preset: str | None = None  # e.g. "opencode" | "nous"
     # The non-secret account half: Cloudinary's cloud name, Google's OAuth client id.
-    account_id: str | None
+    account_id: str | None = None
     # A second secret beside api_key: Cloudinary's API secret.
-    api_secret: str | None
+    api_secret: str | None = None
 
 
 class CredentialResolution(NamedTuple):
@@ -79,7 +82,7 @@ def cloudinary_account(config: ProviderConfig | None) -> CloudinaryAccount | Non
     """Return the Cloudinary account a resolved config names; None unless all three fields are set."""
     if config is None:
         return None
-    cloud_name, api_key, api_secret = config["account_id"], config["api_key"], config["api_secret"]
+    cloud_name, api_key, api_secret = config.account_id, config.api_key, config.api_secret
     if not (cloud_name and api_key and api_secret):
         return None
     return CloudinaryAccount(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
@@ -89,7 +92,7 @@ def google_oauth_client(config: ProviderConfig | None) -> GoogleOAuthClient | No
     """Return the OAuth client a resolved config names; None unless both halves are set."""
     if config is None:
         return None
-    client_id, client_secret = config["account_id"], config["api_key"]
+    client_id, client_secret = config.account_id, config.api_key
     if not (client_id and client_secret):
         return None
     return GoogleOAuthClient(client_id=client_id, client_secret=client_secret)
@@ -97,7 +100,7 @@ def google_oauth_client(config: ProviderConfig | None) -> GoogleOAuthClient | No
 
 def _complete_custom_endpoint(config: ProviderConfig | None) -> ProviderConfig | None:
     """Return the config when the custom lane can dial it: key, endpoint and model all set."""
-    if config and config["api_key"] and config["base_url"] and config["model"]:
+    if config and config.api_key and config.base_url and config.model:
         return config
     return None
 
@@ -200,18 +203,18 @@ async def inspect_credential(provider: str) -> CredentialResolution:
 
 def _credential_of(config: ProviderConfig) -> tuple[str | None, ...]:
     """Return the part of a config that names an account: its keys, endpoint and account id."""
-    return config["api_key"], config["base_url"], config["account_id"], config["api_secret"]
+    return config.api_key, config.base_url, config.account_id, config.api_secret
 
 
 async def upsert(provider: str, config: ProviderConfig) -> None:
     """Store (or replace) a provider's encrypted credential and fan out invalidation."""
     _ensure_writable(provider)
-    data_encrypted = await _encrypt(json.dumps(config))
+    data_encrypted = await _encrypt(json.dumps(config.model_dump()))
     await provider_credentials_repository.upsert_encrypted(provider, data_encrypted)
     log.info(
         f"{LogTag.API} Provider credential updated",
         provider=provider,
-        has_api_key=config["api_key"] is not None,
+        has_api_key=config.api_key is not None,
     )
     await invalidate(provider)
     # Warm the local cache so the credential is live before the HTTP 200 returns.
@@ -453,17 +456,8 @@ async def _decrypt_config(data_encrypted: str) -> ProviderConfig | None:
 
 
 def _coerce_config(raw: dict[str, object]) -> ProviderConfig:
-    """Project a decrypted dict onto the config shape; a field the row predates reads as None."""
-
-    def opt_str(key: str) -> str | None:
-        value = raw.get(key)
-        return value if isinstance(value, str) else None
-
-    return ProviderConfig(
-        api_key=opt_str("api_key"),
-        base_url=opt_str("base_url"),
-        model=opt_str("model"),
-        preset=opt_str("preset"),
-        account_id=opt_str("account_id"),
-        api_secret=opt_str("api_secret"),
+    """Project a decrypted dict onto the config shape; an unknown or non-string field is dropped."""
+    fields = ProviderConfig.model_fields
+    return ProviderConfig.model_validate(
+        {k: v for k, v in raw.items() if k in fields and isinstance(v, str)}
     )

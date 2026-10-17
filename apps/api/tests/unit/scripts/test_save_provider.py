@@ -40,7 +40,7 @@ async def test_ollama_defaults_to_the_endpoint_its_card_prefills(
 
     config = await resolve("ollama")
     assert config is not None
-    assert (config["base_url"], config["model"], config["api_key"]) == (
+    assert (config.base_url, config.model, config.api_key) == (
         "http://host.docker.internal:11434",
         "qwen3",
         None,
@@ -67,7 +67,7 @@ async def test_custom_stores_the_key_from_the_environment(
 
     config = await resolve("custom")
     assert config is not None
-    assert (config["api_key"], config["base_url"], config["model"]) == (
+    assert (config.api_key, config.base_url, config.model) == (
         "sk-custom",
         "https://gateway.example/v1",
         "m-1",
@@ -128,7 +128,7 @@ async def test_a_key_the_provider_accepts_is_saved(
     assert route.called
     config = await resolve("openai")
     assert config is not None
-    assert config["api_key"] == "sk-good"
+    assert config.api_key == "sk-good"
 
 
 async def test_help_describes_what_the_script_does(capsys: pytest.CaptureFixture[str]) -> None:

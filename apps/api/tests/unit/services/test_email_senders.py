@@ -23,6 +23,7 @@ from app.services.email.senders import (
     send_limit_reached_email,
     send_workflows_paused_email,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from tests.helpers import captured_wide_event
 
 SENDER_USER_ID = "507f1f77bcf86cd799439011"
@@ -98,7 +99,7 @@ class TestAddMarketingContact:
         The key resolves through provider_credentials_service (Mongo) at send
         time, which no unit test may touch.
         """
-        config = {"api_key": "re-stored", "base_url": None, "model": None, "preset": None}
+        config = ProviderConfig(api_key="re-stored")
         with patch(f"{RESEND_PROVIDER}.resolve_resend_config", new=AsyncMock(return_value=config)):
             yield
 
