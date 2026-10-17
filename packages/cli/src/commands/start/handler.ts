@@ -11,7 +11,6 @@ export async function runStart(options?: StartServicesOptions): Promise<void> {
   await runCommandUI({
     command: "start",
     whenNonInteractive: "plain",
-    autoResolve: [["exit"]],
     runFlow: (store) => runStartFlow(store, options),
   });
 }

@@ -1,16 +1,18 @@
-import { ProgressBar, Spinner } from "@inkjs/ui";
+import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { INSTALL_CONFIRM_INPUT } from "../../lib/prerequisites.js";
 import type { PortCheckResult } from "../../lib/prerequisites.types.js";
-import { THEME_COLOR } from "../constants.js";
+import { BOX_BORDER, MARK, type MarkKind, THEME_COLOR } from "../constants.js";
+import { Mark } from "./Mark.js";
+import { PercentBar } from "./PercentBar.js";
 
 export const SystemChecksStep: React.FC<{
   checks: { git: string; docker?: string; mise?: string };
 }> = ({ checks }) => (
   <Box
     flexDirection="column"
-    borderStyle="round"
+    borderStyle={BOX_BORDER}
     paddingX={1}
     borderColor={THEME_COLOR}
   >
@@ -43,7 +45,7 @@ export const EnvSetupSpinnerStep: React.FC<{ status?: string }> = ({
     flexDirection="column"
     marginTop={1}
     paddingX={1}
-    borderStyle="round"
+    borderStyle={BOX_BORDER}
     borderColor={THEME_COLOR}
   >
     <Text bold>Environment Setup</Text>
@@ -60,55 +62,66 @@ export const RepositoryProgressStep: React.FC<{
 }> = ({ title, progress, phase }) => (
   <Box
     flexDirection="column"
-    borderStyle="round"
+    borderStyle={BOX_BORDER}
     padding={1}
     borderColor={THEME_COLOR}
   >
     <Text bold>{title}</Text>
     <Box marginTop={1} flexDirection="column">
-      <ProgressBar value={progress || 0} />
-      {phase && (
-        <Box marginTop={1}>
-          <Text color="gray">{phase}</Text>
-        </Box>
-      )}
+      <PercentBar percent={progress || 0} />
+      {phase && <Text color="gray">{phase}</Text>}
     </Box>
   </Box>
 );
 
-export const ErrorStep: React.FC<{ message: string }> = ({ message }) => (
-  <Box
-    flexDirection="column"
-    borderStyle="single"
-    borderColor="red"
-    padding={1}
-    marginTop={2}
-  >
-    <Text color="red">Error: {message}</Text>
-    <Box marginTop={1}>
-      <Text dimColor>
-        <Text bold>Enter</Text> to exit
-      </Text>
+/** A failure: its first line is the cause, the rest the next step and where the log is. */
+export const ErrorStep: React.FC<{ message: string }> = ({ message }) => {
+  const [cause, ...rest] = message.split("\n");
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle={BOX_BORDER}
+      borderColor="red"
+      paddingX={1}
+      marginTop={1}
+    >
+      <Box>
+        <Mark kind="fail" />
+        <Text color="red" bold>
+          {cause}
+        </Text>
+      </Box>
+      {rest.map((line) => (
+        <Text
+          key={line}
+          color={line.startsWith("Full log:") ? "gray" : undefined}
+        >
+          {"  "}
+          {line}
+        </Text>
+      ))}
     </Box>
-  </Box>
-);
+  );
+};
+
+const CHECK_MARK: Record<"success" | "error" | "missing", MarkKind> = {
+  success: "ok",
+  error: "fail",
+  missing: "warn",
+};
 
 const CheckItem: React.FC<{
   label: string;
   status: "pending" | "success" | "error" | "missing";
 }> = ({ label, status }) => (
   <Box>
-    <Box marginRight={1}>
-      {status === "pending" ? (
+    {status === "pending" ? (
+      <Box marginRight={1}>
         <Spinner type="dots" />
-      ) : status === "success" ? (
-        <Text color="green">✔</Text>
-      ) : status === "error" ? (
-        <Text color="red">✖</Text>
-      ) : (
-        <Text color="yellow">⚠</Text>
-      )}
-    </Box>
+      </Box>
+    ) : (
+      <Mark kind={CHECK_MARK[status]} />
+    )}
     <Text>{label}</Text>
   </Box>
 );
@@ -130,7 +143,7 @@ export const PortConflictStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor="yellow"
     >
       <Box marginBottom={1}>
@@ -146,7 +159,11 @@ export const PortConflictStep: React.FC<{
               result.available ? "green" : result.alternative ? "yellow" : "red"
             }
           >
-            {result.available ? "✔" : result.alternative ? "⚠" : "✖"}{" "}
+            {result.available
+              ? MARK.ok
+              : result.alternative
+                ? MARK.warn
+                : MARK.fail}{" "}
           </Text>
           <Text>
             {result.service} (:{result.port})
@@ -180,7 +197,7 @@ export const PortConflictStep: React.FC<{
         )}
       <Box marginTop={1}>
         <Text dimColor>
-          <Text bold>Enter</Text> continue · <Text bold>ESC</Text> abort
+          <Text bold>Enter</Text> continue · <Text bold>Esc</Text> cancel
         </Text>
       </Box>
     </Box>
@@ -215,7 +232,7 @@ const InstallPrompt: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor="yellow"
     >
       <Text bold color="yellow">

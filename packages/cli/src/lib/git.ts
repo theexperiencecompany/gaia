@@ -14,6 +14,40 @@ import simpleGit from "simple-git";
  */
 type ProgressCallback = (progress: number, phase?: string) => void;
 
+/** Share of the overall clone bar the download takes; unpacking fills the rest. */
+const DOWNLOAD_SHARE = 0.85;
+
+const RECEIVING_RE =
+  /Receiving objects:\s+(\d+)%[^,\r\n]*(?:,\s*([\d.]+\s*[KMG]iB))?/g;
+const RESOLVING_RE = /Resolving deltas:\s+(\d+)%/g;
+
+/**
+ * The newest progress in a chunk of `git clone --progress` output, as one
+ * overall percentage and a plain label, e.g. "52.18 MiB downloaded".
+ */
+export function parseCloneProgress(
+  output: string,
+): { percent: number; label: string } | null {
+  const resolving = [...output.matchAll(RESOLVING_RE)].at(-1);
+  if (resolving?.[1]) {
+    const pct = Number(resolving[1]);
+    return {
+      percent: Math.floor(DOWNLOAD_SHARE * 100 + pct * (1 - DOWNLOAD_SHARE)),
+      label: "Unpacking the files",
+    };
+  }
+  const receiving = [...output.matchAll(RECEIVING_RE)].at(-1);
+  if (receiving?.[1]) {
+    const pct = Number(receiving[1]);
+    const size = receiving[2]?.replace(/\s+/, " ");
+    return {
+      percent: Math.floor(pct * DOWNLOAD_SHARE),
+      label: size ? `${size} downloaded` : "Downloading",
+    };
+  }
+  return null;
+}
+
 /**
  * Sets up a repository by cloning or pulling updates, reporting progress via `onProgress`.
  *
@@ -46,47 +80,10 @@ export async function setupRepo(
 
       const gitProcess = execa("git", cloneArgs);
 
-      // Git progress is written to stderr
+      // Git writes progress to stderr, several \r-separated updates per chunk.
       gitProcess.stderr?.on("data", (data: Buffer) => {
-        const output = data.toString();
-
-        // Check for different phases
-        if (output.includes("Counting objects")) {
-          onProgress(5, "Counting objects");
-        } else if (output.includes("Compressing objects")) {
-          onProgress(10, "Compressing objects");
-        }
-
-        // Parse git progress output
-        // Format: "Receiving objects: XX% (N/M)"
-        const receivingMatch = output.match(
-          /Receiving objects:\s+(\d+)%\s+\((\d+)\/(\d+)\)/,
-        );
-        if (receivingMatch?.[1]) {
-          const percent = Math.min(100, parseInt(receivingMatch[1], 10));
-          const current = receivingMatch[2];
-          const total = receivingMatch[3];
-          // Receiving is 10-60% of total progress
-          onProgress(
-            10 + Math.floor(percent * 0.5),
-            `Receiving objects: ${current}/${total}`,
-          );
-        }
-
-        // Format: "Resolving deltas: XX% (N/M)"
-        const resolvingMatch = output.match(
-          /Resolving deltas:\s+(\d+)%\s+\((\d+)\/(\d+)\)/,
-        );
-        if (resolvingMatch?.[1]) {
-          const percent = Math.min(100, parseInt(resolvingMatch[1], 10));
-          const current = resolvingMatch[2];
-          const total = resolvingMatch[3];
-          // Resolving is 60-100% of total progress
-          onProgress(
-            60 + Math.floor(percent * 0.4),
-            `Resolving deltas: ${current}/${total}`,
-          );
-        }
+        const progress = parseCloneProgress(data.toString());
+        if (progress) onProgress(progress.percent, progress.label);
       });
 
       await gitProcess;

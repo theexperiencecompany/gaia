@@ -4,14 +4,16 @@
  * @module screens/init
  */
 
-import { ProgressBar, Select, Spinner } from "@inkjs/ui";
+import { Select, Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { localApiUrl } from "../../lib/endpoints.js";
 import type { EnvCategory, EnvVar, SetupMode } from "../../lib/env-parser.js";
 
+import { LogWindow } from "../components/LogWindow.js";
+import { PercentBar } from "../components/PercentBar.js";
 import { Shell } from "../components/Shell.js";
 import {
   EnvSetupSpinnerStep,
@@ -21,7 +23,7 @@ import {
   RepositoryProgressStep,
   SystemChecksStep,
 } from "../components/shared-steps.js";
-import { THEME_COLOR } from "../constants.js";
+import { BOX_BORDER, MARK, THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
 import { useCLIState } from "../use-cli-state.js";
 
@@ -48,7 +50,7 @@ const WelcomeStep: React.FC<WelcomeStepProps> = ({ onConfirm }) => {
     <Box
       flexDirection="column"
       paddingX={2}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Text bold>Welcome to GAIA Setup</Text>
@@ -81,7 +83,7 @@ const PathInputStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Text>Clone repository to:</Text>
@@ -112,7 +114,7 @@ const ExistingRepoStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor="yellow"
     >
       <Box marginBottom={1}>
@@ -156,7 +158,7 @@ const FinishedStep: React.FC<{
       <Box
         flexDirection="column"
         marginTop={2}
-        borderStyle="round"
+        borderStyle={BOX_BORDER}
         borderColor="green"
         padding={1}
       >
@@ -212,7 +214,7 @@ const FinishedStep: React.FC<{
     <Box
       flexDirection="column"
       marginTop={2}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
       padding={1}
     >
@@ -256,68 +258,6 @@ const FinishedStep: React.FC<{
 };
 
 // Dependency installation progress step
-const LOG_WINDOW_HEIGHT = 8;
-
-const LogWindow: React.FC<{ logs: string[]; height?: number }> = ({
-  logs,
-  height = LOG_WINDOW_HEIGHT,
-}) => {
-  const [scrollOffset, setScrollOffset] = useState(0);
-
-  // Auto-scroll to bottom when new logs arrive, unless user has scrolled up
-  const prevLenRef = useRef(logs.length);
-  useEffect(() => {
-    if (logs.length !== prevLenRef.current) {
-      prevLenRef.current = logs.length;
-      setScrollOffset(0);
-    }
-  }, [logs.length]);
-
-  useInput((_input, key) => {
-    if (key.upArrow) {
-      setScrollOffset((o) =>
-        Math.min(o + 1, Math.max(0, logs.length - height)),
-      );
-    } else if (key.downArrow) {
-      setScrollOffset((o) => Math.max(0, o - 1));
-    }
-  });
-
-  const totalLines = logs.length;
-  const start = Math.max(0, totalLines - height - scrollOffset);
-  const end = Math.max(0, totalLines - scrollOffset);
-  const visible = logs.slice(start, end);
-  const linesAbove = start;
-  const linesBelow = scrollOffset;
-
-  return (
-    <Box flexDirection="column" marginTop={1} marginLeft={1}>
-      {linesAbove > 0 && (
-        <Text color="gray" dimColor>
-          ↑ {linesAbove} more line{linesAbove !== 1 ? "s" : ""}
-        </Text>
-      )}
-      <Box flexDirection="column" height={height} overflow="hidden">
-        {visible.map((log, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: logs are append-only
-          <Text key={`${start}-${i}`} color="gray" wrap="truncate">
-            {log}
-          </Text>
-        ))}
-      </Box>
-      {linesBelow > 0 ? (
-        <Text color="gray" dimColor>
-          ↓ {linesBelow} more line{linesBelow !== 1 ? "s" : ""}
-        </Text>
-      ) : (
-        <Text color="gray" dimColor>
-          ↑↓ scroll
-        </Text>
-      )}
-    </Box>
-  );
-};
-
 export const DependencyInstallStep: React.FC<{
   phase: string;
   progress: number;
@@ -332,7 +272,7 @@ export const DependencyInstallStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Box marginBottom={1}>
@@ -346,14 +286,12 @@ export const DependencyInstallStep: React.FC<{
           {!isComplete ? (
             <Spinner label={phase || "Preparing..."} />
           ) : (
-            <Text color="green">✓ {phase}</Text>
+            <Text color="green">
+              {MARK.ok} {phase}
+            </Text>
           )}
         </Box>
-        {!isComplete && progress > 0 && (
-          <Box width={50}>
-            <ProgressBar value={progress} />
-          </Box>
-        )}
+        {!isComplete && progress > 0 && <PercentBar percent={progress} />}
 
         {!isComplete && logs && logs.length > 0 && <LogWindow logs={logs} />}
 
@@ -388,7 +326,7 @@ export const SetupModeSelectionStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Text bold>Setup Mode</Text>
@@ -424,7 +362,7 @@ export const EnvMethodSelectionStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Text bold>Environment Variables Setup</Text>
@@ -512,7 +450,7 @@ export const InfisicalSetupStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Box marginBottom={1}>
@@ -676,7 +614,7 @@ export const EnvGroupConfigStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={error ? "red" : THEME_COLOR}
     >
       <Box justifyContent="space-between">
@@ -748,7 +686,7 @@ export const EnvGroupConfigStep: React.FC<{
       {error && (
         <Box marginTop={1}>
           <Text color="red" bold>
-            ⚠ {error}
+            {MARK.warn} {error}
           </Text>
         </Box>
       )}
@@ -943,7 +881,7 @@ export const AlternativeGroupSelectionStep: React.FC<
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={error ? "red" : THEME_COLOR}
     >
       <Box justifyContent="space-between">
@@ -976,7 +914,7 @@ export const AlternativeGroupSelectionStep: React.FC<
                   {isProviderFocused ? "➜ " : "  "}
                 </Text>
                 <Text color={isEnabled ? "green" : "gray"}>
-                  {isEnabled ? "[✔]" : "[ ]"}
+                  {isEnabled ? `[${MARK.ok}]` : "[ ]"}
                 </Text>
                 <Text color={isEnabled ? THEME_COLOR : "gray"} bold={isEnabled}>
                   {" "}
@@ -1072,7 +1010,7 @@ export const AlternativeGroupSelectionStep: React.FC<
       {error && (
         <Box marginTop={1}>
           <Text color="red" bold>
-            ⚠ {error}
+            {MARK.warn} {error}
           </Text>
         </Box>
       )}
@@ -1083,7 +1021,7 @@ export const AlternativeGroupSelectionStep: React.FC<
           {isOnSubmit ? "➜ " : "  "}
         </Text>
         <Box
-          borderStyle="round"
+          borderStyle={BOX_BORDER}
           borderColor={isOnSubmit ? THEME_COLOR : "gray"}
           paddingX={2}
         >
@@ -1145,7 +1083,7 @@ export const EnvConfigStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={error ? "red" : THEME_COLOR}
     >
       <Box justifyContent="space-between">
@@ -1213,12 +1151,6 @@ export const EnvConfigStep: React.FC<{
 
 export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-
-  useInput((_input, key) => {
-    if ((key.return || key.escape) && state.error) {
-      store.submitInput("exit");
-    }
-  });
 
   return (
     <Shell status={state.status} step={state.step}>

@@ -66,7 +66,6 @@ export async function runUp(
   await runCommandUI({
     command: "up",
     whenNonInteractive: "plain",
-    autoResolve: [["exit", "exit"]],
     runFlow: (store) => runUpFlow(store, options),
     onPlainComplete: printUpSummary,
   });

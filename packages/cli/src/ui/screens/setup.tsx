@@ -12,7 +12,7 @@ import {
   PortConflictStep,
   SystemChecksStep,
 } from "../components/shared-steps.js";
-import { THEME_COLOR } from "../constants.js";
+import { BOX_BORDER, THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
 import { useCLIState } from "../use-cli-state.js";
 import {
@@ -28,19 +28,13 @@ import {
 export const SetupScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
 
-  useInput((_input, key) => {
-    if ((key.return || key.escape) && state.error) {
-      store.submitInput("exit");
-    }
-  });
-
   return (
     <Shell status={state.status} step={state.step} steps={SETUP_STEPS}>
       {state.step === "Detect Repo" && (
         <Box
           flexDirection="column"
           paddingX={2}
-          borderStyle="round"
+          borderStyle={BOX_BORDER}
           borderColor={THEME_COLOR}
         >
           <Text bold>Detecting GAIA Repository</Text>
@@ -167,7 +161,7 @@ const FinishedStep: React.FC<{
     <Box
       flexDirection="column"
       marginTop={2}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
       padding={1}
     >

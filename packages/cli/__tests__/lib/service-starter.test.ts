@@ -9,11 +9,15 @@ const {
   readConfig,
   assertEngineSupportsCodeSandbox,
   dockerVolumeExists,
+  runCompose,
+  getDockerAccess,
 } = vi.hoisted(() => ({
   spawn: vi.fn(),
   readConfig: vi.fn(),
   assertEngineSupportsCodeSandbox: vi.fn(),
   dockerVolumeExists: vi.fn(),
+  runCompose: vi.fn(),
+  getDockerAccess: vi.fn(),
 }));
 vi.mock("child_process", () => ({ spawn }));
 vi.mock("../../src/lib/config.js", async (importOriginal) => ({
@@ -25,6 +29,11 @@ vi.mock("../../src/lib/docker.js", () => ({
   assertEngineSupportsCodeSandbox,
   dockerVolumeExists,
 }));
+vi.mock("../../src/lib/compose-run.js", () => ({ runCompose }));
+vi.mock("../../src/lib/docker-access.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getDockerAccess,
+}));
 const { writeBotsEnv } = vi.hoisted(() => ({ writeBotsEnv: vi.fn() }));
 vi.mock("../../src/lib/bots.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/lib/bots.js")>()),
@@ -35,7 +44,6 @@ import {
   pullSelfhostImages,
   startServices,
   stopServices,
-  UnpublishedImageError,
 } from "../../src/lib/service-starter.js";
 
 /** A child process that exits 0 on the next tick. */
@@ -49,11 +57,22 @@ function exitingProcess(): EventEmitter {
   return proc;
 }
 
-/** The compose files a self-host start passed, in order. */
-async function composeFilesForStart(
+/** The -f files in a docker/compose argument list. */
+function filesIn(args: readonly string[] | undefined): string[] {
+  return (args ?? []).flatMap((arg, i) =>
+    args?.[i - 1] === "-f" ? [arg] : [],
+  );
+}
+
+/** The arguments of the Nth runCompose call. */
+function composeArgs(call = 0): string[] {
+  return runCompose.mock.calls[call]?.[0] as string[];
+}
+
+function startSelfhost(
   options?: Parameters<typeof startServices>[5],
-): Promise<string[]> {
-  await startServices(
+): Promise<void> {
+  return startServices(
     "/no/such/repo",
     "selfhost",
     undefined,
@@ -61,13 +80,23 @@ async function composeFilesForStart(
     undefined,
     options,
   );
-  const args = spawn.mock.calls[0]?.[1] as string[];
-  return args.flatMap((arg, i) => (args[i - 1] === "-f" ? [arg] : []));
+}
+
+/** The compose files a self-host start passed, in order. */
+async function composeFilesForStart(
+  options?: Parameters<typeof startServices>[5],
+): Promise<string[]> {
+  await startSelfhost(options);
+  return filesIn(composeArgs());
 }
 
 function resetMocks(): void {
   spawn.mockReset();
   spawn.mockImplementation(exitingProcess);
+  runCompose.mockReset();
+  runCompose.mockResolvedValue(undefined);
+  getDockerAccess.mockReset();
+  getDockerAccess.mockResolvedValue("ready");
   readConfig.mockReset();
   writeBotsEnv.mockReset();
   assertEngineSupportsCodeSandbox.mockReset();
@@ -106,12 +135,6 @@ describe("startServices compose files", () => {
   });
 });
 
-/** The -f files of the Nth docker invocation. */
-function composeFilesOfCall(call: number): string[] {
-  const args = spawn.mock.calls[call]?.[1] as string[];
-  return args.flatMap((arg, i) => (args[i - 1] === "-f" ? [arg] : []));
-}
-
 describe("self-host chat bots", () => {
   beforeEach(resetMocks);
 
@@ -132,7 +155,7 @@ describe("self-host chat bots", () => {
 
     expect(writeBotsEnv).toHaveBeenCalledWith("/no/such/repo");
     expect(writeBotsEnv.mock.invocationCallOrder[0]).toBeLessThan(
-      spawn.mock.invocationCallOrder[0] ?? 0,
+      runCompose.mock.invocationCallOrder[0] ?? 0,
     );
   });
 
@@ -149,10 +172,13 @@ describe("self-host chat bots", () => {
 
     await pullSelfhostImages("/no/such/repo", "v1.2.3");
 
-    expect(composeFilesOfCall(0)).toContain("docker-compose.bot-telegram.yml");
-    expect(spawn.mock.calls[0]?.[1]).toEqual(
+    expect(filesIn(composeArgs())).toContain("docker-compose.bot-telegram.yml");
+    expect(composeArgs()).toEqual(
       expect.arrayContaining(["pull", "gaia-backend", "bot-telegram"]),
     );
+    expect(runCompose.mock.calls[0]?.[1]).toMatchObject({
+      env: { GAIA_VERSION: "v1.2.3" },
+    });
   });
 
   it("stops the bots with the stack", async () => {
@@ -167,15 +193,60 @@ describe("self-host chat bots", () => {
     await stopServices(repo);
     rmSync(repo, { recursive: true, force: true });
 
-    expect(composeFilesOfCall(0)).toContain("docker-compose.bot-slack.yml");
+    expect(filesIn(spawn.mock.calls[0]?.[1] as string[])).toContain(
+      "docker-compose.bot-slack.yml",
+    );
+  });
+});
+
+describe("stopServices never reports a stop that did not happen", () => {
+  beforeEach(resetMocks);
+
+  function selfhostRepo(): string {
+    const repo = mkdtempSync(path.join(tmpdir(), "gaia-stop-"));
+    mkdirSync(path.join(repo, "apps", "api"), { recursive: true });
+    writeFileSync(
+      path.join(repo, "apps", "api", ".env"),
+      "SETUP_MODE=selfhost\n",
+    );
+    return repo;
+  }
+
+  it("fails with the Docker problem when the socket refuses the user", async () => {
+    getDockerAccess.mockResolvedValue("no-permission");
+    readConfig.mockReturnValue({});
+    const repo = selfhostRepo();
+
+    await expect(stopServices(repo)).rejects.toThrow(
+      "Docker is running, but your user can't use it yet",
+    );
+    rmSync(repo, { recursive: true, force: true });
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("fails when compose down fails instead of swallowing it", async () => {
+    readConfig.mockReturnValue({});
+    spawn.mockImplementation(() => {
+      const proc = Object.assign(new EventEmitter(), {
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+        kill: vi.fn(),
+      });
+      setImmediate(() => {
+        proc.stderr.emit("data", Buffer.from("network gaia in use\n"));
+        proc.emit("close", 1);
+      });
+      return proc;
+    });
+    const repo = selfhostRepo();
+
+    await expect(stopServices(repo)).rejects.toThrow("network gaia in use");
+    rmSync(repo, { recursive: true, force: true });
   });
 });
 
 describe("startServices code-sandbox isolation", () => {
   beforeEach(resetMocks);
-
-  const start = () =>
-    startServices("/no/such/repo", "selfhost", undefined, undefined, undefined);
 
   it("refuses to start the sandbox on an engine that cannot isolate users", async () => {
     readConfig.mockReturnValue({ codeSandbox: true });
@@ -183,14 +254,14 @@ describe("startServices code-sandbox isolation", () => {
       new Error("needs Docker Engine 26"),
     );
 
-    await expect(start()).rejects.toThrow("Docker Engine 26");
-    expect(spawn).not.toHaveBeenCalled();
+    await expect(startSelfhost()).rejects.toThrow("Docker Engine 26");
+    expect(runCompose).not.toHaveBeenCalled();
   });
 
   it("never checks the engine when the sandbox is off", async () => {
     readConfig.mockReturnValue({});
 
-    await start();
+    await startSelfhost();
 
     expect(assertEngineSupportsCodeSandbox).not.toHaveBeenCalled();
   });
@@ -199,10 +270,10 @@ describe("startServices code-sandbox isolation", () => {
     readConfig.mockReturnValue({ codeSandbox: true });
     dockerVolumeExists.mockResolvedValue(true);
 
-    await start();
+    await startSelfhost();
 
     expect(dockerVolumeExists).toHaveBeenCalledWith("gaia-sandbox-workspace");
-    const migrate = spawn.mock.calls[1]?.[1] as string[];
+    const migrate = spawn.mock.calls[0]?.[1] as string[];
     expect(migrate).toEqual(
       expect.arrayContaining([
         "run",
@@ -214,46 +285,20 @@ describe("startServices code-sandbox isolation", () => {
       ]),
     );
     expect(migrate.indexOf("up")).toBe(-1);
-    expect(spawn.mock.calls[0]?.[1]).toContain("up");
+    expect(composeArgs()).toContain("up");
+    expect(runCompose.mock.invocationCallOrder[0]).toBeLessThan(
+      spawn.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it("runs no migration once the shared volume is gone", async () => {
     readConfig.mockReturnValue({ codeSandbox: true });
 
-    await start();
+    await startSelfhost();
 
-    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(spawn).not.toHaveBeenCalled();
   });
 });
-
-/** A child process that writes compose's stderr, then exits 1. */
-function failingProcess(stderr: string): () => EventEmitter {
-  return () => {
-    const proc = Object.assign(new EventEmitter(), {
-      stdout: new EventEmitter(),
-      stderr: new EventEmitter(),
-      kill: vi.fn(),
-    });
-    setImmediate(() => {
-      proc.stderr.emit("data", Buffer.from(stderr));
-      proc.emit("close", 1);
-    });
-    return proc;
-  };
-}
-
-function startSelfhost(
-  options?: Parameters<typeof startServices>[5],
-): Promise<void> {
-  return startServices(
-    "/no/such/repo",
-    "selfhost",
-    undefined,
-    undefined,
-    undefined,
-    options,
-  );
-}
 
 describe("startServices never builds from source unless asked", () => {
   beforeEach(() => {
@@ -264,47 +309,22 @@ describe("startServices never builds from source unless asked", () => {
   it("forbids compose from building a missing image on a pull start", async () => {
     await startSelfhost({ pull: "missing" });
 
-    const args = spawn.mock.calls[0]?.[1] as string[];
-    expect(args).toContain("--no-build");
-    expect(args).not.toContain("--build");
+    expect(composeArgs()).toContain("--no-build");
+    expect(composeArgs()).not.toContain("--build");
   });
 
   it("builds only when --build was asked for", async () => {
     await startSelfhost({ build: true });
 
-    const args = spawn.mock.calls[0]?.[1] as string[];
-    expect(args).toContain("--build");
-    expect(args).not.toContain("--no-build");
+    expect(composeArgs()).toContain("--build");
+    expect(composeArgs()).not.toContain("--no-build");
   });
 
-  // Both stderr lines are verbatim from docker compose v5.5 `up --no-build`.
-  it.each([
-    "Error response from daemon: No such image: ghcr.io/theexperiencecompany/gaia:0.9.1-rc\n",
-    'Error response from daemon: failed to resolve reference "ghcr.io/theexperiencecompany/gaia-web:0.9.1-rc": ghcr.io/theexperiencecompany/gaia-web:0.9.1-rc: not found\n',
-  ])(
-    "names the unpublished GAIA release instead of compose's error: %s",
-    async (stderr) => {
-      spawn.mockImplementation(failingProcess(stderr));
+  it("names the command that builds, for a missing-image error", async () => {
+    await startSelfhost({ pull: "missing", rebuildCommand: "gaia up --build" });
 
-      const error = await startSelfhost({ pull: "missing" }).catch((e) => e);
-
-      expect(error).toBeInstanceOf(UnpublishedImageError);
-      expect(error.message).toMatch(
-        /^GAIA 0\.9\.1-rc images aren't published \(ghcr\.io\/theexperiencecompany\/gaia(-web)?:0\.9\.1-rc\)\. Run `gaia update`, or `gaia up --build` to build from source\.$/,
-      );
-    },
-  );
-
-  it("keeps compose's own error when a third-party image is missing", async () => {
-    spawn.mockImplementation(
-      failingProcess(
-        "Error response from daemon: No such image: postgres:18-alpine\n",
-      ),
-    );
-
-    const error = await startSelfhost({ pull: "missing" }).catch((e) => e);
-
-    expect(error).not.toBeInstanceOf(UnpublishedImageError);
-    expect(error.message).toContain("No such image: postgres:18-alpine");
+    expect(runCompose.mock.calls[0]?.[1]).toMatchObject({
+      rebuildCommand: "gaia up --build",
+    });
   });
 });

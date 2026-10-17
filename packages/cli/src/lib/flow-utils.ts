@@ -3,7 +3,7 @@ import type { CLIStore } from "../ui/store.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 import * as prereqs from "./prerequisites.js";
-import { runCommand } from "./service-starter.js";
+import { runCommand, type StartProgress } from "./service-starter.js";
 
 export const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
@@ -20,6 +20,15 @@ export const createLogHandler =
       [...currentLogs, ...lines].slice(-LOG_BUFFER_LINES),
     );
   };
+
+/** A compose progress callback driving the dependency step's phase line, bar and finished list. */
+export function dependencyStepProgress(store: CLIStore): StartProgress {
+  return (phase, finished) => {
+    store.updateData("dependencyPhase", phase.label);
+    store.updateData("dependencyProgress", phase.percent);
+    store.updateData("dependencyLogs", finished.slice(-LOG_BUFFER_LINES));
+  };
+}
 
 /**
  * Ensures git and Docker, each with an install offer on apt-based Linux.

@@ -5,9 +5,9 @@
  * @module commands/up/screen
  */
 
-import { Box, Text, useInput } from "ink";
+import { Box, Text } from "ink";
 import type React from "react";
-import { Shell } from "../../ui/components/Shell.js";
+import { Shell, UP_STEPS } from "../../ui/components/Shell.js";
 import {
   EnvSetupSpinnerStep,
   ErrorStep,
@@ -16,7 +16,7 @@ import {
   RepositoryProgressStep,
   SystemChecksStep,
 } from "../../ui/components/shared-steps.js";
-import { THEME_COLOR } from "../../ui/constants.js";
+import { BOX_BORDER, THEME_COLOR } from "../../ui/constants.js";
 import { DependencyInstallStep } from "../../ui/screens/init.js";
 import type { CLIState, CLIStore } from "../../ui/store.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
@@ -56,7 +56,7 @@ const UpFinishedStep: React.FC<{
     <Box
       flexDirection="column"
       marginTop={2}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={success ? "green" : THEME_COLOR}
       padding={1}
     >
@@ -212,17 +212,10 @@ const UpSummaryStep: React.FC<{ state: CLIState }> = ({ state }) => {
 
 export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-
-  useInput((_input, key) => {
-    if ((key.return || key.escape) && state.error) {
-      store.submitInput("exit");
-    }
-  });
-
   const idle = !state.inputRequest;
 
   return (
-    <Shell status={state.status} step={state.step}>
+    <Shell status={state.status} step={state.step} steps={UP_STEPS}>
       {state.step === "Prerequisites" && state.data.checks && (
         <SystemChecksStep checks={state.data.checks} />
       )}
@@ -231,7 +224,7 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
 
       {state.step === "Repository Setup" && idle && (
         <RepositoryProgressStep
-          title="Setting Up Repository"
+          title="Downloading GAIA"
           progress={state.data.repoProgress}
           phase={state.data.repoPhase}
         />

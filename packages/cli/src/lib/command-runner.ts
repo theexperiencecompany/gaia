@@ -119,14 +119,13 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
     process.off("SIGTERM", handleExit);
   }
 
-  if (store.currentState.error) {
-    await store.waitForInput("exit");
-  }
-
   // React commits a store change on a later tick; unmounting first would
   // drop the flow's last state (gaia up's summary) from the final frame.
   await new Promise((resolve) => setImmediate(resolve));
   unmount();
+  // Ink leaves the cursor at the end of its last line; the shell prompt
+  // belongs on its own line.
+  process.stdout.write("\n");
   const groupSwitch = dockerGroupRelaunch(store);
   if (groupSwitch) {
     await relaunchWithDockerGroup(store.currentState.step, groupSwitch);

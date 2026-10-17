@@ -1,219 +1,78 @@
 import { Spinner } from "@inkjs/ui";
-import { Box, Text, useInput } from "ink";
+import { Box, Text } from "ink";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
 import { Header } from "../components/Header.js";
-import { THEME_COLOR } from "../constants.js";
+import { LogWindow } from "../components/LogWindow.js";
+import { Mark } from "../components/Mark.js";
+import { ErrorStep } from "../components/shared-steps.js";
+import { BOX_BORDER, THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
 import { useCLIState } from "../use-cli-state.js";
-
-const LOG_HEIGHT = 8;
-
-const DockerLogWindow: React.FC<{ logs: string[] }> = ({ logs }) => {
-  const [scrollOffset, setScrollOffset] = useState(0);
-  const prevLenRef = useRef(logs.length);
-
-  useEffect(() => {
-    if (logs.length !== prevLenRef.current) {
-      prevLenRef.current = logs.length;
-      setScrollOffset(0);
-    }
-  }, [logs.length]);
-
-  useInput((_input, key) => {
-    if (key.upArrow) {
-      setScrollOffset((o) =>
-        Math.min(o + 1, Math.max(0, logs.length - LOG_HEIGHT)),
-      );
-    } else if (key.downArrow) {
-      setScrollOffset((o) => Math.max(0, o - 1));
-    }
-  });
-
-  const total = logs.length;
-  const start = Math.max(0, total - LOG_HEIGHT - scrollOffset);
-  const end = Math.max(0, total - scrollOffset);
-  const visible = logs.slice(start, end);
-  const linesAbove = start;
-  const linesBelow = scrollOffset;
-
-  return (
-    <Box flexDirection="column" marginTop={1} marginLeft={1}>
-      {linesAbove > 0 && (
-        <Text color="gray" dimColor>
-          ↑ {linesAbove} more line{linesAbove !== 1 ? "s" : ""}
-        </Text>
-      )}
-      <Box flexDirection="column" height={LOG_HEIGHT} overflow="hidden">
-        {visible.map((line, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: logs are append-only
-          <Text key={start + i} color="gray" wrap="truncate">
-            {line}
-          </Text>
-        ))}
-      </Box>
-      {linesBelow > 0 ? (
-        <Text color="gray" dimColor>
-          ↓ {linesBelow} more line{linesBelow !== 1 ? "s" : ""}
-        </Text>
-      ) : (
-        <Text color="gray" dimColor>
-          ↑↓ scroll
-        </Text>
-      )}
-    </Box>
-  );
-};
 
 interface ServiceScreenProps {
   store: CLIStore;
   command: "start" | "stop";
 }
 
+/** `gaia start` / `gaia stop`: a spinner while Docker works, then one result line. */
 export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
   const state = useCLIState(store);
-
-  useInput((_input, key) => {
-    if (
-      (key.return || key.escape) &&
-      (state.data.started || state.data.stopped || state.error)
-    ) {
-      store.submitInput("exit");
-    }
-  });
+  const working = state.step === "Starting" || state.step === "Stopping";
+  const logs = (state.data.dockerLogs ?? []) as string[];
 
   return (
     <Box flexDirection="column" width="100%">
       <Header />
 
-      {(state.step === "Starting" || state.step === "Stopping") && (
+      {working && !state.error && (
         <Box
           flexDirection="column"
           marginTop={1}
           paddingX={2}
-          borderStyle="round"
+          borderStyle={BOX_BORDER}
           borderColor={THEME_COLOR}
         >
           <Spinner label={state.status || "Working..."} />
           {state.data.repoPath && (
-            <Box marginTop={1}>
-              <Text color="gray">Repository: {state.data.repoPath}</Text>
-            </Box>
+            <Text color="gray">{state.data.repoPath}</Text>
           )}
-          {state.data.setupMode && (
-            <Box>
-              <Text color="gray">Mode: {state.data.setupMode}</Text>
-            </Box>
-          )}
-          {state.data.dockerLogs && state.data.dockerLogs.length > 0 && (
-            <DockerLogWindow logs={state.data.dockerLogs as string[]} />
-          )}
+          {logs.length > 0 && <LogWindow logs={logs} />}
         </Box>
       )}
 
       {state.step === "Running" && state.data.started && (
-        <Box
-          flexDirection="column"
-          marginTop={1}
-          paddingX={2}
-          paddingY={1}
-          borderStyle="round"
-          borderColor="green"
-        >
-          <Text color="green" bold>
-            {"\u2713"} GAIA is running!
-          </Text>
-          {state.data.setupMode !== "developer" && (
-            <Box marginTop={1} flexDirection="column">
-              <Text>
-                Web:{" "}
-                <Text color="cyan" bold>
-                  http://localhost:{state.data.webPort || 3000}
-                </Text>
+        <Box flexDirection="column" marginTop={1}>
+          <Box>
+            <Mark kind="ok" />
+            <Text>
+              GAIA is running at{" "}
+              <Text color="cyan" bold>
+                {state.data.webUrl}
               </Text>
-              <Text>
-                API:{" "}
-                <Text color="cyan" bold>
-                  {state.data.apiUrl}
-                </Text>
-              </Text>
-            </Box>
-          )}
-          {state.data.setupMode === "developer" && (
-            <Box marginTop={1} flexDirection="column">
-              <Box flexDirection="column">
-                <Text>
-                  Web:{" "}
-                  <Text color="cyan" bold>
-                    http://localhost:{state.data.webPort || 3000}
-                  </Text>
-                </Text>
-                <Text>
-                  API:{" "}
-                  <Text color="cyan" bold>
-                    {state.data.apiUrl}
-                  </Text>
-                </Text>
-              </Box>
-              <Box marginTop={1} flexDirection="column">
-                <Text color="gray">
-                  Use gaia dev / gaia dev full for foreground Nx TUI.
-                </Text>
-                <Text color="gray">
-                  Run <Text color={THEME_COLOR}>gaia logs</Text> to stream logs.
-                </Text>
-                <Text color="gray">
-                  Run <Text color={THEME_COLOR}>gaia stop</Text> to shut down.
-                </Text>
-              </Box>
-            </Box>
-          )}
-          <Box marginTop={1}>
-            <Text dimColor>
-              <Text bold>Enter</Text> to exit
             </Text>
           </Box>
+          <Text color="gray">
+            {"  "}gaia status shows its health · gaia stop shuts it down
+          </Text>
         </Box>
       )}
 
       {state.step === "Stopped" && state.data.stopped && (
-        <Box
-          flexDirection="column"
-          marginTop={1}
-          paddingX={2}
-          paddingY={1}
-          borderStyle="round"
-          borderColor={THEME_COLOR}
-        >
-          <Text color={THEME_COLOR} bold>
-            {"\u2713"} {state.status || "All GAIA services stopped."}
-          </Text>
-          {state.data.stopMode === "force-ports" && (
-            <Box marginTop={1}>
-              <Text color="yellow">
-                Force-port cleanup was enabled and may have stopped non-GAIA
-                listeners on app ports.
-              </Text>
-            </Box>
-          )}
-          <Box marginTop={1}>
-            <Text dimColor>
-              <Text bold>Enter</Text> to exit
-            </Text>
+        <Box flexDirection="column" marginTop={1}>
+          <Box>
+            <Mark kind="ok" />
+            <Text>{state.status}</Text>
           </Box>
+          {state.data.stopMode === "force-ports" && (
+            <Text color="yellow">
+              {"  "}--force-ports also stopped whatever else listened on GAIA's
+              ports.
+            </Text>
+          )}
         </Box>
       )}
 
-      {state.error && (
-        <Box borderStyle="single" borderColor="red" padding={1} marginTop={2}>
-          <Text color="red">Error: {state.error.message}</Text>
-          <Box marginTop={1}>
-            <Text dimColor>
-              <Text bold>Enter</Text> to exit
-            </Text>
-          </Box>
-        </Box>
-      )}
+      {state.error && <ErrorStep message={state.error.message} />}
     </Box>
   );
 };

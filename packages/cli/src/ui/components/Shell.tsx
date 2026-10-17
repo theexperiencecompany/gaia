@@ -1,82 +1,79 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import type { ReactNode } from "react";
-import { THEME_COLOR } from "../constants.js";
+import { MARK, THEME_COLOR } from "../constants.js";
 import { Footer } from "./Footer.js";
 import { Header } from "./Header.js";
 
-const INIT_STEPS = [
-  "Welcome",
-  "Prerequisites",
-  "Setup Mode",
-  "Repository Setup",
-  "Environment Setup",
-  "Install Tools",
-  "Project Setup",
-  "Finished",
-] as const;
+/** One stepper entry: the flow's step id and the word the bar shows for it. */
+interface StepDef {
+  id: string;
+  label: string;
+}
 
-export const SETUP_STEPS = [
-  "Detect Repo",
-  "Prerequisites",
-  "Environment Setup",
-  "Project Setup",
-  "Finished",
-] as const;
+const INIT_STEPS: readonly StepDef[] = [
+  { id: "Welcome", label: "Welcome" },
+  { id: "Prerequisites", label: "Prereqs" },
+  { id: "Setup Mode", label: "Mode" },
+  { id: "Repository Setup", label: "Repo" },
+  { id: "Environment Setup", label: "Env" },
+  { id: "Install Tools", label: "Tools" },
+  { id: "Project Setup", label: "Setup" },
+  { id: "Finished", label: "Done" },
+];
+
+export const SETUP_STEPS: readonly StepDef[] = [
+  { id: "Detect Repo", label: "Detect" },
+  { id: "Prerequisites", label: "Prereqs" },
+  { id: "Environment Setup", label: "Env" },
+  { id: "Project Setup", label: "Setup" },
+  { id: "Finished", label: "Done" },
+];
+
+/** Only the steps `gaia up` runs, named for what each does. */
+export const UP_STEPS: readonly StepDef[] = [
+  { id: "Prerequisites", label: "Check" },
+  { id: "Repository Setup", label: "Download" },
+  { id: "Environment Setup", label: "Configure" },
+  { id: "Project Setup", label: "Start" },
+  { id: "Finished", label: "Done" },
+];
 
 interface ShellProps {
   children: ReactNode;
   status: string;
   step: string;
-  steps?: readonly string[];
+  steps?: readonly StepDef[];
 }
 
-interface StepperProps {
-  currentStep: string;
-  steps: readonly string[];
-}
-
-const STEP_LABELS: Record<string, string> = {
-  Welcome: "Welcome",
-  Prerequisites: "Prereqs",
-  "Setup Mode": "Mode",
-  "Repository Setup": "Repo",
-  "Environment Setup": "Env",
-  "Install Tools": "Tools",
-  "Project Setup": "Setup",
-  "Detect Repo": "Detect",
-  Finished: "Done",
-};
-
-const Stepper: React.FC<StepperProps> = ({ currentStep, steps }) => {
-  const currentIndex = steps.indexOf(currentStep);
+const Stepper: React.FC<{ currentStep: string; steps: readonly StepDef[] }> = ({
+  currentStep,
+  steps,
+}) => {
+  const currentIndex = steps.findIndex((s) => s.id === currentStep);
+  // Reaching the last step finishes it: "Done" is ticked, not pending.
+  const finished = currentIndex === steps.length - 1;
 
   return (
-    <Box marginBottom={1} flexWrap="nowrap">
-      {steps.map((step, i) => {
-        const isDone = i < currentIndex;
-        const isActive = i === currentIndex;
-        const label = STEP_LABELS[step] ?? step;
+    <Box marginBottom={1} flexWrap="wrap">
+      {steps.map(({ id, label }, i) => {
+        const isDone = i < currentIndex || finished;
+        const isActive = i === currentIndex && !finished;
 
         return (
-          <Box key={step} flexShrink={0}>
-            {i > 0 && (
-              <Text color="gray" dimColor>
-                {" "}
-                ·{" "}
+          <Box key={id} flexShrink={0}>
+            {i > 0 && <Text color="gray"> · </Text>}
+            {isDone && (
+              <Text color="green">
+                {MARK.ok} {label}
               </Text>
             )}
-            {isDone && <Text color="green">✓ {label}</Text>}
             {isActive && (
               <Text color={THEME_COLOR} bold>
                 {label}
               </Text>
             )}
-            {!isDone && !isActive && (
-              <Text color="gray" dimColor>
-                {label}
-              </Text>
-            )}
+            {!isDone && !isActive && <Text color="gray">{label}</Text>}
           </Box>
         );
       })}

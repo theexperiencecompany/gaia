@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { botComposeFile, botService, writeBotsEnv } from "./bots.js";
+import { type ComposeRunOptions, runCompose } from "./compose-run.js";
 import { readConfig, updateConfig } from "./config.js";
 import {
   assertEngineSupportsCodeSandbox,
@@ -35,7 +36,12 @@ export interface StartServicesOptions {
    * start); "always" refreshes every tag (`gaia update`, `gaia start --pull`).
    */
   pull?: "always" | "missing";
+  /** The command a missing-image error tells the user to build with. */
+  rebuildCommand?: string;
 }
+
+/** Progress callback for a compose start: the phase line and the finished steps. */
+export type StartProgress = NonNullable<ComposeRunOptions["onProgress"]>;
 
 /** Default ceiling for `gaia start`, in minutes. */
 const DEFAULT_START_TIMEOUT_MIN = 60;
@@ -111,14 +117,13 @@ function legacySandboxMigrationArgs(
   ];
 }
 
-/** Build the `docker compose ... up` argument list for self-host mode. */
+/** The `docker compose ... up` arguments (after `compose`) for self-host mode. */
 function buildSelfhostUpArgs(
   files: string[],
   envArgs: string[],
   options?: StartServicesOptions,
 ): string[] {
   const upArgs = [
-    "compose",
     ...composeFileArgs(files),
     ...envArgs,
     "up",
@@ -129,21 +134,6 @@ function buildSelfhostUpArgs(
   upArgs.push(options?.build ? "--build" : "--no-build");
   if (options?.pull) upArgs.push("--pull", options.pull);
   return upArgs;
-}
-
-/** A GAIA image ref in compose's missing-image errors ("No such image", "failed to resolve reference"). */
-const MISSING_GAIA_IMAGE =
-  /(?:No such image: |failed to resolve reference ")(ghcr\.io\/theexperiencecompany\/gaia[\w-]*:([\w.-]+))/;
-
-/** A `gaia up`/`start` hit a GAIA release whose images were never published. */
-export class UnpublishedImageError extends Error {
-  constructor(imageRef: string, version: string, options?: ErrorOptions) {
-    super(
-      `GAIA ${version} images aren't published (${imageRef}). Run \`gaia update\`, or \`gaia up --build\` to build from source.`,
-      options,
-    );
-    this.name = "UnpublishedImageError";
-  }
 }
 
 export function readStoredDevPid(repoPath: string): number | null {
@@ -172,7 +162,7 @@ export async function startServices(
   setupMode: SetupMode,
   onStatus?: (status: string) => void,
   portOverrides?: Record<number, number>,
-  onLog?: (chunk: string) => void,
+  onProgress?: StartProgress,
   options?: StartServicesOptions,
 ): Promise<void> {
   if (setupMode !== "selfhost") {
@@ -183,9 +173,7 @@ export async function startServices(
   }
 
   onStatus?.(
-    options?.build
-      ? "Building and starting all services in Docker..."
-      : "Starting all services in Docker (selfhost mode)...",
+    options?.build ? "Building GAIA from source..." : "Starting GAIA...",
   );
 
   const dockerComposePath = path.join(repoPath, "infra/docker");
@@ -200,23 +188,14 @@ export async function startServices(
   const files = selfhostComposeFiles({ build: options?.build });
   const envArgs = getEnvFileArgs(dockerComposePath);
 
-  try {
-    await runCommand(
-      "docker",
-      buildSelfhostUpArgs(files, envArgs, options),
-      dockerComposePath,
-      undefined,
-      onLog,
-      dockerEnv,
-      resolveStartTimeoutMs(),
-    );
-  } catch (error) {
-    const missing = MISSING_GAIA_IMAGE.exec((error as Error).message);
-    if (missing?.[1] && missing[2]) {
-      throw new UnpublishedImageError(missing[1], missing[2], { cause: error });
-    }
-    throw error;
-  }
+  await runCompose(buildSelfhostUpArgs(files, envArgs, options), {
+    cwd: dockerComposePath,
+    env: dockerEnv,
+    timeoutMs: resolveStartTimeoutMs(),
+    logName: options?.build ? "compose-build" : "compose-up",
+    rebuildCommand: options?.rebuildCommand ?? "gaia start --build",
+    onProgress,
+  });
   if (await dockerVolumeExists(LEGACY_SANDBOX_VOLUME)) {
     onStatus?.("Moving code-sandbox files into per-user workspaces...");
     await runCommand(
@@ -224,11 +203,11 @@ export async function startServices(
       legacySandboxMigrationArgs(files, envArgs),
       dockerComposePath,
       undefined,
-      onLog,
+      undefined,
       dockerEnv,
     );
   }
-  onStatus?.("All services started in Docker!");
+  onStatus?.("GAIA's services are running.");
 }
 
 /** `docker compose` plus the self-host install's files and env file, run from dockerDir. */
@@ -275,23 +254,25 @@ const SELFHOST_APP_SERVICES = ["gaia-backend", "arq_worker", "gaia-web"];
 export async function pullSelfhostImages(
   repoPath: string,
   version: string,
+  onProgress?: StartProgress,
 ): Promise<void> {
   const dockerComposePath = path.join(repoPath, "infra/docker");
-  await runCommand(
-    "docker",
+  await runCompose(
     [
-      "compose",
       ...composeFileArgs(selfhostComposeFiles()),
       ...getEnvFileArgs(dockerComposePath),
       "pull",
       ...SELFHOST_APP_SERVICES,
       ...(readConfig()?.bots ?? []).map(botService),
     ],
-    dockerComposePath,
-    undefined,
-    undefined,
-    // The shell environment outranks infra/docker/.env in compose interpolation.
-    { GAIA_VERSION: version },
+    {
+      cwd: dockerComposePath,
+      // The shell environment outranks infra/docker/.env in compose interpolation.
+      env: { GAIA_VERSION: version },
+      logName: "compose-pull",
+      rebuildCommand: "gaia up --build",
+      onProgress,
+    },
   );
 }
 
@@ -327,103 +308,95 @@ export async function stopServices(
 
   // In selfhost mode everything runs in Docker, no local processes to kill
   if (mode !== "selfhost") {
-    onStatus?.("Stopping GAIA-managed local processes (safe mode)...");
-    const pidPath = path.join(repoPath, DEV_PID_FILE);
-    let killedByPid = false;
-
-    // Try to kill by stored PID first (targets only GAIA processes).
-    const pid = readStoredDevPid(repoPath);
-    const hadStoredPid = typeof pid === "number";
-    if (pid && isPidAlive(pid)) {
-      try {
-        if (process.platform === "win32") {
-          await runCommand(
-            "taskkill",
-            ["/PID", String(pid), "/T", "/F"],
-            repoPath,
-          );
-          killedByPid = true;
-        } else {
-          // Prefer process-group termination for detached `gaia dev` sessions.
-          try {
-            process.kill(-pid, "SIGTERM");
-            killedByPid = true;
-          } catch {
-            // Fallback to direct PID if group kill is unavailable.
-            process.kill(pid, "SIGTERM");
-            killedByPid = true;
-          }
-          await delay(800);
-          if (isPidAlive(pid)) {
-            try {
-              process.kill(-pid, "SIGKILL");
-            } catch {
-              process.kill(pid, "SIGKILL");
-            }
-          }
-        }
-      } catch {
-        // Ignore PID termination errors
-      }
-    }
-
-    try {
-      fs.unlinkSync(pidPath);
-    } catch {
-      // Ignore cleanup errors
-    }
-
-    // Fall back to port-based cleanup only when explicitly requested.
-    if (!killedByPid && options?.forcePorts) {
-      onStatus?.("No GAIA PID found. Force-stopping listeners on app ports...");
-      try {
-        const apiPort = portOverrides?.[8000] ?? 8000;
-        const webPort = portOverrides?.[3000] ?? 3000;
-
-        if (process.platform === "win32") {
-          for (const port of [apiPort, webPort]) {
-            try {
-              await runCommand(
-                "powershell",
-                [
-                  "-Command",
-                  `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`,
-                ],
-                repoPath,
-              );
-            } catch {
-              // Port not in use
-            }
-          }
-        } else {
-          for (const port of [apiPort, webPort]) {
-            try {
-              await runCommand(
-                "sh",
-                [
-                  "-c",
-                  `lsof -ti :${port} -sTCP:LISTEN | xargs kill 2>/dev/null || true`,
-                ],
-                repoPath,
-              );
-            } catch {
-              // Port not in use
-            }
-          }
-        }
-      } catch {
-        // Ignore cleanup errors
-      }
-    } else if (!killedByPid) {
-      onStatus?.(
-        hadStoredPid
-          ? "Stored GAIA PID is stale. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup."
-          : "No GAIA-managed PID found. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup.",
-      );
-    }
+    await stopDeveloperProcesses(repoPath, onStatus, portOverrides, options);
   }
-
   onStatus?.("All services stopped.");
+}
+
+/** Stop `gaia dev`'s local processes: by its stored PID, or by port with --force-ports. */
+async function stopDeveloperProcesses(
+  repoPath: string,
+  onStatus?: (status: string) => void,
+  portOverrides?: Record<number, number>,
+  options?: StopServicesOptions,
+): Promise<void> {
+  onStatus?.("Stopping GAIA-managed local processes (safe mode)...");
+  const pid = readStoredDevPid(repoPath);
+  const killedByPid = pid !== null && (await killDevProcess(repoPath, pid));
+  try {
+    fs.unlinkSync(path.join(repoPath, DEV_PID_FILE));
+  } catch {
+    // The PID file may never have existed.
+  }
+  if (killedByPid) return;
+
+  // Fall back to port-based cleanup only when explicitly requested.
+  if (options?.forcePorts) {
+    onStatus?.("No GAIA PID found. Force-stopping listeners on app ports...");
+    await killPortListeners(repoPath, [
+      portOverrides?.[8000] ?? 8000,
+      portOverrides?.[3000] ?? 3000,
+    ]);
+    return;
+  }
+  onStatus?.(
+    pid !== null
+      ? "Stored GAIA PID is stale. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup."
+      : "No GAIA-managed PID found. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup.",
+  );
+}
+
+/** Terminate a detached `gaia dev` session (its process group); false when it was not running. */
+async function killDevProcess(repoPath: string, pid: number): Promise<boolean> {
+  if (!isPidAlive(pid)) return false;
+  try {
+    if (process.platform === "win32") {
+      await runCommand("taskkill", ["/PID", String(pid), "/T", "/F"], repoPath);
+      return true;
+    }
+    signalGroup(pid, "SIGTERM");
+    await delay(800);
+    if (isPidAlive(pid)) signalGroup(pid, "SIGKILL");
+    return true;
+  } catch {
+    // The process exited between the check and the signal.
+    return false;
+  }
+}
+
+/** Signal a process group, or the lone process when it leads no group. */
+function signalGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    process.kill(pid, signal);
+  }
+}
+
+/** Kill whatever listens on each port (--force-ports; may hit non-GAIA processes). */
+async function killPortListeners(
+  repoPath: string,
+  ports: number[],
+): Promise<void> {
+  for (const port of ports) {
+    const [cmd, args] =
+      process.platform === "win32"
+        ? [
+            "powershell",
+            [
+              "-Command",
+              `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`,
+            ],
+          ]
+        : [
+            "sh",
+            [
+              "-c",
+              `lsof -ti :${port} -sTCP:LISTEN | xargs kill 2>/dev/null || true`,
+            ],
+          ];
+    await runCommand(cmd, args, repoPath);
+  }
 }
 
 export async function detectSetupMode(
@@ -449,6 +422,13 @@ export async function detectSetupMode(
   if (content.includes("mongodb://localhost:")) return "developer";
 
   return "developer";
+}
+
+/** Whole lines of a failed command's output an error quotes; never a cut mid-word. */
+const ERROR_TAIL_LINES = 8;
+
+function lastLines(output: string, count: number): string {
+  return output.trimEnd().split("\n").slice(-count).join("\n");
 }
 
 export async function runCommand(
@@ -510,7 +490,9 @@ export async function runCommand(
         resolve();
       } else {
         reject(
-          new Error(`Command failed with code ${code}: ${output.slice(-500)}`),
+          new Error(
+            `Command failed with code ${code}:\n${lastLines(output, ERROR_TAIL_LINES)}`,
+          ),
         );
       }
     });

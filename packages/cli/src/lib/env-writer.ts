@@ -253,6 +253,14 @@ export const GAIA_VERSION_ENV_KEY = "GAIA_VERSION";
 const UNPINNED_IMAGE_TAG = "latest";
 
 /** The GAIA image tag the install runs today. */
+/** infra/docker/.env key holding the domain `gaia up --domain` serves GAIA at. */
+const GAIA_DOMAIN_ENV_KEY = "GAIA_DOMAIN";
+
+/** The domain the install serves GAIA at, if `gaia up --domain` set one. */
+export function readGaiaDomain(repoRoot: string): string | undefined {
+  return readDockerComposeEnv(repoRoot)[GAIA_DOMAIN_ENV_KEY] || undefined;
+}
+
 export function readPinnedGaiaVersion(repoRoot: string): string {
   return (
     readDockerComposeEnv(repoRoot)[GAIA_VERSION_ENV_KEY] ?? UNPINNED_IMAGE_TAG
@@ -315,7 +323,7 @@ export function writeDockerComposeEnv(
     // An explicit COMPOSE_PROFILES (e.g. a platform proxy instead) wins.
     merged["COMPOSE_PROFILES"] ??= SELFHOST_PROXY_PROFILE;
     merged["DOCKER_SOCKET_GID"] = String(selfhost.dockerSocketGid);
-    if (selfhost.domain) merged["GAIA_DOMAIN"] = selfhost.domain;
+    if (selfhost.domain) merged[GAIA_DOMAIN_ENV_KEY] = selfhost.domain;
   }
 
   writeDockerComposeEnvValues(repoRoot, merged);

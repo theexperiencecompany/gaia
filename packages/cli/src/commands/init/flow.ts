@@ -8,6 +8,7 @@ import { portOverridesToDockerEnv } from "../../lib/env-writer.js";
 import {
   createLogHandler,
   delay,
+  dependencyStepProgress,
   runBasePrerequisiteChecks,
   runDeveloperPrerequisiteChecks,
   runPortChecks,
@@ -21,11 +22,9 @@ import {
   startServices,
 } from "../../lib/service-starter.js";
 import { CLI_VERSION } from "../../lib/version.js";
-import { LOG_BUFFER_LINES } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
 
 const DEV_MODE = process.env.GAIA_CLI_DEV === "true";
-const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
 export async function runInitFlow(
   store: CLIStore,
@@ -209,18 +208,7 @@ export async function runInitFlow(
     store.updateData("dependencyLogs", []);
     store.updateData("dependencyComplete", false);
 
-    const dockerLogHandler = (chunk: string) => {
-      const lines = chunk
-        .split("\n")
-        .map((l: string) => l.replace(ANSI_ESCAPE_RE, "").trim())
-        .filter((l: string) => l.length > 0);
-      if (lines.length === 0) return;
-      const current: string[] = store.currentState.data.dependencyLogs || [];
-      store.updateData(
-        "dependencyLogs",
-        [...current, ...lines].slice(-LOG_BUFFER_LINES),
-      );
-    };
+    const dockerLogHandler = dependencyStepProgress(store);
 
     // Try to pull pre-built images from GHCR first (fast path for self-hosters).
     // Fall back to building locally if pull fails (e.g. first release, no auth).

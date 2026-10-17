@@ -27,7 +27,11 @@ import {
   reachableWebUrls,
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
-import { delay, runPortChecks } from "../../lib/flow-utils.js";
+import {
+  delay,
+  dependencyStepProgress,
+  runPortChecks,
+} from "../../lib/flow-utils.js";
 import { saveLlmProvider, validateLlmFlags } from "../../lib/llm-flags.js";
 import { checkGit, ensureDocker, ensureGit } from "../../lib/prerequisites.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
@@ -36,62 +40,10 @@ import {
   detectSetupMode,
   isGaiaCheckout,
   startServices,
-  UnpublishedImageError,
 } from "../../lib/service-starter.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import { CLI_VERSION } from "../../lib/version.js";
-import { LOG_BUFFER_LINES } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
-
-const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
-/**
- * Map a raw docker build log line to a human-readable phase label for the
- * TUI spinner. Returns null when the line carries no phase signal.
- *
- * Keep regex intentionally simple — docker buildx output is not machine
- * stable, but `"=> ["` reliably marks a build step. On a 4 GB VM the web
- * build can stall for 30 min with no other output, so any detected step
- * should reassure the user rather than silently spinning.
- */
-export function detectBuildPhase(logLine: string): string | null {
-  // Build step markers: "=> [stage-1 1/7]" or "=> CACHED [stage-2 3/3]"
-  if (logLine.includes("=> [") || logLine.includes("=> CACHED [")) {
-    const match = logLine.match(
-      /=>\s*(?:CACHED\s*)?\[([^\]]+?)\s+(\d+)\/(\d+)\]/,
-    );
-    if (match) {
-      const stage = match[1] ?? "";
-      const cur = match[2];
-      const total = match[3];
-      // Final stage is the longest; call it out so users don't kill it.
-      if (stage.includes("stage-2")) {
-        return `Building web — final stage (${cur}/${total}) — please wait, longest step`;
-      }
-      return `Building web (${cur}/${total}) — this can take 5-30 min on 4 GB RAM, please wait`;
-    }
-    if (logLine.includes("stage-2")) {
-      return "Building web — final stage (please wait, longest step)";
-    }
-    return "Building images... (this can take 5-30 min on 4 GB RAM, please wait)";
-  }
-  if (
-    logLine.toLowerCase().includes("naming to docker.io") ||
-    logLine.toLowerCase().includes("naming to")
-  ) {
-    return "Build complete — finalizing images...";
-  }
-  if (logLine.includes("Network gaia")) {
-    return "Starting containers...";
-  }
-  if (
-    logLine.includes("Container") &&
-    (logLine.includes("Started") || logLine.includes("Created"))
-  ) {
-    return "Starting containers...";
-  }
-  return null;
-}
 
 export async function runUpFlow(
   store: CLIStore,
@@ -162,34 +114,25 @@ export async function runUpFlow(
   // 4. Repository — reuse the recorded/existing install or clone fresh.
   store.setStep("Repository Setup");
   if (!needsClone) {
-    store.setStatus(`Using existing installation at ${targetPath}...`);
+    store.setStatus(`Using your install at ${targetPath}`);
     await delay(500);
   } else {
-    store.setStatus("Preparing repository...");
+    store.setStatus(`Downloading GAIA into ${targetPath}`);
     store.updateData("repoProgress", 0);
-    store.updateData("repoPhase", "");
+    store.updateData("repoPhase", "Connecting to GitHub...");
     try {
       await cloneRelease(targetPath, GAIA_REPO_URL, (progress, phase) => {
         store.updateData("repoProgress", progress);
-        if (phase) {
-          store.updateData("repoPhase", phase);
-          store.setStatus(`${phase}...`);
-        } else {
-          store.setStatus(
-            `Cloning repository to ${targetPath}... ${progress}%`,
-          );
-        }
+        if (phase) store.updateData("repoPhase", phase);
       });
     } catch (e) {
       store.setError(
         new Error(
-          `Failed to clone GAIA into ${targetPath}: ${(e as Error).message}`,
+          `Couldn't download GAIA into ${targetPath}: ${(e as Error).message}`,
         ),
       );
       return;
     }
-    store.setStatus("Repository ready!");
-    await delay(500);
   }
   // Record the install before anything else can fail, so a rerun resumes
   // this checkout instead of tripping over it. The sandbox choice is saved
@@ -303,7 +246,7 @@ async function saveFlaggedProvider(
  * A failed start never turns into a build behind the user's back: building is
  * slow and CPU-heavy, and it would hide why the images did not come up.
  *
- * @throws Error naming --build when the images cannot be pulled or started.
+ * @throws ComposeError naming the cause, the next step and the log file.
  */
 async function startSelfhostServices(
   store: CLIStore,
@@ -312,60 +255,37 @@ async function startSelfhostServices(
   options: UpFlags,
 ): Promise<void> {
   store.setStep("Project Setup");
-  store.updateData("dependencyPhase", "Starting Docker services...");
+  store.updateData(
+    "dependencyPhase",
+    options.build ? "Building GAIA from source" : "Getting GAIA's images",
+  );
   store.updateData("dependencyProgress", 0);
   store.updateData("dependencyLogs", []);
   store.updateData("dependencyComplete", false);
+  store.setStatus(RESUME_HINT);
 
-  const logHandler = (chunk: string) => {
-    const lines = chunk
-      .split("\n")
-      .map((l) => l.replace(ANSI_ESCAPE_RE, "").trim())
-      .filter((l) => l.length > 0);
-    if (lines.length === 0) return;
-    const current: string[] = store.currentState.data.dependencyLogs || [];
-    store.updateData(
-      "dependencyLogs",
-      [...current, ...lines].slice(-LOG_BUFFER_LINES),
-    );
-    // Surface build-phase labels so the spinner doesn't go silent for minutes
-    // on resource-constrained VMs (web build alone can be 30 min on 4 GB RAM).
-    for (const line of lines) {
-      const phase = detectBuildPhase(line);
-      if (phase) {
-        store.updateData("dependencyPhase", phase);
-        store.setStatus(phase);
-      }
-    }
-  };
-  const onStatus = (status: string) => store.setStatus(status);
-
-  if (!options.build) {
-    store.setStatus("Pulling GAIA images from the registry...");
-  }
-  try {
-    await startServices(
-      repoPath,
-      "selfhost",
-      onStatus,
-      portOverrides,
-      logHandler,
-      // A rerun keeps the images it has; `gaia update` refreshes them.
-      options.build ? { build: true } : { pull: "missing" },
-    );
-  } catch (e) {
-    if (e instanceof UnpublishedImageError) throw e;
-    const reason = (e as Error).message;
-    throw new Error(
-      options.build
-        ? `Failed to build and start services: ${reason}`
-        : `Failed to start services from the published images: ${reason}\n` +
-            "Check 'gaia logs'. To build the images from this checkout instead, rerun with --build.",
-    );
-  }
+  await startServices(
+    repoPath,
+    "selfhost",
+    () => store.setStatus(RESUME_HINT),
+    portOverrides,
+    dependencyStepProgress(store),
+    // A rerun keeps the images it has; `gaia update` refreshes them.
+    options.build
+      ? { build: true, rebuildCommand: UP_REBUILD_COMMAND }
+      : { pull: "missing", rebuildCommand: UP_REBUILD_COMMAND },
+  );
+  store.updateData("dependencyPhase", "GAIA's services are running");
   store.updateData("dependencyProgress", 100);
   store.updateData("dependencyComplete", true);
 }
+
+/** What `gaia up` says while Docker works: stopping is safe, a rerun resumes. */
+const RESUME_HINT =
+  "Ctrl+C stops here; run 'gaia up' again to pick up where it left off.";
+
+/** The command a missing-image error points `gaia up` users to. */
+const UP_REBUILD_COMMAND = "gaia up --build";
 
 /**
  * Whether the browser wizard has nothing left to do (an admin and a working
