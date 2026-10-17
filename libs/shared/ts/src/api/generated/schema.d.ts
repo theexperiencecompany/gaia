@@ -4646,7 +4646,7 @@ export interface paths {
          *     never be paired with a server-held key. Body values (preset / base_url /
          *     api_key / model) are honored only for first-time validation before
          *     anything has been saved. Non-public endpoints are refused outright with a
-         *     422 by the SSRF guard inside ``_probe``.
+         *     422 by the SSRF guard inside ``probe_provider``.
          */
         post: operations["setup_test_provider"];
         delete?: never;

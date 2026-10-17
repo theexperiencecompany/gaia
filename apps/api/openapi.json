@@ -38200,7 +38200,7 @@
     },
     "/api/v1/setup/providers/{provider}/test": {
       "post": {
-        "description": "Live-connectivity probe with strict credential binding.\n\nContract (H1): once a credential is stored for ``provider`` \u2014 including an\nenvironment-fallback config \u2014 the probe uses the STORED ``base_url`` and\napi_key exclusively; body values are ignored, so a caller-supplied URL can\nnever be paired with a server-held key. Body values (preset / base_url /\napi_key / model) are honored only for first-time validation before\nanything has been saved. Non-public endpoints are refused outright with a\n422 by the SSRF guard inside ``_probe``.",
+        "description": "Live-connectivity probe with strict credential binding.\n\nContract (H1): once a credential is stored for ``provider`` \u2014 including an\nenvironment-fallback config \u2014 the probe uses the STORED ``base_url`` and\napi_key exclusively; body values are ignored, so a caller-supplied URL can\nnever be paired with a server-held key. Body values (preset / base_url /\napi_key / model) are honored only for first-time validation before\nanything has been saved. Non-public endpoints are refused outright with a\n422 by the SSRF guard inside ``probe_provider``.",
         "operationId": "setup_test_provider",
         "parameters": [
           {

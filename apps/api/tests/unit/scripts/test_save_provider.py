@@ -2,13 +2,17 @@
 
 import socket
 
+import httpx
 import pytest
+import respx
 
 from app.scripts import save_provider
 from app.services.providers.provider_credentials_service import resolve
 from tests.helpers import InMemoryCredentialStore
 
 _PUBLIC_IP = "8.8.8.8"
+_OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
+_CHAT_COMPLETION = {"choices": [{"message": {"role": "assistant", "content": "OK"}}]}
 
 
 @pytest.fixture(autouse=True)
@@ -28,7 +32,11 @@ async def test_ollama_defaults_to_the_endpoint_its_card_prefills(
 ) -> None:
     monkeypatch.delenv(save_provider.API_KEY_ENV, raising=False)
 
-    assert await save_provider.run(["--provider", "ollama", "--model", "qwen3"]) == 0
+    with respx.mock:
+        respx.get("http://host.docker.internal:11434/api/tags").mock(
+            return_value=httpx.Response(200, json={"models": [{"name": "qwen3"}]})
+        )
+        assert await save_provider.run(["--provider", "ollama", "--model", "qwen3"]) == 0
 
     config = await resolve("ollama")
     assert config is not None
@@ -47,7 +55,11 @@ async def test_custom_stores_the_key_from_the_environment(
     monkeypatch.setenv(save_provider.API_KEY_ENV, "sk-custom")
     argv = ["--provider", "custom", "--base-url", "https://gateway.example/v1", "--model", "m-1"]
 
-    assert await save_provider.run(argv) == 0
+    with respx.mock:
+        respx.post("https://gateway.example/v1/chat/completions").mock(
+            return_value=httpx.Response(200, json=_CHAT_COMPLETION)
+        )
+        assert await save_provider.run(argv) == 0
 
     assert capsys.readouterr().out == (
         "Saved custom. Change it any time in Settings → Providers & Tools.\n"
@@ -77,6 +89,46 @@ async def test_a_refused_endpoint_exits_non_zero_naming_why(
         "or set OLLAMA_BASE_URL in your .env for local Ollama (unsupported URL scheme: 'ftp')\n"
     )
     assert await resolve("custom") is None
+
+
+async def test_a_key_the_provider_rejects_saves_nothing_and_says_why(
+    selfhost_credential_store: InMemoryCredentialStore,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv(save_provider.API_KEY_ENV, "sk-bad")
+
+    with respx.mock:
+        route = respx.post(_OPENAI_CHAT_URL).mock(
+            return_value=httpx.Response(
+                401, json={"error": {"message": "Incorrect API key provided: sk-bad."}}
+            )
+        )
+        code = await save_provider.run(["--provider", "openai"])
+
+    assert (b"Authorization", b"Bearer sk-bad") in route.calls.last.request.headers.raw
+    assert code == 1
+    assert capsys.readouterr().err == (
+        "Could not save openai: OpenAI rejected the key: Incorrect API key provided: [redacted].\n"
+    )
+    assert await resolve("openai") is None
+
+
+async def test_a_key_the_provider_accepts_is_saved(
+    selfhost_credential_store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(save_provider.API_KEY_ENV, "sk-good")
+
+    with respx.mock:
+        route = respx.post(_OPENAI_CHAT_URL).mock(
+            return_value=httpx.Response(200, json=_CHAT_COMPLETION)
+        )
+        assert await save_provider.run(["--provider", "openai"]) == 0
+
+    assert route.called
+    config = await resolve("openai")
+    assert config is not None
+    assert config["api_key"] == "sk-good"
 
 
 async def test_help_describes_what_the_script_does(capsys: pytest.CaptureFixture[str]) -> None:

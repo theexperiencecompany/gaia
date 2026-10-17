@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Save one provider credential exactly as the setup wizard does; gaia up runs it after first boot.
 
+A chat provider's credential is stored only after the wizard's live probe accepts it.
 The key is read from the GAIA_PROVIDER_API_KEY environment variable, never an
 argument, so it stays out of the process list and shell history.
 
@@ -18,9 +19,16 @@ import asyncio
 import os
 import sys
 
-from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS, ProviderPreset
+from app.constants.providers import (
+    CREDENTIAL_PROVIDERS,
+    LLM_PROVIDER_KEYS,
+    PRESETS,
+    ProviderPreset,
+)
 from app.schemas.providers import ProviderCredentialBody
-from app.services.providers.provider_setup_service import save_provider_credential
+from app.services.providers.provider_credentials_service import upsert
+from app.services.providers.provider_probe_service import probe_provider
+from app.services.providers.provider_setup_service import merge_provider_credential
 from app.utils.errors import AppError
 
 API_KEY_ENV = "GAIA_PROVIDER_API_KEY"
@@ -39,7 +47,7 @@ async def run(argv: list[str]) -> int:
     args = _parser().parse_args(argv)
     preset: ProviderPreset = PRESETS[args.provider]
     try:
-        await save_provider_credential(
+        config = await merge_provider_credential(
             args.provider,
             ProviderCredentialBody(
                 api_key=os.environ.get(API_KEY_ENV) or None,
@@ -48,6 +56,17 @@ async def run(argv: list[str]) -> int:
                 model=args.model,
             ),
         )
+        if args.provider in LLM_PROVIDER_KEYS:
+            ok, detail, _ = await probe_provider(
+                args.provider,
+                api_key=config["api_key"],
+                base_url=config["base_url"],
+                model=config["model"],
+            )
+            if not ok:
+                print(f"Could not save {args.provider}: {detail}", file=sys.stderr)
+                return 1
+        await upsert(args.provider, config)
     except AppError as e:
         print(f"Could not save {args.provider}: {e.message}", file=sys.stderr)
         return 1

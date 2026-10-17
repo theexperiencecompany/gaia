@@ -1,8 +1,8 @@
 """Save a provider credential the one way every admin surface does: presets, partial merges, SSRF guard.
 
 The setup API's PUT and the CLI's first-boot save (app/scripts/save_provider.py)
-both write through save_provider_credential, so gaia up accepts exactly what
-the wizard and Settings accept.
+both build what they store with merge_provider_credential, so gaia up accepts
+exactly what the wizard and Settings accept.
 """
 
 from typing import Literal
@@ -82,8 +82,8 @@ def _kept(given: str | None, stored: ProviderConfig | None, field: _ConfigField)
     return stored[field]
 
 
-async def save_provider_credential(provider: str, body: ProviderCredentialBody) -> None:
-    """Store one provider's credential, merging omitted fields with the stored config."""
+async def merge_provider_credential(provider: str, body: ProviderCredentialBody) -> ProviderConfig:
+    """Validate body and merge its omitted fields with the stored config: what a save stores."""
     ensure_known_provider(provider)
     if all(v is None for v in body.model_dump().values()):
         raise AppError(message="No fields to update", status_code=_UNPROCESSABLE)
@@ -92,14 +92,16 @@ async def save_provider_credential(provider: str, body: ProviderCredentialBody) 
     merged_base_url = _kept(preset_base_url, stored, "base_url")
     if provider in BASE_URL_PROVIDERS:
         await assert_endpoint_safe(merged_base_url, allow_private=allows_private_endpoint(provider))
-    await upsert(
-        provider,
-        ProviderConfig(
-            api_key=_kept(body.api_key, stored, "api_key"),
-            base_url=merged_base_url,
-            model=_kept(preset_model, stored, "model"),
-            preset=_kept(body.preset, stored, "preset"),
-            account_id=_kept(body.account_id, stored, "account_id"),
-            api_secret=_kept(body.api_secret, stored, "api_secret"),
-        ),
+    return ProviderConfig(
+        api_key=_kept(body.api_key, stored, "api_key"),
+        base_url=merged_base_url,
+        model=_kept(preset_model, stored, "model"),
+        preset=_kept(body.preset, stored, "preset"),
+        account_id=_kept(body.account_id, stored, "account_id"),
+        api_secret=_kept(body.api_secret, stored, "api_secret"),
     )
+
+
+async def save_provider_credential(provider: str, body: ProviderCredentialBody) -> None:
+    """Store one provider's credential, merging omitted fields with the stored config."""
+    await upsert(provider, await merge_provider_credential(provider, body))

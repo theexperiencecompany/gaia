@@ -18,11 +18,9 @@ metadata and link-local addresses stay refused. ``OLLAMA_BASE_URL``
 server-side env still works as a fallback for deployments that prefer it.
 """
 
-import re
-from typing import Annotated, Literal, TypedDict, cast
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-import httpx
 from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies.instance_admin import require_instance_admin
@@ -30,11 +28,9 @@ from app.api.v1.middleware.rate_limiter import limiter
 from app.config.deployment import BlobStoreKind, DeploymentKind
 from app.config.settings import settings
 from app.constants.auth import RegistrationPolicy
-from app.constants.llm import OPENAI_API_URL, OPENROUTER_API_URL, LLMProviderName
 from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
-    LLM_MODEL_PROFILES,
-    LLM_PROVIDER_PRIORITY,
+    LLM_PROVIDER_KEYS,
     PRESETS,
     PROVIDER_FEATURES,
     CredentialProviderName,
@@ -56,11 +52,9 @@ from app.services.providers.provider_credentials_service import (
     is_usable,
     resolve as resolve_provider_config,
 )
+from app.services.providers.provider_probe_service import probe_provider
 from app.services.providers.provider_setup_service import (
-    BASE_URL_PROVIDERS,
-    allows_private_endpoint,
     apply_preset,
-    assert_endpoint_safe,
     ensure_known_provider,
     save_provider_credential,
 )
@@ -69,23 +63,6 @@ from app.services.startup_validation import is_payment_setup
 from shared.py.wide_events import log
 
 router = APIRouter(tags=["Setup"])
-
-# Providers that constitute a working LLM lane for needs_setup. The search,
-# tool, and integration keys configured here too cannot serve chat.
-_LLM_PROVIDER_KEYS: tuple[str, ...] = tuple(p.value for p in LLM_PROVIDER_PRIORITY)
-
-_GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-_CANONICAL_API_URLS: dict[str, str] = {
-    "openrouter": OPENROUTER_API_URL,
-    "openai": OPENAI_API_URL,
-}
-_PROBE_TIMEOUT_SECONDS = 10.0
-# OpenAI refuses a cap of 1 (400 "max_tokens ... reached"); reasoning models answer 200 at 16.
-_PROBE_MAX_COMPLETION_TOKENS = 16
-_PROBE_PROMPT = "Reply with OK."
-_AUTH_REJECTED_STATUSES = frozenset({401, 403})
-# OpenAI echoes a rejected key back in its error message.
-_API_KEY_RE = re.compile(r"\bsk-[\w*.-]+")
 
 
 class ProviderConfiguredState(BaseModel):
@@ -215,31 +192,6 @@ class ProviderTestResponse(BaseModel):
     )
 
 
-class _WireErrorDetail(TypedDict, total=False):
-    """OpenAI-wire ``{"error": {"message": ...}}`` body."""
-
-    message: str
-
-
-class _WireError(TypedDict, total=False):
-    """An OpenAI-wire error body; the error is an object, or a bare string on a scope failure."""
-
-    error: _WireErrorDetail | str
-
-
-class _GeminiModel(TypedDict, total=False):
-    """One entry of a name-keyed model list — ``{"name": "models/gemini-..."}``."""
-
-    name: str
-
-
-class _NamedModelList(TypedDict, total=False):
-    """The ``{"models": [{"name": ...}]}`` envelope Gemini's listModels and
-    Ollama's /api/tags both return."""
-
-    models: list[_GeminiModel]
-
-
 @router.get("/status")
 async def get_setup_status() -> SetupStatusResponse:
     """First-run status for the web setup wizard and desktop CLI.
@@ -307,14 +259,14 @@ async def get_provider_catalog() -> ProviderCatalogResponse:
     return ProviderCatalogResponse(
         providers={name: PRESETS[name] for name in CREDENTIAL_PROVIDERS},
         custom_presets={name: PRESETS[name] for name in ("opencode", "nous")},
-        llm_provider_keys=list(_LLM_PROVIDER_KEYS),
+        llm_provider_keys=list(LLM_PROVIDER_KEYS),
         features=PROVIDER_FEATURES,
     )
 
 
 def _needs_setup(has_admin_account: bool, configured: dict[str, bool]) -> bool:
     """Setup is owed while no LLM lane works, or (local auth) no admin exists."""
-    llm_ready = any(configured[p] for p in _LLM_PROVIDER_KEYS)
+    llm_ready = any(configured[p] for p in LLM_PROVIDER_KEYS)
     if not llm_ready:
         return True
     return settings.deployment.local_auth and not has_admin_account
@@ -411,11 +363,11 @@ async def test_provider(
     never be paired with a server-held key. Body values (preset / base_url /
     api_key / model) are honored only for first-time validation before
     anything has been saved. Non-public endpoints are refused outright with a
-    422 by the SSRF guard inside ``_probe``.
+    422 by the SSRF guard inside ``probe_provider``.
     """
     log.set(user={"id": user.user_id})
     ensure_known_provider(provider)
-    if provider not in _LLM_PROVIDER_KEYS:
+    if provider not in LLM_PROVIDER_KEYS:
         raise HTTPException(
             status_code=422, detail=f"Only chat providers can be connection-tested, not {provider}"
         )
@@ -426,133 +378,11 @@ async def test_provider(
     else:
         api_key = body.api_key
         base_url, model = apply_preset(body.preset, body.base_url, body.model)
-    ok, detail, models = await _probe(provider, api_key=api_key, base_url=base_url, model=model)
+    ok, detail, models = await probe_provider(
+        provider, api_key=api_key, base_url=base_url, model=model
+    )
     log.info("Provider connectivity tested", provider=provider, ok=ok)
     return ProviderTestResponse(ok=ok, detail=detail, models=models)
-
-
-async def _probe(
-    provider: str, *, api_key: str | None, base_url: str | None, model: str | None
-) -> tuple[bool, str, list[str]]:
-    """Probe one provider endpoint and return (ok, human detail, sorted models).
-
-    Never includes credentials in ``detail`` — only URLs without query strings.
-    Refuses with a 422 rather than a soft failure when the configured endpoint
-    of a base-url-driven provider is not public (SSRF guard; also catches
-    stored configs from before save-time validation existed). The ``ollama``
-    provider is exempt from the public-IP check (see assert_endpoint_safe).
-    """
-    if provider in BASE_URL_PROVIDERS:
-        await assert_endpoint_safe(base_url, allow_private=allows_private_endpoint(provider))
-    try:
-        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
-            if provider == "gemini":
-                return await _probe_gemini(client, api_key)
-            if provider == "ollama":
-                return await _probe_ollama(client, base_url)
-            return await _probe_openai_wire(
-                provider, client, api_key=api_key, base_url=base_url, model=model
-            )
-    except httpx.HTTPError as e:
-        return False, f"Could not reach {provider}: {type(e).__name__}", []
-
-
-async def _probe_openai_wire(
-    provider: str,
-    client: httpx.AsyncClient,
-    *,
-    api_key: str | None,
-    base_url: str | None,
-    model: str | None,
-) -> tuple[bool, str, list[str]]:
-    """Run the one call GAIA makes on this lane: a tiny chat completion on its model.
-
-    Listing models is not it: a restricted OpenAI key lacks api.model.read yet chats fine.
-    """
-    preset: ProviderPreset = PRESETS[provider]
-    label = preset["label"]
-    # OpenRouter and OpenAI need no configurable endpoint — their API roots are
-    # canonical; every other OpenAI-wire provider probes its configured base URL.
-    if canonical_url := _CANONICAL_API_URLS.get(provider):
-        if not api_key:
-            return False, f"No {label} API key configured", []
-        api_url = canonical_url
-    else:
-        if not base_url:
-            return False, f"No base URL configured for {label}", []
-        api_url = base_url.rstrip("/")
-    model = model or LLM_MODEL_PROFILES[LLMProviderName(provider)].chat
-    if not model:
-        return False, f"No model configured for {label}", []
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    response = await client.post(
-        f"{api_url}/chat/completions",
-        headers=headers,
-        json={
-            "model": model,
-            "messages": [{"role": "user", "content": _PROBE_PROMPT}],
-            "max_completion_tokens": _PROBE_MAX_COMPLETION_TOKENS,
-        },
-    )
-    if response.is_success:
-        return True, f"Connected to {label}", []
-    reason = _wire_error_reason(response, api_key)
-    if response.status_code in _AUTH_REJECTED_STATUSES:
-        return False, f"{label} rejected the key: {reason}", []
-    return False, f"{label} refused the test request: {reason}", []
-
-
-def _wire_error_reason(response: httpx.Response, api_key: str | None) -> str:
-    """The provider's own error message with any key redacted, else the HTTP status."""
-    fallback = f"HTTP {response.status_code}"
-    try:
-        body = response.json()
-    except ValueError:
-        return fallback
-    if not isinstance(body, dict):
-        return fallback
-    payload: _WireError = cast(_WireError, body)
-    error = payload.get("error")
-    if isinstance(error, dict):
-        detail: _WireErrorDetail = error
-        message = detail.get("message")
-    else:
-        message = error
-    if not message:
-        return fallback
-    if api_key:
-        message = message.replace(api_key, "[redacted]")
-    return _API_KEY_RE.sub("[redacted]", message)
-
-
-async def _probe_gemini(
-    client: httpx.AsyncClient,
-    api_key: str | None,
-) -> tuple[bool, str, list[str]]:
-    if not api_key:
-        return False, "No Gemini API key configured", []
-    response = await client.get(_GEMINI_MODELS_URL, params={"key": api_key})
-    if response.status_code != 200:
-        return False, f"Gemini returned HTTP {response.status_code}", []
-    payload: _NamedModelList = cast(_NamedModelList, response.json())
-    listed: list[_GeminiModel] = payload.get("models", [])
-    names = (str(m["name"]).removeprefix("models/") for m in listed if m.get("name"))
-    return True, "Connected to Google Gemini", sorted(names)
-
-
-async def _probe_ollama(
-    client: httpx.AsyncClient,
-    base_url: str | None,
-) -> tuple[bool, str, list[str]]:
-    if not base_url:
-        return False, "No Ollama base URL configured", []
-    response = await client.get(f"{base_url.rstrip('/')}/api/tags")
-    if response.status_code != 200:
-        return False, f"Ollama returned HTTP {response.status_code}", []
-    payload: _NamedModelList = cast(_NamedModelList, response.json())
-    listed: list[_GeminiModel] = payload.get("models", [])
-    models = sorted(str(m["name"]) for m in listed if m.get("name"))
-    return True, "Connected to Ollama", models
 
 
 def _hint(secret: str | None) -> str | None:

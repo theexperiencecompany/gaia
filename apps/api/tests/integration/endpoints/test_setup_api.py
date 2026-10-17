@@ -22,7 +22,6 @@ import respx
 
 from app.api.v1.dependencies.instance_admin import require_instance_admin
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.api.v1.endpoints import setup as setup_endpoint
 from app.api.v1.endpoints.setup import router as setup_router
 from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
@@ -30,9 +29,10 @@ from app.constants.llm import LLMProviderName
 from app.constants.providers import (
     CREDENTIAL_PROVIDERS,
     LLM_MODEL_PROFILES,
+    LLM_PROVIDER_KEYS,
     ProviderFeature,
 )
-from app.services.providers import provider_setup_service
+from app.services.providers import provider_probe_service, provider_setup_service
 from shared.py.wide_events import log
 from tests.factories import make_provider_config
 from tests.helpers import captured_wide_event
@@ -762,12 +762,12 @@ class TestProviderProbe:
         request = route.calls.last.request
         assert (b"Authorization", f"Bearer {SECRET_KEY}".encode()) in request.headers.raw
         assert set(request.extensions["timeout"].values()) == {
-            setup_endpoint._PROBE_TIMEOUT_SECONDS
+            provider_probe_service._PROBE_TIMEOUT_SECONDS
         }
         assert json.loads(request.content) == {
             "model": "m-1",
             "messages": [{"role": "user", "content": "Reply with OK."}],
-            "max_completion_tokens": setup_endpoint._PROBE_MAX_COMPLETION_TOKENS,
+            "max_completion_tokens": provider_probe_service._PROBE_MAX_COMPLETION_TOKENS,
         }
         assert resp.json() == {"ok": True, "detail": "Connected to Custom", "models": []}
 
@@ -1072,9 +1072,7 @@ class TestProviderProbe:
             )
         assert resp.json() == {"ok": False, "detail": "Ollama returned HTTP 404", "models": []}
 
-    @pytest.mark.parametrize(
-        "provider", sorted(set(CREDENTIAL_PROVIDERS) - set(setup_endpoint._LLM_PROVIDER_KEYS))
-    )
+    @pytest.mark.parametrize("provider", sorted(set(CREDENTIAL_PROVIDERS) - set(LLM_PROVIDER_KEYS)))
     async def test_only_chat_providers_can_be_probed(
         self, client: AsyncClient, provider: str
     ) -> None:
@@ -1102,7 +1100,7 @@ class TestSsrfGuard:
     @pytest.fixture(autouse=True)
     def _public_only_policy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Apply production's policy: the routes 403 in production, so the guard is driven under it here."""
-        for module in (provider_setup_service, setup_endpoint):
+        for module in (provider_setup_service, provider_probe_service):
             monkeypatch.setattr(
                 module, "allows_private_endpoint", lambda provider: provider == "ollama"
             )

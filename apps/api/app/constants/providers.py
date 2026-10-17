@@ -103,6 +103,8 @@ LLM_PROVIDER_PRIORITY: tuple[LLMProviderName, ...] = (
     LLMProviderName.OLLAMA,
     LLMProviderName.CUSTOM,
 )
+# The credential names of those providers: a working chat lane, and what the live probe can test.
+LLM_PROVIDER_KEYS: tuple[str, ...] = tuple(p.value for p in LLM_PROVIDER_PRIORITY)
 
 # Production runs these on comms' own lane only, selected by name and on the
 # catalog model: never a default lane, a fallback, or a stored model choice.
