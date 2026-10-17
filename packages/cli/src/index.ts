@@ -166,6 +166,7 @@ program
     "--git",
     "For development copies: pull the current branch and rebuild from source",
   )
+  .option("--verbose", "With --git, list every new commit")
   .action(async (options: UpdateOptions) => {
     await runUpdate(options);
   });
