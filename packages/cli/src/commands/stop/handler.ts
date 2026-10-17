@@ -12,5 +12,6 @@ export async function runStop(options?: StopServicesOptions): Promise<void> {
     command: "stop",
     whenNonInteractive: "plain",
     runFlow: (store) => runStopFlow(store, options),
+    cancelHint: "GAIA may still be partly running. Run 'gaia stop' again.",
   });
 }

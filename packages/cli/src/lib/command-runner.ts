@@ -13,6 +13,7 @@
 import { render } from "ink";
 import React from "react";
 import { App, type CLICommand } from "../ui/app.js";
+import { MARK } from "../ui/constants.js";
 import { type CLIStore, createStore } from "../ui/store.js";
 import {
   type DockerGroupSwitch,
@@ -33,7 +34,7 @@ import {
 const INK_INIT_DELAY_MS = 50;
 
 /** Exit code POSIX shells report for a process terminated by SIGINT. */
-const SIGINT_EXIT_CODE = 130;
+export const SIGINT_EXIT_CODE = 130;
 
 /** An input id to resolve automatically in plain mode, with an optional value. */
 type AutoResolve = readonly [id: string, value?: unknown];
@@ -53,6 +54,8 @@ interface CommandRuntime {
   autoResolve?: readonly AutoResolve[];
   /** Plain-mode hook to print a final snapshot once the flow succeeds. */
   onPlainComplete?: (store: CLIStore) => void;
+  /** Said after "Cancelled." on Ctrl-C: what state things are in and how to resume. */
+  cancelHint?: string;
 }
 
 /**
@@ -97,14 +100,25 @@ async function runPlain(
 }
 
 async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
+  // Ctrl-C reaches the flow as a cancel (below), not as Ink quietly unmounting
+  // while the work carries on and the process exits 0.
+  let cancel = (): void => undefined;
   const { unmount } = render(
-    React.createElement(App, { store, command: runtime.command }),
+    React.createElement(App, {
+      store,
+      command: runtime.command,
+      onCancel: () => cancel(),
+    }),
+    { exitOnCtrlC: false },
   );
 
   const handleExit = () => {
     unmount();
+    const hint = runtime.cancelHint ? ` ${runtime.cancelHint}` : "";
+    process.stdout.write(`\n${MARK.cancelled} Cancelled.${hint}\n`);
     process.exit(SIGINT_EXIT_CODE);
   };
+  cancel = handleExit;
   process.once("SIGINT", handleExit);
   process.once("SIGTERM", handleExit);
 
@@ -148,7 +162,8 @@ function dockerGroupRelaunch(store: CLIStore): DockerGroupSwitch | undefined {
  * seconds, so we force-exit after the drain.)
  */
 function exitForStore(store: CLIStore): void {
-  const code = store.currentState.error ? 1 : 0;
+  // A flow may set a failing exit code without an error (status with a part down).
+  const code = store.currentState.error ? 1 : Number(process.exitCode ?? 0);
   const pending = [process.stdout, process.stderr].filter(
     (stream) => stream.writableLength > 0,
   );

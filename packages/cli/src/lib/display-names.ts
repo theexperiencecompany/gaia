@@ -1,15 +1,15 @@
 /**
  * What `gaia status` and `gaia doctor` call each compose service and API
- * dependency, so a person reads "API" and "PostgreSQL", not "gaia-backend"
+ * dependency, so a person reads "server" and "PostgreSQL", not "gaia-backend"
  * and "postgres".
  * @module lib/display-names
  */
 
 const SERVICE_NAMES: Record<string, string> = {
-  proxy: "Web proxy",
-  "gaia-web": "Web app",
-  "gaia-backend": "API",
-  arq_worker: "Background worker",
+  proxy: "proxy",
+  "gaia-web": "web app",
+  "gaia-backend": "server",
+  arq_worker: "background jobs",
   mongo: "MongoDB",
   postgres: "PostgreSQL",
   redis: "Redis",

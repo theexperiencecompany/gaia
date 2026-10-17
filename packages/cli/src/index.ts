@@ -39,38 +39,35 @@ interface UpCliOptions {
   start?: boolean;
   forceDevTree?: boolean;
 }
+/** Help heading for the commands only people working on GAIA's code need. */
+const CONTRIBUTOR_COMMANDS = "For contributors:";
 
 program
   .name("gaia")
-  .description("CLI tool for setting up and managing GAIA")
-  .version(CLI_VERSION)
+  .description(
+    "Run GAIA, your proactive personal assistant, on your own computer or server",
+  )
+  .version(CLI_VERSION, "-V, --version", "Show the CLI's version")
+  .helpOption("-h, --help", "Show help for a command")
+  .helpCommand("help [command]", "Show help for a command")
   // Root options only before the subcommand, so `gaia update --version <tag>`
   // reaches update instead of printing the CLI version.
-  .enablePositionalOptions();
+  .enablePositionalOptions()
+  .addHelpText("after", "\nNew here? Run: gaia up");
 
-program.addCommand(botsCommand);
-program.addCommand(bridgeCommand);
-program.addCommand(connectCommand);
-
-program
-  .command("init")
-  .description(CLI_COMMAND_DESCRIPTIONS.init)
-  .option("--branch <branch>", "Git branch to clone")
-  .action(async (options: { branch?: string }) => {
-    await runInit({ branch: options.branch });
-  });
-
+// Commands in the order a self-hoster meets them: install, check, stop and
+// start, update, troubleshoot, then the extras.
 program
   .command("up")
   .description(CLI_COMMAND_DESCRIPTIONS.up)
   .option(
     "--yes",
-    "Accept all defaults (no prompts), including installing Docker when missing",
+    "Answer yes to every question, including installing Git and Docker",
   )
   .addOption(
     new Option(
       "--llm-provider <provider>",
-      "AI provider to save once GAIA is up (as the setup wizard would)",
+      "AI provider to save once GAIA is running (checked first, as the setup page does)",
     ).choices(LLM_PROVIDERS),
   )
   .option(
@@ -79,7 +76,7 @@ program
   )
   .option(
     "--llm-base-url <url>",
-    "Endpoint for --llm-provider ollama (default http://host.docker.internal:11434) or custom",
+    "Address of --llm-provider ollama (default http://host.docker.internal:11434) or custom",
   )
   .option(
     "--llm-model <model>",
@@ -87,7 +84,7 @@ program
   )
   .option(
     "--web-port <port>",
-    "Host port GAIA is served on (default 3000)",
+    "Port GAIA is served on (default 3000)",
     Number.parseInt,
   )
   .option(
@@ -96,20 +93,20 @@ program
   )
   .option(
     "-b, --build",
-    "Build the images from this checkout instead of pulling them",
+    "Build GAIA from source on this machine instead of downloading it (slow)",
   )
   .option(
     "--code-sandbox",
-    "Run agent code in local containers via the host Docker socket (root-equivalent access; kept on later starts and updates)",
+    "Let GAIA run code in containers on this machine (gives it control of Docker; kept on later starts)",
   )
   .option(
     "--no-code-sandbox",
-    "Turn the local code sandbox off again (code execution then needs an E2B key)",
+    "Turn that off again (running code then needs an E2B key)",
   )
-  .option("--no-start", "Configure environment only; do not start services")
+  .option("--no-start", "Set everything up, but don't start GAIA")
   .option(
     "--force-dev-tree",
-    "Allow operating on a developer checkout that is not the recorded install",
+    "Allow 'gaia up' on a development copy of GAIA that isn't your install",
   )
   .action(async (options: UpCliOptions) => {
     const { start, ...rest } = options;
@@ -117,31 +114,29 @@ program
   });
 
 program
-  .command("setup")
-  .description(CLI_COMMAND_DESCRIPTIONS.setup)
-  .action(async () => {
-    await runSetup();
-  });
-
-program
   .command("status")
   .description(CLI_COMMAND_DESCRIPTIONS.status)
-  .action(async () => {
-    await runStatus();
+  .option("--watch", "Stay open; press r to check again")
+  .action(async (options: { watch?: boolean }) => {
+    await runStatus({ watch: options.watch });
   });
 
 program
-  .command("doctor")
-  .description(CLI_COMMAND_DESCRIPTIONS.doctor)
-  .action(async () => {
-    await runDoctor();
+  .command("stop")
+  .description(CLI_COMMAND_DESCRIPTIONS.stop)
+  .option(
+    "--force-ports",
+    "Also stop whatever else listens on GAIA's ports (may stop other programs)",
+  )
+  .action(async (options: { forcePorts?: boolean }) => {
+    await runStop({ forcePorts: options.forcePorts });
   });
 
 program
   .command("start")
   .description(CLI_COMMAND_DESCRIPTIONS.start)
-  .option("-b, --build", "Rebuild Docker images before starting")
-  .option("--pull", "Pull the latest images before starting")
+  .option("-b, --build", "Build GAIA from source before starting (slow)")
+  .option("--pull", "Download GAIA's images again before starting")
   .action(async (options: { build?: boolean; pull?: boolean }) => {
     await runStart({
       build: options.build,
@@ -150,15 +145,26 @@ program
   });
 
 program
-  .command("dev [profile]")
-  .description(CLI_COMMAND_DESCRIPTIONS.dev)
-  .action(async (profile?: string) => {
-    try {
-      await runDev(profile);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
+  .command("update")
+  .description(CLI_COMMAND_DESCRIPTIONS.update)
+  .option("--yes", "Update without asking")
+  .option(
+    "--version <tag>",
+    "Move to this GAIA release (v<x.y.z>) instead of the one this CLI installs",
+  )
+  .option(
+    "--git",
+    "For development copies: pull the current branch and rebuild from source",
+  )
+  .action(async (options: UpdateOptions) => {
+    await runUpdate(options);
+  });
+
+program
+  .command("doctor")
+  .description(CLI_COMMAND_DESCRIPTIONS.doctor)
+  .action(async () => {
+    await runDoctor();
   });
 
 program
@@ -173,25 +179,15 @@ program
     }
   });
 
-program
-  .command("stop")
-  .description(CLI_COMMAND_DESCRIPTIONS.stop)
-  .option(
-    "--force-ports",
-    "Aggressively stop processes listening on API/Web ports (may affect non-GAIA processes)",
-  )
-  .action(async (options: { forcePorts?: boolean }) => {
-    await runStop({ forcePorts: options.forcePorts });
-  });
+program.addCommand(botsCommand);
+program.addCommand(connectCommand);
+program.addCommand(bridgeCommand);
 
 program
   .command("backup")
   .description(CLI_COMMAND_DESCRIPTIONS.backup)
-  .option(
-    "--output <dir>",
-    "Output directory for backup files (default: ./backups)",
-  )
-  .option("--dry-run", "Print the docker commands without executing them")
+  .option("--output <dir>", "Folder to save the backup in (default: ./backups)")
+  .option("--dry-run", "Print the commands without running them")
   .action(async (options: { output?: string; dryRun?: boolean }) => {
     await runBackupCommand({ output: options.output, dryRun: options.dryRun });
   });
@@ -203,13 +199,13 @@ program
   .option("--postgres <file>", "PostgreSQL dump file")
   .option(
     "--env <file>",
-    "The backup's apps/api/.env (api-env-<stamp>.env): its INSTANCE_SECRET decrypts the Mongo dump's credentials",
+    "The backup's apps/api/.env (api-env-<stamp>.env): its INSTANCE_SECRET decrypts the saved keys",
   )
   .option(
     "--from <dir>",
-    "Restore from a backup directory (every file of the newest backup run, apps/api/.env included)",
+    "Restore everything from a backup folder (its newest backup)",
   )
-  .option("--dry-run", "Print the docker commands without executing them")
+  .option("--dry-run", "Print the commands without running them")
   .action(
     async (options: {
       mongo?: string;
@@ -229,21 +225,34 @@ program
   );
 
 program
-  .command("update")
-  .description(CLI_COMMAND_DESCRIPTIONS.update)
-  .option("--yes", "Apply updates without prompting")
-  .option(
-    "--version <tag>",
-    "Move to this GAIA release (v<x.y.z>) instead of the one this CLI ships: its images and its compose files",
-  )
-  .option(
-    "--git",
-    "Developer checkouts: pull the current branch and rebuild the images from source",
-  )
-  .action(async (options: UpdateOptions) => {
-    await runUpdate(options);
+  .command("init")
+  .helpGroup(CONTRIBUTOR_COMMANDS)
+  .description(CLI_COMMAND_DESCRIPTIONS.init)
+  .option("--branch <branch>", "Git branch to clone")
+  .action(async (options: { branch?: string }) => {
+    await runInit({ branch: options.branch });
   });
 
+program
+  .command("setup")
+  .helpGroup(CONTRIBUTOR_COMMANDS)
+  .description(CLI_COMMAND_DESCRIPTIONS.setup)
+  .action(async () => {
+    await runSetup();
+  });
+
+program
+  .command("dev [profile]")
+  .helpGroup(CONTRIBUTOR_COMMANDS)
+  .description(CLI_COMMAND_DESCRIPTIONS.dev)
+  .action(async (profile?: string) => {
+    try {
+      await runDev(profile);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
 // Show help when no command is given instead of silently running init
 if (!process.argv.slice(2).length) {
   program.outputHelp();

@@ -1,174 +1,116 @@
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import type {
-  DependencyCheck,
-  DependencyReadiness,
-} from "../../lib/dependency-readiness.js";
-import { dependencyName, serviceName } from "../../lib/display-names.js";
-import type { ContainerStatus } from "../../lib/docker.js";
-import type { DockerStatus, ServiceStatus } from "../../lib/healthcheck.js";
+import { STATUS_FACTS_KEY } from "../../commands/status/flow.js";
+import {
+  buildStatusReport,
+  type StatusFacts,
+  type StatusRow,
+} from "../../commands/status/report.js";
 import { Header } from "../components/Header.js";
 import { Mark } from "../components/Mark.js";
 import { ErrorStep } from "../components/shared-steps.js";
-import { BOX_BORDER, THEME_COLOR } from "../constants.js";
+import { THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
 import { useCLIState } from "../use-cli-state.js";
 
-const NAME_COLUMN = 22;
+const ROW_LABEL_WIDTH = 8;
 
-/** The keys that leave the screen: q, Esc, or Enter. */
-function isQuitKey(input: string, key: { return: boolean; escape: boolean }) {
-  return input === "q" || key.return || key.escape;
-}
+const NOTE_COLOR: Record<StatusRow["tone"], string | undefined> = {
+  ok: undefined,
+  warn: "yellow",
+  fail: "red",
+  dim: "gray",
+};
 
-const Row: React.FC<{
-  ok: boolean;
-  name: string;
-  detail?: string;
-  problem?: string;
-}> = ({ ok, name, detail, problem }) => (
-  <Box>
-    <Mark kind={ok ? "ok" : "fail"} />
-    <Box width={NAME_COLUMN}>
-      <Text>{name}</Text>
-    </Box>
-    {detail && <Text color="gray">{detail}</Text>}
-    {problem && <Text color="red">{problem}</Text>}
-  </Box>
-);
-
-const Section: React.FC<{ title: string; children: React.ReactNode }> = ({
-  title,
-  children,
-}) => (
-  <Box flexDirection="column" marginTop={1}>
-    <Text bold>{title}</Text>
-    {children}
-  </Box>
-);
-
-const DockerProblem: React.FC<{ docker: DockerStatus }> = ({ docker }) =>
-  docker.problem ? (
-    <Section title="Docker">
-      <Row ok={false} name={docker.problem.summary} />
-      <Text color="gray"> {docker.problem.fix}</Text>
-    </Section>
-  ) : null;
-
-const Containers: React.FC<{ containers: ContainerStatus[] }> = ({
-  containers,
-}) =>
-  containers.length > 0 ? (
-    <Section title="Services">
-      {containers.map((container) => (
-        <Row
-          key={container.name}
-          ok={container.status === "running"}
-          name={serviceName(container.name)}
-          detail={container.health ?? container.status}
-        />
-      ))}
-    </Section>
-  ) : null;
-
-const Dependencies: React.FC<{ readiness: DependencyReadiness }> = ({
-  readiness,
-}) => (
-  <Section title="Backing services">
-    {!readiness.reachable ? (
-      <Row ok={false} name="Not checked" problem={readiness.detail} />
-    ) : (
-      readiness.dependencies.map((dependency: DependencyCheck) => (
-        <Box key={dependency.name} flexDirection="column">
-          <Row
-            ok={dependency.ok}
-            name={dependencyName(dependency.name)}
-            detail={`${dependency.latency_ms} ms`}
-            problem={dependency.error_type ?? undefined}
-          />
-          {dependency.fix && <Text color="gray"> {dependency.fix}</Text>}
+const ReportRow: React.FC<{ row: StatusRow }> = ({ row }) => (
+  <Box flexDirection="column">
+    <Box flexWrap="wrap">
+      <Box width={ROW_LABEL_WIDTH} flexShrink={0}>
+        <Text bold>{row.label}</Text>
+      </Box>
+      {row.items.map((item) => (
+        <Box key={item.name} marginRight={2}>
+          <Mark kind={item.ok ? "ok" : "fail"} />
+          <Text>{item.name}</Text>
         </Box>
-      ))
+      ))}
+      {row.items.length === 0 && row.note && (
+        <Box>
+          {row.tone !== "dim" && (
+            <Mark kind={row.tone === "warn" ? "warn" : "ok"} />
+          )}
+          <Text color={NOTE_COLOR[row.tone]}>{row.note}</Text>
+        </Box>
+      )}
+    </Box>
+    {row.items.length > 0 && row.note && (
+      <Box marginLeft={ROW_LABEL_WIDTH}>
+        <Text color={NOTE_COLOR[row.tone]}>{row.note}</Text>
+      </Box>
     )}
-  </Section>
+  </Box>
 );
 
-const DeveloperServices: React.FC<{ services: ServiceStatus[] }> = ({
-  services,
-}) =>
-  services.length > 0 ? (
-    <Section title="Local services">
-      {[...services]
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((service) => (
-          <Row
-            key={service.name}
-            ok={service.status === "up"}
-            name={`${service.name} (:${service.port})`}
-            detail={service.latency ? `${service.latency} ms` : undefined}
-          />
-        ))}
-    </Section>
-  ) : null;
-
+/** `gaia status`: one headline, a row per group, where GAIA is installed. */
 export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-  const readiness = state.data.readiness as DependencyReadiness | undefined;
-  const docker = state.data.docker as DockerStatus | undefined;
-  const services = state.data.services as ServiceStatus[] | undefined;
-  const lastChecked = state.data.checkedAt as string | undefined;
-  const showingResults = state.step === "Results";
+  const facts = state.data[STATUS_FACTS_KEY] as StatusFacts | undefined;
+  const watch = state.data.watch === true;
+  const showingResults = state.step === "Results" && facts !== undefined;
 
-  useInput((input, key) => {
-    if (!showingResults) return;
-    if (isQuitKey(input, key)) store.submitInput("exit");
-    else if (input === "r" && state.data.refreshable) {
-      store.submitInput("refresh");
-    }
-  });
+  useInput(
+    (input, key) => {
+      if (input === "q" || key.return || key.escape) store.submitInput("exit");
+      else if (input === "r") store.submitInput("refresh");
+    },
+    { isActive: watch && state.inputRequest !== null },
+  );
+
+  const report = facts ? buildStatusReport(facts) : null;
+  const kind = report?.headline.kind ?? "ok";
 
   return (
     <Box flexDirection="column" width="100%">
       <Header />
 
       {state.step === "Checking" && (
-        <Box marginTop={1}>
-          <Spinner
-            label={services ? "Checking again…" : "Checking GAIA's services…"}
-          />
+        <Box marginTop={1} marginLeft={2}>
+          <Spinner label={state.status} />
         </Box>
       )}
 
-      {showingResults && services && (
-        <Box flexDirection="column">
-          <Box
-            flexDirection="column"
-            borderStyle={BOX_BORDER}
-            borderColor={THEME_COLOR}
-            paddingX={2}
-            paddingY={1}
-          >
-            <Box justifyContent="space-between">
-              <Text bold color={THEME_COLOR}>
-                GAIA status
-              </Text>
-              {lastChecked && <Text color="gray">checked {lastChecked}</Text>}
+      {showingResults && report && (
+        <Box flexDirection="column" marginTop={1} marginLeft={2}>
+          <Box>
+            <Mark kind={kind === "ok" ? "active" : kind} />
+            <Text bold>{report.headline.text}</Text>
+          </Box>
+          {report.headline.url && (
+            <Box marginLeft={2}>
+              <Text color={THEME_COLOR}>{report.headline.url}</Text>
             </Box>
-            <Text color="gray">{state.data.install}</Text>
-            <Text>{state.status}</Text>
-
-            {docker && <DockerProblem docker={docker} />}
-            <DeveloperServices services={services} />
-            {docker && <Containers containers={docker.containers} />}
-            {readiness && <Dependencies readiness={readiness} />}
-          </Box>
-
-          <Box marginTop={1} paddingX={1}>
-            <Text color="gray">
-              <Text bold>r</Text> refresh · <Text bold>q</Text> quit
-            </Text>
-          </Box>
+          )}
+          {report.rows.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              {report.rows.map((row) => (
+                <ReportRow key={row.label} row={row} />
+              ))}
+            </Box>
+          )}
+          {facts.installed && (
+            <Box marginTop={1}>
+              <Text color="gray">Installed at {facts.install}</Text>
+            </Box>
+          )}
+          {watch && (
+            <Box marginTop={1}>
+              <Text color="gray">
+                checked {state.data.checkedAt} · <Text bold>r</Text> check again
+                · <Text bold>q</Text> quit
+              </Text>
+            </Box>
+          )}
         </Box>
       )}
 

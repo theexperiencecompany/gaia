@@ -1,21 +1,20 @@
+/** What each `gaia` command does, in words a first-time self-hoster reads. */
 export const CLI_COMMAND_DESCRIPTIONS = {
-  init: "Full setup from scratch (clone, configure, start)",
-  setup: "Configure an existing GAIA repository",
-  status: "Check health of all GAIA services",
-  start: "Start GAIA services (self-host mode)",
-  dev: "Run developer mode in Nx TUI (`gaia dev` or `gaia dev full`)",
-  logs: "Stream logs for running GAIA services",
-  stop: "Stop all GAIA services (safe mode by default)",
-  connect:
-    "Import your browser logins into GAIA so its browser stays signed in",
-  up: "One-command setup: configure, pull and start GAIA (self-host)",
-  doctor: "Diagnose a GAIA install: docker, services and setup checks",
-  bots: "Run GAIA's Telegram, Discord and Slack bots on your self-hosted instance",
-  backup:
-    "Back up GAIA databases, storage volumes and apps/api/.env to a local directory",
-  restore: "Restore GAIA databases, volumes and apps/api/.env from a backup",
-  update:
-    "Move GAIA to the release this CLI ships, pull its images and restart (keeps .env and volumes)",
+  up: "Install GAIA and start it (or resume an earlier run)",
+  status: "Show whether GAIA is running and healthy",
+  stop: "Stop GAIA (your data is kept)",
+  start: "Start GAIA again after 'gaia stop'",
+  update: "Move GAIA to a newer release (keeps your data and settings)",
+  doctor: "Find problems with your install and how to fix them",
+  logs: "Show GAIA's logs as they happen",
+  bots: "Connect GAIA to Telegram, Discord or Slack",
+  connect: "Import browser logins so GAIA's browser stays signed in",
+  bridge: "Let GAIA use tools and files on this computer",
+  backup: "Save GAIA's data and settings to a folder",
+  restore: "Bring back GAIA's data and settings from a backup",
+  init: "Set up a development copy of GAIA from scratch",
+  setup: "Configure an existing development copy",
+  dev: "Run GAIA from source with live reload",
 } as const;
 
 /** The canonical way to install the `gaia` CLI, per package manager. */

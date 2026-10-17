@@ -2,6 +2,7 @@
 // one secure outbound tunnel.
 
 import { Command } from "commander";
+import { CLI_COMMAND_DESCRIPTIONS } from "../../../../../libs/shared/ts/src/cli/command-manifest.js";
 import { runAction } from "../../lib/command-action.js";
 import {
   apiUrlFromEnvOrCreds,
@@ -46,9 +47,7 @@ function cmdList(): void {
 }
 
 export const bridgeCommand = new Command("bridge")
-  .description(
-    "Connect this machine's local MCP servers and files to GAIA (outbound-only, no inbound ports)",
-  )
+  .description(CLI_COMMAND_DESCRIPTIONS.bridge)
   .addHelpText(
     "after",
     "\nRevoke a device anytime from GAIA → Settings → Devices.",

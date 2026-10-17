@@ -5,6 +5,7 @@
  */
 
 import * as readline from "node:readline";
+import { SIGINT_EXIT_CODE } from "../../lib/command-runner.js";
 import { explainImageGap } from "../../lib/compose-failure.js";
 import { readConfig } from "../../lib/config.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
@@ -49,6 +50,11 @@ async function askConfirm(question: string): Promise<boolean> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+  });
+  rl.on("SIGINT", () => {
+    rl.close();
+    out(`\n${MARK.cancelled} Cancelled · nothing changed.`);
+    process.exit(SIGINT_EXIT_CODE);
   });
   const answer = await new Promise<string>((resolve) => {
     rl.question(`${question} [y/N] `, (ans) => resolve(ans));

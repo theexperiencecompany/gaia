@@ -52,6 +52,8 @@ export async function runUp(
     command: "up",
     whenNonInteractive: "plain",
     runFlow: (store) => runUpFlow(store, options),
+    cancelHint:
+      "GAIA may be partly set up. Run 'gaia up' again to finish, or 'gaia stop'.",
     onPlainComplete: printUpSummary,
   });
 }

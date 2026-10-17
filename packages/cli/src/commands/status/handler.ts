@@ -1,96 +1,65 @@
 /**
- * Handler for the 'status' command — shows service health.
+ * Handler for the 'status' command — shows service health, then exits (1 when
+ * part of GAIA is down). `--watch` keeps it on screen with r to check again.
  * @module commands/status/handler
  */
 
 import { runCommandUI } from "../../lib/command-runner.js";
-import type { DependencyReadiness } from "../../lib/dependency-readiness.js";
-import { dependencyName, serviceName } from "../../lib/display-names.js";
-import type { DockerStatus, ServiceStatus } from "../../lib/healthcheck.js";
 import { MARK } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
-import { runStatusFlow } from "./flow.js";
+import { runStatusFlow, STATUS_FACTS_KEY } from "./flow.js";
+import { buildStatusReport, type StatusFacts } from "./report.js";
 
-export async function runStatus(): Promise<void> {
-  await runCommandUI({
-    command: "status",
-    whenNonInteractive: "plain",
-    // The interactive screen loops on an "exit_or_refresh" prompt; in plain
-    // mode resolve it to "exit" so the snapshot prints once and the process
-    // terminates instead of hanging.
-    autoResolve: [["exit_or_refresh", "exit"]],
-    runFlow: runStatusFlow,
-    onPlainComplete: printStatusSnapshot,
-  });
-}
-
-const NAME_WIDTH = 20;
+const ROW_LABEL_WIDTH = 8;
 
 function out(line = ""): void {
   process.stdout.write(`${line}\n`);
 }
 
-function row(ok: boolean, name: string, detail = ""): void {
-  out(
-    `  ${ok ? MARK.ok : MARK.fail} ${name.padEnd(NAME_WIDTH)} ${detail}`.trimEnd(),
-  );
+function reportFor(store: CLIStore) {
+  const facts = store.currentState.data[STATUS_FACTS_KEY] as
+    | StatusFacts
+    | undefined;
+  return facts ? { facts, report: buildStatusReport(facts) } : null;
 }
 
-/** Renders the collected status as plain text for non-TTY environments. */
+/** The same report as the screen, as plain text for non-TTY environments. */
 function printStatusSnapshot(store: CLIStore): void {
-  const { data } = store.currentState;
-  out(`\nGAIA status: ${store.currentState.status}`);
-  out(`  ${data.install}`);
-  printDocker(data.docker as DockerStatus | undefined);
-  printServices((data.services ?? []) as ServiceStatus[]);
-  printReadiness(data.readiness as DependencyReadiness | undefined);
-}
-
-function printDocker(docker: DockerStatus | undefined): void {
-  if (!docker) return;
-  if (docker.problem) {
-    out("\nDocker");
-    row(false, docker.problem.summary);
-    out(`    ${docker.problem.fix}`);
-    return;
+  const built = reportFor(store);
+  if (!built) return;
+  const { facts, report } = built;
+  const mark = report.headline.kind === "ok" ? MARK.active : MARK.fail;
+  out(`${mark} ${report.headline.text}`);
+  if (report.headline.url) out(`  ${report.headline.url}`);
+  if (report.rows.length > 0) out();
+  for (const row of report.rows) {
+    const items = row.items
+      .map((item) => `${item.ok ? MARK.ok : MARK.fail} ${item.name}`)
+      .join("   ");
+    const note = row.items.length === 0 ? (row.note ?? "") : "";
+    out(`  ${row.label.padEnd(ROW_LABEL_WIDTH)}${items}${note}`.trimEnd());
+    if (row.items.length > 0 && row.note) {
+      out(`  ${" ".repeat(ROW_LABEL_WIDTH)}${row.note}`);
+    }
   }
-  if (docker.containers.length === 0) return;
-  out("\nServices");
-  for (const container of docker.containers) {
-    row(
-      container.status === "running",
-      serviceName(container.name),
-      container.health ?? container.status,
-    );
+  if (facts.installed) {
+    out();
+    out(`  Installed at ${facts.install}`);
   }
 }
 
-function printServices(services: ServiceStatus[]): void {
-  if (services.length === 0) return;
-  out("\nLocal services");
-  for (const service of services) {
-    row(
-      service.status === "up",
-      `${service.name} (:${service.port})`,
-      service.latency === undefined ? "" : `${service.latency} ms`,
-    );
-  }
-}
-
-function printReadiness(readiness: DependencyReadiness | undefined): void {
-  if (!readiness) return;
-  out("\nBacking services");
-  if (!readiness.reachable) {
-    row(false, "Not checked", readiness.detail);
-    return;
-  }
-  for (const dependency of readiness.dependencies) {
-    const error = dependency.error_type ? `  ${dependency.error_type}` : "";
-    row(
-      dependency.ok,
-      dependencyName(dependency.name),
-      `${dependency.latency_ms} ms${error}`,
-    );
-    if (dependency.fix) out(`    ${dependency.fix}`);
-  }
+export async function runStatus(
+  options: { watch?: boolean } = {},
+): Promise<void> {
+  await runCommandUI({
+    command: "status",
+    whenNonInteractive: "plain",
+    // A pipe cannot press r: a watch there prints one snapshot.
+    autoResolve: [["exit_or_refresh", "exit"]],
+    runFlow: async (store) => {
+      await runStatusFlow(store, options);
+      if (reportFor(store)?.report.unhealthy) process.exitCode = 1;
+    },
+    onPlainComplete: printStatusSnapshot,
+  });
 }

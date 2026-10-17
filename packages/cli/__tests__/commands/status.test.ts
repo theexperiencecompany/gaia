@@ -17,7 +17,14 @@ vi.mock("../../src/lib/service-starter.js", async (importOriginal) => ({
   detectSetupMode,
 }));
 
-import { runStatusChecks } from "../../src/commands/status/flow.js";
+import {
+  runStatusChecks,
+  STATUS_FACTS_KEY,
+} from "../../src/commands/status/flow.js";
+import {
+  buildStatusReport,
+  type StatusFacts,
+} from "../../src/commands/status/report.js";
 import { CLIStore } from "../../src/ui/store.js";
 
 const mockedExeca = vi.mocked(execa);
@@ -45,29 +52,60 @@ beforeEach(() => {
     })) as unknown as typeof execa);
 });
 
+/** The facts runStatusChecks gathered. */
+function factsOf(store: CLIStore): StatusFacts {
+  return store.currentState.data[STATUS_FACTS_KEY] as StatusFacts;
+}
+
+/** /health/ready answers READY; /setup/status says setup is still owed. */
+function stubApi() {
+  const fetchMock = vi.fn(async (url: string) => ({
+    ok: true,
+    status: 200,
+    json: async () =>
+      url.endsWith("/setup/status") ? { needs_setup: true } : READY,
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 describe("gaia status on a self-host install", () => {
-  it("reads container state from compose and readiness through the proxy only", async () => {
-    const fetchMock = vi.fn(async (_url: string) => ({
-      ok: true,
-      status: 200,
-      json: async () => READY,
-    }));
-    vi.stubGlobal("fetch", fetchMock);
+  it("reads containers from compose and health through the proxy only", async () => {
+    const fetchMock = stubApi();
     const store = new CLIStore();
 
     await runStatusChecks(store);
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://localhost:3000/health/ready",
+      "http://localhost:3000/api/v1/setup/status",
     ]);
-    expect(store.currentState.data.services).toEqual([]);
-    expect(store.currentState.data.docker.containers).toHaveLength(4);
-    expect(store.currentState.status).toBe("4 of 4 services running");
+    const facts = factsOf(store);
+    expect(facts.docker?.containers).toHaveLength(4);
+    expect(facts.setupComplete).toBe(false);
     expect(store.currentState.data.checkedAt).toEqual(expect.any(String));
-    expect(store.currentState.data.refreshable).toBe(true);
   });
 
-  it("lists an enabled bot whose container was never created as not running", async () => {
+  it("says running, in plain names, with the setup still owed", async () => {
+    stubApi();
+    const store = new CLIStore();
+
+    await runStatusChecks(store);
+    const report = buildStatusReport(factsOf(store));
+
+    expect(report.headline.text).toBe("GAIA is running");
+    expect(report.rows[0]?.items.map((i) => i.name)).toEqual([
+      "web app",
+      "server",
+      "proxy",
+    ]);
+    expect(report.rows.find((r) => r.label === "Setup")?.note).toMatch(
+      /^not finished · open http:\/\/.+:3000\/setup$/,
+    );
+    expect(report.unhealthy).toBe(false);
+  });
+
+  it("marks an enabled bot whose container was never created as down, and exits unhealthy", async () => {
     readConfig.mockReturnValue({ bots: ["telegram", "slack"] });
     mockedExeca.mockImplementation(((_cmd: string, args: string[]) =>
       Promise.resolve({
@@ -75,19 +113,19 @@ describe("gaia status on a self-host install", () => {
           ? `${SELFHOST_CONTAINERS}\nbot-telegram|running|Up 1 minute (healthy)`
           : "",
       })) as unknown as typeof execa);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: true, status: 200, json: async () => READY })),
-    );
+    stubApi();
     const store = new CLIStore();
 
     await runStatusChecks(store);
+    const report = buildStatusReport(factsOf(store));
 
-    expect(store.currentState.data.docker.containers.slice(-2)).toEqual([
-      { name: "bot-telegram", status: "running", health: "healthy" },
-      { name: "bot-slack", status: "not_found" },
+    const bots = report.rows.find((r) => r.label === "Bots");
+    expect(bots?.items).toEqual([
+      { ok: true, name: "Telegram bot" },
+      { ok: false, name: "Slack bot" },
     ]);
-    expect(store.currentState.status).toBe("5 of 6 services running");
+    expect(bots?.tone).toBe("fail");
+    expect(report.unhealthy).toBe(true);
   });
 
   it("probes nothing when the install is not configured", async () => {
@@ -99,12 +137,28 @@ describe("gaia status on a self-host install", () => {
     await runStatusChecks(store);
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(store.currentState.status).toBe(
-      "Run 'gaia up' to finish setting it up.",
+    expect(buildStatusReport(factsOf(store)).headline.text).toBe(
+      "/no/such/install (not set up yet: no apps/api/.env) · run: gaia up",
     );
-    expect(store.currentState.data.install).toBe(
-      "/no/such/install (not set up yet: no apps/api/.env)",
-    );
-    expect(store.currentState.data.checkedAt).toEqual(expect.any(String));
+  });
+
+  it("never calls a refused Docker socket 'not running'", () => {
+    const report = buildStatusReport({
+      install: "~/gaia (self-host)",
+      installed: true,
+      docker: {
+        access: "no-permission",
+        problem: {
+          summary: "Docker is running, but your user can't use it yet",
+          fix: "Log out and back in (or run 'newgrp docker'), then try again.",
+        },
+        containers: [],
+      },
+      services: [],
+      setupComplete: null,
+    });
+
+    expect(report.headline.text).not.toMatch(/not running/i);
+    expect(report.rows[0]?.note).toContain("newgrp docker");
   });
 });

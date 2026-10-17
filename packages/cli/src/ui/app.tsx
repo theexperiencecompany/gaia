@@ -1,5 +1,5 @@
 import { ThemeProvider } from "@inkjs/ui";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import React from "react";
 import { UpScreen } from "../commands/up/screen.js";
 import { InitScreen } from "./screens/init.js";
@@ -95,10 +95,23 @@ const CommandRouter: React.FC<AppProps> = ({ store, command }) => {
   }
 };
 
-export const App: React.FC<AppProps> = ({ store, command }) => {
+/** Ctrl-C in raw mode arrives as input, not SIGINT: hand it to the runner. */
+const CancelOnCtrlC: React.FC<{ onCancel: () => void }> = ({ onCancel }) => {
+  useInput((input, key) => {
+    if (key.ctrl && input === "c") onCancel();
+  });
+  return null;
+};
+
+export const App: React.FC<AppProps & { onCancel: () => void }> = ({
+  store,
+  command,
+  onCancel,
+}) => {
   return (
     <ErrorBoundary>
       <ThemeProvider theme={cliTheme}>
+        <CancelOnCtrlC onCancel={onCancel} />
         <CommandRouter store={store} command={command} />
       </ThemeProvider>
     </ErrorBoundary>

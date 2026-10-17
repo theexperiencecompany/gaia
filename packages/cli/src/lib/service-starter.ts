@@ -1,5 +1,6 @@
 import { execa } from "execa";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { botComposeFile, botService, writeBotsEnv } from "./bots.js";
 import { ComposeError } from "./compose-failure.js";
@@ -606,6 +607,10 @@ export function describeInstall(
   mode: SetupMode | null,
 ): string {
   if (!repoPath) return "GAIA isn't installed yet";
-  if (!mode) return `${repoPath} (not set up yet: no apps/api/.env)`;
-  return `${repoPath} (${mode === "selfhost" ? "self-host" : "developer"})`;
+  const home = os.homedir();
+  const shown = repoPath.startsWith(`${home}/`)
+    ? `~${repoPath.slice(home.length)}`
+    : repoPath;
+  if (!mode) return `${shown} (not set up yet: no apps/api/.env)`;
+  return `${shown} (${mode === "selfhost" ? "self-host" : "developer"})`;
 }
