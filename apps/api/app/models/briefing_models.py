@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, HUE_MAX
 from app.db.repositories.base import UserScopedDocument
+from app.schemas.common import ResponseModel
 
 BriefingKind = Literal["daily", "weekly"]
 
@@ -210,3 +211,23 @@ class BriefingListResponse(BaseModel):
     """Archive response shape (frontend is coded against this)."""
 
     briefings: list[BriefingModel]
+
+
+class Postmark(ResponseModel):
+    """One collected Air Mail stamp: its city, where it sits, and the brief it came on."""
+
+    city_slug: str
+    city: str
+    country: str
+    lat: float
+    lng: float
+    stamp_url: str
+    date: str = Field(description="User-local YYYY-MM-DD the stamp first arrived.")
+    briefing_id: str = Field(description="The brief that first carried the stamp.")
+
+
+class PostmarksResponse(ResponseModel):
+    """The user's stamp collection, first arrival first."""
+
+    total: int = Field(ge=0, description="How many city stamps can be collected.")
+    postmarks: list[Postmark]

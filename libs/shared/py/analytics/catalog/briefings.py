@@ -9,6 +9,7 @@ __all__ = [
     "BriefingDayZeroHelloSent",
     "BriefingKindName",
     "BriefingOpened",
+    "BriefingPostmarksViewed",
     "BriefingProvisioned",
     "BriefingSent",
 ]
@@ -36,6 +37,16 @@ class BriefingOpened(ServerEvent):
     budget_per_user_day: ClassVar[int] = 4
 
     kind: BriefingKindName
+
+
+class BriefingPostmarksViewed(ServerEvent):
+    """A user opened Postmarks, the collection of Air Mail city stamps from their briefs."""
+
+    event: ClassVar[str] = "briefing:postmarks_viewed"
+    budget_per_user_day: ClassVar[int] = 20
+
+    collected: int
+    total: int
 
 
 class BriefingProvisioned(ServerEvent):
