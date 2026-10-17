@@ -7,7 +7,7 @@ import {
   STEPS_KEY,
 } from "./run-steps.js";
 
-/** One plain line for a step that just started, finished or failed. */
+/** One plain line for a step that just started, finished, failed or was cancelled. */
 function plainStepLine(step: RunStep): string | null {
   const took =
     step.startedAt !== undefined && step.endedAt !== undefined
@@ -16,6 +16,8 @@ function plainStepLine(step: RunStep): string | null {
   if (step.state === "active") return `  ${step.label}…`;
   if (step.state === "done") return `${MARK.ok} ${step.doneLabel}${took}`;
   if (step.state === "failed") return `${MARK.fail} ${step.label}${took}`;
+  if (step.state === "cancelled")
+    return `${MARK.cancelled} ${step.label}${took}`;
   return null;
 }
 

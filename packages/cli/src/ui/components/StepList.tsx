@@ -33,6 +33,7 @@ const StepMark: React.FC<{ step: RunStep; waiting: boolean }> = ({
 }) => {
   if (step.state === "done") return <Mark kind="ok" />;
   if (step.state === "failed") return <Mark kind="fail" />;
+  if (step.state === "cancelled") return <Mark kind="cancelled" />;
   if (step.state === "active" && !waiting) {
     return (
       <Box marginRight={1}>

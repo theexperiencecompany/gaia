@@ -26,6 +26,7 @@ import {
   isInteractive,
   requireInteractive,
 } from "./non-tty.js";
+import { endActiveStep } from "./run-steps.js";
 
 /** An input id to resolve automatically in plain mode, with an optional value. */
 type AutoResolve = readonly [id: string, value?: unknown];
@@ -93,17 +94,21 @@ async function runPlain(
 async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   // Ctrl-C reaches the flow as a cancel (below), not as Ink quietly unmounting
   // while the work carries on and the process exits 0.
-  let cancel = (): void => undefined;
+  let cancel = async (): Promise<void> => undefined;
   const { unmount, clear } = render(
     React.createElement(App, {
       store,
       command: runtime.command,
-      onCancel: () => cancel(),
+      onCancel: () => void cancel(),
     }),
     { exitOnCtrlC: false },
   );
 
-  const handleExit = () => {
+  const handleExit = async (): Promise<void> => {
+    // The last frame stays on screen: end its running step, not a frozen spinner.
+    endActiveStep(store, "cancelled");
+    store.flush();
+    await new Promise((resolve) => setImmediate(resolve));
     unmount();
     const hint = runtime.cancelHint ? ` ${runtime.cancelHint}` : "";
     process.stdout.write(`\n${MARK.cancelled} Cancelled.${hint}\n`);

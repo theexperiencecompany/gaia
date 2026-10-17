@@ -42,7 +42,7 @@ import { ensurePrerequisites } from "../../lib/prerequisite-install.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
 import { cloneRelease, GAIA_REPO_URL } from "../../lib/release.js";
 import {
-  failActiveStep,
+  endActiveStep,
   finishStep,
   initSteps,
   startStep,
@@ -125,7 +125,7 @@ function upSteps(options: UpFlags, needsClone: boolean) {
 
 /** Record a failure: the running row turns red and the error is shown under the list. */
 function fail(store: CLIStore, error: Error): void {
-  failActiveStep(store);
+  endActiveStep(store, "failed");
   store.setError(error);
 }
 
@@ -168,7 +168,7 @@ export async function runUpFlow(
   }
   const portOverrides = await runPortChecks(store, "selfhost");
   if (portOverrides === null) {
-    failActiveStep(store);
+    endActiveStep(store, "failed");
     return;
   }
   Object.assign(portOverrides, portOverridesFromFlags(options));
@@ -220,7 +220,7 @@ export async function runUpFlow(
     domain: options.domain,
   });
   if (store.currentState.error) {
-    failActiveStep(store);
+    endActiveStep(store, "failed");
     return;
   }
   finishStep(store, "configure");
@@ -365,7 +365,7 @@ async function saveFlaggedProvider(
   const name = LLM_PROVIDER_NAMES[llmProvider];
   startStep(store, "provider");
   if (!ready) {
-    failActiveStep(store);
+    endActiveStep(store, "failed");
     return new Error(
       `GAIA didn't answer in time, so your ${name} key wasn't saved.\n` +
         "Once 'gaia status' shows it running, run 'gaia up' again with the same flags.",
@@ -374,7 +374,7 @@ async function saveFlaggedProvider(
   try {
     await saveLlmProvider(repoPath, { ...options, llmProvider });
   } catch (e) {
-    failActiveStep(store);
+    endActiveStep(store, "failed");
     return new Error(
       `Your ${name} key wasn't saved: ${(e as Error).message}\n` +
         `Check the key and run 'gaia up --llm-provider ${llmProvider} --llm-key <key>' again, or add it on the setup page above.`,
