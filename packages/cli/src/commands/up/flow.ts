@@ -377,7 +377,7 @@ async function saveFlaggedProvider(
     failActiveStep(store);
     return new Error(
       `Your ${name} key wasn't saved: ${(e as Error).message}\n` +
-        `Check the key and run 'gaia up --llm-provider ${llmProvider} --llm-key <key>' again, or add it in Finish setup above.`,
+        `Check the key and run 'gaia up --llm-provider ${llmProvider} --llm-key <key>' again, or add it on the setup page above.`,
     );
   }
   finishStep(store, "provider");
