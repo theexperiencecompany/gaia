@@ -41,9 +41,9 @@ async def generate_image(imageprompt: str) -> bytes:
         response.raise_for_status()
         return response.content
     config: ProviderConfig | None = await resolve("openai")
-    if config is None or not config["api_key"]:
+    if config is None or not config.api_key:
         raise ImageGenerationNotConfiguredError(IMAGE_GENERATION_NOT_CONFIGURED_MESSAGE)
-    result = await AsyncOpenAI(api_key=config["api_key"]).images.generate(
+    result = await AsyncOpenAI(api_key=config.api_key).images.generate(
         model=OPENAI_IMAGE_MODEL_NAME, prompt=imageprompt, size=OPENAI_IMAGE_SIZE
     )
     encoded = result.data[0].b64_json if result.data else None

@@ -33,8 +33,8 @@ from app.constants.providers import (
     ProviderFeature,
 )
 from app.services.providers import provider_probe_service, provider_setup_service
+from app.services.providers.provider_credentials_service import ProviderConfig
 from shared.py.wide_events import log
-from tests.factories import make_provider_config
 from tests.helpers import captured_wide_event
 from tests.integration.endpoints.conftest import (
     API,
@@ -291,12 +291,9 @@ class TestStatus:
         monkeypatch.setattr(settings, "AUTH_MODE", auth_mode)
         local_credentials_repo.admin_user_id = FAKE_USER_ID if admin_exists else None
         if llm_configured:
-            provider_service.configs["openrouter"] = {
-                "api_key": SECRET_KEY,
-                "base_url": None,
-                "model": None,
-                "preset": None,
-            }
+            provider_service.configs["openrouter"] = ProviderConfig(
+                api_key=SECRET_KEY,
+            )
         resp = await client.get(f"{API}/status")
         assert resp.json()["needs_setup"] is expected
 
@@ -304,22 +301,16 @@ class TestStatus:
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "AUTH_MODE", "workos")
-        provider_service.configs["openai"] = {
-            "api_key": SECRET_KEY,
-            "base_url": None,
-            "model": None,
-            "preset": None,
-        }
+        provider_service.configs["openai"] = ProviderConfig(
+            api_key=SECRET_KEY,
+        )
         resp = await client.get(f"{API}/status")
         assert resp.json()["needs_setup"] is False
 
     async def test_tavily_alone_does_not_satisfy_llm_requirement(self, client: AsyncClient) -> None:
-        provider_service.configs["tavily"] = {
-            "api_key": "tvly-key",
-            "base_url": None,
-            "model": None,
-            "preset": None,
-        }
+        provider_service.configs["tavily"] = ProviderConfig(
+            api_key="tvly-key",
+        )
         body = (await client.get(f"{API}/status")).json()
         assert body["providers"]["tavily"]["configured"] is True
         assert body["needs_setup"] is True
@@ -339,12 +330,9 @@ class TestStatus:
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "GOOGLE_API_KEY", "env-key")
-        provider_service.configs["gemini"] = {
-            "api_key": "saved-key",
-            "base_url": None,
-            "model": None,
-            "preset": None,
-        }
+        provider_service.configs["gemini"] = ProviderConfig(
+            api_key="saved-key",
+        )
         body = (await client.get(f"{API}/status")).json()
         assert body["providers"]["gemini"] == {
             "configured": True,
@@ -528,7 +516,7 @@ class TestProviderCatalog:
 
 class TestProvidersMaskedView:
     async def test_masked_output_never_contains_full_key(self, client: AsyncClient) -> None:
-        await provider_service.upsert("openrouter", make_provider_config(api_key=SECRET_KEY))
+        await provider_service.upsert("openrouter", ProviderConfig(api_key=SECRET_KEY))
         resp = await client.get(f"{API}/providers")
         assert resp.status_code == 200
         text = resp.text
@@ -547,7 +535,7 @@ class TestProvidersMaskedView:
     async def test_a_second_secret_is_masked_like_the_key(self, client: AsyncClient) -> None:
         await provider_service.upsert(
             "cloudinary",
-            make_provider_config(api_key="cl-key", account_id="my-cloud", api_secret=SECRET_KEY),
+            ProviderConfig(api_key="cl-key", account_id="my-cloud", api_secret=SECRET_KEY),
         )
 
         resp = await client.get(f"{API}/providers")
@@ -563,7 +551,7 @@ class TestProvidersMaskedView:
     async def test_an_endpoint_and_model_are_shown_unmasked(self, client: AsyncClient) -> None:
         await provider_service.upsert(
             "custom",
-            make_provider_config(api_key=SECRET_KEY, base_url="https://gw.test/v1", model="m-1"),
+            ProviderConfig(api_key=SECRET_KEY, base_url="https://gw.test/v1", model="m-1"),
         )
 
         entry = (await client.get(f"{API}/providers")).json()["providers"]["custom"]
@@ -578,7 +566,7 @@ class TestProvidersMaskedView:
         self, client: AsyncClient
     ) -> None:
         await provider_service.upsert(
-            "custom", make_provider_config(api_key=SECRET_KEY, base_url="https://gw.test/v1")
+            "custom", ProviderConfig(api_key=SECRET_KEY, base_url="https://gw.test/v1")
         )
 
         entry = (await client.get(f"{API}/providers")).json()["providers"]["custom"]
@@ -594,21 +582,19 @@ class TestUpsertProvider:
         )
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
-        assert provider_service.configs["custom"] == {
-            "api_key": SECRET_KEY,
-            "base_url": "https://opencode.ai/zen/go/v1",
-            "model": "deepseek-v4-flash",
-            "preset": "opencode",
-            "account_id": None,
-            "api_secret": None,
-        }
+        assert provider_service.configs["custom"] == ProviderConfig(
+            api_key=SECRET_KEY,
+            base_url="https://opencode.ai/zen/go/v1",
+            model="deepseek-v4-flash",
+            preset="opencode",
+        )
 
     async def test_explicit_base_url_wins_over_preset(self, client: AsyncClient) -> None:
         await client.put(
             f"{API}/providers/custom",
             json={"preset": "opencode", "api_key": "k", "base_url": "https://proxy.internal/v1"},
         )
-        assert provider_service.configs["custom"]["base_url"] == "https://proxy.internal/v1"
+        assert provider_service.configs["custom"].base_url == "https://proxy.internal/v1"
 
     async def test_cache_invalidated_after_upsert(self, client: AsyncClient) -> None:
         await client.put(f"{API}/providers/gemini", json={"api_key": "g-key"})
@@ -631,7 +617,7 @@ class TestUpsertProvider:
     ) -> None:
         await provider_service.upsert(
             "custom",
-            make_provider_config(
+            ProviderConfig(
                 api_key=STORED_KEY,
                 base_url="https://gw.test/v1",
                 model="m-1",
@@ -644,32 +630,30 @@ class TestUpsertProvider:
         resp = await client.put(f"{API}/providers/custom", json={"model": "m-2"})
 
         assert resp.status_code == 200
-        assert provider_service.configs["custom"] == {
-            "api_key": STORED_KEY,
-            "base_url": "https://gw.test/v1",
-            "model": "m-2",
-            "preset": "opencode",
-            "account_id": "acct",
-            "api_secret": "second-secret",
-        }
+        assert provider_service.configs["custom"] == ProviderConfig(
+            api_key=STORED_KEY,
+            base_url="https://gw.test/v1",
+            model="m-2",
+            preset="opencode",
+            account_id="acct",
+            api_secret="second-secret",
+        )
 
     async def test_rotating_the_key_keeps_the_stored_model(self, client: AsyncClient) -> None:
         await provider_service.upsert(
             "custom",
-            make_provider_config(api_key=STORED_KEY, base_url="https://gw.test/v1", model="m-1"),
+            ProviderConfig(api_key=STORED_KEY, base_url="https://gw.test/v1", model="m-1"),
         )
 
         await client.put(f"{API}/providers/custom", json={"api_key": "rotated-key"})
 
         stored = provider_service.configs["custom"]
-        assert (stored["api_key"], stored["model"]) == ("rotated-key", "m-1")
+        assert (stored.api_key, stored.model) == ("rotated-key", "m-1")
 
     async def test_a_given_field_replaces_the_stored_one(self, client: AsyncClient) -> None:
         await provider_service.upsert(
             "cloudinary",
-            make_provider_config(
-                api_key="old-key", account_id="old-cloud", api_secret="old-secret"
-            ),
+            ProviderConfig(api_key="old-key", account_id="old-cloud", api_secret="old-secret"),
         )
 
         await client.put(
@@ -678,7 +662,7 @@ class TestUpsertProvider:
         )
 
         stored = provider_service.configs["cloudinary"]
-        assert (stored["api_key"], stored["account_id"], stored["api_secret"]) == (
+        assert (stored.api_key, stored.account_id, stored.api_secret) == (
             "new-key",
             "new-cloud",
             "new-secret",
@@ -723,7 +707,7 @@ class TestProviderAudit:
     async def test_an_update_without_a_key_is_audited_as_keeping_it(
         self, client: AsyncClient
     ) -> None:
-        await provider_service.upsert("gemini", make_provider_config(api_key=SECRET_KEY))
+        await provider_service.upsert("gemini", ProviderConfig(api_key=SECRET_KEY))
         async with captured_wide_event() as event:
             await client.put(f"{API}/providers/gemini", json={"model": "gemini-2.5-pro"})
 
@@ -733,9 +717,7 @@ class TestProviderAudit:
 
 class TestDeleteProvider:
     async def test_delete_removes_credential_and_invalidates(self, client: AsyncClient) -> None:
-        await provider_service.upsert(
-            "ollama", make_provider_config(base_url="http://localhost:11434")
-        )
+        await provider_service.upsert("ollama", ProviderConfig(base_url="http://localhost:11434"))
         resp = await client.delete(f"{API}/providers/ollama")
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
@@ -847,7 +829,7 @@ class TestProviderProbe:
         """Hit the stored endpoint with the stored key, never the attacker URL."""
         await provider_service.upsert(
             "custom",
-            make_provider_config(api_key=STORED_KEY, base_url="https://good.test/v1", model="m-1"),
+            ProviderConfig(api_key=STORED_KEY, base_url="https://good.test/v1", model="m-1"),
         )
         with respx.mock(assert_all_called=False) as mock:
             good = mock.post("https://good.test/v1/chat/completions").mock(
@@ -869,7 +851,7 @@ class TestProviderProbe:
         self, client: AsyncClient
     ) -> None:
         """Use the canonical chat URL with a stored key; a body base_url is never honored."""
-        await provider_service.upsert("openrouter", make_provider_config(api_key=STORED_KEY))
+        await provider_service.upsert("openrouter", ProviderConfig(api_key=STORED_KEY))
         with respx.mock(assert_all_called=False) as mock:
             canonical = mock.post("https://openrouter.ai/api/v1/chat/completions").mock(
                 return_value=httpx.Response(200, json=CHAT_COMPLETION)
@@ -935,7 +917,7 @@ class TestProviderProbe:
         """Use stored base_url plus key exclusively; caller base_url never pairs with a held key."""
         await provider_service.upsert(
             "custom",
-            make_provider_config(api_key=STORED_KEY, base_url="https://old.test/v1", model="m-1"),
+            ProviderConfig(api_key=STORED_KEY, base_url="https://old.test/v1", model="m-1"),
         )
         with respx.mock:
             route = respx.post("https://old.test/v1/chat/completions").mock(
@@ -1193,7 +1175,7 @@ class TestSsrfGuard:
             json={"base_url": "http://localhost:11434", "model": "llama3.2"},
         )
         assert resp.status_code == 200
-        assert provider_service.configs["ollama"]["base_url"] == "http://localhost:11434"
+        assert provider_service.configs["ollama"].base_url == "http://localhost:11434"
 
     async def test_probe_allows_a_local_ollama_endpoint(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -1222,7 +1204,7 @@ class TestSsrfGuard:
         """Refuse legacy private-endpoint configs at probe time too, not just save time."""
         await provider_service.upsert(
             "custom",
-            make_provider_config(api_key=STORED_KEY, base_url="http://169.254.169.254/latest"),
+            ProviderConfig(api_key=STORED_KEY, base_url="http://169.254.169.254/latest"),
         )
         with respx.mock(assert_all_called=False) as mock:
             metadata = mock.route(host="169.254.169.254").mock(
@@ -1246,7 +1228,7 @@ class TestPrivateEndpointsOffProduction:
             json={"api_key": SECRET_KEY, "base_url": "http://192.168.1.10:8000/v1", "model": "m"},
         )
         assert resp.status_code == 200
-        assert provider_service.configs["custom"]["base_url"] == "http://192.168.1.10:8000/v1"
+        assert provider_service.configs["custom"].base_url == "http://192.168.1.10:8000/v1"
 
     @pytest.mark.parametrize("provider", ["custom", "ollama"])
     @pytest.mark.parametrize("host", ["169.254.10.10", "[fe80::1]"])
@@ -1273,10 +1255,10 @@ class TestInstanceAdminGuard:
         assert provider_service.configs == {}
 
     async def test_delete_denied_for_non_admin(self, nonadmin_client: AsyncClient) -> None:
-        await provider_service.upsert("openrouter", make_provider_config(api_key=STORED_KEY))
+        await provider_service.upsert("openrouter", ProviderConfig(api_key=STORED_KEY))
         resp = await nonadmin_client.delete(f"{API}/providers/openrouter")
         assert resp.status_code == 403
-        assert provider_service.configs["openrouter"]["api_key"] == STORED_KEY
+        assert provider_service.configs["openrouter"].api_key == STORED_KEY
 
     async def test_probe_denied_for_non_admin_and_never_fires(
         self, nonadmin_client: AsyncClient
@@ -1293,7 +1275,7 @@ class TestInstanceAdminGuard:
 
     async def test_list_providers_denied_for_non_admin(self, nonadmin_client: AsyncClient) -> None:
         await provider_service.upsert(
-            "custom", make_provider_config(api_key=STORED_KEY, base_url="https://internal.test/v1")
+            "custom", ProviderConfig(api_key=STORED_KEY, base_url="https://internal.test/v1")
         )
         resp = await nonadmin_client.get(f"{API}/providers")
         assert resp.status_code == 403

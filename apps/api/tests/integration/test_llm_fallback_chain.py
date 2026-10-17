@@ -38,6 +38,7 @@ from app.config.settings import settings
 from app.constants.llm import DEFAULT_LLM_PROVIDER, LLMProviderKey, LLMProviderName
 from app.constants.providers import LLM_MODEL_PROFILES, LLM_PROVIDER_PRIORITY
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
+from app.services.providers.provider_credentials_service import ProviderConfig
 
 
 def _make_mock_llm(name: str = "mock_llm") -> MagicMock:
@@ -303,7 +304,7 @@ class TestGetAvailableProviders:
         # (store entry → env fallback), not by import-time required_keys.
         def fake_config(name):
             if name is LLMProviderName.OPENROUTER:
-                return {"api_key": "test-key"}
+                return ProviderConfig(api_key="test-key")
             return None
 
         with (

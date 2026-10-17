@@ -84,7 +84,7 @@ async def transcribe_audio(
     )
 
     config: ProviderConfig | None = await resolve_openai_config("openai")
-    api_key = config["api_key"] if config else None
+    api_key = config.api_key if config else None
     if not api_key:
         raise RuntimeError(
             "OpenAI is not configured: store an OpenAI credential in Settings "

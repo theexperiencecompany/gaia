@@ -20,7 +20,7 @@ async def post_decisions(
 ) -> JevDecisionsResponse:
     """One Decisions call on the saved or env OpenRouter key; raises on a missing key, transport failure, or a malformed body."""
     config: ProviderConfig | None = await resolve(CredentialProviderName.OPENROUTER)
-    key = config["api_key"] if config else None
+    key = config.api_key if config else None
     if not key:
         raise RuntimeError("No OpenRouter key saved or set; cannot reach the JEV judge")
     async with httpx.AsyncClient(timeout=HIL_JEV_TIMEOUT_SECONDS) as client:

@@ -201,7 +201,7 @@ async def default_fetchers() -> list[WebpageFetcher]:
     a restart and wins over the environment.
     """
     config: ProviderConfig | None = await resolve_firecrawl_config("firecrawl")
-    firecrawl_api_key = config["api_key"] if config else None
+    firecrawl_api_key = config.api_key if config else None
     return [Crawl4aiFetcher(), FirecrawlFetcher(firecrawl_api_key), HttpxFetcher()]
 
 

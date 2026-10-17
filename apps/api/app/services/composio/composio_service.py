@@ -566,7 +566,7 @@ def init_composio_service() -> ComposioService:
 def _composio_api_key() -> str:
     """Return the store-first resolved Composio key; raise ProviderNotConfiguredError when none resolves."""
     config: ProviderConfig | None = resolved_config("composio")
-    api_key = config["api_key"] if config else None
+    api_key = config.api_key if config else None
     if not api_key:
         raise ProviderNotConfiguredError(
             "COMPOSIO_KEY is not set in settings and no composio credential is stored"

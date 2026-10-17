@@ -1,7 +1,7 @@
 """Test data factories for GAIA API tests."""
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -11,15 +11,6 @@ import composio_client
 import httpx
 
 from app.models.user_models import AuthenticatedUser
-from app.services.providers.provider_credentials_service import ProviderConfig
-
-
-def make_provider_config(**fields: str | None) -> ProviderConfig:
-    """Build a full ProviderConfig; every field not given is None."""
-    keys = ProviderConfig.__annotations__
-    if unknown := fields.keys() - keys:
-        raise TypeError(f"Not ProviderConfig fields: {sorted(unknown)}")
-    return cast(ProviderConfig, dict.fromkeys(keys) | fields)
 
 
 def make_user_id() -> str:

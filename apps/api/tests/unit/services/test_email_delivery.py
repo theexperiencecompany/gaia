@@ -17,6 +17,7 @@ from app.models.support_models import SupportEmailNotification, SupportRequestTy
 from app.services.email.models import EmailMessage
 from app.services.email.providers.resend_provider import ResendEmailProvider
 from app.services.email.service import render_email_template, send_email
+from app.services.providers.provider_credentials_service import ProviderConfig
 from tests.helpers import InMemoryCredentialStore, captured_wide_event
 
 SERVICE_MOD = "app.services.email.service"
@@ -57,12 +58,9 @@ def mock_resend():
         patch(
             f"{PROVIDER_MOD}.resolve_resend_config",
             new=AsyncMock(
-                return_value={
-                    "api_key": "re-stored",
-                    "base_url": None,
-                    "model": None,
-                    "preset": None,
-                }
+                return_value=ProviderConfig(
+                    api_key="re-stored",
+                )
             ),
         ),
     ):

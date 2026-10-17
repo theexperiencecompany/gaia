@@ -12,6 +12,7 @@ import pytest
 
 from app.config.cloudinary import CLOUDINARY_PROVIDER, init_cloudinary, require_cloudinary
 from app.core.lazy_loader import providers
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.errors import AppError
 from app.utils.exceptions import ProviderNotConfiguredError
 
@@ -21,15 +22,12 @@ SERVICE_MOD = "app.services.providers.provider_credentials_service"
 
 def _stored(
     api_key: str | None, *, cloud_name: str | None = "stored-cloud", secret: str | None = "s"
-) -> dict[str, str | None]:
-    return {
-        "api_key": api_key,
-        "base_url": None,
-        "model": None,
-        "preset": None,
-        "account_id": cloud_name,
-        "api_secret": secret,
-    }
+) -> ProviderConfig:
+    return ProviderConfig(
+        api_key=api_key,
+        account_id=cloud_name,
+        api_secret=secret,
+    )
 
 
 def _patch_env(settings_mock: Any, **overrides: str | None) -> None:

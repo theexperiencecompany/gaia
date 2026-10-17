@@ -15,6 +15,7 @@ from app.services.audio_transcription_service import (
     transcribe_audio,
     validate_audio_payload,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 
 
 class TestValidateAudioPayload:
@@ -75,12 +76,9 @@ class TestTranscribeAudio:
         mock_client_cls: MagicMock,
     ):
         """Pass a Settings-stored key explicitly; the SDK must not need the env var."""
-        mock_resolve.return_value = {
-            "api_key": "sk-stored",
-            "base_url": None,
-            "model": None,
-            "preset": None,
-        }
+        mock_resolve.return_value = ProviderConfig(
+            api_key="sk-stored",
+        )
         mock_instance = MagicMock()
         mock_instance.audio.transcriptions.create = AsyncMock(return_value=MagicMock(text="hi"))
         mock_client_cls.return_value = mock_instance
@@ -147,9 +145,7 @@ class TestTranscribeAudio:
     @patch("app.services.audio_transcription_service.AsyncOpenAI")
     @patch(
         "app.services.audio_transcription_service.resolve_openai_config",
-        new=AsyncMock(
-            return_value={"api_key": "sk-stored", "base_url": None, "model": None, "preset": None}
-        ),
+        new=AsyncMock(return_value=ProviderConfig(api_key="sk-stored")),
     )
     async def test_returns_empty_string_for_empty_response(self, mock_client_cls: MagicMock):
         mock_instance = MagicMock()

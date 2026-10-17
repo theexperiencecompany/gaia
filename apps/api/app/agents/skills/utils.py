@@ -50,7 +50,7 @@ def get_github_headers() -> dict[str, str]:
     """Return GitHub API headers, authenticated by the saved or env GitHub token when one is set."""
     headers = {"Accept": "application/vnd.github.v3+json"}
     config: ProviderConfig | None = resolved_config(CredentialProviderName.GITHUB)
-    token = config["api_key"] if config else None
+    token = config.api_key if config else None
     if token:
         headers["Authorization"] = f"token {token}"
     return headers

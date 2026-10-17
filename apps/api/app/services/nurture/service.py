@@ -165,7 +165,7 @@ async def run_nurture_sequence() -> str:
     # The delivery key resolves store-first (Settings → Resend) with an env
     # fallback, mirroring the provider's own send-time resolution.
     config: ProviderConfig | None = await resolve_resend_config("resend")
-    resend_configured = bool(config and config["api_key"])
+    resend_configured = bool(config and config.api_key)
     if not resend_configured or not settings.EMAIL_UNSUBSCRIBE_SECRET:
         log.info(f"{LogTag.MAIL} Nurture run skipped: email delivery not configured")
         return "skipped: email not configured"

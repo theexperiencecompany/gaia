@@ -33,6 +33,7 @@ from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.types import LLMProviderName
 from app.constants.llm import DEFAULT_LLM_TEMPERATURE, DEFAULT_MAX_TOKENS, ModelUse
 from app.services.providers import provider_credentials_service as service
+from app.services.providers.provider_credentials_service import ProviderConfig
 from tests.helpers import captured_wide_event
 
 
@@ -40,9 +41,9 @@ def _store_config(
     api_key: str | None = None,
     base_url: str | None = None,
     model: str | None = None,
-) -> dict[str, str | None]:
-    """Return a ProviderConfig-shaped dict as the credential service does."""
-    return {"api_key": api_key, "base_url": base_url, "model": model, "preset": None}
+) -> ProviderConfig:
+    """Return a stored config as the credential service resolves it."""
+    return ProviderConfig(api_key=api_key, base_url=base_url, model=model)
 
 
 class _FakeChatOpenRouter:
@@ -349,8 +350,8 @@ class TestRefreshProviderConfigs:
 
         await refresh_provider_configs()
 
-        assert client_module._runtime_configs["openrouter"]["api_key"] == "sk-openrouter"
-        assert client_module._runtime_configs["tavily"]["api_key"] == "sk-tavily"
+        assert client_module._runtime_configs["openrouter"].api_key == "sk-openrouter"
+        assert client_module._runtime_configs["tavily"].api_key == "sk-tavily"
         assert client_module._runtime_configs["gemini"] is None
 
     async def test_scheduling_inside_a_loop_refreshes_and_forgets_the_task(
@@ -369,7 +370,7 @@ class TestRefreshProviderConfigs:
         await task
         await asyncio.sleep(0)  # let the done callback run
 
-        assert client_module._runtime_configs["openrouter"]["api_key"] == "sk-openrouter"
+        assert client_module._runtime_configs["openrouter"].api_key == "sk-openrouter"
         assert client_module._refresh_tasks == set()
 
     async def test_a_failed_refresh_is_logged_with_its_cause(

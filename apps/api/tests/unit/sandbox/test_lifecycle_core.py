@@ -35,6 +35,7 @@ from tests.helpers import captured_wide_event
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.sandbox import lifecycle, pool as pool_module
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.pool import PooledSandbox, SandboxPool, get_sandbox_pool
@@ -1052,8 +1053,8 @@ _E2B_UNCONFIGURED_WARNING = (
 )
 
 
-def _resolve_e2b_only(config: dict[str, str] | None) -> AsyncMock:
-    async def _resolve(name: str) -> dict[str, str] | None:
+def _resolve_e2b_only(config: ProviderConfig | None) -> AsyncMock:
+    async def _resolve(name: str) -> ProviderConfig | None:
         if name != "e2b":
             raise AssertionError(f"pool resolved the wrong provider: {name!r}")
         return config
@@ -1081,7 +1082,9 @@ async def test_the_pool_provider_is_silent_when_e2b_is_configured(
 ) -> None:
     existing = SandboxPool()
     monkeypatch.setattr(pool_module, "_pool_singleton", existing)
-    monkeypatch.setattr(pool_module, "resolve_e2b_config", _resolve_e2b_only({"api_key": "k"}))
+    monkeypatch.setattr(
+        pool_module, "resolve_e2b_config", _resolve_e2b_only(ProviderConfig(api_key="k"))
+    )
 
     load_pool = pool_module.init_sandbox_pool().loader_func
     async with captured_wide_event() as event:

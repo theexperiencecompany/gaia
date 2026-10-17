@@ -17,6 +17,7 @@ from app.constants.integrations import (
     GMAIL_INTEGRATION_ID,
 )
 from app.services.composio import auth_config_resolver
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
@@ -844,7 +845,7 @@ class TestGetComposioService:
 
         with (
             patch.object(mod, "providers") as mock_providers,
-            patch.object(mod, "resolved_config", return_value={"api_key": "k"}),
+            patch.object(mod, "resolved_config", return_value=ProviderConfig(api_key="k")),
         ):
             mock_providers.get.return_value = None
 
@@ -860,12 +861,9 @@ class TestInitComposioService:
     snapshot instead of awaiting resolve().
     """
 
-    _STORED: ClassVar[dict[str, str | None]] = {
-        "api_key": "stored-key",
-        "base_url": None,
-        "model": None,
-        "preset": None,
-    }
+    _STORED: ClassVar[dict[str, str | None]] = ProviderConfig(
+        api_key="stored-key",
+    )
 
     def test_stored_credential_wins_over_env(self):
         from app.services.composio import composio_service as mod

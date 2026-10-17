@@ -498,7 +498,7 @@ class MCPClient:
             # Resolved store-first so a key configured in Settings applies
             # without a restart; env remains the fallback.
             composio_config: ProviderConfig | None = await resolve_composio_config("composio")
-            composio_api_key = composio_config["api_key"] if composio_config else None
+            composio_api_key = composio_config.api_key if composio_config else None
             if composio_api_key:
                 server_config.setdefault("headers", {})["x-api-key"] = composio_api_key
 

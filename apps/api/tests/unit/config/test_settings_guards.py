@@ -31,6 +31,7 @@ from app.constants.llm import (
     LLMProviderName,
 )
 from app.constants.providers import LLM_MODEL_PROFILES
+from app.services.providers.provider_credentials_service import ProviderConfig
 
 
 @pytest.fixture(autouse=True)
@@ -360,12 +361,11 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     monkeypatch.setitem(
         client._runtime_configs,
         "custom",
-        {
-            "api_key": "sk-dev",
-            "base_url": "http://localhost:9999/v1",
-            "model": "deepseek-v4-flash",
-            "preset": None,
-        },
+        ProviderConfig(
+            api_key="sk-dev",
+            base_url="http://localhost:9999/v1",
+            model="deepseek-v4-flash",
+        ),
     )
 
     llm = client.init_custom_llm().loader_func()
