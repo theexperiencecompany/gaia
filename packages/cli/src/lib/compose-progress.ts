@@ -6,6 +6,7 @@
  * @module lib/compose-progress
  */
 
+import { formatBytes } from "./byte-size.js";
 import { serviceName } from "./display-names.js";
 
 /** One line of `docker compose --progress json` output, as far as we read it. */
@@ -163,12 +164,6 @@ export function applyComposeEvent(
   else if (id.startsWith(CONTAINER_PREFIX)) applyContainerEvent(state, e);
   else if (e.parent_id?.startsWith(IMAGE_PREFIX)) applyLayerEvent(state, e);
   return state;
-}
-
-/** 1.3 GB, 412 MB: decimal units, as registries and `docker images` show sizes. */
-function formatBytes(bytes: number): string {
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
-  return `${Math.round(bytes / 1e6)} MB`;
 }
 
 export interface ComposePhase {

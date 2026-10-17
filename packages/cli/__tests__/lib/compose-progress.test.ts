@@ -198,7 +198,7 @@ describe("parseCloneProgress", () => {
 
     expect(parseCloneProgress(chunk)).toEqual({
       percent: 19,
-      label: "52.18 MiB downloaded",
+      label: "55 MB so far",
     });
   });
 
