@@ -245,6 +245,31 @@ jobs:
           echo "### ❌ Production deploy failed" >> "$GITHUB_STEP_SUMMARY"
           echo "Token scopes needed: Workers Scripts Write + R2 Write/Read + Routes Write on account d65fe47d…. Verify secrets and wrangler.jsonc." >> "$GITHUB_STEP_SUMMARY"
 
+  smoke:
+    name: smoke (post-deploy audit)
+    # Post-deploy ALERTING, not a gate: its own job behind the deploy, so a
+    # red smoke never blocks, rolls back, or otherwise touches the deploy
+    # itself. It only runs when the production deploy ran.
+    needs: deploy-prod
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Post-deploy smoke audit (status, canonical, hreflang, edge cache, no prod noindex)
+        run: |
+          trap 'echo "::error::repro: bash scripts/ci/smoke-web.sh prod"' ERR
+          echo "::group::smoke-web prod"
+          bash scripts/ci/smoke-web.sh prod
+          echo "::endgroup::"
+      - name: Fail visibly on smoke error
+        if: failure()
+        run: |
+          echo "::error title=Post-deploy smoke failed::production serves a wrong status, canonical, hreflang set, or cache header — the deploy itself already shipped, this is the alert"
+          echo "### ❌ Post-deploy smoke failed (deploy already shipped — investigate, do not roll back blind)" >> "$GITHUB_STEP_SUMMARY"
+
   preview:
     name: preview (PR pr-${{ github.event.number }})
     needs: build
@@ -305,6 +330,20 @@ jobs:
             echo "Expected preview URL: \`https://pr-${{ github.event.number }}-gaia.heygaia.workers.dev\` (if preview_urls / dispatch route configured)"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::notice title=Preview duration::${mins}m ${secs}s alias pr-${{ github.event.number }}"
+
+      - name: Non-prod host serves X-Robots-Tag noindex (PR builds never index)
+        if: success()
+        run: |
+          # The versions-upload alias (pr-N-gaia.heygaia.workers.dev) has no
+          # routing: wrangler.jsonc sets workers_dev false + preview_urls false,
+          # and Cloudflare disables routing to Version/aliased URLs when Version
+          # URLs are disabled — the alias is NXDOMAIN, so no PR-build URL exists
+          # to curl. Assert the standing property on the live non-prod host
+          # instead: middleware noindexes every host outside the prod allowlist
+          # (heygaia.io, www.heygaia.io). RED until this ships to prod, green after.
+          trap 'echo "::error::repro: curl -sSI https://cf.heygaia.io/ | grep -qi noindex"' ERR
+          curl -sSI --retry 5 --retry-delay 10 --retry-all-errors "https://cf.heygaia.io/" | tee /tmp/preview-headers.out | grep -qi "^x-robots-tag:.*noindex"
+          echo "Preview noindex: OK (non-prod host carries X-Robots-Tag noindex)"
 
       - name: Fail visibly on preview error
         if: failure()

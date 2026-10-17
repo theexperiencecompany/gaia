@@ -263,9 +263,10 @@ const nextConfig = {
           },
         ],
       },
-      // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
-      // Next content-hashes chunk filenames in prod, so its default immutable
-      // headers are correct; in dev, Turbopack reuses filenames across rebuilds, so a custom long-cache header would pin a stale bundle and break hot reloads.
+      // No custom Cache-Control for /_next/static: dev reuses filenames, prod hashes are immutable by default.
+      // Non-prod noindex lives in src/middleware.ts (negative host logic covering every
+      // non-allowlisted host), not here: `has: host` can only enumerate known hosts.
+      // Post-deploy smoke asserts prod carries no X-Robots-Tag.
       {
         source: "/images/(.*)",
         headers: [

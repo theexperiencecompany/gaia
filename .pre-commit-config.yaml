@@ -118,6 +118,16 @@ repos:
         language: system
         files: \.(js|jsx|ts|tsx|mjs|cjs)$
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
+
+      - id: content-dupes
+        name: SEO data forest has no new duplication (FAQ/meta/cells/routes/fallback ratchet)
+        # Whole-forest scan, always: it runs in ~1 s and duplication is a
+        # cross-file property, so a changed-files subset would miss the pair
+        # half of every finding.
+        entry: python3 scripts/checks/content_dupes.py
+        language: system
+        files: '^apps/web/public/data/.*\.json$|^scripts/checks/content_dupes.*\.py$|^scripts/checks/content_dupes.*\.json$'
+        pass_filenames: false
   - repo: local
     hooks:
       - id: react-doctor
