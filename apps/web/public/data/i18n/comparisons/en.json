@@ -3,8 +3,8 @@
     "name": "Activepieces",
     "tagline": "Open-source workflow automation with a visual flow builder",
     "description": "Activepieces is an open-source, no-code automation platform built as a Zapier alternative. It lets you connect 440+ apps through a visual flow builder and rule-based triggers. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously — acting on your behalf without you needing to define every rule.",
-    "metaTitle": "Activepieces Alternative with AI Email — GAIA vs Activepieces",
-    "metaDescription": "Activepieces is a solid open-source automation platform but requires you to build every rule manually. GAIA is an open-source Activepieces alternative with AI email integration and autonomous decision-making — no flow builder needed to automate your workflows.",
+    "metaTitle": "Activepieces vs GAIA: Hand-Built Flows vs AI Automation",
+    "metaDescription": "Activepieces runs flows you build by hand across 440+ apps. GAIA skips the flow builder: email triage, tasks, and workflows across 50+ tools. Free tier.",
     "keywords": [
       "GAIA vs Activepieces",
       "Activepieces alternative",
@@ -1099,8 +1099,8 @@
     "name": "Calendly",
     "tagline": "Scheduling automation for external booking links",
     "description": "Calendly lets people book time with you by sharing a link to your availability. GAIA manages your entire calendar from the inside — scheduling meetings, finding free slots, preparing briefings, and automating follow-ups — without generating public booking pages.",
-    "metaTitle": "Calendly Alternative with Full AI Productivity OS — GAIA vs Calendly",
-    "metaDescription": "Calendly handles scheduling links but stops there. GAIA is an open-source Calendly alternative that is a full AI productivity OS — managing your calendar, email, tasks, and workflows across 50+ tools proactively, with a free tier.",
+    "metaTitle": "Calendly vs GAIA: Booking Links vs an AI Scheduler",
+    "metaDescription": "Calendly vs GAIA: links book the meeting, AI runs everything around it. GAIA preps, follows up, and manages tasks across 50+ tools. Free tier.",
     "keywords": [
       "GAIA vs Calendly",
       "Calendly alternative",
@@ -4550,8 +4550,8 @@
     "name": "HEY Email",
     "tagline": "A delightfully opinionated take on email",
     "description": "HEY is an opinionated email service from 37signals that reimagines the inbox with a unique three-section model — the Imbox, The Feed, and Paper Trail. GAIA is a proactive AI productivity OS that manages your email alongside calendar, tasks, workflows, and 50+ integrations — without requiring you to abandon Gmail or adopt a proprietary email address.",
-    "metaTitle": "HEY Email Alternative with AI Automation — GAIA vs HEY",
-    "metaDescription": "HEY Email reimagines the inbox with an opinionated structure but still requires manual work. GAIA is an open-source HEY Email alternative with AI automation that triages your Gmail, drafts replies, creates tasks, and runs workflows — with a free tier.",
+    "metaTitle": "What Is HEY Email? How It Works and the AI Alternative",
+    "metaDescription": "HEY Email sorts mail into three sections, with no Gmail support and almost no AI. GAIA triages Gmail, drafts replies, and creates tasks. Free tier.",
     "keywords": [
       "GAIA vs HEY",
       "HEY email alternative",
@@ -4567,9 +4567,11 @@
       "HEY Email alternative reddit",
       "HEY Email alternative 2026",
       "best HEY Email replacement",
-      "HEY Email vs GAIA"
+      "HEY Email vs GAIA",
+      "hey email",
+      "what is hey email"
     ],
-    "intro": "HEY Email, built by 37signals, is one of the most opinionated email services ever shipped. Its three-section model — the Imbox for important messages, The Feed for newsletters, and Paper Trail for receipts — is a well-considered philosophy about how email should work. It is a product with genuine conviction. But that conviction comes with significant constraints: HEY requires a @hey.com address or a custom domain through a separate plan, offers no Gmail support, has no third-party API, and has almost no AI beyond basic writing assistance. GAIA approaches email from a fundamentally different angle. Rather than reimagining what an inbox looks like, GAIA deploys AI to manage your existing Gmail inbox proactively — triaging by urgency, drafting context-aware replies, converting emails into tasks, applying labels, and running multi-step workflows across your entire tool stack. HEY asks you to change how you relate to email; GAIA removes most of the work of dealing with it.",
+    "intro": "HEY Email is the email service from 37signals that throws away the traditional inbox. Its three-section model — the Imbox for important messages, The Feed for newsletters, and Paper Trail for receipts — is a well-considered philosophy about how email should work. It is a product with genuine conviction. But that conviction comes with significant constraints: HEY requires a @hey.com address or a custom domain through a separate plan, offers no Gmail support, has no third-party API, and has almost no AI beyond basic writing assistance. GAIA approaches email from a fundamentally different angle. Rather than reimagining what an inbox looks like, GAIA deploys AI to manage your existing Gmail inbox proactively — triaging by urgency, drafting context-aware replies, converting emails into tasks, applying labels, and running multi-step workflows across your entire tool stack. HEY asks you to change how you relate to email; GAIA removes most of the work of dealing with it.",
     "rows": [
       {
         "feature": "Core approach",
@@ -7564,8 +7566,8 @@
     "name": "Pipedream",
     "tagline": "Developer-focused workflow automation with serverless code execution",
     "description": "Pipedream is a developer-centric automation platform that combines a 2,800+ app integration library with full Node.js code execution in serverless workflow steps — ideal for engineers building production-grade integrations. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations through natural language and autonomous action, built for knowledge workers who want AI to handle their digital life rather than an iPaaS platform to program.",
-    "metaTitle": "Pipedream Alternative with AI-Native Automation — GAIA vs Pipedream",
-    "metaDescription": "Compare GAIA and Pipedream. Pipedream gives developers code-level automation power, but GAIA manages email, calendar, tasks, and workflows through natural language — no code required.",
+    "metaTitle": "Pipedream vs GAIA: Code Workflows vs No-Code AI",
+    "metaDescription": "Pipedream automates through code across 2,800+ apps. GAIA uses plain English for email, calendar, tasks, and workflows. No code required.",
     "keywords": [
       "GAIA vs Pipedream",
       "Pipedream alternative",

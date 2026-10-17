@@ -179,7 +179,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const seoDescription = generateIntegrationDescription(integration);
 
-  const title = generateIntegrationTitle(integrationName, integration.category);
+  const title = generateIntegrationTitle(
+    integrationName,
+    integration.category,
+    slug,
+  );
   const ogTitle = `${integrationName} AI Integration - Connect ${integrationName} to Your AI Assistant`;
 
   return {

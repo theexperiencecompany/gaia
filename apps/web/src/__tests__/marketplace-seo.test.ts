@@ -118,6 +118,31 @@ describe("generateIntegrationTitle", () => {
     }
     expect(new Set(titles).size).toBeGreaterThan(1);
   });
+
+  it("uses MCP Server phrasing only for slugs with per-tool MCP queries", () => {
+    const cases: [string, string][] = [
+      ["linkup", "Linkup"],
+      ["web-fetch", "Web Fetch"],
+      ["any-do", "Any.do"],
+      ["hey-email-mcp", "HEY Email"],
+      ["wakatime", "WakaTime"],
+      ["pixellab", "PixelLab"],
+      ["google-meet", "Google Meet"],
+      ["sequential-thinking", "Sequential Thinking"],
+    ];
+    for (const [slug, name] of cases) {
+      const title = generateIntegrationTitle(name, "other", slug);
+      expect(title).toContain("MCP Server");
+      expect(title.length).toBeLessThanOrEqual(60);
+    }
+    // Unlisted slugs keep their category title (no slug, unknown slug).
+    expect(generateIntegrationTitle("Slack", "communication")).toContain(
+      "AI Integration",
+    );
+    expect(
+      generateIntegrationTitle("Slack", "communication", "slack"),
+    ).toContain("AI Integration");
+  });
 });
 
 describe("getIntegrationFAQs variance", () => {

@@ -64,10 +64,31 @@ export function generateIntegrationDescription(integration: {
   return fitMetaDescription(base, toolsNote);
 }
 
+/** Marketplace page slugs whose ranking queries carry per-tool MCP intent. */
+const MCP_SERVER_SLUGS: ReadonlySet<string> = new Set([
+  "linkup",
+  "web-fetch",
+  "any-do",
+  "hey-email-mcp",
+  "wakatime",
+  "pixellab",
+  "google-meet",
+  "sequential-thinking",
+]);
+
 export function generateIntegrationTitle(
   name: string,
   category: string,
+  slug?: string,
 ): string {
+  // Per-tool MCP queries (GSC 2026-07-19..2026-10-17) land on these
+  // marketplace pages with "... mcp" intent. Only slugs whose ranking
+  // queries carry that intent get the MCP Server phrasing; every other
+  // page keeps its category title below. Slugs are the page slugs the
+  // detail route is served under (native integration id or community slug).
+  if (slug && MCP_SERVER_SLUGS.has(slug)) {
+    return `${name} MCP Server: Automate with AI`;
+  }
   // The layout title template appends "| GAIA" — never include the brand here,
   // and keep titles short enough to survive SERP truncation (~60 chars).
   const categoryTitles: Record<string, string> = {

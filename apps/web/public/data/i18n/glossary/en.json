@@ -205,8 +205,8 @@
   },
   "task-automation": {
     "term": "Task Automation",
-    "metaTitle": "AI Task Automation: Automate Repetitive Work with AI",
-    "metaDescription": "AI task automation uses artificial intelligence to handle repetitive tasks automatically. Learn how GAIA automates task creation, management, and execution.",
+    "metaTitle": "What Is Task Automation? AI That Runs Repetitive Work",
+    "metaDescription": "Task automation creates, prioritizes, and runs repetitive tasks, even from emails. GAIA creates, sorts, and runs tasks for you daily. Free tier.",
     "definition": "Task automation is the use of technology, particularly AI, to automatically create, manage, prioritize, and execute repetitive tasks that would otherwise require manual effort.",
     "extendedDescription": "Task automation has evolved from simple reminders and rules-based triggers to intelligent systems that understand context. Modern AI task automation can identify when a task needs to be created from an email or message, determine its priority based on deadlines and importance, assign it to the right project or category, set appropriate due dates, and even execute the task itself. The goal is to reduce the cognitive overhead of managing a task list and ensure nothing falls through the cracks.",
     "keywords": [
@@ -357,8 +357,8 @@
   },
   "ai-assistant": {
     "term": "AI Assistant",
-    "metaTitle": "AI Assistant vs Chatbot: What Is the Difference?",
-    "metaDescription": "An AI assistant uses artificial intelligence to help users complete tasks, going beyond simple chatbot responses. Learn how GAIA redefines the AI assistant category.",
+    "metaTitle": "What Is a Chatbot? Chatbots vs AI Assistants Explained",
+    "metaDescription": "A chatbot chats but cannot act for you. An AI assistant like GAIA does the work: email triage, calendars, and tasks across 50+ tools.",
     "definition": "An AI assistant is a software system that uses artificial intelligence to help users accomplish tasks, manage information, and automate workflows, going beyond simple question-and-answer interactions.",
     "extendedDescription": "The term AI assistant encompasses a wide range of systems, from simple voice assistants like Siri to sophisticated productivity platforms. What separates a true AI assistant from a chatbot is the ability to take action. A chatbot answers questions. An AI assistant manages your calendar, drafts your emails, organizes your tasks, and coordinates your workflows. The most advanced AI assistants combine conversational AI with tool integration, persistent memory, and proactive behavior to function as digital workers rather than just conversational partners.",
     "keywords": [
@@ -377,6 +377,10 @@
       {
         "question": "Is an AI assistant better than a chatbot?",
         "answer": "An AI assistant goes beyond conversation to take actions on your behalf. GAIA does not just answer questions about your schedule. It actively manages your calendar, creates tasks from emails, drafts replies, and automates workflows across your connected tools."
+      },
+      {
+        "question": "What is a chatbot?",
+        "answer": "A chatbot is software that holds a text conversation. It answers questions with scripted or generated replies but cannot act on your behalf. An AI assistant like GAIA does the work behind the words: triaging email, managing your calendar, and running workflows across 50+ connected tools."
       }
     ]
   },
@@ -833,8 +837,8 @@
   },
   "time-blocking": {
     "term": "Time Blocking",
-    "metaTitle": "What Is Time Blocking? AI-Powered Scheduling",
-    "metaDescription": "Time blocking assigns specific tasks to specific time slots on your calendar. Learn how GAIA automates time blocking with AI scheduling.",
+    "metaTitle": "What Is Time Blocking? AI-Powered Time Management",
+    "metaDescription": "Time blocking gives every task a calendar slot, but manual upkeep fails when meetings shift. GAIA builds blocks and adjusts them automatically. Free tier.",
     "definition": "Time blocking is a scheduling method where you divide your day into dedicated blocks of time, each assigned to a specific task or type of work, turning your calendar into a concrete plan for the day.",
     "extendedDescription": "Time blocking is used by executives, engineers, and creators to ensure important work gets scheduled rather than squeezed between meetings. Instead of a vague to-do list, each task gets a specific time slot on your calendar. This eliminates the decision of what to work on next and creates accountability for completing focused work. The challenge is that time blocking requires constant maintenance. Meetings shift, new priorities emerge, and tasks take longer than expected. Manually adjusting your time blocks throughout the day is tedious, which is why many people start time blocking but struggle to maintain it.",
     "keywords": [
@@ -2848,7 +2852,7 @@
   "cron-job": {
     "term": "Cron Job",
     "metaTitle": "What Is a Cron Job? Scheduled Tasks in Software",
-    "metaDescription": "A cron job is a scheduled task that runs automatically at defined intervals. Learn how GAIA uses cron-style scheduling for proactive AI workflows.",
+    "metaDescription": "A cron job runs a task on its own on a set schedule, written in cron syntax. GAIA schedules work the same way, such as your morning briefing. Free tier.",
     "definition": "A cron job is a scheduled task configured to run automatically at specified time intervals or on specific dates using the cron scheduling syntax, enabling recurring automated processes without manual triggers.",
     "extendedDescription": "The name comes from Chronos, the Greek personification of time. Cron is a Unix utility that runs scheduled commands based on a configuration file (crontab) with expressions defining when each job should run. The syntax allows specification of minutes, hours, days, months, and days of the week.\n\nA cron expression like '0 9 * * 1-5' means: at minute 0, hour 9, any day of month, any month, on weekdays (Monday-Friday) — i.e., 9:00 AM on every weekday. This enables precise scheduling of recurring automated tasks.\n\nCron jobs power background automation: nightly database backups, hourly data syncs, daily report generation, weekly digest emails, and monthly billing cycles are all commonly implemented as cron jobs. For AI assistants, cron jobs trigger scheduled workflows like morning briefings, end-of-day summaries, and weekly review emails.\n\nModern cloud environments have moved beyond Unix cron to managed scheduling services (AWS EventBridge, Google Cloud Scheduler) and application-level schedulers (Celery Beat, APScheduler, ARQ). These offer better reliability, logging, and monitoring than raw cron.",
     "keywords": [
@@ -2861,6 +2865,10 @@
     ],
     "howGaiaUsesIt": "GAIA uses cron-style scheduling for proactive workflows: morning briefings delivered at your configured time, daily task reviews, weekly digest emails, and scheduled automation runs. The scheduling system uses ARQ (GAIA's Redis-based task queue) for reliable background job execution with retry logic and monitoring.",
     "faqs": [
+      {
+        "question": "What is a cron job?",
+        "answer": "A cron job is a task set to run automatically at defined times or dates, using cron syntax to specify minutes, hours, days, and weekdays, with no manual trigger needed. Cron jobs power background automation such as nightly backups and hourly syncs, and GAIA uses the same idea for scheduled briefings and recurring workflows."
+      },
       {
         "question": "Can I schedule GAIA to send me a daily briefing at a specific time?",
         "answer": "Yes. GAIA's scheduled workflow feature lets you configure timed triggers. A daily briefing can be scheduled for any time, combining your email summary, calendar overview, task priorities, and any other configured content."
@@ -4606,6 +4614,10 @@
     ],
     "howGaiaUsesIt": "GAIA supports iCal subscription URLs for importing external calendars — conference schedules, team rosters, project timelines — directly into your unified calendar view. When GAIA creates calendar events and exports them to connected tools, it uses the iCalendar format to ensure compatibility across Google Calendar, Outlook, and Apple Calendar. GAIA also parses iCal data to understand recurring event patterns and attendee lists when performing calendar analysis.",
     "faqs": [
+      {
+        "question": "What is the difference between iCal and iCalendar?",
+        "answer": "There is none. iCal is the everyday name for the iCalendar standard (RFC 5545, published 1998). Files and feeds in this format use the .ics extension and carry event titles, times, recurrence rules, attendees, and locations, readable by Google Calendar, Outlook, Apple Calendar, and GAIA alike."
+      },
       {
         "question": "What is an .ics file?",
         "answer": "An .ics file is a plain-text file in iCalendar format containing one or more calendar events. You can open it in any calendar application — Google Calendar, Outlook, Apple Calendar — to import the events. It is the standard way to share calendar events across different platforms."
