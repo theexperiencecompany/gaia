@@ -122,8 +122,11 @@ from app.config.oauth_content import (
     PERPLEXITY_CONTENT,
     POSTHOG_CONTENT,
     REDDIT_CONTENT,
+    REMINDERS_CONTENT,
+    SKILLS_CONTENT,
     SLACK_CONTENT,
     TODOIST_CONTENT,
+    TODOS_CONTENT,
     TRELLO_CONTENT,
     TWITTER_CONTENT,
     YELP_CONTENT,
@@ -449,6 +452,7 @@ _DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
             ],
             memory_prompt=TODO_MEMORY_PROMPT,
         ),
+        content=TODOS_CONTENT,
     ),
     # Internal Reminders System (no OAuth required)
     OAuthIntegration(
@@ -462,6 +466,7 @@ _DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
         is_featured=False,
         short_name="reminders",
         managed_by="internal",
+        content=REMINDERS_CONTENT,
     ),
     # Internal Skills System (no OAuth required)
     OAuthIntegration(
@@ -487,6 +492,7 @@ _DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=SKILLS_MEMORY_PROMPT,
         ),
+        content=SKILLS_CONTENT,
     ),
     OAuthIntegration(
         id="gmail",
