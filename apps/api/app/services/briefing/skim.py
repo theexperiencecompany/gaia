@@ -65,7 +65,7 @@ def _overnight(done: list[str], running: list[str], period: str) -> str | None:
 
 
 def full_brief_url(briefing_id: str) -> str:
-    """Where the skim's link sends the reader: the brief's own page in the app."""
+    """Return the brief's in-app page URL, the skim's link when it has no heygaia.link."""
     return f"{settings.FRONTEND_URL}{brief_path(briefing_id)}"
 
 

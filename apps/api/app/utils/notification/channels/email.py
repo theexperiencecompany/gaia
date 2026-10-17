@@ -7,8 +7,8 @@ as failed.
 
 Template selection keys off notification.metadata["kind"]: briefing_daily and
 briefing_weekly embed the edition image the briefing service already rendered and
-hosted (metadata["edition_image_url"]), linked to the brief's own page
-(metadata["briefing_id"]). A briefing notification missing either, or its
+hosted (metadata["edition_image_url"]), linked to the brief's heygaia.link
+(metadata["brief_url"]). A briefing notification missing either, or its
 content.rich_content payload, fails at transform. Anything else renders the
 plain-notification template.
 """
@@ -52,19 +52,19 @@ class _EmailMetadata(BaseModel):
 
 
 class _BriefingEmailMetadata(_EmailMetadata):
-    """A briefing's metadata: the brief it links to and its already-hosted edition image."""
+    """A briefing's metadata: its heygaia.link and its already-hosted edition image."""
 
-    briefing_id: str
+    brief_url: str
     edition_image_url: str
 
 
 @dataclass(frozen=True)
 class BriefingEmail:
-    """A daily or weekly briefing kind with its payload, brief id and hosted edition image."""
+    """A daily or weekly briefing kind with its payload, heygaia.link and hosted edition image."""
 
     kind: str
     payload: BriefingPayload
-    briefing_id: str
+    brief_url: str
     edition_image_url: str
 
 
@@ -108,7 +108,7 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
             briefing=BriefingEmail(
                 kind=kind,
                 payload=BriefingPayload.model_validate(content.rich_content),
-                briefing_id=metadata.briefing_id,
+                brief_url=metadata.brief_url,
                 edition_image_url=metadata.edition_image_url,
             ),
         )
@@ -148,7 +148,7 @@ def _render_briefing(briefing: BriefingEmail, title: str, unsubscribe_url: str) 
     html = render_edition_email(
         briefing.payload,
         image_url=briefing.edition_image_url,
-        briefing_id=briefing.briefing_id,
+        brief_url=briefing.brief_url,
         unsubscribe_url=unsubscribe_url,
         preheader=skim.preheader,
     )

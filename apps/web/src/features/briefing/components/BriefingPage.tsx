@@ -25,5 +25,7 @@ export function BriefingPage({ briefingId }: { briefingId: string }) {
       </main>
     );
   }
-  return <StandaloneBriefing briefing={briefing} />;
+  return (
+    <StandaloneBriefing briefing={briefing} ownedBriefingId={briefingId} />
+  );
 }

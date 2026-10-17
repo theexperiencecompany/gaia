@@ -49,7 +49,7 @@ _USER_ID = "user-1"
 _UNSUB_SECRET = "test-unsub-secret"
 _API_HOST = "https://api.test"
 _FRONTEND_URL = "https://app.test"
-_BRIEFING_ID = "brief-42"
+_BRIEF_URL = "https://heygaia.link/brief42short"
 _EDITION_IMAGE_URL = "https://cdn.test/briefing/editions/user-1/briefing_daily_2026-10-14.png"
 
 
@@ -89,16 +89,16 @@ _BRIEF = BriefingPayload.model_validate(_BRIEF_PAYLOAD)
 _DAILY = BriefingEmail(
     kind=NOTIFICATION_KIND_BRIEFING_DAILY,
     payload=_BRIEF,
-    briefing_id=_BRIEFING_ID,
+    brief_url=_BRIEF_URL,
     edition_image_url=_EDITION_IMAGE_URL,
 )
 _WEEKLY = BriefingEmail(
     kind=NOTIFICATION_KIND_BRIEFING_WEEKLY,
     payload=_BRIEF,
-    briefing_id=_BRIEFING_ID,
+    brief_url=_BRIEF_URL,
     edition_image_url=_EDITION_IMAGE_URL,
 )
-_BRIEFING_METADATA = {"briefing_id": _BRIEFING_ID, "edition_image_url": _EDITION_IMAGE_URL}
+_BRIEFING_METADATA = {"brief_url": _BRIEF_URL, "edition_image_url": _EDITION_IMAGE_URL}
 
 
 @pytest.fixture(autouse=True)
@@ -230,11 +230,11 @@ class TestEmailChannelAdapterContract:
     @pytest.mark.parametrize(
         "missing",
         [
-            {"briefing_id": _BRIEFING_ID},
+            {"brief_url": _BRIEF_URL},
             {"edition_image_url": _EDITION_IMAGE_URL},
-            {"briefing_id": _BRIEFING_ID, "edition_image_url": None},
+            {"brief_url": _BRIEF_URL, "edition_image_url": None},
         ],
-        ids=["no-image-url", "no-briefing-id", "null-image-url"],
+        ids=["no-image-url", "no-brief-url", "null-image-url"],
     )
     async def test_transform_fails_loud_on_a_briefing_without_its_hosted_edition(
         self, missing: dict[str, str | None]
@@ -447,13 +447,13 @@ class TestDeliverBriefings:
         rasterizer.assert_not_awaited()
         upload.assert_not_called()
 
-    async def test_the_image_links_to_the_briefs_own_page(self) -> None:
+    async def test_the_image_links_to_the_briefs_heygaia_link(self) -> None:
         route = _mock_send()
 
         await EmailChannelAdapter().deliver(_content(_DAILY), _USER_ID)
 
         assert (
-            f'<a href="{_FRONTEND_URL}/brief/{_BRIEFING_ID}" style="text-decoration:none;"><img'
+            f'<a href="{_BRIEF_URL}" style="text-decoration:none;"><img'
             in _sent_body(route)["html"]
         )
 
@@ -480,7 +480,7 @@ class TestDeliverBriefings:
         untitled = BriefingEmail(
             kind=NOTIFICATION_KIND_BRIEFING_DAILY,
             payload=_BRIEF.model_copy(update={"headline": ""}),
-            briefing_id=_BRIEFING_ID,
+            brief_url=_BRIEF_URL,
             edition_image_url=_EDITION_IMAGE_URL,
         )
 
@@ -501,7 +501,7 @@ class TestDeliverBriefings:
 
         html = _sent_body(route)["html"]
         assert f'<img src="{_EDITION_IMAGE_URL}"' in html
-        assert f'href="{_FRONTEND_URL}/brief/{_BRIEFING_ID}"' in html
+        assert f'href="{_BRIEF_URL}"' in html
 
 
 # ========================================================================

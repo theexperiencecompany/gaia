@@ -3,7 +3,7 @@
 The edition targets a real browser, so it is rasterized to an image (render.py),
 hosted on the CDN once when the brief is generated, and referenced by URL (Gmail
 blocks base64 data: images). The email embeds that stored image, linked to the
-brief's own page, above a small email-safe action strip of deep links into the app;
+brief's heygaia.link, above a small email-safe action strip of deep links into the app;
 the email can never approve or send on its own.
 """
 
@@ -25,7 +25,6 @@ from app.constants.notifications import (
 from app.models.briefing_models import BriefingItem, BriefingPayload
 from app.services.briefing.editions import edition_frame, render_edition, renderer_for
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
-from app.services.briefing.skim import full_brief_url
 from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
 
@@ -180,12 +179,11 @@ def render_edition_email(
     payload: BriefingPayload,
     *,
     image_url: str,
-    briefing_id: str,
+    brief_url: str,
     unsubscribe_url: str,
     preheader: str = "",
 ) -> str:
-    """Wrap the already-hosted edition image, linked to the brief's page, with the action strip."""
-    brief_url = full_brief_url(briefing_id)
+    """Wrap the already-hosted edition image, linked to the brief's heygaia.link, with the action strip."""
     alt = escape(f"{payload.headline} — {payload.lede}".strip(" —"))
 
     # The inbox preview line (the skim's asks + overnight sentence), hidden in

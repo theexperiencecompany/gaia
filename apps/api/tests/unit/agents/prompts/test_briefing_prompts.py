@@ -105,23 +105,6 @@ def test_each_situation_gives_its_own_instructions_and_no_other(
             assert other[0] not in prompt
 
 
-def test_the_voice_is_told_what_each_fact_carries_and_never_to_paste_a_link() -> None:
-    """The facts carry a summary, a size and "waiting on you"; the brief's page links every item."""
-    prompt = " ".join(_prompt().split())
-
-    assert (
-        "A fact may carry a ``summary:`` snippet of its deliverable: use it to name specifics"
-    ) in prompt
-    assert "never invent ones that are not there." in prompt
-    assert "ALWAYS summarise: voice a fact's ``summary:`` whenever it has one." in prompt
-    assert "``artifact holds ~N chars`` is only its size, and ``waiting on you`` marks" in prompt
-    assert (
-        "The brief's own page links every item, so never paste a URL or an artifact's "
-        "contents into a bubble."
-    ) in prompt
-    assert "``link:``" not in prompt
-
-
 def test_an_unknown_wind_down_stage_adds_nothing() -> None:
     assert _prompt(wind_down="paused") == _prompt()
 

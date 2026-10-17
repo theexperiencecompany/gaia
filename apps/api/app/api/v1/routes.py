@@ -41,6 +41,7 @@ from app.api.v1.endpoints import (
     search,
     sessions,
     shares,
+    short_links,
     skills,
     support,
     todos,
@@ -93,6 +94,7 @@ router.include_router(todos.router, tags=["Todos"])
 router.include_router(workflows.router, tags=["Workflows"])
 router.include_router(triggers.router, tags=["Triggers"])
 router.include_router(reminders.router, tags=["Reminders"])
+router.include_router(short_links.router)
 router.include_router(skills.router, tags=["Skills"])
 router.include_router(support.router, tags=["Support"])
 router.include_router(payments.router, prefix="/payments", tags=["Payments"])

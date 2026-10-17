@@ -1,43 +1,51 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { ArrowLeft01Icon } from "@icons";
 import type { BriefingModel } from "@shared/api/generated";
-import Link from "next/link";
 
-import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { StandalonePage } from "@/components/layout/StandalonePage";
+import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 
-import { BriefingEdition } from "./BriefingEdition";
+import {
+  BriefingEdition,
+  type BriefingEditionPayload,
+} from "./BriefingEdition";
 
 export interface StandaloneBriefingProps {
-  briefing: Pick<BriefingModel, "payload" | "edition_image_url">;
+  briefing: Pick<BriefingModel, "edition_image_url"> & {
+    payload: BriefingEditionPayload;
+  };
+  /** Set on the owner's own page, which can share the brief or stop sharing it. */
+  ownedBriefingId?: string;
 }
+
+// The edition image is a permanent CDN URL already embedded in the brief's email,
+// so stopping the link cannot take the picture back.
+const BRIEF_STOP_WARNING =
+  "The edition image keeps its own address, which may already be in your email, so it stays viewable.";
 
 /**
  * A brief on its own full page, outside the app shell: opened from the email image,
- * the chat link or the Briefings list. Signed-in readers get a way back to their chats.
+ * the chat link or the Briefings list.
  */
-export function StandaloneBriefing({ briefing }: StandaloneBriefingProps) {
-  const { userId } = useCurrentUser();
+export function StandaloneBriefing({
+  briefing,
+  ownedBriefingId,
+}: StandaloneBriefingProps) {
   return (
-    <main className="min-h-screen w-full bg-primary-bg px-4 py-6">
-      <div className="mx-auto w-full max-w-3xl space-y-4">
-        {userId && (
-          <Button
-            as={Link}
-            href="/c"
-            variant="light"
-            size="sm"
-            startContent={<ArrowLeft01Icon className="size-4" />}
-          >
-            Back to chats
-          </Button>
-        )}
-        <BriefingEdition
-          payload={briefing.payload}
-          imageUrl={briefing.edition_image_url}
-        />
-      </div>
-    </main>
+    <StandalonePage>
+      {ownedBriefingId && (
+        <div className="flex justify-end">
+          <ShareLinkControls
+            targetType="briefing"
+            targetId={ownedBriefingId}
+            stopWarning={BRIEF_STOP_WARNING}
+          />
+        </div>
+      )}
+      <BriefingEdition
+        payload={briefing.payload}
+        imageUrl={briefing.edition_image_url}
+      />
+    </StandalonePage>
   );
 }

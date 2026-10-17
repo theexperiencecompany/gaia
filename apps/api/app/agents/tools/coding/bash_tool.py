@@ -17,7 +17,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from prometheus_client import Counter
 
-from app.agents.tools.coding._artifacts import publish_artifact
+from app.agents.tools.coding._artifacts import artifact_links_note, publish_artifact
 from app.agents.tools.coding._context import (
     get_session_id,
     get_user_id,
@@ -36,6 +36,7 @@ from app.agents.workspace.paths import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
+    ARTIFACT_MTIME_SKEW_SECONDS,
     BASH_DEFAULT_TIMEOUT_SECONDS,
     BASH_MAX_COMMAND_LENGTH,
     BASH_MAX_TIMEOUT_SECONDS,
@@ -52,7 +53,7 @@ from app.services.sandbox.execute_client import (
     sandbox_execute_enabled,
     seed_execute_client,
 )
-from app.services.storage import FsOps, fs_timer
+from app.services.storage import ArtifactInfo, FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
@@ -296,14 +297,7 @@ async def _run_bash(
             execute_env = await _build_execute_env(run, sbx)
             if background:
                 return await _run_background(sbx, run, execute_env)
-            result = await _run_foreground(sbx, run, execute_env)
-            # A bash command can create artifacts many ways (cat, python, mv,
-            # curl -o, …), not just the write tool. Enumerate the session's
-            # artifacts/ from the sandbox itself (no cross-mount race) in real time.
-            if session_id:
-                async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                    await _publish_artifacts(sbx, user_id, session_id)
-            return result
+            return await _run_foreground_and_publish(sbx, run, execute_env)
     except SandboxAcquisitionError as e:
         return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable ({e})", session_id)
     except Exception as e:
@@ -312,9 +306,34 @@ async def _run_bash(
         return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
 
 
-async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:
+async def _run_foreground_and_publish(
+    sbx: object, run: _BashInvocation, envs: dict[str, str] | None
+) -> str:
+    """Run the command in the foreground, then link the session artifacts it wrote.
+
+    A bash command can create artifacts many ways (cat, python, mv, curl -o, …),
+    not just the write tool, so the session's artifacts/ is enumerated from the
+    sandbox itself (no cross-mount race) right after the run.
+    """
+    started_at = time.time()
+    result = await _run_foreground(sbx, run, envs)
+    if not run.session_id:
+        return result
+    async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
+        links = await _publish_artifacts(sbx, run.user_id, run.session_id, changed_since=started_at)
+    return result + artifact_links_note(links)
+
+
+async def _publish_artifacts(
+    sbx: object, user_id: str, session_id: str, *, changed_since: float
+) -> dict[str, str]:
     """Enumerate the session's ``artifacts/`` in the sandbox and push each
     file as a real-time artifact event (covers cat/python/mv/curl, etc.).
+
+    Returns the heygaia.link of every artifact this command wrote (mtime at or
+    after ``changed_since``, less ``ARTIFACT_MTIME_SKEW_SECONDS`` for clock
+    drift between host and sandbox). Only those are linked — the other files
+    publish without one — so a command never shares every file in the session.
 
     Implementation note: this used to be N+1 sandbox round-trips (one ``find``
     plus one ``base64`` per artifact). For a turn that writes 5 artifacts that
@@ -338,10 +357,11 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
         f'  printf "\\0"'
         f"' {{}} \\; 2>/dev/null"
     )
+    links: dict[str, str] = {}
     try:
         res = await sbx.commands.run(enumerate_cmd, timeout=15)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
     except Exception:
-        return
+        return links
 
     stdout = getattr(res, "stdout", "") or ""
     fields = stdout.split("\0")
@@ -363,9 +383,21 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             mtime = float(mtime_str) if mtime_str else time.time()
         except ValueError:
             mtime = time.time()
-        inline_body = _decode_inline(body_b64, size_bytes, detect_content_type(rel))
+        artifact = ArtifactInfo(
+            path=rel, size_bytes=size_bytes, mtime=mtime, content_type=detect_content_type(rel)
+        )
+        inline_body = _decode_inline(body_b64, size_bytes, artifact.content_type)
         # Same shared publisher write/edit use — one owner of the event shape.
-        await publish_artifact(user_id, session_id, rel, size_bytes, mtime, inline_body)
+        short_url = await publish_artifact(
+            user_id,
+            session_id,
+            artifact,
+            inline_body,
+            written_this_turn=mtime >= changed_since - ARTIFACT_MTIME_SKEW_SECONDS,
+        )
+        if short_url:
+            links[rel] = short_url
+    return links
 
 
 def _decode_inline(body_b64: str, size_bytes: int, content_type: str | None) -> str | None:

@@ -1,21 +1,17 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
-import {
-  AlertCircleIcon,
-  CheckmarkCircle02Icon,
-  Clock04Icon,
-  Loading03Icon,
-} from "@icons";
+import { Clock04Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useMemo } from "react";
 import { ChevronRight } from "@/components/shared/icons";
+import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 
 import { useWorkflowExecutions } from "../hooks/useWorkflowExecutions";
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";
+import { ExecutionStatusBadge } from "./ExecutionStatusBadge";
 import PanelHeader from "./workflow-modal/PanelHeader";
 
 interface WorkflowExecutionHistoryProps {
@@ -48,61 +44,6 @@ function formatDuration(seconds: number | undefined): string {
   if (seconds < 60) return `Ran for ${Math.round(seconds)}s`;
   if (seconds < 3600) return `Ran for ${Math.round(seconds / 60)}m`;
   return `Ran for ${Math.round(seconds / 3600)}h`;
-}
-
-function ExecutionStatusBadge({
-  status,
-}: {
-  status: WorkflowExecution["status"];
-}) {
-  switch (status) {
-    case "success":
-      return (
-        <Chip
-          size="sm"
-          color="success"
-          variant="flat"
-          radius="sm"
-          startContent={<CheckmarkCircle02Icon className="h-3 w-3" />}
-        >
-          Success
-        </Chip>
-      );
-    case "failed":
-      return (
-        <Chip
-          size="sm"
-          color="danger"
-          variant="flat"
-          radius="sm"
-          startContent={<AlertCircleIcon className="h-3 w-3" />}
-        >
-          Failed
-        </Chip>
-      );
-    case "skipped":
-      return (
-        <Chip size="sm" color="default" variant="flat" radius="sm">
-          Skipped
-        </Chip>
-      );
-    case "running":
-      return (
-        <Chip
-          size="sm"
-          color="primary"
-          radius="sm"
-          variant="flat"
-          startContent={
-            <div className="animate-spin">
-              <Loading03Icon className="h-3 w-3" />
-            </div>
-          }
-        >
-          Running
-        </Chip>
-      );
-  }
 }
 
 function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
@@ -162,6 +103,12 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
         )}
       </div>
       <div className="flex items-center gap-2">
+        {execution.status !== "running" && (
+          <ShareLinkControls
+            targetType="workflow_run"
+            targetId={execution.execution_id}
+          />
+        )}
         <span className="text-xs text-zinc-500">
           {relativeLabel ??
             calendarDateFormat.format(new Date(execution.started_at))}

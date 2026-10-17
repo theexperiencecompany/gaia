@@ -59,6 +59,7 @@ from app.models.chat_models import (
 )
 from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
@@ -69,6 +70,7 @@ from app.services.platform_message_service import (
     deliver_reaction_to_platform,
     is_bot_platform,
 )
+from app.services.short_link_service import optional_short_link
 from app.services.workflow.notifications import send_workflow_failure_notification
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -247,6 +249,24 @@ async def deliver_message_to_conversation(
     return source if delivered else None
 
 
+async def _workflow_run_link_line(run: ExecutorRun) -> str:
+    """Return the run's heygaia.link as a closing line, or "" without one.
+
+    "" when the run has no execution, the owner stopped sharing it, or the mint
+    failed — the result message is delivered either way (optional_short_link).
+    Minted here because delivery runs before complete_execution; the public page
+    shows the run's real status, so an early open reads as running.
+    """
+    if not (run.workflow_id and run.workflow_execution_id):
+        return ""
+    url = await optional_short_link(
+        run.user.user_id, ShortLinkTargetType.WORKFLOW_RUN, run.workflow_execution_id
+    )
+    if url is None:
+        return ""
+    return f"\n\n[Open this run]({url})"
+
+
 async def _narrate_and_deliver(
     run: ExecutorRun,
     result_text: str,
@@ -281,6 +301,7 @@ async def _narrate_and_deliver(
         message_kind = MessageKind.EMOJI_ACK
     else:
         log.set(comms_delivery="message")
+        notification_text += await _workflow_run_link_line(run)
 
     # A HIL-resumed run reconciles onto the ORIGINAL message (run.bot_message_id);
     # QUEUED is load-bearing because every live run carries bot_message_id but only

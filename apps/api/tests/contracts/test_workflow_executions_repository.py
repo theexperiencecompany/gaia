@@ -44,6 +44,14 @@ class TestWorkflowExecutionsRepository:
         fetched = await repo.get(doc.execution_id)
         assert fetched is not None and fetched.execution_id == doc.execution_id
 
+    async def test_get_for_user_reads_only_the_owners_execution(self, repo):
+        doc = await repo.create(_execution())
+
+        owned = await repo.get_for_user(doc.execution_id, doc.user_id)
+
+        assert owned is not None and owned.execution_id == doc.execution_id
+        assert await repo.get_for_user(doc.execution_id, _uid("someone-else")) is None
+
     async def test_complete_sets_status_and_duration(self, repo):
         doc = await repo.create(_execution())
         updated = await repo.complete(

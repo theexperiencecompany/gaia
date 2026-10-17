@@ -7,11 +7,13 @@ conflict detection, profile assembly, the user document it returns to bot consum
 and the get_linked_platforms filtering.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, call, patch
 
 from bson import ObjectId
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL
 from app.models.payment_models import PlanType
@@ -30,7 +32,9 @@ from app.services.platform_link_service import (
     start_platform_connect,
 )
 from app.utils.errors import AppError, create_error
+from app.workers.queue import TRACE_ID_KWARG
 from shared.py.analytics.catalog.integrations import IntegrationDisconnected
+from shared.py.wide_events import get_trace_id, log, log_context
 
 
 def _user(**fields) -> UserDocument:
@@ -51,6 +55,34 @@ def mock_repo():
 @pytest.fixture
 def sample_user_id():
     return str(ObjectId())
+
+
+class _FakeArqPool:
+    """ARQ pool stand-in that records enqueue_job exactly as it was called."""
+
+    def __init__(self):
+        self.jobs: list[tuple] = []
+        self.job_kwargs: list[dict] = []
+
+    async def enqueue_job(self, *args, **kwargs):
+        # ARQ's dedup contract: a job id that is already queued, running or
+        # holding a result enqueues nothing and returns None.
+        job_id = kwargs.get("_job_id")
+        if job_id is not None and any(k.get("_job_id") == job_id for k in self.job_kwargs):
+            return None
+        self.jobs.append(args)
+        self.job_kwargs.append(kwargs)
+        return object()
+
+
+@pytest.fixture(autouse=True)
+def day_zero_pool():
+    pool = _FakeArqPool()
+    with patch(
+        "app.services.platform_link_service.RedisPoolManager.get_pool",
+        AsyncMock(return_value=pool),
+    ):
+        yield pool
 
 
 NOW = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
@@ -259,6 +291,100 @@ class TestLinkAccount:
         await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
 
         mock_pending_repo.delete_for_user.assert_not_awaited()
+
+
+class TestLinkSideEffects:
+    """The activation step and the day-zero hello a successful link fires."""
+
+    async def test_a_brand_new_link_enqueues_the_hello_for_that_user_and_platform(
+        self, mock_repo, sample_user_id, day_zero_pool
+    ):
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
+
+        assert day_zero_pool.jobs == [("send_day_zero_hello", sample_user_id, "discord")]
+
+    async def test_concurrent_new_links_enqueue_one_hello(
+        self, mock_repo, sample_user_id, day_zero_pool
+    ):
+        """Two links landing together still queue the hello once."""
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        await asyncio.gather(
+            PlatformLinkService.link_account(sample_user_id, "discord", "discord456"),
+            PlatformLinkService.link_account(sample_user_id, "telegram", "tg-1"),
+        )
+
+        assert len(day_zero_pool.jobs) == 1
+
+    async def test_two_users_linking_together_are_each_greeted(
+        self, mock_repo, sample_user_id, day_zero_pool
+    ):
+        """The hello is deduplicated per user, never across users."""
+        other_user_id = "507f1f77bcf86cd799439099"
+        mock_repo.get.side_effect = lambda user_id: _user(id=user_id, platform_links={})
+        mock_repo.link_platform.side_effect = lambda user_id, *_a, **_k: _user(id=user_id)
+
+        await asyncio.gather(
+            PlatformLinkService.link_account(sample_user_id, "discord", "discord456"),
+            PlatformLinkService.link_account(other_user_id, "telegram", "tg-1"),
+        )
+
+        assert sorted(day_zero_pool.jobs) == sorted(
+            [
+                ("send_day_zero_hello", sample_user_id, "discord"),
+                ("send_day_zero_hello", other_user_id, "telegram"),
+            ]
+        )
+
+    async def test_a_same_id_relink_never_re_greets(self, mock_repo, sample_user_id, day_zero_pool):
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"discord": {"id": "discord123"}}
+        )
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        await PlatformLinkService.link_account(sample_user_id, "discord", "discord123")
+
+        assert day_zero_pool.jobs == []
+
+    async def test_the_hello_carries_the_link_requests_trace_id(
+        self, mock_repo, sample_user_id, day_zero_pool
+    ):
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        async with log_context("platform_link_test"):
+            await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
+            trace_id = get_trace_id()
+
+        assert trace_id
+        assert day_zero_pool.job_kwargs[0][TRACE_ID_KWARG] == trace_id
+
+    async def test_a_redis_outage_still_links_and_names_the_cause(self, mock_repo, sample_user_id):
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        with patch(
+            "app.services.platform_link_service.RedisPoolManager.get_pool",
+            AsyncMock(side_effect=RedisConnectionError("redis is down")),
+        ):
+            async with log_context("platform_link_test"):
+                result = await PlatformLinkService.link_account(sample_user_id, "slack", "slack-1")
+                event = dict(log.get())
+
+        assert result.status == "linked"
+        assert result.is_new_link is True
+        assert event["warnings"] == [
+            {
+                "msg": "platform_link.day_zero_enqueue_failed",
+                "user_id": sample_user_id,
+                "platform": "slack",
+                "error": "redis is down",
+            }
+        ]
 
 
 class TestUnlinkAccount:

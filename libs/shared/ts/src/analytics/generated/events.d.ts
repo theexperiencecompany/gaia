@@ -122,6 +122,9 @@ export type ServerEventName =
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
   | "settings:quiet_hours_updated"
+  | "short_link:created"
+  | "short_link:opened"
+  | "short_link:revoked"
   | "skill:disabled"
   | "skill:enabled"
   | "skill:installed"
@@ -1325,6 +1328,23 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "start_hour": number;
     "end_hour": number;
+  };
+  "short_link:created": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+  };
+  "short_link:opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+  };
+  "short_link:revoked": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
   "skill:disabled": {
     "actor": "user" | "agent";

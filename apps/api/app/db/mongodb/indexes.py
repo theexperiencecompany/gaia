@@ -12,6 +12,11 @@ from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
+from app.db.repositories.short_links import (
+    LIVE_TARGET_UNIQUE_INDEX,
+    SLUG_UNIQUE_INDEX,
+    TARGET_HISTORY_INDEX,
+)
 from app.helpers.integration_helpers import dedup_server_url_key
 from shared.py.wide_events import log
 
@@ -20,6 +25,9 @@ from shared.py.wide_events import log
 # name, or an ordered list of (field, direction | "text") pairs.
 IndexKeys = str | list[tuple[str, int | str]]
 
+# Collections whose indexes enforce correctness, not speed: a failed build stops startup.
+# short_links without its unique indexes mints duplicate or revocation-surviving links.
+INTEGRITY_CRITICAL_COLLECTIONS = frozenset({"short_links"})
 # The index helpers never read a document, so they take a collection of any document type.
 DocumentT = TypeVar("DocumentT", bound=Mapping[str, object])
 
@@ -88,8 +96,11 @@ async def create_all_indexes() -> None:
             create_device_token_indexes(),
             create_installed_skills_indexes(),
             create_workflow_execution_indexes(),
+            create_briefing_indexes(),
+            create_award_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
+            create_short_link_indexes(),
             create_hil_approvals_indexes(),
             create_approval_ledger_indexes(),
             create_pending_platform_registration_indexes(),
@@ -126,8 +137,11 @@ async def create_all_indexes() -> None:
             "device_tokens",
             "skills",
             "workflow_executions",
+            "briefings",
+            "awards",
             "bot_sessions",
             "e2b_sandboxes",
+            "short_links",
             "hil_approvals",
             "approval_ledger",
             "pending_platform_registrations",
@@ -147,6 +161,8 @@ async def create_all_indexes() -> None:
                     collection_name=collection_name,
                     result=result,
                 )
+                if collection_name in INTEGRITY_CRITICAL_COLLECTIONS:
+                    raise result
                 index_results[collection_name] = f"FAILED: {result!s}"
             else:
                 index_results[collection_name] = "SUCCESS"
@@ -645,6 +661,45 @@ async def create_workflow_execution_indexes() -> None:
             f"{LogTag.MONGO} Error creating workflow execution indexes",
             error=str(e),
             error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_briefing_indexes() -> None:
+    """Create indexes for briefings collection (one payload per user/date/kind)."""
+    briefings_collection = get_async_collection("briefings")
+    try:
+        await asyncio.gather(
+            briefings_collection.create_index(
+                [("user_id", 1), ("date", 1), ("kind", 1)],
+                unique=True,
+                name="user_date_kind_unique",
+            ),
+            briefings_collection.create_index([("user_id", 1), ("created_at", -1)]),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating briefing indexes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise
+
+
+async def create_award_indexes() -> None:
+    """Create indexes for awards collection (each badge earnable once per user)."""
+    awards_collection = get_async_collection("awards")
+    try:
+        await awards_collection.create_index(
+            [("user_id", 1), ("key", 1)],
+            unique=True,
+            name="user_key_unique",
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating award indexes",
+            error_type=type(e).__name__,
+            error=str(e),
         )
         raise
 
@@ -1365,6 +1420,38 @@ async def create_e2b_sandbox_indexes() -> None:
             f"{LogTag.MONGO} Error creating e2b sandbox indexes",
             error=str(e),
             error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_short_link_indexes() -> None:
+    """Create the short_links indexes: one slug namespace, one live link per owned target.
+
+    The live-target index is partial on revoked: False, so a revoked link never
+    blocks the next mint and the idempotency read is served by it. The history
+    index serves the newest-link read that tells whether the owner turned
+    sharing off.
+    """
+    short_links_collection = get_async_collection("short_links")
+    try:
+        await asyncio.gather(
+            short_links_collection.create_index([("slug", 1)], unique=True, name=SLUG_UNIQUE_INDEX),
+            short_links_collection.create_index(
+                [("user_id", 1), ("target_type", 1), ("target_id", 1)],
+                unique=True,
+                partialFilterExpression={"revoked": False},
+                name=LIVE_TARGET_UNIQUE_INDEX,
+            ),
+            short_links_collection.create_index(
+                [("user_id", 1), ("target_type", 1), ("target_id", 1), ("created_at", -1)],
+                name=TARGET_HISTORY_INDEX,
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating short link indexes",
+            error_type=type(e).__name__,
+            error=str(e),
         )
         raise
 

@@ -49,6 +49,7 @@ from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationStatus,
 )
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import (
     BriefingBootstrap,
@@ -79,6 +80,7 @@ _EDITION = HostedEditionImage(
     display_url="https://cdn.example/f_auto/brief", chat_url="https://cdn.example/f_jpg/brief"
 )
 _BRIEF_ID = "brief_abc123"
+_BRIEF_LINK = "https://heygaia.link/briefabc123"
 _ORCHESTRATED = ["inapp", "email"]
 
 _VOICE = {
@@ -121,6 +123,7 @@ class World:
 
     agent: AsyncMock
     upsert: AsyncMock
+    mint: AsyncMock
     set_channels: AsyncMock
     notify: AsyncMock
     post: AsyncMock
@@ -156,6 +159,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
                 edition_image_url=edition_image_url,
             )
         ),
+        mint=AsyncMock(return_value=_BRIEF_LINK),
         set_channels=AsyncMock(),
         notify=AsyncMock(
             return_value=SimpleNamespace(channels=[_delivered(c) for c in _ORCHESTRATED])
@@ -186,6 +190,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(service, "call_agent_silent", w.agent)
     monkeypatch.setattr(service.briefing_repository, "upsert_briefing", w.upsert)
     monkeypatch.setattr(service.briefing_repository, "set_delivered_channels", w.set_channels)
+    monkeypatch.setattr(service, "optional_short_link", w.mint)
     monkeypatch.setattr(
         service.briefing_repository, "has_daily_briefing", AsyncMock(return_value=True)
     )
@@ -289,11 +294,14 @@ class TestDailyBrief:
             "Your morning, sorted\n\n"
             "• Approve the Priya reply\n\n"
             "Overnight I finished Investor update.\n\n"
-            f"Full brief: https://heygaia.io/brief/{_BRIEF_ID}"
+            f"Full brief: {_BRIEF_LINK}"
         )
         assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION.display_url
         request = world.notify.await_args.args[0]
         assert request.metadata["edition_image_url"] == _EDITION.display_url
+        # One URL, minted for the persisted brief, behind the email image and the chat skim.
+        world.mint.assert_awaited_with(_USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID)
+        assert request.metadata["brief_url"] == _BRIEF_LINK
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_DAILY
@@ -551,7 +559,7 @@ class TestWeeklyRecap:
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_WEEKLY
         assert request.content.body == (
             "A good week\n\nThis week I finished Item 0, Item 1 and 1 more.\n\n"
-            f"Full brief: https://heygaia.io/brief/{_BRIEF_ID}"
+            f"Full brief: {_BRIEF_LINK}"
         )
         # The recap is always pushed: it reaches the chat app, not only the in-app page.
         assert world.post.await_args.kwargs["origin"] == "weekly brief"
@@ -921,15 +929,15 @@ class TestTheFactsTheModelVoices:
             "[COUNTS] waiting on you: 3 · done: 1 · in progress: 2 · while you were away: 1\n"
             "[Needs you]\n"
             "- Waiting on you: Approve the reply | summary: Draft ready"
-            " | artifact holds ~11 chars | waiting on you\n"
-            "- Failed: Sync | artifact holds ~0 chars\n"
-            "- Failed: Scrape | artifact holds ~0 chars\n"
+            " | artifact holds ~11 chars | waiting on you | link: [[link:0]]\n"
+            "- Failed: Sync | artifact holds ~0 chars | link: [[link:1]]\n"
+            "- Failed: Scrape | artifact holds ~0 chars | link: [[link:2]]\n"
             "[While you were away]\n"
             "- Note: Digest: first\n"
             "[GAIA's work]\n"
-            "- Done: Deck | artifact holds ~0 chars\n"
-            "- In progress: Research | artifact holds ~0 chars\n"
-            "- In progress: Outreach | artifact holds ~0 chars\n"
+            "- Done: Deck | artifact holds ~0 chars | link: [[link:3]]\n"
+            "- In progress: Research | artifact holds ~0 chars | link: [[link:4]]\n"
+            "- In progress: Outreach | artifact holds ~0 chars | link: [[link:5]]\n"
             "The user's own todo list is empty."
         ) in _prompt(world)
         assert "lower-priority" not in _prompt(world)
@@ -975,8 +983,13 @@ class TestTheFactsTheModelVoices:
         await service.run_daily_briefing(_USER)
 
         prompt = _prompt(world)
-        assert "- Done: Deck | summary: One | artifact holds ~3 chars\n" in prompt
-        assert "- In progress: Deck | summary: One | artifact holds ~3 chars\n" in prompt
+        assert (
+            "- Done: Deck | summary: One | artifact holds ~3 chars | link: [[link:1]]\n" in prompt
+        )
+        assert (
+            "- In progress: Deck | summary: One | artifact holds ~3 chars | link: [[link:2]]\n"
+            in prompt
+        )
         assert (
             "- Waiting on you: Reply | summary: Three | artifact holds ~5 chars | waiting" in prompt
         )
@@ -1054,6 +1067,74 @@ class TestTheFactsTheModelVoices:
         await service.run_daily_briefing(_USER)
 
         assert [i.text for s in _stored_payload(world).sections for i in s.items] == ["Digest: "]
+
+
+def _todo_link(todo_id: str) -> str:
+    return f"https://heygaia.link/todo-{todo_id}"
+
+
+class TestOnlyTheItemsTheBriefLinksAreShared:
+    """A forwarded brief exposes exactly the deliverables its bubbles link, nothing more."""
+
+    @pytest.fixture(autouse=True)
+    def keyed_mint(self, world: World) -> None:
+        def mint(user_id: str, target_type: ShortLinkTargetType, target_id: str) -> str:
+            if user_id != _USER:
+                raise AssertionError(f"minted for {user_id!r}, not the brief's owner")
+            if target_type is ShortLinkTargetType.TODO_DELIVERABLE:
+                return _todo_link(target_id)
+            return _BRIEF_LINK
+
+        world.mint.side_effect = mint
+        world.work = context.TrackedWork(
+            completed=[_todo("c1", "Deck")], blocked=[_todo("b1", "Reply")]
+        )
+
+    @staticmethod
+    def _voice(world: World, bubbles: list[str]) -> None:
+        world.agent.return_value = SimpleNamespace(message=_fenced({**_VOICE, "bubbles": bubbles}))
+
+    async def test_a_linked_item_gets_its_link_and_an_unlinked_one_is_never_minted(
+        self, world: World
+    ) -> None:
+        # b1 (needs you) is token 0, c1 (done) token 1; the voice links only the deck.
+        self._voice(world, ["deck's done, here: [[link:1]]", "reply waits on you"])
+
+        await service.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        assert payload.bubbles == [f"deck's done, here: {_todo_link('c1')}", "reply waits on you"]
+        assert payload.message == "\n\n".join(payload.bubbles)
+        links = {it.todo_id: it.link for sec in payload.sections for it in sec.items}
+        assert links == {"b1": None, "c1": _todo_link("c1")}
+        minted = [c.args[2] for c in world.mint.await_args_list]
+        assert minted == ["c1", _BRIEF_ID]
+
+    async def test_a_token_with_no_link_behind_it_is_dropped(self, world: World) -> None:
+        """Sharing turned off (or a failed mint) leaves the sentence, not a raw token."""
+        world.mint.side_effect = lambda user_id, target_type, target_id: (
+            None if target_type is ShortLinkTargetType.TODO_DELIVERABLE else _BRIEF_LINK
+        )
+        self._voice(world, ["deck's done: [[link:1]]", "also [[link:9]]"])
+
+        await service.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        assert payload.bubbles == ["deck's done: ", "also "]
+        assert all(it.link is None for sec in payload.sections for it in sec.items)
+
+    async def test_a_brief_without_a_heygaia_link_still_goes_out_to_its_app_page(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("app.services.briefing.skim.settings.FRONTEND_URL", "https://app.test")
+        world.mint.side_effect = lambda *_: None
+
+        await service.run_daily_briefing(_USER)
+
+        request = world.notify.await_args.args[0]
+        assert request.metadata["brief_url"] == f"https://app.test/brief/{_BRIEF_ID}"
+        assert request.content.body.endswith(f"Full brief: https://app.test/brief/{_BRIEF_ID}")
+        world.post.assert_awaited_once()
 
 
 class TestTheGoalHold:

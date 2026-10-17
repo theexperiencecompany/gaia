@@ -125,6 +125,9 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
+    # Short-link display domain (heygaia.link/<slug>). The dedicated domain
+    # rewrites to the app's /l route, which resolves the slug. No trailing slash.
+    SHORTLINK_BASE_URL: str = "https://heygaia.link"
     # Sender address for outbound briefing email; the same in every environment.
     EMAIL_FROM: str = "brief@heygaia.io"
     DUMMY_IP: str = "8.8.8.8"
@@ -151,7 +154,7 @@ class CommonSettings(BaseAppSettings):
     # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
     ENABLE_HIL_JEV_REPLY: bool = True
 
-    @field_validator("HOST", "FRONTEND_URL", mode="after")
+    @field_validator("HOST", "FRONTEND_URL", "SHORTLINK_BASE_URL", mode="after")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
@@ -617,6 +620,10 @@ class ProductionSettings(CommonSettings):
 
 class DevelopmentSettings(CommonSettings):
     """Looser settings for development environment with defaults."""
+
+    # No heygaia.link alias exists locally, so minted links point straight at
+    # the local web app's /l route.
+    SHORTLINK_BASE_URL: str = "http://localhost:3000/l"
 
     # ----------------------------------------------
     # Database & Message Queue Connections

@@ -52,6 +52,7 @@ from app.constants import todos as todo_constants
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models import agent_models
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -762,7 +763,7 @@ class TestCompleteTrackedTodo:
             )
         assert "could not complete" in result
 
-    async def test_success_returns_confirmation(self):
+    async def test_success_returns_confirmation_with_the_link(self):
         with (
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.get",
@@ -774,11 +775,43 @@ class TestCompleteTrackedTodo:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.optional_short_link",
+                new_callable=AsyncMock,
+                return_value="https://heygaia.link/abcdefghijk",
+            ) as mint,
         ):
             result = await complete_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", summary="done"
             )
         assert "completed and archived" in result
+        # The agent reads its own tool result, so the link must be in it.
+        assert "https://heygaia.link/abcdefghijk" in result
+        mint.assert_awaited_once_with("user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1")
+
+    async def test_no_link_when_sharing_is_off_still_confirms(self):
+        """A todo the owner stopped sharing completes without handing out a link."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=TodoDocument(id="t1", user_id="u1", title="t"),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.optional_short_link",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            result = await complete_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", summary="done"
+            )
+        assert result == "Tracked todo t1 completed and archived."
 
     async def test_missing_todo_returns_error(self):
         with patch(

@@ -31,3 +31,10 @@ export const ALLOWED_FILE_TYPES = [
 export const LARGE_PASTE_THRESHOLD_CHARS = 10_000;
 
 export const PASTED_TEXT_FILENAME = "pasted-text.txt";
+
+/** Artifact content types the file viewer can render as a preview, not just source. */
+export const PREVIEWABLE_CONTENT_TYPES = new Set([
+  "text/markdown",
+  "text/html",
+  "text/x-latex",
+]);

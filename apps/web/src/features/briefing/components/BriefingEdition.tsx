@@ -27,9 +27,13 @@ export interface BriefingEditionProps {
 const EDITION_WIDTH = 1620;
 const EDITION_TYPICAL_HEIGHT = 4500;
 
+/**
+ * The owner's copy carries todo_id and opens the in-app todo; the public copy
+ * a heygaia.link serves has no todo_id, only the link the brief shared.
+ */
 function itemHref(item: EditionItem): string | null {
-  if (item.link) return item.link;
-  return item.todo_id ? `/todos?todoId=${item.todo_id}` : null;
+  if (item.todo_id) return `/todos?todoId=${item.todo_id}`;
+  return item.link ?? null;
 }
 
 function ItemRow({ item }: { item: EditionItem }) {

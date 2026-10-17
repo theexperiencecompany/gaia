@@ -25,6 +25,8 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 import uuid
 
+from arq import create_pool
+from arq.connections import ArqRedis, RedisSettings
 from browser_use import Browser
 from bson import ObjectId
 from cryptography.fernet import Fernet
@@ -51,6 +53,7 @@ from app.services.browser.jobs import done_state, get_latest_job
 from app.services.browser.registry import get_session_entry
 from app.services.dev_service import mint_dev_user, seed_dev_data
 from app.services.feature_flags import set_user_flag
+from app.utils.redis_utils import RedisPoolManager
 from tests.helpers import pick_free_port, worker_redis_url
 from tests.integration.real.browser._stack.fake_models import FakeModels
 from tests.integration.real.browser._stack.fixture_site import FixtureSite
@@ -131,6 +134,7 @@ class BrowserStack:
         self.api: StackProcess | None = None
         self.redis: Redis | None = None
         self.mongo: MongoDB | None = None
+        self.arq: ArqRedis | None = None
         self._patches: pytest.MonkeyPatch = pytest.MonkeyPatch()
         self._claim: asyncio.Task[None] | None = None
 
@@ -178,7 +182,7 @@ class BrowserStack:
             self._phase("browser worker serves its queue", self.worker.start()),
             self._phase("API serves", self.api.wait_healthy(f"{self.api_url}/health")),
         )
-        self._lend_the_app_this_loops_clients()
+        await self._lend_the_app_this_loops_clients()
         await self.observer.start()
         say("ready")
 
@@ -231,6 +235,8 @@ class BrowserStack:
         self._patches.undo()
         if self.mongo is not None:
             self.mongo.client.close()
+        if self.arq is not None:
+            await self.arq.aclose()
         if self.redis is not None:
             await self.redis.flushdb()
             await self.redis.aclose()
@@ -274,8 +280,8 @@ class BrowserStack:
             "BROWSER_STATE_ENCRYPTION_KEY": self.state_key,
         }
 
-    def _lend_the_app_this_loops_clients(self) -> None:
-        """Point the app helpers this process calls (users, job state, handoffs, the plan cache) at the stack's own clients.
+    async def _lend_the_app_this_loops_clients(self) -> None:
+        """Point the app helpers this process calls (users, job state, handoffs, the plan cache, the job queue) at the stack's own clients.
 
         The app's Mongo and Redis clients are module globals that bind to the first
         event loop using them; a stack lives on its own loop and closes its clients
@@ -286,6 +292,8 @@ class BrowserStack:
         self.mongo = MongoDB(uri=settings.MONGO_DB, db_name=MONGO_DATABASE_NAME)
         self._patches.setattr(collections, "_get_collection", self.mongo.get_collection)
         self._patches.setattr(redis_cache, "redis", cast(AsyncRedisCommands, self.redis))
+        self.arq = await create_pool(RedisSettings.from_dsn(self.redis_url))
+        self._patches.setattr(RedisPoolManager, "_pool", self.arq)
 
     # --- users and chats ------------------------------------------------------
 

@@ -28,6 +28,7 @@ from app.config.settings import settings
 from app.constants.http import RETRY_AFTER_HEADER
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.schemas.errors import ErrorEnvelope, error_response
+from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
 RATE_LIMIT_EXCEEDED_CODE = "rate_limit_exceeded"
@@ -68,7 +69,7 @@ def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> UJSONRespons
         client_ip=request.client.host
         if request.client
         else request.headers.get("x-forwarded-for", "unknown"),
-        path=request.url.path,
+        path=loggable_request_path(request),
         method=request.method,
         retry_after=retry_after,
     )

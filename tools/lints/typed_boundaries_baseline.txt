@@ -101,14 +101,9 @@ apps/api/app/services/account_fs.py	TB002
 apps/api/app/services/bot_token_service.py	TB001
 apps/api/app/services/bot_token_service.py	TB002
 apps/api/app/services/calendar_service.py	TB002
-apps/api/app/services/chat/artifact_forwarder.py	TB001
-apps/api/app/services/chat/artifact_forwarder.py	TB002
-apps/api/app/services/chat/artifacts_registry.py	TB001
-apps/api/app/services/chat/artifacts_registry.py	TB002
 apps/api/app/services/chat/state.py	TB001
 apps/api/app/services/chat/state.py	TB002
 apps/api/app/services/composio/proxy_client.py	TB001	deferred-until=2027-01-07; proxy_request(_sync) return the provider JSON as Any by design: typing it object costs 47 mypy errors across 16 custom-tool files (see its docstring); needs per-provider response models, its own PR
-apps/api/app/services/composio/proxy_client.py	TB002
 apps/api/app/services/desktop/releases.py	TB002
 apps/api/app/services/device/bridge.py	TB001
 apps/api/app/services/device/device_auth.py	TB002
@@ -137,8 +132,6 @@ apps/api/app/services/onboarding/onboarding_service.py	TB001	deferred-until=2026
 apps/api/app/services/onboarding/writing_style_service.py	TB002
 apps/api/app/services/photon/photon_client.py	TB001
 apps/api/app/services/photon/photon_client.py	TB002
-apps/api/app/services/provider_metadata_service.py	TB001
-apps/api/app/services/provider_metadata_service.py	TB002
 apps/api/app/services/sandbox/lifecycle.py	TB002
 apps/api/app/services/storage/metrics.py	TB002
 apps/api/app/services/storage/sessions/meta.py	TB002
@@ -153,8 +146,6 @@ apps/api/app/services/triggers/handlers/google_sheets.py	TB001
 apps/api/app/services/triggers/handlers/linear.py	TB001
 apps/api/app/services/triggers/handlers/notion.py	TB001
 apps/api/app/services/triggers/handlers/notion.py	TB002
-apps/api/app/services/triggers/handlers/slack.py	TB001
-apps/api/app/services/triggers/handlers/slack.py	TB002
 apps/api/app/services/triggers/handlers/todoist.py	TB001
 apps/api/app/services/upload_service.py	TB002
 apps/api/app/services/workflow/playbook/check.py	TB002

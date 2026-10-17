@@ -20,6 +20,10 @@ BASH_MAX_COMMAND_LENGTH = 16_000
 # a half-written temp file never surfaces as an artifact — keep them in sync.
 WORKSPACE_TMP_SUFFIX = ".gaia-tmp"
 
+# Allowed host/sandbox clock drift when deciding which artifacts a bash command
+# wrote (artifact mtime comes from the sandbox clock, the run start from ours).
+ARTIFACT_MTIME_SKEW_SECONDS = 5
+
 # Health-probe windows (seconds). `is_running()` hits E2B's GET /health; we
 # bound both the request itself and the surrounding wait so a hung control
 # plane never stalls sandbox acquisition.

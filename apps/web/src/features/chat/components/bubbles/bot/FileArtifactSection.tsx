@@ -8,6 +8,9 @@ import { useCallback, useMemo, useState } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
+import { getExtension } from "@/features/chat/utils/fileExtension";
+import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
+import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useConversationArtifacts } from "@/stores/chatStore";
 import type { RightSidebarMode } from "@/stores/layoutStore.types";
@@ -74,7 +77,7 @@ function basename(path: string): string {
 }
 
 function getFileConfig(filename: string) {
-  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  const ext = getExtension(filename);
   return (
     FILE_TYPE_CONFIG[ext] || {
       label: ext.toUpperCase() || "File",
@@ -86,7 +89,7 @@ function getFileConfig(filename: string) {
 
 function resolveContentType(artifact: ArtifactData, filename: string): string {
   if (artifact.content_type) return artifact.content_type;
-  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  const ext = getExtension(filename);
   return EXT_CONTENT_TYPE[ext] || "application/octet-stream";
 }
 
@@ -192,6 +195,13 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
             </div>
 
             <div className="flex items-center gap-2">
+              <ShareLinkControls
+                targetType="session_artifact"
+                targetId={sessionArtifactTargetId(
+                  conversationId,
+                  artifact.path,
+                )}
+              />
               <Button
                 size="sm"
                 variant="flat"

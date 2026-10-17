@@ -7,17 +7,21 @@ seeded first — no standing sandbox-wide token, ever.
 
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import AbstractAsyncContextManager, ExitStack
+import time
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.tools.coding.bash_tool import bash, build_bash_tool
+from app.agents.tools.coding._artifacts import artifact_links_note
+from app.agents.tools.coding.bash_tool import _publish_artifacts, bash, build_bash_tool
 from app.agents.workspace.paths import WORKSPACE_ROOT, runs_log_dir
-from app.constants.sandbox import BASH_MAX_TIMEOUT_SECONDS
+from app.constants.sandbox import ARTIFACT_MTIME_SKEW_SECONDS, BASH_MAX_TIMEOUT_SECONDS
+from app.services.storage import ArtifactInfo, FsOps, fs_timer
 
+ARTIFACTS_MODULE = "app.agents.tools.coding._artifacts"
 MODULE = "app.agents.tools.coding.bash_tool"
 CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
 EXECUTE_ENV = {
@@ -263,7 +267,7 @@ class TestBashRunContract:
         sbx.commands.run = _streaming_run()
         with (
             patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
-            patch(f"{MODULE}._publish_artifacts", new=AsyncMock()),
+            patch(f"{MODULE}._publish_artifacts", new=AsyncMock(return_value={})),
             patch(f"{MODULE}.safe_emit") as emit,
         ):
             await bash.ainvoke({"command": "make"}, config=SESSION_CONFIG)
@@ -298,3 +302,110 @@ class TestBashRunContract:
         path, body = sbx.files.write.await_args.args
         assert path == f"{runs_log_dir()}/{run_id}.log"
         assert body.startswith("ok")
+
+
+SHORT_URL = "https://heygaia.link/abcdefghijk"
+RUN_STARTED_AT = 1_700_000_000.0
+ARTIFACT_SIZE = 3
+
+
+def _artifact_listing(*records: tuple[str, float]) -> str:
+    """Build the NUL-delimited find stream _publish_artifacts parses (path, size, mtime, body)."""
+    return "".join(f"{rel}\0{ARTIFACT_SIZE}\0{mtime}\0\0" for rel, mtime in records)
+
+
+@pytest.mark.unit
+class TestBashArtifactLinks:
+    async def test_the_result_hands_the_agent_the_links_of_what_the_run_wrote(self) -> None:
+        sbx = _sbx()
+        publish = AsyncMock(return_value={"report.html": SHORT_URL})
+        timed: list[str] = []
+
+        def recording_timer(op: str, **labels: str) -> AbstractAsyncContextManager[None]:
+            timed.append(op)
+            return fs_timer(op, **labels)
+
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}._publish_artifacts", new=publish),
+            patch(f"{MODULE}.fs_timer", new=recording_timer),
+        ):
+            before = time.time()
+            out = await bash.ainvoke({"command": "make"}, config=SESSION_CONFIG)
+            after = time.time()
+        assert out.endswith(artifact_links_note({"report.html": SHORT_URL}))
+        assert FsOps.TOOL_BASH_PUBLISH in timed
+        assert publish.await_args.args == (sbx, "u1", "conv1")
+        assert before <= publish.await_args.kwargs["changed_since"] <= after
+
+    async def test_a_run_outside_a_session_publishes_nothing(self) -> None:
+        sbx = _sbx()
+        publish = AsyncMock(return_value={"report.html": SHORT_URL})
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}._publish_artifacts", new=publish),
+        ):
+            out = await bash.ainvoke({"command": "make"}, config=CONFIG)
+        publish.assert_not_awaited()
+        assert SHORT_URL not in out
+
+    async def test_only_files_written_since_the_run_started_get_a_link(self) -> None:
+        sbx = _sbx()
+        boundary = RUN_STARTED_AT - ARTIFACT_MTIME_SKEW_SECONDS
+        sbx.commands.run = AsyncMock(
+            return_value=SimpleNamespace(
+                stdout=_artifact_listing(
+                    ("old.md", boundary - 0.5),
+                    ("skewed.md", boundary),
+                    ("new.md", RUN_STARTED_AT + 1),
+                )
+            )
+        )
+        with (
+            patch(
+                f"{ARTIFACTS_MODULE}.optional_short_link", new=AsyncMock(return_value=SHORT_URL)
+            ) as mint,
+            patch(f"{ARTIFACTS_MODULE}.publish_artifact_event", new=AsyncMock()) as pub,
+        ):
+            links = await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
+        assert links == {"skewed.md": SHORT_URL, "new.md": SHORT_URL}
+        # Only what the run wrote is shared; listing an older file never mints for it.
+        assert [c.args[2] for c in mint.await_args_list] == ["conv1/skewed.md", "conv1/new.md"]
+        # Every artifact is still published, linked or not, so its card stays live.
+        assert [c.args[1]["path"] for c in pub.await_args_list] == [
+            "old.md",
+            "skewed.md",
+            "new.md",
+        ]
+        assert "short_url" not in pub.await_args_list[0].args[1]
+
+    async def test_a_file_whose_publish_failed_gets_no_link(self) -> None:
+        sbx = _sbx()
+        sbx.commands.run = AsyncMock(
+            return_value=SimpleNamespace(stdout=_artifact_listing(("new.md", RUN_STARTED_AT)))
+        )
+        with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=None)):
+            links = await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
+        assert links == {}
+
+    async def test_each_artifact_is_published_with_its_size_mtime_and_inline_body(self) -> None:
+        sbx = _sbx()
+        sbx.commands.run = AsyncMock(
+            return_value=SimpleNamespace(
+                stdout=f"notes.md\0{ARTIFACT_SIZE}\0{RUN_STARTED_AT}\0YWJj\0"
+            )
+        )
+        with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=SHORT_URL)) as pub:
+            await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
+        pub.assert_awaited_once_with(
+            "u1",
+            "conv1",
+            ArtifactInfo(
+                path="notes.md",
+                size_bytes=ARTIFACT_SIZE,
+                mtime=RUN_STARTED_AT,
+                content_type="text/markdown",
+            ),
+            "abc",
+            written_this_turn=True,
+        )

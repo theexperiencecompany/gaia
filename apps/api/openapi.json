@@ -13618,6 +13618,221 @@
         "title": "PromptTriggerHint",
         "type": "object"
       },
+      "PublicBriefing": {
+        "additionalProperties": false,
+        "description": "A persisted daily/weekly brief: its rendered edition image and payload,\nshaped like the ``BriefingModel`` fields ``StandaloneBriefing`` renders.",
+        "properties": {
+          "edition_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition Image Url"
+          },
+          "kind": {
+            "enum": [
+              "daily",
+              "weekly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/PublicBriefingPayload"
+          },
+          "target_type": {
+            "const": "briefing",
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "kind",
+          "edition_image_url",
+          "payload"
+        ],
+        "title": "PublicBriefing",
+        "type": "object"
+      },
+      "PublicBriefingEvent": {
+        "additionalProperties": false,
+        "description": "A calendar entry on the brief: when and what, never where.",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "start",
+          "title"
+        ],
+        "title": "PublicBriefingEvent",
+        "type": "object"
+      },
+      "PublicBriefingItem": {
+        "additionalProperties": false,
+        "description": "An item as the brief page lists it. ``link`` is the item's own public\nheygaia.link; the todo id it is bound to stays private.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "gaia",
+              "you",
+              "lookback",
+              "failed",
+              "note"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "kind",
+          "link"
+        ],
+        "title": "PublicBriefingItem",
+        "type": "object"
+      },
+      "PublicBriefingPayload": {
+        "additionalProperties": false,
+        "description": "The brief fields the standalone brief page reads (``BriefingEdition``).",
+        "properties": {
+          "calendar": {
+            "items": {
+              "$ref": "#/components/schemas/PublicBriefingEvent"
+            },
+            "title": "Calendar",
+            "type": "array"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "hue": {
+            "title": "Hue",
+            "type": "integer"
+          },
+          "kicker": {
+            "title": "Kicker",
+            "type": "string"
+          },
+          "lede": {
+            "title": "Lede",
+            "type": "string"
+          },
+          "mood": {
+            "enum": [
+              "clear",
+              "packed",
+              "idle",
+              "winback",
+              "weekly"
+            ],
+            "title": "Mood",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/PublicBriefingSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "stats": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingStat"
+            },
+            "title": "Stats",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kicker",
+          "date",
+          "headline",
+          "lede",
+          "stats",
+          "sections",
+          "mood",
+          "caption",
+          "hue",
+          "calendar"
+        ],
+        "title": "PublicBriefingPayload",
+        "type": "object"
+      },
+      "PublicBriefingSection": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicBriefingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "numeral": {
+            "title": "Numeral",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "numeral",
+          "title",
+          "items"
+        ],
+        "title": "PublicBriefingSection",
+        "type": "object"
+      },
       "PublicHoloCardResponse": {
         "description": "Public-facing subset of a user's profile, keyed by user id (``card_id``).\n\nDeliberately excludes everything else on ``UserDocument`` (email, workflows,\nintegration state, etc.) \u2014 this endpoint is unauthenticated.",
         "properties": {
@@ -13835,6 +14050,80 @@
         "title": "PublicIntegrationDetailResponse",
         "type": "object"
       },
+      "PublicSessionArtifact": {
+        "additionalProperties": false,
+        "description": "A file GAIA produced in a session's sandbox. ``content`` is the text of a\ntext file; binary files carry ``None`` and render as a metadata card.",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "target_type": {
+            "const": "session_artifact",
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "content"
+        ],
+        "title": "PublicSessionArtifact",
+        "type": "object"
+      },
+      "PublicTodoDeliverable": {
+        "additionalProperties": false,
+        "description": "A tracked todo's result: its title and the deliverable facet of its\ncanvas (``canvas_markdown.deliverable_markdown``), never the working sections.",
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "todo_deliverable",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "title",
+          "completed",
+          "content"
+        ],
+        "title": "PublicTodoDeliverable",
+        "type": "object"
+      },
       "PublicWorkflowCard": {
         "description": "One marketplace card, as the community, explore and related lists emit it.\n\nThe three lists share this shape; ``categories`` and ``total_executions``\nare set only where the list has them (explore, related) and are null on the\nothers, so a consumer never has to guess which list a card came from.",
         "properties": {
@@ -13971,6 +14260,62 @@
           "total_executions"
         ],
         "title": "PublicWorkflowCard",
+        "type": "object"
+      },
+      "PublicWorkflowRun": {
+        "additionalProperties": false,
+        "description": "One workflow execution's outcome.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "success",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "workflow_run",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "workflow_title": {
+            "title": "Workflow Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "workflow_title",
+          "status",
+          "started_at",
+          "completed_at",
+          "summary"
+        ],
+        "title": "PublicWorkflowRun",
         "type": "object"
       },
       "PublicWorkflowStep": {
@@ -15586,6 +15931,51 @@
         },
         "title": "SetToolOverrideRequest",
         "type": "object"
+      },
+      "ShortLinkResponse": {
+        "description": "A minted heygaia.link URL.",
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "ShortLinkResponse",
+        "type": "object"
+      },
+      "ShortLinkTargetRequest": {
+        "additionalProperties": false,
+        "description": "One of the owner's artifacts, to share (mint or fetch its link) or stop sharing.",
+        "properties": {
+          "target_id": {
+            "minLength": 1,
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/ShortLinkTargetType"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id"
+        ],
+        "title": "ShortLinkTargetRequest",
+        "type": "object"
+      },
+      "ShortLinkTargetType": {
+        "description": "Every kind of artifact a heygaia.link can point at.",
+        "enum": [
+          "todo_deliverable",
+          "briefing",
+          "session_artifact",
+          "workflow_run"
+        ],
+        "title": "ShortLinkTargetType",
+        "type": "string"
       },
       "Skill": {
         "description": "A skill tracked in MongoDB with a flat schema.\n\nAll metadata fields (name, description, target, etc.) live at the\ntop level alongside ownership and installation tracking fields.\nSystem skills use user_id=\"system\"; user skills use the actual user ID.\n``id`` (the stringified ``_id``, a UUID) is inherited from ``MongoDocument``.",
@@ -29813,6 +30203,285 @@
         "summary": "Get Integration Tools Endpoint",
         "tags": [
           "Integrations"
+        ]
+      }
+    },
+    "/api/v1/l": {
+      "post": {
+        "description": "Share an artifact the caller owns: return its heygaia.link, minting one.\n\nTurns sharing back on for a target its owner had stopped sharing.",
+        "operationId": "short_links_create_short_link_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortLinkTargetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Create Short Link Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/unshare": {
+      "post": {
+        "description": "Stop sharing one of your artifacts: its link goes dead immediately, and GAIA\nattaches no new one until you share it again. Idempotent.",
+        "operationId": "short_links_stop_sharing_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortLinkTargetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Stop Sharing Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}": {
+      "get": {
+        "description": "Resolve a capability slug to its target's public view. No auth.",
+        "operationId": "short_links_resolve_short_link_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "briefing": "#/components/schemas/PublicBriefing",
+                      "session_artifact": "#/components/schemas/PublicSessionArtifact",
+                      "todo_deliverable": "#/components/schemas/PublicTodoDeliverable",
+                      "workflow_run": "#/components/schemas/PublicWorkflowRun"
+                    },
+                    "propertyName": "target_type"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PublicTodoDeliverable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PublicBriefing"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PublicSessionArtifact"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PublicWorkflowRun"
+                    }
+                  ],
+                  "title": "Response Short Links Resolve Short Link Route"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Resolve Short Link Route",
+        "tags": [
+          "Short Links"
+        ]
+      }
+    },
+    "/api/v1/l/{slug}/file": {
+      "get": {
+        "description": "Stream the file behind a session-artifact slug (images, PDFs, downloads).\nNo auth; sandboxed exactly like the owner's own session-file route.",
+        "operationId": "short_links_get_short_link_file_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Short link not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace storage offline"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Short Link File Route",
+        "tags": [
+          "Short Links"
         ]
       }
     },

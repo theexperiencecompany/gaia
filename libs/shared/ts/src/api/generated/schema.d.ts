@@ -2452,6 +2452,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/l": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Short Link Route
+         * @description Share an artifact the caller owns: return its heygaia.link, minting one.
+         *
+         *     Turns sharing back on for a target its owner had stopped sharing.
+         */
+        post: operations["short_links_create_short_link_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Short Link Route
+         * @description Resolve a capability slug to its target's public view. No auth.
+         */
+        get: operations["short_links_resolve_short_link_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Short Link File Route
+         * @description Stream the file behind a session-artifact slug (images, PDFs, downloads).
+         *     No auth; sandboxed exactly like the owner's own session-file route.
+         */
+        get: operations["short_links_get_short_link_file_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/unshare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Sharing Route
+         * @description Stop sharing one of your artifacts: its link goes dead immediately, and GAIA
+         *     attaches no new one until you share it again. Idempotent.
+         */
+        post: operations["short_links_stop_sharing_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/ai/compose": {
         parameters: {
             query?: never;
@@ -12168,6 +12252,92 @@ export interface components {
             type?: string | null;
         };
         /**
+         * PublicBriefing
+         * @description A persisted daily/weekly brief: its rendered edition image and payload,
+         *     shaped like the ``BriefingModel`` fields ``StandaloneBriefing`` renders.
+         */
+        PublicBriefing: {
+            /** Edition Image Url */
+            edition_image_url: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "daily" | "weekly";
+            payload: components["schemas"]["PublicBriefingPayload"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "briefing";
+        };
+        /**
+         * PublicBriefingEvent
+         * @description A calendar entry on the brief: when and what, never where.
+         */
+        PublicBriefingEvent: {
+            /** Date */
+            date: string;
+            /** Start */
+            start: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * PublicBriefingItem
+         * @description An item as the brief page lists it. ``link`` is the item's own public
+         *     heygaia.link; the todo id it is bound to stays private.
+         */
+        PublicBriefingItem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            /** Link */
+            link: string | null;
+            /** Text */
+            text: string;
+        };
+        /**
+         * PublicBriefingPayload
+         * @description The brief fields the standalone brief page reads (``BriefingEdition``).
+         */
+        PublicBriefingPayload: {
+            /** Calendar */
+            calendar: components["schemas"]["PublicBriefingEvent"][];
+            /** Caption */
+            caption: string;
+            /** Date */
+            date: string;
+            /** Headline */
+            headline: string;
+            /** Hue */
+            hue: number;
+            /** Kicker */
+            kicker: string;
+            /** Lede */
+            lede: string;
+            /**
+             * Mood
+             * @enum {string}
+             */
+            mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            /** Sections */
+            sections: components["schemas"]["PublicBriefingSection"][];
+            /** Stats */
+            stats: components["schemas"]["BriefingStat"][];
+        };
+        /** PublicBriefingSection */
+        PublicBriefingSection: {
+            /** Items */
+            items: components["schemas"]["PublicBriefingItem"][];
+            /** Numeral */
+            numeral: string;
+            /** Title */
+            title: string;
+        };
+        /**
          * PublicHoloCardResponse
          * @description Public-facing subset of a user's profile, keyed by user id (``card_id``).
          *
@@ -12261,6 +12431,44 @@ export interface components {
             tools?: components["schemas"]["IntegrationTool"][];
         };
         /**
+         * PublicSessionArtifact
+         * @description A file GAIA produced in a session's sandbox. ``content`` is the text of a
+         *     text file; binary files carry ``None`` and render as a metadata card.
+         */
+        PublicSessionArtifact: {
+            /** Content */
+            content: string | null;
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "session_artifact";
+        };
+        /**
+         * PublicTodoDeliverable
+         * @description A tracked todo's result: its title and the deliverable facet of its
+         *     canvas (``canvas_markdown.deliverable_markdown``), never the working sections.
+         */
+        PublicTodoDeliverable: {
+            /** Completed */
+            completed: boolean;
+            /** Content */
+            content: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "todo_deliverable";
+            /** Title */
+            title: string;
+        };
+        /**
          * PublicWorkflowCard
          * @description One marketplace card, as the community, explore and related lists emit it.
          *
@@ -12300,6 +12508,33 @@ export interface components {
             /** Total Executions */
             total_executions: number | null;
             trigger_config: components["schemas"]["TriggerConfig"] | null;
+        };
+        /**
+         * PublicWorkflowRun
+         * @description One workflow execution's outcome.
+         */
+        PublicWorkflowRun: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "success" | "failed" | "skipped";
+            /** Summary */
+            summary: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "workflow_run";
+            /** Workflow Title */
+            workflow_title: string;
         };
         /**
          * PublicWorkflowsResponse
@@ -13085,6 +13320,29 @@ export interface components {
             /** Ask */
             ask?: boolean | null;
         };
+        /**
+         * ShortLinkResponse
+         * @description A minted heygaia.link URL.
+         */
+        ShortLinkResponse: {
+            /** Url */
+            url: string;
+        };
+        /**
+         * ShortLinkTargetRequest
+         * @description One of the owner's artifacts, to share (mint or fetch its link) or stop sharing.
+         */
+        ShortLinkTargetRequest: {
+            /** Target Id */
+            target_id: string;
+            target_type: components["schemas"]["ShortLinkTargetType"];
+        };
+        /**
+         * ShortLinkTargetType
+         * @description Every kind of artifact a heygaia.link can point at.
+         * @enum {string}
+         */
+        ShortLinkTargetType: "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
         /**
          * Skill
          * @description A skill tracked in MongoDB with a flat schema.
@@ -16234,9 +16492,17 @@ export type ProactiveMessageClass = components['schemas']['ProactiveMessageClass
 export type ProjectCreate = components['schemas']['ProjectCreate'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
 export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];
+export type PublicBriefing = components['schemas']['PublicBriefing'];
+export type PublicBriefingEvent = components['schemas']['PublicBriefingEvent'];
+export type PublicBriefingItem = components['schemas']['PublicBriefingItem'];
+export type PublicBriefingPayload = components['schemas']['PublicBriefingPayload'];
+export type PublicBriefingSection = components['schemas']['PublicBriefingSection'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
+export type PublicSessionArtifact = components['schemas']['PublicSessionArtifact'];
+export type PublicTodoDeliverable = components['schemas']['PublicTodoDeliverable'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
+export type PublicWorkflowRun = components['schemas']['PublicWorkflowRun'];
 export type PublicWorkflowsResponse = components['schemas']['PublicWorkflowsResponse'];
 export type PublicWorkflowStep = components['schemas']['PublicWorkflowStep'];
 export type PublishIntegrationResponse = components['schemas']['PublishIntegrationResponse'];
@@ -16282,6 +16548,9 @@ export type SendEmailRequest = components['schemas']['SendEmailRequest'];
 export type SendEmailResponse = components['schemas']['SendEmailResponse'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
+export type ShortLinkResponse = components['schemas']['ShortLinkResponse'];
+export type ShortLinkTargetRequest = components['schemas']['ShortLinkTargetRequest'];
+export type ShortLinkTargetType = components['schemas']['ShortLinkTargetType'];
 export type Skill = components['schemas']['Skill'];
 export type SkillInlineCreateRequest = components['schemas']['SkillInlineCreateRequest'];
 export type SkillListResponse = components['schemas']['SkillListResponse'];
@@ -23064,6 +23333,220 @@ export interface operations {
             };
             /** @description Failed to update integration instructions */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_create_short_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_resolve_short_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_get_short_link_file_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Short link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace storage offline */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_stop_sharing_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

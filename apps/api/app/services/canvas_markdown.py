@@ -10,6 +10,9 @@ from datetime import UTC, datetime
 import re
 
 from app.constants.todos import (
+    CANVAS_KEY_DETAILS_SECTION,
+    CANVAS_LEARNINGS_SECTION,
+    CANVAS_OBSERVATIONS_SECTION,
     CANVAS_PROMPT_MAX_CHARS,
     CANVAS_SECTIONS,
     CANVAS_STANDING_RULES_SECTION,
@@ -306,3 +309,51 @@ def normalize_canvas(canvas: str) -> tuple[str, str | None]:
     if not text.endswith("\n"):
         text += "\n"
     return text, "\n\n".join(moved_parts) if moved_parts else None
+
+
+# Canvas sections that are GAIA's working memory, not its result (ids, addresses, rules,
+# context, learnings). Current State and any heading the agent added ("Draft reply") are
+# the deliverable.
+_WORKING_SECTIONS = frozenset(
+    {
+        CANVAS_STANDING_RULES_SECTION.casefold(),
+        CANVAS_KEY_DETAILS_SECTION.casefold(),
+        "context",
+        CANVAS_LEARNINGS_SECTION.casefold(),
+        CANVAS_OBSERVATIONS_SECTION.casefold(),
+    }
+)
+
+
+def _is_working_section(heading: str) -> bool:
+    return heading.casefold() in _WORKING_SECTIONS or bool(_ACTIVITY_HEADING_RE.match(heading))
+
+
+def deliverable_markdown(canvas: str) -> str:
+    """Return the deliverable facet of a canvas: what a recipient of its heygaia.link sees.
+
+    Drops the title line, every working section and every template comment, so
+    no address, thread id or tool narration reaches a public page.
+    """
+    kept: list[str] = []
+    for chunk in _SECTION_START_RE.split(HTML_COMMENT_RE.sub("", canvas)):
+        heading = _HEADING_RE.search(chunk)
+        if heading is None:
+            # The preamble before the first section: only the "# title" line.
+            kept += [ln for ln in chunk.splitlines() if not ln.lstrip().startswith("# ")]
+        elif not _is_working_section(heading.group(1)):
+            kept.append(chunk)
+    return "\n\n".join(part.strip() for part in kept if part.strip())
+
+
+def deliverable_size(canvas: str) -> int:
+    """Count the characters of deliverable text, headings excluded.
+
+    That is how much there is to open, not how long the research behind it was.
+    """
+    lines = [
+        ln.strip()
+        for ln in deliverable_markdown(canvas).splitlines()
+        if ln.strip() and not ln.lstrip().startswith("#")
+    ]
+    return len(" ".join(lines))
