@@ -264,18 +264,9 @@ const nextConfig = {
         ],
       },
       // No custom Cache-Control for /_next/static: dev reuses filenames, prod hashes are immutable by default.
-      // Preview hosts (workers.dev, cf.heygaia.io) get X-Robots-Tag noindex via positive host match, so a match failure leaves prod indexable.
+      // Non-prod noindex lives in src/middleware.ts (negative host logic covering every
+      // non-allowlisted host), not here: `has: host` can only enumerate known hosts.
       // Post-deploy smoke asserts prod carries no X-Robots-Tag.
-      {
-        source: "/:path*",
-        has: [{ type: "host", value: ".*workers\\.dev.*" }],
-        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
-      },
-      {
-        source: "/:path*",
-        has: [{ type: "host", value: ".*cf\\.heygaia\\.io.*" }],
-        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
-      },
       {
         source: "/images/(.*)",
         headers: [

@@ -1,4 +1,4 @@
-import type { NextRequest } from "next/server";
+import type { NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
 import { routing } from "./i18n/routing";
@@ -33,17 +33,35 @@ const intlMiddlewareDefaultOnly = createMiddleware({
   localeDetection: false,
 });
 
+// SEO guard: every non-production hostname is de-indexed. Only the prod apex
+// + www stay indexable; preview aliases, version URLs, duplicate custom
+// domains (cf.heygaia.io) and dev hosts all get X-Robots-Tag noindex.
+// Negative (allowlist) logic on purpose: a positive next.config `has: host`
+// match can only enumerate known hosts, so any future preview alias would
+// silently leak to crawlers. Missing/odd Host fails closed to noindex.
+const PROD_HOSTS = new Set(["heygaia.io", "www.heygaia.io"]);
+
+function isProdHost(host: string | null): boolean {
+  if (!host) return false;
+  return PROD_HOSTS.has(host.split(":")[0]?.toLowerCase() ?? "");
+}
+
 export default function middleware(request: NextRequest) {
+  let response: NextResponse;
   if (isTranslatedRoute(request.nextUrl.pathname)) {
-    return intlMiddleware(request);
+    response = intlMiddleware(request);
+  } else {
+    // For non-translated routes: still run middleware (needed for [locale]
+    // routing) but force default locale — no locale prefix in URL.
+    response = intlMiddlewareDefaultOnly(request);
+    // These routes have an invariant locale, so next-intl's NEXT_LOCALE cookie here is inert.
+    // Dropping it lets Cloudflare edge-cache the ISR HTML (CF bypasses cache on any Set-Cookie),
+    // skipping the Worker's cold start; translated routes above keep the cookie since locale varies.
+    response.headers.delete("set-cookie");
   }
-  // For non-translated routes: still run middleware (needed for [locale]
-  // routing) but force default locale — no locale prefix in URL.
-  const response = intlMiddlewareDefaultOnly(request);
-  // These routes have an invariant locale, so next-intl's NEXT_LOCALE cookie here is inert.
-  // Dropping it lets Cloudflare edge-cache the ISR HTML (CF bypasses cache on any Set-Cookie),
-  // skipping the Worker's cold start; translated routes above keep the cookie since locale varies.
-  response.headers.delete("set-cookie");
+  if (!isProdHost(request.headers.get("host") ?? request.nextUrl.hostname)) {
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
   return response;
 }
 
