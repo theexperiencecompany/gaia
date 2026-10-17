@@ -18,11 +18,12 @@ interface ServiceScreenProps {
 export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
   const state = useCLIState(store);
   const working = state.step === "Starting" || state.step === "Stopping";
+  const done = state.step === "Running" || state.step === "Stopped";
   const logs = (state.data.dockerLogs ?? []) as string[];
 
   return (
     <Box flexDirection="column" width="100%">
-      <Header />
+      <Header showStatus={done} />
 
       {working && !state.error && (
         <Box

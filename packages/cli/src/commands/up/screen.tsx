@@ -125,7 +125,10 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
 
   return (
     <Box flexDirection="column" width="100%">
-      <Header />
+      <Header
+        size="large"
+        showStatus={finished && !outcome.noStart && !outcome.stillStarting}
+      />
       <StepList
         steps={steps}
         waiting={state.inputRequest !== null}

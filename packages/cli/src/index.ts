@@ -18,7 +18,10 @@ import { runLogs } from "./commands/stream-logs/handler.js";
 import { runUp } from "./commands/up/handler.js";
 import { runUpdate, type UpdateOptions } from "./commands/update/handler.js";
 import { LLM_PROVIDERS, type LlmProvider } from "./lib/llm-flags.js";
-import { CLI_VERSION } from "./lib/version.js";
+import { printVersion } from "./ui/header/header-lines.js";
+
+/** The root flags that print the version (with the header on a terminal). */
+const VERSION_FLAGS = new Set(["-V", "--version"]);
 
 const program = new Command();
 
@@ -47,7 +50,7 @@ program
   .description(
     "Run GAIA, your proactive personal assistant, on your own computer or server",
   )
-  .version(CLI_VERSION, "-V, --version", "Show the CLI's version")
+  .option("-V, --version", "Show the CLI's version")
   .helpOption("-h, --help", "Show help for a command")
   .helpCommand("help [command]", "Show help for a command")
   // Root options only before the subcommand, so `gaia update --version <tag>`
@@ -253,6 +256,13 @@ program
       process.exit(1);
     }
   });
+// Before commander: printing the header waits on the instance probe, and
+// enablePositionalOptions means --version is only ever the first argument.
+if (VERSION_FLAGS.has(process.argv[2] ?? "")) {
+  await printVersion();
+  process.exit(0);
+}
+
 // Show help when no command is given instead of silently running init
 if (!process.argv.slice(2).length) {
   program.outputHelp();

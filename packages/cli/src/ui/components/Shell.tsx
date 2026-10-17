@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import type { ReactNode } from "react";
 import { MARK, THEME_COLOR } from "../constants.js";
+import type { HeaderOptions } from "../header/header-lines.js";
 import { Footer } from "./Footer.js";
 import { Header } from "./Header.js";
 
@@ -35,6 +36,7 @@ interface ShellProps {
   status: string;
   step: string;
   steps?: readonly StepDef[];
+  header?: HeaderOptions;
 }
 
 const Stepper: React.FC<{ currentStep: string; steps: readonly StepDef[] }> = ({
@@ -77,11 +79,12 @@ export const Shell: React.FC<ShellProps> = ({
   status,
   step,
   steps = INIT_STEPS,
+  header,
 }) => {
   return (
     <Box flexDirection="column" height="100%" width="100%">
       <Box flexGrow={1} flexDirection="column">
-        <Header />
+        <Header {...header} />
         <Stepper currentStep={step} steps={steps} />
         <Box flexDirection="column" flexGrow={1}>
           {children}

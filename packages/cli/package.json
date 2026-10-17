@@ -8,6 +8,7 @@
     "README.md"
   ],
   "scripts": {
+    "bake:logo": "node scripts/bake-logo.mjs",
     "build": "node esbuild.config.mjs && chmod +x dist/index.js",
     "check": "biome check src",
     "dev": "tsx watch src/index.ts",
@@ -26,20 +27,20 @@
     "commander": "^14.0.3",
     "execa": "^9.6.1",
     "ink": "^6.8.0",
-    "ink-big-text": "^2.0.0",
-    "ink-gradient": "^3.0.0",
     "ink-text-input": "^6.0.0",
     "is-unicode-supported": "^2.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "semver": "^7.8.5",
     "simple-git": "^3.36.0",
+    "supports-hyperlinks": "^3.2.0",
     "ws": "^8.21.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
     "@gaia/shared": "workspace:*",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

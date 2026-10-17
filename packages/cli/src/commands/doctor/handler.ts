@@ -11,6 +11,7 @@
 
 import chalk, { Chalk, type ChalkInstance } from "chalk";
 import { MARK, type MarkKind } from "../../ui/constants.js";
+import { printHeader } from "../../ui/header/header-lines.js";
 import {
   type DoctorReport,
   hasBlockingFailure,
@@ -107,6 +108,7 @@ export function printDoctorReport(report: DoctorReport): void {
 }
 
 export async function runDoctor(): Promise<void> {
+  await printHeader();
   const report = await runDoctorChecks();
   printDoctorReport(report);
 
