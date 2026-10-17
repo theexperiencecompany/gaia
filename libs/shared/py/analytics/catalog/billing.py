@@ -45,6 +45,7 @@ PaywallSource = Literal[
     "settings_upsell",
     "settings_linked_accounts",
     "settings_usage",
+    "settings_referrals",
     # Not a surface: the desktop feed window mirroring a wall whose snapshot lost its source.
     "desktop_popup_mirror",
 ]

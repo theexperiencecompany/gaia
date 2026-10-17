@@ -5,6 +5,7 @@ import {
   ComputerIcon,
   CreditCardIcon,
   DiscordIcon,
+  GiftIcon,
   LabsIcon,
   Link04Icon,
   MessageMultiple02Icon,
@@ -65,6 +66,13 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Usage",
     icon: ChartLineData02Icon,
     href: "/settings/usage",
+  },
+  {
+    key: "referrals",
+    label: "Invite Friends",
+    icon: GiftIcon,
+    href: "/settings/referrals",
+    isNew: true,
   },
   {
     key: "preferences",
