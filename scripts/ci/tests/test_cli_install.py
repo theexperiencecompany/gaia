@@ -18,7 +18,20 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 INSTALL_SH = REPO_ROOT / "packages" / "cli" / "install.sh"
 
-HOST_TOOLS = ("sh", "bash", "uname", "mkdir", "cat", "chmod", "mktemp", "tail", "rm", "date", "sed")
+HOST_TOOLS = (
+    "sh",
+    "bash",
+    "uname",
+    "mkdir",
+    "cat",
+    "chmod",
+    "mktemp",
+    "tail",
+    "rm",
+    "date",
+    "sed",
+    "grep",
+)
 
 NVM_NOISE = "=> Appending nvm source string to /home/u/.bashrc"
 NVM_DOWNLOAD_NOISE = (
@@ -37,7 +50,7 @@ cat > "$HOME/.nvm/nvm.sh" <<'NVM'
 nvm() {{
   echo '{NVM_DOWNLOAD_NOISE}'
   printf '#!/bin/sh\necho v22.0.0\n' > "$NVM_DIR/bin/node"
-  printf '#!/bin/sh\necho "{NPM_NOISE[0]}"\necho "{NPM_NOISE[1]}"\nprintf "#!/bin/sh\\n" > "$NVM_DIR/bin/gaia"; chmod +x "$NVM_DIR/bin/gaia"\n' > "$NVM_DIR/bin/npm"
+  printf '#!/bin/sh\necho "{NPM_NOISE[0]}"\necho "{NPM_NOISE[1]}"\nprintf "#!/bin/sh\\n[ \\"\\$1\\" = --help ] && echo \\"  up [options]\\"\\nexit 0\\n" > "$NVM_DIR/bin/gaia"; chmod +x "$NVM_DIR/bin/gaia"\n' > "$NVM_DIR/bin/npm"
   chmod +x "$NVM_DIR/bin/node" "$NVM_DIR/bin/npm"
   PATH="$NVM_DIR/bin:$PATH"
 }}
@@ -72,7 +85,8 @@ def _gaia_installer(bin_dir: Path) -> str:
     return (
         f'    echo "{NPM_NOISE[0]}"; echo "{NPM_NOISE[1]}"\n'
         f"    mkdir -p '{bin_dir}'\n"
-        f"    printf '#!/bin/sh\\n' > '{bin_dir}/gaia'; chmod +x '{bin_dir}/gaia'"
+        f"    printf '#!/bin/sh\\n[ \"$1\" = --help ] && echo \"  up [options]   Install GAIA\"\\nexit 0\\n' > '{bin_dir}/gaia'\n"
+        f"    chmod +x '{bin_dir}/gaia'"
     )
 
 
@@ -153,7 +167,7 @@ def test_a_cli_without_up_is_pointed_at_init(fresh_server: dict[str, str], tmp_p
     bin_dir = Path(fresh_server["PATH"])
     pre_up_cli = (
         f"    mkdir -p '{bin_dir}'\n"
-        f"    printf '#!/bin/sh\\n[ \"$1\" = up ] && exit 1\\nexit 0\\n' > '{bin_dir}/gaia'\n"
+        f"    printf '#!/bin/sh\\n[ \"$1\" = --help ] && echo \"  init [options]   Full setup\"\\nexit 0\\n' > '{bin_dir}/gaia'\n"
         f"    chmod +x '{bin_dir}/gaia'"
     )
     _write_executable(bin_dir / "npm", _fake_npm(tmp_path, pre_up_cli))

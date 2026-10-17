@@ -174,9 +174,10 @@ main() {
   fi
   done_line "GAIA CLI $("$GAIA_BIN" --version 2>/dev/null) installed" "$(step_took)"
 
-  # CLIs before 0.7.0 have no `up`; they start with `init`.
-  FIRST_COMMAND="up"
-  "$GAIA_BIN" up --help >/dev/null 2>&1 || FIRST_COMMAND="init"
+  # CLIs before 0.7.0 have no `up`; they start with `init`. Read the command list:
+  # an unknown command's `--help` still exits 0.
+  FIRST_COMMAND="init"
+  "$GAIA_BIN" --help 2>/dev/null | grep -Eq '^[[:space:]]+up([[:space:]]|$)' && FIRST_COMMAND="up"
 
   # nvm only changed this installer's PATH, never the shell that piped it in.
   if [ "$NODE_INSTALLED_VIA_NVM" = "1" ]; then

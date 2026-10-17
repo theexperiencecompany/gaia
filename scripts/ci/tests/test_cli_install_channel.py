@@ -16,7 +16,19 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 INSTALL_SH = REPO_ROOT / "packages" / "cli" / "install.sh"
 
-HOST_TOOLS = ("sh", "uname", "cat", "chmod", "dirname", "basename", "mktemp", "rm", "date", "tail")
+HOST_TOOLS = (
+    "sh",
+    "uname",
+    "cat",
+    "chmod",
+    "dirname",
+    "basename",
+    "mktemp",
+    "rm",
+    "date",
+    "tail",
+    "grep",
+)
 
 # Stands in for npm / pnpm / bun: records argv, then installs a gaia shim.
 PKG_MGR_STUB = """#!/bin/sh
