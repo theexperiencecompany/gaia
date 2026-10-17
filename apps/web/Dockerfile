@@ -56,8 +56,9 @@ COPY . .
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
+# The image is built with no backend running; API-backed pages fill on first request.
 WORKDIR /app/apps/web
-RUN pnpm build
+RUN GAIA_PRERENDER_WITHOUT_BACKEND=1 pnpm build
 
 # ===================================
 # Stage 2: Runner
