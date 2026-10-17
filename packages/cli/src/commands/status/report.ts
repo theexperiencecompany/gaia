@@ -38,6 +38,8 @@ export interface StatusRow {
 
 export interface StatusReport {
   headline: { kind: "ok" | "fail" | "warn"; text: string; url?: string };
+  /** What to do, said under the headline (a Docker problem's fix). */
+  hint?: string;
   rows: StatusRow[];
   /** True when a part GAIA needs is down: `gaia status` then exits 1. */
   unhealthy: boolean;
@@ -173,11 +175,24 @@ export function buildStatusReport(facts: StatusFacts): StatusReport {
   }
   const docker = facts.docker;
   if (docker?.problem) {
+    // GAIA may well be running: this terminal just cannot ask Docker. Its API
+    // still answers over HTTP, so say what is known and how to see the rest.
+    const answering = facts.readiness?.reachable === true;
+    const dockerRow: StatusRow = {
+      label: "Docker",
+      items: [],
+      note: docker.problem.state,
+      tone: "warn",
+    };
+    const setup = setupRow(facts);
     return {
-      headline: { kind: "fail", text: docker.problem.summary },
-      rows: [
-        { label: "Fix", items: [], note: docker.problem.fix, tone: "dim" },
-      ],
+      headline: answering
+        ? { kind: "ok", text: "GAIA is running", url: facts.webUrl }
+        : { kind: "fail", text: docker.problem.summary },
+      hint: docker.problem.fix,
+      rows: answering
+        ? [dataRow(facts, []), ...(setup ? [setup] : []), dockerRow]
+        : [],
       unhealthy: true,
     };
   }

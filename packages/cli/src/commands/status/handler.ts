@@ -31,6 +31,7 @@ function printStatusSnapshot(store: CLIStore): void {
   const mark = report.headline.kind === "ok" ? MARK.active : MARK.fail;
   out(`${mark} ${report.headline.text}`);
   if (report.headline.url) out(`  ${report.headline.url}`);
+  if (report.hint) out(`  ${report.hint}`);
   if (report.rows.length > 0) out();
   for (const row of report.rows) {
     const items = row.items

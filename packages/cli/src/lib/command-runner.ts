@@ -96,7 +96,7 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   // Ctrl-C reaches the flow as a cancel (below), not as Ink quietly unmounting
   // while the work carries on and the process exits 0.
   let cancel = (): void => undefined;
-  const { unmount } = render(
+  const { unmount, clear } = render(
     React.createElement(App, {
       store,
       command: runtime.command,
@@ -127,14 +127,18 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   // React commits a store change on a later tick; unmounting first would
   // drop the flow's last state (gaia up's summary) from the final frame.
   await new Promise((resolve) => setImmediate(resolve));
+  const groupSwitch = dockerGroupRelaunch(store);
+  if (groupSwitch) {
+    // The relaunched process draws the same screen again: erase this one so
+    // the run reads as one screen, not two stacked copies.
+    clear();
+    unmount();
+    await relaunchWithDockerGroup(store.currentState.step, groupSwitch);
+  }
   unmount();
   // Ink leaves the cursor at the end of its last line; the shell prompt
   // belongs on its own line.
   process.stdout.write("\n");
-  const groupSwitch = dockerGroupRelaunch(store);
-  if (groupSwitch) {
-    await relaunchWithDockerGroup(store.currentState.step, groupSwitch);
-  }
   exitForStore(store);
 }
 

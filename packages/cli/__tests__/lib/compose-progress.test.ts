@@ -48,11 +48,11 @@ const PULL: ComposeEvent[] = [
 ];
 
 describe("describeComposeProgress while pulling", () => {
-  it("shows the size downloaded of the size known, and images ready, never layer hashes", () => {
+  it("shows the size downloaded and images ready, never layer hashes or a total that is still growing", () => {
     const { phases, state } = run(PULL);
 
     expect(phases.at(-1)).toEqual({
-      label: "Downloading GAIA: 7 MB of 14 MB (1 of 2 images ready)",
+      label: "Downloading GAIA: 7 MB so far (1 of 2 images ready)",
       percent: 52,
     });
     expect(phases.every((p) => !p?.label.includes("805f301826ef"))).toBe(true);

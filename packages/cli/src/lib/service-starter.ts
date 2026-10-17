@@ -1,6 +1,5 @@
 import { execa } from "execa";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { botComposeFile, botService, writeBotsEnv } from "./bots.js";
 import { ComposeError } from "./compose-failure.js";
@@ -17,6 +16,7 @@ import {
 import { dockerAccessError, getDockerAccess } from "./docker-access.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
+import { homeRelative } from "./paths.js";
 
 const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
@@ -607,10 +607,7 @@ export function describeInstall(
   mode: SetupMode | null,
 ): string {
   if (!repoPath) return "GAIA isn't installed yet";
-  const home = os.homedir();
-  const shown = repoPath.startsWith(`${home}/`)
-    ? `~${repoPath.slice(home.length)}`
-    : repoPath;
+  const shown = homeRelative(repoPath);
   if (!mode) return `${shown} (not set up yet: no apps/api/.env)`;
   return `${shown} (${mode === "selfhost" ? "self-host" : "developer"})`;
 }

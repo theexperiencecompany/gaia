@@ -15,6 +15,7 @@ import {
   InstallConfirmStep,
   PortConflictStep,
 } from "../../ui/components/shared-steps.js";
+import { useCardWidth } from "../../ui/components/use-card-width.js";
 import { BOX_BORDER, MARK, THEME_COLOR } from "../../ui/constants.js";
 import type { CLIState, CLIStore } from "../../ui/store.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
@@ -54,6 +55,7 @@ const RowText: React.FC<{ row: SummaryRow }> = ({ row }) => {
 const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
   const summary = buildUpSummary(outcome);
   const accent = summary.tone === "success" ? "green" : THEME_COLOR;
+  const width = useCardWidth();
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box
@@ -62,6 +64,7 @@ const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
         borderColor={accent}
         paddingX={2}
         paddingY={1}
+        width={width}
       >
         <Text bold color={accent}>
           {summary.tone === "success" ? `${MARK.ok} ` : ""}
@@ -69,7 +72,7 @@ const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
         </Text>
         <Box flexDirection="column" marginTop={1}>
           {summary.rows.map((row) => (
-            <Box key={row.label}>
+            <Box key={row.label} marginBottom={row.tone === "primary" ? 1 : 0}>
               <Box width={ROW_LABEL_WIDTH} flexShrink={0}>
                 <Text bold={row.tone === "primary"}>{row.label}</Text>
               </Box>
@@ -78,7 +81,13 @@ const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
           ))}
         </Box>
       </Box>
-      <Box flexDirection="row" flexWrap="wrap" marginTop={1} paddingX={2}>
+      <Box
+        flexDirection="row"
+        flexWrap="wrap"
+        marginTop={1}
+        paddingX={2}
+        width={COMMAND_COLUMN_WIDTH * 2 + 4}
+      >
         {NEXT_COMMANDS.map(([command, purpose]) => (
           <Box key={command} width={COMMAND_COLUMN_WIDTH}>
             <Box width={COMMAND_WIDTH}>
@@ -127,7 +136,8 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
     <Box flexDirection="column" width="100%">
       <Header
         size="large"
-        showStatus={finished && !outcome.noStart && !outcome.stillStarting}
+        // The card below already says where GAIA runs; the probe would only flash.
+        showStatus={false}
       />
       <StepList
         steps={steps}

@@ -160,6 +160,38 @@ describe("gaia status on a self-host install", () => {
     });
 
     expect(report.headline.text).not.toMatch(/not running/i);
-    expect(report.rows[0]?.note).toContain("newgrp docker");
+    expect(report.hint).toContain("newgrp docker");
+  });
+
+  // cli-audit 17: GAIA was up while this shell lacked the docker group.
+  it("says GAIA is running when its API answers, though this terminal can't use Docker", () => {
+    const report = buildStatusReport({
+      install: "~/gaia (self-host)",
+      installed: true,
+      docker: {
+        access: "no-permission",
+        problem: {
+          summary: "Docker is running, but your user can't use it yet",
+          state: "is running, but your user can't use it yet",
+          fix: "Log out and back in (or run 'newgrp docker'), then try again.",
+        },
+        containers: [],
+      },
+      readiness: {
+        reachable: true,
+        ready: true,
+        dependencies: [{ name: "mongodb", ok: true, latency_ms: 2 }],
+      },
+      services: [],
+      webUrl: "http://localhost:3000",
+      setupComplete: true,
+    });
+
+    expect(report.headline).toEqual({
+      kind: "ok",
+      text: "GAIA is running",
+      url: "http://localhost:3000",
+    });
+    expect(report.rows.at(-1)).toMatchObject({ label: "Docker", tone: "warn" });
   });
 });

@@ -37,6 +37,7 @@ import {
   saveLlmProvider,
   validateLlmFlags,
 } from "../../lib/llm-flags.js";
+import { homeRelative } from "../../lib/paths.js";
 import { ensurePrerequisites } from "../../lib/prerequisite-install.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
 import { cloneRelease, GAIA_REPO_URL } from "../../lib/release.js";
@@ -206,7 +207,9 @@ export async function runUpFlow(
   finishStep(
     store,
     "download",
-    needsClone ? undefined : `Using your install at ${targetPath}`,
+    needsClone
+      ? undefined
+      : `Using your install at ${homeRelative(targetPath)}`,
   );
 
   // 3. Settings — selfhost pipeline with pre-sourced answers.

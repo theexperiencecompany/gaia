@@ -162,6 +162,34 @@ export interface ComposePhase {
   percent: number;
 }
 
+/** A download bar stops short of full until every image is ready. */
+const MAX_DOWNLOAD_PERCENT = 99;
+
+/**
+ * Bytes downloaded, and a percentage over every layer of the pull. Compose
+ * names a layer before it tells its size, so a layer without one counts as
+ * the average size of those that have one; the total only grows as layers
+ * report, and a bare "x of y" would claim a y that is not the real total.
+ */
+function estimateDownload(state: ComposeProgressState): {
+  downloaded: number;
+  percent: number;
+} {
+  const layers = [...state.layers.values()];
+  const sized = layers.filter((l) => l.total > 0);
+  const downloaded = sized.reduce((sum, l) => sum + l.current, 0);
+  if (sized.length === 0) return { downloaded, percent: 0 };
+  const average = sized.reduce((sum, l) => sum + l.total, 0) / sized.length;
+  const unsized = layers.filter((l) => l.total === 0);
+  const total =
+    sized.reduce((sum, l) => sum + l.total, 0) + unsized.length * average;
+  const done = downloaded + unsized.filter((l) => l.done).length * average;
+  return {
+    downloaded,
+    percent: Math.min(MAX_DOWNLOAD_PERCENT, Math.floor((done / total) * 100)),
+  };
+}
+
 /** Where a compose run is, for the progress line and bar. */
 export function describeComposeProgress(
   state: ComposeProgressState,
@@ -183,18 +211,11 @@ export function describeComposeProgress(
     };
   }
   if (images.includes("downloading")) {
-    const layers = [...state.layers.values()].filter((l) => l.total > 0);
-    const total = layers.reduce((sum, l) => sum + l.total, 0);
-    const current = layers.reduce((sum, l) => sum + l.current, 0);
     const ready = images.filter((image) => image === "ready").length;
-    state.downloadPercent = Math.max(
-      state.downloadPercent,
-      total > 0 ? Math.floor((current / total) * 100) : 0,
-    );
+    const { downloaded, percent } = estimateDownload(state);
+    state.downloadPercent = Math.max(state.downloadPercent, percent);
     const size =
-      total > 0
-        ? `${formatBytes(current)} of ${formatBytes(total)}`
-        : "starting";
+      downloaded > 0 ? `${formatBytes(downloaded)} so far` : "starting";
     return {
       label: `Downloading GAIA: ${size} (${ready} of ${images.length} images ready)`,
       percent: state.downloadPercent,

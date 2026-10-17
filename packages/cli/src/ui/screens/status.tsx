@@ -91,6 +91,11 @@ export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
               <Text color={THEME_COLOR}>{report.headline.url}</Text>
             </Box>
           )}
+          {report.hint && (
+            <Box marginLeft={2}>
+              <Text>{report.hint}</Text>
+            </Box>
+          )}
           {report.rows.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
               {report.rows.map((row) => (

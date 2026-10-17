@@ -10,6 +10,7 @@ import type { PortCheckResult } from "../../lib/prerequisites.types.js";
 import { BOX_BORDER, MARK, type MarkKind, THEME_COLOR } from "../constants.js";
 import { Mark } from "./Mark.js";
 import { PercentBar } from "./PercentBar.js";
+import { useCardWidth } from "./use-card-width.js";
 
 export const SystemChecksStep: React.FC<{
   checks: { git: string; docker?: string; mise?: string };
@@ -81,6 +82,7 @@ export const RepositoryProgressStep: React.FC<{
 /** A failure: its first line is the cause, the rest the next step and where the log is. */
 export const ErrorStep: React.FC<{ message: string }> = ({ message }) => {
   const [cause, ...rest] = message.split("\n");
+  const width = useCardWidth();
   return (
     <Box
       flexDirection="column"
@@ -88,22 +90,23 @@ export const ErrorStep: React.FC<{ message: string }> = ({ message }) => {
       borderColor="red"
       paddingX={1}
       marginTop={1}
+      width={width}
     >
       <Box>
         <Mark kind="fail" />
-        <Text color="red" bold>
-          {cause}
-        </Text>
+        <Text bold>{cause}</Text>
       </Box>
-      {rest.map((line) => (
-        <Text
-          key={line}
-          color={line.startsWith("Full log:") ? "gray" : undefined}
-        >
-          {"  "}
-          {line}
-        </Text>
-      ))}
+      {/* A margin, not leading spaces, so a wrapped line keeps its indent. */}
+      <Box flexDirection="column" marginLeft={2}>
+        {rest.map((line) => (
+          <Text
+            key={line}
+            color={line.startsWith("Full log:") ? "gray" : undefined}
+          >
+            {line}
+          </Text>
+        ))}
+      </Box>
     </Box>
   );
 };
