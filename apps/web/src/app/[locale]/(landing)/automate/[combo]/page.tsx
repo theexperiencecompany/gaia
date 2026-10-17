@@ -1,17 +1,22 @@
 import { Button } from "@heroui/button";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { SiteLink } from "@/components/seo/SiteLink";
+import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
+import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllComboSlugs } from "@/features/integrations/data/combosData";
 import {
   getTranslatedCombo,
   getTranslatedCombos,
 } from "@/features/integrations/data/getTranslatedCombo";
+import { getMarketplacePath } from "@/features/integrations/data/marketplaceServer";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { getAutomateDocsLinks } from "@/lib/docs-links";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -49,37 +54,34 @@ export async function generateMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/automate/${combo}`,
-    canonicalPath: data.canonicalSlug
-      ? `/automate/${data.canonicalSlug}`
-      : undefined,
     keywords: data.keywords,
   });
   return {
     ...metadata,
-    alternates: getLocalizedAlternates(
-      `/automate/${combo}`,
-      locale,
-      data.canonicalSlug ? `/automate/${data.canonicalSlug}` : undefined,
-    ),
+    alternates: getLocalizedAlternates(`/automate/${combo}`, locale),
   };
 }
 
 export default async function AutomateComboPage({ params }: PageProps) {
   const { locale, combo } = await params;
   setRequestLocale(locale);
-  const [t, data, allCombos] = await Promise.all([
-    getTranslations(),
-    getTranslatedCombo(combo),
-    getTranslatedCombos(),
-  ]);
+  const [t, data, allCombos, comparisonSlugs, alternativeSlugs] =
+    await Promise.all([
+      getTranslations(),
+      getTranslatedCombo(combo),
+      getTranslatedCombos(),
+      getAllComparisonSlugs(),
+      getAllAlternativeSlugs(),
+    ]);
 
   if (!data) {
     notFound();
   }
+  // getTranslatedCombos is _slugs-driven (victims excluded), so every entry
+  // here links a live page.
   const relatedCombos = allCombos
     .filter(
       (c) =>
-        !c.canonicalSlug &&
         c.slug !== combo &&
         (c.toolASlug === data.toolASlug ||
           c.toolBSlug === data.toolBSlug ||
@@ -87,6 +89,8 @@ export default async function AutomateComboPage({ params }: PageProps) {
           c.toolBSlug === data.toolASlug),
     )
     .slice(0, 3);
+
+  const docsGuides = getAutomateDocsLinks(data.toolASlug, data.toolBSlug);
 
   const pageUrl = `${siteConfig.url}/automate/${combo}`;
 
@@ -116,6 +120,29 @@ export default async function AutomateComboPage({ params }: PageProps) {
 
   const faqSchema = generateFAQSchema(data.faqs);
 
+  // Direct detail links where the marketplace slug verifiably exists;
+  // otherwise the search page stays the fallback (never link a 404).
+  const [toolAPath, toolBPath] = await Promise.all([
+    getMarketplacePath(data.toolASlug),
+    getMarketplacePath(data.toolBSlug),
+  ]);
+  const toolAHref =
+    toolAPath ?? `/marketplace?search=${encodeURIComponent(data.toolA)}`;
+  const toolBHref =
+    toolBPath ?? `/marketplace?search=${encodeURIComponent(data.toolB)}`;
+
+  // Head-to-head and alternative guides keyed by the same tool slugs the
+  // combo datasets use; only link pages that verifiably exist (never a 404).
+  const compareHrefFor = (toolSlug: string): string | null => {
+    if (comparisonSlugs.includes(toolSlug)) return `/compare/${toolSlug}`;
+    if (alternativeSlugs.includes(toolSlug)) {
+      return `/alternative-to/${toolSlug}`;
+    }
+    return null;
+  };
+  const toolACompareHref = compareHrefFor(data.toolASlug);
+  const toolBCompareHref = compareHrefFor(data.toolBSlug);
+
   return (
     <>
       <JsonLd
@@ -125,13 +152,13 @@ export default async function AutomateComboPage({ params }: PageProps) {
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-zinc-500">
-          <Link href="/" className="hover:text-zinc-300">
+          <SiteLink href="/" className="hover:text-zinc-300">
             {t("common.home")}
-          </Link>
+          </SiteLink>
           <span className="mx-2">/</span>
-          <Link href="/marketplace" className="hover:text-zinc-300">
+          <SiteLink href="/marketplace" className="hover:text-zinc-300">
             {t("marketplace.breadcrumb")}
-          </Link>
+          </SiteLink>
           <span className="mx-2">/</span>
           <span className="text-zinc-300">
             {data.toolA} + {data.toolB}
@@ -248,8 +275,8 @@ export default async function AutomateComboPage({ params }: PageProps) {
             {t("automate.explore_integrations")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Link
-              href={`/marketplace?search=${encodeURIComponent(data.toolA)}`}
+            <SiteLink
+              href={toolAHref}
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
@@ -258,9 +285,9 @@ export default async function AutomateComboPage({ params }: PageProps) {
               <p className="text-sm leading-relaxed text-zinc-400">
                 {t("automate.see_everything_gaia", { tool: data.toolA })}
               </p>
-            </Link>
-            <Link
-              href={`/marketplace?search=${encodeURIComponent(data.toolB)}`}
+            </SiteLink>
+            <SiteLink
+              href={toolBHref}
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
@@ -269,9 +296,46 @@ export default async function AutomateComboPage({ params }: PageProps) {
               <p className="text-sm leading-relaxed text-zinc-400">
                 {t("automate.discover_automations", { tool: data.toolB })}
               </p>
-            </Link>
+            </SiteLink>
           </div>
         </section>
+
+        {/* Compare the tools */}
+        {(toolACompareHref || toolBCompareHref) && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-2xl font-semibold text-white">
+              Compare the tools
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {toolACompareHref && (
+                <SiteLink
+                  href={toolACompareHref}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                    GAIA vs {data.toolA}: full comparison
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    See how GAIA compares to {data.toolA} head-to-head.
+                  </p>
+                </SiteLink>
+              )}
+              {toolBCompareHref && (
+                <SiteLink
+                  href={toolBCompareHref}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                    GAIA vs {data.toolB}: full comparison
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    See how GAIA compares to {data.toolB} head-to-head.
+                  </p>
+                </SiteLink>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Related Automations */}
         {relatedCombos.length > 0 && (
@@ -281,7 +345,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {relatedCombos.map((related) => (
-                <Link
+                <SiteLink
                   key={related.slug}
                   href={`/automate/${related.slug}`}
                   className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
@@ -290,11 +354,17 @@ export default async function AutomateComboPage({ params }: PageProps) {
                     {related.toolA} + {related.toolB}
                   </h3>
                   <p className="text-xs text-zinc-400">{related.tagline}</p>
-                </Link>
+                </SiteLink>
               ))}
             </div>
           </section>
         )}
+
+        <DocsGuidesSection
+          heading={t("common.docs_guides")}
+          guides={docsGuides}
+          headingClassName="mb-6 text-2xl font-semibold text-white"
+        />
 
         {/* More Combos Link */}
         <section className="mb-16">

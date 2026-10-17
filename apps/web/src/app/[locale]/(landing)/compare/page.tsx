@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-
 import JsonLd from "@/components/seo/JsonLd";
+import { SiteLink } from "@/components/seo/SiteLink";
 import {
   CATEGORY_ORDER,
   COMPARISON_CATEGORIES,
@@ -75,9 +74,7 @@ export default async function ComparisonsHubPage({ params }: PageProps) {
     comparisons.map((c) => ({
       name: `${t("gaia_vs", { name: c.name })}`,
       url: `${siteConfig.url}/compare/${c.slug}`,
-      description: c.description,
     })),
-    "Article",
   );
 
   // Group comparisons by category
@@ -116,7 +113,7 @@ export default async function ComparisonsHubPage({ params }: PageProps) {
             </h2>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {grouped[category].map((comparison) => (
-                <Link
+                <SiteLink
                   key={comparison.slug}
                   href={`/compare/${comparison.slug}`}
                   className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
@@ -153,7 +150,7 @@ export default async function ComparisonsHubPage({ params }: PageProps) {
                   <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
                     {comparison.description}
                   </p>
-                </Link>
+                </SiteLink>
               ))}
             </div>
           </div>

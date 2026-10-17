@@ -115,7 +115,7 @@
       "Airtable AI 代替",
       "無料 Airtable 代替",
       "スプレッドシートデータベース 代替",
-      "Airtable 代替 2026",
+      "Airtable 代替 {{CURRENT_YEAR}}",
       "Airtable 代替 reddit",
       "Airtable と GAIA の比較",
       "AIワークフロー管理ツール",
@@ -275,7 +275,7 @@
       "AkiflowとAIアシスタントの比較",
       "統合タスク受信箱 代替",
       "AIタイムブロック生産性",
-      "Akiflow代替 2026",
+      "Akiflow代替 {{CURRENT_YEAR}}",
       "オープンソース Akiflow 代替",
       "AIタスク管理 カレンダー同期",
       "キーボード生産性ツール 代替",
@@ -583,7 +583,7 @@
       "オープンソース Asana 代替",
       "Asana 無料代替",
       "Asana 代替 reddit",
-      "Asana 代替 2026",
+      "Asana 代替 {{CURRENT_YEAR}}",
       "ベストなAsana代替",
       "Asana vs GAIA"
     ],
@@ -1010,7 +1010,7 @@
       "自動会議スケジューリングAI",
       "Cal.com 無料代替",
       "Cal.com 代替 Reddit",
-      "Cal.com 代替 2026",
+      "Cal.com 代替 {{CURRENT_YEAR}}",
       "Cal.com の最良の代替",
       "Cal.com vs GAIA"
     ],
@@ -1212,7 +1212,7 @@
       "個人知識管理AI",
       "Capacities vs プロアクティブAI",
       "オープンソース Capacities 代替",
-      "AI セカンドブレインツール 2026",
+      "AI セカンドブレインツール {{CURRENT_YEAR}}",
       "PKM vs AI生産性OS",
       "Capacities 代替ツール",
       "セルフホスト型知識管理AI"
@@ -1311,7 +1311,7 @@
       "オープンソース ChatGPT Enterprise 代替",
       "エンタープライズAIアシスタント 代替",
       "セルフホスト ChatGPT 代替",
-      "ChatGPT Enterprise 置き換え 2026",
+      "ChatGPT Enterprise 置き換え {{CURRENT_YEAR}}",
       "ChatGPT Enterprise 代替 reddit",
       "ChatGPT EnterpriseとGAIAの比較",
       "プロアクティブAI vs リアクティブAI エンタープライズ",
@@ -4308,7 +4308,7 @@
       "Harvest AI alternative",
       "free Harvest alternative",
       "time tracking productivity alternative",
-      "Harvest replacement 2026",
+      "Harvest replacement {{CURRENT_YEAR}}",
       "Harvest alternative reddit",
       "Harvest vs GAIA",
       "AI freelancer productivity tool",
@@ -4565,7 +4565,7 @@
       "email workflow automation",
       "HEY Email free alternative",
       "HEY Email alternative reddit",
-      "HEY Email alternative 2026",
+      "HEY Email alternative {{CURRENT_YEAR}}",
       "best HEY Email replacement",
       "HEY Email vs GAIA"
     ],
@@ -4674,7 +4674,7 @@
       "HubSpot AI alternative",
       "free HubSpot alternative",
       "CRM productivity alternative",
-      "HubSpot replacement 2026",
+      "HubSpot replacement {{CURRENT_YEAR}}",
       "HubSpot alternative reddit",
       "HubSpot vs GAIA",
       "AI productivity tool for sales teams",
@@ -4953,7 +4953,7 @@
       "Jira replacement",
       "Jira free alternative",
       "Jira alternative reddit",
-      "Jira alternative 2026",
+      "Jira alternative {{CURRENT_YEAR}}",
       "best Jira replacement",
       "source-available alternative to Jira",
       "self-hosted alternative to Jira",
@@ -5261,7 +5261,7 @@
       "AI workflow assistant",
       "Lindy AI free alternative",
       "Lindy AI alternative reddit",
-      "Lindy AI alternative 2026",
+      "Lindy AI alternative {{CURRENT_YEAR}}",
       "best Lindy AI replacement",
       "source-available alternative to Lindy AI",
       "Lindy AI vs GAIA"
@@ -5355,7 +5355,7 @@
       "issue tracker comparison",
       "Linear free alternative",
       "Linear alternative reddit",
-      "Linear alternative 2026",
+      "Linear alternative {{CURRENT_YEAR}}",
       "best Linear replacement",
       "source-available alternative to Linear",
       "self-hosted alternative to Linear",
@@ -5550,7 +5550,7 @@
       "async video messaging alternative",
       "ai alternative to loom",
       "loom free alternative",
-      "loom replacement 2026",
+      "loom replacement {{CURRENT_YEAR}}",
       "async communication alternative",
       "source-available loom alternative"
     ],
@@ -5661,7 +5661,7 @@
       "visual automation vs AI assistant",
       "Integromat alternative",
       "Make.com vs AI productivity tool",
-      "no-code automation alternative 2026",
+      "no-code automation alternative {{CURRENT_YEAR}}",
       "AI workflow automation vs Make",
       "natural language automation tool",
       "source-available Make alternative",
@@ -6061,12 +6061,12 @@
       "Missive vs proactive AI assistant",
       "team inbox automation tool",
       "source-available Missive alternative",
-      "AI shared inbox 2026",
+      "AI shared inbox {{CURRENT_YEAR}}",
       "email collaboration AI",
       "Missive replacement self-hosted",
       "Missive free alternative",
       "Missive alternative reddit",
-      "Missive alternative 2026",
+      "Missive alternative {{CURRENT_YEAR}}",
       "best Missive replacement",
       "Missive vs GAIA"
     ],
@@ -6172,7 +6172,7 @@
       "Monday.com vs AI assistant for teams",
       "Monday.com free alternative",
       "Monday.com alternative reddit",
-      "Monday.com alternative 2026",
+      "Monday.com alternative {{CURRENT_YEAR}}",
       "best Monday.com replacement",
       "Monday.com vs GAIA"
     ],
@@ -6271,7 +6271,7 @@
       "productivity AI comparison",
       "Motion free alternative",
       "Motion alternative reddit",
-      "Motion alternative 2026",
+      "Motion alternative {{CURRENT_YEAR}}",
       "best Motion replacement",
       "source-available alternative to Motion",
       "Motion vs GAIA"
@@ -6361,7 +6361,7 @@
       "no-code automation",
       "n8n free alternative",
       "n8n alternative reddit",
-      "n8n alternative 2026",
+      "n8n alternative {{CURRENT_YEAR}}",
       "best n8n replacement",
       "source-available alternative to n8n",
       "self-hosted alternative to n8n",
@@ -6461,7 +6461,7 @@
       "cross-tool AI automation alternative",
       "Notion AI free alternative",
       "Notion AI alternative reddit",
-      "Notion AI alternative 2026",
+      "Notion AI alternative {{CURRENT_YEAR}}",
       "best Notion AI replacement",
       "Notion AI vs GAIA"
     ],
@@ -6664,7 +6664,7 @@
       "self-hosted workspace",
       "Notion free alternative",
       "Notion alternative reddit",
-      "Notion alternative 2026",
+      "Notion alternative {{CURRENT_YEAR}}",
       "best Notion replacement",
       "Notion vs GAIA"
     ],
@@ -6893,7 +6893,7 @@
       "Obsidian vs AI productivity tool",
       "Obsidian free alternative",
       "Obsidian alternative reddit",
-      "Obsidian alternative 2026",
+      "Obsidian alternative {{CURRENT_YEAR}}",
       "source-available alternative to Obsidian",
       "Obsidian vs GAIA"
     ],
@@ -7270,7 +7270,7 @@
       "ai meeting notes alternative",
       "ai alternative to otter ai",
       "otter ai free alternative",
-      "otter ai replacement 2026",
+      "otter ai replacement {{CURRENT_YEAR}}",
       "meeting transcription alternative",
       "source-available otter ai alternative"
     ],
@@ -7382,7 +7382,7 @@
       "AI productivity comparison",
       "Perplexity free alternative",
       "Perplexity alternative reddit",
-      "Perplexity alternative 2026",
+      "Perplexity alternative {{CURRENT_YEAR}}",
       "best Perplexity replacement",
       "source-available alternative to Perplexity",
       "Perplexity vs GAIA"
@@ -7461,7 +7461,7 @@
       "inflection ai alternative",
       "ai alternative to pi ai",
       "pi ai free alternative",
-      "pi ai replacement 2026",
+      "pi ai replacement {{CURRENT_YEAR}}",
       "personal ai assistant alternative",
       "source-available pi ai alternative"
     ],
@@ -7576,7 +7576,7 @@
       "Pipedream alternative for non-developers",
       "AI personal assistant vs serverless automation",
       "source-available Pipedream alternative",
-      "natural language automation 2026",
+      "natural language automation {{CURRENT_YEAR}}",
       "AI email calendar task automation",
       "Pipedream vs proactive AI"
     ],
@@ -7675,7 +7675,7 @@
       "Pipedrive AI alternative",
       "free Pipedrive alternative",
       "sales CRM alternative",
-      "Pipedrive replacement 2026",
+      "Pipedrive replacement {{CURRENT_YEAR}}",
       "Pipedrive alternative reddit",
       "Pipedrive vs GAIA",
       "AI sales productivity tool",
@@ -8023,7 +8023,7 @@
       "AI calendar optimization",
       "Reclaim free alternative",
       "Reclaim alternative reddit",
-      "Reclaim alternative 2026",
+      "Reclaim alternative {{CURRENT_YEAR}}",
       "best Reclaim replacement",
       "source-available alternative to Reclaim",
       "Reclaim vs GAIA"
@@ -8208,7 +8208,7 @@
       "AI email task calendar automation",
       "workflow automation for individuals",
       "proactive AI vs approval-based workflow",
-      "Relay.app replacement 2026"
+      "Relay.app replacement {{CURRENT_YEAR}}"
     ],
     "intro": "Relay.app has carved out a distinctive position in the automation market with its human-in-the-loop architecture. Most automation platforms treat human intervention as a failure mode — something that happens when a workflow breaks. Relay makes it a design primitive. Workflows can pause at any point and wait for a human to approve an action, fill in a field, or make a judgment call before execution continues. This makes Relay genuinely useful for processes where full automation is premature: approving an AI-generated draft before it sends, routing a customer escalation to the right person before responding, or reviewing extracted data before it updates a CRM record.\n\nRelay also includes strong AI capabilities for its plan tier: all plans include AI credits for GPT-4o, Claude, and Gemini actions, enabling text summarization, data extraction, audio transcription, and AI-generated drafts as workflow steps. The Team plan adds multi-user workflows and shared app connections, making it viable for small operations teams.\n\nThe design philosophy, however, is still fundamentally builder-oriented. To get value from Relay, you design workflow templates: define the trigger, sequence the steps, place the human checkpoints, and wire up the AI actions. Each workflow is a finite, pre-defined process. Relay does not monitor your inbox or calendar proactively, learn your preferences over time, or decide which workflow to trigger based on context — a human (you) must design every automation in advance.\n\nGAIA operates from a different premise. Rather than requiring you to build workflows that incorporate human approval steps, GAIA acts as a proactive AI that monitors your environment and takes action — and surfaces items that require your attention without requiring you to design a workflow template first. When a high-priority email arrives, GAIA triages it, drafts a reply, and flags it for your review — effectively creating a human-in-the-loop moment naturally, through its interface, without requiring you to pre-configure an approval step.\n\nThe more fundamental difference is scope. Relay is a workflow automation platform: you use it to automate specific repeatable processes. GAIA is an AI assistant: you use it to manage your entire daily work life — inbox, calendar, tasks, projects, and cross-tool coordination — through natural conversation and proactive monitoring. Relay is the right tool when you know exactly what process you want to automate. GAIA is the right tool when you want an AI to handle the operational overhead of your work continuously, whether or not you know in advance what actions will be needed.",
     "rows": [
@@ -8307,7 +8307,7 @@
       "automatic time tracking alternative",
       "source-available rescuetime alternative",
       "rescuetime free alternative",
-      "rescuetime replacement 2026"
+      "rescuetime replacement {{CURRENT_YEAR}}"
     ],
     "intro": "RescueTime has long been the go-to tool for professionals who want honest data about where their hours go. By running silently in the background, it captures every minute spent in apps, websites, and meetings, then packages that data into weekly reports and productivity scores. For anyone who has lost track of a workday to accidental internet browsing, RescueTime delivers a wake-up call.\n\nBut awareness alone rarely changes behavior. RescueTime shows you that you spent three hours on social media, yet it cannot block those distractions in context, reschedule the tasks you missed, or coordinate with the rest of your workflow to prevent the same pattern tomorrow. The data stays inside RescueTime's dashboard while your actual work happens across Slack, Gmail, Notion, GitHub, and a dozen other tools.\n\nGAIA takes the next step. Rather than reporting on what already happened, GAIA proactively manages your digital environment — scheduling focused work blocks on your calendar, surfacing urgent tasks from your inbox, and automating the routine actions that eat into productive time. It connects to your tools so the intelligence it gathers can actually move things forward, not just chart them. For knowledge workers who want to reclaim their time rather than just measure it, GAIA offers a fundamentally more active approach to productivity.",
     "rows": [
@@ -8611,7 +8611,7 @@
       "SaneBox vs AI productivity",
       "SaneBox free alternative",
       "SaneBox alternative reddit",
-      "SaneBox alternative 2026",
+      "SaneBox alternative {{CURRENT_YEAR}}",
       "best SaneBox replacement",
       "source-available alternative to SaneBox",
       "SaneBox vs GAIA"
@@ -8796,7 +8796,7 @@
       "email automation AI",
       "Shortwave free alternative",
       "Shortwave alternative reddit",
-      "Shortwave alternative 2026",
+      "Shortwave alternative {{CURRENT_YEAR}}",
       "best Shortwave replacement",
       "source-available alternative to Shortwave",
       "Shortwave vs GAIA"
@@ -8906,7 +8906,7 @@
       "free Smartsheet alternative",
       "self-hosted project management AI",
       "Smartsheet alternative reddit",
-      "Smartsheet alternative 2026",
+      "Smartsheet alternative {{CURRENT_YEAR}}",
       "best Smartsheet replacement",
       "Smartsheet vs GAIA",
       "enterprise project management alternative"
@@ -9063,7 +9063,7 @@
       "source-available email AI assistant",
       "Spark Mail vs productivity OS",
       "AI inbox management tool",
-      "smart email client alternative 2026",
+      "smart email client alternative {{CURRENT_YEAR}}",
       "AI email triage automation",
       "Spark Mail AI compose alternative",
       "self-hosted AI email assistant",
@@ -9165,7 +9165,7 @@
       "AI daily planner",
       "mindful productivity AI",
       "Sunsama vs AI assistant",
-      "daily planning tool alternative 2026",
+      "daily planning tool alternative {{CURRENT_YEAR}}",
       "AI task calendar planning",
       "Sunsama replacement",
       "source-available Sunsama alternative",
@@ -9275,7 +9275,7 @@
       "source-available Superhuman alternative",
       "Superhuman free alternative",
       "Superhuman alternative reddit",
-      "Superhuman alternative 2026",
+      "Superhuman alternative {{CURRENT_YEAR}}",
       "best Superhuman replacement",
       "Superhuman vs GAIA"
     ],
@@ -9383,7 +9383,7 @@
       "Tana vs proactive AI productivity",
       "Supertags alternative",
       "connected knowledge graph AI",
-      "Tana replacement 2026",
+      "Tana replacement {{CURRENT_YEAR}}",
       "source-available Tana alternative",
       "AI second brain vs AI assistant",
       "Tana vs AI email calendar tool",
@@ -9485,7 +9485,7 @@
       "ai alternative to microsoft teams",
       "source-available teams alternative",
       "teams free alternative",
-      "microsoft teams replacement 2026",
+      "microsoft teams replacement {{CURRENT_YEAR}}",
       "teams alternative for small teams"
     ],
     "intro": "Microsoft Teams is one of the most widely deployed workplace communication tools in the world, embedded in millions of organizations through Microsoft 365 subscriptions. Its 2023 introduction of Copilot added genuinely useful AI capabilities: meeting recaps, chat thread summaries, and draft message suggestions. For organizations already running deep on the Microsoft stack — Outlook, SharePoint, OneDrive, Excel — Teams with Copilot can feel like a natural evolution of what they already have.\n\nThe challenge is that modern work rarely lives inside a single vendor's ecosystem. Engineering teams use GitHub and Linear. Product teams use Notion and Figma. Customer-facing teams use Salesforce or HubSpot. Teams with Copilot provides AI within the Office 365 boundary but has limited reach into the broader tool landscape that most professionals actually use daily. Copilot can summarize a Teams meeting, but it will not create a GitHub issue from that discussion or update a Notion page with the outcomes.\n\nGAIA is built for the multi-tool reality of modern work. It connects Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Jira, and more through a unified AI layer that understands context across all of them. When a decision is made in a meeting, GAIA can propagate that decision into the right tools automatically. When an email arrives with a task buried in it, GAIA surfaces that task without you having to switch apps and manually create it.\n\nThe pricing and access model is also fundamentally different. Microsoft Copilot for Teams requires a Microsoft 365 Copilot license on top of the base Teams subscription — an additional per-seat fee that adds up fast for larger organizations. GAIA offers a free tier and Pro plans starting at ${{PRO_MONTHLY_PRICE}}/month, and uniquely offers a fully self-hosted deployment at no per-seat cost for teams with the infrastructure to support it. For organizations that want AI productivity capabilities without Microsoft's ecosystem lock-in or pricing, GAIA represents a genuinely different path.",
@@ -9788,7 +9788,7 @@
       "task automation AI",
       "Todoist free alternative",
       "Todoist alternative reddit",
-      "Todoist alternative 2026",
+      "Todoist alternative {{CURRENT_YEAR}}",
       "best Todoist replacement",
       "source-available alternative to Todoist",
       "Todoist vs GAIA"
@@ -9882,7 +9882,7 @@
       "manual time tracking alternative",
       "source-available toggl alternative",
       "toggl free alternative",
-      "toggl replacement 2026"
+      "toggl replacement {{CURRENT_YEAR}}"
     ],
     "intro": "Toggl Track has become a staple for freelancers, consultants, and agencies who need to bill clients accurately and prove where every hour went. Its one-click timer, clean reports, and frictionless mobile apps make it easy to capture billable time without disrupting your workflow. For anyone sending invoices based on hours worked, Toggl remains one of the best tools available.\n\nThe challenge is that Toggl Track only records time — it does not help you decide what to work on, create tasks from your inbox, schedule work intelligently on your calendar, or automate repetitive actions between tools. Every entry is manual, which means the discipline to track consistently rests entirely on you. When projects get busy, tracking is often the first habit to slip.\n\nGAIA approaches productivity from the other direction. Rather than asking you to record what you did, GAIA proactively orchestrates what you should do next. It reads your emails and turns action items into tasks, schedules work blocks on your calendar, monitors project activity across GitHub, Linear, and Jira, and automates handoffs between tools. For knowledge workers who want to spend less time managing their tools and more time doing meaningful work, GAIA offers a fundamentally more active alternative — and it is source-available with a free tier so you can start without a credit card.",
     "rows": [
@@ -9991,7 +9991,7 @@
       "proactive AI assistant",
       "Trello free alternative",
       "Trello alternative reddit",
-      "Trello alternative 2026",
+      "Trello alternative {{CURRENT_YEAR}}",
       "best Trello replacement",
       "source-available alternative to Trello",
       "Trello vs GAIA"
@@ -10335,7 +10335,7 @@
       "enterprise project management alternative",
       "source-available wrike alternative",
       "wrike free alternative",
-      "wrike replacement 2026"
+      "wrike replacement {{CURRENT_YEAR}}"
     ],
     "intro": "Wrike is a serious enterprise work management platform trusted by marketing teams, creative agencies, and operations groups at large organizations. Its strength lies in structured project visibility: Gantt charts, custom workflows, resource management, time tracking, and executive-level dashboards that let managers see the health of dozens of projects at a glance. For teams that need rigorous process discipline and compliance-ready audit trails, Wrike delivers.\n\nThe gap emerges in day-to-day knowledge work. Wrike is excellent at tracking projects but it does not read your inbox to surface action items, automatically prepare briefings before your meetings, monitor Slack conversations for blocking issues, or run autonomous workflows that move work forward without a manager's intervention. Users must actively update Wrike for it to reflect reality, which creates overhead that compounds as teams grow.\n\nGAIA takes the complementary angle. Rather than replacing structured project management, it adds a proactive intelligence layer on top of your existing tools. GAIA reads your email, syncs with your calendar, monitors your GitHub and Linear activity, and takes autonomous action — creating tasks, routing notifications, and automating handoffs — so that your project data stays current with less manual work. It is source-available, self-hostable, and starts free, making it accessible at any team size.",
     "rows": [
@@ -10442,7 +10442,7 @@
       "no-code automation comparison",
       "Zapier free alternative",
       "Zapier alternative reddit",
-      "Zapier alternative 2026",
+      "Zapier alternative {{CURRENT_YEAR}}",
       "best Zapier replacement",
       "source-available alternative to Zapier",
       "Zapier vs GAIA"
@@ -10535,7 +10535,7 @@
       "Zoho AI alternative",
       "all-in-one productivity suite alternative",
       "free Zoho alternative",
-      "Zoho replacement 2026",
+      "Zoho replacement {{CURRENT_YEAR}}",
       "Zoho alternative reddit",
       "Zoho vs GAIA",
       "self-hosted business suite alternative"
@@ -10696,7 +10696,7 @@
       "zoom meeting productivity",
       "source-available zoom alternative",
       "zoom free alternative",
-      "zoom replacement 2026"
+      "zoom replacement {{CURRENT_YEAR}}"
     ],
     "intro": "Zoom transformed remote work by making video conferencing reliable and accessible. Its AI Companion, introduced in 2023, added a layer of value by generating meeting summaries, transcripts, and action item lists after calls. For teams that live in back-to-back video calls, this reduces the burden of note-taking considerably. But Zoom's AI is fundamentally reactive and meeting-scoped — it processes what happened in a call and surfaces a summary after the fact.\n\nThe deeper challenge for knowledge workers is not the meetings themselves but everything surrounding them. Before a call: researching attendees, pulling relevant emails and documents, understanding outstanding action items from the last time you spoke. After a call: turning action items into real tasks in your project management tool, sending follow-up emails, updating your CRM or notes. Zoom AI Companion does not bridge these gaps — it ends at the meeting boundary.\n\nGAIA approaches meetings as one part of a continuous workflow. Before your calendar event, GAIA proactively prepares a briefing document pulling from your email history, Notion pages, GitHub issues, and previous meeting context related to that attendee or project. After the meeting, GAIA can parse the outcomes, create Todoist or Linear tasks for action items, draft follow-up emails in Gmail, and update relevant documents in Notion — automatically, without you having to start a chat and ask.\n\nThe difference becomes especially clear for executives, sales professionals, and engineering managers who hold many meetings weekly. Zoom tells you what was said. GAIA ensures the outcomes actually get done. Zoom is a communication infrastructure tool; GAIA is the productivity layer that makes your calendar mean something. If you are looking for a tool that treats meetings not as isolated events but as triggers for real work, GAIA offers a fundamentally more complete workflow.\n\nGAIA also provides the privacy-conscious with a meaningful alternative. As a source-available (PolyForm Noncommercial), self-hostable platform, GAIA's meeting context and integrations run on your own infrastructure if you choose, with no vendor access to your communications data. For teams with strict compliance requirements, this matters enormously.",
     "rows": [

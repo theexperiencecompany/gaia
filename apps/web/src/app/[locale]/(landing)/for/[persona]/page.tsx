@@ -1,12 +1,13 @@
 import { Chip } from "@heroui/chip";
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ComponentType } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
+import { SiteLink } from "@/components/seo/SiteLink";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   AGENCY_FAQS,
@@ -336,7 +337,7 @@ function IntegrationBadge({ name }: { name: string }) {
   const domain = INTEGRATION_DOMAINS[name];
 
   return (
-    <Link href={`/marketplace/${name}`}>
+    <SiteLink href={`/marketplace/${name}`}>
       <Chip
         variant="flat"
         size="md"
@@ -356,7 +357,7 @@ function IntegrationBadge({ name }: { name: string }) {
       >
         {displayName}
       </Chip>
-    </Link>
+    </SiteLink>
   );
 }
 
@@ -377,6 +378,13 @@ export default async function PersonaPage({ params }: PageProps) {
     } catch {
       notFound();
     }
+    // Special pages render a bespoke client component but share the same
+    // persona JSON: surface its relatedComparisons grid identically to the
+    // generic branch. Meta/FAQs stay hardcoded above (JSON copy is dated).
+    const [t, personaData] = await Promise.all([
+      getTranslations(),
+      getTranslatedPersona(persona),
+    ]);
     return (
       <>
         <JsonLd
@@ -393,6 +401,14 @@ export default async function PersonaPage({ params }: PageProps) {
           ]}
         />
         <Client />
+        <div className="mx-auto max-w-4xl px-6 pb-24">
+          <RelatedComparisonsGrid
+            heading={t("personas.tools_compare", {
+              role: personaData?.role ?? "",
+            })}
+            slugs={personaData?.relatedComparisons ?? []}
+          />
+        </div>
       </>
     );
   }
@@ -439,13 +455,13 @@ export default async function PersonaPage({ params }: PageProps) {
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-zinc-500">
-          <Link href="/" className="hover:text-zinc-300">
+          <SiteLink href="/" className="hover:text-zinc-300">
             {t("common.home")}
-          </Link>
+          </SiteLink>
           <span className="mx-2">/</span>
-          <Link href="/for" className="hover:text-zinc-300">
+          <SiteLink href="/for" className="hover:text-zinc-300">
             {t("personas.breadcrumb")}
-          </Link>
+          </SiteLink>
           <span className="mx-2">/</span>
           <span className="text-zinc-300">
             {t("personas.ai_assistant_for", { role: data.role })}
@@ -528,35 +544,10 @@ export default async function PersonaPage({ params }: PageProps) {
         </section>
 
         {/* Relevant Tool Comparisons */}
-        {data.relatedComparisons && data.relatedComparisons.length > 0 && (
-          <section className="mb-16">
-            <h2 className="mb-6 text-3xl font-semibold text-white">
-              {t("personas.tools_compare", { role: data.role })}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {data.relatedComparisons.map((slug) => (
-                <Link
-                  key={slug}
-                  href={`/compare/${slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
-                    GAIA vs{" "}
-                    {slug
-                      .split("-")
-                      .map(
-                        (w: string) => w.charAt(0).toUpperCase() + w.slice(1),
-                      )
-                      .join(" ")}
-                  </h3>
-                  <p className="text-xs text-zinc-400">
-                    {t("personas.see_full_comparison")}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
+        <RelatedComparisonsGrid
+          heading={t("personas.tools_compare", { role: data.role })}
+          slugs={data.relatedComparisons ?? []}
+        />
 
         {/* Explore More */}
         <section className="mb-16">
@@ -564,7 +555,7 @@ export default async function PersonaPage({ params }: PageProps) {
             {t("common.explore_more")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Link
+            <SiteLink
               href="/compare"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
@@ -574,8 +565,8 @@ export default async function PersonaPage({ params }: PageProps) {
               <p className="text-sm leading-relaxed text-zinc-400">
                 {t("personas.see_how_compares_desc")}
               </p>
-            </Link>
-            <Link
+            </SiteLink>
+            <SiteLink
               href="/learn"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
@@ -585,7 +576,7 @@ export default async function PersonaPage({ params }: PageProps) {
               <p className="text-sm leading-relaxed text-zinc-400">
                 {t("personas.learn_ai_concepts_desc")}
               </p>
-            </Link>
+            </SiteLink>
           </div>
         </section>
       </article>

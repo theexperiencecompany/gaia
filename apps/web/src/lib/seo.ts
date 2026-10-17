@@ -33,6 +33,8 @@ export function getSiteUrl(): string {
 export const siteConfig = {
   short_name: "GAIA",
   name: "GAIA - Your Personal AI Assistant",
+  /** Homepage title: leads with "GAIA AI" (the query that clicks) and says what GAIA does, since "gaia" alone names many things. */
+  homeTitle: "GAIA AI: The Personal Assistant That Acts Before You Ask",
   fullName: "GAIA - Your Personal AI Assistant from The Experience Company",
   description:
     "GAIA is your open-source personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools to boost productivity.",
@@ -41,6 +43,7 @@ export const siteConfig = {
   links: {
     twitter: "https://x.com/trygaia",
     github: "https://github.com/theexperiencecompany",
+    repo: "https://github.com/theexperiencecompany/gaia",
     discord: "https://discord.heygaia.io",
     linkedin: "https://www.linkedin.com/company/heygaia",
     youtube: "https://youtube.com/@theexperiencecompany",
@@ -94,8 +97,6 @@ export interface PageMetadataOptions {
   title: string;
   description?: string;
   path: string;
-  /** Override the canonical URL — use for near-duplicate pages that should consolidate PageRank to a primary. */
-  canonicalPath?: string;
   keywords?: string[];
   image?: string;
   type?: "website" | "article" | "profile";
@@ -110,7 +111,6 @@ export function generatePageMetadata({
   title,
   description = siteConfig.description,
   path,
-  canonicalPath,
   keywords = [],
   image = siteConfig.ogImage,
   type = "website",
@@ -120,7 +120,7 @@ export function generatePageMetadata({
   noIndex = false,
   section,
 }: PageMetadataOptions): Metadata {
-  const url = getCanonicalUrl(canonicalPath ?? path);
+  const url = getCanonicalUrl(path);
 
   // Homepage uses an absolute title (no template suffix); other pages use a
   // simple string so the template appends "| GAIA" — but the brand must
@@ -130,7 +130,7 @@ export function generatePageMetadata({
     title,
   );
   const pageTitle = isHomepage
-    ? { absolute: siteConfig.name }
+    ? { absolute: siteConfig.homeTitle }
     : containsBrand
       ? { absolute: title }
       : title;
@@ -251,14 +251,13 @@ export function generateOrganizationSchema(): WithContext<Organization> {
         sameAs: [founder.twitter, founder.linkedin].filter(Boolean),
       }),
     ),
+    // Profiles of this organization on other sites; its own domains and invite links are not sameAs.
     sameAs: [
       siteConfig.links.twitter,
       siteConfig.links.github,
+      siteConfig.links.repo,
       siteConfig.links.linkedin,
       siteConfig.links.youtube,
-      siteConfig.links.discord,
-      siteConfig.url,
-      "https://docs.heygaia.io",
     ],
     contactPoint: {
       "@type": "ContactPoint",
@@ -278,18 +277,12 @@ export function generateWebSiteSchema(): WithContext<WebSite> {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
+    "@id": `${siteConfig.url}/#website`,
     name: siteConfig.short_name,
-    alternateName: siteConfig.name,
+    alternateName: ["GAIA AI", "heygaia"],
     url: siteConfig.url,
     description: siteConfig.description,
-    potentialAction: {
-      "@type": "SearchAction",
-      target: {
-        "@type": "EntryPoint",
-        urlTemplate: `${siteConfig.url}/use-cases?q={search_term_string}`,
-      },
-      "query-input": "required name=search_term_string",
-    } as unknown as WebSite["potentialAction"],
+    publisher: { "@id": `${siteConfig.url}/#organization` },
   };
 }
 
@@ -401,20 +394,11 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
     description: siteConfig.description,
     url: siteConfig.url,
     image: `${siteConfig.url}/og-image.webp`,
-    downloadUrl: "https://heygaia.io/download",
+    downloadUrl: `${siteConfig.url}/download`,
     featureList:
-      "Email management, Calendar automation, Task management, AI workflows, 50+ integrations, Open source, Self-hostable",
+      "Email management, Calendar automation, Task management, AI workflows, Integrations, Open source, Self-hostable",
     isAccessibleForFree: true,
-    sameAs: [
-      siteConfig.url,
-      "https://docs.heygaia.io",
-      siteConfig.links.twitter,
-      siteConfig.links.github,
-      siteConfig.links.discord,
-      siteConfig.links.linkedin,
-      siteConfig.links.youtube,
-      siteConfig.links.whatsapp,
-    ],
+    sameAs: [siteConfig.links.repo],
     offers: {
       "@type": "Offer",
       price: "0",
@@ -504,11 +488,13 @@ export function generateHowToSchema(
 }
 
 /**
- * Generate ItemList structured data for list pages (JSON-LD)
+ * Generate ItemList structured data (JSON-LD) for a summary page.
+ * Plain ListItems carrying url and name: a typed nested item (Product,
+ * SoftwareApplication) makes Google validate it as that rich result and flag
+ * the offers and reviews a list entry does not have.
  */
 export function generateItemListSchema(
-  items: Array<{ name: string; url: string; description?: string }>,
-  listType: "BlogPosting" | "Article" | "Product" = "BlogPosting",
+  items: ReadonlyArray<{ name: string; url: string }>,
 ): WithContext<ItemList> {
   return {
     "@context": "https://schema.org",
@@ -517,12 +503,8 @@ export function generateItemListSchema(
       (item, index): ListItem => ({
         "@type": "ListItem",
         position: index + 1,
-        item: {
-          "@type": listType,
-          name: item.name,
-          url: item.url,
-          ...(item.description && { description: item.description }),
-        },
+        name: item.name,
+        url: item.url,
       }),
     ),
   };

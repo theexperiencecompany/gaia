@@ -160,7 +160,7 @@ const GRID_ROWS: GridRow[] = [
   {
     feature: "Integrations",
     values: [
-      { type: "text", label: "50+ native + MCP" },
+      { type: "text", label: "Native + MCP" },
       { type: "text", label: "50+ + 100 skills" },
       { type: "text", label: "~10 services + MCP" },
       { type: "no" },

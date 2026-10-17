@@ -2,7 +2,7 @@
   "notion": {
     "name": "Notion",
     "tagline": "Espaço de trabalho tudo-em-um para notas, wikis e gerenciamento de projetos",
-    "metaTitle": "Melhor Alternativa ao Notion em 2026",
+    "metaTitle": "Melhor Alternativa ao Notion em {{CURRENT_YEAR}}",
     "metaDescription": "Procurando uma alternativa ao Notion que realmente funcione para você? O GAIA é um assistente de IA proativo que gerencia tarefas, e-mails e agenda automaticamente — sem precisar de templates.",
     "keywords": [
       "alternativa ao notion",
@@ -15,7 +15,7 @@
       "alternativa source-available ao notion",
       "alternativa ao notion auto-hospedada",
       "alternativa ao notion para uso individual",
-      "alternativa ao notion 2026",
+      "alternativa ao notion {{CURRENT_YEAR}}",
       "gerenciador de tarefas com IA",
       "gestão de projetos com IA",
       "tarefas a partir de e-mails com IA",
@@ -105,7 +105,7 @@
   "monday": {
     "name": "Monday.com",
     "tagline": "Plataforma visual de gerenciamento de projetos para equipes",
-    "metaTitle": "Melhor Alternativa ao Monday.com em 2026",
+    "metaTitle": "Melhor Alternativa ao Monday.com em {{CURRENT_YEAR}}",
     "metaDescription": "Cansado dos preços por usuário e da configuração manual do Monday.com? O GAIA é um assistente de IA proativo que automatiza suas tarefas, e-mails e agendamento. Plano gratuito disponível.",
     "keywords": [
       "alternativa ao monday.com",
@@ -118,7 +118,7 @@
       "alternativa source-available ao monday.com",
       "alternativa auto-hospedada ao monday.com",
       "alternativa ao monday.com para indivíduos",
-      "alternativa ao monday.com 2026",
+      "alternativa ao monday.com {{CURRENT_YEAR}}",
       "gerenciamento de projetos com inteligência artificial",
       "tarefas do email AI"
     ],
@@ -171,7 +171,7 @@
   "asana": {
     "name": "Asana",
     "tagline": "Plataforma de gerenciamento de tarefas e projetos para equipes",
-    "metaTitle": "Melhor Alternativa ao Asana em 2026",
+    "metaTitle": "Melhor Alternativa ao Asana em {{CURRENT_YEAR}}",
     "metaDescription": "Precisa de uma alternativa ao Asana que realmente ajude você a realizar suas tarefas? O GAIA gerencia proativamente suas tarefas, e-mails e agenda com IA. Plano gratuito + auto-hospedagem disponível.",
     "keywords": [
       "alternativa ao asana",
@@ -184,7 +184,7 @@
       "alternativa source-available ao asana",
       "alternativa ao asana auto-hospedada",
       "alternativa ao asana para indivíduos",
-      "alternativa ao asana 2026",
+      "alternativa ao asana {{CURRENT_YEAR}}",
       "gerenciador de tarefas com IA",
       "Gestão de projetos com IA",
       "tarefas a partir de e-mails por IA"
@@ -239,7 +239,7 @@
   "clickup": {
     "name": "ClickUp",
     "tagline": "Gestão de projetos tudo-em-um com docs, metas e controle de tempo",
-    "metaTitle": "Melhor Alternativa ao ClickUp em 2026",
+    "metaTitle": "Melhor Alternativa ao ClickUp em {{CURRENT_YEAR}}",
     "metaDescription": "Sobrecarregado pela complexidade do ClickUp? O GAIA é um assistente de IA proativo que simplifica o gerenciamento de tarefas, e-mails e agendas. Plano gratuito + source-available para hospedagem própria.",
     "keywords": [
       "alternativa ao clickup",
@@ -252,7 +252,7 @@
       "clickup source-available alternativa",
       "alternativa self-hosted ao clickup",
       "alternativa ao clickup para indivíduos",
-      "alternativa ao clickup 2026",
+      "alternativa ao clickup {{CURRENT_YEAR}}",
       "Gerenciador de tarefas com IA",
       "Gestão de projetos com inteligência artificial",
       "tarefas por e-mail com IA"
@@ -306,7 +306,7 @@
   "trello": {
     "name": "Trello",
     "tagline": "Quadros visuais de tarefas estilo Kanban para equipes e indivíduos",
-    "metaTitle": "Melhor Alternativa ao Trello em 2026",
+    "metaTitle": "Melhor Alternativa ao Trello em {{CURRENT_YEAR}}",
     "metaDescription": "O Trello está te limitando com cartões manuais e sem IA? O GAIA é um assistente de IA proativo que gerencia tarefas, e-mails e sua agenda automaticamente. Plano gratuito disponível.",
     "keywords": [
       "alternativa ao trello",
@@ -319,7 +319,7 @@
       "alternativa ao trello source-available",
       "alternativa ao trello para auto-hospedagem",
       "alternativa ao trello para indivíduos",
-      "alternativa ao trello 2026",
+      "alternativa ao trello {{CURRENT_YEAR}}",
       "gerenciador de tarefas com IA",
       "tarefas a partir de e-mails por IA"
     ],
@@ -372,7 +372,7 @@
   "jira": {
     "name": "Jira",
     "tagline": "Rastreamento de issues e gestão ágil de projetos para equipes de software",
-    "metaTitle": "Melhor Alternativa ao Jira em 2026",
+    "metaTitle": "Melhor Alternativa ao Jira em {{CURRENT_YEAR}}",
     "metaDescription": "O Jira é muito complexo para você? O GAIA é um assistente de IA proativo que gerencia tarefas pessoais, e-mails e fluxos de trabalho de forma simples. Source-available, auto-hospedável e com plano gratuito disponível.",
     "keywords": [
       "alternativa ao jira",
@@ -385,7 +385,7 @@
       "alternativa source-available ao jira",
       "alternativa auto-hospedada ao jira",
       "alternativa ao jira para indivíduos",
-      "alternativa ao jira 2026",
+      "alternativa ao jira {{CURRENT_YEAR}}",
       "gerenciador de tarefas com IA",
       "gestão de projetos com IA"
     ],
@@ -438,7 +438,7 @@
   "basecamp": {
     "name": "Basecamp",
     "tagline": "Gestão de projetos de equipe simples, com mensagens e listas de tarefas",
-    "metaTitle": "Melhor Alternativa ao Basecamp em 2026",
+    "metaTitle": "Melhor Alternativa ao Basecamp em {{CURRENT_YEAR}}",
     "metaDescription": "Procurando uma alternativa mais inteligente ao Basecamp? O GAIA é um assistente de IA proativo com e-mail, calendário e gerenciamento de tarefas integrados. Plano gratuito e opção de auto-hospedagem disponíveis.",
     "keywords": [
       "alternativa ao basecamp",
@@ -451,7 +451,7 @@
       "alternativa source-available ao basecamp",
       "alternativa self-hosted ao basecamp",
       "alternativa ao basecamp para indivíduos",
-      "alternativa ao basecamp 2026",
+      "alternativa ao basecamp {{CURRENT_YEAR}}",
       "gerenciador de tarefas com IA",
       "gestão de projetos com IA"
     ],
@@ -504,7 +504,7 @@
   "chatgpt": {
     "name": "ChatGPT",
     "tagline": "IA conversacional da OpenAI com navegação web e execução de código",
-    "metaTitle": "Melhor Alternativa ao ChatGPT em 2026",
+    "metaTitle": "Melhor Alternativa ao ChatGPT em {{CURRENT_YEAR}}",
     "metaDescription": "O ChatGPT não acessa seu e-mail nem gerencia sua agenda. O GAIA é um assistente de IA proativo que realmente conecta aos seus aplicativos e age por você. Tem plano gratuito.",
     "keywords": [
       "alternativa ao chatgpt",
@@ -517,7 +517,7 @@
       "alternativa source-available ao chatgpt",
       "alternativa auto-hospedada ao chatgpt",
       "alternativa ao chatgpt para indivíduos",
-      "alternativa ao chatgpt 2026",
+      "alternativa ao chatgpt {{CURRENT_YEAR}}",
       "assistente de IA proativo",
       "IA que lê e-mail",
       "assistente de IA auto-hospedado"
@@ -608,7 +608,7 @@
   "copilot": {
     "name": "Microsoft Copilot",
     "tagline": "Assistente de IA da Microsoft integrado à suíte Microsoft 365",
-    "metaTitle": "Melhor Alternativa ao Microsoft Copilot em 2026",
+    "metaTitle": "Melhor Alternativa ao Microsoft Copilot em {{CURRENT_YEAR}}",
     "metaDescription": "Não usa o Microsoft 365? O GAIA é um assistente de IA proativo que funciona com Gmail, Google Agenda e diversas ferramentas — sem precisar de assinatura da Microsoft. Tem plano gratuito.",
     "keywords": [
       "alternativa ao microsoft copilot",
@@ -621,7 +621,7 @@
       "alternativa source-available ao microsoft copilot",
       "alternativa auto-hospedada ao microsoft copilot",
       "alternativa ao Microsoft Copilot para pessoas físicas",
-      "alternativa ao Microsoft Copilot 2026",
+      "alternativa ao Microsoft Copilot {{CURRENT_YEAR}}",
       "assistente de IA proativo",
       "IA que lê e-mails",
       "assistente de IA auto-hospedado"
@@ -676,7 +676,7 @@
   "gemini": {
     "name": "Google Gemini",
     "tagline": "Assistente de IA do Google com integração ao Workspace e acesso à web",
-    "metaTitle": "Melhor Alternativa ao Google Gemini em 2026",
+    "metaTitle": "Melhor Alternativa ao Google Gemini em {{CURRENT_YEAR}}",
     "metaDescription": "O Google Gemini não executa ações para você. O GAIA é um assistente de IA proativo que gerencia automaticamente seu Gmail, Google Agenda e tarefas. Source-available e com plano gratuito.",
     "keywords": [
       "alternativa ao google gemini",
@@ -689,7 +689,7 @@
       "alternativa source-available ao google gemini",
       "alternativa auto-hospedada ao google gemini",
       "alternativa google gemini para pessoas físicas",
-      "alternativa google gemini 2026",
+      "alternativa google gemini {{CURRENT_YEAR}}",
       "assistente de IA proativo",
       "IA que lê e-mails",
       "assistente de IA auto-hospedado"
@@ -744,7 +744,7 @@
   "google-assistant": {
     "name": "Google Assistente",
     "tagline": "Assistente de voz com IA para Android, casa inteligente e serviços Google",
-    "metaTitle": "Melhor Alternativa ao Google Assistente em 2026",
+    "metaTitle": "Melhor Alternativa ao Google Assistente em {{CURRENT_YEAR}}",
     "metaDescription": "O Google Assistente está sendo descontinuado. GAIA é um assistente de IA proativo para profissionais que gerencia e-mails, agenda e tarefas em todos os dispositivos. Plano gratuito disponível.",
     "keywords": [
       "alternativa ao google assistente",
@@ -757,7 +757,7 @@
       "alternativa source-available ao google assistente",
       "alternativa auto-hospedada ao google assistente",
       "alternativa ao google assistente para pessoas físicas",
-      "alternativa ao google assistente 2026",
+      "alternativa ao google assistente {{CURRENT_YEAR}}",
       "assistente de IA proativo",
       "IA que lê e-mail",
       "assistente de IA auto-hospedado"
@@ -812,7 +812,7 @@
   "motion": {
     "name": "Motion",
     "tagline": "Agendamento automático com IA que encaixa tarefas na sua agenda",
-    "metaTitle": "Melhor Alternativa ao Motion em 2026",
+    "metaTitle": "Melhor Alternativa ao Motion em {{CURRENT_YEAR}}",
     "metaDescription": "O Motion é caro e não lê seu e-mail. O GAIA é um assistente inteligente proativo que gerencia e-mail, calendário e tarefas juntos. Plano gratuito e código aberto com auto-hospedagem.",
     "keywords": [
       "alternativa ao motion",
@@ -825,7 +825,7 @@
       "alternativa source-available ao motion",
       "alternativa auto-hospedada ao motion",
       "alternativa ao motion para pessoas físicas",
-      "alternativa ao motion 2026",
+      "alternativa ao motion {{CURRENT_YEAR}}",
       "gestão de calendário com IA",
       "agendamento inteligente com IA"
     ],
@@ -878,7 +878,7 @@
   "reclaim": {
     "name": "Reclaim.ai",
     "tagline": "Agendamento inteligente para hábitos, tarefas e preferências de reuniões",
-    "metaTitle": "Melhor alternativa ao Reclaim.ai em 2026",
+    "metaTitle": "Melhor alternativa ao Reclaim.ai em {{CURRENT_YEAR}}",
     "metaDescription": "O Reclaim.ai apenas otimiza seu calendário. O GAIA é um assistente de IA proativo que gerencia e-mail, tarefas e agendamento juntos. Plano gratuito + auto-hospedagem source-available.",
     "keywords": [
       "alternativa ao reclaim ai",
@@ -891,7 +891,7 @@
       "alternativa source-available ao reclaim.ai",
       "alternativa auto-hospedada ao reclaim.ai",
       "alternativa ao reclaim.ai para pessoas físicas",
-      "alternativa ao reclaim.ai 2026",
+      "alternativa ao reclaim.ai {{CURRENT_YEAR}}",
       "gestão de calendário com IA",
       "agendamento inteligente com IA"
     ],
@@ -944,7 +944,7 @@
   "clockwise": {
     "name": "Clockwise",
     "tagline": "Otimização de agenda com IA para equipes e foco em horários de concentração",
-    "metaTitle": "Melhor Alternativa ao Clockwise em 2026",
+    "metaTitle": "Melhor Alternativa ao Clockwise em {{CURRENT_YEAR}}",
     "metaDescription": "O Clockwise apenas otimiza seu calendário. O GAIA é um assistente de IA proativo que gerencia e-mails, tarefas e agendamentos automaticamente. Camada gratuita + auto-hospedagem disponível.",
     "keywords": [
       "alternativa ao clockwise",
@@ -957,7 +957,7 @@
       "alternativa ao clockwise source-available",
       "alternativa ao clockwise auto-hospedado",
       "alternativa ao clockwise para pessoas físicas",
-      "alternativa ao clockwise 2026",
+      "alternativa ao clockwise {{CURRENT_YEAR}}",
       "gestão de calendário com IA",
       "agendamento inteligente com IA"
     ],
@@ -1010,7 +1010,7 @@
   "fantastical": {
     "name": "Fantastical",
     "tagline": "App de calendário premium para Mac, iPhone e iPad",
-    "metaTitle": "Melhor Alternativa ao Fantastical em 2026",
+    "metaTitle": "Melhor Alternativa ao Fantastical em {{CURRENT_YEAR}}",
     "metaDescription": "Fantastical é exclusivo para Apple e não é proativo. O GAIA é um assistente de IA multiplataforma que gerencia automaticamente seu calendário, e-mails e tarefas. Plano gratuito disponível.",
     "keywords": [
       "alternativa ao fantastical",
@@ -1023,7 +1023,7 @@
       "alternativa source-available ao fantastical",
       "alternativa auto-hospedada ao fantastical",
       "alternativa ao fantastical para uso individual",
-      "alternativa ao fantastical 2026",
+      "alternativa ao fantastical {{CURRENT_YEAR}}",
       "gestão de calendário com IA",
       "agendamento inteligente por IA"
     ],
@@ -1076,7 +1076,7 @@
   "calendly": {
     "name": "Calendly",
     "tagline": "Automação de agendamento para compartilhar links de reserva com outras pessoas",
-    "metaTitle": "Melhor Alternativa ao Calendly em 2026",
+    "metaTitle": "Melhor Alternativa ao Calendly em {{CURRENT_YEAR}}",
     "metaDescription": "Calendly só lida com agendamentos recebidos. GAIA é um assistente de IA proativo que gerencia toda a sua agenda, e-mails e tarefas. Plano gratuito + código aberto para auto-hospedagem.",
     "keywords": [
       "alternativa ao calendly",
@@ -1089,7 +1089,7 @@
       "alternativa ao calendly de código aberto",
       "alternativa ao calendly auto-hospedada",
       "alternativa ao calendly para pessoas físicas",
-      "alternativa ao calendly 2026",
+      "alternativa ao calendly {{CURRENT_YEAR}}",
       "gestão de agenda com IA",
       "IA de agendamento inteligente"
     ],
@@ -1142,7 +1142,7 @@
   "superhuman": {
     "name": "Superhuman",
     "tagline": "Cliente de e-mail otimizado para velocidade, com atalhos de teclado e recursos de IA",
-    "metaTitle": "Melhor Alternativa ao Superhuman em 2026",
+    "metaTitle": "Melhor Alternativa ao Superhuman em {{CURRENT_YEAR}}",
     "metaDescription": "O Superhuman custa US$30/mês e serve apenas para e-mails. O GAIA é um assistente de IA proativo que gerencia e-mails, agenda e tarefas juntos. Plano gratuito + opção de auto-hospedagem.",
     "keywords": [
       "alternativa ao Superhuman",
@@ -1155,7 +1155,7 @@
       "alternativa source-available ao Superhuman",
       "alternativa auto-hospedada ao Superhuman",
       "alternativa ao Superhuman para pessoas físicas",
-      "alternativa ao Superhuman 2026",
+      "alternativa ao Superhuman {{CURRENT_YEAR}}",
       "triagem de e-mails com IA",
       "inbox zero com IA",
       "gestão de e-mails com IA"
@@ -1237,7 +1237,7 @@
   "sanebox": {
     "name": "SaneBox",
     "tagline": "Filtragem de e-mails por IA que prioriza automaticamente sua caixa de entrada",
-    "metaTitle": "Melhor Alternativa ao SaneBox em 2026",
+    "metaTitle": "Melhor Alternativa ao SaneBox em {{CURRENT_YEAR}}",
     "metaDescription": "O SaneBox apenas filtra e-mails. O GAIA é um assistente de IA proativo que gerencia e-mails, cria tarefas e cuida do seu calendário. Plano gratuito + hospedagem própria source-available.",
     "keywords": [
       "alternativa ao sanebox",
@@ -1250,7 +1250,7 @@
       "alternativa source-available ao sanebox",
       "alternativa auto-hospedada ao sanebox",
       "alternativa ao sanebox para pessoas físicas",
-      "alternativa ao sanebox 2026",
+      "alternativa ao sanebox {{CURRENT_YEAR}}",
       "triagem de e-mails com IA",
       "inbox zero com IA",
       "gestão de e-mails por IA"
@@ -1305,7 +1305,7 @@
   "shortwave": {
     "name": "Shortwave",
     "tagline": "Cliente de e-mail com IA, busca e resumos para Gmail",
-    "metaTitle": "Melhor Alternativa ao Shortwave em 2026",
+    "metaTitle": "Melhor Alternativa ao Shortwave em {{CURRENT_YEAR}}",
     "metaDescription": "O Shortwave permanece dentro do seu e-mail. O GAIA é um assistente de IA proativo que conecta e-mail, calendário e tarefas em todas as suas ferramentas. Versão gratuita + auto-hospedagem.",
     "keywords": [
       "alternativa ao shortwave",
@@ -1318,7 +1318,7 @@
       "alternativa source-available ao shortwave",
       "alternativa self-hosted ao shortwave",
       "alternativa shortwave para pessoas físicas",
-      "alternativa shortwave 2026",
+      "alternativa shortwave {{CURRENT_YEAR}}",
       "triagem de e-mails com IA",
       "inbox zero IA",
       "IA para gerenciamento de e-mails"
@@ -1373,7 +1373,7 @@
   "todoist": {
     "name": "Todoist",
     "tagline": "Gerenciador de tarefas multiplataforma popular com projetos e etiquetas",
-    "metaTitle": "Melhor Alternativa ao Todoist em 2026",
+    "metaTitle": "Melhor Alternativa ao Todoist em {{CURRENT_YEAR}}",
     "metaDescription": "O Todoist exige a inserção manual de tarefas. O GAIA é um assistente de IA proativo que cria tarefas a partir de e-mails, gerencia seu calendário e automatiza fluxos de trabalho. Nível gratuito disponível.",
     "keywords": [
       "alternativa ao todoist",
@@ -1386,7 +1386,7 @@
       "alternativa de código aberto ao todoist",
       "alternativa auto-hospedada ao todoist",
       "alternativa ao todoist para indivíduos",
-      "alternativa ao todoist 2026",
+      "alternativa ao todoist {{CURRENT_YEAR}}",
       "Gerenciador de tarefas de IA",
       "Gerenciamento de projetos alimentado por IA",
       "tarefas de e-mail com IA"
@@ -1468,7 +1468,7 @@
   "ticktick": {
     "name": "TickTick",
     "tagline": "Gerenciador de tarefas com Pomodoro integrado e acompanhamento de hábitos",
-    "metaTitle": "Melhor alternativa ao TickTick em 2026",
+    "metaTitle": "Melhor alternativa ao TickTick em {{CURRENT_YEAR}}",
     "metaDescription": "O TickTick exige a criação manual de tarefas. O GAIA é um assistente de IA proativo que cria tarefas automaticamente a partir de e-mails e gerencia toda a sua produtividade. Plano gratuito disponível.",
     "keywords": [
       "alternativa ao ticktick",
@@ -1481,7 +1481,7 @@
       "alternativa source-available ao ticktick",
       "alternativa ao ticktick auto-hospedada",
       "alternativa ao ticktick para pessoas físicas",
-      "alternativa ao ticktick 2026",
+      "alternativa ao ticktick {{CURRENT_YEAR}}",
       "gerenciador de tarefas com IA",
       "gestão de projetos com IA",
       "tarefas a partir de e-mail com IA"
@@ -1535,7 +1535,7 @@
   "things3": {
     "name": "Things 3",
     "tagline": "Gerenciador de tarefas premium, inspirado em GTD, exclusivo para dispositivos Apple",
-    "metaTitle": "Melhor alternativa ao Things 3 em 2026",
+    "metaTitle": "Melhor alternativa ao Things 3 em {{CURRENT_YEAR}}",
     "metaDescription": "O Things 3 é exclusivo para Apple e não possui IA. O GAIA é um assistente proativo com IA, multiplataforma, que gerencia tarefas, e-mails e calendário automaticamente. Conta com opção grátis e autogerenciada.",
     "keywords": [
       "alternativa ao things 3",
@@ -1548,7 +1548,7 @@
       "alternativa source-available ao things 3",
       "alternativa autogerenciada ao things 3",
       "alternativa ao things 3 para pessoas físicas",
-      "alternativa ao things 3 em 2026",
+      "alternativa ao things 3 em {{CURRENT_YEAR}}",
       "gerenciador de tarefas com IA",
       "gestão de projetos com IA",
       "tarefas a partir do e-mail IA"
@@ -1602,7 +1602,7 @@
   "anydo": {
     "name": "Any.do",
     "tagline": "Organizador de tarefas e agenda com assistente diário de IA",
-    "metaTitle": "Melhor Alternativa ao Any.do em 2026",
+    "metaTitle": "Melhor Alternativa ao Any.do em {{CURRENT_YEAR}}",
     "metaDescription": "A IA do Any.do é superficial. O GAIA é um assistente de IA totalmente proativo que gerencia tarefas, e-mails e calendário com integrações profundas. Plano gratuito e auto-hospedagem disponíveis.",
     "keywords": [
       "alternativa ao any.do",
@@ -1615,7 +1615,7 @@
       "alternativa source-available ao any.do",
       "alternativa auto-hospedada ao any.do",
       "alternativa ao any.do para pessoas físicas",
-      "alternativa ao any.do 2026",
+      "alternativa ao any.do {{CURRENT_YEAR}}",
       "gerenciador de tarefas com IA",
       "tarefas a partir do e-mail com IA"
     ],
@@ -1669,7 +1669,7 @@
   "zapier": {
     "name": "Zapier",
     "tagline": "Automação sem código conectando milhares de apps com Zaps",
-    "metaTitle": "Melhor alternativa ao Zapier em 2026",
+    "metaTitle": "Melhor alternativa ao Zapier em {{CURRENT_YEAR}}",
     "metaDescription": "O Zapier é caro e não foi criado para IA. O GAIA é um assistente de IA proativo com automação de fluxos de trabalho integrada e diversas integrações. Código aberto, plano gratuito disponível.",
     "keywords": [
       "alternativa ao zapier",
@@ -1682,7 +1682,7 @@
       "alternativa source-available ao zapier",
       "alternativa auto-hospedada ao zapier",
       "alternativa ao zapier para pessoas físicas",
-      "alternativa ao zapier 2026",
+      "alternativa ao zapier {{CURRENT_YEAR}}",
       "automação de fluxo de trabalho com IA",
       "automação em linguagem natural",
       "alternativa ao Zapier com raciocínio em IA"
@@ -1764,7 +1764,7 @@
   "make": {
     "name": "Make",
     "tagline": "Plataforma de automação de fluxo de trabalho visual com criação avançada de cenários",
-    "metaTitle": "Melhor Alternativa ao Make.com em 2026",
+    "metaTitle": "Melhor Alternativa ao Make.com em {{CURRENT_YEAR}}",
     "metaDescription": "O Make.com é poderoso, mas complexo e caro. O GAIA é um assistente de IA proativo com automação de fluxos de trabalho embutida e configuração por linguagem natural. Código aberto, plano gratuito.",
     "keywords": [
       "alternativa ao make.com",
@@ -1777,7 +1777,7 @@
       "alternativa ao make.com de código aberto",
       "alternativa ao make.com para auto-hospedagem",
       "alternativa ao make.com para pessoas físicas",
-      "alternativa ao make.com 2026",
+      "alternativa ao make.com {{CURRENT_YEAR}}",
       "automação de fluxos de trabalho com IA",
       "automação em linguagem natural",
       "alternativa ao Zapier com raciocínio de IA"
@@ -1831,7 +1831,7 @@
   "n8n": {
     "name": "n8n",
     "tagline": "Automação de fluxos de trabalho source-available com auto-hospedagem e mais de 400 integrações",
-    "metaTitle": "Melhor Alternativa ao n8n em 2026",
+    "metaTitle": "Melhor Alternativa ao n8n em {{CURRENT_YEAR}}",
     "metaDescription": "O n8n é poderoso, mas técnico. O GAIA é um assistente de IA source-available proativo com automação integrada que qualquer pessoa pode usar, mesmo sem conhecimento técnico. Plano gratuito disponível.",
     "keywords": [
       "alternativa ao n8n",
@@ -1844,7 +1844,7 @@
       "alternativa source-available ao n8n",
       "alternativa auto-hospedada ao n8n",
       "alternativa ao n8n para pessoas físicas",
-      "alternativa ao n8n 2026",
+      "alternativa ao n8n {{CURRENT_YEAR}}",
       "automação de fluxos de trabalho com IA",
       "automação por linguagem natural",
       "alternativa ao Zapier com IA"
@@ -1898,7 +1898,7 @@
   "bardeen": {
     "name": "Bardeen",
     "tagline": "Automação com IA no navegador para web scraping e tarefas repetitivas",
-    "metaTitle": "Melhor alternativa ao Bardeen em 2026",
+    "metaTitle": "Melhor alternativa ao Bardeen em {{CURRENT_YEAR}}",
     "metaDescription": "O Bardeen funciona apenas no navegador. O GAIA é um assistente de IA proativo que gerencia e-mails, agenda, tarefas e fluxos de trabalho em toda a sua vida digital. Plano gratuito disponível.",
     "keywords": [
       "alternativa ao bardeen",
@@ -1911,7 +1911,7 @@
       "alternativa source-available ao bardeen",
       "alternativa ao bardeen self-hosted",
       "alternativa ao bardeen para pessoas físicas",
-      "alternativa ao bardeen 2026",
+      "alternativa ao bardeen {{CURRENT_YEAR}}",
       "automação de fluxos com IA",
       "automação em linguagem natural"
     ],
@@ -1964,7 +1964,7 @@
   "obsidian": {
     "name": "Obsidian",
     "tagline": "Notas em Markdown locais, com visualização em gráfico e plugins",
-    "metaTitle": "Melhor alternativa ao Obsidian em 2026",
+    "metaTitle": "Melhor alternativa ao Obsidian em {{CURRENT_YEAR}}",
     "metaDescription": "O Obsidian exige manutenção manual e não tem IA proativa. O GAIA é um assistente de IA proativo, com memória baseada em gráficos integrada. Plano gratuito + código aberto e hospedagem própria.",
     "keywords": [
       "alternativa ao Obsidian",
@@ -1977,7 +1977,7 @@
       "alternativa source-available ao Obsidian",
       "alternativa auto-hospedada ao Obsidian",
       "alternativa ao Obsidian para pessoas físicas",
-      "alternativa ao Obsidian 2026",
+      "alternativa ao Obsidian {{CURRENT_YEAR}}",
       "segundo cérebro com IA",
       "PKM source-available",
       "anotações auto-hospedadas"
@@ -2031,7 +2031,7 @@
   "logseq": {
     "name": "Logseq",
     "tagline": "Outliner source-available e local-first com links bidirecionais",
-    "metaTitle": "Melhor alternativa ao Logseq em 2026",
+    "metaTitle": "Melhor alternativa ao Logseq em {{CURRENT_YEAR}}",
     "metaDescription": "O Logseq exige manutenção manual das notas e não possui IA proativa. O GAIA é um assistente de IA proativo com memória em gráfico integrada. Plano gratuito + auto-hospedagem source-available.",
     "keywords": [
       "alternativa ao logseq",
@@ -2044,7 +2044,7 @@
       "alternativa source-available ao logseq",
       "alternativa auto-hospedada ao logseq",
       "alternativa ao logseq para indivíduos",
-      "alternativa ao logseq 2026",
+      "alternativa ao logseq {{CURRENT_YEAR}}",
       "Segundo cérebro com IA",
       "PKM source-available",
       "anotações auto-hospedadas"
@@ -2098,7 +2098,7 @@
   "mem-ai": {
     "name": "Mem",
     "tagline": "Anotações com IA que organizam automaticamente seu conhecimento",
-    "metaTitle": "Melhor alternativa ao Mem em 2026",
+    "metaTitle": "Melhor alternativa ao Mem em {{CURRENT_YEAR}}",
     "metaDescription": "O Mem.ai é caro e exige entrada manual de notas. A GAIA é uma assistente de IA proativa que constrói conhecimento automaticamente a partir do e-mail e da agenda. Existe um plano gratuito disponível.",
     "keywords": [
       "alternativa ao mem ai",
@@ -2111,7 +2111,7 @@
       "alternativa source-available ao mem.ai",
       "alternativa self-hosted ao mem.ai",
       "alternativa ao mem.ai para pessoas físicas",
-      "alternativa ao mem.ai 2026",
+      "alternativa ao mem.ai {{CURRENT_YEAR}}",
       "segundo cérebro com IA",
       "PKM source-available",
       "anotações auto-hospedadas"
@@ -2165,7 +2165,7 @@
   "reflect-app": {
     "name": "Reflect",
     "tagline": "Anotações inteligentes com IA, pensamento em rede e backlinks",
-    "metaTitle": "Melhor Alternativa ao Reflect em 2026",
+    "metaTitle": "Melhor Alternativa ao Reflect em {{CURRENT_YEAR}}",
     "metaDescription": "Reflect apenas faz anotações. O GAIA é um assistente de IA proativo que gerencia e-mails, tarefas, calendário e constrói conhecimento automaticamente. Plano gratuito + self-hosting.",
     "keywords": [
       "alternativa ao Reflect app",
@@ -2178,7 +2178,7 @@
       "alternativa source-available ao Reflect",
       "alternativa self-hosted ao Reflect",
       "alternativa ao Reflect para pessoas físicas",
-      "alternativa ao Reflect 2026",
+      "alternativa ao Reflect {{CURRENT_YEAR}}",
       "IA segundo cérebro",
       "source-available PKM",
       "anotações auto-hospedadas"
@@ -2232,7 +2232,7 @@
   "notion-ai": {
     "name": "Notion AI",
     "tagline": "Complemento de escrita com IA e perguntas e respostas integrado ao workspace Notion",
-    "metaTitle": "Melhor Alternativa ao Notion AI em 2026",
+    "metaTitle": "Melhor Alternativa ao Notion AI em {{CURRENT_YEAR}}",
     "metaDescription": "O Notion AI só ajuda dentro do Notion. O GAIA é um assistente de IA proativo que gerencia e-mail, calendário, tarefas e diversas ferramentas automaticamente. Plano gratuito e opção self-hosted.",
     "keywords": [
       "alternativa ao notion ai",
@@ -2245,7 +2245,7 @@
       "alternativa gratuita ao notion ai",
       "alternativa source-available ao notion ai",
       "alternativa self-hosted ao notion ai",
-      "alternativa ao notion ai 2026"
+      "alternativa ao notion ai {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Exige um plano Business de US$ 20/usuário/mês para ter acesso ilimitado à IA",
@@ -2297,12 +2297,12 @@
   "evernote": {
     "name": "Evernote",
     "tagline": "Aplicativo clássico de anotações com web clipper e digitalização de documentos",
-    "metaTitle": "Melhor Alternativa ao Evernote em 2026",
+    "metaTitle": "Melhor Alternativa ao Evernote em {{CURRENT_YEAR}}",
     "metaDescription": "O preço do Evernote disparou e ainda não tem IA proativa. O GAIA gerencia suas notas, e-mails, tarefas e calendário de forma automática. Plano gratuito + auto-hospedagem.",
     "keywords": [
       "alternativa ao evernote",
       "melhor alternativa ao evernote",
-      "substituto do evernote 2026",
+      "substituto do evernote {{CURRENT_YEAR}}",
       "evernote muito caro",
       "evernote vs gaia",
       "app de anotações com IA",
@@ -2311,7 +2311,7 @@
       "evernote alternativa grátis",
       "alternativa source-available ao evernote",
       "alternativa evernote auto-hospedada",
-      "alternativa evernote 2026"
+      "alternativa evernote {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Preços reestruturados para Starter (US$ 100/ano) e Advanced (US$ 250/ano) — muito caro para um app de notas",
@@ -2363,7 +2363,7 @@
   "bear": {
     "name": "Bear",
     "tagline": "Aplicativo elegante de notas em Markdown para Mac e iOS",
-    "metaTitle": "Melhor Alternativa ao App Bear em 2026",
+    "metaTitle": "Melhor Alternativa ao App Bear em {{CURRENT_YEAR}}",
     "metaDescription": "Bear é exclusivo para Apple e não possui IA proativa. O GAIA é um assistente de IA multiplataforma que gerencia notas, e-mails, tarefas e calendário automaticamente. Plano gratuito + auto-hospedagem.",
     "keywords": [
       "alternativa ao app Bear",
@@ -2377,7 +2377,7 @@
       "alternativa gratuita ao Bear",
       "alternativa source-available ao Bear",
       "alternativa auto-hospedada ao Bear",
-      "alternativa ao Bear 2026"
+      "alternativa ao Bear {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Apenas para Apple: sem suporte para Android, Windows ou Linux",
@@ -2428,7 +2428,7 @@
   "craft": {
     "name": "Craft",
     "tagline": "Editor de documentos bonito para notas, textos e wikis",
-    "metaTitle": "Melhor Alternativa ao Craft Docs em 2026",
+    "metaTitle": "Melhor Alternativa ao Craft Docs em {{CURRENT_YEAR}}",
     "metaDescription": "O Craft é um editor de documentos bonito, mas não tem IA proativa. A GAIA gerencia e-mail, tarefas, calendário e conhecimento automaticamente. Versão gratuita + auto-hospedagem source-available.",
     "keywords": [
       "alternativa ao craft docs",
@@ -2442,7 +2442,7 @@
       "craft alternativa grátis",
       "alternativa source-available ao craft",
       "alternativa auto-hospedada ao craft",
-      "alternativa ao craft 2026"
+      "alternativa ao craft {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Focada principalmente na criação de documentos; não possui IA proativa ou automação de fluxos de trabalho",
@@ -2493,7 +2493,7 @@
   "coda": {
     "name": "Coda",
     "tagline": "Híbrido de documento e banco de dados que combina documentos, tabelas e automações",
-    "metaTitle": "Melhor Alternativa ao Coda em 2026",
+    "metaTitle": "Melhor Alternativa ao Coda em {{CURRENT_YEAR}}",
     "metaDescription": "O Coda exige uma configuração extensa e não tem IA proativa. O GAIA gerencia tarefas, emails e calendário automaticamente e sem configurações. Plano gratuito + autohospedagem.",
     "keywords": [
       "alternativa ao coda",
@@ -2507,7 +2507,7 @@
       "alternativa gratuita ao coda",
       "alternativa source-available ao coda",
       "alternativa autohospedada ao coda",
-      "alternativa ao coda 2026"
+      "alternativa ao coda {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Curva de aprendizado acentuada para criar docs funcionais no Coda com tabelas e fórmulas",
@@ -2558,7 +2558,7 @@
   "airtable": {
     "name": "Airtable",
     "tagline": "Banco de dados planilha flexível para equipes e indivíduos",
-    "metaTitle": "Melhor Alternativa ao Airtable em 2026",
+    "metaTitle": "Melhor Alternativa ao Airtable em {{CURRENT_YEAR}}",
     "metaDescription": "A cobrança por usuário do Airtable aumenta rápido e não há IA proativa. O GAIA gerencia tarefas, e-mails e agenda com IA automaticamente. Camada gratuita + opção de auto-hospedagem.",
     "keywords": [
       "alternativa ao airtable",
@@ -2572,7 +2572,7 @@
       "airtable alternativa gratuita",
       "alternativa source-available ao airtable",
       "alternativa auto-hospedada ao airtable",
-      "alternativa ao airtable 2026"
+      "alternativa ao airtable {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Plano para equipes custa US$20/usuário/mês — caro para equipes grandes",
@@ -2623,7 +2623,7 @@
   "sunsama": {
     "name": "Sunsama",
     "tagline": "Planejador diário consciente que une tarefas e agenda em uma visão integrada do dia",
-    "metaTitle": "Melhor Alternativa ao Sunsama em 2026",
+    "metaTitle": "Melhor Alternativa ao Sunsama em {{CURRENT_YEAR}}",
     "metaDescription": "O Sunsama exige um ritual de planejamento diário e custa US$20/mês. O GAIA administra de forma proativa suas tarefas, e-mails e agenda automaticamente. Conta gratuita + auto-hospedagem.",
     "keywords": [
       "alternativa ao sunsama",
@@ -2637,7 +2637,7 @@
       "alternativa grátis ao sunsama",
       "alternativa source-available ao sunsama",
       "alternativa auto-hospedada ao sunsama",
-      "alternativa ao sunsama 2026"
+      "alternativa ao sunsama {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Não possui plano gratuito permanente — apenas 14 dias de teste antes de começar a cobrar US$20/mês",
@@ -2689,7 +2689,7 @@
   "akiflow": {
     "name": "Akiflow",
     "tagline": "Caixa de entrada unificada de tarefas e planejador com blocos de tempo e integração com mais de 30 apps",
-    "metaTitle": "Melhor Alternativa ao Akiflow em 2026",
+    "metaTitle": "Melhor Alternativa ao Akiflow em {{CURRENT_YEAR}}",
     "metaDescription": "O Akiflow exige bloqueio de tempo manual e não possui plano gratuito. O GAIA gerencia tarefas, e-mail e calendário automaticamente. Plano gratuito + auto-hospedagem source-available.",
     "keywords": [
       "alternativa akiflow",
@@ -2703,7 +2703,7 @@
       "alternativa grátis akiflow",
       "alternativa source-available akiflow",
       "alternativa auto-hospedada akiflow",
-      "alternativa akiflow 2026"
+      "alternativa akiflow {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Sem plano gratuito — apenas teste de 7 dias antes de cobrar US$ 15/mês (anual)",
@@ -2755,7 +2755,7 @@
   "spark": {
     "name": "Spark Email",
     "tagline": "Cliente de email com IA para colaboração em equipe e caixa de entrada inteligente",
-    "metaTitle": "Melhor alternativa ao Spark Email em 2026",
+    "metaTitle": "Melhor alternativa ao Spark Email em {{CURRENT_YEAR}}",
     "metaDescription": "O Spark Email ajuda você a escrever mais rápido, mas não é proativo. O GAIA gerencia seu Gmail, cria tarefas a partir de emails e conecta-se a diversas ferramentas. Plano gratuito + auto-hospedagem.",
     "keywords": [
       "alternativa ao spark email",
@@ -2769,7 +2769,7 @@
       "alternativa gratuita ao spark email",
       "alternativa source-available ao spark email",
       "alternativa auto-hospedada ao spark email",
-      "alternativa ao spark email 2026"
+      "alternativa ao spark email {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Plano Premium individual por US$ 7,99/mês pesa para quem usa o cliente de email sozinho",
@@ -2821,7 +2821,7 @@
   "missive": {
     "name": "Missive",
     "tagline": "Caixa de entrada colaborativa para equipes, com comentários internos e atribuições de tarefas",
-    "metaTitle": "Melhor Alternativa ao Missive em 2026",
+    "metaTitle": "Melhor Alternativa ao Missive em {{CURRENT_YEAR}}",
     "metaDescription": "O Missive é caro e voltado para equipes. O GAIA é um assistente de IA proativo para e-mail pessoal, calendário e gestão de tarefas. Plano gratuito + self-hosting source-available.",
     "keywords": [
       "alternativa ao missive",
@@ -2835,7 +2835,7 @@
       "alternativa gratuita ao missive",
       "alternativa source-available ao missive",
       "alternativa self-hosted ao missive",
-      "alternativa ao missive 2026"
+      "alternativa ao missive {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "O plano inicial custa US$ 14/usuário/mês, tornando-o caro para pequenas equipes",
@@ -2887,7 +2887,7 @@
   "pipedream": {
     "name": "Pipedream",
     "tagline": "Automação de fluxo de trabalho focada em desenvolvedores, com integração de API orientada a código",
-    "metaTitle": "A Melhor Alternativa ao Pipedream em 2026",
+    "metaTitle": "A Melhor Alternativa ao Pipedream em {{CURRENT_YEAR}}",
     "metaDescription": "O Pipedream exige conhecimento de programação e não conta com assistente de IA. O GAIA automatiza fluxos através de linguagem natural e gerencia e-mails, tarefas e calendário. Plano gratuito disponível.",
     "keywords": [
       "alternativa ao pipedream",
@@ -2901,7 +2901,7 @@
       "alternativa gratuita ao pipedream",
       "alternativa ao pipedream source-available",
       "alternativa ao pipedream auto-hospedada",
-      "alternativa ao pipedream 2026"
+      "alternativa ao pipedream {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Necessário conhecimento em JavaScript/Node.js para criar fluxos avançados",
@@ -2952,7 +2952,7 @@
   "relay": {
     "name": "Relay.app",
     "tagline": "Automação de fluxo de trabalho com humano no circuito, com IA e etapas de aprovação",
-    "metaTitle": "Melhor Alternativa ao Relay.app em 2026",
+    "metaTitle": "Melhor Alternativa ao Relay.app em {{CURRENT_YEAR}}",
     "metaDescription": "O Relay.app é caro e ainda exige etapas de aprovação manual. O GAIA automatiza fluxos de trabalho com raciocínio de IA e gerencia seu e-mail, tarefas e calendário proativamente.",
     "keywords": [
       "alternativa ao relay app",
@@ -2966,7 +2966,7 @@
       "alternativa gratuita ao relay.app",
       "alternativa de código aberto ao relay.app",
       "alternativa auto-hospedada ao relay.app",
-      "alternativa ao relay.app 2026"
+      "alternativa ao relay.app {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "O plano Professional começa em US$ 38/mês — caro para automação individual",
@@ -3017,7 +3017,7 @@
   "capacities": {
     "name": "Capacities",
     "tagline": "Gerenciamento de conhecimento pessoal baseado em objeto com assistente de IA",
-    "metaTitle": "Melhor Alternativa ao Capacities em 2026",
+    "metaTitle": "Melhor Alternativa ao Capacities em {{CURRENT_YEAR}}",
     "metaDescription": "O Capacities não tem IA proativa e exige entrada manual de notas. O GAIA cria conhecimento automaticamente a partir de e-mail e calendário. Nível gratuito + auto-hospedagem de código aberto.",
     "keywords": [
       "alternativa ao capacities",
@@ -3027,11 +3027,11 @@
       "alternativa de ia para notas baseadas em objeto",
       "gerenciamento de conhecimento proativo",
       "ferramenta de pkm automática",
-      "base de conhecimento pessoal com ia 2026",
+      "base de conhecimento pessoal com ia {{CURRENT_YEAR}}",
       "alternativa gratuita ao capacities",
       "alternativa de código aberto ao capacities",
       "alternativa auto-hospedada ao capacities",
-      "alternativa ao capacities 2026"
+      "alternativa ao capacities {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "A abordagem baseada em objeto exige aprender um novo modelo mental para anotações",
@@ -3083,7 +3083,7 @@
   "tana": {
     "name": "Tana",
     "tagline": "Híbrido de estrutura de tópicos e banco de dados com Supertags, automação de IA e notas conectadas",
-    "metaTitle": "Melhor Alternativa ao Tana em 2026",
+    "metaTitle": "Melhor Alternativa ao Tana em {{CURRENT_YEAR}}",
     "metaDescription": "O Tana tem uma curva de aprendizado acentuada e nenhuma captura automática de conhecimento. O GAIA cria conhecimento a partir de e-mail e calendário proativamente. Nível gratuito + auto-hospedagem de código aberto.",
     "keywords": [
       "alternativa ao tana",
@@ -3097,7 +3097,7 @@
       "alternativa gratuita ao tana",
       "alternativa de código aberto ao tana",
       "alternativa auto-hospedada ao tana",
-      "alternativa ao tana 2026"
+      "alternativa ao tana {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Curva de aprendizado acentuada para Supertags, esquemas e pensamento baseado em nó",
@@ -3158,7 +3158,7 @@
       "melhor aplicativo google calendar",
       "alternativa de ia ao google calendar",
       "aplicativo de calendário inteligente",
-      "alternativa ao google calendar 2026"
+      "alternativa ao google calendar {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Os eventos ficam no Calendário sem briefing, contexto ou lembretes de preparação — você tem que lembrar de verificar você mesmo",
@@ -3218,7 +3218,7 @@
       "alternativa auto hospedada ao linear",
       "alternativa ao linear reddit",
       "alternativa de aplicativo linear",
-      "alternativa ao linear 2026"
+      "alternativa ao linear {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Os ciclos, projetos e fluxos de trabalho de triagem do Linear são projetados para sprints de engenharia — usuários individuais e equipes não-eng recebem complexidade que não precisam",
@@ -3279,7 +3279,7 @@
       "alternativa ao hey mail",
       "alternativa acessível ao hey email",
       "alternativa de código aberto ao hey email",
-      "alternativa ao hey email 2026"
+      "alternativa ao hey email {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "O Screener, Imbox, The Feed e Paper Trail do HEY são rituais de classificação manual — cada novo remetente exige uma decisão humana, sempre",
@@ -3340,7 +3340,7 @@
       "omnifocus alternative reddit",
       "omnifocus alternative source-available",
       "free omnifocus alternative",
-      "omnifocus alternative 2026"
+      "omnifocus alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "OmniFocus is Apple-only — no Windows, no Android, no web app beyond a limited browser version; your GTD system is locked to the Apple ecosystem",
@@ -3401,7 +3401,7 @@
       "rewind ai alternative",
       "rewind ai alternative free",
       "rewind ai alternative windows",
-      "limitless ai alternative 2026"
+      "limitless ai alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Limitless captures meetings and conversations passively but doesn't take action on them — follow-ups, tasks, and calendar updates still require manual work",
@@ -3462,7 +3462,7 @@
       "lindy ai self hosted alternative",
       "lindy ai replacement",
       "lindy alternative",
-      "lindy ai alternative 2026"
+      "lindy ai alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Lindy is closed-source and cloud-only — no self-hosted option for teams with data privacy requirements or infrastructure preferences",
@@ -3523,7 +3523,7 @@
       "perplexity alternative for research",
       "free perplexity alternative",
       "perplexity ai replacement",
-      "perplexity alternative 2026"
+      "perplexity alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Perplexity answers questions about the world, not about your personal context — it has no access to your email, tasks, calendar, or meeting history",
@@ -3583,7 +3583,7 @@
       "roam alternative",
       "obsidian vs roam research",
       "roam research replacement",
-      "roam research alternative 2026"
+      "roam research alternative {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Roam requires you to manually capture everything — it has no email integration, calendar sync, or automatic knowledge enrichment from your digital activity",
@@ -3643,7 +3643,7 @@
       "alternativa grátis instinct",
       "alternativa source-available instinct",
       "substituto instinct ia",
-      "alternativa instinct 2026"
+      "alternativa instinct {{CURRENT_YEAR}}"
     ],
     "painPoints": [
       "Instinct leva recados por texto e chamada, com seu contexto dentro de um produto fechado",
@@ -4430,7 +4430,7 @@
     "name": "ChatGPT Atlas",
     "tagline": "Abandonado por um encerramento? Reconstrua em terreno aberto.",
     "metaTitle": "Melhor alternativa ao ChatGPT Atlas após fechar",
-    "metaDescription": "Atlas encerrou em agosto de 2026. GAIA é a alternativa aberta ao Atlas: à prova de encerramento, com e-mail e agenda automáticos.",
+    "metaDescription": "Atlas encerrou em agosto de {{CURRENT_YEAR}}. GAIA é a alternativa aberta ao Atlas: à prova de encerramento, com e-mail e agenda automáticos.",
     "keywords": [
       "alternativa chatgpt atlas",
       "substituto atlas ia",

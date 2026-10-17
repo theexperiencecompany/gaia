@@ -59,13 +59,15 @@ async function readFromHttp(relPath: string): Promise<string | null> {
   }
 }
 
-/** Parse static data, writing the advertised price where the copy quotes GAIA's own. */
+/** Where marketing titles name the year, so "Best X in <year>" never goes stale on 1 January. */
+export const CURRENT_YEAR_TOKEN = "{{CURRENT_YEAR}}";
+
+/** Parse static data, writing the values the copy must never hardcode: GAIA's price and the year. */
 function parseStaticJson<T>(text: string): T {
   return JSON.parse(
-    text.replaceAll(
-      PRO_MONTHLY_PRICE_TOKEN,
-      String(ADVERTISED_PRO_MONTHLY_PRICE),
-    ),
+    text
+      .replaceAll(PRO_MONTHLY_PRICE_TOKEN, String(ADVERTISED_PRO_MONTHLY_PRICE))
+      .replaceAll(CURRENT_YEAR_TOKEN, String(new Date().getFullYear())),
   ) as T;
 }
 

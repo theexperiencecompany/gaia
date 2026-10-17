@@ -4863,7 +4863,7 @@
   "chatgpt-atlas": {
     "term": "ChatGPT Atlas",
     "metaTitle": "ChatGPT Atlas, c'était quoi ? Fermeture expliquée",
-    "metaDescription": "ChatGPT Atlas fut un produit IA fermé en août 2026. Découvrez ce qu'il était et où ses utilisateurs vont désormais avec un assistant complet.",
+    "metaDescription": "ChatGPT Atlas fut un produit IA fermé en août {{CURRENT_YEAR}}. Découvrez ce qu'il était et où ses utilisateurs vont désormais avec un assistant complet.",
     "definition": "ChatGPT Atlas fut un produit IA qui a fermé en août 2026. Ses anciens utilisateurs en quête d'un assistant plus profond atterrissent souvent sur des outils ouverts comme GAIA.",
     "extendedDescription": "Atlas a eu son moment puis a disparu. La fermeture d'août 2026 a laissé des utilisateurs avec des habitudes construites sur un produit qui ne s'ouvre plus.\n\nLes fermetures suivent un schéma : exportez ce que vous pouvez, trouvez l'équivalent vivant le plus proche et reconstruisez le flux. Les utilisateurs qui s'en remettent le plus vite choisissent des outils qu'on ne peut pas leur retirer.\n\nCe dernier point favorise l'source-available. Un assistant auto-hébergé continue de marcher quelle que soit la feuille de route d'une entreprise, et c'est exactement la garantie que les utilisateurs d'Atlas ont appris à vouloir.",
     "keywords": [

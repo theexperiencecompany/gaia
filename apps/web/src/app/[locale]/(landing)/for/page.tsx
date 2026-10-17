@@ -1,8 +1,7 @@
 import { CircleArrowRight02Icon } from "@icons";
 import type { Metadata } from "next";
-import Link from "next/link";
-
 import JsonLd from "@/components/seo/JsonLd";
+import { SiteLink } from "@/components/seo/SiteLink";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getAllPersonas } from "@/features/personas/data/personasData";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
@@ -69,9 +68,7 @@ export default async function PersonasHubPage() {
     personas.map((p) => ({
       name: p.title,
       url: `${siteConfig.url}/for/${p.slug}`,
-      description: p.metaDescription,
     })),
-    "Article",
   );
 
   const heroPersona = personas.find((p) => p.slug === "startup-founders");
@@ -104,7 +101,7 @@ export default async function PersonasHubPage() {
 
           {/* Hero card */}
           {heroPersona && (
-            <Link
+            <SiteLink
               href="/for/startup-founders"
               className="group mb-4 flex flex-col gap-3 rounded-3xl bg-primary/10 p-6 transition-colors hover:bg-primary/15"
             >
@@ -120,13 +117,13 @@ export default async function PersonasHubPage() {
                 See the full experience
                 <CircleArrowRight02Icon width={17} height={17} />
               </span>
-            </Link>
+            </SiteLink>
           )}
 
           {/* Other featured */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {featuredPersonas.map((persona) => (
-              <Link
+              <SiteLink
                 key={persona.slug}
                 href={`/for/${persona.slug}`}
                 className="group flex flex-col gap-2 rounded-3xl bg-primary/10 p-5 transition-colors hover:bg-primary/15"
@@ -141,7 +138,7 @@ export default async function PersonasHubPage() {
                   See the full experience
                   <CircleArrowRight02Icon width={17} height={17} />
                 </span>
-              </Link>
+              </SiteLink>
             ))}
           </div>
         </section>
@@ -154,7 +151,7 @@ export default async function PersonasHubPage() {
             </p>
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
               {otherPersonas.map((persona) => (
-                <Link
+                <SiteLink
                   key={persona.slug}
                   href={`/for/${persona.slug}`}
                   className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
@@ -169,7 +166,7 @@ export default async function PersonasHubPage() {
                     Read more
                     <CircleArrowRight02Icon width={14} height={14} />
                   </span>
-                </Link>
+                </SiteLink>
               ))}
             </div>
           </section>
