@@ -10,7 +10,7 @@ import {
   getIntegrationWorkflows,
   getNativeIntegrations,
   getPublicIntegration,
-} from "@/features/integrations/data/marketplaceServer";
+} from "@/features/integrations/lib/serverMarketplaceApi";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import {

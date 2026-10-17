@@ -16,7 +16,7 @@ import {
   getTranslatedComparison,
   getTranslatedComparisons,
 } from "@/features/comparisons/data/getTranslatedComparison";
-import { getMarketplacePath } from "@/features/integrations/data/marketplaceServer";
+import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";

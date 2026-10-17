@@ -1,4 +1,3 @@
-import type { IntegrationsConfigResponse } from "@shared/api/generated";
 import { cache } from "react";
 
 import type {
@@ -6,50 +5,44 @@ import type {
   CommunityIntegrationsResponse,
   PublicIntegrationResponse,
 } from "@/features/integrations/types";
-import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
+import { serverApi, serverData, serverDataOrNull } from "@/lib/api/server";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 
-const DEFAULT_REVALIDATE_SECONDS = 3600;
-const DETAIL_REVALIDATE_SECONDS = 60;
 const REQUEST_TIMEOUT_MS = 10_000;
+/** How long the tool-slug index serves before it is rebuilt. */
+const SLUG_INDEX_TTL_MS = 3600 * 1000;
 /** The community endpoint caps `limit` at 100. */
 const COMMUNITY_PAGE_SIZE = 100;
 
 type CommunitySort = "popular" | "recent" | "name";
 
-/** GET backend JSON for a prerendered page: null on 404 or with no backend configured; any other failure throws. */
-async function fetchBackendJson<T>(
-  path: string,
-  revalidate = DEFAULT_REVALIDATE_SECONDS,
-): Promise<T | null> {
-  const baseUrl = getServerApiBaseUrl();
-  if (!baseUrl) return null;
-  const response = await fetch(`${baseUrl}${path}`, {
-    next: { revalidate },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (response.status === 404) return null;
-  if (!response.ok) {
-    throw new Error(`[marketplace] GET ${path} returned ${response.status}`);
-  }
-  return (await response.json()) as T;
-}
-
 /** One integration's public detail by slug or id; null when it does not exist. */
-export const getPublicIntegration = cache((identifier: string) =>
-  fetchBackendJson<PublicIntegrationResponse>(
-    `/integrations/public/${encodeURIComponent(identifier)}`,
-    DETAIL_REVALIDATE_SECONDS,
-  ),
+export const getPublicIntegration = cache(
+  async (identifier: string): Promise<PublicIntegrationResponse | null> => {
+    const client = serverApi();
+    if (!client) return null;
+    const result = await client.GET(
+      "/api/v1/integrations/public/{identifier}",
+      {
+        params: { path: { identifier } },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
+    );
+    return serverDataOrNull(result);
+  },
 );
 
 /** GAIA's first-party integrations, highest display priority first, as marketplace cards. */
 export const getNativeIntegrations = cache(
   async (): Promise<CommunityIntegration[]> => {
-    const config = await fetchBackendJson<IntegrationsConfigResponse>(
-      "/integrations/config",
+    const client = serverApi();
+    if (!client) return [];
+    const config = serverData(
+      await client.GET("/api/v1/integrations/config", {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }),
     );
-    return (config?.integrations ?? [])
+    return config.integrations
       .filter((item) => item.source === "platform" && item.available !== false)
       .sort((a, b) => b.displayPriority - a.displayPriority)
       .map((item) => ({
@@ -75,16 +68,21 @@ export async function getCommunityIntegrations(options: {
   readonly limit: number;
   readonly offset?: number;
   readonly category?: string;
-}): Promise<CommunityIntegrationsResponse | null> {
-  const query = new URLSearchParams({
-    sort: options.sort,
-    limit: String(options.limit),
-    offset: String(options.offset ?? 0),
+}): Promise<CommunityIntegrationsResponse> {
+  const client = serverApi();
+  if (!client) return { integrations: [], total: 0, has_more: false };
+  const result = await client.GET("/api/v1/integrations/community", {
+    params: {
+      query: {
+        sort: options.sort,
+        limit: options.limit,
+        offset: options.offset ?? 0,
+        category: options.category,
+      },
+    },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (options.category) query.set("category", options.category);
-  return fetchBackendJson<CommunityIntegrationsResponse>(
-    `/integrations/community?${query}`,
-  );
+  return serverData(result);
 }
 
 /** Every published community integration, walking the paginated endpoint to its total. */
@@ -97,12 +95,9 @@ export const getAllCommunityIntegrations = cache(
         limit: COMMUNITY_PAGE_SIZE,
         offset,
       });
-      const items = page?.integrations ?? [];
+      const items = page.integrations;
       all.push(...items);
-      if (
-        items.length < COMMUNITY_PAGE_SIZE ||
-        all.length >= (page?.total ?? 0)
-      )
+      if (items.length < COMMUNITY_PAGE_SIZE || all.length >= page.total)
         return all;
     }
   },
@@ -113,11 +108,16 @@ export async function getIntegrationWorkflows(
   integrationId: string,
   limit: number,
 ): Promise<CommunityWorkflow[]> {
-  const data = await fetchBackendJson<{ workflows?: CommunityWorkflow[] }>(
-    `/integrations/public/${encodeURIComponent(integrationId)}/workflows?limit=${limit}`,
-    DETAIL_REVALIDATE_SECONDS,
+  const client = serverApi();
+  if (!client) return [];
+  const result = await client.GET(
+    "/api/v1/integrations/public/{identifier}/workflows",
+    {
+      params: { path: { identifier: integrationId }, query: { limit } },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    },
   );
-  return (data?.workflows ?? []).slice(0, limit);
+  return (serverDataOrNull(result)?.workflows ?? []).slice(0, limit);
 }
 
 /** Marketing pages spell tools "google-calendar"; the marketplace spells them "googlecalendar". */
@@ -135,10 +135,7 @@ let slugIndexCache:
 /** Normalized tool slug to live marketplace slug, rebuilt hourly rather than fetched once per page. */
 function getMarketplaceSlugIndex(): Promise<ReadonlyMap<string, string>> {
   const now = Date.now();
-  if (
-    slugIndexCache &&
-    now - slugIndexCache.builtAt < DEFAULT_REVALIDATE_SECONDS * 1000
-  ) {
+  if (slugIndexCache && now - slugIndexCache.builtAt < SLUG_INDEX_TTL_MS) {
     return slugIndexCache.index;
   }
   const index = Promise.all([

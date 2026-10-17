@@ -1,9 +1,9 @@
-import { blogApi } from "@/features/blog/api/blogApi";
+import { getAllBlogPosts } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
 
 export async function GET() {
   try {
-    const blogs = await blogApi.getBlogs(true);
+    const blogs = await getAllBlogPosts(true);
     const baseUrl = siteConfig.url;
 
     const rssItems = blogs
@@ -15,9 +15,7 @@ export async function GET() {
             ? blog.image
             : `${baseUrl}${blog.image.startsWith("/") ? blog.image : `/${blog.image}`}`
           : null;
-        const authors =
-          blog.author_details?.map((author) => author.name).join(", ") ||
-          blog.authors.join(", ");
+        const authors = blog.authors.map((author) => author.name).join(", ");
 
         // Clean content for RSS (strip HTML, limit length)
         const description = `${blog.content

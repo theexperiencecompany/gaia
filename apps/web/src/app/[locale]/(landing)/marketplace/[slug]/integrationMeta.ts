@@ -80,7 +80,7 @@ export function generateIntegrationTitle(
   name: string,
   category: string,
   slug?: string,
-  source?: "platform" | "custom",
+  source?: "platform" | "custom" | null,
 ): string {
   // MCP Server phrasing for slugs searched with "... mcp" intent (GSC) and for every
   // community MCP, which also keeps it apart from a native integration of the same name.

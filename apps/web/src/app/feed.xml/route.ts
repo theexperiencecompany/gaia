@@ -1,12 +1,15 @@
 import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
-import { blogApi } from "@/features/blog/api/blogApi";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
-import { getAllCommunityIntegrations } from "@/features/integrations/data/marketplaceServer";
+import { getAllCommunityIntegrations } from "@/features/integrations/lib/serverMarketplaceApi";
 import { FEATURES } from "@/features/landing/data/featuresData";
 import { getAllPersonas } from "@/features/personas/data/personasData";
-import { workflowApi } from "@/features/workflows/api/workflowApi";
+import {
+  getAllCommunityWorkflowsServer,
+  getExploreWorkflowsServer,
+} from "@/features/workflows/lib/serverWorkflowsApi";
+import { getAllBlogPosts } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
 
 interface FeedItem {
@@ -300,60 +303,45 @@ async function getIntegrationItems(baseUrl: string): Promise<FeedItem[]> {
   }));
 }
 
+/** Blog posts from the local content, the same source the sitemap and /blog render. */
 async function getBlogItems(baseUrl: string): Promise<FeedItem[]> {
-  try {
-    const blogs = await blogApi.getBlogs(true);
-    return blogs.map((blog) => ({
-      title: blog.title,
-      link: `${baseUrl}/blog/${blog.slug}`,
-      description: blog.content
-        .replace(/[#*`[\]()]/g, "")
-        .replace(/\n/g, " ")
-        .slice(0, 500)
-        .trim(),
-      pubDate: new Date(blog.date).toUTCString(),
-      category: blog.category || "Blog",
-    }));
-  } catch (error) {
-    console.error("Error fetching blogs for RSS feed:", error);
-    return [];
-  }
+  const posts = await getAllBlogPosts(true);
+  return posts.map((post) => ({
+    title: post.title,
+    link: `${baseUrl}/blog/${post.slug}`,
+    description: post.content
+      .replace(/[#*`[\]()]/g, "")
+      .replace(/\n/g, " ")
+      .slice(0, 500)
+      .trim(),
+    pubDate: new Date(post.date).toUTCString(),
+    category: post.category || "Blog",
+  }));
 }
 
 async function getWorkflowItems(baseUrl: string): Promise<FeedItem[]> {
-  try {
-    const [explore, community] = await Promise.all([
-      workflowApi.getExploreWorkflows(1000, 0).catch(() => ({ workflows: [] })),
-      workflowApi
-        .getCommunityWorkflows(1000, 0)
-        .catch(() => ({ workflows: [] })),
-    ]);
-
-    const allWorkflows = [...explore.workflows, ...community.workflows];
-    const seen = new Set<string>();
-    const items: FeedItem[] = [];
-
-    for (const wf of allWorkflows) {
-      if (seen.has(wf.slug)) continue;
-      seen.add(wf.slug);
-      items.push({
-        title: wf.title,
-        link: `${baseUrl}/use-cases/${wf.slug}`,
-        description:
-          wf.description ||
-          `AI workflow: ${wf.title}. Automate this use case with GAIA.`,
-        pubDate: new Date(wf.created_at).toUTCString(),
-        category: wf.categories?.includes("featured")
-          ? "Featured Workflows"
-          : "Community Workflows",
-      });
-    }
-
-    return items;
-  } catch (error) {
-    console.error("Error fetching workflows for RSS feed:", error);
-    return [];
+  const [explore, community] = await Promise.all([
+    getExploreWorkflowsServer(1000),
+    getAllCommunityWorkflowsServer(),
+  ]);
+  const seen = new Set<string>();
+  const items: FeedItem[] = [];
+  for (const wf of [...explore, ...community]) {
+    if (!wf.slug || seen.has(wf.slug)) continue;
+    seen.add(wf.slug);
+    items.push({
+      title: wf.title,
+      link: `${baseUrl}/use-cases/${wf.slug}`,
+      description:
+        wf.description ||
+        `AI workflow: ${wf.title}. Automate this use case with GAIA.`,
+      pubDate: new Date(wf.created_at).toUTCString(),
+      category: wf.categories?.includes("featured")
+        ? "Featured Workflows"
+        : "Community Workflows",
+    });
   }
+  return items;
 }
 
 export async function GET() {

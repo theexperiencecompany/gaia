@@ -23,7 +23,8 @@ def _page(
     )
     robots_tag = f'<meta name="robots" content="{robots}">' if robots else ""
     return (
-        f"<html><head><title>Page {path}</title>"
+        "<html><head><svg><title>Icon</title></svg>"
+        f"<title>Page {path}</title>"
         '<meta name="description" content="A description long enough to sit inside the snippet window of a result.">'
         f"{canonical_tag}{robots_tag}</head><body><h1>{path}</h1>{body}</body></html>"
     )
@@ -125,6 +126,8 @@ def test_a_clean_page_set_passes(site: str) -> None:
 
     assert "ERROR internal link to a redirect" not in result.stdout
     assert "vanity path does not redirect" not in result.stdout
+    # Each page's own title, not the icon <title> inside its <svg>.
+    assert "duplicate title" not in result.stdout
 
 
 @pytest.fixture

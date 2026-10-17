@@ -1,13 +1,14 @@
-import { ApiError } from "@shared/api";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
+import type { Workflow } from "@/features/workflows/api/workflowApi";
 import {
-  type Workflow,
-  workflowApi,
-} from "@/features/workflows/api/workflowApi";
+  getAllCommunityWorkflowsServer,
+  getExploreWorkflowsServer,
+  getPublicWorkflowServer,
+} from "@/features/workflows/lib/serverWorkflowsApi";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
@@ -15,16 +16,9 @@ import {
   generateUseCaseStructuredData,
 } from "@/utils/seoUtils";
 
-/**
- * Cached explore workflows fetch for per-request deduplication.
- * Called by both generateMetadata and the page component — without
- * React.cache() the axios-based fetch would run twice per request.
- */
-const getExploreWorkflowsCached = cache((limit: number, offset: number) =>
-  workflowApi.getExploreWorkflows(limit, offset),
+const getExploreWorkflowsCached = cache((limit: number) =>
+  getExploreWorkflowsServer(limit),
 );
-
-const HTTP_NOT_FOUND = 404;
 
 interface PageProps {
   params: Promise<{ readonly slug: string }>;
@@ -33,36 +27,13 @@ interface PageProps {
 export const revalidate = 3600; // Revalidate every hour
 
 export async function generateStaticParams() {
-  try {
-    const isDev = process.env.NODE_ENV === "development";
-
-    if (isDev) {
-      const resp = await workflowApi.getExploreWorkflows(50, 0);
-      return resp.workflows.flatMap((w) => (w.slug ? [{ slug: w.slug }] : []));
-    }
-
-    const exploreResp = await workflowApi.getExploreWorkflows(1000, 0);
-
-    const { fetchAllPaginated } = await import("@/lib/fetchAll");
-    const communityWorkflows = await fetchAllPaginated(
-      async (limit, offset) => {
-        const resp = await workflowApi.getCommunityWorkflows(limit, offset);
-        return {
-          items: resp.workflows,
-          total: resp.total || 0,
-          hasMore: resp.workflows.length === limit,
-        };
-      },
-      100,
-    );
-
-    return [...exploreResp.workflows, ...communityWorkflows].flatMap((w) =>
-      w.slug ? [{ slug: w.slug }] : [],
-    );
-  } catch (error) {
-    console.error("Error generating static params for use-cases:", error);
-    return [];
-  }
+  const [explore, community] = await Promise.all([
+    getExploreWorkflowsServer(1000),
+    getAllCommunityWorkflowsServer(),
+  ]);
+  return [...explore, ...community].flatMap((w) =>
+    w.slug ? [{ slug: w.slug }] : [],
+  );
 }
 
 export const dynamicParams = true;
@@ -105,8 +76,8 @@ const resolveUseCase = cache(async (slug: string): Promise<ResolvedUseCase> => {
     slug.startsWith("wf_") && !!canonicalSlug && canonicalSlug !== slug;
 
   {
-    const resp = await getExploreWorkflowsCached(200, 0);
-    const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
+    const workflows = await getExploreWorkflowsCached(200);
+    const found = workflows.find((w) => w.id === slug || w.slug === slug);
     if (found) {
       if (isLegacyId(found.slug)) {
         return {
@@ -142,47 +113,30 @@ const resolveUseCase = cache(async (slug: string): Promise<ResolvedUseCase> => {
     }
   }
 
-  try {
-    const response = await workflowApi.getPublicWorkflow(slug);
-    const workflow = response.workflow;
-    // A workflow without a canonical slug has no valid use-case URL — treat
-    // it as missing so this matches generateMetadata's "Not Found" for this
-    // case, avoiding a page whose canonical/breadcrumb resolves to an empty slug.
-    if (!workflow.slug) {
-      return {
-        useCase: null,
-        communityWorkflow: null,
-        redirectTo: null,
-        missing: true,
-      };
-    }
-    if (isLegacyId(workflow.slug)) {
-      return {
-        useCase: null,
-        communityWorkflow: null,
-        redirectTo: `/use-cases/${workflow.slug}`,
-        missing: false,
-      };
-    }
+  const workflow = await getPublicWorkflowServer(slug);
+  // No workflow, or one without a canonical slug, has no valid use-case URL.
+  if (!workflow?.slug) {
     return {
       useCase: null,
-      communityWorkflow: workflow,
+      communityWorkflow: null,
       redirectTo: null,
+      missing: true,
+    };
+  }
+  if (isLegacyId(workflow.slug)) {
+    return {
+      useCase: null,
+      communityWorkflow: null,
+      redirectTo: `/use-cases/${workflow.slug}`,
       missing: false,
     };
-  } catch (error) {
-    // Only a real 404 is a missing use case. Anything else throws, so ISR keeps
-    // serving the last good page instead of caching a not-found one as a 200.
-    if (error instanceof ApiError && error.status === HTTP_NOT_FOUND) {
-      return {
-        useCase: null,
-        communityWorkflow: null,
-        redirectTo: null,
-        missing: true,
-      };
-    }
-    throw error;
   }
+  return {
+    useCase: null,
+    communityWorkflow: workflow,
+    redirectTo: null,
+    missing: false,
+  };
 });
 
 type Resolved = Awaited<ReturnType<typeof resolveUseCase>>;

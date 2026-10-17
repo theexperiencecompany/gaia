@@ -29,38 +29,47 @@ function rendered(value: string): string {
     .replaceAll("{{PRO_MONTHLY_PRICE}}", "20");
 }
 
+/** Each slug's meta in one locale: the base file for en, the overlay entry otherwise. */
+function metaFor(
+  family: string,
+  locale: string,
+  slugs: readonly string[],
+): [string, Meta | undefined][] {
+  if (locale === "en") {
+    return slugs.map((slug) => [
+      slug,
+      readJson<Meta>(path.join(DATA_DIR, family, `${slug}.json`)),
+    ]);
+  }
+  const overlayFile = path.join(DATA_DIR, "i18n", family, `${locale}.json`);
+  const overlay = existsSync(overlayFile)
+    ? readJson<Record<string, Meta>>(overlayFile)
+    : {};
+  return slugs.map((slug) => [slug, overlay[slug]]);
+}
+
+function lengthFailures(label: string, meta: Meta): string[] {
+  const title = rendered(meta.metaTitle ?? "");
+  const description = rendered(meta.metaDescription ?? "");
+  return [
+    ...(title.length > TITLE_MAX ? [`${label} title ${title.length}`] : []),
+    ...(description.length > DESCRIPTION_MAX
+      ? [`${label} description ${description.length}`]
+      : []),
+  ];
+}
+
 function overLimit(): string[] {
-  const failures: string[] = [];
-  for (const family of FAMILIES) {
+  return FAMILIES.flatMap((family) => {
     const slugs = readJson<string[]>(
       path.join(DATA_DIR, family, "_slugs.json"),
     );
-    for (const locale of locales) {
-      const overlayFile = path.join(DATA_DIR, "i18n", family, `${locale}.json`);
-      const overlay =
-        locale === "en" || !existsSync(overlayFile)
-          ? {}
-          : readJson<Record<string, Meta>>(overlayFile);
-      for (const slug of slugs) {
-        const meta =
-          locale === "en"
-            ? readJson<Meta>(path.join(DATA_DIR, family, `${slug}.json`))
-            : overlay[slug];
-        if (!meta) continue;
-        const title = rendered(meta.metaTitle ?? "");
-        const description = rendered(meta.metaDescription ?? "");
-        if (title.length > TITLE_MAX) {
-          failures.push(`${locale} ${family}/${slug} title ${title.length}`);
-        }
-        if (description.length > DESCRIPTION_MAX) {
-          failures.push(
-            `${locale} ${family}/${slug} description ${description.length}`,
-          );
-        }
-      }
-    }
-  }
-  return failures;
+    return locales.flatMap((locale) =>
+      metaFor(family, locale, slugs).flatMap(([slug, meta]) =>
+        meta ? lengthFailures(`${locale} ${family}/${slug}`, meta) : [],
+      ),
+    );
+  });
 }
 
 describe("programmatic page meta", () => {

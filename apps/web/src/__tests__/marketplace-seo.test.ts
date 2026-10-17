@@ -10,7 +10,7 @@ import {
   generateIntegrationTitle,
 } from "@/app/[locale]/(landing)/marketplace/[slug]/integrationMeta";
 import { getAllCombos } from "@/features/integrations/data/combosData";
-import { getMarketplacePath } from "@/features/integrations/data/marketplaceServer";
+import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
 
 const BANNED_TOKENS = [
   "seamless",
@@ -172,9 +172,9 @@ const NATIVE_CONFIG = {
 function stubBackend(status: number): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: string) => {
+    vi.fn(async (input: Request) => {
       if (status !== 200) return new Response("boom", { status });
-      const body = url.includes("/integrations/config")
+      const body = input.url.includes("/integrations/config")
         ? NATIVE_CONFIG
         : { integrations: [], total: 0 };
       return Response.json(body);
@@ -227,6 +227,6 @@ describe("marketplace cross-links", () => {
     vi.setSystemTime(new Date("2031-01-01T00:00:00Z"));
     stubBackend(500);
 
-    await expect(getMarketplacePath("gmail")).rejects.toThrow(/returned 500/);
+    await expect(getMarketplacePath("gmail")).rejects.toThrow(/500/);
   });
 });

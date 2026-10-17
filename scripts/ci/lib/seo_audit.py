@@ -82,11 +82,14 @@ class _PageParser(HTMLParser):
         self.jsonld: list[str] = []
         self._in_title = False
         self._in_jsonld = False
+        self._svg_depth = 0
         self._buffer: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = {k: v or "" for k, v in attrs}
-        if tag == "title" and not self.title:
+        if tag == "svg":
+            self._svg_depth += 1
+        if tag == "title" and not self.title and self._svg_depth == 0:
             self._in_title = True
         elif tag == "meta" and a.get("name") == "description":
             self.description = a.get("content", "")
@@ -105,6 +108,8 @@ class _PageParser(HTMLParser):
             self._buffer = []
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "svg":
+            self._svg_depth = max(0, self._svg_depth - 1)
         if tag == "title":
             self._in_title = False
         elif tag == "script" and self._in_jsonld:
@@ -126,9 +131,11 @@ class Site:
     base: str
 
     def get(self, url: str) -> Response:
-        return fetch(
-            self.base + url[len(self.site_url) :] if url.startswith(self.site_url) else url
-        )
+        """Fetch a site URL from base, presenting the site's host so host-aware middleware answers as there."""
+        if self.site_url == self.base or not url.startswith(self.site_url):
+            return fetch(url)
+        host = urllib.parse.urlparse(self.site_url).netloc
+        return fetch(self.base + url[len(self.site_url) :], host=host)
 
 
 @dataclass

@@ -10,8 +10,8 @@
 import type {
   CommunityIntegrationItem,
   CommunityListResponse,
-  IntegrationContent,
   IntegrationInstructionsResponse,
+  PublicIntegrationDetailResponse,
 } from "@shared/api/generated";
 
 export type {
@@ -108,16 +108,7 @@ export type CommunityIntegration = CommunityIntegrationItem & {
 
 export type CommunityIntegrationsResponse = CommunityListResponse;
 
-export interface PublicIntegrationResponse extends CommunityIntegration {
-  mcpConfig?: {
-    serverUrl: string;
-    requiresAuth: boolean;
-    authType: string | null;
-  } | null;
-  source?: "platform" | "custom";
-  authType?: "oauth" | "bearer" | "none" | null;
-  content?: IntegrationContent | null;
-}
+export type PublicIntegrationResponse = PublicIntegrationDetailResponse;
 
 /** One button in the seeded Getting-started thread's connect row. An entry
  * with an `integration_id` shows that app's icon; the last one is the
