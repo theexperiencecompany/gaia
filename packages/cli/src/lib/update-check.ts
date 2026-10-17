@@ -30,6 +30,14 @@ export function releaseVersion(tag: string): semver.SemVer | null {
   return /^v\d/.test(tag) ? semver.parse(tag.slice(1)) : null;
 }
 
+const COMMIT_SHA_RE = /^[0-9a-f]{40}$/;
+const SHORT_SHA_LENGTH = 12;
+
+/** An image tag as a person reads it: a commit sha shortened like git does. */
+export function displayTag(tag: string): string {
+  return COMMIT_SHA_RE.test(tag) ? tag.slice(0, SHORT_SHA_LENGTH) : tag;
+}
+
 /** True when `candidate` is a release newer than the release `current`. */
 export function isNewerRelease(candidate: string, current: string): boolean {
   const next = releaseVersion(candidate);

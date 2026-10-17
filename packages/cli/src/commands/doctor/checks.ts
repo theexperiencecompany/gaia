@@ -38,6 +38,7 @@ import {
   readSetupEndpoint,
 } from "../../lib/setup-endpoints.js";
 import {
+  displayTag,
   isNewerRelease,
   refreshLatestRelease,
   releaseVersion,
@@ -167,7 +168,7 @@ export async function checkPortConflicts(
     return {
       ...base,
       state: "ok",
-      detail: "No port conflicts",
+      detail: "no conflicts",
     };
   }
 
@@ -724,7 +725,11 @@ export async function checkReleaseVersion(
   }
   const pinned = readPinnedGaiaVersion(repoPath);
   if (releaseVersion(pinned) === null) {
-    return { ...base, state: "ok", detail: `development build (${pinned})` };
+    return {
+      ...base,
+      state: "ok",
+      detail: `development build (${displayTag(pinned)})`,
+    };
   }
   const latest = await latestRelease();
   if (latest && isNewerRelease(latest, pinned)) {

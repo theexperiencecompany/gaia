@@ -10,7 +10,7 @@
  */
 
 import chalk, { Chalk, type ChalkInstance } from "chalk";
-import wrapAnsi from "wrap-ansi";
+import { wrapForTerminal } from "../../lib/terminal-text.js";
 import { MARK, type MarkKind } from "../../ui/constants.js";
 import { printHeader } from "../../ui/header/header-lines.js";
 import {
@@ -51,27 +51,19 @@ function markFor(result: CheckResult): MarkKind {
 /** Where a row's detail and fix start: indent, mark and space, then the label column. */
 const TEXT_COLUMN = INDENT.length + 2 + LABEL_WIDTH;
 
-/**
- * Text in the detail column, wrapped to the terminal so continuation lines
- * stay in that column; a pipe gets it unwrapped.
- */
-function columnText(text: string): string {
-  const columns = process.stdout.isTTY ? process.stdout.columns : undefined;
-  if (!columns || columns <= TEXT_COLUMN + 20) return text;
-  return wrapAnsi(text, columns - TEXT_COLUMN, { hard: true })
-    .split("\n")
-    .join(`\n${" ".repeat(TEXT_COLUMN)}`);
-}
-
 function printCheck(result: CheckResult, next: CheckResult | undefined): void {
   const kind = markFor(result);
-  const detail = result.detail ? paint.gray(columnText(result.detail)) : "";
+  const detail = result.detail
+    ? paint.gray(wrapForTerminal(result.detail, TEXT_COLUMN))
+    : "";
   out(
     `${INDENT}${MARK_PAINT[kind](MARK[kind])} ${result.label.padEnd(LABEL_WIDTH)}${detail}`,
   );
   // Rows that share a root cause share its fix: say it once, under the last of them.
   if (result.state === "fail" && result.fix && next?.fix !== result.fix) {
-    out(`${" ".repeat(TEXT_COLUMN)}${columnText(result.fix)}`);
+    out(
+      `${" ".repeat(TEXT_COLUMN)}${wrapForTerminal(result.fix, TEXT_COLUMN)}`,
+    );
   }
 }
 

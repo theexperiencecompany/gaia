@@ -11,9 +11,15 @@ import { readConfig } from "../../lib/config.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
 import { isInteractive } from "../../lib/non-tty.js";
+import { homeRelative } from "../../lib/paths.js";
 import { newerReleaseHint } from "../../lib/release.js";
 import { findInstallRoot } from "../../lib/service-starter.js";
-import { isNewerRelease, releaseVersion } from "../../lib/update-check.js";
+import { wrapForTerminal } from "../../lib/terminal-text.js";
+import {
+  displayTag,
+  isNewerRelease,
+  releaseVersion,
+} from "../../lib/update-check.js";
 import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import { MARK } from "../../ui/constants.js";
 import { printHeader } from "../../ui/header/header-lines.js";
@@ -39,7 +45,7 @@ const MAX_LISTED_COMMITS = 10;
 const RELEASE_NOTES_URL = "https://docs.heygaia.io/release-notes";
 
 function out(line = ""): void {
-  process.stdout.write(`${line}\n`);
+  process.stdout.write(`${wrapForTerminal(line)}\n`);
 }
 
 function err(line = ""): void {
@@ -105,7 +111,7 @@ async function runReleaseUpdate(
   switch (decision.kind) {
     case "development-build":
       out(
-        `This install runs a development build of GAIA (${current}), not a release, so there is nothing to update.`,
+        `This install runs a development build of GAIA (${displayTag(current)}), not a release, so there is nothing to update.`,
       );
       out(
         `To switch it to the ${target} release: gaia update --version ${target}`,
@@ -179,7 +185,7 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
     return;
   }
 
-  out(`Checking for updates in ${repoPath}…`);
+  out(`Checking for updates in ${homeRelative(repoPath)}…`);
   try {
     await (options.git
       ? runGitUpdate(repoPath, options)
