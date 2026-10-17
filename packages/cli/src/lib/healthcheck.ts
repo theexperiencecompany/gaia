@@ -1,8 +1,14 @@
 import {
   COMPOSE_PROJECT_BY_MODE,
+  type ContainerStatus,
   getContainerStatuses,
-  isDockerRunning,
 } from "./docker.js";
+import {
+  type DockerAccess,
+  type DockerProblem,
+  describeDockerProblem,
+  getDockerAccess,
+} from "./docker-access.js";
 import type { SetupMode } from "./env-parser.js";
 
 export interface ServiceStatus {
@@ -92,14 +98,23 @@ async function checkTcpService(
   });
 }
 
-export async function getDockerStatus(mode: SetupMode): Promise<{
-  running: boolean;
-  containers: Awaited<ReturnType<typeof getContainerStatuses>>;
-}> {
-  const running = await isDockerRunning();
-  if (!running) {
-    return { running: false, containers: [] };
+/** Docker as `gaia status` reports it: why it is unusable, or the project's containers. */
+export interface DockerStatus {
+  access: DockerAccess;
+  /** What is wrong and how to fix it; absent when access is "ready". */
+  problem?: DockerProblem;
+  containers: ContainerStatus[];
+}
+
+export async function getDockerStatus(mode: SetupMode): Promise<DockerStatus> {
+  const access = await getDockerAccess();
+  if (access !== "ready") {
+    return {
+      access,
+      problem: await describeDockerProblem(access),
+      containers: [],
+    };
   }
   const containers = await getContainerStatuses(COMPOSE_PROJECT_BY_MODE[mode]);
-  return { running: true, containers };
+  return { access, containers };
 }

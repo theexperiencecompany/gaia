@@ -22,6 +22,7 @@ import type { CLIState, CLIStore } from "../../ui/store.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
 import {
   codeSandboxSummary,
+  DOCKER_GROUP_NOTE,
   savedProviderSummary,
   upHeadline,
 } from "./flow.js";
@@ -38,6 +39,7 @@ const UpFinishedStep: React.FC<{
   savedProvider?: string;
   codeSandbox: boolean;
   setupComplete: boolean;
+  joinedDockerGroup: boolean;
 }> = ({
   webUrl,
   reachableUrls,
@@ -47,6 +49,7 @@ const UpFinishedStep: React.FC<{
   savedProvider,
   codeSandbox,
   setupComplete,
+  joinedDockerGroup,
 }) => {
   const success = !noStart && !stillStarting;
   return (
@@ -117,6 +120,12 @@ const UpFinishedStep: React.FC<{
       {savedProvider && (
         <Box marginTop={1}>
           <Text color="gray">{savedProviderSummary(savedProvider)}</Text>
+        </Box>
+      )}
+
+      {joinedDockerGroup && (
+        <Box marginTop={1}>
+          <Text color="yellow">{DOCKER_GROUP_NOTE}</Text>
         </Box>
       )}
 
@@ -196,6 +205,7 @@ const UpSummaryStep: React.FC<{ state: CLIState }> = ({ state }) => {
       savedProvider={state.data.upSavedProvider}
       codeSandbox={state.data.upCodeSandbox === true}
       setupComplete={state.data.upSetupComplete === true}
+      joinedDockerGroup={state.data.upJoinedDockerGroup === true}
     />
   );
 };

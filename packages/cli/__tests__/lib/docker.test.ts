@@ -10,7 +10,6 @@ import {
   dockerVolumeExists,
   getContainerStatuses,
   getProjectPublishedPorts,
-  isDockerRunning,
 } from "../../src/lib/docker.js";
 
 const mockedExeca = vi.mocked(execa);
@@ -67,32 +66,6 @@ describe("getProjectPublishedPorts", () => {
     const ports = await getProjectPublishedPorts("gaia-selfhost");
 
     expect([...ports].sort()).toEqual([3000, 3443]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// isDockerRunning
-// ---------------------------------------------------------------------------
-describe("isDockerRunning", () => {
-  it("returns true when docker info succeeds", async () => {
-    mockedExeca.mockResolvedValueOnce({
-      stdout: "some docker info",
-    } as Awaited<ResultPromise>);
-
-    const result = await isDockerRunning();
-
-    expect(result).toBe(true);
-    expect(mockedExeca).toHaveBeenCalledWith("docker", ["info"]);
-  });
-
-  it("returns false when docker info fails", async () => {
-    mockedExeca.mockRejectedValueOnce(
-      new Error("Cannot connect to Docker daemon"),
-    );
-
-    const result = await isDockerRunning();
-
-    expect(result).toBe(false);
   });
 });
 

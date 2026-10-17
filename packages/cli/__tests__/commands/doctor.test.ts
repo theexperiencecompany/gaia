@@ -491,29 +491,33 @@ describe("parseDfAvailableKb", () => {
 // Individual checks
 // ---------------------------------------------------------------------------
 describe("checkDockerDaemon", () => {
-  it("passes when docker info succeeds", async () => {
-    mockedExeca.mockResolvedValueOnce({ stdout: "" } as Awaited<ResultPromise>);
-
-    const result = await checkDockerDaemon();
+  it("passes when Docker is usable", async () => {
+    const result = await checkDockerDaemon("ready");
 
     expect(result.state).toBe("ok");
-    expect(mockedExeca).toHaveBeenCalledWith(
-      "docker",
-      expect.arrayContaining(["info"]),
-    );
   });
 
-  it("fails with an OrbStack/systemctl hint when unreachable", async () => {
-    mockedExeca.mockRejectedValueOnce(
-      new Error("Cannot connect to Docker daemon"),
-    );
-
-    const result = await checkDockerDaemon();
+  it("says Docker isn't installed when it isn't", async () => {
+    const result = await checkDockerDaemon("not-installed");
 
     expect(result.state).toBe("fail");
     expect(result.severity).toBe("blocker");
-    expect(result.fix).toContain("OrbStack");
-    expect(result.fix).toContain("systemctl start docker");
+    expect(result.detail).toBe("Docker isn't installed");
+  });
+
+  it("tells a user the socket refuses to log out and in, not to start Docker", async () => {
+    mockedExeca.mockResolvedValueOnce({
+      stdout: "aryan sudo docker",
+    } as Awaited<ResultPromise>);
+
+    const result = await checkDockerDaemon("no-permission");
+
+    expect(result.state).toBe("fail");
+    expect(result.detail).toBe(
+      "Docker is running, but your user can't use it yet",
+    );
+    expect(result.fix).toContain("newgrp docker");
+    expect(result.fix).not.toContain("systemctl start docker");
   });
 });
 

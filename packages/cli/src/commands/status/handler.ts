@@ -5,6 +5,9 @@
 
 import { runCommandUI } from "../../lib/command-runner.js";
 import type { DependencyReadiness } from "../../lib/dependency-readiness.js";
+import { dependencyName, serviceName } from "../../lib/display-names.js";
+import type { DockerStatus, ServiceStatus } from "../../lib/healthcheck.js";
+import { MARK } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
 import { runStatusFlow } from "./flow.js";
 
@@ -21,77 +24,73 @@ export async function runStatus(): Promise<void> {
   });
 }
 
-interface PlainService {
-  name: string;
-  port: number;
-  status: "up" | "down" | "unknown";
-  latency?: number;
+const NAME_WIDTH = 20;
+
+function out(line = ""): void {
+  process.stdout.write(`${line}\n`);
 }
 
-interface PlainContainer {
-  name: string;
-  status: "running" | "stopped" | "not_found";
-  health?: string;
-}
-
-interface PlainDocker {
-  running: boolean;
-  containers: PlainContainer[];
+function row(ok: boolean, name: string, detail = ""): void {
+  out(
+    `  ${ok ? MARK.ok : MARK.fail} ${name.padEnd(NAME_WIDTH)} ${detail}`.trimEnd(),
+  );
 }
 
 /** Renders the collected status as plain text for non-TTY environments. */
 function printStatusSnapshot(store: CLIStore): void {
-  const services = (store.currentState.data.services ?? []) as PlainService[];
-  const docker = store.currentState.data.docker as PlainDocker | undefined;
-  const readiness = store.currentState.data.readiness as
-    | DependencyReadiness
-    | undefined;
-  console.log(`\nInstallation: ${store.currentState.data.install}`);
-  printServices(services);
-  printReadiness(readiness);
-  printDocker(docker);
+  const { data } = store.currentState;
+  out(`\nGAIA status: ${store.currentState.status}`);
+  out(`  ${data.install}`);
+  printDocker(data.docker as DockerStatus | undefined);
+  printServices((data.services ?? []) as ServiceStatus[]);
+  printReadiness(data.readiness as DependencyReadiness | undefined);
+}
+
+function printDocker(docker: DockerStatus | undefined): void {
+  if (!docker) return;
+  if (docker.problem) {
+    out("\nDocker");
+    row(false, docker.problem.summary);
+    out(`    ${docker.problem.fix}`);
+    return;
+  }
+  if (docker.containers.length === 0) return;
+  out("\nServices");
+  for (const container of docker.containers) {
+    row(
+      container.status === "running",
+      serviceName(container.name),
+      container.health ?? container.status,
+    );
+  }
+}
+
+function printServices(services: ServiceStatus[]): void {
+  if (services.length === 0) return;
+  out("\nLocal services");
+  for (const service of services) {
+    row(
+      service.status === "up",
+      `${service.name} (:${service.port})`,
+      service.latency === undefined ? "" : `${service.latency} ms`,
+    );
+  }
 }
 
 function printReadiness(readiness: DependencyReadiness | undefined): void {
   if (!readiness) return;
-  console.log("\nDependencies (/health/ready):");
+  out("\nBacking services");
   if (!readiness.reachable) {
-    console.log(`  unavailable: ${readiness.detail}`);
+    row(false, "Not checked", readiness.detail);
     return;
   }
   for (const dependency of readiness.dependencies) {
-    const name = dependency.name.padEnd(12);
-    const tag = dependency.ok ? "OK  " : "FAIL";
     const error = dependency.error_type ? `  ${dependency.error_type}` : "";
-    console.log(`  ${name} ${tag}  ${dependency.latency_ms}ms${error}`);
-    if (dependency.fix) console.log(`    Fix: ${dependency.fix}`);
-  }
-}
-
-function statusTag(status: PlainService["status"]): string {
-  if (status === "up") return "UP";
-  if (status === "down") return "DOWN";
-  return "UNKNOWN";
-}
-
-function printServices(services: PlainService[]): void {
-  if (services.length === 0) return;
-  console.log("\nServices:");
-  for (const service of services) {
-    const tag = statusTag(service.status);
-    const latency =
-      service.latency === undefined ? "--" : `${service.latency}ms`;
-    const name = service.name.padEnd(12);
-    console.log(`  ${name} :${service.port}  ${tag}  ${latency}`);
-  }
-}
-
-function printDocker(docker: PlainDocker | undefined): void {
-  if (!docker) return;
-  console.log(`\nDocker: ${docker.running ? "running" : "not running"}`);
-  for (const container of docker.containers ?? []) {
-    const health = container.health ? ` (${container.health})` : "";
-    const name = container.name.padEnd(14);
-    console.log(`  ${name} ${container.status}${health}`);
+    row(
+      dependency.ok,
+      dependencyName(dependency.name),
+      `${dependency.latency_ms} ms${error}`,
+    );
+    if (dependency.fix) out(`    ${dependency.fix}`);
   }
 }

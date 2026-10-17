@@ -8,6 +8,7 @@ import type { LlmProvider } from "../../lib/llm-flags.js";
 import type { CLIStore } from "../../ui/store.js";
 import {
   codeSandboxSummary,
+  DOCKER_GROUP_NOTE,
   runUpFlow,
   savedProviderSummary,
   upHeadline,
@@ -41,6 +42,7 @@ export function printUpSummary(store: CLIStore): void {
     console.info(savedProviderSummary(data.upSavedProvider as string));
   }
   console.info(codeSandboxSummary(data.upCodeSandbox === true));
+  if (data.upJoinedDockerGroup === true) console.info(DOCKER_GROUP_NOTE);
   console.info(
     "Next: gaia doctor — run 'gaia doctor' anytime to verify your installation",
   );

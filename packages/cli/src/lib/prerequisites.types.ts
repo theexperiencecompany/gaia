@@ -1,15 +1,5 @@
 export type CheckResult = "success" | "error" | "missing" | "pending";
 
-export interface PrerequisiteInfo {
-  name: string;
-  installUrl: string;
-  installed: boolean;
-  working: boolean;
-  /** The daemon answered, but refused this user (socket permissions). */
-  permissionDenied?: boolean;
-  errorMessage?: string;
-}
-
 export interface PortCheckResult {
   port: number;
   service: string;

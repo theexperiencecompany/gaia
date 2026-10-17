@@ -1,9 +1,6 @@
+import { dockerAccessError, getDockerAccess } from "../../lib/docker-access.js";
 import { localApiUrl } from "../../lib/endpoints.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
-import {
-  checkDockerDetailed,
-  PREREQUISITE_URLS,
-} from "../../lib/prerequisites.js";
 import {
   detectSetupMode,
   findInstallRoot,
@@ -56,14 +53,9 @@ export async function runStartFlow(
   // Check prerequisites before starting
   if (mode === "selfhost") {
     store.setStatus("Checking Docker...");
-    const dockerInfo = await checkDockerDetailed();
-    if (!dockerInfo.working) {
-      store.setError(
-        new Error(
-          dockerInfo.errorMessage ||
-            `Docker is not running. Please start Docker and try again.\n  ${PREREQUISITE_URLS.docker}`,
-        ),
-      );
+    const access = await getDockerAccess();
+    if (access !== "ready") {
+      store.setError(await dockerAccessError(access));
       return;
     }
   }

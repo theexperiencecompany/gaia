@@ -23,8 +23,11 @@ import {
   getComposeProjectContainers,
   getDiskFreeKb,
   getDockerRootDir,
-  isDockerRunning,
 } from "../../lib/docker.js";
+import {
+  type DockerAccess,
+  describeDockerProblem,
+} from "../../lib/docker-access.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
 import { checkModePorts } from "../../lib/prerequisites.js";
@@ -138,18 +141,9 @@ export async function checkPortConflicts(
 ): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "port-conflict",
-    label: "port-conflict",
+    label: "Ports",
     severity: "blocker",
   };
-
-  const daemonRunning = await isDockerRunning();
-  if (!daemonRunning) {
-    return {
-      ...base,
-      state: "skipped",
-      detail: "Docker daemon unreachable",
-    };
-  }
 
   let results: Awaited<ReturnType<typeof checkModePorts>>;
   try {
@@ -275,23 +269,17 @@ export function parseDfAvailableKb(stdout: string): number | null {
 // Checks
 // ---------------------------------------------------------------------------
 
-export async function checkDockerDaemon(): Promise<CheckResult> {
-  const running = await isDockerRunning();
-  return running
-    ? {
-        id: "docker-daemon",
-        label: "Docker daemon",
-        severity: "blocker",
-        state: "ok",
-      }
-    : {
-        id: "docker-daemon",
-        label: "Docker daemon",
-        severity: "blocker",
-        state: "fail",
-        detail: "'docker info' failed — daemon unreachable",
-        fix: "Start OrbStack or Docker Desktop (macOS/Windows), or run: sudo systemctl start docker.",
-      };
+export async function checkDockerDaemon(
+  access: DockerAccess,
+): Promise<CheckResult> {
+  const base: Pick<CheckResult, "id" | "label" | "severity"> = {
+    id: "docker-daemon",
+    label: "Docker",
+    severity: "blocker",
+  };
+  if (access === "ready") return { ...base, state: "ok", detail: "running" };
+  const problem = await describeDockerProblem(access);
+  return { ...base, state: "fail", detail: problem.summary, fix: problem.fix };
 }
 
 export async function checkComposeContainers(options: {

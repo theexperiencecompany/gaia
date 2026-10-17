@@ -14,6 +14,7 @@ import {
   COMPOSE_PROJECT_BY_MODE,
   type ComposeProject,
 } from "../../lib/docker.js";
+import { getDockerAccess } from "../../lib/docker-access.js";
 import { localApiUrl, localOrigin } from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
@@ -92,11 +93,22 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   const results: CheckResult[] = [];
   const ctx = await resolveContext();
 
-  // 1. Docker daemon reachable.
-  results.push(await checkDockerDaemon());
+  // 1. Docker usable by this user.
+  const dockerAccess = await getDockerAccess();
+  results.push(await checkDockerDaemon(dockerAccess));
 
   // 1b. Host port conflicts (respects infra/docker/.env overrides).
-  results.push(await checkPortConflicts(ctx.mode ?? "selfhost", ctx.overrides));
+  results.push(
+    dockerAccess === "ready"
+      ? await checkPortConflicts(ctx.mode ?? "selfhost", ctx.overrides)
+      : {
+          id: "port-conflict",
+          label: "Ports",
+          severity: "blocker",
+          state: "skipped",
+          detail: "needs Docker",
+        },
+  );
 
   // 2. Compose project containers.
   if (!ctx.project) {

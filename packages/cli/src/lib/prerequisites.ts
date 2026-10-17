@@ -3,9 +3,9 @@ import * as path from "node:path";
 import { execa } from "execa";
 import type { CLIStore } from "../ui/store.js";
 import { COMPOSE_PROJECT_BY_MODE, getProjectPublishedPorts } from "./docker.js";
+import { dockerAccessError, getDockerAccess } from "./docker-access.js";
 import {
   ensureDockerGroupMembership,
-  isDockerSocketPermissionError,
   resolveDockerGroupSwitch,
 } from "./docker-group.js";
 import {
@@ -14,14 +14,15 @@ import {
   DEFAULT_WEB_PORT,
 } from "./endpoints.js";
 import type { SetupMode } from "./env-parser.js";
+import { newLogPath } from "./logs.js";
 import { isInteractive } from "./non-tty.js";
 import type {
   CheckResult,
   DockerReadiness,
   InstallConsentOptions,
   PortCheckResult,
-  PrerequisiteInfo,
 } from "./prerequisites.types.js";
+import { runAsRoot } from "./root-command.js";
 
 export const PREREQUISITE_URLS = {
   git: "https://git-scm.com/downloads",
@@ -95,45 +96,6 @@ export async function checkGit(): Promise<CheckResult> {
   } catch {
     return "error";
   }
-}
-
-export async function checkDockerDetailed(): Promise<PrerequisiteInfo> {
-  let installed = false;
-  let working = false;
-  let errorMessage: string | undefined;
-
-  try {
-    await execa("docker", ["--version"]);
-    installed = true;
-  } catch {
-    return {
-      name: "Docker",
-      installUrl: PREREQUISITE_URLS.docker,
-      installed: false,
-      working: false,
-      errorMessage: "Docker is not installed",
-    };
-  }
-
-  let permissionDenied = false;
-  try {
-    await execa("docker", ["info"], { timeout: 5000 });
-    working = true;
-  } catch (e) {
-    permissionDenied = isDockerSocketPermissionError(e);
-    errorMessage = permissionDenied
-      ? "Docker is running but this user cannot reach its socket (not in the docker group)."
-      : "Docker is installed but the daemon is not running. Please start Docker Desktop or the Docker daemon.";
-  }
-
-  return {
-    name: "Docker",
-    installUrl: PREREQUISITE_URLS.docker,
-    installed,
-    working,
-    permissionDenied,
-    errorMessage,
-  };
 }
 
 export async function checkMise(): Promise<CheckResult> {
@@ -227,16 +189,6 @@ async function confirmInstall(
   }
 }
 
-/** Run a command as root: directly when already root, else through sudo, which can prompt (stdio inherited). */
-async function runAsRoot(command: string, args: string[]): Promise<void> {
-  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
-  if (isRoot) {
-    await execa(command, args, { stdio: "inherit" });
-  } else {
-    await execa("sudo", [command, ...args], { stdio: "inherit" });
-  }
-}
-
 /**
  * Ensure git is installed. Linux apt installs it on consent (a TTY confirm,
  * or --yes), the same way {@link ensureDocker} installs Docker.
@@ -263,9 +215,10 @@ async function makeGitAvailable(
   }
   await confirmInstall(store, "git", options, "sudo apt-get install -y git");
   store.setStatus("Installing Git...");
+  const logPath = newLogPath("git-install");
   try {
-    await runAsRoot("apt-get", ["update"]);
-    await runAsRoot("apt-get", ["install", "-y", "git"]);
+    await runAsRoot("apt-get", ["update"], logPath);
+    await runAsRoot("apt-get", ["install", "-y", "git"], logPath);
   } catch (e) {
     throw new Error(
       `Git installation failed: ${(e as Error).message}\n` +
@@ -298,9 +251,9 @@ async function makeDockerAvailable(
   store: CLIStore,
   options: InstallConsentOptions,
 ): Promise<DockerReadiness> {
-  let info = await checkDockerDetailed();
+  let access = await getDockerAccess();
 
-  if (!info.installed) {
+  if (access === "not-installed") {
     const os = await import("node:os");
     const platform = os.platform();
 
@@ -308,16 +261,16 @@ async function makeDockerAvailable(
       // Auto-installing a hypervisor on someone's Mac is too invasive —
       // surface both lightweight (OrbStack) and official options instead.
       throw new Error(
-        "Docker is required but not installed.\n" +
+        "GAIA runs in Docker, which isn't installed yet.\n" +
           `  • OrbStack (lightweight): ${ORBSTACK_URL}\n` +
           `  • Docker Desktop: ${DOCKER_DESKTOP_MAC_URL}\n` +
-          "Install either, then rerun this command.",
+          "Install either, open it, then run this command again.",
       );
     }
 
     if (platform !== "linux" || !isDebianAptLinux()) {
       throw new Error(
-        `Docker is required but not installed. Install it from ${PREREQUISITE_URLS.docker} and rerun.`,
+        `GAIA runs in Docker, which isn't installed yet. Install it from ${PREREQUISITE_URLS.docker}, then run this command again.`,
       );
     }
 
@@ -327,50 +280,68 @@ async function makeDockerAvailable(
       options,
       `curl -fsSL ${DOCKER_INSTALL_SCRIPT_URL} | sudo sh`,
     );
-    store.setStatus(
-      "Installing Docker Engine (this can take several minutes)...",
-    );
-    await installDockerLinux();
-    store.setStatus("Docker installed. Verifying...");
-    info = await checkDockerDetailed();
+    await installDockerLinux(store);
+    store.setStatus("Docker installed. Checking that it runs...");
+    access = await getDockerAccess();
   }
 
-  if (info.permissionDenied) {
-    store.setStatus("Granting this user access to Docker (docker group)...");
+  if (access === "no-permission") {
+    store.setStatus("Giving your user access to Docker (the docker group)...");
     await ensureDockerGroupMembership();
     store.updateData("dockerGroupSwitch", await resolveDockerGroupSwitch());
-    store.setStatus("Docker access granted — restarting to pick it up...");
+    store.setStatus("Docker access granted. Continuing with it...");
     return "relaunch";
   }
 
-  if (!info.working) {
-    store.updateData("dockerError", info.errorMessage);
-    throw new Error(
-      info.errorMessage ||
-        "Docker is not running. Start Docker, then rerun this command.",
-    );
-  }
+  if (access !== "ready") throw await dockerAccessError(access);
 
   setCheck(store, "docker", "success");
   return "ready";
 }
 
+/** The step Docker's install script is on, from one line of its output; null when the line names none. */
+export function dockerInstallPhase(line: string): string | null {
+  if (line.includes("Executing docker install script")) {
+    return "Starting Docker's installer";
+  }
+  if (!line.startsWith("+ ")) return null;
+  if (line.includes("docker-ce")) return "Installing Docker Engine";
+  if (line.includes("apt-get") && line.includes("update")) {
+    return "Updating the package list";
+  }
+  if (line.includes("gpg") || line.includes("docker.asc")) {
+    return "Adding Docker's package source";
+  }
+  if (line.includes("apt-get") && line.includes("install")) {
+    return "Installing what Docker needs";
+  }
+  if (line.includes("systemctl")) return "Starting Docker";
+  return null;
+}
+
 /**
  * Run the official Docker Engine convenience script for apt-based distros,
  * downloading it to a temp file so sudo can execute it without a
- * pipe-under-root race.
+ * pipe-under-root race. Its output goes to a log; the status names its step.
  */
-async function installDockerLinux(): Promise<void> {
+async function installDockerLinux(store: CLIStore): Promise<void> {
   const os = await import("node:os");
   const scriptPath = path.join(os.tmpdir(), "gaia-docker-install.sh");
+  const logPath = newLogPath("docker-install");
+  const status = (phase: string) =>
+    store.setStatus(`Installing Docker (a few minutes): ${phase}...`);
+  status("Downloading Docker's installer");
   await execa("curl", ["-fsSL", DOCKER_INSTALL_SCRIPT_URL, "-o", scriptPath]);
 
   try {
-    await runAsRoot("sh", [scriptPath]);
+    await runAsRoot("sh", [scriptPath], logPath, (line) => {
+      const phase = dockerInstallPhase(line);
+      if (phase) status(phase);
+    });
   } catch (e) {
     throw new Error(
       `Docker installation failed: ${(e as Error).message}\n` +
-        `Install manually following ${PREREQUISITE_URLS.docker} and rerun.`,
+        `Install it by hand following ${PREREQUISITE_URLS.docker}, then run this command again.`,
     );
   }
 }

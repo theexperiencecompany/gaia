@@ -5,7 +5,8 @@ import {
 } from "../../src/lib/answers.js";
 import { readConfig } from "../../src/lib/config.js";
 
-vi.mock("../../src/lib/config.js", () => ({
+vi.mock("../../src/lib/config.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   readConfig: vi.fn(),
   updateConfig: vi.fn(),
   writeConfig: vi.fn(),

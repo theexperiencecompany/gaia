@@ -20,7 +20,11 @@ import {
   partialPath,
   volumeBackupFile,
 } from "../../lib/backup-files.js";
-import { dockerVolumeExists, isDockerRunning } from "../../lib/docker.js";
+import { dockerVolumeExists } from "../../lib/docker.js";
+import {
+  describeDockerProblem,
+  getDockerAccess,
+} from "../../lib/docker-access.js";
 import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
 import { apiEnvPath, findInstallRoot } from "../../lib/service-starter.js";
 import { VOLUME_BACKUPS, type VolumeFile } from "../../lib/volume-backups.js";
@@ -90,12 +94,14 @@ export async function runBackup(
     return { ...files, commands, warnings: [] };
   }
 
-  const dockerRunning = await isDockerRunning();
-  if (!dockerRunning) {
+  const access = await getDockerAccess();
+  if (access !== "ready") {
+    const problem = await describeDockerProblem(access);
     throw new Error(
       [
-        "Docker daemon is not running — cannot run container dumps.",
-        "Start Docker and retry, or run the manual commands:",
+        `${problem.summary}, so the databases cannot be backed up.`,
+        problem.fix,
+        "Or run the backup commands yourself:",
         ...commands.map((c) => `  ${c}`),
       ].join("\n"),
     );

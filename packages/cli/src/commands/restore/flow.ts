@@ -12,7 +12,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
 import { backupFileSet, latestBackupStamp } from "../../lib/backup-files.js";
-import { isDockerRunning } from "../../lib/docker.js";
+import {
+  describeDockerProblem,
+  getDockerAccess,
+} from "../../lib/docker-access.js";
 import {
   copyEnvFileOwnerOnly,
   readDockerComposePortOverrides,
@@ -151,12 +154,14 @@ export async function runRestore(
     return { ...resolved, commands };
   }
 
-  const dockerRunning = await isDockerRunning();
-  if (!dockerRunning) {
+  const access = await getDockerAccess();
+  if (access !== "ready") {
+    const problem = await describeDockerProblem(access);
     throw new Error(
       [
-        "Docker daemon is not running — cannot restore.",
-        "Manual commands:",
+        `${problem.summary}, so nothing can be restored.`,
+        problem.fix,
+        "Or run the restore commands yourself:",
         ...commands.map((c) => `  ${c}`),
       ].join("\n"),
     );

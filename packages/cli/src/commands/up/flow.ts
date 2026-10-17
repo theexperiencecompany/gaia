@@ -19,6 +19,7 @@ import {
   type UpFlags,
 } from "../../lib/answers.js";
 import { readConfig, updateConfig } from "../../lib/config.js";
+import { joinedDockerGroupThisRun } from "../../lib/docker-group.js";
 import {
   DEFAULT_WEB_PORT,
   localApiUrl,
@@ -398,6 +399,10 @@ export function codeSandboxSummary(enabled: boolean): string {
     : "Code execution: off until you save an E2B key, or rerun with --code-sandbox";
 }
 
+/** What the finished screen says when this run added the user to the docker group. */
+export const DOCKER_GROUP_NOTE =
+  "Your user was added to the 'docker' group. Other terminals get it after you log out and back in (or run 'newgrp docker'); until then, 'gaia status' there can't reach Docker.";
+
 /** Record the install and move to the Finished step. */
 function finishUp(
   store: CLIStore,
@@ -431,6 +436,7 @@ function finishUp(
   store.updateData("upStillStarting", flags?.stillStarting === true);
   store.updateData("upSetupComplete", flags?.setupComplete === true);
   store.updateData("upSavedProvider", flags?.savedProvider);
+  store.updateData("upJoinedDockerGroup", joinedDockerGroupThisRun());
   store.updateData("finished", true);
   store.setStep("Finished");
 }

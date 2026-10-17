@@ -25,7 +25,7 @@ import type { CLIStore } from "../../ui/store.js";
  */
 export async function runStatusChecks(store: CLIStore): Promise<void> {
   store.setStep("Checking");
-  store.setStatus("Checking service health...");
+  store.setStatus("Checking GAIA's services...");
   store.updateData("refreshable", false);
 
   const repoPath = findInstallRoot();
@@ -35,7 +35,12 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
 
   if (!repoPath || !mode) {
     store.updateData("services", []);
-    showResults(store, `Nothing to check: ${install}`);
+    showResults(
+      store,
+      repoPath
+        ? "Run 'gaia up' to finish setting it up."
+        : "Run 'gaia up' to install it.",
+    );
     return;
   }
 
@@ -50,24 +55,26 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
   ]);
 
   const docker =
-    mode === "selfhost" && compose.running
+    mode === "selfhost" && compose.access === "ready"
       ? { ...compose, containers: withEnabledBots(compose.containers) }
       : compose;
   store.updateData("services", services);
   store.updateData("docker", docker);
   store.updateData("readiness", readiness);
 
-  if (mode === "selfhost") {
+  if (docker.problem) {
+    showResults(store, docker.problem.summary);
+  } else if (mode === "selfhost") {
     const running = docker.containers.filter(
       (c) => c.status === "running",
     ).length;
     showResults(
       store,
-      `${running}/${docker.containers.length} containers running`,
+      `${running} of ${docker.containers.length} services running`,
     );
   } else {
     const up = services.filter((s) => s.status === "up").length;
-    showResults(store, `${up}/${services.length} services running`);
+    showResults(store, `${up} of ${services.length} services running`);
   }
 }
 

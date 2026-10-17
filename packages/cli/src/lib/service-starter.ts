@@ -6,6 +6,7 @@ import {
   assertEngineSupportsCodeSandbox,
   dockerVolumeExists,
 } from "./docker.js";
+import { dockerAccessError, getDockerAccess } from "./docker-access.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 
@@ -303,8 +304,9 @@ export async function stopServices(
   const dockerComposePath = path.join(repoPath, "infra/docker");
   const mode = await detectSetupMode(repoPath);
 
-  onStatus?.("Stopping Docker services...");
-  try {
+  const access = await getDockerAccess();
+  if (access === "ready") {
+    onStatus?.("Stopping GAIA's containers...");
     const envArgs = getEnvFileArgs(dockerComposePath);
     const composeArgs =
       mode === "selfhost"
@@ -316,8 +318,11 @@ export async function stopServices(
           ]
         : ["compose", ...envArgs, "down"];
     await runCommand("docker", composeArgs, dockerComposePath);
-  } catch {
-    // Docker compose may not be running
+  } else if (mode === "selfhost") {
+    // Self-host runs only in Docker: "stopped" would be a lie.
+    throw await dockerAccessError(access);
+  } else if (access === "no-permission") {
+    throw await dockerAccessError(access);
   }
 
   // In selfhost mode everything runs in Docker, no local processes to kill
@@ -573,8 +578,7 @@ export function describeInstall(
   repoPath: string | null,
   mode: SetupMode | null,
 ): string {
-  if (!repoPath) return "no GAIA installation found";
-  return mode
-    ? `${repoPath} (${mode} mode)`
-    : `${repoPath} (not configured: no apps/api/.env)`;
+  if (!repoPath) return "GAIA isn't installed yet";
+  if (!mode) return `${repoPath} (not set up yet: no apps/api/.env)`;
+  return `${repoPath} (${mode === "selfhost" ? "self-host" : "developer"})`;
 }

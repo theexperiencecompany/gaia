@@ -9,6 +9,10 @@ vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
   return { ...actual, platform: vi.fn(() => "linux") };
 });
+vi.mock("../../src/lib/logs.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  newLogPath: (name: string) => `/tmp/gaia-cli-test-${name}.log`,
+}));
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return { ...actual, existsSync: vi.fn(() => true) };
@@ -16,6 +20,7 @@ vi.mock("node:fs", async (importOriginal) => {
 
 import {
   checkModePorts,
+  dockerInstallPhase,
   ensureDocker,
   ensureGit,
 } from "../../src/lib/prerequisites.js";
@@ -34,7 +39,11 @@ function routeExeca(
     calls.push([cmd, args]);
     const key = [cmd, ...(args ?? [])].join(" ");
     const match = Object.keys(routes).find((prefix) => key.startsWith(prefix));
-    if (!match) return Promise.reject(new Error(`ENOENT ${key}`));
+    if (!match) {
+      return Promise.reject(
+        Object.assign(new Error(`ENOENT ${key}`), { code: "ENOENT" }),
+      );
+    }
     try {
       return Promise.resolve(routes[match]?.());
     } catch (error) {
@@ -56,17 +65,17 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
   it("installs Docker without a terminal when --yes consented", async () => {
     let installed = false;
     const calls = routeExeca({
-      "docker --version": () => {
-        if (!installed) throw new Error("ENOENT docker");
-        return { stdout: "Docker version 29" };
+      "docker info": () => {
+        if (!installed) {
+          throw Object.assign(new Error("spawn docker ENOENT"), {
+            code: "ENOENT",
+          });
+        }
+        return { stdout: "ok" };
       },
-      "docker info": () => ({ stdout: "ok" }),
       curl: () => ({ stdout: "" }),
-      sudo: () => {
-        installed = true;
-        return { stdout: "" };
-      },
-      sh: () => {
+      "sudo -n true": () => ({ stdout: "" }),
+      "sudo -n sh": () => {
         installed = true;
         return { stdout: "" };
       },
@@ -76,6 +85,25 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
 
     expect(result).toBe("ready");
     expect(calls.some(([cmd]) => cmd === "curl")).toBe(true);
+    // The installer runs non-interactively with its output piped to a log,
+    // never inherited onto the screen Ink draws.
+    const install = (mockedExeca.mock.calls as unknown as ExecaCall[]).find(
+      ([cmd, args]) => cmd === "sudo" && args?.[1] === "sh",
+    );
+    expect(install?.[2]).toMatchObject({ all: true });
+    expect(install?.[2]).not.toHaveProperty("stdio");
+  });
+
+  it("names Docker's install step in the status while its installer runs", () => {
+    expect(
+      dockerInstallPhase(
+        "+ sh -c DEBIAN_FRONTEND=noninteractive apt-get -y -qq install docker-ce docker-ce-cli",
+      ),
+    ).toBe("Installing Docker Engine");
+    expect(dockerInstallPhase("+ sh -c apt-get -qq update >/dev/null")).toBe(
+      "Updating the package list",
+    );
+    expect(dockerInstallPhase("Reading package lists...")).toBeNull();
   });
 
   it("refuses to install without a terminal or --yes, naming --yes", async () => {
@@ -88,7 +116,6 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
 
   /** Docker answers, but its socket refuses this user until the group applies. */
   const socketRefused = {
-    "docker --version": () => ({ stdout: "Docker version 29" }),
     "docker info": () => {
       throw Object.assign(new Error("exit 1"), {
         stderr:
@@ -96,7 +123,8 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
       });
     },
     id: () => ({ stdout: "aryan sudo adm" }),
-    "sudo usermod": () => ({ stdout: "" }),
+    "sudo -n true": () => ({ stdout: "" }),
+    "sudo -n usermod": () => ({ stdout: "" }),
   };
 
   it("grants the docker group and relaunches under sg where the system has it", async () => {
@@ -113,7 +141,7 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
     expect(
       calls.some(
         ([cmd, args]) =>
-          cmd === "sudo" && args?.[0] === "usermod" && args.includes("docker"),
+          cmd === "sudo" && args?.[1] === "usermod" && args.includes("docker"),
       ),
     ).toBe(true);
   });
@@ -150,8 +178,9 @@ describe("ensureGit on a fresh apt-based Linux box", () => {
         if (!installed) throw new Error("ENOENT git");
         return { stdout: "git version 2.51" };
       },
-      "sudo apt-get update": () => ({ stdout: "" }),
-      "sudo apt-get install -y git": () => {
+      "sudo -n true": () => ({ stdout: "" }),
+      "sudo -n apt-get update": () => ({ stdout: "" }),
+      "sudo -n apt-get install -y git": () => {
         installed = true;
         return { stdout: "" };
       },
@@ -163,7 +192,7 @@ describe("ensureGit on a fresh apt-based Linux box", () => {
     expect(store.currentState.data.checks.git).toBe("success");
     expect(
       calls.map(([cmd, args]) => [cmd, ...(args ?? [])].join(" ")),
-    ).toEqual(expect.arrayContaining(["sudo apt-get install -y git"]));
+    ).toEqual(expect.arrayContaining(["sudo -n apt-get install -y git"]));
   });
 
   it("refuses to install git without a terminal or --yes, and marks it failed", async () => {

@@ -16,7 +16,8 @@ const {
   dockerVolumeExists: vi.fn(),
 }));
 vi.mock("child_process", () => ({ spawn }));
-vi.mock("../../src/lib/config.js", () => ({
+vi.mock("../../src/lib/config.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   readConfig,
   updateConfig: vi.fn(),
 }));

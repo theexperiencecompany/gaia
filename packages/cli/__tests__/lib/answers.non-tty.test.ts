@@ -47,7 +47,8 @@ vi.mock("../../src/lib/env-parser.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../../src/lib/config.js", () => ({
+vi.mock("../../src/lib/config.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   readConfig: vi.fn(() => null),
   updateConfig: vi.fn(),
   writeConfig: vi.fn(),

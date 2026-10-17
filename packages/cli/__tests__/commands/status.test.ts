@@ -62,7 +62,7 @@ describe("gaia status on a self-host install", () => {
     ]);
     expect(store.currentState.data.services).toEqual([]);
     expect(store.currentState.data.docker.containers).toHaveLength(4);
-    expect(store.currentState.status).toBe("4/4 containers running");
+    expect(store.currentState.status).toBe("4 of 4 services running");
     expect(store.currentState.data.checkedAt).toEqual(expect.any(String));
     expect(store.currentState.data.refreshable).toBe(true);
   });
@@ -87,7 +87,7 @@ describe("gaia status on a self-host install", () => {
       { name: "bot-telegram", status: "running", health: "healthy" },
       { name: "bot-slack", status: "not_found" },
     ]);
-    expect(store.currentState.status).toBe("5/6 containers running");
+    expect(store.currentState.status).toBe("5 of 6 services running");
   });
 
   it("probes nothing when the install is not configured", async () => {
@@ -100,7 +100,10 @@ describe("gaia status on a self-host install", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(store.currentState.status).toBe(
-      "Nothing to check: /no/such/install (not configured: no apps/api/.env)",
+      "Run 'gaia up' to finish setting it up.",
+    );
+    expect(store.currentState.data.install).toBe(
+      "/no/such/install (not set up yet: no apps/api/.env)",
     );
     expect(store.currentState.data.checkedAt).toEqual(expect.any(String));
   });

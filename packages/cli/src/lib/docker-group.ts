@@ -11,8 +11,10 @@
 import { spawn } from "node:child_process";
 import * as os from "node:os";
 import { execa } from "execa";
+import { newLogPath } from "./logs.js";
+import { runAsRoot } from "./root-command.js";
 
-const DOCKER_GROUP = "docker";
+export const DOCKER_GROUP = "docker";
 
 /** Set in the relaunched process so a still-denied socket fails loud, not loops. */
 const RELAUNCHED_ENV = "GAIA_DOCKER_GROUP_RELAUNCHED";
@@ -23,6 +25,20 @@ const RESUMED_STEP_ENV = "GAIA_RESUMED_STEP";
 /** The step this process continues from a docker-group relaunch, if it is one. */
 export function resumedStep(): string | undefined {
   return process.env[RESUMED_STEP_ENV] || undefined;
+}
+
+/**
+ * True in the process a docker-group relaunch started: this run added the
+ * user to the group, so the user's own shell lacks it until a new login.
+ */
+export function joinedDockerGroupThisRun(): boolean {
+  return process.env[RELAUNCHED_ENV] === "1";
+}
+
+/** True when the group database lists this user in the docker group; a new login may still be needed. */
+export async function isUserInDockerGroup(): Promise<boolean> {
+  const { stdout } = await execa("id", ["-nG", os.userInfo().username]);
+  return stdout.split(/\s+/).includes(DOCKER_GROUP);
 }
 
 /** True when `docker` failed because the socket refused this user. */
@@ -47,13 +63,14 @@ export async function ensureDockerGroupMembership(): Promise<void> {
         "Check the socket's group with 'ls -l /var/run/docker.sock', then log out and back in and rerun.",
     );
   }
+  if (await isUserInDockerGroup()) return;
   const user = os.userInfo().username;
-  const { stdout } = await execa("id", ["-nG", user]);
-  if (stdout.split(/\s+/).includes(DOCKER_GROUP)) return;
   try {
-    await execa("sudo", ["usermod", "-aG", DOCKER_GROUP, user], {
-      stdio: "inherit",
-    });
+    await runAsRoot(
+      "usermod",
+      ["-aG", DOCKER_GROUP, user],
+      newLogPath("docker-group"),
+    );
   } catch (e) {
     throw new Error(
       `Could not add ${user} to the '${DOCKER_GROUP}' group: ${(e as Error).message}\n` +

@@ -4,7 +4,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { readConfig } = vi.hoisted(() => ({ readConfig: vi.fn() }));
-vi.mock("../../src/lib/config.js", () => ({
+vi.mock("../../src/lib/config.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   readConfig,
   updateConfig: vi.fn(),
 }));
@@ -78,17 +79,17 @@ describe("findRepoRoot", () => {
 describe("describeInstall", () => {
   it("names the path and mode a command inspects", () => {
     expect(describeInstall("/home/me/gaia", "selfhost")).toBe(
-      "/home/me/gaia (selfhost mode)",
+      "/home/me/gaia (self-host)",
     );
   });
 
   it("flags a checkout that was never configured", () => {
     expect(describeInstall("/home/me/gaia-src", null)).toBe(
-      "/home/me/gaia-src (not configured: no apps/api/.env)",
+      "/home/me/gaia-src (not set up yet: no apps/api/.env)",
     );
   });
 
   it("says when there is nothing to inspect", () => {
-    expect(describeInstall(null, null)).toBe("no GAIA installation found");
+    expect(describeInstall(null, null)).toBe("GAIA isn't installed yet");
   });
 });

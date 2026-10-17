@@ -5,23 +5,125 @@ import type {
   DependencyCheck,
   DependencyReadiness,
 } from "../../lib/dependency-readiness.js";
+import { dependencyName, serviceName } from "../../lib/display-names.js";
 import type { ContainerStatus } from "../../lib/docker.js";
-import type { ServiceStatus } from "../../lib/healthcheck.js";
+import type { DockerStatus, ServiceStatus } from "../../lib/healthcheck.js";
 import { Header } from "../components/Header.js";
-import { THEME_COLOR } from "../constants.js";
+import { Mark } from "../components/Mark.js";
+import { ErrorStep } from "../components/shared-steps.js";
+import { BOX_BORDER, THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
 import { useCLIState } from "../use-cli-state.js";
+
+const NAME_COLUMN = 22;
+
+/** The keys that leave the screen: q, Esc, or Enter. */
+function isQuitKey(input: string, key: { return: boolean; escape: boolean }) {
+  return input === "q" || key.return || key.escape;
+}
+
+const Row: React.FC<{
+  ok: boolean;
+  name: string;
+  detail?: string;
+  problem?: string;
+}> = ({ ok, name, detail, problem }) => (
+  <Box>
+    <Mark kind={ok ? "ok" : "fail"} />
+    <Box width={NAME_COLUMN}>
+      <Text>{name}</Text>
+    </Box>
+    {detail && <Text color="gray">{detail}</Text>}
+    {problem && <Text color="red">{problem}</Text>}
+  </Box>
+);
+
+const Section: React.FC<{ title: string; children: React.ReactNode }> = ({
+  title,
+  children,
+}) => (
+  <Box flexDirection="column" marginTop={1}>
+    <Text bold>{title}</Text>
+    {children}
+  </Box>
+);
+
+const DockerProblem: React.FC<{ docker: DockerStatus }> = ({ docker }) =>
+  docker.problem ? (
+    <Section title="Docker">
+      <Row ok={false} name={docker.problem.summary} />
+      <Text color="gray"> {docker.problem.fix}</Text>
+    </Section>
+  ) : null;
+
+const Containers: React.FC<{ containers: ContainerStatus[] }> = ({
+  containers,
+}) =>
+  containers.length > 0 ? (
+    <Section title="Services">
+      {containers.map((container) => (
+        <Row
+          key={container.name}
+          ok={container.status === "running"}
+          name={serviceName(container.name)}
+          detail={container.health ?? container.status}
+        />
+      ))}
+    </Section>
+  ) : null;
+
+const Dependencies: React.FC<{ readiness: DependencyReadiness }> = ({
+  readiness,
+}) => (
+  <Section title="Backing services">
+    {!readiness.reachable ? (
+      <Row ok={false} name="Not checked" problem={readiness.detail} />
+    ) : (
+      readiness.dependencies.map((dependency: DependencyCheck) => (
+        <Box key={dependency.name} flexDirection="column">
+          <Row
+            ok={dependency.ok}
+            name={dependencyName(dependency.name)}
+            detail={`${dependency.latency_ms} ms`}
+            problem={dependency.error_type ?? undefined}
+          />
+          {dependency.fix && <Text color="gray"> {dependency.fix}</Text>}
+        </Box>
+      ))
+    )}
+  </Section>
+);
+
+const DeveloperServices: React.FC<{ services: ServiceStatus[] }> = ({
+  services,
+}) =>
+  services.length > 0 ? (
+    <Section title="Local services">
+      {[...services]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((service) => (
+          <Row
+            key={service.name}
+            ok={service.status === "up"}
+            name={`${service.name} (:${service.port})`}
+            detail={service.latency ? `${service.latency} ms` : undefined}
+          />
+        ))}
+    </Section>
+  ) : null;
 
 export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
   const readiness = state.data.readiness as DependencyReadiness | undefined;
+  const docker = state.data.docker as DockerStatus | undefined;
+  const services = state.data.services as ServiceStatus[] | undefined;
   const lastChecked = state.data.checkedAt as string | undefined;
+  const showingResults = state.step === "Results";
 
-  useInput((_input, key) => {
-    if ((key.return || key.escape) && state.step === "Results") {
-      store.submitInput("exit");
-    }
-    if (_input === "r" && state.step === "Results" && state.data.refreshable) {
+  useInput((input, key) => {
+    if (!showingResults) return;
+    if (isQuitKey(input, key)) store.submitInput("exit");
+    else if (input === "r" && state.data.refreshable) {
       store.submitInput("refresh");
     }
   });
@@ -34,180 +136,45 @@ export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         <Box marginTop={1}>
           <Spinner
             label={
-              state.data.services
-                ? "Refreshing service health..."
-                : "Checking service health..."
+              services ? "Checking again..." : "Checking GAIA's services..."
             }
           />
         </Box>
       )}
 
-      {state.step === "Results" && state.data.services && (
+      {showingResults && services && (
         <Box flexDirection="column">
           <Box
             flexDirection="column"
-            borderStyle="round"
+            borderStyle={BOX_BORDER}
             borderColor={THEME_COLOR}
             paddingX={2}
             paddingY={1}
           >
             <Box justifyContent="space-between">
               <Text bold color={THEME_COLOR}>
-                GAIA Service Status
+                GAIA status
               </Text>
-              {lastChecked && (
-                <Text color="gray" dimColor>
-                  checked {lastChecked} · <Text bold>r</Text> refresh
-                </Text>
-              )}
+              {lastChecked && <Text color="gray">checked {lastChecked}</Text>}
             </Box>
-            <Text color="gray">Installation: {state.data.install}</Text>
-            <Text color="gray">{state.status}</Text>
-            {state.data.services.length > 0 && (
-              <Box marginTop={1} flexDirection="column">
-                <Box>
-                  <Box width={22}>
-                    <Text bold>Service</Text>
-                  </Box>
-                  <Box width={10}>
-                    <Text bold>Status</Text>
-                  </Box>
-                  <Box width={10}>
-                    <Text bold>Latency</Text>
-                  </Box>
-                </Box>
-                <Text color="gray">{"─".repeat(42)}</Text>
-                {[...state.data.services]
-                  .sort((a: ServiceStatus, b: ServiceStatus) => {
-                    if (a.status === "down" && b.status !== "down") return -1;
-                    if (a.status !== "down" && b.status === "down") return 1;
-                    return a.name.localeCompare(b.name);
-                  })
-                  .map((service: ServiceStatus) => (
-                    <Box key={service.name}>
-                      <Box width={22}>
-                        <Text>
-                          {service.name} (:{service.port})
-                        </Text>
-                      </Box>
-                      <Box width={10}>
-                        <Text
-                          color={service.status === "up" ? "green" : "red"}
-                          bold
-                        >
-                          {service.status === "up"
-                            ? "\u2713 UP"
-                            : "\u2717 DOWN"}
-                        </Text>
-                      </Box>
-                      <Box width={10}>
-                        <Text color="gray">
-                          {service.latency ? `${service.latency}ms` : "--"}
-                        </Text>
-                      </Box>
-                    </Box>
-                  ))}
-              </Box>
-            )}
+            <Text color="gray">{state.data.install}</Text>
+            <Text>{state.status}</Text>
+
+            {docker && <DockerProblem docker={docker} />}
+            <DeveloperServices services={services} />
+            {docker && <Containers containers={docker.containers} />}
+            {readiness && <Dependencies readiness={readiness} />}
           </Box>
 
-          {readiness && (
-            <Box
-              flexDirection="column"
-              borderStyle="round"
-              borderColor="gray"
-              paddingX={2}
-              paddingY={1}
-              marginTop={1}
-            >
-              <Text bold>Dependencies (/health/ready)</Text>
-              {!readiness.reachable && (
-                <Text color="red">{readiness.detail}</Text>
-              )}
-              {readiness.reachable &&
-                readiness.dependencies.map((dependency: DependencyCheck) => (
-                  <Box key={dependency.name} flexDirection="column">
-                    <Box>
-                      <Box width={22}>
-                        <Text>{dependency.name}</Text>
-                      </Box>
-                      <Box width={10}>
-                        <Text color={dependency.ok ? "green" : "red"} bold>
-                          {dependency.ok ? "\u2713 OK" : "\u2717 FAIL"}
-                        </Text>
-                      </Box>
-                      <Box width={10}>
-                        <Text color="gray">{dependency.latency_ms}ms</Text>
-                      </Box>
-                      {dependency.error_type && (
-                        <Text color="red">{dependency.error_type}</Text>
-                      )}
-                    </Box>
-                    {dependency.fix && (
-                      <Text color="gray"> Fix: {dependency.fix}</Text>
-                    )}
-                  </Box>
-                ))}
-            </Box>
-          )}
-
-          {state.data.docker && (
-            <Box
-              flexDirection="column"
-              borderStyle="round"
-              borderColor="gray"
-              paddingX={2}
-              paddingY={1}
-              marginTop={1}
-            >
-              <Text bold>Docker Containers</Text>
-              <Text color="gray">
-                Docker:{" "}
-                {state.data.docker.running ? (
-                  <Text color="green">Running</Text>
-                ) : (
-                  <Text color="red">Not running</Text>
-                )}
-              </Text>
-              {state.data.docker.containers?.length > 0 && (
-                <Box marginTop={1} flexDirection="column">
-                  {state.data.docker.containers.map(
-                    (container: ContainerStatus) => (
-                      <Box key={container.name}>
-                        <Text
-                          color={
-                            container.status === "running" ? "green" : "red"
-                          }
-                        >
-                          {container.status === "running"
-                            ? "\u2713"
-                            : "\u2717"}{" "}
-                        </Text>
-                        <Text>{container.name}</Text>
-                        {container.health && (
-                          <Text color="gray"> ({container.health})</Text>
-                        )}
-                      </Box>
-                    ),
-                  )}
-                </Box>
-              )}
-            </Box>
-          )}
-
-          <Box marginTop={1}>
-            <Text dimColor>
-              <Text bold>Enter</Text> exit · <Text bold>r</Text> refresh
+          <Box marginTop={1} paddingX={1}>
+            <Text color="gray">
+              <Text bold>r</Text> refresh · <Text bold>q</Text> quit
             </Text>
           </Box>
         </Box>
       )}
 
-      {state.error && (
-        <Box borderStyle="single" borderColor="red" padding={1} marginTop={2}>
-          <Text color="red">Error: {state.error.message}</Text>
-        </Box>
-      )}
+      {state.error && <ErrorStep message={state.error.message} />}
     </Box>
   );
 };

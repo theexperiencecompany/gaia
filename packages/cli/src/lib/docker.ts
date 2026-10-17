@@ -66,15 +66,6 @@ export function getDockerSocketGid(): number {
   return fs.statSync(DOCKER_SOCKET_PATH).gid;
 }
 
-export async function isDockerRunning(): Promise<boolean> {
-  try {
-    await execa("docker", ["info"]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** One container of a Docker Compose project, as reported by `docker ps`. */
 export interface ComposeContainerInfo {
   /** Compose service name (label `com.docker.compose.service`). */
