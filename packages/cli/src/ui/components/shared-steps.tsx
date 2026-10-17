@@ -54,7 +54,7 @@ export const EnvSetupSpinnerStep: React.FC<{ status?: string }> = ({
   >
     <Text bold>Environment Setup</Text>
     <Box marginTop={1}>
-      <Spinner label={status || "Configuring environment..."} />
+      <Spinner label={status || "Configuring environment…"} />
     </Box>
   </Box>
 );

@@ -276,9 +276,7 @@ export async function runRestore(
 
   // The `gaia start` path: the same compose files (the code sandbox included),
   // and compose recreates every container whose env files changed.
-  onStatus(
-    "Restarting services so they load the restored data and settings...",
-  );
+  onStatus("Restarting services so they load the restored data and settings…");
   await startServices(
     repoPath,
     "selfhost",

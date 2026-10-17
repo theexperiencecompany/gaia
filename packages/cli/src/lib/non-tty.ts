@@ -13,7 +13,7 @@ function plainStepLine(step: RunStep): string | null {
     step.startedAt !== undefined && step.endedAt !== undefined
       ? ` (${formatElapsed(step.endedAt - step.startedAt)})`
       : "";
-  if (step.state === "active") return `  ${step.label}...`;
+  if (step.state === "active") return `  ${step.label}…`;
   if (step.state === "done") return `${MARK.ok} ${step.doneLabel}${took}`;
   if (step.state === "failed") return `${MARK.fail} ${step.label}${took}`;
   return null;

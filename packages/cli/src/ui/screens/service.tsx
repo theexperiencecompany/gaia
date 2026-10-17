@@ -32,7 +32,7 @@ export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
           borderStyle={BOX_BORDER}
           borderColor={THEME_COLOR}
         >
-          <Spinner label={state.status || "Working..."} />
+          <Spinner label={state.status || "Working…"} />
           {state.data.repoPath && (
             <Text color="gray">{state.data.repoPath}</Text>
           )}

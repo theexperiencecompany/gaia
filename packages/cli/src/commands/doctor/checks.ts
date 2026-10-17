@@ -17,6 +17,7 @@ import {
   type SelfhostBot,
 } from "../../lib/bots.js";
 import { fetchDependencyReadiness } from "../../lib/dependency-readiness.js";
+import { dependencyName, serviceName } from "../../lib/display-names.js";
 import {
   type ComposeContainerInfo,
   type ComposeProject,
@@ -292,7 +293,7 @@ export async function checkComposeContainers(options: {
 }): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "compose-containers",
-    label: `Compose containers (${options.project})`,
+    label: "Containers",
     severity: "blocker",
   };
 
@@ -303,7 +304,7 @@ export async function checkComposeContainers(options: {
     return {
       ...base,
       state: "skipped",
-      detail: "Docker daemon unreachable",
+      detail: "they need Docker",
     };
   }
 
@@ -327,48 +328,52 @@ export async function checkComposeContainers(options: {
 export function unconfiguredInstallCheck(repoPath: string | null): CheckResult {
   const base: Pick<CheckResult, "id" | "label" | "severity" | "state"> = {
     id: "compose-containers",
-    label: "Compose containers",
+    label: "GAIA",
     severity: "blocker",
     state: "fail",
   };
   if (!repoPath) {
     return {
       ...base,
-      detail: "No GAIA installation found",
-      fix: "Run 'gaia up' to install GAIA.",
+      detail: "isn't installed yet",
+      fix: "Run 'gaia up' to install it.",
     };
   }
   return {
     ...base,
-    detail: `${repoPath} has no apps/api/.env, so it is not a configured install`,
-    fix: "Run 'gaia doctor' from your install, or 'gaia up' to install GAIA (self-host) / 'gaia setup' to configure this checkout (developer).",
+    detail: `${repoPath} isn't set up yet (no apps/api/.env)`,
+    fix: "Run 'gaia up' to finish setting it up, or 'gaia setup' for a development checkout.",
   };
 }
 
-export async function checkApiHealth(apiUrl: string): Promise<CheckResult> {
+/** startCommand is how this install starts: gaia start, or gaia dev for a developer checkout. */
+export async function checkApiHealth(
+  apiUrl: string,
+  startCommand = "gaia start",
+): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "api-health",
-    label: `API health (${apiUrl})`,
+    label: "API",
     severity: "blocker",
   };
 
   try {
     const res = await fetchWithTimeout(`${apiUrl}/ping`);
     if (res.ok) {
-      return { ...base, state: "ok", detail: `HTTP ${res.status}` };
+      return { ...base, state: "ok", detail: `answering at ${apiUrl}` };
     }
     return {
       ...base,
       state: "fail",
-      detail: `HTTP ${res.status} from ${apiUrl}/ping`,
-      fix: "Check API logs: 'gaia logs', or restart the stack with 'gaia start'.",
+      detail: `answered HTTP ${res.status} at ${apiUrl}/ping`,
+      fix: `See why with 'gaia logs', then restart it with '${startCommand}'.`,
     };
   } catch {
     return {
       ...base,
       state: "fail",
-      detail: "Connection failed",
-      fix: "Start the stack with 'gaia start' (self-host) or 'gaia dev' (developer mode).",
+      detail: `not answering at ${apiUrl}`,
+      fix: `Start GAIA with '${startCommand}'.`,
     };
   }
 }
@@ -388,7 +393,7 @@ export async function checkDependencies(options: {
     severity: "blocker",
   };
   if (!options.apiHealthy) {
-    return [{ ...base, state: "skipped", detail: "API unreachable" }];
+    return [{ ...base, state: "skipped", detail: "they need GAIA's API" }];
   }
   const readiness = await fetchDependencyReadiness(
     options.origin,
@@ -406,7 +411,7 @@ export async function checkDependencies(options: {
   }
   return readiness.dependencies.map((dependency) => ({
     id: `dependency-${dependency.name}`,
-    label: `Dependency: ${dependency.name}`,
+    label: dependencyName(dependency.name),
     severity: "blocker",
     state: dependency.ok ? "ok" : "fail",
     detail: dependency.ok
@@ -416,10 +421,13 @@ export async function checkDependencies(options: {
   }));
 }
 
-export async function checkWebReachable(webPort: number): Promise<CheckResult> {
+export async function checkWebReachable(
+  webPort: number,
+  startCommand = "gaia start",
+): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "web-reachable",
-    label: `Web (localhost:${webPort})`,
+    label: "Web app",
     severity: "blocker",
   };
 
@@ -428,20 +436,24 @@ export async function checkWebReachable(webPort: number): Promise<CheckResult> {
       method: "HEAD",
     });
     if (res.ok) {
-      return { ...base, state: "ok", detail: `HTTP ${res.status}` };
+      return {
+        ...base,
+        state: "ok",
+        detail: `answering at http://localhost:${webPort}`,
+      };
     }
     return {
       ...base,
       state: "fail",
-      detail: `HTTP ${res.status} from /`,
-      fix: "Check web logs: 'gaia logs', or restart the stack with 'gaia start'.",
+      detail: `answered HTTP ${res.status} at http://localhost:${webPort}`,
+      fix: `See why with 'gaia logs', then restart it with '${startCommand}'.`,
     };
   } catch {
     return {
       ...base,
       state: "fail",
-      detail: "Connection failed",
-      fix: "Start the stack with 'gaia start' (self-host) or 'gaia dev' (developer mode).",
+      detail: `not answering at http://localhost:${webPort}`,
+      fix: `Start GAIA with '${startCommand}'.`,
     };
   }
 }
@@ -457,12 +469,12 @@ export async function checkSetupReadiness(options: {
 }): Promise<CheckResult[]> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "setup-readiness",
-    label: "Setup readiness",
+    label: "Setup",
     severity: "warning",
   };
 
   if (!options.apiHealthy) {
-    return [{ ...base, state: "skipped", detail: "API unreachable" }];
+    return [{ ...base, state: "skipped", detail: "they need GAIA's API" }];
   }
 
   const [status, catalog] = await Promise.all([
@@ -483,17 +495,19 @@ export async function checkSetupReadiness(options: {
   );
 
   if (items.every((item) => item.configured)) {
-    return [{ ...base, state: "ok", detail: "All setup items configured" }];
+    return [{ ...base, state: "ok", detail: "finished" }];
   }
 
-  return items
-    .filter((item) => !item.configured)
-    .map((item) => ({
+  // One row and one fix for everything the browser wizard still owes.
+  const missing = items.filter((item) => !item.configured);
+  return [
+    {
       ...base,
-      state: "fail" as const,
-      detail: item.missing,
-      fix: item.fix,
-    }));
+      state: "fail",
+      detail: `not finished: ${missing.map((item) => item.missing).join(", ")}`,
+      fix: missing[0]?.fix,
+    },
+  ];
 }
 
 export async function checkDiskHeadroom(
@@ -501,7 +515,7 @@ export async function checkDiskHeadroom(
 ): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "disk-headroom",
-    label: "Disk headroom",
+    label: "Disk space",
     severity: "blocker",
   };
 
@@ -509,7 +523,7 @@ export async function checkDiskHeadroom(
   try {
     rootDir = await getDockerRootDir();
   } catch {
-    return { ...base, state: "skipped", detail: "Docker daemon unreachable" };
+    return { ...base, state: "skipped", detail: "they need Docker" };
   }
 
   let availableBytes: number | null;
@@ -643,7 +657,7 @@ export async function checkMemoryHeadroom(): Promise<CheckResult> {
   if (availableBytes === null) {
     return {
       id: "memory-headroom",
-      label: "Memory headroom",
+      label: "Memory",
       severity: "blocker",
       state: "skipped",
       detail: "Could not read available memory",
@@ -655,31 +669,31 @@ export async function checkMemoryHeadroom(): Promise<CheckResult> {
   if (availableBytes < MIN_MEMORY_FAIL_BYTES) {
     return {
       id: "memory-headroom",
-      label: "Memory headroom",
+      label: "Memory",
       severity: "blocker",
       state: "fail",
-      detail: `${gb(availableBytes)} available — <2 GB; GAIA will likely fail to start.`,
-      fix: "Free up memory or add RAM before starting GAIA.",
+      detail: `${gb(availableBytes)} free; GAIA needs at least 2 GB to start`,
+      fix: "Close other apps or add RAM before starting GAIA.",
     };
   }
 
   if (availableBytes < MIN_MEMORY_WARN_BYTES) {
     return {
       id: "memory-headroom",
-      label: "Memory headroom",
+      label: "Memory",
       severity: "warning",
       state: "fail",
-      detail: `${gb(availableBytes)} available — <4 GB; GAIA API needs ~2.5 GB idle and may OOM during chat. Close other apps or add RAM.`,
+      detail: `${gb(availableBytes)} free; GAIA's API uses about 2.5 GB and may run out during chats`,
       fix: "Close other apps or add RAM.",
     };
   }
 
   return {
     id: "memory-headroom",
-    label: "Memory headroom",
+    label: "Memory",
     severity: "blocker",
     state: "ok",
-    detail: `${gb(availableBytes)} available`,
+    detail: `${gb(availableBytes)} free`,
   };
 }
 
@@ -698,7 +712,7 @@ export async function checkReleaseVersion(
     severity: "warning",
   };
   if (!repoPath) {
-    return { ...base, state: "skipped", detail: "No GAIA installation found" };
+    return { ...base, state: "skipped", detail: "GAIA isn't installed" };
   }
   if (mode !== "selfhost") {
     return {
@@ -738,11 +752,11 @@ export async function checkBots(
   return bots.map((bot): CheckResult => {
     const base: Pick<CheckResult, "id" | "label" | "severity"> = {
       id: `bot-${bot}`,
-      label: `Chat bot (${bot})`,
+      label: serviceName(botService(bot)),
       severity: "warning",
     };
     if (!containers) {
-      return { ...base, state: "skipped", detail: "Docker daemon unreachable" };
+      return { ...base, state: "skipped", detail: "they need Docker" };
     }
     const { health, detail } = botContainerState(bot, containers);
     if (health !== "failing") return { ...base, state: "ok", detail };

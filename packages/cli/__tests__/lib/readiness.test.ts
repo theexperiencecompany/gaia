@@ -227,7 +227,7 @@ describe("waitForUpReadiness", () => {
 
     expect(store.currentState.data.dependencyComplete).toBe(false);
     expect(store.currentState.data.dependencyPhase).toBe(
-      "Waiting for API and Web to come online...",
+      "Waiting for API and Web to come online…",
     );
 
     // Exhaust the budget so no poll loop dangles past the test.

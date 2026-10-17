@@ -22,7 +22,7 @@ export async function selectSetupMode(
   store: CLIStore,
 ): Promise<envParser.SetupMode> {
   store.setStep("Setup Mode");
-  store.setStatus("Choose how to run GAIA...");
+  store.setStatus("Choose how to run GAIA…");
   const setupMode = (await store.waitForInput(
     "setup_mode",
   )) as envParser.SetupMode;
@@ -38,10 +38,10 @@ export async function runEnvSetup(
   options?: EnvSetupOptions,
 ): Promise<void> {
   store.setStep("Environment Setup");
-  store.setStatus("Configuring environment...");
+  store.setStatus("Configuring environment…");
   store.updateData("setupMode", setupMode);
 
-  store.setStatus("Configuring environment variables...");
+  store.setStatus("Configuring environment variables…");
   const envMethod = await store.waitForInput("env_method");
   store.updateData("envMethod", envMethod);
 
@@ -155,7 +155,7 @@ async function collectInfisicalEnv(
   store: CLIStore,
   envValues: Record<string, string>,
 ): Promise<void> {
-  store.setStatus("Configuring Infisical...");
+  store.setStatus("Configuring Infisical…");
   const infisicalConfig = (await store.waitForInput("env_infisical")) as {
     INFISICAL_PROJECT_ID: string;
     INFISICAL_MACHINE_IDENTITY_CLIENT_ID: string;
@@ -205,7 +205,7 @@ async function collectManualEnv(
   setupMode: envParser.SetupMode,
   askForProvider: boolean,
 ): Promise<void> {
-  store.setStatus("Parsing environment variables...");
+  store.setStatus("Parsing environment variables…");
   const categories = envParser
     .applyModeDefaults(envParser.loadVendoredSchema(), setupMode)
     .filter((category) => setupMode !== "selfhost" || category.selfhostSetup);
@@ -223,7 +223,7 @@ async function collectManualEnv(
   // Handle alternative groups
   for (const alternatives of askForProvider ? alternativePairs : []) {
     store.updateData("alternativeGroups", alternatives);
-    store.setStatus("Choose an AI provider...");
+    store.setStatus("Choose an AI provider…");
 
     const result = (await store.waitForInput("env_alternatives")) as {
       selectedGroups: string[];
@@ -258,7 +258,7 @@ async function collectManualEnv(
 
     store.updateData("currentEnvVar", envVar);
     store.updateData("envVarIndex", i);
-    store.setStatus(`Configuring ${envVar.name}...`);
+    store.setStatus(`Configuring ${envVar.name}…`);
 
     const value = (await store.waitForInput("env_var", {
       varName: envVar.name,
@@ -288,7 +288,7 @@ async function collectManualEnv(
 
     store.updateData("currentEnvGroup", group);
     store.updateData("envGroupIndex", i);
-    store.setStatus(`Configuring ${group.name}...`);
+    store.setStatus(`Configuring ${group.name}…`);
 
     const groupValues = (await store.waitForInput("env_group", {
       groupName: group.name,
@@ -312,7 +312,7 @@ async function writeAllEnvFiles(
   domain?: string,
 ): Promise<void> {
   // Write API .env
-  store.setStatus("Writing API environment file...");
+  store.setStatus("Writing API environment file…");
   try {
     const apiEnvPath = path.join(repoPath, "apps", "api");
     envWriter.writeEnvFile(apiEnvPath, envValues);
@@ -322,7 +322,7 @@ async function writeAllEnvFiles(
   }
 
   if (setupMode === "selfhost") {
-    store.setStatus("Writing Docker Compose environment...");
+    store.setStatus("Writing Docker Compose environment…");
     try {
       envWriter.writeDockerComposeEnv(
         repoPath,
@@ -345,7 +345,7 @@ async function writeAllEnvFiles(
   }
 
   // Write web .env
-  store.setStatus("Writing web environment file...");
+  store.setStatus("Writing web environment file…");
   try {
     envWriter.writeWebEnvFile(repoPath, setupMode, portOverrides);
     store.setStatus("Web environment variables configured!");
@@ -355,7 +355,7 @@ async function writeAllEnvFiles(
 
   // Write Docker Compose .env for port overrides
   if (portOverrides && Object.keys(portOverrides).length > 0) {
-    store.setStatus("Writing Docker Compose environment...");
+    store.setStatus("Writing Docker Compose environment…");
     try {
       // Patch docker-compose.yml to use variable substitution for ports.
       // Older versions of the compose file have hardcoded ports, so the

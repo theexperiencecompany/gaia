@@ -106,21 +106,35 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
           label: "Ports",
           severity: "blocker",
           state: "skipped",
-          detail: "needs Docker",
+          detail: "they need Docker",
         },
   );
 
-  // 2. Compose project containers.
-  if (!ctx.project) {
+  // Nothing installed: one row says so, and the checks of a running GAIA
+  // are not run (they would only repeat "not answering" with a wrong fix).
+  if (!ctx.project || !ctx.mode) {
     results.push(unconfiguredInstallCheck(ctx.repoPath));
-  } else {
-    results.push(
-      await checkComposeContainers({
-        project: ctx.project,
-        expected: EXPECTED_SERVICES[ctx.project],
-      }),
-    );
+    for (const label of ["API", "Setup", "Web app"]) {
+      results.push({
+        label,
+        severity: "blocker",
+        state: "skipped",
+        detail: "GAIA isn't installed",
+      });
+    }
+    results.push(await checkDiskHeadroom());
+    results.push(await checkMemoryHeadroom());
+    return { install: describeInstall(ctx.repoPath, ctx.mode), results };
   }
+  const startCommand = ctx.mode === "developer" ? "gaia dev" : "gaia start";
+
+  // 2. Compose project containers.
+  results.push(
+    await checkComposeContainers({
+      project: ctx.project,
+      expected: EXPECTED_SERVICES[ctx.project],
+    }),
+  );
 
   // 2b. Each enabled chat bot (self-host only).
   if (ctx.project === COMPOSE_PROJECT_BY_MODE.selfhost) {
@@ -128,7 +142,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   }
 
   // 3. API health.
-  const api = await checkApiHealth(ctx.apiUrl);
+  const api = await checkApiHealth(ctx.apiUrl, startCommand);
   results.push(api);
 
   // 3b. Every backing service the API needs, from /health/ready.
@@ -136,7 +150,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
     ...(await checkDependencies({
       apiHealthy: api.state === "ok",
       origin: ctx.origin,
-      project: ctx.project ?? COMPOSE_PROJECT_BY_MODE.selfhost,
+      project: ctx.project,
     })),
   );
 
@@ -150,7 +164,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   );
 
   // 5. Web reachable.
-  results.push(await checkWebReachable(ctx.webPort));
+  results.push(await checkWebReachable(ctx.webPort, startCommand));
 
   // 6. Disk headroom on the Docker data root.
   results.push(await checkDiskHeadroom());

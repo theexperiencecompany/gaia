@@ -145,7 +145,7 @@ export async function waitForUpReadiness(
 }
 
 function announceWait(store: CLIStore, pendingLabels: readonly string[]): void {
-  const message = `Waiting for ${pendingLabels.join(" and ")} to come online...`;
+  const message = `Waiting for ${pendingLabels.join(" and ")} to come online…`;
   // The DependencyInstallStep spinner reads dependencyPhase; keep the footer
   // status in sync so both surfaces tell the same story.
   store.setStatus(message);

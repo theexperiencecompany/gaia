@@ -171,7 +171,7 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
     return;
   }
 
-  out(`Checking for updates in ${repoPath}...`);
+  out(`Checking for updates in ${repoPath}…`);
   try {
     await (options.git
       ? runGitUpdate(repoPath, options)

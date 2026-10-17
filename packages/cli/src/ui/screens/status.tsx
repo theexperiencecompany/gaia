@@ -135,9 +135,7 @@ export const StatusScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
       {state.step === "Checking" && (
         <Box marginTop={1}>
           <Spinner
-            label={
-              services ? "Checking again..." : "Checking GAIA's services..."
-            }
+            label={services ? "Checking again…" : "Checking GAIA's services…"}
           />
         </Box>
       )}

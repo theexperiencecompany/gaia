@@ -14,7 +14,7 @@ import type { CLIStore } from "../../ui/store.js";
 export async function runSetupFlow(store: CLIStore): Promise<void> {
   // 1. Detect repo root
   store.setStep("Detect Repo");
-  store.setStatus("Looking for GAIA repository...");
+  store.setStatus("Looking for GAIA repository…");
 
   const repoPath = findRepoRoot();
   if (!repoPath) {
@@ -32,7 +32,7 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
 
   // 2. Prerequisites
   store.setStep("Prerequisites");
-  store.setStatus("Checking system requirements...");
+  store.setStatus("Checking system requirements…");
 
   if (!(await runBasePrerequisiteChecks(store))) {
     return;

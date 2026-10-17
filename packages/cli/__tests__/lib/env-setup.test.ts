@@ -147,7 +147,7 @@ describe("runEnvSetup env policy", () => {
     });
 
     expect(asked).not.toContain("env_alternatives");
-    expect(statuses).not.toContain("Choose an AI provider...");
+    expect(statuses).not.toContain("Choose an AI provider…");
     expect(readApiEnv(repo)).not.toMatch(/^OPENAI_API_KEY=/m);
   });
 

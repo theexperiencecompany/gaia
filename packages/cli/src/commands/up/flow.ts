@@ -296,9 +296,7 @@ async function checkReleaseImages(
   const tag = needsClone
     ? GAIA_RELEASE_IMAGE_TAG
     : readPinnedGaiaVersion(targetPath);
-  store.setStatus(
-    `Checking that GAIA ${tag} is available for this computer...`,
-  );
+  store.setStatus(`Checking that GAIA ${tag} is available for this computer…`);
   const gap = await findReleaseImageGap(tag, readConfig()?.bots ?? []);
   if (!gap) return true;
   const { cause, next } = explainImageGap(gap, UP_REBUILD_COMMAND);
@@ -314,7 +312,7 @@ async function prepareInstall(
 ): Promise<boolean> {
   if (!needsClone) return true;
   updateStep(store, "download", {
-    detail: "Connecting to GitHub...",
+    detail: "Connecting to GitHub…",
     percent: 0,
   });
   try {

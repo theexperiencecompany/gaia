@@ -118,7 +118,7 @@ async function confirmInstall(
 }
 
 async function installGit(store: CLIStore): Promise<void> {
-  store.setStatus("Installing Git...");
+  store.setStatus("Installing Git…");
   const logPath = newLogPath("git-install");
   try {
     await runAsRoot("apt-get", ["update"], logPath);
@@ -164,7 +164,7 @@ export function dockerInstallPhase(line: string): string | null {
 async function installDocker(store: CLIStore): Promise<void> {
   const scriptPath = path.join(os.tmpdir(), "gaia-docker-install.sh");
   const logPath = newLogPath("docker-install");
-  const status = (phase: string) => store.setStatus(`${phase}...`);
+  const status = (phase: string) => store.setStatus(`${phase}…`);
   status("Downloading Docker's installer");
   await execa("curl", ["-fsSL", DOCKER_INSTALL_SCRIPT_URL, "-o", scriptPath]);
   try {
@@ -203,10 +203,10 @@ async function ensureDockerAccess(
   access: DockerAccess,
 ): Promise<DockerReadiness> {
   if (access === "no-permission") {
-    store.setStatus("Giving your user access to Docker (the docker group)...");
+    store.setStatus("Giving your user access to Docker (the docker group)…");
     await ensureDockerGroupMembership();
     store.updateData("dockerGroupSwitch", await resolveDockerGroupSwitch());
-    store.setStatus("Docker access granted. Continuing with it...");
+    store.setStatus("Docker access granted. Continuing with it…");
     return "relaunch";
   }
   if (access !== "ready") throw await dockerAccessError(access);
@@ -257,7 +257,7 @@ export async function ensurePrerequisites(
   return underCheck(store, "docker", async () => {
     if (access === "not-installed") {
       await installDocker(store);
-      store.setStatus("Docker installed. Checking that it runs...");
+      store.setStatus("Docker installed. Checking that it runs…");
       access = await getDockerAccess();
     }
     return ensureDockerAccess(store, access);

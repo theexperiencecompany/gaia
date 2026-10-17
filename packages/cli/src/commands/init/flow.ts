@@ -32,14 +32,14 @@ export async function runInitFlow(
 ): Promise<void> {
   // 0. Welcome
   store.setStep("Welcome");
-  store.setStatus("Waiting for user input...");
+  store.setStatus("Waiting for user input…");
   await store.waitForInput("welcome");
 
   const logHandler = createLogHandler(store);
 
   // 1. Prerequisites
   store.setStep("Prerequisites");
-  store.setStatus("Checking system requirements...");
+  store.setStatus("Checking system requirements…");
 
   if (!(await runBasePrerequisiteChecks(store))) {
     return;
@@ -74,7 +74,7 @@ export async function runInitFlow(
       return;
     }
     store.setStep("Repository Setup");
-    store.setStatus("[DEV MODE] Using current workspace...");
+    store.setStatus("[DEV MODE] Using current workspace…");
     await delay(500);
     store.setStatus("Repository ready!");
   } else {
@@ -117,7 +117,7 @@ export async function runInitFlow(
             cloneFresh = false;
             break;
           } else if (action === "delete_reclone") {
-            store.setStatus("Removing existing installation...");
+            store.setStatus("Removing existing installation…");
             try {
               fs.rmSync(repoPath, { recursive: true, force: true });
             } catch (e) {
@@ -156,7 +156,7 @@ export async function runInitFlow(
 
     if (cloneFresh) {
       store.setStep("Repository Setup");
-      store.setStatus("Preparing repository...");
+      store.setStatus("Preparing repository…");
       store.updateData("repoProgress", 0);
       store.updateData("repoPhase", "");
 
@@ -168,7 +168,7 @@ export async function runInitFlow(
             store.updateData("repoProgress", progress);
             if (phase) {
               store.updateData("repoPhase", phase);
-              store.setStatus(`${phase}...`);
+              store.setStatus(`${phase}…`);
             } else {
               store.setStatus(
                 `Cloning repository to ${repoPath}... ${progress}%`,
@@ -199,10 +199,10 @@ export async function runInitFlow(
   if (setupMode === "selfhost") {
     // Build and start services automatically on first init
     store.setStep("Project Setup");
-    store.setStatus("Building and starting all services in Docker...");
+    store.setStatus("Building and starting all services in Docker…");
     store.updateData(
       "dependencyPhase",
-      "Building and starting Docker services...",
+      "Building and starting Docker services…",
     );
     store.updateData("dependencyProgress", 0);
     store.updateData("dependencyLogs", []);
@@ -214,7 +214,7 @@ export async function runInitFlow(
     // Fall back to building locally if pull fails (e.g. first release, no auth).
     let pullSucceeded = false;
     try {
-      store.setStatus("Pulling pre-built images from registry...");
+      store.setStatus("Pulling pre-built images from registry…");
       await startServices(
         repoPath,
         "selfhost",
@@ -227,7 +227,7 @@ export async function runInitFlow(
     } catch (e) {
       const reason = (e as Error).message?.split("\n")[0] ?? "unknown error";
       store.setStatus(
-        `Registry pull failed (${reason}) — building images locally (this takes a few minutes)...`,
+        `Registry pull failed (${reason}) — building images locally (this takes a few minutes)…`,
       );
     }
 
@@ -284,19 +284,19 @@ export async function runInitFlow(
 
   // 4. Install Tools (developer mode only)
   store.setStep("Install Tools");
-  store.setStatus("Installing toolchain...");
-  store.updateData("dependencyPhase", "Initializing mise...");
+  store.setStatus("Installing toolchain…");
+  store.updateData("dependencyPhase", "Initializing mise…");
   store.updateData("dependencyProgress", 0);
   store.updateData("dependencyLogs", []);
 
   try {
-    store.updateData("dependencyPhase", "Trusting mise configuration...");
+    store.updateData("dependencyPhase", "Trusting mise configuration…");
     await runCommand("mise", ["trust"], repoPath, undefined, logHandler);
     store.updateData("dependencyProgress", 50);
 
     store.updateData(
       "dependencyPhase",
-      "Installing tools (node, python, uv, nx)...",
+      "Installing tools (node, python, uv, nx)…",
     );
     await runCommand(
       "mise",
@@ -321,7 +321,7 @@ export async function runInitFlow(
 
   // 5. Project Setup (developer mode only)
   store.setStep("Project Setup");
-  store.updateData("dependencyPhase", "Setting up project...");
+  store.updateData("dependencyPhase", "Setting up project…");
   store.updateData("dependencyProgress", 0);
   store.updateData("dependencyComplete", false);
   store.updateData("repoPath", repoPath);
@@ -331,7 +331,7 @@ export async function runInitFlow(
     store.updateData("dependencyProgress", 0);
     store.updateData(
       "dependencyPhase",
-      "Running mise setup (all dependencies)...",
+      "Running mise setup (all dependencies)…",
     );
 
     const dockerEnv =

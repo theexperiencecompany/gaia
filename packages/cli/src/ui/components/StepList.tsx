@@ -40,11 +40,7 @@ const StepMark: React.FC<{ step: RunStep; waiting: boolean }> = ({
       </Box>
     );
   }
-  return (
-    <Box marginRight={1}>
-      <Text color="gray">○</Text>
-    </Box>
-  );
+  return <Mark kind="pending" />;
 };
 
 const StepRow: React.FC<{

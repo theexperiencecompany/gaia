@@ -43,7 +43,7 @@ export async function runBackupCommand(
   }
 
   try {
-    out("Starting GAIA backup...");
+    out("Starting GAIA backup…");
     const result = await runBackup({ outputDir: options.output });
     out(`MongoDB dump: ${result.mongoFile}`);
     out(`PostgreSQL dump: ${result.postgresFile}`);

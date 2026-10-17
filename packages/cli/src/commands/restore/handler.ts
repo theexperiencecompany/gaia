@@ -52,7 +52,7 @@ export async function runRestoreCommand(
   }
 
   try {
-    out("Starting GAIA restore...");
+    out("Starting GAIA restore…");
     const result = await runRestore(restoreOptions, (message) =>
       out(`  ${message}`),
     );

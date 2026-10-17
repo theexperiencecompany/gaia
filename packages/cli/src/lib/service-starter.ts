@@ -180,9 +180,7 @@ export async function startServices(
     );
   }
 
-  onStatus?.(
-    options?.build ? "Building GAIA from source..." : "Starting GAIA...",
-  );
+  onStatus?.(options?.build ? "Building GAIA from source…" : "Starting GAIA…");
 
   const dockerComposePath = path.join(repoPath, "infra/docker");
   const dockerEnv =
@@ -212,7 +210,7 @@ export async function startServices(
     throw await withServiceLogTail(error, composeArgs, dockerComposePath);
   });
   if (await dockerVolumeExists(LEGACY_SANDBOX_VOLUME)) {
-    onStatus?.("Moving code-sandbox files into per-user workspaces...");
+    onStatus?.("Moving code-sandbox files into per-user workspaces…");
     await runCommand(
       "docker",
       legacySandboxMigrationArgs(files, envArgs),
@@ -334,7 +332,7 @@ export async function stopServices(
 
   const access = await getDockerAccess();
   if (access === "ready") {
-    onStatus?.("Stopping GAIA's containers...");
+    onStatus?.("Stopping GAIA's containers…");
     const envArgs = getEnvFileArgs(dockerComposePath);
     const composeArgs =
       mode === "selfhost"
@@ -367,7 +365,7 @@ async function stopDeveloperProcesses(
   portOverrides?: Record<number, number>,
   options?: StopServicesOptions,
 ): Promise<void> {
-  onStatus?.("Stopping GAIA-managed local processes (safe mode)...");
+  onStatus?.("Stopping GAIA-managed local processes (safe mode)…");
   const pid = readStoredDevPid(repoPath);
   const killedByPid = pid !== null && (await killDevProcess(repoPath, pid));
   try {
@@ -379,7 +377,7 @@ async function stopDeveloperProcesses(
 
   // Fall back to port-based cleanup only when explicitly requested.
   if (options?.forcePorts) {
-    onStatus?.("No GAIA PID found. Force-stopping listeners on app ports...");
+    onStatus?.("No GAIA PID found. Force-stopping listeners on app ports…");
     await killPortListeners(repoPath, [
       portOverrides?.[8000] ?? 8000,
       portOverrides?.[3000] ?? 3000,

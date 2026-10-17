@@ -39,7 +39,7 @@ export const SetupScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         >
           <Text bold>Detecting GAIA Repository</Text>
           <Box marginTop={1}>
-            <Spinner label="Searching for repository..." />
+            <Spinner label="Searching for repository…" />
           </Box>
           {state.data.repoPath && (
             <Box marginTop={1}>

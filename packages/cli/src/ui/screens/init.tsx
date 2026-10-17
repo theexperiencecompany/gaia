@@ -284,7 +284,7 @@ export const DependencyInstallStep: React.FC<{
       <Box flexDirection="column" gap={1}>
         <Box>
           {!isComplete ? (
-            <Spinner label={phase || "Preparing..."} />
+            <Spinner label={phase || "Preparing…"} />
           ) : (
             <Text color="green">
               {MARK.ok} {phase}
@@ -298,7 +298,7 @@ export const DependencyInstallStep: React.FC<{
         {!isComplete && (
           <Box marginTop={1}>
             <Text color="gray" dimColor>
-              {hint || "This may take a few minutes..."}
+              {hint || "This may take a few minutes…"}
             </Text>
           </Box>
         )}
@@ -501,7 +501,7 @@ export const InfisicalSetupStep: React.FC<{
                     setValues((prev) => ({ ...prev, [field.key]: v }));
                     setError(null);
                   }}
-                  placeholder="Enter value..."
+                  placeholder="Enter value…"
                   mask={isSensitive ? "*" : undefined}
                 />
               </Box>
@@ -992,7 +992,7 @@ export const AlternativeGroupSelectionStep: React.FC<
                               placeholder={
                                 hasDefault
                                   ? `Default: ${envVar.defaultValue}`
-                                  : "Enter value..."
+                                  : "Enter value…"
                               }
                             />
                           </Box>

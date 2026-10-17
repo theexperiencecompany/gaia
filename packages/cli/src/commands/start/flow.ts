@@ -18,7 +18,7 @@ export async function runStartFlow(
   options?: StartServicesOptions,
 ): Promise<void> {
   store.setStep("Starting");
-  store.setStatus("Locating GAIA repository...");
+  store.setStatus("Locating GAIA repository…");
 
   const repoPath = findInstallRoot();
   if (!repoPath) {
@@ -53,7 +53,7 @@ export async function runStartFlow(
 
   // Check prerequisites before starting
   if (mode === "selfhost") {
-    store.setStatus("Checking Docker...");
+    store.setStatus("Checking Docker…");
     const access = await getDockerAccess();
     if (access !== "ready") {
       store.setError(await dockerAccessError(access));
@@ -67,7 +67,7 @@ export async function runStartFlow(
   store.updateData("setupMode", mode);
   store.updateData("webUrl", primaryWebUrl(webPort, readGaiaDomain(repoPath)));
   store.updateData("dockerLogs", []);
-  store.setStatus("Starting GAIA...");
+  store.setStatus("Starting GAIA…");
 
   try {
     await startServices(

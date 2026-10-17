@@ -25,7 +25,7 @@ import type { CLIStore } from "../../ui/store.js";
  */
 export async function runStatusChecks(store: CLIStore): Promise<void> {
   store.setStep("Checking");
-  store.setStatus("Checking GAIA's services...");
+  store.setStatus("Checking GAIA's services…");
   store.updateData("refreshable", false);
 
   const repoPath = findInstallRoot();

@@ -74,7 +74,7 @@ export async function runLogs(): Promise<void> {
     typeof devPid === "number" && isPidAlive(devPid);
 
   if (fs.existsSync(devLogPath) && isDeveloperProcessAlive) {
-    console.log("Streaming app and infrastructure logs...");
+    console.log("Streaming app and infrastructure logs…");
     if (process.platform === "win32") {
       await runConcurrentInteractiveCommands([
         {

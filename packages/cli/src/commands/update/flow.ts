@@ -194,18 +194,18 @@ export async function applyReleaseUpdate(
     }
   }
 
-  onStatus(`Downloading GAIA ${plan.toVersion}...`);
+  onStatus(`Downloading GAIA ${plan.toVersion}…`);
   await pullSelfhostImages(plan.repoPath, plan.toVersion);
 
   if (plan.checkout && !plan.checkout.atTag) {
-    onStatus(`Updating the setup files to ${plan.toVersion}...`);
+    onStatus(`Updating the setup files to ${plan.toVersion}…`);
     await git(plan.repoPath, ["checkout", "--detach", plan.checkout.toTag]);
   }
 
-  onStatus(`Switching to GAIA ${plan.toVersion}...`);
+  onStatus(`Switching to GAIA ${plan.toVersion}…`);
   pinReleaseImages(plan.repoPath, plan.toVersion);
 
-  onStatus("Restarting GAIA...");
+  onStatus("Restarting GAIA…");
   await startServices(
     plan.repoPath,
     "selfhost",
@@ -241,9 +241,9 @@ export async function applyGitUpdate(
   repoPath: string,
   onStatus: (message: string) => void,
 ): Promise<void> {
-  onStatus("Pulling the latest commits (git pull --ff-only)...");
+  onStatus("Pulling the latest commits (git pull --ff-only)…");
   await git(repoPath, ["pull", "--ff-only"]);
-  onStatus("Rebuilding images from this checkout and restarting...");
+  onStatus("Rebuilding images from this checkout and restarting…");
   await startServices(
     repoPath,
     "selfhost",

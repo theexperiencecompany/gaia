@@ -651,7 +651,7 @@ describe("unconfiguredInstallCheck", () => {
   it("says no installation was found when there is no checkout at all", () => {
     const result = unconfiguredInstallCheck(null);
 
-    expect(result.detail).toBe("No GAIA installation found");
+    expect(result.detail).toBe("isn't installed yet");
     expect(result.fix).toContain("gaia up");
   });
 });
@@ -727,7 +727,6 @@ describe("printDoctorReport", () => {
       results: [
         result("ok", "blocker"),
         result("fail", "warning"),
-        result("skipped", "blocker"),
         result("fail", "blocker"),
       ],
     });
@@ -737,9 +736,49 @@ describe("printDoctorReport", () => {
       .filter((line) => line.includes("Label"));
     write.mockRestore();
     expect(lines.map((line) => line.indexOf("Label"))).toEqual(
-      Array(4).fill(lines[0]?.indexOf("Label")),
+      Array(3).fill(lines[0]?.indexOf("Label")),
     );
-    for (const line of lines) expect(line).toMatch(/\] +Label/);
+    for (const line of lines) expect(line).toMatch(/^ {2}\S Label/);
+  });
+
+  // cli-audit 04: no Docker printed four skip rows and two "start the stack" fixes.
+  it("collapses checks skipped for one cause into one line, with no fix", () => {
+    let text = "";
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((c) => {
+      text += String(c);
+      return true;
+    });
+    const skipped = (label: string): CheckResult => ({
+      label,
+      severity: "blocker",
+      state: "skipped",
+      detail: "they need Docker",
+      fix: "never shown",
+    });
+
+    printDoctorReport({
+      install: "/srv/gaia (self-host)",
+      results: [
+        {
+          label: "Docker",
+          severity: "blocker",
+          state: "fail",
+          detail: "Docker isn't installed",
+          fix: "Run 'gaia up'",
+        },
+        skipped("Ports"),
+        skipped("Containers"),
+        skipped("Disk space"),
+      ],
+    });
+    write.mockRestore();
+
+    expect(text).toContain(
+      "Not checked: Ports, Containers, Disk space (they need Docker)",
+    );
+    expect(text.match(/Run 'gaia up'/g)).toHaveLength(1);
+    expect(text).not.toContain("never shown");
+    expect(text).toContain("1 problem");
   });
 });
 
@@ -779,11 +818,11 @@ describe("checkSetupReadiness", () => {
     });
 
     expect(results.map((r) => [r.label, r.detail])).toEqual([
-      ["Setup readiness", "No admin account yet"],
+      ["Setup", "not finished: No admin account yet"],
     ]);
   });
 
-  it("emits one warning-level fail per unconfigured item", async () => {
+  it("reports what the wizard still owes as one warning with one fix", async () => {
     stubSetupEndpoints({
       auth_mode: "workos",
       needs_setup: true,
@@ -902,7 +941,7 @@ describe("checkSetupReadiness", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]?.state).toBe("ok");
-    expect(results[0]?.label).toBe("Setup readiness");
+    expect(results[0]?.label).toBe("Setup");
   });
 
   it("counts an OpenAI-only instance as LLM-ready per the served catalog", async () => {

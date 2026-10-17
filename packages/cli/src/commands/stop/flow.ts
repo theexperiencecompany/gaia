@@ -11,7 +11,7 @@ export async function runStopFlow(
   options?: StopServicesOptions,
 ): Promise<void> {
   store.setStep("Stopping");
-  store.setStatus("Finding your GAIA install...");
+  store.setStatus("Finding your GAIA install…");
 
   const repoPath = findInstallRoot();
   if (!repoPath) {

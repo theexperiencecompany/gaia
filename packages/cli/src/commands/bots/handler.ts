@@ -229,7 +229,7 @@ export async function runBotsAdd(
 ): Promise<void> {
   const repoPath = await requireSelfhostInstall();
   const resolved = await resolveCredentials(bot, credentials);
-  out(`Checking the ${bot} credentials...`);
+  out(`Checking the ${bot} credentials…`);
   const verified = await verifyCredentials(bot, resolved);
 
   writeBotsEnv(repoPath, { set: verified.botsEnv });
@@ -240,11 +240,11 @@ export async function runBotsAdd(
   await restartStack(repoPath);
   const registration = COMMAND_REGISTRATION[bot];
   if (registration) {
-    out(`Registering the ${bot} bot's commands...`);
+    out(`Registering the ${bot} bot's commands…`);
     await runSelfhostOneOff(repoPath, botService(bot), registration);
   }
 
-  out(`Waiting for the ${bot} bot to connect...`);
+  out(`Waiting for the ${bot} bot to connect…`);
   await waitForBotHealthy(bot);
   out(`The ${bot} bot is running.`);
   for (const step of verified.nextSteps) out(step);

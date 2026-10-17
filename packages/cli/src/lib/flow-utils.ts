@@ -72,7 +72,7 @@ export async function runDeveloperPrerequisiteChecks(
   });
 
   if (miseStatus === "missing") {
-    store.setStatus("Installing Mise...");
+    store.setStatus("Installing Mise…");
     const installed = await prereqs.installMise();
     miseStatus = installed ? "success" : "error";
     store.updateData("checks", {
@@ -101,7 +101,7 @@ export async function runPortChecks(
   store: CLIStore,
   mode: SetupMode,
 ): Promise<Record<number, number> | null> {
-  store.setStatus("Checking Ports...");
+  store.setStatus("Checking Ports…");
   const portResults = await prereqs.checkModePorts(mode);
   const portOverrides: Record<number, number> = {};
   const conflicts = portResults.filter((r) => !r.available);
@@ -156,17 +156,17 @@ export async function runMiseDeveloperSetup(
   logHandler: (chunk: string) => void,
 ): Promise<boolean> {
   store.setStep("Project Setup");
-  store.updateData("dependencyPhase", "Setting up project...");
+  store.updateData("dependencyPhase", "Setting up project…");
   store.updateData("dependencyProgress", 0);
   store.updateData("dependencyComplete", false);
   store.updateData("dependencyLogs", []);
 
   try {
-    store.updateData("dependencyPhase", "Trusting mise configuration...");
+    store.updateData("dependencyPhase", "Trusting mise configuration…");
     await runCommand("mise", ["trust"], repoPath, undefined, logHandler);
     store.updateData("dependencyProgress", 20);
 
-    store.updateData("dependencyPhase", "Installing tools...");
+    store.updateData("dependencyPhase", "Installing tools…");
     await runCommand(
       "mise",
       ["install"],
@@ -177,7 +177,7 @@ export async function runMiseDeveloperSetup(
       logHandler,
     );
 
-    store.updateData("dependencyPhase", "Running mise setup...");
+    store.updateData("dependencyPhase", "Running mise setup…");
     const dockerEnv =
       Object.keys(portOverrides).length > 0
         ? portOverridesToDockerEnv(portOverrides)
