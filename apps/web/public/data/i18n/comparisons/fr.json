@@ -228,8 +228,8 @@
         "answer": "GAIA lit votre boîte Gmail et peut identifier les enregistrements à créer ou à mettre à jour selon le contenu des e-mails : demandes de clients, mises à jour de projet ou nouvelles informations correspondant à votre modèle de données. Bien qu’il n’existe pas encore de connecteur Airtable direct dans le catalogue d’intégrations par défaut de GAIA, les capacités d’automatisation de GAIA peuvent router les actions et les données structurées vers des outils synchronisés avec Airtable, créant ainsi un flux d’intégration automatisé pour vos bases sans saisie manuelle."
       },
       {
-        "question": "GAIA est-elle open source, contrairement à Airtable ?",
-        "answer": "Oui. GAIA est entièrement open source sur GitHub et peut être auto-hébergée gratuitement sur votre propre infrastructure. Airtable est propriétaire et ne propose aucune option d’auto-hébergement. Pour les équipes ayant des exigences de localisation des données, gérant des informations sensibles sur des clients ou souhaitant auditer et étendre les outils qu’elles utilisent, le modèle open source de GAIA offre un niveau de transparence et de contrôle qu’Airtable ne peut pas offrir."
+        "question": "GAIA peut-elle transformer les messages Slack en enregistrements Airtable ?",
+        "answer": "GAIA surveille Slack en plus de la messagerie et peut transformer le message d’une équipe en tâche ou en enregistrement structuré sans saisie manuelle. Bien qu’il n’existe pas encore de connecteur Airtable direct dans le catalogue d’intégrations par défaut de GAIA, les données arrivent dans Airtable via des outils synchronisés avec Airtable ou via les automatisations de GAIA. Ce que GAIA gère entièrement, c’est la collecte : lire le message, en extraire l’essentiel et préparer l’enregistrement."
       },
       {
         "question": "Comment l’IA de GAIA se compare-t-elle à celle d’Airtable ?",
@@ -4417,8 +4417,8 @@
         "answer": "Yes — they work well together as complementary tools. GAIA manages the upstream workflow: reading client emails, creating tasks, scheduling project work blocks, and routing communication across tools. Harvest manages the downstream billing: recording time against those tasks, tracking budget burn, and generating invoices. Together they cover the full cycle from client request to client invoice with less manual overhead at every step."
       },
       {
-        "question": "Is GAIA open source unlike Harvest?",
-        "answer": "Yes. GAIA is fully open source on GitHub and can be self-hosted on your own infrastructure for free. Harvest is a proprietary SaaS platform with no self-hosting option. For freelancers and agencies handling sensitive client data, GAIA's self-hosted deployment means your client communications and project information never leave your own environment."
+        "question": "Does GAIA generate invoices like Harvest?",
+        "answer": "No. GAIA does not generate invoices. It integrates with billing tools and can route invoice-related tasks, but turning tracked time into a professional invoice is what Harvest is built for and does well. The practical division: Harvest stays the system of record for billing, while GAIA manages the client emails, tasks, and follow-ups that determine how many billable hours exist in the first place."
       },
       {
         "question": "Does GAIA have workflow automation that Harvest does not?",
@@ -4437,8 +4437,8 @@
         "answer": "GAIA's free tier offers significantly more AI productivity capability than Harvest's free plan, which is limited to 1 user and 2 projects — effectively unusable for any real freelance work. GAIA's free tier includes Gmail integration, Google Calendar sync, AI task management, and core workflow automation with no project or usage caps. For freelancers looking for a free tool that manages more than time logging, GAIA is the stronger starting point."
       },
       {
-        "question": "What platforms does GAIA support compared to Harvest?",
-        "answer": "GAIA is available as a web application, a native Electron desktop app for macOS, Windows, and Linux, and a React Native mobile app for iOS and Android. Harvest is available on web, iOS, and Android with Mac and Windows desktop timer apps. Both cover major platforms, though GAIA's Electron desktop app provides a unified AI productivity workspace that goes well beyond a time tracker's desktop timer."
+        "question": "Does GAIA track project budgets and expenses like Harvest?",
+        "answer": "No. Expense tracking and project budgeting are Harvest strengths, and GAIA does not attempt them. Harvest shows real-time budget burn against billable hours and alerts you when a project approaches its spending limit. GAIA works on the workflow side of that number: it catches client change requests as they arrive in email or Slack, creates the task, and flags it as urgent, so scope shifts surface before they inflate the budget rather than after."
       },
       {
         "question": "How does GAIA handle task prioritisation differently from Harvest?",
@@ -4787,8 +4787,8 @@
         "answer": "GAIA complements sales workflows by managing the personal productivity layer that HubSpot does not cover. It reads your Gmail inbox and surfaces unanswered prospect emails, prepares briefing notes before sales calls using calendar and email context, creates follow-up tasks automatically from meeting notes, and routes Slack messages from prospects to your task manager. These are the individual workflow actions that HubSpot tracks in deal records but leaves for each sales rep to manage manually."
       },
       {
-        "question": "Is GAIA open source unlike HubSpot?",
-        "answer": "Yes. GAIA is fully open source on GitHub and can be self-hosted on your own infrastructure for free. HubSpot is a proprietary SaaS platform with no self-hosting option. For teams with strict data handling requirements or those who want to inspect and customise the AI system they rely on, GAIA's open source model is a meaningful advantage that HubSpot cannot offer."
+        "question": "Is GAIA a CRM like HubSpot?",
+        "answer": "No. GAIA has no contact database, deal pipelines, or lead scoring, and it is not built to manage shared revenue data. It is a personal AI assistant that manages your individual workflow across email, tasks, calendar, and connected tools, and its automations can route work into HubSpot. If you need a system of record for customer relationships, that is HubSpot's job. GAIA keeps the person using it productive."
       },
       {
         "question": "Can GAIA and HubSpot be used together?",
