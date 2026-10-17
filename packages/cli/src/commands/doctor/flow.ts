@@ -15,7 +15,11 @@ import {
   type ComposeProject,
 } from "../../lib/docker.js";
 import { getDockerAccess } from "../../lib/docker-access.js";
-import { localApiUrl, localOrigin } from "../../lib/endpoints.js";
+import {
+  installWebUrl,
+  localApiUrl,
+  localOrigin,
+} from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import {
@@ -114,7 +118,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
 
   // Nothing installed: one row says so, and the checks of a running GAIA
   // are not run (they would only repeat "not answering" with a wrong fix).
-  if (!ctx.project || !ctx.mode) {
+  if (!ctx.repoPath || !ctx.project || !ctx.mode) {
     results.push(unconfiguredInstallCheck(ctx.repoPath));
     for (const label of ["API", "Setup", "Web app"]) {
       results.push({
@@ -165,7 +169,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
     ...(await checkSetupReadiness({
       apiHealthy: api.state === "ok",
       apiUrl: ctx.apiUrl,
-      webPort: ctx.webPort,
+      webUrl: installWebUrl(ctx.repoPath, ctx.webPort),
     })),
   );
 

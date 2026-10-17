@@ -5,6 +5,7 @@
 
 import { type NetworkInterfaceInfo, networkInterfaces } from "node:os";
 import type { SetupMode } from "./env-parser.js";
+import { readGaiaDomain } from "./env-writer.js";
 
 /** Default host port of the web app — the self-host single origin. */
 export const DEFAULT_WEB_PORT = 3000;
@@ -96,4 +97,9 @@ export function primaryWebUrl(
   const local = `http://localhost:${webPort}`;
   if (!remote) return local;
   return hostWebUrls(webPort, interfaces)[0] ?? local;
+}
+
+/** The one address to send a browser to for the install at repoRoot, honouring its domain. */
+export function installWebUrl(repoRoot: string, webPort: number): string {
+  return primaryWebUrl(webPort, readGaiaDomain(repoRoot));
 }

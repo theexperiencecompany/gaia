@@ -8,14 +8,11 @@ import {
 } from "../../lib/docker.js";
 import {
   DEFAULT_WEB_PORT,
+  installWebUrl,
   localApiUrl,
   localOrigin,
-  primaryWebUrl,
 } from "../../lib/endpoints.js";
-import {
-  readDockerComposePortOverrides,
-  readGaiaDomain,
-} from "../../lib/env-writer.js";
+import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import {
   checkDeveloperServices,
   getDockerStatus,
@@ -71,7 +68,7 @@ async function collectFacts(): Promise<StatusFacts> {
         : docker,
     readiness,
     services,
-    webUrl: primaryWebUrl(webPort, readGaiaDomain(repoPath)),
+    webUrl: installWebUrl(repoPath, webPort),
     setupComplete: setup && "data" in setup ? !setup.data.needs_setup : null,
   };
 }
