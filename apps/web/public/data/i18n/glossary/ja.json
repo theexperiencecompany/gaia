@@ -850,7 +850,7 @@
       "time management technique",
       "schedule blocking"
     ],
-    "howGaiaUsesIt": "GAIA automates time blocking by analyzing your tasks, deadlines, and calendar availability to build a realistic daily schedule. It assigns your highest-priority tasks to time blocks that match your energy patterns, groups similar work together to reduce context switching, and dynamically adjusts blocks when meetings shift or new priorities arrive. Instead of spending 15 minutes each morning planning your day, GAIA presents a ready-made schedule that you can accept or adjust.",
+    "howGaiaUsesIt": "GAIA automates time blocking by analyzing your tasks, deadlines, and calendar availability to build a realistic daily schedule. It assigns your highest-priority tasks to time blocks that match your energy patterns, groups similar work together to reduce context switching, and helps you rebuild blocks when meetings shift or new priorities arrive. Instead of spending 15 minutes each morning planning your day, GAIA presents a ready-made schedule that you can accept or adjust.",
     "faqs": [
       {
         "question": "How does GAIA automate time blocking?",
@@ -1406,7 +1406,7 @@
       "AI chief of staff",
       "automated executive assistant"
     ],
-    "howGaiaUsesIt": "GAIA functions as a digital executive assistant available around the clock. It triages your inbox and surfaces what matters, schedules and reschedules meetings while protecting your focus time, prepares briefings before every meeting with relevant context from email and tasks, creates follow-up actions after meetings, coordinates multi-step workflows across your tools, and learns your preferences and working style over time. GAIA gives every professional the kind of operational support that was previously reserved for C-suite executives with dedicated staff.",
+    "howGaiaUsesIt": "GAIA functions as a digital executive assistant on your schedule. It triages your inbox and surfaces what matters, schedules and reschedules meetings while protecting your focus time, prepares briefings before every meeting with relevant context from email and tasks, creates follow-up actions after meetings, coordinates multi-step workflows across your tools, and learns your preferences and working style over time. GAIA gives every professional the kind of operational support that was previously reserved for C-suite executives with dedicated staff.",
     "faqs": [
       {
         "question": "Can GAIA really replace a human executive assistant?",
@@ -2505,7 +2505,7 @@
       "webhook integration",
       "GAIA webhook"
     ],
-    "howGaiaUsesIt": "GAIA uses webhooks to receive real-time events from connected tools. When a new email arrives in Gmail, a task is updated in Linear, or a Calendly event is booked, webhooks notify GAIA immediately so it can act — creating a task, sending a notification, or triggering a workflow — without the latency or overhead of periodic polling.",
+    "howGaiaUsesIt": "GAIA watches connected tools through integration triggers. When a new email arrives in Gmail, a task is updated in Linear, or a Calendly event is booked, GAIA picks up the change — typically within a minute — so it can act by creating a task, sending a notification, or triggering a workflow.",
     "faqs": [
       {
         "question": "How is a webhook different from a regular API call?",
@@ -2791,7 +2791,7 @@
       "data privacy regulation",
       "GAIA GDPR"
     ],
-    "howGaiaUsesIt": "GAIA's architecture supports GDPR compliance through data minimization (processing only what's needed), user-controlled data deletion, data portability (export your data at any time), and self-hosting options that keep personal data within your jurisdiction. GAIA's source-available codebase allows full inspection of data handling practices.",
+    "howGaiaUsesIt": "GAIA's architecture supports GDPR compliance through data minimization (processing only what's needed), user-controlled data deletion, data portability (request an export of your data), and self-hosting options that keep personal data within your jurisdiction. GAIA's source-available codebase allows full inspection of data handling practices.",
     "faqs": [
       {
         "question": "Is GAIA GDPR compliant?",
@@ -4446,7 +4446,7 @@
       "RLAIF",
       "AI values training"
     ],
-    "howGaiaUsesIt": "GAIA can be configured to run on Claude, Anthropic's Constitutional AI-trained model family, which brings the safety and helpfulness guarantees of CAI to GAIA's autonomous operations. When GAIA manages sensitive personal data across email, calendar, and task systems, the underlying model's alignment — including its reluctance to take harmful actions or violate user privacy — directly shapes what GAIA will and will not do autonomously.",
+    "howGaiaUsesIt": "GAIA runs on leading models available through its supported providers (Gemini, OpenRouter, OpenAI, or a custom endpoint). Techniques like Constitutional AI shape how those underlying models behave — including refusing harmful actions or protecting user privacy — which carries through to how GAIA acts when it manages sensitive personal data across email, calendar, and task systems.",
     "faqs": [
       {
         "question": "How does Constitutional AI differ from RLHF?",
@@ -4558,7 +4558,7 @@
       "webhook integration",
       "event-driven vs polling"
     ],
-    "howGaiaUsesIt": "GAIA uses webhooks wherever available to receive real-time notifications from connected services — Gmail, Google Calendar, Slack, Notion, and others. This means GAIA can react to a new email or urgent Slack message within seconds rather than waiting for a polling interval. For services that do not support webhooks, GAIA employs intelligent polling with adaptive intervals that increase frequency when activity is high and back off when quiet, minimizing unnecessary API calls.",
+    "howGaiaUsesIt": "GAIA uses webhooks wherever available to receive notifications from connected services — Gmail, Google Calendar, Slack, Notion, and others. This means GAIA can typically react to a new email or urgent Slack message within a minute rather than waiting for a polling interval. For services that do not support webhooks, GAIA employs intelligent polling with adaptive intervals that increase frequency when activity is high and back off when quiet, minimizing unnecessary API calls.",
     "faqs": [
       {
         "question": "Why are webhooks better than polling for real-time automation?",
@@ -4627,7 +4627,7 @@
       "iCal vs Google Calendar",
       "icalとは"
     ],
-    "howGaiaUsesIt": "GAIA supports iCal subscription URLs for importing external calendars — conference schedules, team rosters, project timelines — directly into your unified calendar view. When GAIA creates calendar events and exports them to connected tools, it uses the iCalendar format to ensure compatibility across Google Calendar, Outlook, and Apple Calendar. GAIA also parses iCal data to understand recurring event patterns and attendee lists when performing calendar analysis.",
+    "howGaiaUsesIt": "GAIA connects to Google Calendar and Outlook to read and manage your events in a unified calendar view. When GAIA creates calendar events, they sync to your connected calendars in the standard iCalendar format for compatibility across Google Calendar, Outlook, and Apple Calendar.",
     "faqs": [
       {
         "question": "What is an .ics file?",
@@ -4639,7 +4639,7 @@
       },
       {
         "question": "Does GAIA support iCal?",
-        "answer": "Yes. GAIA can subscribe to iCal feeds and import .ics files, allowing you to include external calendars — conference schedules, public holidays, team calendars — in your unified schedule. GAIA then factors these events into scheduling decisions, focus time blocking, and meeting conflict detection."
+        "answer": "Yes — through the calendars behind those feeds. Connect Google Calendar or Outlook and your events — including ones synced from subscribed feeds — appear in your unified schedule. GAIA then factors these events into scheduling decisions, focus time blocking, and meeting conflict detection."
       },
       {
         "question": "Is iCal the same as Google Calendar?",

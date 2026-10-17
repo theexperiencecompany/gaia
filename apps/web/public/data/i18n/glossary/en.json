@@ -21,7 +21,7 @@
       },
       {
         "question": "How do AI agents improve productivity?",
-        "answer": "AI agents reduce the manual work of managing digital tools by autonomously handling repetitive tasks like email triage, meeting scheduling, and task creation. GAIA's agents work 24/7, monitoring your connected tools and acting before you need to ask."
+        "answer": "AI agents reduce the manual work of managing digital tools by autonomously handling repetitive tasks like email triage, meeting scheduling, and task creation. GAIA's agents monitor your connected tools on your schedule and act before you need to ask."
       }
     ]
   },
@@ -206,7 +206,7 @@
   "task-automation": {
     "term": "Task Automation",
     "metaTitle": "What Is Task Automation? AI That Runs Repetitive Work",
-    "metaDescription": "Task automation creates, prioritizes, and runs repetitive tasks, even from emails. GAIA creates, sorts, and runs tasks for you daily. Free tier.",
+    "metaDescription": "Task automation creates, prioritizes, and runs repetitive tasks, even from emails. GAIA creates, sorts, and runs tasks for you daily.",
     "definition": "Task automation is the use of technology, particularly AI, to automatically create, manage, prioritize, and execute repetitive tasks that would otherwise require manual effort.",
     "extendedDescription": "Task automation has evolved from simple reminders and rules-based triggers to intelligent systems that understand context. Modern AI task automation can identify when a task needs to be created from an email or message, determine its priority based on deadlines and importance, assign it to the right project or category, set appropriate due dates, and even execute the task itself. The goal is to reduce the cognitive overhead of managing a task list and ensure nothing falls through the cracks.",
     "keywords": [
@@ -838,7 +838,7 @@
   "time-blocking": {
     "term": "Time Blocking",
     "metaTitle": "What Is Time Blocking? AI-Powered Time Management",
-    "metaDescription": "Time blocking gives every task a calendar slot, but manual upkeep fails when meetings shift. GAIA builds blocks and adjusts them automatically. Free tier.",
+    "metaDescription": "Time blocking gives every task a calendar slot, but manual upkeep fails when meetings shift. GAIA builds blocks and adjusts them automatically.",
     "definition": "Time blocking is a scheduling method where you divide your day into dedicated blocks of time, each assigned to a specific task or type of work, turning your calendar into a concrete plan for the day.",
     "extendedDescription": "Time blocking is used by executives, engineers, and creators to ensure important work gets scheduled rather than squeezed between meetings. Instead of a vague to-do list, each task gets a specific time slot on your calendar. This eliminates the decision of what to work on next and creates accountability for completing focused work. The challenge is that time blocking requires constant maintenance. Meetings shift, new priorities emerge, and tasks take longer than expected. Manually adjusting your time blocks throughout the day is tedious, which is why many people start time blocking but struggle to maintain it.",
     "keywords": [
@@ -849,7 +849,7 @@
       "time management technique",
       "schedule blocking"
     ],
-    "howGaiaUsesIt": "GAIA automates time blocking by analyzing your tasks, deadlines, and calendar availability to build a realistic daily schedule. It assigns your highest-priority tasks to time blocks that match your energy patterns, groups similar work together to reduce context switching, and dynamically adjusts blocks when meetings shift or new priorities arrive. Instead of spending 15 minutes each morning planning your day, GAIA presents a ready-made schedule that you can accept or adjust.",
+    "howGaiaUsesIt": "GAIA automates time blocking by analyzing your tasks, deadlines, and calendar availability to build a realistic daily schedule. It assigns your highest-priority tasks to time blocks that match your energy patterns, groups similar work together to reduce context switching, and helps you rebuild blocks when meetings shift or new priorities arrive. Instead of spending 15 minutes each morning planning your day, GAIA presents a ready-made schedule that you can accept or adjust.",
     "faqs": [
       {
         "question": "How does GAIA automate time blocking?",
@@ -1405,7 +1405,7 @@
       "AI chief of staff",
       "automated executive assistant"
     ],
-    "howGaiaUsesIt": "GAIA functions as a digital executive assistant available around the clock. It triages your inbox and surfaces what matters, schedules and reschedules meetings while protecting your focus time, prepares briefings before every meeting with relevant context from email and tasks, creates follow-up actions after meetings, coordinates multi-step workflows across your tools, and learns your preferences and working style over time. GAIA gives every professional the kind of operational support that was previously reserved for C-suite executives with dedicated staff.",
+    "howGaiaUsesIt": "GAIA functions as a digital executive assistant on your schedule. It triages your inbox and surfaces what matters, schedules and reschedules meetings while protecting your focus time, prepares briefings before every meeting with relevant context from email and tasks, creates follow-up actions after meetings, coordinates multi-step workflows across your tools, and learns your preferences and working style over time. GAIA gives every professional the kind of operational support that was previously reserved for C-suite executives with dedicated staff.",
     "faqs": [
       {
         "question": "Can GAIA really replace a human executive assistant?",
@@ -2499,7 +2499,7 @@
       "webhook integration",
       "GAIA webhook"
     ],
-    "howGaiaUsesIt": "GAIA uses webhooks to receive real-time events from connected tools. When a new email arrives in Gmail, a task is updated in Linear, or a Calendly event is booked, webhooks notify GAIA immediately so it can act — creating a task, sending a notification, or triggering a workflow — without the latency or overhead of periodic polling.",
+    "howGaiaUsesIt": "GAIA watches connected tools through integration triggers. When a new email arrives in Gmail, a task is updated in Linear, or a Calendly event is booked, GAIA picks up the change — typically within a minute — so it can act by creating a task, sending a notification, or triggering a workflow.",
     "faqs": [
       {
         "question": "How is a webhook different from a regular API call?",
@@ -2785,7 +2785,7 @@
       "data privacy regulation",
       "GAIA GDPR"
     ],
-    "howGaiaUsesIt": "GAIA's architecture supports GDPR compliance through data minimization (processing only what's needed), user-controlled data deletion, data portability (export your data at any time), and self-hosting options that keep personal data within your jurisdiction. GAIA's source-available codebase allows full inspection of data handling practices.",
+    "howGaiaUsesIt": "GAIA's architecture supports GDPR compliance through data minimization (processing only what's needed), user-controlled data deletion, data portability (request an export of your data), and self-hosting options that keep personal data within your jurisdiction. GAIA's source-available codebase allows full inspection of data handling practices.",
     "faqs": [
       {
         "question": "Is GAIA GDPR compliant?",
@@ -2852,7 +2852,7 @@
   "cron-job": {
     "term": "Cron Job",
     "metaTitle": "What Is a Cron Job? Scheduled Tasks in Software",
-    "metaDescription": "A cron job runs a task on its own on a set schedule, written in cron syntax. GAIA schedules work the same way, such as your morning briefing. Free tier.",
+    "metaDescription": "A cron job runs a task on its own on a set schedule, written in cron syntax. GAIA schedules work the same way \u2014 set up your morning briefing.",
     "definition": "A cron job is a scheduled task configured to run automatically at specified time intervals or on specific dates using the cron scheduling syntax, enabling recurring automated processes without manual triggers.",
     "extendedDescription": "The name comes from Chronos, the Greek personification of time. Cron is a Unix utility that runs scheduled commands based on a configuration file (crontab) with expressions defining when each job should run. The syntax allows specification of minutes, hours, days, months, and days of the week.\n\nA cron expression like '0 9 * * 1-5' means: at minute 0, hour 9, any day of month, any month, on weekdays (Monday-Friday) — i.e., 9:00 AM on every weekday. This enables precise scheduling of recurring automated tasks.\n\nCron jobs power background automation: nightly database backups, hourly data syncs, daily report generation, weekly digest emails, and monthly billing cycles are all commonly implemented as cron jobs. For AI assistants, cron jobs trigger scheduled workflows like morning briefings, end-of-day summaries, and weekly review emails.\n\nModern cloud environments have moved beyond Unix cron to managed scheduling services (AWS EventBridge, Google Cloud Scheduler) and application-level schedulers (Celery Beat, APScheduler, ARQ). These offer better reliability, logging, and monitoring than raw cron.",
     "keywords": [
@@ -4432,7 +4432,7 @@
       "RLAIF",
       "AI values training"
     ],
-    "howGaiaUsesIt": "GAIA can be configured to run on Claude, Anthropic's Constitutional AI-trained model family, which brings the safety and helpfulness guarantees of CAI to GAIA's autonomous operations. When GAIA manages sensitive personal data across email, calendar, and task systems, the underlying model's alignment — including its reluctance to take harmful actions or violate user privacy — directly shapes what GAIA will and will not do autonomously.",
+    "howGaiaUsesIt": "GAIA runs on leading models available through its supported providers (Gemini, OpenRouter, OpenAI, or a custom endpoint). Techniques like Constitutional AI shape how those underlying models behave — including refusing harmful actions or protecting user privacy — which carries through to how GAIA acts when it manages sensitive personal data across email, calendar, and task systems.",
     "faqs": [
       {
         "question": "How does Constitutional AI differ from RLHF?",
@@ -4544,7 +4544,7 @@
       "webhook integration",
       "event-driven vs polling"
     ],
-    "howGaiaUsesIt": "GAIA uses webhooks wherever available to receive real-time notifications from connected services — Gmail, Google Calendar, Slack, Notion, and others. This means GAIA can react to a new email or urgent Slack message within seconds rather than waiting for a polling interval. For services that do not support webhooks, GAIA employs intelligent polling with adaptive intervals that increase frequency when activity is high and back off when quiet, minimizing unnecessary API calls.",
+    "howGaiaUsesIt": "GAIA uses webhooks wherever available to receive notifications from connected services — Gmail, Google Calendar, Slack, Notion, and others. This means GAIA can typically react to a new email or urgent Slack message within a minute rather than waiting for a polling interval. For services that do not support webhooks, GAIA employs intelligent polling with adaptive intervals that increase frequency when activity is high and back off when quiet, minimizing unnecessary API calls.",
     "faqs": [
       {
         "question": "Why are webhooks better than polling for real-time automation?",
@@ -4612,7 +4612,7 @@
       "calendar subscription",
       "iCal vs Google Calendar"
     ],
-    "howGaiaUsesIt": "GAIA supports iCal subscription URLs for importing external calendars — conference schedules, team rosters, project timelines — directly into your unified calendar view. When GAIA creates calendar events and exports them to connected tools, it uses the iCalendar format to ensure compatibility across Google Calendar, Outlook, and Apple Calendar. GAIA also parses iCal data to understand recurring event patterns and attendee lists when performing calendar analysis.",
+    "howGaiaUsesIt": "GAIA connects to Google Calendar and Outlook to read and manage your events in a unified calendar view. When GAIA creates calendar events, they sync to your connected calendars in the standard iCalendar format for compatibility across Google Calendar, Outlook, and Apple Calendar.",
     "faqs": [
       {
         "question": "What is the difference between iCal and iCalendar?",
@@ -4628,7 +4628,7 @@
       },
       {
         "question": "Does GAIA support iCal?",
-        "answer": "Yes. GAIA can subscribe to iCal feeds and import .ics files, allowing you to include external calendars — conference schedules, public holidays, team calendars — in your unified schedule. GAIA then factors these events into scheduling decisions, focus time blocking, and meeting conflict detection."
+        "answer": "Yes — through the calendars behind those feeds. Connect Google Calendar or Outlook and your events — including ones synced from subscribed feeds — appear in your unified schedule. GAIA then factors these events into scheduling decisions, focus time blocking, and meeting conflict detection."
       },
       {
         "question": "Is iCal the same as Google Calendar?",

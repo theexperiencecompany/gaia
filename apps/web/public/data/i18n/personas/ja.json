@@ -1260,7 +1260,7 @@
     "faqs": [
       {
         "question": "How does GAIA handle confidential executive communications?",
-        "answer": "GAIA is fully open source and self-hostable. Executives can deploy GAIA on dedicated infrastructure with enterprise-grade security controls, ensuring complete confidentiality. No data is shared with third parties or used for model training."
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. Executives can deploy GAIA on dedicated infrastructure with enterprise-grade security controls, ensuring complete confidentiality. No data is shared with third parties or used for model training."
       },
       {
         "question": "Can GAIA integrate with an existing executive assistant's workflow?",
@@ -1370,7 +1370,7 @@
     "faqs": [
       {
         "question": "Is GAIA secure enough for attorney-client communications?",
-        "answer": "GAIA is fully open source and self-hostable. Law firms can deploy GAIA on their own infrastructure with full data sovereignty, ensuring attorney-client privilege is maintained. No data is ever shared with third parties or used for training."
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. Law firms can deploy GAIA on their own infrastructure with full data sovereignty, ensuring attorney-client privilege is maintained. No data is ever shared with third parties or used for training."
       },
       {
         "question": "How does GAIA help lawyers track deadlines?",
@@ -1438,7 +1438,7 @@
       },
       {
         "question": "Is GAIA suitable for enterprise data teams?",
-        "answer": "GAIA is fully open source and self-hostable, making it suitable for enterprise deployments with strict data governance requirements. Teams can run GAIA on their own infrastructure with complete control over data access and integrations."
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, making it suitable for enterprise deployments with strict data governance requirements. Teams can run GAIA on their own infrastructure with complete control over data access and integrations."
       }
     ]
   },
@@ -1495,7 +1495,7 @@
       },
       {
         "question": "How does GAIA handle sensitive HR communications?",
-        "answer": "GAIA is fully open source and self-hostable. HR teams can deploy it on their own infrastructure with complete data control, ensuring employee information stays within organizational boundaries. No data is shared with third parties."
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable. HR teams can deploy it on their own infrastructure with complete data control, ensuring employee information stays within organizational boundaries. No data is shared with third parties."
       },
       {
         "question": "Can GAIA help manage the performance review cycle?",
@@ -1620,7 +1620,7 @@
       },
       {
         "question": "Is GAIA suitable for use in schools and educational institutions?",
-        "answer": "GAIA is fully open source and self-hostable, making it suitable for school deployments with data privacy requirements. Institutions can run GAIA on their own infrastructure with complete control over educator and student data."
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, making it suitable for school deployments with data privacy requirements. Institutions can run GAIA on their own infrastructure with complete control over educator and student data."
       }
     ]
   },
@@ -1676,7 +1676,7 @@
     "faqs": [
       {
         "question": "How does GAIA handle the compliance sensitivity of financial communications?",
-        "answer": "GAIA drafts client communications based on templates and guidelines you provide, and keeps you in the review and approval loop before anything is sent. It is fully open source and self-hostable, so RIAs and broker-dealers can deploy it within their own infrastructure with complete data control."
+        "answer": "GAIA drafts client communications based on templates and guidelines you provide, and keeps you in the review and approval loop before anything is sent. It is source-available (PolyForm Noncommercial) and self-hostable, so RIAs and broker-dealers can deploy it within their own infrastructure with complete data control."
       },
       {
         "question": "Can GAIA integrate with Salesforce or financial CRM tools?",
@@ -1707,7 +1707,7 @@
       "healthcare administrative automation",
       "physician email management AI"
     ],
-    "intro": "Healthcare professionals face one of the heaviest administrative burdens of any profession. A 2024 AMA survey found that physicians spend an average of 15.5 hours per week on administrative tasks, with electronic communication and paperwork consuming time that could go toward patient care. Importantly, GAIA operates strictly in the administrative and productivity layer: it does not access clinical systems, electronic health records, or protected health information. For healthcare organizations with compliance requirements, GAIA is fully open source and self-hostable, enabling deployment within your own infrastructure for HIPAA-compliant administrative workflows.",
+    "intro": "Healthcare professionals face one of the heaviest administrative burdens of any profession. A 2024 AMA survey found that physicians spend an average of 15.5 hours per week on administrative tasks, with electronic communication and paperwork consuming time that could go toward patient care. Importantly, GAIA operates strictly in the administrative and productivity layer: it does not access clinical systems, electronic health records, or protected health information. For healthcare organizations with compliance requirements, GAIA is source-available (PolyForm Noncommercial) and self-hostable, enabling deployment within your own infrastructure for HIPAA-compliant administrative workflows.",
     "painPoints": [
       "Administrative email volume including scheduling requests, referrals, and departmental communications creates daily inbox overload",
       "Scheduling complexity across clinics, hospitals, and patient appointments requires constant coordination",
@@ -1744,7 +1744,7 @@
       },
       {
         "question": "Can GAIA be deployed in a HIPAA-compliant manner?",
-        "answer": "Yes. GAIA is fully open source and self-hostable. Healthcare organizations can deploy GAIA entirely within their own infrastructure, maintaining complete control over data flows and ensuring compliance with organizational and regulatory requirements for administrative systems."
+        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) and self-hostable. Healthcare organizations can deploy GAIA entirely within their own infrastructure, maintaining complete control over data flows and ensuring compliance with organizational and regulatory requirements for administrative systems."
       },
       {
         "question": "How does GAIA help physicians manage their administrative email load?",
@@ -1799,8 +1799,8 @@
         "description": "Add tasks in plain language through chat, email, or voice without navigating menus or opening apps. GAIA parses intent, sets due dates, and routes the task to the right list so low-friction capture actually happens."
       },
       {
-        "title": "Open Source and Self-Hostable",
-        "description": "GAIA is fully open source and free to self-host — no subscription required to get started — with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat if you want the managed version, giving you full control over your data and no vendor lock-in."
+        "title": "Source-Available and Self-Hostable",
+        "description": "GAIA is source-available (PolyForm Noncommercial) and free to self-host — no subscription required to get started — with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat if you want the managed version, giving you full control over your data and no vendor lock-in."
       }
     ],
     "faqs": [
@@ -1865,8 +1865,8 @@
         "description": "With 50+ integrations via MCP, GAIA connects Gmail, Google Calendar, Slack, Notion, and Todoist into a unified operational layer — so the CoS can track deliverables, deadlines, and decisions across tools from a single interface."
       },
       {
-        "title": "Open Source and Self-Hostable",
-        "description": "GAIA is fully open source and self-hostable for organizations with data residency requirements, with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat for the managed version — no per-seat pricing that makes executive support tooling prohibitively expensive."
+        "title": "Source-Available and Self-Hostable",
+        "description": "GAIA is source-available (PolyForm Noncommercial) and self-hostable for organizations with data residency requirements, with a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat for the managed version — no per-seat pricing that makes executive support tooling prohibitively expensive."
       }
     ],
     "faqs": [
@@ -1880,7 +1880,7 @@
       },
       {
         "question": "Is GAIA appropriate for managing a C-suite executive's sensitive communications?",
-        "answer": "GAIA is fully open source and self-hostable, meaning your organization can deploy it entirely within your own infrastructure with no third-party data access. For organizations that need full control over executive communications, self-hosting provides complete data sovereignty. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for teams comfortable with a hosted deployment."
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, meaning your organization can deploy it entirely within your own infrastructure with no third-party data access. For organizations that need full control over executive communications, self-hosting provides complete data sovereignty. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for teams comfortable with a hosted deployment."
       }
     ]
   },
@@ -1931,8 +1931,8 @@
         "description": "With 50+ integrations via MCP, GAIA connects to the tools each client already uses — Notion, Slack, Todoist, Google Workspace — so the VA can operate within the client's existing stack rather than asking every client to adopt something new."
       },
       {
-        "title": "Open Source and Free to Start",
-        "description": "GAIA is fully open source with a free tier for self-hosted deployments, and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
+        "title": "Source-Available and Free to Start",
+        "description": "GAIA is source-available (PolyForm Noncommercial) with a free tier for self-hosted deployments, and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows."
       }
     ],
     "faqs": [
@@ -1946,7 +1946,7 @@
       },
       {
         "question": "How does GAIA handle client confidentiality?",
-        "answer": "GAIA is fully open source and self-hostable, meaning you can deploy it within your own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, self-hosting provides complete data control. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for VAs comfortable with a hosted deployment."
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable, meaning you can deploy it within your own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, self-hosting provides complete data control. The managed Pro plan at ${{PRO_MONTHLY_PRICE}}/month is also available for VAs comfortable with a hosted deployment."
       }
     ]
   }
