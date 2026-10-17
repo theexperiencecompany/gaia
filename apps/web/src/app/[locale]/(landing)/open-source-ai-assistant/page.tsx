@@ -110,6 +110,15 @@ export default function OpenSourceAIAssistantPage() {
           generateProductSchema(),
         ]}
       />
+      <header className="mx-auto max-w-5xl px-6 pt-36 text-center">
+        <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
+          Open Source AI Assistant
+        </h1>
+        <p className="mx-auto max-w-2xl text-xl text-zinc-400">
+          Self-host your personal AI. GAIA manages your email, calendar, tasks
+          and workflows, and your data stays on your servers.
+        </p>
+      </header>
       <OpenSourceAIClient />
     </>
   );

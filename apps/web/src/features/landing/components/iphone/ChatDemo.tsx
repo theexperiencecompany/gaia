@@ -8,8 +8,8 @@ import { DiscordIcon, SlackIcon, TelegramIcon, WhatsappIcon } from "@icons";
 import Image from "next/image";
 import type React from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
 export type ChatPlatform =
@@ -135,7 +135,7 @@ function DemoCtaIcon({
 function DemoCta({ platform }: { platform: ChatPlatform }) {
   const { label, href, accent, darkText } = DEMO_CTA[platform];
   return (
-    <Link href={href} className="chat-bubble-pop mt-1 w-fit">
+    <SiteLink href={href} className="chat-bubble-pop mt-1 w-fit">
       <RaisedButton
         color={accent}
         size="sm"
@@ -144,7 +144,7 @@ function DemoCta({ platform }: { platform: ChatPlatform }) {
         <DemoCtaIcon platform={platform} color={darkText ? "#000" : "#fff"} />
         {label}
       </RaisedButton>
-    </Link>
+    </SiteLink>
   );
 }
 

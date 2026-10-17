@@ -2,7 +2,7 @@ import { Link } from "@heroui/link";
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { Link as I18nLink } from "@/i18n/navigation";
+import { SiteLink } from "@/components/seo/SiteLink";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,
@@ -619,9 +619,9 @@ function YourRightsAndRetention() {
           </a>{" "}
           from the email address associated with your account, or submit a
           request through our{" "}
-          <I18nLink className="text-blue-500 underline" href="/contact">
+          <SiteLink className="text-blue-500 underline" href="/contact">
             contact page
-          </I18nLink>
+          </SiteLink>
           , and tell us which right you wish to exercise.
         </p>
         <ul className="mb-4 ml-6 list-disc">

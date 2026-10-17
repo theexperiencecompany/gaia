@@ -75,6 +75,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     integrationName,
     integration.category,
     slug,
+    integration.source,
   );
   const ogTitle = `${integrationName} AI Integration - Connect ${integrationName} to Your AI Assistant`;
 

@@ -4,8 +4,8 @@ import { Tooltip } from "@heroui/tooltip";
 import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { Link } from "@/i18n/navigation";
 import LargeHeader from "../shared/LargeHeader";
 
 const TOOL_ICONS = [
@@ -535,12 +535,12 @@ export default function Tired() {
       </div>
 
       {/* CTA */}
-      <Link href="/integrations" className="mt-6 sm:mt-8">
+      <SiteLink href="/integrations" className="mt-6 sm:mt-8">
         <RaisedButton color="#00bbff" className="text-black!">
           See All Integrations
           <CircleArrowRight02Icon width={20} height={20} />
         </RaisedButton>
-      </Link>
+      </SiteLink>
     </section>
   );
 }

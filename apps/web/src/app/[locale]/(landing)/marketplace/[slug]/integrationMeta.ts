@@ -80,9 +80,11 @@ export function generateIntegrationTitle(
   name: string,
   category: string,
   slug?: string,
+  source?: "platform" | "custom",
 ): string {
-  // Only slugs whose ranking queries carry "... mcp" intent (GSC) get MCP Server phrasing.
-  if (slug && MCP_SERVER_SLUGS.has(slug)) {
+  // MCP Server phrasing for slugs searched with "... mcp" intent (GSC) and for every
+  // community MCP, which also keeps it apart from a native integration of the same name.
+  if (source === "custom" || (slug && MCP_SERVER_SLUGS.has(slug))) {
     return `${name} MCP Server: Automate with AI`;
   }
   // The layout title template appends "| GAIA" — never include the brand here,

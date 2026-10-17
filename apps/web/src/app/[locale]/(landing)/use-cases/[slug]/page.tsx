@@ -1,3 +1,4 @@
+import { ApiError } from "@shared/api";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
@@ -22,6 +23,8 @@ import {
 const getExploreWorkflowsCached = cache((limit: number, offset: number) =>
   workflowApi.getExploreWorkflows(limit, offset),
 );
+
+const HTTP_NOT_FOUND = 404;
 
 interface PageProps {
   params: Promise<{ readonly slug: string }>;
@@ -68,62 +71,20 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-
-  // First, attempt to find the use-case in explore workflows (API)
-  try {
-    const resp = await getExploreWorkflowsCached(200, 0);
-    const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
-    if (found) {
-      const workflowAsUseCase: UseCase = {
-        title: found.title,
-        description: found.description || "",
-        detailed_description: found.description,
-        slug: found.slug,
-        action_type: "workflow",
-        integrations: found.steps?.map((s) => s.category) || [],
-        categories: found.categories || ["featured"],
-        published_id: found.id,
-        creator: found.creator,
-      };
-
-      const meta = generateUseCaseMetadata(workflowAsUseCase);
-      return meta;
-    }
-  } catch (err) {
-    console.error("Error fetching explore workflows for metadata:", err);
-  }
-
-  // If not found in static data, try API as community workflow
-  try {
-    const response = await workflowApi.getPublicWorkflow(slug);
-    const workflow = response.workflow;
-
-    if (!workflow.slug) {
-      return {
-        title: "Use Case Not Found",
-        description: "The requested use case could not be found.",
-      };
-    }
-
-    const workflowAsUseCase: UseCase = {
-      title: workflow.title,
-      description: workflow.description || "",
-      detailed_description: workflow.description,
-      slug: workflow.slug,
-      action_type: "workflow",
-      integrations: workflow.steps?.map((s) => s.category) || [],
-      categories: ["featured"],
-      published_id: workflow.id,
-      creator: workflow.creator ?? undefined,
-    };
-
-    return generateUseCaseMetadata(workflowAsUseCase);
-  } catch {
-    return {
-      title: "Use Case Not Found",
-      description: "The requested use case could not be found.",
-    };
-  }
+  const { useCase, communityWorkflow } = await resolveUseCase(slug);
+  if (!useCase && !communityWorkflow) return {};
+  const display = displayFromResolved(useCase, communityWorkflow);
+  return generateUseCaseMetadata({
+    title: display.title,
+    description: display.description,
+    detailed_description: display.description,
+    slug: useCase?.slug ?? communityWorkflow?.slug ?? slug,
+    action_type: "workflow",
+    integrations: display.integrations,
+    categories: display.categories,
+    published_id: display.published_id,
+    creator: display.creator,
+  });
 }
 
 interface ResolvedUseCase {
@@ -139,11 +100,11 @@ interface ResolvedUseCase {
  * redirect() outside of try/catch — redirect() throws a NEXT_REDIRECT control
  * flow error, which a surrounding catch would otherwise swallow or convert.
  */
-async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
+const resolveUseCase = cache(async (slug: string): Promise<ResolvedUseCase> => {
   const isLegacyId = (canonicalSlug?: string | null) =>
     slug.startsWith("wf_") && !!canonicalSlug && canonicalSlug !== slug;
 
-  try {
+  {
     const resp = await getExploreWorkflowsCached(200, 0);
     const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
     if (found) {
@@ -179,8 +140,6 @@ async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
         missing: false,
       };
     }
-  } catch (err) {
-    console.error("Error fetching explore workflows for page data:", err);
   }
 
   try {
@@ -212,15 +171,19 @@ async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
       missing: false,
     };
   } catch (error) {
-    console.error("Error fetching workflow:", error);
-    return {
-      useCase: null,
-      communityWorkflow: null,
-      redirectTo: null,
-      missing: true,
-    };
+    // Only a real 404 is a missing use case. Anything else throws, so ISR keeps
+    // serving the last good page instead of caching a not-found one as a 200.
+    if (error instanceof ApiError && error.status === HTTP_NOT_FOUND) {
+      return {
+        useCase: null,
+        communityWorkflow: null,
+        redirectTo: null,
+        missing: true,
+      };
+    }
+    throw error;
   }
-}
+});
 
 type Resolved = Awaited<ReturnType<typeof resolveUseCase>>;
 

@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { Link } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
 
 export default function GetStartedButton({
@@ -20,7 +20,7 @@ export default function GetStartedButton({
 }) {
   return (
     <div className="relative z-2 flex flex-col items-center gap-4 group">
-      <Link href={href}>
+      <SiteLink href={href}>
         <RaisedButton
           className={`rounded-xl ${classname} before:rounded-xl duration-400 ease-out group shadow-black hover:scale-110`}
           color={btnColor}
@@ -32,7 +32,7 @@ export default function GetStartedButton({
         >
           <span className="px-3">{text}</span>
         </RaisedButton>
-      </Link>
+      </SiteLink>
 
       {small_text && (
         <div className="text-xs font-light text-black">
