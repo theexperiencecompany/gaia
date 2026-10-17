@@ -18,7 +18,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 INSTALL_SH = REPO_ROOT / "packages" / "cli" / "install.sh"
 
-HOST_TOOLS = ("sh", "bash", "uname", "mkdir", "cat", "chmod", "mktemp", "tail", "rm")
+HOST_TOOLS = ("sh", "bash", "uname", "mkdir", "cat", "chmod", "mktemp", "tail", "rm", "date", "sed")
 
 NVM_NOISE = "=> Appending nvm source string to /home/u/.bashrc"
 NVM_DOWNLOAD_NOISE = (
@@ -26,7 +26,7 @@ NVM_DOWNLOAD_NOISE = (
 )
 NPM_NOISE = ("npm warn ERESOLVE overriding peer dependency", "added 194 packages in 9s")
 NPM_FAILURE_TAIL = "npm error 404 Not Found - GET https://registry.npmjs.org/@heygaia%2fcli"
-GET_STARTED_UP = "  \033[0;32mgaia up\033[0m"
+GET_STARTED_UP = "Next, run:  gaia up\n"
 
 # What `curl …/nvm-sh/nvm/…/install.sh` returns: a chatty nvm whose install puts
 # node and npm on PATH, and a chatty npm whose global install puts gaia there.
@@ -103,16 +103,13 @@ def fresh_server(tmp_path: Path) -> dict[str, str]:
     }
 
 
-def test_no_node_yet_is_info_and_says_nvm_comes_next(fresh_server: dict[str, str]) -> None:
+def test_no_node_yet_installs_it_quietly_in_one_line(fresh_server: dict[str, str]) -> None:
     result = _run(fresh_server)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "No supported package manager" not in result.stdout
-    assert (
-        "[info]\033[0m No Node.js package manager yet (npm, pnpm, or bun), "
-        "so installing Node.js via nvm..."
-    ) in result.stdout
-    assert "Node.js v22.0.0 installed\n" in result.stdout
+    assert "✓ Node.js 22.0.0 installed" in result.stdout
+    assert "[info]" not in result.stdout
 
 
 def test_nvm_install_prints_a_command_that_loads_nvm_then_runs_gaia_up(
@@ -122,7 +119,7 @@ def test_nvm_install_prints_a_command_that_loads_nvm_then_runs_gaia_up(
 
     assert result.returncode == 0, result.stdout + result.stderr
     nvm_dir = Path(fresh_server["HOME"]) / ".nvm"
-    assert f'. "{nvm_dir}/nvm.sh" && gaia up' in result.stdout
+    assert f'Next, run:  . "{nvm_dir}/nvm.sh" && gaia up' in result.stdout
     assert GET_STARTED_UP not in result.stdout
 
 
@@ -138,7 +135,7 @@ def test_install_output_of_nvm_and_npm_is_hidden_on_success(
     assert not list(Path(fresh_server["TMPDIR"]).iterdir())
 
 
-def test_gaia_already_on_path_keeps_the_get_started_list(
+def test_gaia_already_on_path_gets_one_next_step(
     fresh_server: dict[str, str], tmp_path: Path
 ) -> None:
     bin_dir = Path(fresh_server["PATH"])
@@ -148,8 +145,8 @@ def test_gaia_already_on_path_keeps_the_get_started_list(
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert GET_STARTED_UP in result.stdout
-    assert "gaia status" in result.stdout
-    assert "cannot find gaia" not in result.stdout
+    assert "gaia status" not in result.stdout
+    assert "\033[" not in result.stdout  # piped: no colour codes
 
 
 def test_npm_prefix_off_path_prints_the_path_fix_then_gaia_up(
@@ -163,7 +160,7 @@ def test_npm_prefix_off_path_prints_the_path_fix_then_gaia_up(
     result = _run(fresh_server)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert f'export PATH="{prefix}/bin:$PATH" && gaia up' in result.stdout
+    assert f'Next, run:  export PATH="{prefix}/bin:$PATH" && gaia up' in result.stdout
     assert GET_STARTED_UP not in result.stdout
 
 
