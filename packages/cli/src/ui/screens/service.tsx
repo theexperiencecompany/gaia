@@ -5,7 +5,6 @@ import { Header } from "../components/Header.js";
 import { LogWindow } from "../components/LogWindow.js";
 import { Mark } from "../components/Mark.js";
 import { ErrorStep } from "../components/shared-steps.js";
-import { BOX_BORDER, THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
 import { useCLIState } from "../use-cli-state.js";
 
@@ -26,17 +25,8 @@ export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
       <Header showStatus={done} />
 
       {working && !state.error && (
-        <Box
-          flexDirection="column"
-          marginTop={1}
-          paddingX={2}
-          borderStyle={BOX_BORDER}
-          borderColor={THEME_COLOR}
-        >
+        <Box flexDirection="column" marginTop={1}>
           <Spinner label={state.status || "Working…"} />
-          {state.data.repoPath && (
-            <Text color="gray">{state.data.repoPath}</Text>
-          )}
           {logs.length > 0 && <LogWindow logs={logs} />}
         </Box>
       )}
