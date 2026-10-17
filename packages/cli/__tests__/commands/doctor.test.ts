@@ -502,7 +502,7 @@ describe("checkDockerDaemon", () => {
 
     expect(result.state).toBe("fail");
     expect(result.severity).toBe("blocker");
-    expect(result.detail).toBe("Docker isn't installed");
+    expect(result.detail).toBe("isn't installed");
   });
 
   it("tells a user the socket refuses to log out and in, not to start Docker", async () => {
@@ -513,9 +513,7 @@ describe("checkDockerDaemon", () => {
     const result = await checkDockerDaemon("no-permission");
 
     expect(result.state).toBe("fail");
-    expect(result.detail).toBe(
-      "Docker is running, but your user can't use it yet",
-    );
+    expect(result.detail).toBe("is running, but your user can't use it yet");
     expect(result.fix).toContain("newgrp docker");
     expect(result.fix).not.toContain("systemctl start docker");
   });
@@ -779,6 +777,27 @@ describe("printDoctorReport", () => {
     expect(text.match(/Run 'gaia up'/g)).toHaveLength(1);
     expect(text).not.toContain("never shown");
     expect(text).toContain("1 problem");
+  });
+
+  it("says a fix shared by consecutive problems once, under the last of them", () => {
+    let text = "";
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((c) => {
+      text += String(c);
+      return true;
+    });
+    const fix = "Run 'gaia up': it installs everything GAIA needs.";
+
+    printDoctorReport({
+      install: "GAIA isn't installed yet",
+      results: [
+        { label: "Docker", severity: "blocker", state: "fail", fix },
+        { label: "GAIA", severity: "blocker", state: "fail", fix },
+      ],
+    });
+    write.mockRestore();
+
+    expect(text.split(fix)).toHaveLength(2);
+    expect(text.indexOf(fix)).toBeGreaterThan(text.indexOf("GAIA "));
   });
 });
 

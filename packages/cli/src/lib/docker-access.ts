@@ -26,6 +26,10 @@ const DOCKER_INFO_TIMEOUT_MS = 5000;
 
 const ORBSTACK_URL = "https://orbstack.dev";
 
+/** The fix wherever something gaia up would install is missing. */
+export const GAIA_UP_INSTALLS =
+  "Run 'gaia up': it installs everything GAIA needs.";
+
 export async function getDockerAccess(): Promise<DockerAccess> {
   try {
     await execa("docker", ["info"], { timeout: DOCKER_INFO_TIMEOUT_MS });
@@ -42,6 +46,8 @@ export async function getDockerAccess(): Promise<DockerAccess> {
 
 /** What is wrong and what to do about it, for a Docker that is not ready. */
 export interface DockerProblem {
+  /** The state alone, for a row already labelled Docker: "isn't installed". */
+  state: string;
   summary: string;
   fix: string;
 }
@@ -58,13 +64,15 @@ export async function describeDockerProblem(
     case "not-installed":
       return {
         summary: "Docker isn't installed",
+        state: "isn't installed",
         fix: mac
           ? `Install OrbStack (${ORBSTACK_URL}) or Docker Desktop, open it, then try again.`
-          : "Run 'gaia up': it offers to install Docker for you.",
+          : GAIA_UP_INSTALLS,
       };
     case "not-running":
       return {
         summary: "Docker isn't running",
+        state: "isn't running",
         fix: mac
           ? "Open OrbStack or Docker Desktop, then try again."
           : "Start it with 'sudo systemctl start docker', then try again.",
@@ -72,6 +80,7 @@ export async function describeDockerProblem(
     case "no-permission":
       return {
         summary: "Docker is running, but your user can't use it yet",
+        state: "is running, but your user can't use it yet",
         fix: (await isUserInDockerGroup())
           ? `Your user just joined the '${DOCKER_GROUP}' group. Log out and back in (or run 'newgrp ${DOCKER_GROUP}' in this terminal), then try again.`
           : `Run 'sudo usermod -aG ${DOCKER_GROUP} $USER', log out and back in, then try again.`,

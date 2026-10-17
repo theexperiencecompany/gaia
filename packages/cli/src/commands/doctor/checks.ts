@@ -28,6 +28,7 @@ import {
 import {
   type DockerAccess,
   describeDockerProblem,
+  GAIA_UP_INSTALLS,
 } from "../../lib/docker-access.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
@@ -284,7 +285,7 @@ export async function checkDockerDaemon(
   };
   if (access === "ready") return { ...base, state: "ok", detail: "running" };
   const problem = await describeDockerProblem(access);
-  return { ...base, state: "fail", detail: problem.summary, fix: problem.fix };
+  return { ...base, state: "fail", detail: problem.state, fix: problem.fix };
 }
 
 export async function checkComposeContainers(options: {
@@ -336,7 +337,7 @@ export function unconfiguredInstallCheck(repoPath: string | null): CheckResult {
     return {
       ...base,
       detail: "isn't installed yet",
-      fix: "Run 'gaia up' to install it.",
+      fix: GAIA_UP_INSTALLS,
     };
   }
   return {

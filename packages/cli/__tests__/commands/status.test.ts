@@ -150,6 +150,7 @@ describe("gaia status on a self-host install", () => {
         access: "no-permission",
         problem: {
           summary: "Docker is running, but your user can't use it yet",
+          state: "is running, but your user can't use it yet",
           fix: "Log out and back in (or run 'newgrp docker'), then try again.",
         },
         containers: [],

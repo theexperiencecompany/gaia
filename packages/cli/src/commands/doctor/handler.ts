@@ -47,13 +47,14 @@ function markFor(result: CheckResult): MarkKind {
   return result.severity === "warning" ? "warn" : "fail";
 }
 
-function printCheck(result: CheckResult): void {
+function printCheck(result: CheckResult, next: CheckResult | undefined): void {
   const kind = markFor(result);
   const detail = result.detail ? paint.gray(result.detail) : "";
   out(
     `${INDENT}${MARK_PAINT[kind](MARK[kind])} ${result.label.padEnd(LABEL_WIDTH)}${detail}`,
   );
-  if (result.state === "fail" && result.fix) {
+  // Rows that share a root cause share its fix: say it once, under the last of them.
+  if (result.state === "fail" && result.fix && next?.fix !== result.fix) {
     out(`${INDENT}  ${" ".repeat(LABEL_WIDTH)}${result.fix}`);
   }
 }
@@ -99,9 +100,10 @@ export function printDoctorReport(report: DoctorReport): void {
   out();
   out(`${paint.bold("gaia doctor")} ${paint.gray(report.install)}`);
   out();
-  for (const result of report.results) {
-    if (result.state !== "skipped") printCheck(result);
-  }
+  const shown = report.results.filter((r) => r.state !== "skipped");
+  shown.forEach((result, i) => {
+    printCheck(result, shown[i + 1]);
+  });
   printSkipped(report.results.filter((r) => r.state === "skipped"));
   out();
   out(summaryLine(report));
