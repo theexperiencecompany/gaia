@@ -117,6 +117,7 @@ export type ServerEventName =
   | "settings:chat_channel_priority_updated"
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
+  | "settings:quiet_hours_updated"
   | "skill:disabled"
   | "skill:enabled"
   | "skill:installed"
@@ -1285,6 +1286,13 @@ export interface EventProperties {
     "tool_name"?: string;
     "require_approval"?: boolean;
   };
+  "settings:quiet_hours_updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "start_hour": number;
+    "end_hour": number;
+  };
   "skill:disabled": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1594,6 +1602,8 @@ export interface EventProperties {
     "generated_immediately"?: boolean;
     "from_todo"?: boolean;
     "is_todo_workflow"?: boolean;
+    "delivery"?: "now" | "brief" | "silent";
+    "created_by_agent"?: boolean;
   };
   "workflow:deactivated": {
     "actor": "user" | "agent";
@@ -1633,6 +1643,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "delivery"?: "now" | "brief" | "silent";
   };
   "workflow_card:navigate": {
     "slug": string;

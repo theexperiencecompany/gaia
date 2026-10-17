@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager, contextmanager
+from datetime import UTC, datetime
 import importlib.util
 import math
 import os
@@ -72,7 +73,13 @@ def pick_free_port() -> int:
         return s.getsockname()[1]
 
 
-LLM_STUB_DIR = Path(__file__).resolve().parents[3] / "tools" / "llm-stub"
+# tools/llm-stub sits at the repo root, outside apps/api. The mutation lane runs
+# these tests from a relocated copy of apps/api with no repo above it, so it
+# names the real directory in GAIA_LLM_STUB_DIR (scripts/ci/mutation.sh).
+LLM_STUB_DIR = Path(
+    os.environ.get("GAIA_LLM_STUB_DIR")
+    or Path(__file__).resolve().parents[3] / "tools" / "llm-stub"
+)
 
 
 def load_llm_stub_module(name: str) -> ModuleType:
@@ -530,3 +537,13 @@ async def drain_at_most_once_sends() -> None:
     await asyncio.gather(
         *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
     )
+
+
+def quiet_hours_excluding_now() -> dict[str, int]:
+    """Return a UTC quiet-hours window starting two hours from now, so a send is never held.
+
+    A plain mapping rather than a QuietHours: UserDocument coerces it, and the
+    regression lane can still build it against a base revision without the model.
+    """
+    hour = datetime.now(UTC).hour
+    return {"start_hour": (hour + 2) % 24, "end_hour": (hour + 3) % 24}

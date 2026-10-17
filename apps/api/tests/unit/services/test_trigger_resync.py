@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
@@ -16,6 +17,7 @@ MODULE = "app.services.workflow.trigger_service"
 
 def _wf(wf_id: str, trigger_name: str, ids: list[str] | None) -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id=wf_id,
         user_id="user1",
         title="wf",

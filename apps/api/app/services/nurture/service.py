@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from app.config.settings import settings
 from app.constants.email import CONTACT_EMAIL, FOUNDER_MEETING_URL, FOUNDER_SENDER
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_EMAIL
+from app.constants.notifications import NotificationChannel
 from app.constants.nurture import (
     NURTURE_BACKFILL_GRACE_DAYS,
     NURTURE_MAX_EMAILS_PER_WEEK,
@@ -132,7 +132,9 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
         return False
     if not user.email:
         return False
-    if not normalize_channel_preferences(user.notification_channel_prefs)[CHANNEL_TYPE_EMAIL]:
+    if not normalize_channel_preferences(user.notification_channel_prefs)[
+        NotificationChannel.EMAIL
+    ]:
         return False
 
     created_at = as_utc(user.created_at)

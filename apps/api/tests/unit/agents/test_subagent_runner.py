@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 import json
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.messages import (
@@ -38,10 +38,13 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
 )
 from app.agents.llm.lane import AgentRole
+from app.agents.prompts.workflow_prompts import WORKFLOW_DELIVERY_SECTIONS
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
+from app.constants.workflows import WorkflowDelivery
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
+from app.models.agent_config import AgentConfigurable
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
 from tests._harness.context_chain import slots_of
@@ -1430,6 +1433,55 @@ class TestPrepareExecutorExecution:
         assert task_msg.additional_kwargs["visible_to"] == {"executor_agent"}
         assert task_msg.content.startswith("run tests\n")
         assert task_msg.content != "run tests"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("delivery", list(WorkflowDelivery))
+    async def test_a_workflow_run_is_told_its_delivery_mode(
+        self, delivery: WorkflowDelivery
+    ) -> None:
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context:
+            ctx, _ = await prepare_executor_execution(
+                task="run tests",
+                configurable={
+                    "user_id": "u1",
+                    "thread_id": "t1",
+                    "workflow_id": "wf-1",
+                    "workflow_delivery": delivery,
+                },
+            )
+
+        task_msg = next(
+            m
+            for m in ctx.initial_state["messages"]
+            if m.type == "human" and not m.additional_kwargs.get("time_context")
+        )
+        assert task_msg.content == f"run tests\n{WORKFLOW_DELIVERY_SECTIONS[delivery]}"
+
+    @pytest.mark.asyncio
+    async def test_a_legacy_silent_run_is_told_it_is_silent(self) -> None:
+        """A run queued before deploy carries only workflow_notify_on_completion=False."""
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        legacy: dict[str, object] = {
+            "user_id": "u1",
+            "thread_id": "t1",
+            "workflow_id": "wf-1",
+            "workflow_notify_on_completion": False,
+        }
+        with graph, config, system, context:
+            ctx, _ = await prepare_executor_execution(
+                task="run tests", configurable=cast("AgentConfigurable", legacy)
+            )
+
+        task_msg = next(
+            m
+            for m in ctx.initial_state["messages"]
+            if m.type == "human" and not m.additional_kwargs.get("time_context")
+        )
+        silent = WORKFLOW_DELIVERY_SECTIONS[WorkflowDelivery.SILENT]
+        assert task_msg.content == f"run tests\n{silent}"
 
     async def _task_for_category(self, tool_category: str, *known: Subagent) -> str:
         """Prepare an executor run for the category; return its task message text."""

@@ -124,7 +124,7 @@ class TestAccountToolsThroughGraph:
         assert "email=off" in tool_msg.content
         # The write went to THIS graph's user, not another tenant's.
         _patched_seams.set_channels.assert_awaited_once_with(
-            thread_config["configurable"]["user_id"], email=False
+            thread_config["configurable"]["user_id"], {"email": False}
         )
         # Analytics only after success.
         _patched_seams.capture.assert_called_once_with(

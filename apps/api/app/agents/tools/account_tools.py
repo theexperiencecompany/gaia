@@ -37,6 +37,7 @@ class UpdateNotificationSettingsArgs(BaseModel):
     discord: bool | None = Field(default=None, description="Enable/disable Discord notifications")
     whatsapp: bool | None = Field(default=None, description="Enable/disable WhatsApp notifications")
     slack: bool | None = Field(default=None, description="Enable/disable Slack notifications")
+    imessage: bool | None = Field(default=None, description="Enable/disable iMessage notifications")
     email: bool | None = Field(default=None, description="Enable/disable email notifications")
 
 
@@ -90,8 +91,8 @@ update_notification_settings = define_mutation_tool(
     area="notifications",
     description=(
         "Change which channels the user receives notifications on (email, telegram, "
-        "discord, whatsapp, slack). Only the flags you pass change; others are left as-is. "
-        + HIL_CONFIRM_NOTE
+        "discord, whatsapp, slack, imessage). Only the flags you pass change; others are "
+        "left as-is. " + HIL_CONFIRM_NOTE
     ),
     args_model=UpdateNotificationSettingsArgs,
     apply=set_notification_channels,

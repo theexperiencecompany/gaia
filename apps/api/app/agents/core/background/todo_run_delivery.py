@@ -20,6 +20,7 @@ from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import (
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
@@ -294,6 +295,7 @@ async def _narrate_and_send(
         user_id=todo.user_id,
         notification_text=message,
         origin=f'tracked todo "{todo.title}" (id {todo.id})',
+        message_class=ProactiveMessageClass.ROUTINE,
     )
     if platform is None:
         return await _send_in_app(todo, message)

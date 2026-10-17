@@ -16,6 +16,7 @@ import pytest
 from starlette.requests import Request
 
 from app.agents.skills.models import Skill
+from app.constants.workflows import WorkflowDelivery
 from app.models.hil_models import LedgerState
 from app.models.integration_models import Integration
 from app.models.mail_models import GmailMessageResource
@@ -119,6 +120,7 @@ def _make_workflow(**overrides: object) -> Workflow:
         "prompt": "Do the thing",
         "steps": [{"id": "step_1", "title": "Step 1", "category": "general", "description": "x"}],
         "trigger_config": {"type": "manual", "enabled": True},
+        "delivery": WorkflowDelivery.NOW,
         "activated": True,
         "is_public": False,
         "slug": None,
@@ -153,6 +155,18 @@ class TestWorkflowNewEvents:
             resp = await client.put(f"{WF}/wf_abc123", json={"title": "Updated"})
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated())
+
+    async def test_an_update_that_changes_delivery_captures_the_new_mode(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(_WF_CAPTURE) as mock_capture,
+        ):
+            mock_svc.return_value = _make_workflow(delivery=WorkflowDelivery.BRIEF)
+            resp = await client.put(f"{WF}/wf_abc123", json={"delivery": "brief"})
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated(delivery="brief"))
 
     @pytest.mark.regression
     async def test_delete_captures(self, client: AsyncClient) -> None:
@@ -224,7 +238,9 @@ class TestWorkflowNewEvents:
                 json={"todo_id": "todo_123", "todo_title": "Buy groceries"},
             )
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), WorkflowCreated(from_todo=True))
+        mock_capture.assert_called_once_with(
+            UserId(UID), WorkflowCreated(from_todo=True, delivery="now")
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -916,11 +932,12 @@ class TestNotificationNewEvents:
             patch(
                 f"{NOTIF}.user_repository.set_channel_preferences",
                 new_callable=AsyncMock,
-            ),
+            ) as set_prefs,
             patch(f"{NOTIF}.capture") as mock_capture,
         ):
             resp = await client.post("/api/v1/notifications/unsubscribe?token=tok")
         assert resp.status_code == 200
+        set_prefs.assert_awaited_once_with(UID, {"email": False})
         mock_capture.assert_called_once_with(UserId(UID), NotificationUnsubscribed())
 
     async def test_a_token_for_a_non_user_id_unsubscribes_nobody(self, client: AsyncClient) -> None:

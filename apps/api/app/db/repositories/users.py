@@ -15,7 +15,7 @@ there would invalidate the whole cache. A cached read may carry a slightly
 stale last_active_at; nothing reads that field off a cached path.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import cast
 
@@ -34,6 +34,7 @@ from app.constants.first_steps import (
     FIRST_STEPS_COLLAPSED_FIELD,
 )
 from app.constants.log_tags import LogTag
+from app.constants.notifications import DEFAULT_CHANNEL_PREFERENCES
 from app.constants.onboarding import (
     GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
@@ -42,6 +43,7 @@ from app.constants.onboarding import (
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.models.notification.notification_models import QuietHours
 from app.models.onboarding_models import (
     PersistedTriageSummary,
     SocialProfile,
@@ -460,6 +462,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    async def set_quiet_hours(self, user_id: str, quiet_hours: QuietHours) -> None:
+        """Store the daily window in which proactive pushes hold."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"quiet_hours": quiet_hours.model_dump()}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
     async def set_bio_status(self, user_id: str, bio_status: BioStatus) -> None:
         """Update the onboarding bio-generation status (e.g. back to processing on a Gmail reconnect)."""
         await self._apply_raw_update(
@@ -651,28 +662,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     # --------------------------------------------------------- settings writes
 
-    async def set_channel_preferences(
-        self,
-        user_id: str,
-        *,
-        telegram: bool | None = None,
-        discord: bool | None = None,
-        whatsapp: bool | None = None,
-        slack: bool | None = None,
-        email: bool | None = None,
-    ) -> None:
-        """Set the given notification channel flags; a None argument leaves that channel untouched."""
-        set_fields: dict[str, object] = {}
-        if telegram is not None:
-            set_fields["notification_channel_prefs.telegram"] = telegram
-        if discord is not None:
-            set_fields["notification_channel_prefs.discord"] = discord
-        if whatsapp is not None:
-            set_fields["notification_channel_prefs.whatsapp"] = whatsapp
-        if slack is not None:
-            set_fields["notification_channel_prefs.slack"] = slack
-        if email is not None:
-            set_fields["notification_channel_prefs.email"] = email
+    async def set_channel_preferences(self, user_id: str, preferences: Mapping[str, bool]) -> None:
+        """Set the given notification channel flags; unlisted channels are left untouched."""
+        unknown = sorted(set(preferences) - set(DEFAULT_CHANNEL_PREFERENCES))
+        if unknown:
+            raise ValueError(f"Unknown notification channels: {unknown}")
+        set_fields: dict[str, object] = {
+            f"notification_channel_prefs.{channel}": enabled
+            for channel, enabled in preferences.items()
+        }
         if not set_fields:
             return
         await self._apply_raw_update(

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Literal, TypedDict, cast
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER
 from app.agents.prompts.onboarding_prompts import (
@@ -13,9 +13,8 @@ from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
     TRIGGERED_ACCOUNT_SECTION,
-    WORKFLOW_AUTO_NOTIFY_SECTION,
+    WORKFLOW_DELIVERY_SECTIONS,
     WORKFLOW_EXECUTION_PROMPT,
-    WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
@@ -24,7 +23,9 @@ from app.agents.templates.agent_template import (
 from app.agents.workspace.paths import safe_upload_filename
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.users import user_repository
+from app.models.legacy_delivery import LEGACY_RUN_NOTIFY_KEY, delivery_from_legacy_flag
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -163,7 +164,7 @@ class WorkflowTriggerContext(BaseModel):
 
     tracked_todos_context: str = ""
     workflow_id: str | None = None
-    workflow_notify_on_completion: bool = True
+    workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
     playbook_fallback: str | None = Field(
         default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
     )
@@ -172,6 +173,14 @@ class WorkflowTriggerContext(BaseModel):
     triggered_at: str = "Unknown"
     # Provider payload of a trigger-fired run: open shape, read via _event_accounts.
     trigger_data: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_notify_flag_is_a_delivery(cls, data: object) -> object:
+        """Map the old notify flag a context queued before delivery modes carries."""
+        return delivery_from_legacy_flag(
+            data, flag_key=LEGACY_RUN_NOTIFY_KEY, delivery_key="workflow_delivery"
+        )
 
 
 async def format_workflow_execution_message(
@@ -225,17 +234,12 @@ async def format_workflow_execution_message(
             tracked_todos_context=tracked_todos_ctx
         )
 
-    # Background workflow runs send an automatic completion notification unless
-    # opted out; tell the agent which mode it's in so it neither double-notifies
-    # nor stays silent. Interactive runs get neither section.
+    # Tell a background workflow run how its result reaches the user so it
+    # neither double-notifies nor stays silent. Interactive runs get no section.
     notification_section = ""
     if trigger.workflow_id:
-        notify_on_completion = (
-            workflow.notify_on_completion if workflow else trigger.workflow_notify_on_completion
-        )
-        notification_section = (
-            WORKFLOW_AUTO_NOTIFY_SECTION if notify_on_completion else WORKFLOW_SILENT_NOTIFY_SECTION
-        )
+        delivery = workflow.delivery if workflow else trigger.workflow_delivery
+        notification_section = WORKFLOW_DELIVERY_SECTIONS[delivery]
 
     common_args = {
         "workflow_title": workflow_title,

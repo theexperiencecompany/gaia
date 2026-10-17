@@ -19,6 +19,7 @@ def _row(
             "prompt": "do the thing",
             "steps": [{"title": "step", "category": "gmail", "description": "d"}],
             "trigger_config": {"type": "manual"},
+            "delivery": "now",
             "creator_info": creator_info or [],
         }
     )

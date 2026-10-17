@@ -22,6 +22,7 @@ import pytest
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkUpdateRequest,
@@ -238,6 +239,7 @@ def _workflow_doc(wf_id: str, categories: list[str]):
     )
 
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id=wf_id,
         user_id=FAKE_USER_ID,
         title="wf",

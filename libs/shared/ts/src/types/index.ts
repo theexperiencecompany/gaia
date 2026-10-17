@@ -46,6 +46,8 @@ export type {
   QuietHours,
 } from "./notification";
 export {
+  EMAIL_CHANNEL_DESCRIPTION,
+  NOTIFICATION_CHANNELS,
   NotificationActionStyle,
   NotificationActionType,
   NotificationStatus,
@@ -110,8 +112,6 @@ export type {
 export type {
   CommunityWorkflow,
   ContentCreator,
-  CreateWorkflowPayload,
-  ExecutionConfig,
   TriggerConfig,
   Workflow,
   WorkflowListResponse,

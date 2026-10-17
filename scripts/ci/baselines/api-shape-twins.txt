@@ -221,6 +221,5 @@ libs/shared/ts/src/types/usage.ts:UsageActivity=UsageActivityResponse
 libs/shared/ts/src/types/usage.ts:UsagePeriod=FeaturePeriodUsage
 libs/shared/ts/src/types/workflow.ts:CommunityWorkflow=PersonalizationWorkflow
 libs/shared/ts/src/types/workflow.ts:ContentCreator=AuthorDetails
-libs/shared/ts/src/types/workflow.ts:CreateWorkflowPayload=SelectedWorkflowDataInput
 libs/shared/ts/src/workflows/triggers.ts:TriggerFieldSchema=TriggerConfigFieldSchema
 libs/shared/ts/src/workflows/triggers.ts:TriggerSchema=WorkflowTriggerResponse

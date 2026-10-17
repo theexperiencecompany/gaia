@@ -114,7 +114,8 @@ function buildDraftFormValues(
     activeTab,
     selectedTrigger: selectedTriggerValue,
     trigger_config: triggerConfig,
-    notify_on_completion: true,
+    // The agent chose it from what the user asked for.
+    delivery: draftData.delivery ?? null,
   };
 }
 

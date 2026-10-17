@@ -1,6 +1,6 @@
 import type { NotificationActionView } from "../api/generated";
 
-export type { ChannelPreferences } from "../api/generated";
+export type { ChannelPreferences, QuietHours } from "../api/generated";
 export enum NotificationStatus {
   PENDING = "pending",
   DELIVERED = "delivered",
@@ -72,9 +72,20 @@ export interface PlatformLinksResponse {
   platform_links: Record<string, PlatformLink>;
 }
 
-export type ChannelPlatform = "telegram" | "discord" | "whatsapp" | "slack";
+// Mirrors USER_CONFIGURABLE_CHANNELS in apps/api/app/constants/notifications.py:
+// every channel the user can switch on or off. `inapp` is absent on purpose — it
+// is always delivered, so it has no preference to store.
+export const NOTIFICATION_CHANNELS = [
+  "telegram",
+  "discord",
+  "whatsapp",
+  "slack",
+  "imessage",
+  "email",
+] as const;
 
-export interface QuietHours {
-  from: string;
-  to: string;
-}
+export type ChannelPlatform = (typeof NOTIFICATION_CHANNELS)[number];
+
+// What the email switch controls: GAIA's own emails to the user, not a copy of
+// every notification (no notification is delivered by email).
+export const EMAIL_CHANNEL_DESCRIPTION = "Tips and check-in emails from GAIA";

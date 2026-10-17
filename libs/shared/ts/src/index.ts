@@ -295,9 +295,7 @@ export type {
   CommunityWorkflow,
   ContentCreator,
   CreateCustomIntegrationRequest,
-  CreateWorkflowPayload,
   CronValidationResult,
-  ExecutionConfig,
   FeatureUsage,
   InAppNotification,
   InAppNotificationContent,
@@ -379,6 +377,10 @@ export {
   SUBSCRIPTION_REQUIRED_CODE,
   WorkflowStatus,
 } from "./types";
+export {
+  EMAIL_CHANNEL_DESCRIPTION,
+  NOTIFICATION_CHANNELS,
+} from "./types/notification";
 export type {
   ApprovalSettlement,
   ArgsPreviewRow,
@@ -474,4 +476,7 @@ export {
   getSchemaFieldEntries,
   getTriggerLogoKey,
   groupTriggerSchemasByIntegration,
+  ONE_CLICK_WORKFLOW_DELIVERY,
+  WORKFLOW_DELIVERIES,
+  WORKFLOW_DELIVERY_COPY,
 } from "./workflows";

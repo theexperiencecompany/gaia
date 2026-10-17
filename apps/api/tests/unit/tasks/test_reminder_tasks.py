@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 import pytest
 
-from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.notifications import NotificationChannel
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.user_models import AuthenticatedUser
@@ -82,7 +82,7 @@ async def test_static_reminder_sends_notification() -> None:
     assert notification.content.title == "Water the plants"
     # The in-app badge must NOT auto-inject the external platforms: the chat-platform
     # copy is delivered (and recorded) by _deliver_reminder_to_platforms instead.
-    assert [c.channel_type for c in notification.channels] == [CHANNEL_TYPE_INAPP]
+    assert [c.channel_type for c in notification.channels] == [NotificationChannel.INAPP]
     log_info.assert_called_once()
 
 

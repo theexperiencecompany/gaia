@@ -1,15 +1,19 @@
 "use client";
 
+import { EMAIL_CHANNEL_DESCRIPTION, NOTIFICATION_CHANNELS } from "@gaia/shared";
+import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
+import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { isBotPlatform } from "@/config/botPlatforms";
 import {
-  NOTIFICATION_PLATFORM_ICONS,
-  NOTIFICATION_PLATFORM_LABELS,
+  NOTIFICATION_CHANNEL_ICONS,
+  NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_PLATFORMS,
-  type NotificationPlatform,
 } from "@/features/notification/constants";
 import { ChatChannelSettings } from "@/features/settings/components/ChatChannelSettings";
+import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -20,53 +24,58 @@ import type { PlatformLinks } from "@/types/platform";
 
 export default function NotificationSettings() {
   const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
-  const [channelPrefs, setChannelPrefs] = useState<
-    Record<NotificationPlatform, boolean>
-  >({
-    telegram: true,
-    discord: true,
-    whatsapp: true,
-    slack: true,
-    imessage: true,
-  });
+  // Null until the stored preferences load. There is no safe placeholder: an
+  // all-true stand-in renders a channel the user switched off as enabled, and
+  // toggling from that reading writes the wrong value back.
+  const [channelPrefs, setChannelPrefs] = useState<ChannelPreferences | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      setLoading(true);
-      try {
-        const [linksData, prefs] = await Promise.all([
-          api.get("/api/v1/platform-links", { silent: true }),
-          NotificationsAPI.getChannelPreferences(),
-        ]);
-        setPlatformLinks(linksData.platform_links || {});
-        // The API has no iMessage channel preference; keep its local default.
-        setChannelPrefs((prev) => ({ ...prev, ...prefs }));
-      } catch {
-        // silently ignore
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAll();
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setLoadFailed(false);
+    try {
+      const [linksData, prefs] = await Promise.all([
+        api.get("/api/v1/platform-links", { silent: true }),
+        NotificationsAPI.getChannelPreferences(),
+      ]);
+      setPlatformLinks(linksData.platform_links || {});
+      setChannelPrefs(prefs);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const handleToggle = async (
-    platform: NotificationPlatform,
-    enabled: boolean,
-  ) => {
-    setTogglingPlatform(platform);
+  useEffect(() => {
+    void fetchAll();
+  }, [fetchAll]);
+
+  const handleToggle = async (channel: ChannelPlatform, enabled: boolean) => {
+    setTogglingPlatform(channel);
     try {
-      await NotificationsAPI.updateChannelPreference(platform, enabled);
-      setChannelPrefs((prev) => ({ ...prev, [platform]: enabled }));
+      await NotificationsAPI.updateChannelPreference(channel, enabled);
+      setChannelPrefs((prev) =>
+        prev ? { ...prev, [channel]: enabled } : prev,
+      );
     } catch {
-      toast.error(`Failed to update ${platform} notification preference`);
+      toast.error(`Failed to update ${channel} notification preference`);
     } finally {
       setTogglingPlatform(null);
     }
   };
+
+  if (loadFailed) {
+    return (
+      <SettingsPage>
+        <PreferencesError onRetry={() => void fetchAll()} />
+      </SettingsPage>
+    );
+  }
 
   const linkedPlatforms = NOTIFICATION_PLATFORMS.filter(
     (platform) => !!platformLinks[platform]?.platformUserId,
@@ -76,21 +85,27 @@ export default function NotificationSettings() {
     <SettingsPage>
       {!loading && <ChatChannelSettings linkedPlatforms={linkedPlatforms} />}
       <SettingsSection description="Choose where to receive GAIA notifications.">
-        {NOTIFICATION_PLATFORMS.map((platform) => {
-          const label = NOTIFICATION_PLATFORM_LABELS[platform];
-          const isConnected = !!platformLinks[platform]?.platformUserId;
+        {NOTIFICATION_CHANNELS.map((channel) => {
+          const label = NOTIFICATION_CHANNEL_LABELS[channel];
+          // Only bot platforms need a linked account; email reaches the user
+          // through the address on their GAIA account.
+          const needsLink = isBotPlatform(channel);
+          const isAvailable =
+            !needsLink || !!platformLinks[channel]?.platformUserId;
           return (
             <SettingsRow
-              key={platform}
+              key={channel}
               label={label}
               description={
-                isConnected
-                  ? "Send notifications to this platform"
-                  : "Connect in Linked Accounts to enable"
+                !isAvailable
+                  ? "Connect in Linked Accounts to enable"
+                  : channel === "email"
+                    ? EMAIL_CHANNEL_DESCRIPTION
+                    : "Send notifications to this channel"
               }
               icon={
                 <Image
-                  src={NOTIFICATION_PLATFORM_ICONS[platform]}
+                  src={NOTIFICATION_CHANNEL_ICONS[channel]}
                   alt={label}
                   width={36}
                   height={36}
@@ -100,17 +115,52 @@ export default function NotificationSettings() {
             >
               <Switch
                 size="sm"
-                isSelected={isConnected ? channelPrefs[platform] : false}
-                isDisabled={
-                  !isConnected || loading || togglingPlatform === platform
+                isSelected={
+                  isAvailable && !!channelPrefs && channelPrefs[channel]
                 }
-                onValueChange={(enabled) => handleToggle(platform, enabled)}
+                isDisabled={
+                  !isAvailable ||
+                  loading ||
+                  !channelPrefs ||
+                  togglingPlatform === channel
+                }
+                onValueChange={(enabled) => handleToggle(channel, enabled)}
                 aria-label={`Enable ${label} notifications`}
               />
             </SettingsRow>
           );
         })}
       </SettingsSection>
+      <QuietHoursSettings />
     </SettingsPage>
+  );
+}
+
+/**
+ * A failed preferences load is a settled failure, not a slow one. Showing the
+ * switches anyway would render defaults as if they were the user's stored
+ * choices, so the whole page waits behind a retry instead.
+ */
+function PreferencesError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-3 rounded-2xl bg-zinc-900/60 p-10 text-center">
+      <p className="text-sm font-medium text-zinc-200">
+        Couldn&apos;t load your notification settings
+      </p>
+      <p className="max-w-sm text-xs text-zinc-500">
+        Your channels are unchanged — this page just couldn&apos;t reach them.
+        Try again in a moment.
+      </p>
+      <Button
+        size="sm"
+        color="primary"
+        variant="flat"
+        radius="full"
+        className="mt-1 font-medium"
+        onPress={onRetry}
+      >
+        Try again
+      </Button>
+    </div>
   );
 }

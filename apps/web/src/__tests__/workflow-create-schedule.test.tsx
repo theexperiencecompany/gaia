@@ -77,7 +77,7 @@ const SCHEDULED_FORM: WorkflowFormData = {
     cron_expression: "0 9 * * *",
     timezone: "UTC",
   },
-  notify_on_completion: true,
+  delivery: "brief",
 };
 
 describe("creating a scheduled workflow", () => {
@@ -120,6 +120,7 @@ describe("creating a scheduled workflow", () => {
 
     expect(validateCron).toHaveBeenCalledWith("0 9 * * *");
     expect(createWorkflow).toHaveBeenCalledTimes(1);
+    expect(createWorkflow.mock.calls[0][0].delivery).toBe("brief");
   });
 
   it("never sends the create request for a schedule the server refuses", async () => {

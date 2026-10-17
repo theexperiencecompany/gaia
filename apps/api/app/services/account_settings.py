@@ -14,30 +14,10 @@ from app.utils.timezone import is_valid_timezone
 
 MAX_CUSTOM_INSTRUCTIONS_CHARS = 500
 
-CHANNEL_FLAGS = ("telegram", "discord", "whatsapp", "slack", "email")
 
-
-async def set_notification_channels(
-    user_id: str,
-    *,
-    telegram: bool | None = None,
-    discord: bool | None = None,
-    whatsapp: bool | None = None,
-    slack: bool | None = None,
-    email: bool | None = None,
-) -> str:
-    """Set the given notification channel flags; unspecified channels untouched."""
-    given = {
-        channel: value
-        for channel, value in [
-            ("telegram", telegram),
-            ("discord", discord),
-            ("whatsapp", whatsapp),
-            ("slack", slack),
-            ("email", email),
-        ]
-        if value is not None
-    }
+async def set_notification_channels(user_id: str, **flags: bool | None) -> str:
+    """Set the given notification channel flags; a None or omitted channel is untouched."""
+    given = {channel: value for channel, value in flags.items() if value is not None}
     if not given:
         raise AppError(
             message="No channels were specified",
@@ -45,7 +25,7 @@ async def set_notification_channels(
             fix="Pass at least one channel, e.g. email=False",
             status_code=400,
         )
-    await user_repository.set_channel_preferences(user_id, **given)
+    await user_repository.set_channel_preferences(user_id, given)
     changed = ", ".join(f"{c}={'on' if v else 'off'}" for c, v in given.items())
     return f"Notification settings updated ({changed})."
 

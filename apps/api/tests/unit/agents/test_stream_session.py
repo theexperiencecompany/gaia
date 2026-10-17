@@ -23,6 +23,7 @@ from app.agents.core.background.session import (
     signal_executor_done,
     teardown_session,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.models.user_models import AuthenticatedUser
 
 
@@ -136,7 +137,7 @@ class TestOwnershipRule:
                 "user_name": "Uno",
                 "workflow_id": "wf-9",
                 "workflow_title": "Daily digest",
-                "workflow_notify_on_completion": False,
+                "workflow_delivery": WorkflowDelivery.SILENT,
             },
             identity=RunIdentity(
                 stream_id="s1",
@@ -149,7 +150,7 @@ class TestOwnershipRule:
         assert run.user == AuthenticatedUser(user_id="u1", email="u1@x.com", name="Uno")
         assert run.workflow_id == "wf-9"
         assert run.workflow_title == "Daily digest"
-        assert run.workflow_notify_on_completion is False
+        assert run.workflow_delivery is WorkflowDelivery.SILENT
 
     def test_from_configurable_defaults(self) -> None:
         run = ExecutorRun.from_configurable(
@@ -163,7 +164,7 @@ class TestOwnershipRule:
             ),
         )
         assert run.workflow_id is None
-        assert run.workflow_notify_on_completion is True
+        assert run.workflow_delivery is WorkflowDelivery.NOW
         assert run.executor_owns_tool_data is False
 
 

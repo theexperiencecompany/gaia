@@ -1,28 +1,23 @@
 import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
+import { NOTIFICATION_CHANNELS } from "@gaia/shared/types";
 import { Spinner } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
-import {
-  AppIcon,
-  DiscordIcon,
-  Notification01Icon,
-  SlackIcon,
-  TelegramIcon,
-  WhatsappIcon,
-} from "@/components/icons";
+import { AppIcon, Notification01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { inAppNotificationsApi } from "@/features/notifications/api/inapp-notifications-api";
+import { NOTIFICATION_CHANNEL_META } from "@/features/notifications/constants/channels";
 import { useResponsive } from "@/lib/responsive";
 import { SettingsGroup, SettingsSwitchRow } from "../settings-row";
 
 export function NotificationSection() {
   const { spacing, fontSize } = useResponsive();
-  const [channels, setChannels] = useState<ChannelPreferences>({
-    telegram: false,
-    discord: false,
-    whatsapp: false,
-    slack: false,
-  });
+  const [channels, setChannels] = useState<ChannelPreferences>(
+    () =>
+      Object.fromEntries(
+        NOTIFICATION_CHANNELS.map((channel) => [channel, false]),
+      ) as ChannelPreferences,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [updatingChannel, setUpdatingChannel] =
     useState<ChannelPlatform | null>(null);
@@ -92,55 +87,25 @@ export function NotificationSection() {
       </Text>
 
       <SettingsGroup label="Notification Channels">
-        <SettingsSwitchRow
-          icon={TelegramIcon}
-          iconColor="#2AABEE"
-          iconBg="rgba(42,171,238,0.15)"
-          title="Telegram"
-          subtitle="Receive alerts via your connected Telegram bot"
-          value={channels.telegram}
-          onValueChange={(val) => {
-            void handleToggle("telegram", val);
-          }}
-          disabled={updatingChannel === "telegram"}
-        />
-        <SettingsSwitchRow
-          icon={DiscordIcon}
-          iconColor="#5865F2"
-          iconBg="rgba(88,101,242,0.15)"
-          title="Discord"
-          subtitle="Receive alerts via your connected Discord bot"
-          value={channels.discord}
-          onValueChange={(val) => {
-            void handleToggle("discord", val);
-          }}
-          disabled={updatingChannel === "discord"}
-        />
-        <SettingsSwitchRow
-          icon={WhatsappIcon}
-          iconColor="#25D366"
-          iconBg="rgba(37,211,102,0.15)"
-          title="WhatsApp"
-          subtitle="Receive alerts via your connected WhatsApp bot"
-          value={channels.whatsapp}
-          onValueChange={(val) => {
-            handleToggle("whatsapp", val);
-          }}
-          disabled={updatingChannel === "whatsapp"}
-        />
-        <SettingsSwitchRow
-          icon={SlackIcon}
-          iconColor="#E01E5A"
-          iconBg="rgba(224,30,90,0.15)"
-          title="Slack"
-          subtitle="Receive alerts via your connected Slack workspace"
-          value={channels.slack}
-          onValueChange={(val) => {
-            void handleToggle("slack", val);
-          }}
-          disabled={updatingChannel === "slack"}
-          isLast
-        />
+        {NOTIFICATION_CHANNELS.map((channel, idx) => {
+          const meta = NOTIFICATION_CHANNEL_META[channel];
+          return (
+            <SettingsSwitchRow
+              key={channel}
+              icon={meta.icon}
+              iconColor={meta.iconColor}
+              iconBg={meta.iconBg}
+              title={meta.name}
+              subtitle={meta.description}
+              value={channels[channel]}
+              onValueChange={(val) => {
+                void handleToggle(channel, val);
+              }}
+              disabled={updatingChannel === channel}
+              isLast={idx === NOTIFICATION_CHANNELS.length - 1}
+            />
+          );
+        })}
       </SettingsGroup>
 
       <View

@@ -289,10 +289,7 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
         stack.enter_context(
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None)
         )
-        stack.enter_context(patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock))
-        stack.enter_context(
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock)
-        )
+        stack.enter_context(patch.object(rd, "deliver_workflow_completion", new_callable=AsyncMock))
         return stack.enter_context(patch.object(rd, "update_messages", new_callable=AsyncMock))
 
     async def test_a_workflow_run_saves_the_cards_it_produced(self) -> None:

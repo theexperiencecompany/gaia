@@ -10,6 +10,11 @@ import stackprinter
 # CustomTool user_id-injection patch never loads here.
 from app.config.sentry import init_sentry
 from app.constants.email import SIGNUP_EMAIL_TASK
+from app.constants.notifications import (
+    DEFERRED_CHAT_MESSAGE_TASK,
+    PROACTIVE_RECORD_MAX_TRIES,
+    PROACTIVE_RECORD_TASK,
+)
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
 from app.constants.todos import (
@@ -53,6 +58,10 @@ from app.workers.tasks.inbox_desk_tasks import (
 )
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
+from app.workers.tasks.proactive_delivery_tasks import (
+    deliver_deferred_chat_message,
+    record_proactive_delivery,
+)
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
@@ -128,6 +137,16 @@ _finish_tracked_todo_run = func(
     name=TODO_RUN_FINISH_TASK,
     max_tries=TODO_RUN_FINISH_MAX_TRIES,
 )
+# Named from the constant post_to_platform_chat schedules quiet-hours deliveries by.
+_deliver_deferred_chat_message = func(
+    arq_task(deliver_deferred_chat_message), name=DEFERRED_CHAT_MESSAGE_TASK
+)
+# Named from the constant thread_record hands a held checkpoint write to; bounded tries.
+_record_proactive_delivery = func(
+    arq_task(record_proactive_delivery),
+    name=PROACTIVE_RECORD_TASK,
+    max_tries=PROACTIVE_RECORD_MAX_TRIES,
+)
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
     arq_task(sync_workflows_for_subscription_state),
@@ -159,6 +178,8 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _execute_tracked_todo,
     _resume_tracked_todo,
     _finish_tracked_todo_run,
+    _deliver_deferred_chat_message,
+    _record_proactive_delivery,
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,

@@ -20,7 +20,11 @@ from fastapi import HTTPException
 from prometheus_client import REGISTRY
 import pytest
 
-from app.agents.core.background import executor_runner as er, result_delivery as rd
+from app.agents.core.background import (
+    executor_runner as er,
+    result_delivery as rd,
+    workflow_completion,
+)
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
@@ -37,6 +41,7 @@ from app.constants.executor import (
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
@@ -175,8 +180,7 @@ class TestAWorkflowAnswerCarriesItsFollowUpsInline:
             ),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock),
+            patch.object(rd, "deliver_workflow_completion", new_callable=AsyncMock),
         ):
             await rd.deliver_result(
                 _run(workflow=True), result_text="done", result_type="final", tool_data=None
@@ -347,8 +351,12 @@ class TestWorkflowResultReachesThePlatformDelivery:
             patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+            patch.object(
+                workflow_completion, "deliver_result_to_platforms", new_callable=AsyncMock
+            ) as deliver,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ) as notify,
         ):
             await rd.deliver_result(
                 _run(workflow=True), result_text="done", result_type="final", tool_data=None
@@ -2174,44 +2182,6 @@ class TestDeliveryPreamble:
         )
 
 
-class TestWorkflowNotificationRef:
-    """The workflow identity handed to the notification dispatcher.
-
-    It decides what the user is told finished and whether they are told
-    at all, and the run it was read off is gone by then.
-    """
-
-    async def _deliver_workflow(self, *, notify_on_completion: bool):
-        run = replace(_run(workflow=True), workflow_notify_on_completion=notify_on_completion)
-        with (
-            patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
-            ),
-            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
-            patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
-        ):
-            await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
-        return notify
-
-    async def test_a_notifying_workflow_is_named_in_full(self) -> None:
-        notify = await self._deliver_workflow(notify_on_completion=True)
-
-        assert notify.await_args.kwargs["workflow"] == rd._WorkflowRef(
-            workflow_id="wf-1", workflow_title="Morning digest", notify_on_completion=True
-        )
-
-    async def test_a_silent_workflow_stays_silent_through_the_hand_off(self) -> None:
-        """notify_on_completion defaults to True on _WorkflowRef, so a lost flag here starts notifying against the user's setting."""
-        notify = await self._deliver_workflow(notify_on_completion=False)
-
-        assert notify.await_args.kwargs["workflow"] == rd._WorkflowRef(
-            workflow_id="wf-1", workflow_title="Morning digest", notify_on_completion=False
-        )
-
-
 class TestRunBoundaryCarriesTheOriginatingSurface:
     """The executor run stamps the turn's surface on its own wide event.
 
@@ -2594,7 +2564,9 @@ class _Delivered:
     spawn: MagicMock
     capture: MagicMock
     to_platforms: AsyncMock
-    notify: AsyncMock
+    completed: AsyncMock
+    failed: AsyncMock
+    held: AsyncMock
 
 
 @dataclass(frozen=True)
@@ -2648,8 +2620,18 @@ async def _deliver_run(
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
             patch.object(rd, "capture") as capture,
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as to_platforms,
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+            patch.object(
+                workflow_completion, "deliver_result_to_platforms", new_callable=AsyncMock
+            ) as to_platforms,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ) as completed,
+            patch.object(
+                workflow_completion.pending_brief_items_repository, "create", new_callable=AsyncMock
+            ) as held,
+            patch.object(
+                rd, "send_workflow_failure_notification", new_callable=AsyncMock
+            ) as failed,
         ):
             returned = await rd.deliver_result(
                 run, result_text="raw", result_type=result_type, tool_data=tool_data
@@ -2666,7 +2648,9 @@ async def _deliver_run(
         spawn=spawn,
         capture=capture,
         to_platforms=to_platforms,
-        notify=notify,
+        completed=completed,
+        failed=failed,
+        held=held,
     )
 
 
@@ -2762,16 +2746,22 @@ class TestInlineFollowUpsOnlyWhereNothingWaits:
 
 
 class TestAWorkflowResult:
-    async def test_a_finished_workflow_reaches_the_platforms_and_the_badge(self) -> None:
+    async def test_a_now_workflow_reaches_the_platforms_and_the_badge(self) -> None:
         delivered = await _deliver_run(
             _run(workflow=True), _Seams(comms_text="Digest ready.", source=None)
         )
 
         assert delivered.to_platforms.await_args.kwargs["notification_text"] == "Digest ready."
-        notify = delivered.notify.await_args.kwargs
-        assert notify["msg_type"] == "final"
-        assert notify["target"].conversation_id == "conv-1"
-        assert notify["target"].user_id == USER_ID
+        assert delivered.to_platforms.await_args.kwargs["origin"] == rd._delivery_origin(
+            _run(workflow=True)
+        )
+        assert delivered.completed.await_args.kwargs == {
+            "workflow_id": "wf-1",
+            "workflow_title": "Morning digest",
+            "conversation_id": "conv-1",
+            "user_id": USER_ID,
+        }
+        delivered.held.assert_not_awaited()
         assert delivered.returned == ("Digest ready.", _saved(delivered).message_id)
         assert delivered.capture.call_args.args[1] == ChatBackgroundUpdateResolved(
             outcome="reply", delivery="message"
@@ -2783,14 +2773,66 @@ class TestAWorkflowResult:
         )
 
         delivered.to_platforms.assert_not_awaited()
-        assert delivered.notify.await_args.kwargs["msg_type"] == "error"
+        delivered.completed.assert_not_awaited()
+        assert delivered.failed.await_args.kwargs == {
+            "workflow_id": "wf-1",
+            "workflow_title": "Morning digest",
+            "user_id": USER_ID,
+        }
 
-    async def test_a_silent_workflow_posts_nothing_to_platforms(self) -> None:
-        run = replace(_run(workflow=True), workflow_notify_on_completion=False)
+    @pytest.mark.parametrize("delivery", [WorkflowDelivery.BRIEF, WorkflowDelivery.SILENT])
+    async def test_a_failed_workflow_notifies_whatever_its_delivery(
+        self, delivery: WorkflowDelivery
+    ) -> None:
+        run = replace(_run(workflow=True), workflow_delivery=delivery)
+
+        delivered = await _deliver_run(
+            run, _Seams(comms_text="It failed.", source=None), result_type="error"
+        )
+
+        delivered.failed.assert_awaited_once()
+        delivered.held.assert_not_awaited()
+
+    async def test_a_silent_workflow_pushes_nothing_and_holds_nothing(self) -> None:
+        run = replace(_run(workflow=True), workflow_delivery=WorkflowDelivery.SILENT)
 
         delivered = await _deliver_run(run, _Seams(comms_text="Digest ready.", source=None))
 
         delivered.to_platforms.assert_not_awaited()
+        delivered.completed.assert_not_awaited()
+        delivered.held.assert_not_awaited()
+        assert delivered.returned == ("Digest ready.", _saved(delivered).message_id)
+
+    async def test_a_brief_workflow_is_held_for_the_brief_instead_of_pushed(self) -> None:
+        run = replace(_run(workflow=True), workflow_delivery=WorkflowDelivery.BRIEF)
+
+        delivered = await _deliver_run(run, _Seams(comms_text="Digest ready.", source=None))
+
+        delivered.to_platforms.assert_not_awaited()
+        delivered.completed.assert_not_awaited()
+        item = delivered.held.await_args.args[0]
+        assert (item.user_id, item.workflow_id, item.workflow_title) == (
+            USER_ID,
+            "wf-1",
+            "Morning digest",
+        )
+        assert (item.conversation_id, item.text) == ("conv-1", "Digest ready.")
+        assert delivered.event["workflow_delivery"] == "brief"
+
+    @pytest.mark.parametrize("delivery", list(WorkflowDelivery))
+    async def test_a_run_with_nothing_to_report_reaches_nobody(
+        self, delivery: WorkflowDelivery
+    ) -> None:
+        run = replace(_run(workflow=True), workflow_delivery=delivery)
+
+        delivered = await _deliver_run(
+            run, _Seams(comms_text="<SILENCE>nothing new</SILENCE>", source=None)
+        )
+
+        delivered.to_platforms.assert_not_awaited()
+        delivered.completed.assert_not_awaited()
+        delivered.held.assert_not_awaited()
+        assert delivered.returned == (None, None)
 
     async def test_a_workflow_react_falls_back_to_the_text_ack(self) -> None:
         delivered = await _deliver_run(
@@ -2902,10 +2944,11 @@ class TestWorkflowNotificationIsTraceable:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
-            patch(
-                "app.services.workflow.notifications.send_workflow_completion_notification",
-                new_callable=AsyncMock,
+            patch.object(
+                workflow_completion, "deliver_result_to_platforms", new_callable=AsyncMock
+            ),
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
             ) as completion,
             patch.object(rd, "log") as log_mock,
         ):
@@ -2922,6 +2965,6 @@ class TestWorkflowNotificationIsTraceable:
         dispatched = [
             call.kwargs
             for call in log_mock.info.call_args_list
-            if "workflow notification dispatched" in call.args[0]
+            if "workflow result routed" in call.args[0]
         ]
         assert dispatched == [{"workflow_id": "wf-1", "message_id": message_id}]

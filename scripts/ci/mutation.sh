@@ -996,6 +996,9 @@ EOF
   # mutmut_hardlink_copy.py links the also_copy tree into mutants/ rather than
   # duplicating the workdir a second time.
   MUTMUT_PATCH_DIR="$REPO_ROOT/scripts/test"
+  # The workdir is a copy of apps/api alone, so a test that loads the repo-root
+  # tools/llm-stub by a path relative to its own file finds nothing there.
+  export GAIA_LLM_STUB_DIR="$REPO_ROOT/tools/llm-stub"
   # Absolute: the run cd's into $WORKDIR, so a relative path resolves nowhere.
   CLASSIFIER="$REPO_ROOT/scripts/test/mutation_classify.py"
   "$VENV_PY" -c "

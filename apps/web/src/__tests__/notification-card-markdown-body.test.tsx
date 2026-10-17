@@ -15,7 +15,7 @@ vi.mock("@/components/shared/ConfirmationDialog", () => ({
   ConfirmationDialog: () => null,
 }));
 
-import { EnhancedNotificationCard } from "@/features/notification/components/EnhancedNotificationCard";
+import { NotificationCard } from "@/features/notification/components/NotificationCard";
 import {
   NotificationStatus,
   type NotificationView,
@@ -39,7 +39,7 @@ function briefingNotification(): NotificationView {
 
 describe("notification card body", () => {
   it("renders a briefing's items as a list and its emphasis as markup", async () => {
-    render(<EnhancedNotificationCard notification={briefingNotification()} />);
+    render(<NotificationCard notification={briefingNotification()} />);
 
     const items = await screen.findAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([

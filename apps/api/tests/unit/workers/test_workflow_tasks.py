@@ -12,8 +12,9 @@ import pytest
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.agents import WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.notifications import NotificationChannel
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import SilentRunResult
 from app.models.notification.notification_models import (
     ActionType,
@@ -699,7 +700,10 @@ class TestProcessWorkflowGenerationTask:
         assert _no_real_analytics.call_args.args == (
             UserId(user_id),
             WorkflowCreated(
-                workflow_id=workflow.id, steps_count=len(workflow.steps), is_todo_workflow=True
+                workflow_id=workflow.id,
+                steps_count=len(workflow.steps),
+                is_todo_workflow=True,
+                delivery="now",
             ),
         )
 
@@ -1285,7 +1289,7 @@ class TestWorkflowNotificationSenders:
         assert "Morning Briefing" in notif_req.content.title
         assert notif_req.content.body
         # Scoped to in-app only (no external chrome push) and no result payload.
-        assert [c.channel_type for c in notif_req.channels] == [CHANNEL_TYPE_INAPP]
+        assert [c.channel_type for c in notif_req.channels] == [NotificationChannel.INAPP]
         assert notif_req.content.rich_content is None
         # Exactly one "View Results" redirect to the run's conversation.
         actions = notif_req.content.actions
@@ -2390,7 +2394,7 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
         wf.title = "Morning Briefing"
         wf.description = "Daily morning workflow"
         wf.prompt = "Run the morning briefing"
-        wf.notify_on_completion = True
+        wf.delivery = WorkflowDelivery.NOW
         wf.trigger_config.timezone = None
         wf.steps = [
             WorkflowStep(id="s1", title="Step 1", description="Check mail", category="comms")
@@ -2488,7 +2492,7 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
             WORKFLOW_LOCK_CONTEXT_KEY: RESERVATION,
             "workflow_id": workflow.id,
             "workflow_title": workflow.title,
-            "workflow_notify_on_completion": True,
+            "workflow_delivery": WorkflowDelivery.NOW,
             "execution_mode": "background",
         }
 

@@ -25,6 +25,7 @@ from app.agents.tools.workflow_shared_tools import (
     search_triggers,
 )
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.decorators import with_rate_limiting
 from app.models.agent_models import agent_configurable, current_stream_writer, get_user_id
 from app.models.workflow_models import WorkflowExecutionRequest
@@ -55,6 +56,13 @@ async def create_workflow(
         str,
         "The user's exact words describing what workflow they want. Pass verbatim.",
     ],
+    delivery: Annotated[
+        WorkflowDelivery,
+        "How each run's result reaches the user, from what they said: 'now' when they "
+        "want to be told as soon as it finishes (alerts, reminders, anything time-"
+        "sensitive); 'brief' when they want it in their daily brief or it is a routine "
+        "background check; 'silent' when they asked not to be notified.",
+    ],
 ) -> dict[str, Any]:
     """
     Create a workflow from the user's description. Delegates to the workflow assistant.
@@ -70,11 +78,11 @@ async def create_workflow(
 
     EXAMPLES:
 
-    User: "Create a workflow that checks my email every morning"
-    -> create_workflow(user_request="checks my email every morning")
+    User: "Create a workflow that checks my email every morning, put it in my brief"
+    -> create_workflow(user_request="checks my email every morning", delivery="brief")
 
     User: "I want a workflow that notifies me on Slack when I get a GitHub PR"
-    -> create_workflow(user_request="notifies me on Slack when I get a GitHub PR")
+    -> create_workflow(user_request="notifies me on Slack when I get a GitHub PR", delivery="now")
 
     DO NOT:
     - Parse cron expressions
@@ -83,8 +91,8 @@ async def create_workflow(
     - Generate titles or descriptions
     - Fill in any other parameters
 
-    Just pass user_request. The workflow assistant handles everything else. To
-    change an existing workflow, use edit_workflow instead.
+    Pass user_request and delivery; the workflow assistant handles everything
+    else. To change an existing workflow, use edit_workflow instead.
     """
     log.set(tool={"name": "create_workflow", "action": "create"})
 
@@ -139,6 +147,7 @@ async def create_workflow(
                     draft=draft,
                     user_id=user_id,
                     writer=writer,
+                    delivery=delivery,
                     user_timezone=user_timezone,
                 )
 
@@ -152,7 +161,7 @@ async def create_workflow(
                 )
 
             # Stream workflow draft to frontend for user confirmation
-            writer(result.draft.to_stream_payload())
+            writer(result.draft.to_stream_payload(delivery))
             log.info(
                 f"{LogTag.TOOL} create_workflow: streamed draft", draft_title=result.draft.title
             )

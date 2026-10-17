@@ -71,6 +71,7 @@ def build_user_context(
         platform_links=user_doc.platform_links,
         platform_links_connected_at=user_doc.platform_links_connected_at,
         chat_channel_priority=user_doc.chat_channel_priority,
+        quiet_hours=user_doc.quiet_hours,
         starred_voice_ids=user_doc.starred_voice_ids,
         selected_voice_id=user_doc.selected_voice_id,
         first_name=user_doc.first_name,

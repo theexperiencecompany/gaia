@@ -1,15 +1,15 @@
 """User-related ARQ tasks."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_EMAIL
+from app.constants.notifications import NotificationChannel
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.timezone import as_utc
+from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import log
 
 
@@ -28,7 +28,9 @@ def _emails_sent_this_episode(user: UserDocument) -> int:
 
 def _should_send_inactive_email(user: UserDocument) -> bool:
     """Throttle policy: per inactivity episode, first email after 7 days, second 7+ days later, max 2."""
-    if not normalize_channel_preferences(user.notification_channel_prefs)[CHANNEL_TYPE_EMAIL]:
+    if not normalize_channel_preferences(user.notification_channel_prefs)[
+        NotificationChannel.EMAIL
+    ]:
         return False
 
     now = datetime.now(UTC)
@@ -46,7 +48,7 @@ def _should_send_inactive_email(user: UserDocument) -> bool:
     return _emails_sent_this_episode(user) < 2
 
 
-async def check_inactive_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- contract
+async def check_inactive_users(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- contract
     """Email users inactive for 7+ days, and again after 14+ days, then no more."""
     # Deferred import: email delivery stack kept off worker-task module load path until the check runs
     from app.services.email import send_inactive_user_email  # noqa: PLC0415 -- deferred

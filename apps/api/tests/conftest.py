@@ -63,10 +63,11 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.utils.concurrency import reset_captured_loop
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context
+from tests.helpers import quiet_hours_excluding_now
 
 # Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
 # via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
@@ -345,6 +346,19 @@ def _no_captured_loop_carryover() -> Iterator[None]:
     """Forget a server loop a test captured (unified_startup does); the next test's loop is new, that one closed."""
     yield
     reset_captured_loop()
+
+
+@pytest.fixture
+def outside_quiet_hours() -> Iterator[AsyncMock]:
+    """Make post_to_platform_chat read a recipient whose quiet hours exclude the current hour.
+
+    The window starts two hours from now on a UTC clock, so a test that sends a
+    proactive message reaches the publish path whatever time the suite runs.
+    """
+    user = UserDocument(timezone="UTC", quiet_hours=quiet_hours_excluding_now())
+    read = AsyncMock(return_value=user)
+    with patch("app.agents.core.background.platform_chat.user_repository", MagicMock(get=read)):
+        yield read
 
 
 @pytest.fixture

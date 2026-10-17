@@ -310,10 +310,11 @@ def test_a_mail_woken_run_alerts_only_for_what_cannot_wait_for_the_briefing() ->
         "opened this run and the events you added or proposed for today or tomorrow"
     ) in alert
     assert (
-        f"between {todo_constants.INBOX_DESK_QUIET_HOURS_START:02d}:00 and "
-        f"{todo_constants.INBOX_DESK_QUIET_HOURS_END:02d}:00 the user's local time"
-    ) in alert
-    assert "it is only that nothing is new, and the next briefing carries the rest" in alert
+        "with neither, it is only that nothing is new, and the next briefing carries the rest"
+        in alert
+    )
+    # Quiet hours are the delivery chokepoint's to enforce, not the desk's.
+    assert "quiet hours" not in alert
 
 
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:

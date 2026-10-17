@@ -3,7 +3,7 @@ import { apiService } from "@/lib/api";
 import type { TriggerSchema } from "../types/trigger-types";
 import type {
   CommunityWorkflowsResponse,
-  CreateWorkflowPayload,
+  CreateWorkflowRequest,
   UpdateWorkflowPayload,
   Workflow,
   WorkflowExecutionResponse,
@@ -46,7 +46,7 @@ export const workflowApi = {
   },
 
   createWorkflow: async (
-    payload: CreateWorkflowPayload,
+    payload: CreateWorkflowRequest,
   ): Promise<WorkflowResponse> => {
     return apiService.post<WorkflowResponse>("/workflows", payload);
   },

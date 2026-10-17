@@ -1,5 +1,6 @@
 "use client";
 
+import { ONE_CLICK_WORKFLOW_DELIVERY } from "@gaia/shared";
 import { PlayIcon, UserCircle02Icon } from "@icons";
 import { getToolDisplayName } from "@shared/icons";
 import { formatCompactNumber } from "@shared/utils";
@@ -74,6 +75,7 @@ function buildWorkflowRequest(
       }),
     // Only generate if no steps exist
     generate_immediately: !formattedSteps || formattedSteps.length === 0,
+    delivery: ONE_CLICK_WORKFLOW_DELIVERY,
   };
 }
 

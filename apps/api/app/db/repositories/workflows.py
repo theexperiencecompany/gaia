@@ -25,6 +25,7 @@ from app.constants.cache import (
     WORKFLOW_LIMIT_NOTICE_PREFIX,
     WORKFLOW_LIMIT_NOTICE_TTL,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import (
@@ -644,6 +645,28 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {"$set": {"trigger_config.composio_trigger_ids": trigger_ids}},
             scope=REPO_GLOBAL_SCOPE,
         )
+
+    async def find_without_stored_delivery(self) -> list[WorkflowDocument]:
+        """Workflows whose record predates delivery modes (read through the legacy-flag mapping)."""
+        return await self._find({"delivery": {"$exists": False}})
+
+    async def store_delivery(self, workflow_id: str, delivery: WorkflowDelivery) -> bool:
+        """Persist delivery on a record that lacks one and drop its legacy flag; whether it matched.
+
+        Only a record still without a delivery is written, so a re-run never
+        overwrites a mode the user has since chosen.
+        """
+        matched = await self._apply_raw_update_unfetched(
+            {"_id": workflow_id, "delivery": {"$exists": False}},
+            {
+                "$set": {"delivery": delivery.value},
+                # $unset ignores the value: "" is only the conventional placeholder.
+                "$unset": {"notify_on_completion": ""},  # pragma: no mutate
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=workflow_id,
+        )
+        return matched > 0
 
     async def backfill_public_slug(self, workflow_id: str, slug: str) -> WorkflowDocument | None:
         """Set slug on a public workflow only while it is still unset (the lazy legacy backfill).

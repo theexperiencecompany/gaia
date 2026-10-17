@@ -39,6 +39,7 @@ from app.constants.agents import (
 )
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentLane,
@@ -87,7 +88,7 @@ class _AgentTriggerContext(BaseModel):
     execution_mode: object = None
     workflow_id: str | None = None
     workflow_title: str = ""
-    workflow_notify_on_completion: bool = True
+    workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
     playbook_fallback: str | None = Field(
         default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
     )
@@ -256,7 +257,7 @@ async def _core_agent_logic(
     if trigger_context and trigger.workflow_id:
         configurable["workflow_id"] = trigger.workflow_id
         configurable["workflow_title"] = trigger.workflow_title
-        configurable["workflow_notify_on_completion"] = trigger.workflow_notify_on_completion
+        configurable["workflow_delivery"] = trigger.workflow_delivery
         configurable["playbook_fallback"] = trigger.playbook_fallback
         configurable["playbook_replayed_calls"] = trigger.playbook_replayed_calls
         configurable["executor_lock_reservation"] = trigger.executor_lock_reservation
