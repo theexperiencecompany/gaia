@@ -139,7 +139,7 @@ export async function runPortChecks(
   }
 
   store.updateData("portOverrides", portOverrides);
-  store.setStatus("Prerequisites check complete!");
+  store.setStatus("Git and Docker are ready");
   await delay(1000);
 
   return portOverrides;
@@ -195,7 +195,7 @@ export async function runMiseDeveloperSetup(
     );
 
     store.updateData("dependencyProgress", 100);
-    store.updateData("dependencyPhase", "Setup complete!");
+    store.updateData("dependencyPhase", "Set up");
     store.updateData("dependencyComplete", true);
     return true;
   } catch (e) {

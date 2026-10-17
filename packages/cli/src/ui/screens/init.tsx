@@ -163,7 +163,7 @@ const FinishedStep: React.FC<{
         padding={1}
       >
         <Text bold color="green">
-          {stillStarting ? "GAIA is starting…" : "GAIA is Running!"}
+          {stillStarting ? "GAIA is starting…" : "GAIA is running"}
         </Text>
 
         <Box marginTop={1}>

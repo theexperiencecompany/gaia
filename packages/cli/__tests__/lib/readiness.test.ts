@@ -172,9 +172,7 @@ describe("waitForUpReadiness", () => {
 
     expect(result).toEqual({ ready: true });
     expect(store.currentState.data.dependencyComplete).toBe(true);
-    expect(store.currentState.data.dependencyPhase).toBe(
-      "All services are ready!",
-    );
+    expect(store.currentState.data.dependencyPhase).toBe("GAIA is answering");
   });
 
   it("probes the API through the single origin, never a bare API port", async () => {

@@ -6,7 +6,7 @@
  * so printing the success URL immediately lands the first browser click on
  * "connection refused". This module polls the API health endpoint and the web
  * app until they answer and is the only thing standing between startServices
- * and the "GAIA is Running!" box.
+ * and the "GAIA is running" box.
  *
  * Polling is concurrent: every round probes each target that has not answered
  * yet, answered targets drop out, and success is declared only when none
@@ -136,7 +136,7 @@ export async function waitForUpReadiness(
   store.updateData(
     "dependencyPhase",
     result.ready
-      ? "All services are ready!"
+      ? "GAIA is answering"
       : `Still starting: ${result.stillStarting}`,
   );
   store.updateData("dependencyComplete", true);

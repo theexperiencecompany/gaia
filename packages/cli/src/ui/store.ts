@@ -158,6 +158,26 @@ export class CLIStore extends EventEmitter {
   }
 
   /**
+   * waitForInput that says what it is asking (as the status) only when a
+   * person will actually be asked: an answer flags or saved config supply
+   * is taken silently, so `gaia up` never flashes the names of settings it
+   * fills itself.
+   */
+  ask(
+    id: string,
+    statusWhileAsking: string,
+    meta?: Record<string, unknown>,
+  ): Promise<unknown> {
+    const preset = this.answerResolvers
+      .map((resolve) => resolve(id, meta))
+      .find((value) => value !== undefined);
+    if (preset === undefined && !this.autoResolveInputs.has(id)) {
+      this.setStatus(statusWhileAsking);
+    }
+    return this.waitForInput(id, meta);
+  }
+
+  /**
    * Requests input from the user and waits for response.
    * @param id - Unique identifier for this input request
    * @param meta - Optional metadata for the input component

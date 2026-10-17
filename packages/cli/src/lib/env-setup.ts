@@ -38,10 +38,10 @@ export async function runEnvSetup(
   options?: EnvSetupOptions,
 ): Promise<void> {
   store.setStep("Environment Setup");
-  store.setStatus("Configuring environment…");
+  store.setStatus("Configuring GAIA…");
   store.updateData("setupMode", setupMode);
 
-  store.setStatus("Configuring environment variables…");
+  store.setStatus("Configuring GAIA…");
   const envMethod = await store.waitForInput("env_method");
   store.updateData("envMethod", envMethod);
 
@@ -223,9 +223,10 @@ async function collectManualEnv(
   // Handle alternative groups
   for (const alternatives of askForProvider ? alternativePairs : []) {
     store.updateData("alternativeGroups", alternatives);
-    store.setStatus("Choose an AI provider…");
-
-    const result = (await store.waitForInput("env_alternatives")) as {
+    const result = (await store.ask(
+      "env_alternatives",
+      "Choose an AI provider…",
+    )) as {
       selectedGroups: string[];
       values: Record<string, string>;
     };
@@ -258,9 +259,7 @@ async function collectManualEnv(
 
     store.updateData("currentEnvVar", envVar);
     store.updateData("envVarIndex", i);
-    store.setStatus(`Configuring ${envVar.name}…`);
-
-    const value = (await store.waitForInput("env_var", {
+    const value = (await store.ask("env_var", `Configuring ${envVar.name}…`, {
       varName: envVar.name,
     })) as string;
 
@@ -288,11 +287,11 @@ async function collectManualEnv(
 
     store.updateData("currentEnvGroup", group);
     store.updateData("envGroupIndex", i);
-    store.setStatus(`Configuring ${group.name}…`);
-
-    const groupValues = (await store.waitForInput("env_group", {
-      groupName: group.name,
-    })) as Record<string, string>;
+    const groupValues = (await store.ask(
+      "env_group",
+      `Configuring ${group.name}…`,
+      { groupName: group.name },
+    )) as Record<string, string>;
 
     for (const [key, value] of Object.entries(groupValues)) {
       const varDef = group.variables.find((v) => v.name === key);
@@ -312,17 +311,17 @@ async function writeAllEnvFiles(
   domain?: string,
 ): Promise<void> {
   // Write API .env
-  store.setStatus("Writing API environment file…");
+  store.setStatus("Saving GAIA's settings…");
   try {
     const apiEnvPath = path.join(repoPath, "apps", "api");
     envWriter.writeEnvFile(apiEnvPath, envValues);
-    store.setStatus("API environment variables configured!");
+    store.setStatus("Saved GAIA's settings");
   } catch (e) {
     throw new Error(`Failed to write API .env file: ${(e as Error).message}`);
   }
 
   if (setupMode === "selfhost") {
-    store.setStatus("Writing Docker Compose environment…");
+    store.setStatus("Saving Docker's settings…");
     try {
       envWriter.writeDockerComposeEnv(
         repoPath,
@@ -333,7 +332,7 @@ async function writeAllEnvFiles(
           domain,
         },
       );
-      store.setStatus("Docker Compose environment configured!");
+      store.setStatus("Saved Docker's settings");
     } catch (e) {
       throw new Error(
         `Failed to write Docker Compose .env: ${(e as Error).message}`,
@@ -345,24 +344,24 @@ async function writeAllEnvFiles(
   }
 
   // Write web .env
-  store.setStatus("Writing web environment file…");
+  store.setStatus("Saving the web app's settings…");
   try {
     envWriter.writeWebEnvFile(repoPath, setupMode, portOverrides);
-    store.setStatus("Web environment variables configured!");
+    store.setStatus("Saved the web app's settings");
   } catch (e) {
     throw new Error(`Failed to write web .env file: ${(e as Error).message}`);
   }
 
   // Write Docker Compose .env for port overrides
   if (portOverrides && Object.keys(portOverrides).length > 0) {
-    store.setStatus("Writing Docker Compose environment…");
+    store.setStatus("Saving Docker's settings…");
     try {
       // Patch docker-compose.yml to use variable substitution for ports.
       // Older versions of the compose file have hardcoded ports, so the
       // .env override only works after patching.
       envWriter.patchDockerComposePorts(repoPath);
       envWriter.writeDockerComposeEnv(repoPath, portOverrides, setupMode);
-      store.setStatus("Docker Compose environment configured!");
+      store.setStatus("Saved Docker's settings");
     } catch (e) {
       throw new Error(
         `Failed to write Docker Compose .env: ${(e as Error).message}`,

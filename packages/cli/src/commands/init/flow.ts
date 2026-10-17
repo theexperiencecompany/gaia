@@ -76,7 +76,7 @@ export async function runInitFlow(
     store.setStep("Repository Setup");
     store.setStatus("[DEV MODE] Using current workspace…");
     await delay(500);
-    store.setStatus("Repository ready!");
+    store.setStatus("Repository ready");
   } else {
     store.setStep("Repository Setup");
     const defaultPath =
@@ -177,13 +177,13 @@ export async function runInitFlow(
           },
           branch,
         );
-        store.setStatus("Repository ready!");
+        store.setStatus("Repository ready");
       } catch (e) {
         store.setError(e as Error);
         return;
       }
     } else {
-      store.setStatus("Using existing repository!");
+      store.setStatus("Using the existing repository");
     }
   }
 
@@ -275,7 +275,7 @@ export async function runInitFlow(
     store.setStep("Finished");
     store.setStatus(
       readiness.ready
-        ? "Setup complete! GAIA is running."
+        ? "Set up. GAIA is running."
         : "Containers are up but not answering yet — give it a minute, then open the setup link below.",
     );
     await store.waitForInput("exit");
@@ -351,7 +351,7 @@ export async function runInitFlow(
     );
 
     store.updateData("dependencyProgress", 100);
-    store.updateData("dependencyPhase", "Setup complete!");
+    store.updateData("dependencyPhase", "Set up");
     store.updateData("dependencyComplete", true);
   } catch (e) {
     store.setError(
@@ -373,6 +373,6 @@ export async function runInitFlow(
   });
 
   store.setStep("Finished");
-  store.setStatus("Setup complete! Run 'gaia dev' to start development mode.");
+  store.setStatus("Set up. Run 'gaia dev' to start development mode.");
   await store.waitForInput("exit");
 }
