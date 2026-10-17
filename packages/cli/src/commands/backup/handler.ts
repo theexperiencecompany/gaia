@@ -5,6 +5,7 @@
  */
 
 import * as path from "node:path";
+import { printError } from "../../lib/print-error.js";
 import {
   VOLUME_BACKUPS,
   volumeRestoreScript,
@@ -13,10 +14,6 @@ import { runBackup } from "./flow.js";
 
 function out(line = ""): void {
   process.stdout.write(`${line}\n`);
-}
-
-function errOut(line = ""): void {
-  process.stderr.write(`${line}\n`);
 }
 
 export async function runBackupCommand(
@@ -75,7 +72,7 @@ export async function runBackupCommand(
       );
     }
   } catch (e) {
-    errOut((e as Error).message);
+    printError((e as Error).message);
     process.exitCode = 1;
   }
 }

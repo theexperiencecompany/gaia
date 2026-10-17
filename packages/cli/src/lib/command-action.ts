@@ -1,3 +1,5 @@
+import { printError } from "./print-error.js";
+
 /** Commander swallows async rejections, so every action reports its own failure. */
 export async function runAction(
   action: () => void | Promise<void>,
@@ -5,9 +7,7 @@ export async function runAction(
   try {
     await action();
   } catch (error) {
-    console.error(
-      `Error: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    printError(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }

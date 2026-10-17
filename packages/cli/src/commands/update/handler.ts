@@ -12,6 +12,7 @@ import { SIGINT_EXIT_CODE } from "../../lib/exit-codes.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import { homeRelative } from "../../lib/paths.js";
+import { printError } from "../../lib/print-error.js";
 import { newerReleaseHint } from "../../lib/release.js";
 import { findInstallRoot } from "../../lib/service-starter.js";
 import { wrapForTerminal } from "../../lib/terminal-text.js";
@@ -46,10 +47,6 @@ const RELEASE_NOTES_URL = "https://docs.heygaia.io/release-notes";
 
 function out(line = ""): void {
   process.stdout.write(`${wrapForTerminal(line)}\n`);
-}
-
-function err(line = ""): void {
-  process.stderr.write(`${line}\n`);
 }
 
 /** A yes/no question that defaults to no: an update never starts on a stray Enter. */
@@ -172,14 +169,15 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
   await printHeader({ showUpdate: false });
   const repoPath = findInstallRoot();
   if (!repoPath) {
-    err("Error: No GAIA installation found.");
-    err("Fix: Run 'gaia up' to install GAIA first.");
+    printError(
+      "GAIA isn't installed here, so there is nothing to update.\nInstall it with 'gaia up'.",
+    );
     process.exitCode = 1;
     return;
   }
   if (options.git && options.version) {
-    err(
-      "Error: --version pins published images; --git builds from source. Pick one.",
+    printError(
+      "--version and --git can't be used together.\n--version moves to a published release; --git builds from source. Pick one.",
     );
     process.exitCode = 1;
     return;
@@ -191,9 +189,9 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
       ? runGitUpdate(repoPath, options)
       : runReleaseUpdate(repoPath, options));
   } catch (e) {
-    err(`\nUpdate failed: ${(e as Error).message}`);
-    err(
-      "Volumes are untouched. Fix the cause above, then rerun 'gaia update'.",
+    out();
+    printError(
+      `GAIA wasn't updated: ${(e as Error).message}\nYour data is untouched. Fix the cause above, then run 'gaia update' again.`,
     );
     process.exitCode = 1;
   }

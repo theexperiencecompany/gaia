@@ -1,5 +1,6 @@
 import { MARK } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
+import { printError } from "./print-error.js";
 import {
   formatElapsed,
   type RunStep,
@@ -37,11 +38,9 @@ export function isInteractive(): boolean {
 export function requireInteractive(commandName: string): void {
   if (isInteractive()) return;
   const what = commandName ? `'gaia ${commandName}'` : "this command";
-  console.error(
-    `Error: ${what} needs an interactive terminal (TTY) to prompt for input.`,
-  );
-  console.error(
-    `Re-run it from a regular shell session — not a pipe, redirect, or non-TTY environment.`,
+  printError(
+    `${what} needs an interactive terminal to ask its questions.\n` +
+      "Run it from a regular terminal, not a pipe or a script.",
   );
   process.exit(1);
 }
@@ -77,7 +76,7 @@ export function attachPlainReporter(store: CLIStore, resumedStep = ""): void {
     }
     if (state.error && state.error.message !== lastErrorMsg) {
       lastErrorMsg = state.error.message;
-      console.error(`  Error: ${state.error.message}`);
+      printError(state.error.message);
     }
   });
 }

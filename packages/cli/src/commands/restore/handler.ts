@@ -4,6 +4,8 @@
  * @module commands/restore/handler
  */
 
+import { printError } from "../../lib/print-error.js";
+import { MARK } from "../../ui/constants.js";
 import {
   getRestoreCommands,
   type RestoreOptions,
@@ -36,7 +38,7 @@ export async function runRestoreCommand(
   };
   const resolved = resolveRestoreFiles(restoreOptions);
   for (const warning of restoreWarnings(resolved))
-    errOut(`Warning: ${warning}`);
+    errOut(`${MARK.warn} ${warning}`);
 
   if (options.dryRun) {
     const cmds = getRestoreCommands(resolved);
@@ -67,7 +69,7 @@ export async function runRestoreCommand(
       "Restore complete. Run 'gaia doctor' to confirm every dependency is ready.",
     );
   } catch (e) {
-    errOut((e as Error).message);
+    printError((e as Error).message);
     process.exitCode = 1;
   }
 }
