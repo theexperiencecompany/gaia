@@ -9,6 +9,12 @@
  */
 
 const CANONICAL_REDIRECT_PAIRS = [
+  // Persona pages that also answered at the site root, canonical-tagged to /for/*
+  ["/agency-owners", "/for/agency-owners"],
+  ["/engineering-managers", "/for/engineering-managers"],
+  ["/product-managers", "/for/product-managers"],
+  ["/sales-professionals", "/for/sales-professionals"],
+  ["/software-developers", "/for/software-developers"],
   // /automate reverse-order combos
   ["/automate/teams-slack", "/automate/slack-teams"],
   ["/automate/trello-notion", "/automate/notion-trello"],

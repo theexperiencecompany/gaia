@@ -391,7 +391,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
       },
       {
         icon: "PackageIcon",
-        title: "30+ built-in skills",
+        title: "Built-in skills",
         description:
           "Pre-installed skills for Slack, Gmail, GitHub, Notion, Calendar, artifacts, and more.",
       },

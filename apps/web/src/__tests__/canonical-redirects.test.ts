@@ -19,18 +19,21 @@ import {
 const DATA_DIR = path.join(process.cwd(), "public", "data");
 
 const FAMILY_BY_PREFIX: Record<string, string> = {
+  "/for/": "personas",
   "/automate/": "combos",
   "/learn/": "glossary",
   "/compare/": "comparisons",
   "/alternative-to/": "alternatives",
 };
 
-/** The live page set for a root-relative path's family, read from its `_slugs.json`. */
-function liveSlugsFor(pagePath: string): { slug: string; live: Set<string> } {
+/** The live page set for a path's data-driven family, or undefined for a route outside those families. */
+function liveSlugsFor(
+  pagePath: string,
+): { slug: string; live: Set<string> } | undefined {
   const prefix = Object.keys(FAMILY_BY_PREFIX).find((p) =>
     pagePath.startsWith(p),
   );
-  if (prefix === undefined) throw new Error(`unknown family: ${pagePath}`);
+  if (prefix === undefined) return undefined;
   const slugs = JSON.parse(
     fs.readFileSync(
       path.join(DATA_DIR, FAMILY_BY_PREFIX[prefix], "_slugs.json"),
@@ -43,15 +46,30 @@ function liveSlugsFor(pagePath: string): { slug: string; live: Set<string> } {
 describe("canonical redirects", () => {
   it("keeps every victim out of the live page set", () => {
     for (const [victim] of CANONICAL_REDIRECT_PAIRS) {
-      const { slug, live } = liveSlugsFor(victim);
-      expect(live.has(slug), victim).toBe(false);
+      const family = liveSlugsFor(victim);
+      if (family === undefined) {
+        // A route victim must not still exist as a page the redirect shadows.
+        const pageFile = path.join(
+          process.cwd(),
+          "src/app/[locale]/(landing)",
+          victim,
+          "page.tsx",
+        );
+        expect(fs.existsSync(pageFile), pageFile).toBe(false);
+        continue;
+      }
+      expect(family.live.has(family.slug), victim).toBe(false);
     }
   });
 
   it("points every victim at a live page, never another victim", () => {
     for (const [victim, winner] of CANONICAL_REDIRECT_PAIRS) {
-      const { slug, live } = liveSlugsFor(winner);
-      expect(live.has(slug), `${victim} -> ${winner}`).toBe(true);
+      const family = liveSlugsFor(winner);
+      if (family !== undefined) {
+        expect(family.live.has(family.slug), `${victim} -> ${winner}`).toBe(
+          true,
+        );
+      }
       expect(isRedirectedPath(winner), winner).toBe(false);
     }
   });

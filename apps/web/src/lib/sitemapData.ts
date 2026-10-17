@@ -8,6 +8,7 @@ import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
 } from "@/features/integrations/data/marketplaceServer";
+import { FEATURES } from "@/features/landing/data/featuresData";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAlternates } from "@/i18n/getAlternates";
 import { getAllBlogPosts } from "@/lib/blog";
@@ -91,6 +92,8 @@ const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/manifesto", freq: "monthly", priority: 0.8 },
   { path: "/about", freq: "monthly", priority: 0.8 },
   { path: "/features", freq: "weekly", priority: 0.8 },
+  { path: "/bots", freq: "monthly", priority: 0.8 },
+  { path: "/cli", freq: "monthly", priority: 0.7 },
   { path: "/contact", freq: "monthly", priority: 0.7 },
   { path: "/brand", freq: "monthly", priority: 0.7 },
   { path: "/terms", freq: "monthly", priority: 0.5 },
@@ -389,6 +392,11 @@ export async function getSitemapEntries(
           url: `${baseUrl}${p.path}`,
           changeFrequency: p.freq,
           priority: p.priority,
+        })),
+        ...FEATURES.map((feature) => ({
+          url: `${baseUrl}/features/${feature.slug}`,
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
         })),
       ];
     case SITEMAP_IDS.BLOG:

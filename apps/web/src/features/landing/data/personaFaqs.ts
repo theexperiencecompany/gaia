@@ -12,7 +12,7 @@ export const FOUNDERS_FAQS = [
   {
     question: "What tools does GAIA integrate with for founders?",
     answer:
-      "GAIA integrates with Gmail, Slack, Google Calendar, GitHub, HubSpot, Notion, Google Sheets, Linear, and 30+ other tools founders use daily. It creates an intelligent automation layer across your entire stack.",
+      "GAIA integrates with Gmail, Slack, Google Calendar, GitHub, HubSpot, Notion, Google Sheets, Linear, and many other tools founders use daily. It creates an intelligent automation layer across your entire stack.",
   },
   {
     question: "Is GAIA a replacement for hiring an EA or chief of staff?",

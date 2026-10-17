@@ -245,6 +245,23 @@ jobs:
           echo "### ❌ Production deploy failed" >> "$GITHUB_STEP_SUMMARY"
           echo "Token scopes needed: Workers Scripts Write + R2 Write/Read + Routes Write on account d65fe47d…. Verify secrets and wrangler.jsonc." >> "$GITHUB_STEP_SUMMARY"
 
+  seo-audit:
+    name: SEO audit (post-deploy)
+    # Alerting, not a gate: it runs behind the production deploy, so a red audit
+    # never blocks or rolls back a deploy that already shipped.
+    needs: deploy-prod
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Crawl the live site as a search engine would (status, canonical, hreflang, links, noindex)
+        run: bash scripts/ci/smoke-web.sh audit
+
   preview:
     name: preview (PR pr-${{ github.event.number }})
     needs: build
