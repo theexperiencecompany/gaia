@@ -181,7 +181,8 @@ class _ConversationIdRow(BaseModel):
 
 
 class _MessageProjectionRow(BaseModel):
-    """Positional ``messages.$`` projection — a one-element messages slice."""
+    """A projection of part of ``messages``: the positional ``messages.$`` (one
+    element) or a ``$slice`` window (e.g. the follow-up action dedup read)."""
 
     model_config = ConfigDict(extra="ignore")
 

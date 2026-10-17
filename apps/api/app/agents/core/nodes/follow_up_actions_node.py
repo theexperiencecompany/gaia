@@ -17,6 +17,7 @@ from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
+from app.db.repositories.conversations import conversation_repository
 from app.models.agent_models import (
     config_agent_name,
     current_stream_writer,
@@ -35,16 +36,22 @@ class FollowUpActions(BaseModel):
     """Data structure for follow-up action suggestions."""
 
     actions: list[str] = Field(
-        description="Array of 3-4 follow-up action suggestions for the user. Each action should be clear, actionable, contextually relevant, and under 50 characters."
+        description="Array of 2-4 follow-up action suggestions for the user. Each action should be clear, actionable, contextually relevant, and short (aim under ~30 characters)."
     )
+
+
+# How many trailing conversation messages to scan for already-shown suggestions.
+_PREVIOUS_ACTIONS_MESSAGE_WINDOW = 10
 
 
 async def generate_follow_up_actions(
     context_text: str,
     user_id: str | None,
     config: RunnableConfig,
+    *,
+    conversation_id: str | None,
 ) -> list[str]:
-    """Generate 3-4 contextual follow-up suggestions from conversation context.
+    """Generate 2-4 contextual follow-up suggestions from conversation context.
 
     Shared by the comms end-graph hook and the background executor's final
     result message so suggestions are produced consistently in both paths.
@@ -59,10 +66,24 @@ async def generate_follow_up_actions(
             tool_registry = await get_tool_registry()
             tool_names = tool_registry.get_tool_names()
 
+        # Suggestions already shown in this conversation's recent messages, so
+        # the generator can avoid repeating them and detect suggestion fatigue.
+        previous_actions = (
+            await conversation_repository.get_recent_follow_up_actions(
+                user_id, conversation_id, window=_PREVIOUS_ACTIONS_MESSAGE_WINDOW
+            )
+            if user_id and conversation_id
+            else []
+        )
+
         # STATIC prompt prefix (the system message) + DYNAMIC per-user/per-turn
         # context. The byte-identical static prefix lets this call benefit from any
         # upstream prompt caching and reduces throughput/latency.
-        dynamic_context = f"Available tools: {tool_names}\nContext: {context_text}"
+        dynamic_context = (
+            f"Available tools: {tool_names}\n"
+            f"Previously suggested actions (already shown to the user): {previous_actions}\n"
+            f"Context: {context_text}"
+        )
 
         result = await ainvoke_structured(
             FollowUpActions,
@@ -147,7 +168,8 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
         _safe_write_actions(writer, [])
         return state
 
-    user_id = read_agent_configurable(config).user_id
+    configurable = read_agent_configurable(config)
+    user_id = configurable.user_id
     recent_messages = messages[-4:] if len(messages) > 4 else messages
 
     log.set(
@@ -158,7 +180,10 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
     )
 
     actions = await generate_follow_up_actions(
-        _pretty_print_messages(recent_messages), user_id, config
+        _pretty_print_messages(recent_messages),
+        user_id,
+        config,
+        conversation_id=configurable.conversation_id,
     )
     _safe_write_actions(writer, actions)
     return state

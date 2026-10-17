@@ -565,6 +565,27 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else ConversationSource.coerce(row.source)
 
+    async def get_recent_follow_up_actions(
+        self, user_id: str, conversation_id: str, *, window: int
+    ) -> list[str]:
+        """Return the follow-up actions shown in the trailing window of messages.
+
+        Deduped in first-seen order, so the generator can avoid repeating a suggestion.
+        """
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            {"messages": {"$slice": -window}},
+            _MessageProjectionRow,
+        )
+        if row is None:
+            return []
+        seen: list[str] = []
+        for message in row.messages:
+            for action in message.follow_up_actions or []:
+                if action not in seen:
+                    seen.append(action)
+        return seen
+
     async def is_system_generated(self, conversation_id: str) -> bool:
         """Whether GAIA created this conversation itself (workflow/email/reminder runs).
 
