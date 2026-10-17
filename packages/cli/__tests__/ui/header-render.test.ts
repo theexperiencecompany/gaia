@@ -25,6 +25,7 @@ function input(overrides: Partial<HeaderInput> = {}): HeaderInput {
     size: "small",
     level: 3,
     columns: 120,
+    rows: 50,
     isTTY: true,
     hyperlinks: false,
     version: "0.6.0",
@@ -121,6 +122,42 @@ describe("renderHeader layout", () => {
     expect(renderHeader(input({ columns: fits }))).toHaveLength(9);
     const narrow = renderHeader(input({ columns: fits - 1 }));
     expect(narrow.map(strip)).toEqual(["GAIA v0.6.0"]);
+  });
+
+  it("draws the logo only on a terminal at least 40 rows tall", () => {
+    expect(renderHeader(input({ rows: 40 }))).toHaveLength(9);
+    expect(renderHeader(input({ rows: 39 })).map(strip)).toEqual([
+      "GAIA v0.6.0",
+    ]);
+  });
+
+  it("keeps the status and update on the one line of a short terminal", () => {
+    const lines = renderHeader(
+      input({
+        rows: 24,
+        status: {
+          running: true,
+          webUrl: "http://localhost:3000",
+          provider: null,
+        },
+        update: "v0.7.0",
+      }),
+    );
+    expect(lines.map(strip)).toEqual([
+      "GAIA v0.6.0 · ● Running at http://localhost:3000 · Update available: v0.7.0 · run gaia update",
+    ]);
+  });
+
+  it("drops what does not fit the one line, never the title", () => {
+    const status = { running: false as const, installed: true };
+    const statusText = "○ Not running · start it with gaia start";
+    const fits = `GAIA v0.6.0 · ${statusText}`.length;
+    const line = (columns: number): string[] =>
+      renderHeader(input({ rows: 24, columns, status, update: "v0.7.0" })).map(
+        strip,
+      );
+    expect(line(fits)).toEqual([`GAIA v0.6.0 · ${statusText}`]);
+    expect(line(fits - 1)).toEqual(["GAIA v0.6.0"]);
   });
 
   it("falls back to the plain title line when stdout is not a terminal", () => {

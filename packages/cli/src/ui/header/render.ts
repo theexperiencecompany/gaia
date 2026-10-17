@@ -19,6 +19,8 @@ export interface HeaderInput {
   level: ColorSupportLevel;
   /** Terminal width; the logo is dropped when it and the text do not fit. */
   columns: number;
+  /** Terminal height; below MIN_LOGO_ROWS the logo would push the screen's own content off. */
+  rows: number;
   isTTY: boolean;
   hyperlinks: boolean;
   version: string;
@@ -30,6 +32,11 @@ export interface HeaderInput {
 
 /** Columns between the logo and its text. */
 export const LOGO_TEXT_GAP = 3;
+
+/** Shortest terminal the logo is drawn on; an 80x24 screen keeps its rows for the command. */
+const MIN_LOGO_ROWS = 40;
+
+const COMPACT_SEPARATOR = " · ";
 
 const TAGLINE = "Your proactive personal assistant";
 
@@ -77,11 +84,9 @@ function statusLine(
   };
 }
 
-function textLines(input: HeaderInput, chalk: ChalkInstance): TextLine[] {
-  const lines = [
-    titleLine(chalk, input.version),
-    { plain: TAGLINE, styled: chalk.dim(TAGLINE) },
-  ];
+/** The status and update lines, in the order they are shown. */
+function noticeLines(input: HeaderInput, chalk: ChalkInstance): TextLine[] {
+  const lines: TextLine[] = [];
   if (input.status) {
     lines.push(statusLine(chalk, input.status, input.hyperlinks));
   }
@@ -92,16 +97,36 @@ function textLines(input: HeaderInput, chalk: ChalkInstance): TextLine[] {
   return lines;
 }
 
-/** The header's lines: the logo with text centred beside it, or one title line when it cannot show. */
+function plainWidth(line: TextLine): number {
+  return [...line.plain].length;
+}
+
+/** The title, then each notice that still fits the width, on one line. */
+function compactLine(input: HeaderInput, chalk: ChalkInstance): string {
+  let line = titleLine(chalk, input.version);
+  for (const notice of noticeLines(input, chalk)) {
+    const joined = {
+      plain: `${line.plain}${COMPACT_SEPARATOR}${notice.plain}`,
+      styled: `${line.styled}${chalk.dim(COMPACT_SEPARATOR)}${notice.styled}`,
+    };
+    if (plainWidth(joined) > input.columns) break;
+    line = joined;
+  }
+  return line.styled;
+}
+
+/** The header's lines: the logo with text centred beside it, or one compact line when it cannot show. */
 export function renderHeader(input: HeaderInput): string[] {
   const chalk = new Chalk({ level: input.level });
-  const text = textLines(input, chalk);
+  const text = [
+    titleLine(chalk, input.version),
+    { plain: TAGLINE, styled: chalk.dim(TAGLINE) },
+    ...noticeLines(input, chalk),
+  ];
   const width =
-    logoWidth(input.size) +
-    LOGO_TEXT_GAP +
-    Math.max(...text.map((line) => [...line.plain].length));
-  if (!input.isTTY || width > input.columns) {
-    return [titleLine(chalk, input.version).styled];
+    logoWidth(input.size) + LOGO_TEXT_GAP + Math.max(...text.map(plainWidth));
+  if (!input.isTTY || input.rows < MIN_LOGO_ROWS || width > input.columns) {
+    return [compactLine(input, chalk)];
   }
 
   const logo = logoLines(input.size, input.level);

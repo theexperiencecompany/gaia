@@ -19,8 +19,9 @@ export interface HeaderOptions {
   showUpdate?: boolean;
 }
 
-/** Width assumed when the stream reports none (0 on a sizeless pty). */
+/** Size assumed when the stream reports none (0 on a sizeless pty). */
 const DEFAULT_COLUMNS = 80;
+const DEFAULT_ROWS = 24;
 
 /** Chalk's level for stdout, except that NO_COLOR (which chalk ignores) turns colour off. */
 export function terminalColourLevel(): ColorSupportLevel {
@@ -31,11 +32,13 @@ export function terminalColourLevel(): ColorSupportLevel {
 /** Facts about a terminal stream the header needs, shared by the Ink header. */
 export function terminalFacts(stream: NodeJS.WriteStream): {
   columns: number;
+  rows: number;
   isTTY: boolean;
   hyperlinks: boolean;
 } {
   return {
     columns: stream.columns || DEFAULT_COLUMNS,
+    rows: stream.rows || DEFAULT_ROWS,
     isTTY: stream.isTTY === true,
     hyperlinks: supportsHyperlink(stream),
   };
