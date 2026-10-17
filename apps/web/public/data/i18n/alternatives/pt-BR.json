@@ -12,7 +12,7 @@
       "ferramenta de produtividade com IA",
       "assistente de IA proativo",
       "alternativa gratuita ao notion",
-      "alternativa open source ao notion",
+      "alternativa source-available ao notion",
       "alternativa ao notion auto-hospedada",
       "alternativa ao notion para uso individual",
       "alternativa ao notion 2026",
@@ -20,7 +20,7 @@
       "gestão de projetos com IA",
       "tarefas a partir de e-mails com IA",
       "segundo cérebro com IA",
-      "PKM open source",
+      "PKM source-available",
       "anotações auto-hospedadas"
     ],
     "painPoints": [
@@ -41,7 +41,7 @@
     "gaiaAdvantages": [
       "Proativo — GAIA mostra o que precisa da sua atenção antes mesmo de você pedir",
       "Sem necessidade de configuração; conecta-se ao Gmail, Google Agenda e a mais de 50 ferramentas instantaneamente",
-      "Open-source e hospedável por você mesmo, mantendo seus dados sob seu controle",
+      "Source-available e hospedável por você mesmo, mantendo seus dados sob seu controle",
       "Plano gratuito disponível; Pro a partir de US${{PRO_MONTHLY_PRICE}}/mês, sem cobrança por usuário individual",
       "Funciona no desktop, celular, web, CLI, Discord, Slack e Telegram"
     ],
@@ -115,7 +115,7 @@
       "monday vs gaia",
       "gerenciador de tarefas com IA",
       "alternativa gratuita ao monday.com",
-      "alternativa open source ao monday.com",
+      "alternativa source-available ao monday.com",
       "alternativa auto-hospedada ao monday.com",
       "alternativa ao monday.com para indivíduos",
       "alternativa ao monday.com 2026",
@@ -181,7 +181,7 @@
       "asana vs gaia",
       "IA de produtividade proativa",
       "alternativa gratuita ao asana",
-      "alternativa open source ao asana",
+      "alternativa source-available ao asana",
       "alternativa ao asana auto-hospedada",
       "alternativa ao asana para indivíduos",
       "alternativa ao asana 2026",
@@ -240,7 +240,7 @@
     "name": "ClickUp",
     "tagline": "Gestão de projetos tudo-em-um com docs, metas e controle de tempo",
     "metaTitle": "Melhor Alternativa ao ClickUp em 2026",
-    "metaDescription": "Sobrecarregado pela complexidade do ClickUp? O GAIA é um assistente de IA proativo que simplifica o gerenciamento de tarefas, e-mails e agendas. Plano gratuito + open-source para hospedagem própria.",
+    "metaDescription": "Sobrecarregado pela complexidade do ClickUp? O GAIA é um assistente de IA proativo que simplifica o gerenciamento de tarefas, e-mails e agendas. Plano gratuito + source-available para hospedagem própria.",
     "keywords": [
       "alternativa ao clickup",
       "melhor alternativa ao clickup",
@@ -249,7 +249,7 @@
       "clickup vs gaia",
       "produtividade com assistente de IA",
       "alternativa gratuita ao clickup",
-      "clickup open source alternativa",
+      "clickup source-available alternativa",
       "alternativa self-hosted ao clickup",
       "alternativa ao clickup para indivíduos",
       "alternativa ao clickup 2026",
@@ -316,7 +316,7 @@
       "trello vs gaia",
       "gerenciador de tarefas inteligente",
       "alternativa gratuita ao trello",
-      "alternativa ao trello open source",
+      "alternativa ao trello source-available",
       "alternativa ao trello para auto-hospedagem",
       "alternativa ao trello para indivíduos",
       "alternativa ao trello 2026",
@@ -373,7 +373,7 @@
     "name": "Jira",
     "tagline": "Rastreamento de issues e gestão ágil de projetos para equipes de software",
     "metaTitle": "Melhor Alternativa ao Jira em 2026",
-    "metaDescription": "O Jira é muito complexo para você? O GAIA é um assistente de IA proativo que gerencia tarefas pessoais, e-mails e fluxos de trabalho de forma simples. Open source, auto-hospedável e com plano gratuito disponível.",
+    "metaDescription": "O Jira é muito complexo para você? O GAIA é um assistente de IA proativo que gerencia tarefas pessoais, e-mails e fluxos de trabalho de forma simples. Source-available, auto-hospedável e com plano gratuito disponível.",
     "keywords": [
       "alternativa ao jira",
       "melhor alternativa ao jira",
@@ -382,7 +382,7 @@
       "jira vs gaia",
       "gerenciador de tarefas pessoal com IA",
       "alternativa gratuita ao jira",
-      "alternativa open source ao jira",
+      "alternativa source-available ao jira",
       "alternativa auto-hospedada ao jira",
       "alternativa ao jira para indivíduos",
       "alternativa ao jira 2026",
@@ -448,7 +448,7 @@
       "basecamp vs gaia",
       "gestão de projetos proativa",
       "alternativa gratuita ao basecamp",
-      "alternativa open source ao basecamp",
+      "alternativa source-available ao basecamp",
       "alternativa self-hosted ao basecamp",
       "alternativa ao basecamp para indivíduos",
       "alternativa ao basecamp 2026",
@@ -514,7 +514,7 @@
       "chatgpt vs gaia",
       "assistente de IA proativo",
       "alternativa gratuita ao chatgpt",
-      "alternativa open source ao chatgpt",
+      "alternativa source-available ao chatgpt",
       "alternativa auto-hospedada ao chatgpt",
       "alternativa ao chatgpt para indivíduos",
       "alternativa ao chatgpt 2026",
@@ -566,6 +566,10 @@
       {
         "question": "A GAIA possui memória como o recurso de memória do ChatGPT?",
         "answer": "Sim, e a memória da GAIA é ainda mais sofisticada. Ela usa um sistema de memória baseado em grafos, que entende relações entre pessoas, projetos e eventos — não apenas uma lista de fatos. A memória é persistente automaticamente, sem você precisar pedir para a GAIA lembrar das coisas."
+      },
+      {
+        "question": "Does GAIA replace ChatGPT?",
+        "answer": "Only partially. For open-ended chat, brainstorming, and frontier-model reasoning, ChatGPT itself remains stronger, and GAIA does not replace that; the fit score of 4/5 reflects overlapping but different jobs. For email, calendar, tasks, and proactive workflow execution across 50+ tools, GAIA covers ground ChatGPT does not."
       }
     ],
     "comparisonRows": [
@@ -614,7 +618,7 @@
       "copilot vs gaia",
       "assistente de ia para google workspace",
       "alternativa gratuita ao microsoft copilot",
-      "alternativa open source ao microsoft copilot",
+      "alternativa source-available ao microsoft copilot",
       "alternativa auto-hospedada ao microsoft copilot",
       "alternativa ao Microsoft Copilot para pessoas físicas",
       "alternativa ao Microsoft Copilot 2026",
@@ -664,8 +668,8 @@
         "answer": "A GAIA pode se conectar a alguns serviços Microsoft por meio de integrações MCP. Para organizações que usam Google Workspace e ferramentas Microsoft, a GAIA pode servir como uma ponte para tarefas de produtividade pessoal."
       },
       {
-        "question": "A GAIA é open source, diferente do Microsoft Copilot?",
-        "answer": "Sim. A GAIA é totalmente open source no GitHub. Você pode inspecionar o código, contribuir e fazer auto-hospedagem usando sua própria infraestrutura e chaves de API."
+        "question": "A GAIA é source-available, diferente do Microsoft Copilot?",
+        "answer": "Sim. A GAIA é totalmente source-available no GitHub. Você pode inspecionar o código, contribuir e fazer auto-hospedagem usando sua própria infraestrutura e chaves de API."
       }
     ]
   },
@@ -673,7 +677,7 @@
     "name": "Google Gemini",
     "tagline": "Assistente de IA do Google com integração ao Workspace e acesso à web",
     "metaTitle": "Melhor Alternativa ao Google Gemini em 2026",
-    "metaDescription": "O Google Gemini não executa ações para você. O GAIA é um assistente de IA proativo que gerencia automaticamente seu Gmail, Google Agenda e tarefas. Open source e com plano gratuito.",
+    "metaDescription": "O Google Gemini não executa ações para você. O GAIA é um assistente de IA proativo que gerencia automaticamente seu Gmail, Google Agenda e tarefas. Source-available e com plano gratuito.",
     "keywords": [
       "alternativa ao google gemini",
       "alternativa gemini",
@@ -682,7 +686,7 @@
       "gemini vs gaia",
       "IA proativa para google workspace",
       "alternativa gratuita ao google gemini",
-      "alternativa open source ao google gemini",
+      "alternativa source-available ao google gemini",
       "alternativa auto-hospedada ao google gemini",
       "alternativa google gemini para pessoas físicas",
       "alternativa google gemini 2026",
@@ -728,8 +732,8 @@
         "answer": "Sim. A GAIA integra nativamente com Gmail e Google Agenda. Ela vai além do ecossistema do Google, com mais de 50 integrações adicionais que o Gemini não oferece suporte."
       },
       {
-        "question": "GAIA é open source enquanto o Gemini não é?",
-        "answer": "Correto. A GAIA é totalmente open source. O Gemini é um produto proprietário do Google. Com a GAIA você pode inspecionar o código, hospedar nos seus próprios servidores e usar suas próprias chaves de API."
+        "question": "GAIA é source-available enquanto o Gemini não é?",
+        "answer": "Correto. A GAIA é totalmente source-available. O Gemini é um produto proprietário do Google. Com a GAIA você pode inspecionar o código, hospedar nos seus próprios servidores e usar suas próprias chaves de API."
       },
       {
         "question": "A GAIA custa mais do que o Google One AI Premium?",
@@ -750,7 +754,7 @@
       "google assistente vs gaia",
       "assistente de produtividade com IA",
       "alternativa gratuita ao google assistente",
-      "alternativa open source ao google assistente",
+      "alternativa source-available ao google assistente",
       "alternativa auto-hospedada ao google assistente",
       "alternativa ao google assistente para pessoas físicas",
       "alternativa ao google assistente 2026",
@@ -774,7 +778,7 @@
       "Assistente multiplataforma disponível no celular, desktop e bots"
     ],
     "gaiaAdvantages": [
-      "Não será descontinuado — é open source e está em desenvolvimento ativo",
+      "Não será descontinuado — é source-available e está em desenvolvimento ativo",
       "Foco em produtividade profissional além de comandos de voz",
       "Monitoramento proativo de e-mails e calendário sem necessidade de solicitação",
       "Pode ser hospedado pelo próprio usuário para privacidade e controle total dos dados",
@@ -801,7 +805,7 @@
       },
       {
         "question": "O GAIA respeita mais a privacidade do que o Google Assistente?",
-        "answer": "O GAIA é open-source e pode ser hospedado por você mesmo, o que significa que seus dados podem ficar totalmente em seus próprios servidores. Diferente do Google Assistente, o GAIA não exige um microfone sempre ligado."
+        "answer": "O GAIA é source-available e pode ser hospedado por você mesmo, o que significa que seus dados podem ficar totalmente em seus próprios servidores. Diferente do Google Assistente, o GAIA não exige um microfone sempre ligado."
       }
     ]
   },
@@ -818,7 +822,7 @@
       "motion vs gaia",
       "gestão de tempo com IA",
       "alternativa gratuita ao motion",
-      "alternativa open source ao motion",
+      "alternativa source-available ao motion",
       "alternativa auto-hospedada ao motion",
       "alternativa ao motion para pessoas físicas",
       "alternativa ao motion 2026",
@@ -875,7 +879,7 @@
     "name": "Reclaim.ai",
     "tagline": "Agendamento inteligente para hábitos, tarefas e preferências de reuniões",
     "metaTitle": "Melhor alternativa ao Reclaim.ai em 2026",
-    "metaDescription": "O Reclaim.ai apenas otimiza seu calendário. O GAIA é um assistente de IA proativo que gerencia e-mail, tarefas e agendamento juntos. Plano gratuito + auto-hospedagem open-source.",
+    "metaDescription": "O Reclaim.ai apenas otimiza seu calendário. O GAIA é um assistente de IA proativo que gerencia e-mail, tarefas e agendamento juntos. Plano gratuito + auto-hospedagem source-available.",
     "keywords": [
       "alternativa ao reclaim ai",
       "melhor alternativa ao reclaim",
@@ -884,7 +888,7 @@
       "reclaim vs gaia",
       "assistente de agendamento com IA",
       "alternativa gratuita ao reclaim.ai",
-      "alternativa open source ao reclaim.ai",
+      "alternativa source-available ao reclaim.ai",
       "alternativa auto-hospedada ao reclaim.ai",
       "alternativa ao reclaim.ai para pessoas físicas",
       "alternativa ao reclaim.ai 2026",
@@ -950,7 +954,7 @@
       "clockwise vs gaia",
       "IA para tempo de foco",
       "alternativa gratuita ao clockwise",
-      "alternativa ao clockwise open source",
+      "alternativa ao clockwise source-available",
       "alternativa ao clockwise auto-hospedado",
       "alternativa ao clockwise para pessoas físicas",
       "alternativa ao clockwise 2026",
@@ -1016,7 +1020,7 @@
       "fantastical vs gaia",
       "gerenciador de calendário com IA",
       "alternativa gratuita ao fantastical",
-      "alternativa open source ao fantastical",
+      "alternativa source-available ao fantastical",
       "alternativa auto-hospedada ao fantastical",
       "alternativa ao fantastical para uso individual",
       "alternativa ao fantastical 2026",
@@ -1148,7 +1152,7 @@
       "superhuman vs gaia",
       "e-mail com IA acessível",
       "alternativa gratuita ao Superhuman",
-      "alternativa open source ao Superhuman",
+      "alternativa source-available ao Superhuman",
       "alternativa auto-hospedada ao Superhuman",
       "alternativa ao Superhuman para pessoas físicas",
       "alternativa ao Superhuman 2026",
@@ -1234,7 +1238,7 @@
     "name": "SaneBox",
     "tagline": "Filtragem de e-mails por IA que prioriza automaticamente sua caixa de entrada",
     "metaTitle": "Melhor Alternativa ao SaneBox em 2026",
-    "metaDescription": "O SaneBox apenas filtra e-mails. O GAIA é um assistente de IA proativo que gerencia e-mails, cria tarefas e cuida do seu calendário. Plano gratuito + hospedagem própria open-source.",
+    "metaDescription": "O SaneBox apenas filtra e-mails. O GAIA é um assistente de IA proativo que gerencia e-mails, cria tarefas e cuida do seu calendário. Plano gratuito + hospedagem própria source-available.",
     "keywords": [
       "alternativa ao sanebox",
       "melhor alternativa ao sanebox",
@@ -1243,7 +1247,7 @@
       "sanebox vs gaia",
       "gestão inteligente de e-mails",
       "alternativa gratuita ao sanebox",
-      "alternativa open source ao sanebox",
+      "alternativa source-available ao sanebox",
       "alternativa auto-hospedada ao sanebox",
       "alternativa ao sanebox para pessoas físicas",
       "alternativa ao sanebox 2026",
@@ -1311,7 +1315,7 @@
       "shortwave vs gaia",
       "ia proativa para e-mail",
       "alternativa grátis ao shortwave",
-      "alternativa open source ao shortwave",
+      "alternativa source-available ao shortwave",
       "alternativa self-hosted ao shortwave",
       "alternativa shortwave para pessoas físicas",
       "alternativa shortwave 2026",
@@ -1474,7 +1478,7 @@
       "ticktick vs gaia",
       "app de tarefas proativo",
       "alternativa gratuita ao ticktick",
-      "alternativa open source ao ticktick",
+      "alternativa source-available ao ticktick",
       "alternativa ao ticktick auto-hospedada",
       "alternativa ao ticktick para pessoas físicas",
       "alternativa ao ticktick 2026",
@@ -1541,7 +1545,7 @@
       "things 3 vs gaia",
       "ferramenta gtd com ia",
       "alternativa ao things 3 grátis",
-      "alternativa open source ao things 3",
+      "alternativa source-available ao things 3",
       "alternativa autogerenciada ao things 3",
       "alternativa ao things 3 para pessoas físicas",
       "alternativa ao things 3 em 2026",
@@ -1608,7 +1612,7 @@
       "anydo vs gaia",
       "planejador proativo com IA",
       "alternativa gratuita ao any.do",
-      "alternativa open source ao any.do",
+      "alternativa source-available ao any.do",
       "alternativa auto-hospedada ao any.do",
       "alternativa ao any.do para pessoas físicas",
       "alternativa ao any.do 2026",
@@ -1675,7 +1679,7 @@
       "zapier vs gaia",
       "automação sem código ia",
       "alternativa gratuita ao zapier",
-      "alternativa open source ao zapier",
+      "alternativa source-available ao zapier",
       "alternativa auto-hospedada ao zapier",
       "alternativa ao zapier para pessoas físicas",
       "alternativa ao zapier 2026",
@@ -1701,7 +1705,7 @@
     "gaiaAdvantages": [
       "Nativo em IA: fluxos usam raciocínio, não apenas pares de gatilho e ação",
       "Criação de fluxos por conversa — sem necessidade de arrastar e soltar na interface",
-      "Open source e autohospedável, diferente do SaaS fechado do Zapier",
+      "Source-available e autohospedável, diferente do SaaS fechado do Zapier",
       "Preço único, sem limites por tarefa ou Zap",
       "Memória persistente entre automações mantém o contexto ao longo do tempo"
     ],
@@ -1826,18 +1830,18 @@
   },
   "n8n": {
     "name": "n8n",
-    "tagline": "Automação de fluxos de trabalho open source com auto-hospedagem e mais de 400 integrações",
+    "tagline": "Automação de fluxos de trabalho source-available com auto-hospedagem e mais de 400 integrações",
     "metaTitle": "Melhor Alternativa ao n8n em 2026",
-    "metaDescription": "O n8n é poderoso, mas técnico. O GAIA é um assistente de IA open source proativo com automação integrada que qualquer pessoa pode usar, mesmo sem conhecimento técnico. Plano gratuito disponível.",
+    "metaDescription": "O n8n é poderoso, mas técnico. O GAIA é um assistente de IA source-available proativo com automação integrada que qualquer pessoa pode usar, mesmo sem conhecimento técnico. Plano gratuito disponível.",
     "keywords": [
       "alternativa ao n8n",
       "melhor alternativa ao n8n",
       "substituto do n8n",
-      "automação com IA open source",
+      "automação com IA source-available",
       "n8n vs gaia",
       "assistente de IA auto-hospedado",
       "alternativa gratuita ao n8n",
-      "alternativa open source ao n8n",
+      "alternativa source-available ao n8n",
       "alternativa auto-hospedada ao n8n",
       "alternativa ao n8n para pessoas físicas",
       "alternativa ao n8n 2026",
@@ -1852,10 +1856,10 @@
       "A versão em nuvem é cara pelo que o n8n auto-hospedado oferece",
       "Não há memória ou contexto entre execuções dos fluxos de trabalho"
     ],
-    "whyPeopleLook": "O n8n é adorado por desenvolvedores e usuários técnicos que buscam uma automação open source de fluxos de trabalho, com possibilidade de auto-hospedagem e personalização. Porém, seu editor visual de nós, a necessidade de usar código JavaScript e os requisitos para auto-hospedagem tornam o n8n inacessível para quem não é técnico. Quem procura alternativas ao n8n geralmente quer o mesmo nível de abertura e auto-hospedagem, mas com uma interface mais fácil — de preferência com inteligência artificial integrada, sem a necessidade de scripts em JavaScript.",
+    "whyPeopleLook": "O n8n é adorado por desenvolvedores e usuários técnicos que buscam uma automação source-available de fluxos de trabalho, com possibilidade de auto-hospedagem e personalização. Porém, seu editor visual de nós, a necessidade de usar código JavaScript e os requisitos para auto-hospedagem tornam o n8n inacessível para quem não é técnico. Quem procura alternativas ao n8n geralmente quer o mesmo nível de abertura e auto-hospedagem, mas com uma interface mais fácil — de preferência com inteligência artificial integrada, sem a necessidade de scripts em JavaScript.",
     "gaiaReplaces": [
       "Automação auto-hospedada para fluxos de trabalho de e-mail, calendário e tarefas",
-      "Motor de fluxos de trabalho open-source com contribuições da comunidade",
+      "Motor de fluxos de trabalho source-available com contribuições da comunidade",
       "Automação impulsionada por IA substituindo nós manuais de lógica em JavaScript",
       "Automação de produtividade pessoal sem necessidade de DevOps"
     ],
@@ -1878,8 +1882,8 @@
         "answer": "Os nós de código JavaScript do n8n oferecem praticamente flexibilidade ilimitada aos desenvolvedores. O sistema de fluxos do GAIA é mais restrito, porém muito mais acessível. Para flexibilidade técnica total, o n8n continua sendo superior. Para a maioria dos casos de automação pessoal, o GAIA é suficiente."
       },
       {
-        "question": "O GAIA é open-source como o n8n?",
-        "answer": "Sim. O GAIA é totalmente open-source no GitHub. Assim como o n8n, você pode hospedar o GAIA em sua própria infraestrutura."
+        "question": "O GAIA é source-available como o n8n?",
+        "answer": "Sim. O GAIA é totalmente source-available no GitHub. Assim como o n8n, você pode hospedar o GAIA em sua própria infraestrutura."
       },
       {
         "question": "GAIA e n8n podem funcionar juntos?",
@@ -1904,7 +1908,7 @@
       "bardeen vs gaia",
       "fluxo de trabalho proativo com IA",
       "alternativa gratuita ao bardeen",
-      "alternativa open source ao bardeen",
+      "alternativa source-available ao bardeen",
       "alternativa ao bardeen self-hosted",
       "alternativa ao bardeen para pessoas físicas",
       "alternativa ao bardeen 2026",
@@ -1970,12 +1974,12 @@
       "obsidian vs gaia",
       "memória em grafo IA",
       "alternativa gratuita ao Obsidian",
-      "alternativa open source ao Obsidian",
+      "alternativa source-available ao Obsidian",
       "alternativa auto-hospedada ao Obsidian",
       "alternativa ao Obsidian para pessoas físicas",
       "alternativa ao Obsidian 2026",
       "segundo cérebro com IA",
-      "PKM open source",
+      "PKM source-available",
       "anotações auto-hospedadas"
     ],
     "painPoints": [
@@ -2015,8 +2019,8 @@
         "answer": "O Obsidian é superior para escrita longa, formatação em Markdown e construção de um repositório PKM personalizado. O GAIA é melhor para captura automática de conhecimento, contexto entre ferramentas e assistência proativa."
       },
       {
-        "question": "O GAIA é open-source como o Obsidian?",
-        "answer": "Sim. O GAIA é totalmente open-source. Diferente do Obsidian (cujo núcleo é fechado, apesar dos plugins da comunidade), todo o código-fonte do GAIA está disponível no GitHub."
+        "question": "O GAIA é source-available como o Obsidian?",
+        "answer": "Sim. O GAIA é totalmente source-available. Diferente do Obsidian (cujo núcleo é fechado, apesar dos plugins da comunidade), todo o código-fonte do GAIA está disponível no GitHub."
       },
       {
         "question": "O GAIA armazena notas localmente como o Obsidian?",
@@ -2026,9 +2030,9 @@
   },
   "logseq": {
     "name": "Logseq",
-    "tagline": "Outliner open-source e local-first com links bidirecionais",
+    "tagline": "Outliner source-available e local-first com links bidirecionais",
     "metaTitle": "Melhor alternativa ao Logseq em 2026",
-    "metaDescription": "O Logseq exige manutenção manual das notas e não possui IA proativa. O GAIA é um assistente de IA proativo com memória em gráfico integrada. Plano gratuito + auto-hospedagem open-source.",
+    "metaDescription": "O Logseq exige manutenção manual das notas e não possui IA proativa. O GAIA é um assistente de IA proativo com memória em gráfico integrada. Plano gratuito + auto-hospedagem source-available.",
     "keywords": [
       "alternativa ao logseq",
       "melhor alternativa ao logseq",
@@ -2037,12 +2041,12 @@
       "logseq vs gaia",
       "base de conhecimento pessoal com IA",
       "alternativa gratuita ao logseq",
-      "alternativa open source ao logseq",
+      "alternativa source-available ao logseq",
       "alternativa auto-hospedada ao logseq",
       "alternativa ao logseq para indivíduos",
       "alternativa ao logseq 2026",
       "Segundo cérebro com IA",
-      "PKM open source",
+      "PKM source-available",
       "anotações auto-hospedadas"
     ],
     "painPoints": [
@@ -2052,7 +2056,7 @@
       "Não há IA proativa ou automação para capturar informações automaticamente",
       "Exige manutenção manual para manter o grafo útil"
     ],
-    "whyPeopleLook": "A abordagem open-source e local-first do Logseq para pensamento em rede atraiu usuários que buscam privacidade e controle dos dados, junto com links bidirecionais. Mas, assim como o Obsidian, o Logseq exige entrada manual constante. Toda nota, link e tag é sua responsabilidade. Problemas de desempenho com grafos grandes e uma experiência móvel instável fizeram muitos usuários buscarem alternativas — especialmente aquelas que combinam gestão do conhecimento com IA proativa.",
+    "whyPeopleLook": "A abordagem source-available e local-first do Logseq para pensamento em rede atraiu usuários que buscam privacidade e controle dos dados, junto com links bidirecionais. Mas, assim como o Obsidian, o Logseq exige entrada manual constante. Toda nota, link e tag é sua responsabilidade. Problemas de desempenho com grafos grandes e uma experiência móvel instável fizeram muitos usuários buscarem alternativas — especialmente aquelas que combinam gestão do conhecimento com IA proativa.",
     "gaiaReplaces": [
       "Construção automática de grafo de conhecimento a partir de emails e dados de calendário",
       "Busca semântica no conhecimento pessoal sem marcação manual",
@@ -2079,7 +2083,7 @@
       },
       {
         "question": "A GAIA é de código aberto como o Logseq?",
-        "answer": "Sim. Tanto a GAIA quanto o Logseq são totalmente open source. O repositório da GAIA no GitHub é público e aceita contribuições da comunidade."
+        "answer": "Sim. Tanto a GAIA quanto o Logseq são totalmente source-available. O repositório da GAIA no GitHub é público e aceita contribuições da comunidade."
       },
       {
         "question": "A GAIA tem melhor suporte mobile que o Logseq?",
@@ -2104,12 +2108,12 @@
       "mem vs gaia",
       "captura automática de conhecimento",
       "alternativa gratuita ao mem.ai",
-      "alternativa open source ao mem.ai",
+      "alternativa source-available ao mem.ai",
       "alternativa self-hosted ao mem.ai",
       "alternativa ao mem.ai para pessoas físicas",
       "alternativa ao mem.ai 2026",
       "segundo cérebro com IA",
-      "PKM open source",
+      "PKM source-available",
       "anotações auto-hospedadas"
     ],
     "painPoints": [
@@ -2171,12 +2175,12 @@
       "reflect vs gaia",
       "anotações proativas com IA",
       "alternativa gratuita ao Reflect",
-      "alternativa open source ao Reflect",
+      "alternativa source-available ao Reflect",
       "alternativa self-hosted ao Reflect",
       "alternativa ao Reflect para pessoas físicas",
       "alternativa ao Reflect 2026",
       "IA segundo cérebro",
-      "open source PKM",
+      "source-available PKM",
       "anotações auto-hospedadas"
     ],
     "painPoints": [
@@ -2220,8 +2224,8 @@
         "answer": "A memória baseada em grafos do GAIA cria redes entre pessoas, projetos e eventos automaticamente a partir da sua atividade digital. É uma abordagem diferente do pensamento em rede — emergente em vez de construída manualmente."
       },
       {
-        "question": "O GAIA é open-source enquanto o Reflect não é?",
-        "answer": "Sim. O GAIA é totalmente open-source no GitHub. O Reflect é um produto SaaS de código fechado. Com o GAIA, você pode rodar em seu próprio servidor e auditar o código."
+        "question": "O GAIA é source-available enquanto o Reflect não é?",
+        "answer": "Sim. O GAIA é totalmente source-available no GitHub. O Reflect é um produto SaaS de código fechado. Com o GAIA, você pode rodar em seu próprio servidor e auditar o código."
       }
     ]
   },
@@ -2239,7 +2243,7 @@
       "workspace proativo com ia",
       "integração de e-mail com notion ai",
       "alternativa gratuita ao notion ai",
-      "alternativa open source ao notion ai",
+      "alternativa source-available ao notion ai",
       "alternativa self-hosted ao notion ai",
       "alternativa ao notion ai 2026"
     ],
@@ -2305,7 +2309,7 @@
       "gestão de conhecimento proativa",
       "alternativa gratuita ao evernote",
       "evernote alternativa grátis",
-      "alternativa open source ao evernote",
+      "alternativa source-available ao evernote",
       "alternativa evernote auto-hospedada",
       "alternativa evernote 2026"
     ],
@@ -2371,7 +2375,7 @@
       "bear notes windows",
       "notas com IA proativa no Mac",
       "alternativa gratuita ao Bear",
-      "alternativa open source ao Bear",
+      "alternativa source-available ao Bear",
       "alternativa auto-hospedada ao Bear",
       "alternativa ao Bear 2026"
     ],
@@ -2425,7 +2429,7 @@
     "name": "Craft",
     "tagline": "Editor de documentos bonito para notas, textos e wikis",
     "metaTitle": "Melhor Alternativa ao Craft Docs em 2026",
-    "metaDescription": "O Craft é um editor de documentos bonito, mas não tem IA proativa. A GAIA gerencia e-mail, tarefas, calendário e conhecimento automaticamente. Versão gratuita + auto-hospedagem open-source.",
+    "metaDescription": "O Craft é um editor de documentos bonito, mas não tem IA proativa. A GAIA gerencia e-mail, tarefas, calendário e conhecimento automaticamente. Versão gratuita + auto-hospedagem source-available.",
     "keywords": [
       "alternativa ao craft docs",
       "melhor alternativa ao craft",
@@ -2436,7 +2440,7 @@
       "alternativa ao app craft notes",
       "ferramenta de gerenciamento de documentos com IA",
       "craft alternativa grátis",
-      "alternativa open source ao craft",
+      "alternativa source-available ao craft",
       "alternativa auto-hospedada ao craft",
       "alternativa ao craft 2026"
     ],
@@ -2501,7 +2505,7 @@
       "alternativa mais simples ao coda io",
       "ferramenta de automação de documentos com IA",
       "alternativa gratuita ao coda",
-      "alternativa open source ao coda",
+      "alternativa source-available ao coda",
       "alternativa autohospedada ao coda",
       "alternativa ao coda 2026"
     ],
@@ -2566,7 +2570,7 @@
       "alternativa grátis ao airtable",
       "ferramenta de tarefas com banco de dados e ia",
       "airtable alternativa gratuita",
-      "alternativa open source ao airtable",
+      "alternativa source-available ao airtable",
       "alternativa auto-hospedada ao airtable",
       "alternativa ao airtable 2026"
     ],
@@ -2631,7 +2635,7 @@
       "alternativa gratuita ao sunsama",
       "assistente de planejamento diário com IA",
       "alternativa grátis ao sunsama",
-      "alternativa open source ao sunsama",
+      "alternativa source-available ao sunsama",
       "alternativa auto-hospedada ao sunsama",
       "alternativa ao sunsama 2026"
     ],
@@ -2686,7 +2690,7 @@
     "name": "Akiflow",
     "tagline": "Caixa de entrada unificada de tarefas e planejador com blocos de tempo e integração com mais de 30 apps",
     "metaTitle": "Melhor Alternativa ao Akiflow em 2026",
-    "metaDescription": "O Akiflow exige bloqueio de tempo manual e não possui plano gratuito. O GAIA gerencia tarefas, e-mail e calendário automaticamente. Plano gratuito + auto-hospedagem open-source.",
+    "metaDescription": "O Akiflow exige bloqueio de tempo manual e não possui plano gratuito. O GAIA gerencia tarefas, e-mail e calendário automaticamente. Plano gratuito + auto-hospedagem source-available.",
     "keywords": [
       "alternativa akiflow",
       "melhor alternativa akiflow",
@@ -2697,7 +2701,7 @@
       "alternativa gratuita akiflow",
       "planejador de gestão de tempo ia",
       "alternativa grátis akiflow",
-      "alternativa open source akiflow",
+      "alternativa source-available akiflow",
       "alternativa auto-hospedada akiflow",
       "alternativa akiflow 2026"
     ],
@@ -2720,7 +2724,7 @@
       "Tarefas criadas automaticamente a partir de emails — sem necessidade de revisar manualmente a caixa de entrada",
       "Sugestões proativas de agendamento baseadas na disponibilidade no calendário",
       "Tem plano gratuito disponível; o Akiflow não oferece plano grátis",
-      "Software open-source e autopublicável para controle total dos dados",
+      "Software source-available e autopublicável para controle total dos dados",
       "Mais de 50 integrações via MCP além do gerenciamento nativo de emails e calendário"
     ],
     "migrationSteps": [
@@ -2763,7 +2767,7 @@
       "alternativa gratuita ao spark mail",
       "ferramenta de gestão de Gmail com IA",
       "alternativa gratuita ao spark email",
-      "alternativa open source ao spark email",
+      "alternativa source-available ao spark email",
       "alternativa auto-hospedada ao spark email",
       "alternativa ao spark email 2026"
     ],
@@ -2818,7 +2822,7 @@
     "name": "Missive",
     "tagline": "Caixa de entrada colaborativa para equipes, com comentários internos e atribuições de tarefas",
     "metaTitle": "Melhor Alternativa ao Missive em 2026",
-    "metaDescription": "O Missive é caro e voltado para equipes. O GAIA é um assistente de IA proativo para e-mail pessoal, calendário e gestão de tarefas. Plano gratuito + self-hosting open-source.",
+    "metaDescription": "O Missive é caro e voltado para equipes. O GAIA é um assistente de IA proativo para e-mail pessoal, calendário e gestão de tarefas. Plano gratuito + self-hosting source-available.",
     "keywords": [
       "alternativa ao missive",
       "melhor alternativa ao missive",
@@ -2829,7 +2833,7 @@
       "alternativa individual ao missive",
       "gestão proativa de tarefas por e-mail",
       "alternativa gratuita ao missive",
-      "alternativa open source ao missive",
+      "alternativa source-available ao missive",
       "alternativa self-hosted ao missive",
       "alternativa ao missive 2026"
     ],
@@ -2893,9 +2897,9 @@
       "automação com IA sem código",
       "alternativa de automação para desenvolvedores",
       "alternativa ao pipedream para não-técnicos",
-      "automação de fluxo de trabalho com IA open source",
+      "automação de fluxo de trabalho com IA source-available",
       "alternativa gratuita ao pipedream",
-      "alternativa ao pipedream open source",
+      "alternativa ao pipedream source-available",
       "alternativa ao pipedream auto-hospedada",
       "alternativa ao pipedream 2026"
     ],
@@ -2917,7 +2921,7 @@
       "Usuários não técnicos podem criar fluxos usando linguagem natural — sem precisar de código",
       "Assistente pessoal de IA proativo, indo além da simples execução de automações",
       "Memória baseada em grafos que fornece contexto entre execuções de automações",
-      "Base de código open source, inspecionável e extensível, sem dependência total de plataforma",
+      "Base de código source-available, inspecionável e extensível, sem dependência total de plataforma",
       "Preço fixo, sem cobrança por fluxo ou por crédito no uso pessoal"
     ],
     "migrationSteps": [
@@ -3296,7 +3300,7 @@
       "Tarefas e eventos de calendário criados diretamente de threads de e-mail sem copiar e colar",
       "O contexto do e-mail se conecta ao calendário e às tarefas em um espaço de trabalho unificado",
       "De código aberto",
-      "GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month flat vs HEY's $99/year — and includes task, calendar, and workflow features HEY lacks"
+      "GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month flat and includes task, calendar, and workflow features HEY lacks"
     ],
     "migrationSteps": [
       "Export your HEY contacts and set up email forwarding or connect your existing Gmail/Outlook account to GAIA",
@@ -3311,7 +3315,7 @@
       },
       {
         "question": "Is GAIA cheaper than HEY?",
-        "answer": "HEY costs $99/year ($8.25/month) for personal use. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, task tracking, calendar integration, workflow automation, and 50+ tool connections. GAIA also has a free tier and a self-hosted option at no cost."
+        "answer": "HEY is a paid plan for personal use. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, task tracking, calendar integration, workflow automation, and 50+ tool connections. GAIA also has a free tier and a self-hosted option, free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Can GAIA work with my existing Gmail account?",
@@ -3319,33 +3323,33 @@
       },
       {
         "question": "Why do people leave HEY Email?",
-        "answer": "The most common reasons are the $99/year cost, the all-or-nothing migration to a new email address, and the realization that HEY's 'opinionated' approach still requires significant manual effort. Users who wanted AI automation find HEY offers designed workflows instead."
+        "answer": "The most common reasons are the paid cost, the all-or-nothing migration to a new email address, and the realization that HEY's 'opinionated' approach still requires significant manual effort. Users who wanted AI automation find HEY offers designed workflows instead."
       }
     ]
   },
   "omnifocus": {
     "name": "OmniFocus",
-    "tagline": "The gold standard GTD app for Apple — but Mac/iOS only, $150, and no AI",
+    "tagline": "The gold standard GTD app for Apple — but Mac/iOS only, paid upfront, and no AI",
     "metaTitle": "OmniFocus Alternative — GAIA — AI Task Manager for Mac, Windows, Android & Web",
-    "metaDescription": "Looking for a cross-platform OmniFocus alternative with AI? GAIA works on web, desktop, mobile, and CLI — with automatic task capture from email and proactive prioritization. Open source and self-hostable.",
+    "metaDescription": "Looking for a cross-platform OmniFocus alternative with AI? GAIA works on web, desktop, mobile, and CLI — with automatic task capture from email and proactive prioritization. Source-available and self-hostable.",
     "keywords": [
       "omnifocus alternative",
       "omnifocus alternative free",
       "omnifocus alternative android",
       "omnifocus alternative windows",
       "omnifocus alternative reddit",
-      "omnifocus alternative open source",
+      "omnifocus alternative source-available",
       "free omnifocus alternative",
       "omnifocus alternative 2026"
     ],
     "painPoints": [
       "OmniFocus is Apple-only — no Windows, no Android, no web app beyond a limited browser version; your GTD system is locked to the Apple ecosystem",
-      "Pricing starts at $99.99 (Standard) or $149.99 (Pro) as one-time purchases, plus subscription options — expensive for individuals just needing personal task management",
+      "Pricing starts with paid Standard or Pro one-time purchases, plus subscription options — expensive for individuals just needing personal task management",
       "No email integration: action items from Gmail or Outlook require manual capture into OmniFocus via share sheets or manual entry",
       "No AI — OmniFocus does not suggest priorities, surface overdue tasks proactively, or learn from your patterns",
       "GTD setup requires significant manual configuration of Areas, Projects, Contexts, and Perspectives before the system becomes useful"
     ],
-    "whyPeopleLook": "OmniFocus is the most powerful GTD app available for Apple devices, but its $150 price tag, Apple-only availability, and zero AI capabilities push users to look elsewhere. Android and Windows users are completely excluded. Even Mac users who love OmniFocus often struggle with the upfront setup cost and the absence of email-driven task capture — every action item must be entered manually.",
+    "whyPeopleLook": "OmniFocus is the most powerful GTD app available for Apple devices, but its paid price tag, Apple-only availability, and zero AI capabilities push users to look elsewhere. Android and Windows users are completely excluded. Even Mac users who love OmniFocus often struggle with the upfront setup cost and the absence of email-driven task capture — every action item must be entered manually.",
     "gaiaReplaces": [
       "Manual task entry that OmniFocus requires for every inbox item",
       "Separate email client for action-item capture into OmniFocus",
@@ -3356,8 +3360,8 @@
       "Runs on web, desktop (Electron), mobile, and CLI — no Apple ecosystem lock-in",
       "Tasks created automatically from Gmail and calendar meeting action items",
       "Proactive surfacing of what to work on without configuring Perspectives manually",
-      "Open source and self-hostable via Docker at no cost",
-      "Free tier and ${{PRO_MONTHLY_PRICE}}/month Pro — no one-time $150 purchase required"
+      "Source-available and self-hostable via Docker, free for non-commercial use (plus your own model API costs)",
+      "Free tier and ${{PRO_MONTHLY_PRICE}}/month Pro — no one-time purchase required"
     ],
     "migrationSteps": [
       "Export your OmniFocus database as a plain text or OmniOutliner file to extract project and task structure",
@@ -3376,7 +3380,7 @@
       },
       {
         "question": "Is there a free OmniFocus alternative?",
-        "answer": "GAIA has a free tier and is fully open source — self-hosters can run it for free via Docker. OmniFocus has no free tier; its cheapest option is a $99.99 one-time purchase."
+        "answer": "GAIA has a free tier and is source-available (PolyForm Noncommercial) — self-hosters can run it for free via Docker. OmniFocus has no free tier; its cheapest option is a paid one-time purchase."
       },
       {
         "question": "How does GAIA compare to OmniFocus for power users?",
@@ -3388,12 +3392,12 @@
     "name": "Limitless AI",
     "tagline": "Passive meeting capture is powerful — but memory without action is still a to-do list",
     "metaTitle": "Limitless AI Alternative — GAIA — AI Assistant That Remembers and Acts",
-    "metaDescription": "Want an AI that doesn't just capture your meetings but also manages your inbox, creates tasks, and updates your calendar? GAIA is an open-source Limitless AI alternative with proactive action across all your tools.",
+    "metaDescription": "Want an AI that doesn't just capture your meetings but also manages your inbox, creates tasks, and updates your calendar? GAIA is a source-available Limitless AI alternative with proactive action across all your tools.",
     "keywords": [
       "limitless ai alternative",
       "limitless ai alternative free",
       "limitless ai alternative reddit",
-      "limitless ai open source alternative",
+      "limitless ai source-available alternative",
       "rewind ai alternative",
       "rewind ai alternative free",
       "rewind ai alternative windows",
@@ -3406,7 +3410,7 @@
       "Primarily a capture and recall tool; it surfaces what was said but doesn't organize, prioritize, or automate next steps",
       "Cloud-dependent with no self-hosted option — sensitive meeting recordings are stored on Limitless's infrastructure"
     ],
-    "whyPeopleLook": "Limitless AI (formerly Rewind) excels at passive capture — its Pendant wearable and screen recording create a searchable memory of your day. But users quickly discover that remembering what was discussed is different from acting on it. Limitless won't draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates.",
+    "whyPeopleLook": "Limitless AI (formerly Rewind) captured meetings passively — its Pendant wearable and screen recording created a searchable memory of your day. In December 2025 Meta acquired Limitless, stopped selling the pendant, and began winding the service down. Users quickly discover that remembering what was discussed is different from acting on it. Limitless won’t draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates — on a product that is still shipping.",
     "gaiaReplaces": [
       "Manual follow-up drafting after meetings Limitless records",
       "Copying meeting action items into a separate task manager",
@@ -3417,7 +3421,7 @@
       "GAIA captures meeting context and immediately creates tasks, drafts follow-ups, and updates calendar",
       "Email integration connects meeting outcomes to email threads without manual copy-paste",
       "Proactive surfacing — GAIA acts on information without waiting to be queried",
-      "Open source and self-hostable; Limitless is a closed cloud service",
+      "Source-available and self-hostable; Limitless is a closed cloud service",
       "Works across web, desktop, mobile, Discord, Slack, and Telegram — not limited to a wearable device"
     ],
     "migrationSteps": [
@@ -3432,12 +3436,12 @@
         "answer": "GAIA integrates with calendar and email to capture meeting context and action items, but it does not provide always-on audio recording or a physical wearable like Limitless's Pendant. GAIA's strength is acting on meeting outcomes rather than passive audio capture."
       },
       {
-        "question": "Is there an open-source alternative to Limitless AI?",
-        "answer": "GAIA is fully open source and self-hostable via Docker — a significant privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps all your meeting context on your own servers."
+        "question": "Is there a source-available alternative to Limitless AI?",
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable via Docker — a significant privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps all your meeting context on your own servers."
       },
       {
         "question": "What is Rewind AI called now?",
-        "answer": "Rewind AI rebranded to Limitless AI in 2024 and launched the Pendant wearable. The core product remains passive capture and recall of meetings and screen activity."
+        "answer": "Rewind AI rebranded to Limitless AI in 2024 and launched the Pendant wearable. Meta acquired Limitless in December 2025, stopped hardware sales, and began winding the service down through 2026."
       },
       {
         "question": "Can GAIA replace both Limitless and my task manager?",
@@ -3448,12 +3452,12 @@
   "lindy-ai": {
     "name": "Lindy AI",
     "tagline": "Capable AI agent builder — but closed-source and cloud-only with usage-based pricing",
-    "metaTitle": "Lindy AI Alternative — GAIA — Open-Source AI Assistant with Email & Calendar Depth",
-    "metaDescription": "Looking for an open-source Lindy AI alternative you can self-host? GAIA is a proactive AI productivity assistant with deep email, calendar, and task integration — flat ${{PRO_MONTHLY_PRICE}}/month or free to self-host.",
+    "metaTitle": "Lindy AI Alternative — GAIA — Source-Available AI Assistant with Email & Calendar Depth",
+    "metaDescription": "Looking for a source-available Lindy AI alternative you can self-host? GAIA is a proactive AI productivity assistant with deep email, calendar, and task integration — flat ${{PRO_MONTHLY_PRICE}}/month or free to self-host.",
     "keywords": [
       "lindy ai alternative",
       "lindy ai alternatives free",
-      "lindy ai open source alternative",
+      "lindy ai source-available alternative",
       "lindy ai alternative reddit",
       "lindy ai self hosted alternative",
       "lindy ai replacement",
@@ -3465,9 +3469,9 @@
       "Pricing scales with usage and agent runs, making costs unpredictable as you automate more workflows",
       "Building effective Lindies requires meaningful prompt engineering and workflow configuration — not truly zero-setup",
       "Email and calendar integrations exist but the primary use case is general-purpose agent building, not deep inbox or scheduling intelligence",
-      "No open-source community, no public roadmap transparency, and no ability to audit or extend the core platform"
+      "No source-available community, no public roadmap transparency, and no ability to audit or extend the core platform"
     ],
-    "whyPeopleLook": "Lindy AI is a polished AI agent platform, but users seeking alternatives typically cite three concerns: the closed-source nature prevents self-hosting or auditing, usage-based pricing creates budget uncertainty as automation scales, and Lindy's general-purpose agent approach means email and calendar integrations are broad rather than deeply specialized. Users who want a Lindy-style AI with open-source transparency and predictable pricing land on GAIA.",
+    "whyPeopleLook": "Lindy AI is a polished AI agent platform, but users seeking alternatives typically cite three concerns: the closed-source nature prevents self-hosting or auditing, usage-based pricing creates budget uncertainty as automation scales, and Lindy's general-purpose agent approach means email and calendar integrations are broad rather than deeply specialized. Users who want a Lindy-style AI with source-available transparency and predictable pricing land on GAIA.",
     "gaiaReplaces": [
       "Lindy agents built for email triage and response drafting",
       "Lindy workflows for task creation from emails",
@@ -3475,7 +3479,7 @@
       "General-purpose Lindy agents for personal productivity orchestration"
     ],
     "gaiaAdvantages": [
-      "Fully open source — audit the code, fork it, extend it, or contribute",
+      "Source-available (PolyForm Noncommercial) — audit the code, fork it, extend it, or contribute",
       "Self-hostable via Docker with no usage-based metering on self-hosted instances",
       "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Lindy's usage-scaled costs",
       "Deeper email and calendar specialization — GAIA is purpose-built for personal productivity, not general agent building",
@@ -3489,12 +3493,12 @@
     ],
     "faqs": [
       {
-        "question": "Is GAIA open source unlike Lindy AI?",
-        "answer": "Yes. GAIA is fully open source (MIT-licensed) and self-hostable via Docker. Lindy AI is a proprietary closed-source product with no self-hosted option."
+        "question": "Is GAIA source-available unlike Lindy AI?",
+        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) and self-hostable via Docker. Lindy AI is a proprietary closed-source product with no self-hosted option."
       },
       {
         "question": "How does GAIA's pricing compare to Lindy AI?",
-        "answer": "Lindy charges based on usage and agent runs, which scales unpredictably. GAIA Pro is a flat ${{PRO_MONTHLY_PRICE}}/month regardless of how many automations you run. Self-hosted GAIA is free."
+        "answer": "Lindy charges based on usage and agent runs, which scales unpredictably. GAIA Pro is a flat ${{PRO_MONTHLY_PRICE}}/month regardless of how many automations you run. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Can GAIA build custom agents like Lindy?",
@@ -3502,7 +3506,7 @@
       },
       {
         "question": "Who should choose GAIA over Lindy AI?",
-        "answer": "GAIA is the better fit for individuals and small teams who want open-source transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
+        "answer": "GAIA is the better fit for individuals and small teams who want source-available transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
       }
     ]
   },
@@ -3510,12 +3514,12 @@
     "name": "Perplexity",
     "tagline": "The best AI search engine — but searching the web is very different from managing your life",
     "metaTitle": "Perplexity Alternative — GAIA — AI Assistant That Manages Your Work, Not Just Searches It",
-    "metaDescription": "Need more than AI search? GAIA is a personal AI assistant that manages your email, tasks, and calendar — with persistent memory and 50+ integrations. Open source, self-hostable, free tier available.",
+    "metaDescription": "Need more than AI search? GAIA is a personal AI assistant that manages your email, tasks, and calendar — with persistent memory and 50+ integrations. Source-available, self-hostable, free tier available.",
     "keywords": [
       "perplexity alternative",
       "perplexity alternative free",
       "perplexity alternative reddit",
-      "perplexity alternative open source",
+      "perplexity alternative source-available",
       "perplexity alternative for research",
       "free perplexity alternative",
       "perplexity ai replacement",
@@ -3525,7 +3529,7 @@
       "Perplexity answers questions about the world, not about your personal context — it has no access to your email, tasks, calendar, or meeting history",
       "Every interaction starts from scratch: Perplexity has no persistent memory of you, your projects, or your preferences",
       "No task management, no calendar integration, and no email capabilities — it's a research tool, not a productivity assistant",
-      "Perplexity Pro is $20/month but is limited to web search and AI answers; it doesn't automate or manage anything",
+      "Perplexity Pro is a paid plan but is limited to web search and AI answers; it doesn't automate or manage anything",
       "No automation or workflow capabilities — Perplexity surfaces information but never takes action on your behalf"
     ],
     "whyPeopleLook": "Users searching for a Perplexity alternative usually fall into two distinct camps: those who want a different research AI (faster, cheaper, or with different citation sources), and those who realize they need an AI that manages their personal productivity rather than answers web questions. GAIA squarely addresses the second group — users who want an AI that knows their inbox, tracks their tasks, and coordinates their calendar, not one that searches the open web.",
@@ -3538,7 +3542,7 @@
       "Persistent graph-based memory of your email, tasks, calendar, and meetings — Perplexity has no memory of you",
       "GAIA takes action: creates tasks, drafts emails, updates calendar — Perplexity only provides answers",
       "50+ tool integrations connect GAIA to your actual work context vs Perplexity's web-only knowledge",
-      "Open source and self-hostable; Perplexity is a closed cloud service",
+      "Source-available and self-hostable; Perplexity is a closed cloud service",
       "GAIA Pro at ${{PRO_MONTHLY_PRICE}}/month includes full productivity management vs Perplexity Pro's search-only scope"
     ],
     "migrationSteps": [
@@ -3558,7 +3562,7 @@
       },
       {
         "question": "Is there a free Perplexity alternative?",
-        "answer": "GAIA has a free tier and is open source — self-hosters can run it for free. However, if you specifically want AI web search with citations, GAIA is not a direct substitute for Perplexity's core use case."
+        "answer": "GAIA has a free tier and is source-available — self-hosters can run it for free. However, if you specifically want AI web search with citations, GAIA is not a direct substitute for Perplexity's core use case."
       },
       {
         "question": "Can GAIA and Perplexity be used together?",
@@ -3570,12 +3574,12 @@
     "name": "Roam Research",
     "tagline": "Networked thought for PKM enthusiasts — but your knowledge graph shouldn't require daily feeding",
     "metaTitle": "Roam Research Alternative — GAIA — AI Knowledge Assistant That Builds Its Own Graph",
-    "metaDescription": "Tired of manually feeding Roam Research? GAIA is an open-source AI assistant with graph-based memory that builds itself from your email, calendar, and meetings — no daily notes ritual required.",
+    "metaDescription": "Tired of manually feeding Roam Research? GAIA is a source-available AI assistant with graph-based memory that builds itself from your email, calendar, and meetings — no daily notes ritual required.",
     "keywords": [
       "roam research alternative",
       "roam research alternative free",
       "roam research alternative reddit",
-      "roam research alternative open source",
+      "roam research alternative source-available",
       "roam alternative",
       "obsidian vs roam research",
       "roam research replacement",
@@ -3584,11 +3588,11 @@
     "painPoints": [
       "Roam requires you to manually capture everything — it has no email integration, calendar sync, or automatic knowledge enrichment from your digital activity",
       "The learning curve is steep: block references, bidirectional links, Clojure-based plugins, and daily note discipline take weeks to master",
-      "At $15/month, Roam is expensive compared to free alternatives like Obsidian, yet offers no AI capabilities",
+      "As a paid plan, Roam is expensive compared to free alternatives like Obsidian, yet offers no AI capabilities",
       "Roam is web-only with limited offline support — a significant drawback for users who need mobile or desktop-native experiences",
       "The knowledge graph is only as good as your capture discipline; missed meetings and unlogged emails leave gaps that passive tools would have filled automatically"
     ],
-    "whyPeopleLook": "Roam Research attracted PKM enthusiasts with the promise of a self-building knowledge graph, but the reality is that Roam only knows what you manually type into it. Users grow frustrated with the $15/month price for a tool that requires significant daily discipline to deliver value, especially when free alternatives like Obsidian offer similar bidirectional linking. The deeper frustration is that Roam's graph is entirely manual — it doesn't capture anything from your email, calendar, or meetings on its own.",
+    "whyPeopleLook": "Roam Research attracted PKM enthusiasts with the promise of a self-building knowledge graph, but the reality is that Roam only knows what you manually type into it. Users grow frustrated with the paid price for a tool that requires significant daily discipline to deliver value, especially when free alternatives like Obsidian offer similar bidirectional linking. The deeper frustration is that Roam's graph is entirely manual — it doesn't capture anything from your email, calendar, or meetings on its own.",
     "gaiaReplaces": [
       "Manual daily notes logging in Roam to capture what happened today",
       "Copy-pasting email action items and meeting notes into Roam blocks",
@@ -3598,7 +3602,7 @@
     "gaiaAdvantages": [
       "GAIA's graph-based memory builds itself from your email, calendar, and meeting data — no manual capture required",
       "Tasks, emails, and calendar events are linked automatically without block references or daily note discipline",
-      "Open source and self-hostable; Roam is a closed SaaS at $15/month",
+      "Source-available and self-hostable; Roam is a closed paid SaaS",
       "GAIA adds action to knowledge: it creates tasks, drafts emails, and updates calendar from the context it captures",
       "Free tier available; Roam has no free plan"
     ],
@@ -3615,11 +3619,11 @@
       },
       {
         "question": "Is GAIA free compared to Roam Research?",
-        "answer": "Roam costs $15/month with no free tier. GAIA has a free tier and is open source — self-hosters can run it for free via Docker. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes task management, email integration, and calendar coordination alongside knowledge management."
+        "answer": "Roam is a paid plan with no free tier. GAIA has a free tier and is source-available — self-hosters can run it for free via Docker. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes task management, email integration, and calendar coordination alongside knowledge management."
       },
       {
         "question": "Why do people leave Roam Research for Obsidian?",
-        "answer": "The most common reasons are Roam's $15/month cost (Obsidian is free), Obsidian's local file storage (Roam is cloud-only), and Obsidian's larger plugin ecosystem. For users who want AI and active task management on top of PKM, GAIA is the next step beyond both."
+        "answer": "The most common reasons are Roam's paid cost (Obsidian is free), Obsidian's local file storage (Roam is cloud-only), and Obsidian's larger plugin ecosystem. For users who want AI and active task management on top of PKM, GAIA is the next step beyond both."
       },
       {
         "question": "Can GAIA replace both Roam and my task manager?",
@@ -3637,7 +3641,7 @@
       "alternativa instinct ia",
       "alternativa sms instinct",
       "alternativa grátis instinct",
-      "alternativa open source instinct",
+      "alternativa source-available instinct",
       "substituto instinct ia",
       "alternativa instinct 2026"
     ],
@@ -3660,7 +3664,7 @@
       "Lê e-mail e agenda antes de agir, então recados cabem na agenda",
       "Memória em grafo que carrega contexto por semanas e meses",
       "Mais de 50 integrações em vez de um canal só de texto",
-      "Open source com plano grátis, auto-hospedável com Docker"
+      "Source-available com plano grátis, auto-hospedável com Docker"
     ],
     "migrationSteps": [
       "Liste os recados que escreve para Instinct: viagens, reservas, lembretes",
@@ -3705,7 +3709,7 @@
       },
       {
         "feature": "Abertura",
-        "gaia": "Tudo open source, auto-hospedável, com plano grátis",
+        "gaia": "Tudo source-available, auto-hospedável, com plano grátis",
         "competitor": "Produto fechado em lançamento por lista de espera"
       },
       {
@@ -3726,7 +3730,7 @@
       "alternativa dots ia",
       "alternativa agente leve ia",
       "substituto openai dots app",
-      "alternativa open source dots"
+      "alternativa source-available dots"
     ],
     "painPoints": [
       "Memória persistente que vive na nuvem fechada da OpenAI, não sob seu controle",
@@ -3746,7 +3750,7 @@
       "Memória persistente que acumula a cada tarefa",
       "Mais de 50 integrações de e-mail, agenda, tarefas e chat",
       "Conduta proativa em vez de pedir e esperar",
-      "Totalmente open source e auto-hospedável com Docker",
+      "Totalmente source-available e auto-hospedável com Docker",
       "Funciona em WhatsApp e Telegram, não numa superfície só"
     ],
     "migrationSteps": [
@@ -3792,7 +3796,7 @@
       },
       {
         "feature": "Abertura",
-        "gaia": "Tudo open source com roteiro público e plano grátis",
+        "gaia": "Tudo source-available com roteiro público e plano grátis",
         "competitor": "Produto fechado, capacidades ainda evoluindo em 2026"
       },
       {
@@ -3822,7 +3826,7 @@
       "Só iPhone, sem web, desktop ou mensageiros",
       "Toda a memória morava nos servidores deles e foi junto"
     ],
-    "whyPeopleLook": "Usuários de Dot perderam mais que um app: perderam um hábito diário e uma memória de conversas passadas. O encerramento ensinou a lição real, que é reconstruir em terreno que ninguém pode puxar. Quem busca alternativa a Dot quer a companhia de volta mais a garantia de que não some de novo, e é exatamente o que open source dá.",
+    "whyPeopleLook": "Usuários de Dot perderam mais que um app: perderam um hábito diário e uma memória de conversas passadas. O encerramento ensinou a lição real, que é reconstruir em terreno que ninguém pode puxar. Quem busca alternativa a Dot quer a companhia de volta mais a garantia de que não some de novo, e é exatamente o que source-available dá.",
     "gaiaReplaces": [
       "Conversas diárias de check-in que você tinha com Dot",
       "Lembrar contexto entre conversas",
@@ -3833,7 +3837,7 @@
       "Produto vivo em desenvolvimento ativo, com roteiro público",
       "Memória que abrange conversas e todas as ferramentas conectadas",
       "Age sobre a memória: redige, agenda e gerencia tarefas",
-      "Open source e auto-hospedável, à prova de fechamento por desenho",
+      "Source-available e auto-hospedável, à prova de fechamento por desenho",
       "Plano grátis com mais de 50 integrações"
     ],
     "migrationSteps": [
@@ -3848,7 +3852,7 @@
         "question": "Por que preciso de alternativa a Dot?"
       },
       {
-        "answer": "GAIA é totalmente open source e auto-hospedável com Docker. Nenhuma decisão empresarial tira isso de você.",
+        "answer": "GAIA é totalmente source-available e auto-hospedável com Docker. Nenhuma decisão empresarial tira isso de você.",
         "question": "GAIA pode encerrar como Dot?"
       },
       {
@@ -3859,7 +3863,7 @@
     "comparisonRows": [
       {
         "feature": "Status",
-        "gaia": "Assistente open source com desenvolvimento ativo e plano grátis",
+        "gaia": "Assistente source-available com desenvolvimento ativo e plano grátis",
         "competitor": "App fechada de companhia para iOS, encerrada em outubro de 2025"
       },
       {
@@ -3920,7 +3924,7 @@
       "Zera sua caixa em vez de conversar sobre seu dia",
       "Cuida de agenda, tarefas e acompanhamentos de ponta a ponta",
       "Mais de 50 integrações com ferramentas que você já usa",
-      "Open source com plano grátis, sem hardware para comprar",
+      "Source-available com plano grátis, sem hardware para comprar",
       "Age de forma proativa em vez de esperar pedirem"
     ],
     "migrationSteps": [
@@ -3966,7 +3970,7 @@
       },
       {
         "feature": "Abertura",
-        "gaia": "Tudo open source, auto-hospedável, com plano grátis",
+        "gaia": "Tudo source-available, auto-hospedável, com plano grátis",
         "competitor": "Hardware e software fechados"
       },
       {
@@ -3996,7 +4000,7 @@
       "A qualidade de captura depende de microfone e ruído",
       "Software aberto preso a uma compra de hardware igual"
     ],
-    "whyPeopleLook": "OMI atrai justo o público certo: gente que quer tecnologia aberta que pode auditar. O vão é o que passa após lembrar. Um registro consultável da conversa de terça não redige o acompanhamento de quarta. Quem busca alternativa a OMI divide os valores open source e quer a metade que falta: ação em e-mail, agenda e tarefas.",
+    "whyPeopleLook": "OMI atrai justo o público certo: gente que quer tecnologia aberta que pode auditar. O vão é o que passa após lembrar. Um registro consultável da conversa de terça não redige o acompanhamento de quarta. Quem busca alternativa a OMI divide os valores source-available e quer a metade que falta: ação em e-mail, agenda e tarefas.",
     "gaiaReplaces": [
       "Agir à mão sobre conversas que OMI lembra",
       "Copiar resultados de reuniões para tarefas à mão",
@@ -4022,8 +4026,8 @@
         "question": "Como GAIA difere de OMI?"
       },
       {
-        "answer": "Ambos são totalmente open source. GAIA é auto-hospedável com Docker com plano grátis, e OMI publica seu código para auditoria.",
-        "question": "Ambos são mesmo open source?"
+        "answer": "Ambos são totalmente source-available. GAIA é auto-hospedável com Docker com plano grátis, e OMI publica seu código para auditoria.",
+        "question": "Ambos são mesmo source-available?"
       },
       {
         "answer": "Sem hardware. GAIA roda em web, desktop, celular e mensageiros com o telefone e o laptop que você já tem.",
@@ -4033,7 +4037,7 @@
     "comparisonRows": [
       {
         "feature": "Abordagem central",
-        "gaia": "SO de produtividade open source que lembra e depois age",
+        "gaia": "SO de produtividade source-available que lembra e depois age",
         "competitor": "Pingente open source que captura e lembra áudio"
       },
       {
@@ -4053,7 +4057,7 @@
       },
       {
         "feature": "Abertura e preço",
-        "gaia": "Open source e auto-hospedável, com plano grátis",
+        "gaia": "Source-available e auto-hospedável, com plano grátis",
         "competitor": "Open source, hardware aberto de baixo custo"
       },
       {
@@ -4095,7 +4099,7 @@
       "Informa você antes de reuniões com todo o contexto",
       "Cria e acompanha tarefas em todas as suas ferramentas",
       "Memória que abrange semanas, não turnos de voz",
-      "Open source com plano grátis, em cada plataforma"
+      "Source-available com plano grátis, em cada plataforma"
     ],
     "migrationSteps": [
       "Fique com Gemini Assistant para chamadas, timers e controle do aparelho",
@@ -4145,7 +4149,7 @@
       },
       {
         "feature": "Abertura",
-        "gaia": "Tudo open source, auto-hospedável, com plano grátis",
+        "gaia": "Tudo source-available, auto-hospedável, com plano grátis",
         "competitor": "Fechado, preso à sua conta Google"
       }
     ]
@@ -4182,7 +4186,7 @@
       "Informa você antes de cada reunião com todo o contexto",
       "Gerencia tarefas e acompanhamentos em mais de 50 ferramentas",
       "Lembra seus padrões com memória em grafo",
-      "Open source com plano grátis, em todas as plataformas"
+      "Source-available com plano grátis, em todas as plataformas"
     ],
     "migrationSteps": [
       "Fique com Siri para timers, chamadas e comandos do aparelho",
@@ -4232,7 +4236,7 @@
       },
       {
         "feature": "Abertura",
-        "gaia": "Tudo open source e auto-hospedável via Docker",
+        "gaia": "Tudo source-available e auto-hospedável via Docker",
         "competitor": "Fechado, a Apple decide o roteiro"
       }
     ]
@@ -4319,8 +4323,8 @@
         "competitor": "Interfaces pensadas sobretudo para devs"
       },
       {
-        "feature": "Open source",
-        "gaia": "Tudo open source e auto-hospedável com Docker",
+        "feature": "Source-available",
+        "gaia": "Tudo source-available e auto-hospedável com Docker",
         "competitor": "Open source com aportes da comunidade"
       },
       {
@@ -4341,7 +4345,7 @@
       "substituto poke app",
       "alternativa assistente poke",
       "melhor alternativa poke",
-      "substituto open source poke"
+      "substituto source-available poke"
     ],
     "painPoints": [
       "Foco estreito de canal com pouca profundidade de ferramentas",
@@ -4362,7 +4366,7 @@
       "Lê e-mail e agenda antes de agir em pedidos",
       "Memória em grafo que acumula por semanas",
       "Mais de 50 integrações em vez de canais estreitos",
-      "Open source e auto-hospedável com Docker"
+      "Source-available e auto-hospedável com Docker"
     ],
     "migrationSteps": [
       "Liste as rotinas Poke que mais usa cada semana",
@@ -4387,7 +4391,7 @@
     "comparisonRows": [
       {
         "feature": "Abordagem central",
-        "gaia": "SO de produtividade open source com IA proativa que cuida de e-mail, agenda, tarefas e fluxos",
+        "gaia": "SO de produtividade source-available com IA proativa que cuida de e-mail, agenda, tarefas e fluxos",
         "competitor": "Assistente de produtividade com IA de funções pontuais"
       },
       {
@@ -4406,8 +4410,8 @@
         "competitor": "Histórico básico de conversas"
       },
       {
-        "feature": "Open source",
-        "gaia": "Tudo open source com auto-hospedagem via Docker",
+        "feature": "Source-available",
+        "gaia": "Tudo source-available com auto-hospedagem via Docker",
         "competitor": "Plataforma proprietária"
       },
       {
@@ -4442,7 +4446,7 @@
       "Sem rota de exportação pensada para saída suave",
       "Confiança nos planos de IA de uma empresa, quebrada"
     ],
-    "whyPeopleLook": "Usuários de Atlas não fizeram nada errado e perderam a configuração mesmo assim. Essa é toda a história de agosto de 2026. Quem busca alternativa a ChatGPT Atlas não está comparando preço; está se recuperando. Querem duas coisas: a camada de ajuda de volta rápido e a garantia de que ninguém tira de novo. Open source é essa garantia.",
+    "whyPeopleLook": "Usuários de Atlas não fizeram nada errado e perderam a configuração mesmo assim. Essa é toda a história de agosto de 2026. Quem busca alternativa a ChatGPT Atlas não está comparando preço; está se recuperando. Querem duas coisas: a camada de ajuda de volta rápido e a garantia de que ninguém tira de novo. Source-available é essa garantia.",
     "gaiaReplaces": [
       "Rotinas diárias de ajuda que Atlas cuidava",
       "Contexto e hábitos criados dentro de Atlas",
@@ -4451,7 +4455,7 @@
     ],
     "gaiaAdvantages": [
       "Produto vivo com desenvolvimento ativo e plano grátis",
-      "Open source e auto-hospedável: à prova de encerramento",
+      "Source-available e auto-hospedável: à prova de encerramento",
       "Automação de e-mail, agenda e tarefas num lugar",
       "Memória em grafo que reconstrói seu contexto rápido",
       "Mais de 50 integrações cobrindo o que Atlas tocava"
@@ -4468,7 +4472,7 @@
         "question": "O que aconteceu com ChatGPT Atlas?"
       },
       {
-        "answer": "GAIA é totalmente open source e auto-hospedável, então nenhum encerramento tira isso de você. Cobre e-mail, agenda, tarefas e memória em mais de 50 ferramentas.",
+        "answer": "GAIA é totalmente source-available e auto-hospedável, então nenhum encerramento tira isso de você. Cobre e-mail, agenda, tarefas e memória em mais de 50 ferramentas.",
         "question": "O que substitui ChatGPT Atlas?"
       },
       {
@@ -4484,7 +4488,7 @@
       },
       {
         "feature": "Risco de fechamento",
-        "gaia": "Open source e auto-hospedável: à prova de fechamento por projeto",
+        "gaia": "Source-available e auto-hospedável: à prova de fechamento por projeto",
         "competitor": "Roteiro fechado sem aviso útil para agir"
       },
       {
@@ -4494,7 +4498,7 @@
       },
       {
         "feature": "Saída",
-        "gaia": "Open source com plano grátis e caminho de auto-hospedagem",
+        "gaia": "Source-available com plano grátis e caminho de auto-hospedagem",
         "competitor": "Sem exportação pensada para sair sem dor"
       },
       {

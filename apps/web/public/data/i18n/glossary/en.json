@@ -300,7 +300,7 @@
       },
       {
         "question": "Is my data safe in GAIA's knowledge graph?",
-        "answer": "Yes. GAIA is open source and self-hostable, meaning you can run it on your own infrastructure with complete data control. Your knowledge graph is private to you and never used for training AI models."
+        "answer": "Yes. GAIA is source-available and self-hostable, meaning you can run it on your own infrastructure with complete data control. Your knowledge graph is private to you and never used for training AI models when self-hosted."
       }
     ]
   },
@@ -398,7 +398,7 @@
       "private AI deployment",
       "self-hosted assistant"
     ],
-    "howGaiaUsesIt": "GAIA is fully open source and designed for self-hosting. You can run the entire GAIA stack on your own infrastructure using Docker Compose. This includes the FastAPI backend, Next.js frontend, PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ. Self-hosting GAIA means your emails, tasks, calendar data, and AI conversations never leave your servers. It is completely free to self-host, with no feature limitations compared to the hosted version.",
+    "howGaiaUsesIt": "GAIA is source-available (PolyForm Noncommercial) and designed for self-hosting. You can run the entire GAIA stack on your own infrastructure using Docker Compose. This includes the FastAPI backend, Next.js frontend, PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ. Self-hosting GAIA means your emails, tasks, calendar data, and AI conversations never leave your servers. It is free for non-commercial use (plus your own model API costs) to self-host, with full functionality.",
     "faqs": [
       {
         "question": "Is it hard to self-host GAIA?",
@@ -413,21 +413,21 @@
   "open-source-ai": {
     "term": "Open Source AI",
     "metaTitle": "Open Source AI: Transparency, Control, and Community",
-    "metaDescription": "Open source AI provides transparency, community development, and data control. Learn why GAIA is built as open source and what it means for your privacy.",
-    "definition": "Open source AI refers to artificial intelligence software whose source code is publicly available, allowing anyone to inspect, modify, distribute, and contribute to the project.",
-    "extendedDescription": "Open source AI is important for several reasons. Transparency allows users to verify what the software does with their data. Community contribution accelerates development and bug fixing. Self-hosting capability gives users complete data control. Vendor independence prevents lock-in. And open inspection of AI behavior builds trust. In the AI assistant space, open source is particularly valuable because these systems handle sensitive personal and business data. Users should be able to verify that their emails, calendar events, and communications are handled securely.",
+    "metaDescription": "Source-available AI provides transparency, community development, and data control. Learn why GAIA is built as source-available and what it means for your privacy.",
+    "definition": "Source-available AI refers to artificial intelligence software whose source code is publicly available, allowing anyone to inspect, modify, distribute, and contribute to the project.",
+    "extendedDescription": "Source-available AI is important for several reasons. Transparency allows users to verify what the software does with their data. Community contribution accelerates development and bug fixing. Self-hosting capability gives users complete data control. Vendor independence prevents lock-in. And open inspection of AI behavior builds trust. In the AI assistant space, source-available is particularly valuable because these systems handle sensitive personal and business data. Users should be able to verify that their emails, calendar events, and communications are handled securely.",
     "keywords": [
-      "open source AI",
-      "open source AI assistant",
+      "source-available AI",
+      "source-available AI assistant",
       "transparent AI",
       "community AI",
       "AI source code"
     ],
-    "howGaiaUsesIt": "GAIA is fully open source, with the entire codebase available on GitHub. This includes the AI agents, backend API, web frontend, desktop app, mobile app, and all integrations. Anyone can inspect how GAIA processes data, contribute new features, build custom integrations, and self-host the platform. GAIA's open source nature means you never have to trust a black box with your personal data. The community actively contributes integrations, bug fixes, and feature improvements.",
+    "howGaiaUsesIt": "GAIA is source-available (PolyForm Noncommercial), with the entire codebase available on GitHub. This includes the AI agents, backend API, web frontend, desktop app, mobile app, and all integrations. Anyone can inspect how GAIA processes data, contribute new features, build custom integrations, and self-host the platform. GAIA's source-available nature means you never have to trust a black box with your personal data. The community actively contributes integrations, bug fixes, and feature improvements.",
     "faqs": [
       {
-        "question": "Is GAIA really free and open source?",
-        "answer": "Yes. GAIA's entire codebase is available on GitHub. You can self-host it for free with no feature limitations. The hosted version offers convenience with managed infrastructure, but the self-hosted version has full functionality."
+        "question": "Is GAIA really free and source-available?",
+        "answer": "Yes. GAIA's entire codebase is available on GitHub. You can self-host it free for non-commercial use (plus your own model API costs) with full functionality. The hosted version offers convenience with managed infrastructure, but the self-hosted version has full functionality."
       },
       {
         "question": "Can I contribute to GAIA?",
@@ -975,7 +975,7 @@
     "metaTitle": "What Are AI Embeddings? How Machines Understand Meaning",
     "metaDescription": "Embeddings convert text, images, and data into numerical vectors that capture semantic meaning. Learn how GAIA uses embeddings for semantic search and memory.",
     "definition": "Embeddings are dense numerical vector representations of data, such as text, images, or audio, that capture semantic meaning and relationships in a high-dimensional space.",
-    "extendedDescription": "When a machine learning model processes text, it needs to work with numbers, not words. Embeddings solve this by mapping words, sentences, or documents into lists of floating-point numbers, typically 768 to 4096 dimensions. The key property of embeddings is that semantically similar content ends up numerically close together in this vector space. 'Dog' and 'puppy' have embeddings close to each other. 'Schedule a meeting' and 'book a call' are near neighbors.\n\nThis geometric property makes embeddings useful for semantic search, recommendation systems, clustering, and classification. By comparing the distance between embeddings, AI systems can find related content, identify duplicates, and understand conceptual relationships without explicit rules.\n\nEmbedding models are trained separately from generation models. Popular embedding models include OpenAI's text-embedding-3-large, Cohere's embed-v3, and open-source models like nomic-embed-text. They produce fixed-size vectors regardless of input length, enabling efficient storage and retrieval in vector databases.\n\nIn RAG systems, embeddings are the bridge between user queries and stored knowledge. The query is embedded, and the vector database finds the stored embeddings closest to it, retrieving relevant context for the LLM to use in its response.",
+    "extendedDescription": "When a machine learning model processes text, it needs to work with numbers, not words. Embeddings solve this by mapping words, sentences, or documents into lists of floating-point numbers, typically 768 to 4096 dimensions. The key property of embeddings is that semantically similar content ends up numerically close together in this vector space. 'Dog' and 'puppy' have embeddings close to each other. 'Schedule a meeting' and 'book a call' are near neighbors.\n\nThis geometric property makes embeddings useful for semantic search, recommendation systems, clustering, and classification. By comparing the distance between embeddings, AI systems can find related content, identify duplicates, and understand conceptual relationships without explicit rules.\n\nEmbedding models are trained separately from generation models. Popular embedding models include OpenAI's text-embedding-3-large, Cohere's embed-v3, and source-available models like nomic-embed-text. They produce fixed-size vectors regardless of input length, enabling efficient storage and retrieval in vector databases.\n\nIn RAG systems, embeddings are the bridge between user queries and stored knowledge. The query is embedded, and the vector database finds the stored embeddings closest to it, retrieving relevant context for the LLM to use in its response.",
     "keywords": [
       "embeddings",
       "AI embeddings",
@@ -1318,7 +1318,7 @@
     "metaTitle": "What Is a Foundation Model? AI Base Models Explained",
     "metaDescription": "Foundation models are large AI models pre-trained on broad data that can be adapted to many tasks. Learn how foundation models power AI assistants like GAIA.",
     "definition": "A foundation model is a large AI model trained on broad data at scale that can be adapted to a wide range of downstream tasks through fine-tuning, prompting, or integration into application architectures.",
-    "extendedDescription": "The term 'foundation model' was coined by researchers at Stanford to describe a new category of AI: massive models trained on vast, diverse datasets that serve as a shared base for many applications. GPT-4, Claude 3, Gemini, Llama, and Mistral are all foundation models. They are not designed for a single task but are general-purpose systems that can be steered toward specific applications.\n\nThe foundation model paradigm represents a shift from task-specific AI development. Previously, building a new AI capability meant collecting labeled data, training a model from scratch, and deploying a narrow system. With foundation models, developers start from a capable base and add task-specific behavior through prompting, fine-tuning, or retrieval augmentation. This dramatically reduces the cost and time of building AI applications.\n\nFoundation models exhibit emergent capabilities: abilities that were not explicitly trained but appear as a consequence of scale. Chain-of-thought reasoning, code generation, and multilingual translation emerged in models as they grew larger.\n\nThe open-source vs. proprietary distinction matters for foundation models. Proprietary models (GPT-4, Claude) offer state-of-the-art performance through API access. Open-source models (Llama, Mistral) allow self-hosting for privacy and cost control. Both have important roles in the AI ecosystem.",
+    "extendedDescription": "The term 'foundation model' was coined by researchers at Stanford to describe a new category of AI: massive models trained on vast, diverse datasets that serve as a shared base for many applications. GPT-4, Claude 3, Gemini, Llama, and Mistral are all foundation models. They are not designed for a single task but are general-purpose systems that can be steered toward specific applications.\n\nThe foundation model paradigm represents a shift from task-specific AI development. Previously, building a new AI capability meant collecting labeled data, training a model from scratch, and deploying a narrow system. With foundation models, developers start from a capable base and add task-specific behavior through prompting, fine-tuning, or retrieval augmentation. This dramatically reduces the cost and time of building AI applications.\n\nFoundation models exhibit emergent capabilities: abilities that were not explicitly trained but appear as a consequence of scale. Chain-of-thought reasoning, code generation, and multilingual translation emerged in models as they grew larger.\n\nThe source-available vs. proprietary distinction matters for foundation models. Proprietary models (GPT-4, Claude) offer state-of-the-art performance through API access. Source-available models (Llama, Mistral) allow self-hosting for privacy and cost control. Both have important roles in the AI ecosystem.",
     "keywords": [
       "foundation model",
       "what is a foundation model",
@@ -1331,7 +1331,7 @@
     "faqs": [
       {
         "question": "What foundation models does GAIA support?",
-        "answer": "GAIA supports multiple foundation model providers. You can configure GAIA to use models from Anthropic, OpenAI, Google, or open-source providers. This flexibility lets you balance cost, capability, and privacy according to your needs."
+        "answer": "GAIA supports multiple foundation model providers. You can configure GAIA to use models from Anthropic, OpenAI, Google, or source-available providers. This flexibility lets you balance cost, capability, and privacy according to your needs."
       },
       {
         "question": "Is a foundation model the same as an LLM?",
@@ -1379,11 +1379,11 @@
       "AI values alignment",
       "GAIA alignment"
     ],
-    "howGaiaUsesIt": "Alignment principles are embedded in GAIA's design. GAIA implements human-in-the-loop controls for sensitive actions, is transparent about what it is doing and why, allows easy override and correction of its decisions, limits autonomous actions to those you have explicitly authorized, and clearly communicates uncertainty. GAIA is open source so its behavior is fully inspectable rather than a black box, which is itself an alignment property.",
+    "howGaiaUsesIt": "Alignment principles are embedded in GAIA's design. GAIA implements human-in-the-loop controls for sensitive actions, is transparent about what it is doing and why, allows easy override and correction of its decisions, limits autonomous actions to those you have explicitly authorized, and clearly communicates uncertainty. GAIA is source-available so its behavior is fully inspectable rather than a black box, which is itself an alignment property.",
     "faqs": [
       {
         "question": "Is GAIA aligned with my goals?",
-        "answer": "GAIA is designed around your productivity goals with explicit alignment mechanisms: you configure which actions require approval, GAIA explains its reasoning, you can override any decision, and all behavior is open source and inspectable. Alignment is an ongoing design consideration, not a one-time fix."
+        "answer": "GAIA is designed around your productivity goals with explicit alignment mechanisms: you configure which actions require approval, GAIA explains its reasoning, you can override any decision, and all behavior is source-available and inspectable. Alignment is an ongoing design consideration, not a one-time fix."
       },
       {
         "question": "Why does AI alignment matter for a productivity assistant?",
@@ -1651,7 +1651,7 @@
       },
       {
         "question": "Can I clear GAIA's memory?",
-        "answer": "Yes. GAIA provides controls to clear specific memories or reset entirely. Since GAIA is open source and self-hostable, you have full control over the databases that store your memory data. Your personal memory data is never shared or used for training."
+        "answer": "Yes. GAIA provides controls to clear specific memories or reset entirely. Since GAIA is source-available and self-hostable, you have full control over the databases that store your memory data. Your personal memory data is never shared or used for training."
       }
     ]
   },
@@ -1721,11 +1721,11 @@
       "low-code vs no-code",
       "GAIA low-code"
     ],
-    "howGaiaUsesIt": "GAIA represents the next step beyond low-code automation. Instead of configuring workflows in a visual builder, you describe them in natural language. GAIA handles the implementation across your connected tools without requiring you to understand flow logic, data mapping, or API configurations. For technical users who want more control, GAIA's open-source architecture allows custom MCP integrations and agent modifications at the code level.",
+    "howGaiaUsesIt": "GAIA represents the next step beyond low-code automation. Instead of configuring workflows in a visual builder, you describe them in natural language. GAIA handles the implementation across your connected tools without requiring you to understand flow logic, data mapping, or API configurations. For technical users who want more control, GAIA's source-available architecture allows custom MCP integrations and agent modifications at the code level.",
     "faqs": [
       {
         "question": "Is GAIA a low-code or no-code tool?",
-        "answer": "GAIA is a natural language automation platform that goes beyond both low-code and no-code. You describe what you want in plain English, and GAIA builds and executes the automation. No visual builder, no configuration screens, no code required. For developers, GAIA's open-source codebase allows full customization."
+        "answer": "GAIA is a natural language automation platform that goes beyond both low-code and no-code. You describe what you want in plain English, and GAIA builds and executes the automation. No visual builder, no configuration screens, no code required. For developers, GAIA's source-available codebase allows full customization."
       },
       {
         "question": "How does GAIA compare to low-code tools like n8n?",
@@ -2759,11 +2759,11 @@
       "self-hosted data sovereignty",
       "GAIA data sovereignty"
     ],
-    "howGaiaUsesIt": "GAIA's open-source, self-hostable architecture directly addresses data sovereignty. When you self-host GAIA, all your emails, tasks, calendar events, and AI interactions stay on your infrastructure. GAIA never sends your data to Anthropic or GAIA's servers — it only communicates with the LLM provider you configure, using your own API key.",
+    "howGaiaUsesIt": "GAIA's source-available, self-hostable architecture directly addresses data sovereignty. When you self-host GAIA, all your emails, tasks, calendar events, and AI interactions stay on your infrastructure. GAIA never sends your data to Anthropic or GAIA's servers — it only communicates with the LLM provider you configure, using your own API key.",
     "faqs": [
       {
         "question": "Does GAIA use my data to train AI models?",
-        "answer": "The hosted GAIA service does not use your personal data to train models. When self-hosted, your data is entirely under your control and never reaches GAIA's infrastructure. The LLM provider you connect (OpenAI, Anthropic, etc.) processes prompts according to their privacy policies, which can be managed by using self-hosted models."
+        "answer": "Self-host GAIA and your personal data is never used to train models. On the hosted service, data handling follows the published privacy policy. When self-hosted, your data is entirely under your control and never reaches GAIA's infrastructure. The LLM provider you connect (OpenAI, Anthropic, etc.) processes prompts according to their privacy policies, which can be managed by using self-hosted models."
       },
       {
         "question": "Is self-hosting GAIA difficult?",
@@ -2785,7 +2785,7 @@
       "data privacy regulation",
       "GAIA GDPR"
     ],
-    "howGaiaUsesIt": "GAIA's architecture supports GDPR compliance through data minimization (processing only what's needed), user-controlled data deletion, data portability (export your data at any time), and self-hosting options that keep personal data within your jurisdiction. GAIA's open-source codebase allows full inspection of data handling practices.",
+    "howGaiaUsesIt": "GAIA's architecture supports GDPR compliance through data minimization (processing only what's needed), user-controlled data deletion, data portability (export your data at any time), and self-hosting options that keep personal data within your jurisdiction. GAIA's source-available codebase allows full inspection of data handling practices.",
     "faqs": [
       {
         "question": "Is GAIA GDPR compliant?",
@@ -2828,7 +2828,7 @@
     "metaTitle": "What Is an Embedding in AI? Converting Text to Vectors",
     "metaDescription": "An embedding is a numerical vector representation of text that captures semantic meaning. Learn how GAIA uses embeddings for semantic memory and search.",
     "definition": "An embedding is a dense numerical vector representation of text (or other data) that encodes semantic meaning such that similar concepts are positioned close together in vector space.",
-    "extendedDescription": "Embeddings are the bridge between human language and mathematical computation. A word like 'meeting' is meaningless to a computer as a string. As a 768 or 1536-dimensional vector, it can be compared mathematically to other vectors. Embeddings encode meaning so that 'meeting' and 'conference' are close in vector space, while 'meeting' and 'database' are far apart.\n\nThe power of embeddings is semantic similarity search. Given a query like 'emails about the product launch,' an embedding model converts the query to a vector, then finds all stored email embeddings that are mathematically similar — surfacing relevant emails without requiring exact keyword matches. This captures semantics, not just text patterns.\n\nEmbedding models are trained separately from language models and optimized specifically for representation quality. OpenAI's text-embedding-3 models, Cohere's embed models, and open-source models like sentence-transformers are popular choices. Embeddings are typically 768-3072 dimensional vectors.\n\nApplications using embeddings store content in a vector database (ChromaDB, Pinecone, Weaviate) that enables fast approximate nearest-neighbor search over large embedding collections.",
+    "extendedDescription": "Embeddings are the bridge between human language and mathematical computation. A word like 'meeting' is meaningless to a computer as a string. As a 768 or 1536-dimensional vector, it can be compared mathematically to other vectors. Embeddings encode meaning so that 'meeting' and 'conference' are close in vector space, while 'meeting' and 'database' are far apart.\n\nThe power of embeddings is semantic similarity search. Given a query like 'emails about the product launch,' an embedding model converts the query to a vector, then finds all stored email embeddings that are mathematically similar — surfacing relevant emails without requiring exact keyword matches. This captures semantics, not just text patterns.\n\nEmbedding models are trained separately from language models and optimized specifically for representation quality. OpenAI's text-embedding-3 models, Cohere's embed models, and source-available models like sentence-transformers are popular choices. Embeddings are typically 768-3072 dimensional vectors.\n\nApplications using embeddings store content in a vector database (ChromaDB, Pinecone, Weaviate) that enables fast approximate nearest-neighbor search over large embedding collections.",
     "keywords": [
       "embedding",
       "what is an embedding",
@@ -3582,7 +3582,7 @@
     "faqs": [
       {
         "question": "Which speech-to-text technology does GAIA use?",
-        "answer": "GAIA's voice agent uses Whisper-based ASR for transcription. Whisper is OpenAI's open-source ASR model that achieves strong accuracy across accents and languages, making it suitable for diverse professional users."
+        "answer": "GAIA's voice agent uses Whisper-based ASR for transcription. Whisper is OpenAI's source-available ASR model that achieves strong accuracy across accents and languages, making it suitable for diverse professional users."
       },
       {
         "question": "Can GAIA transcribe meeting audio?",
@@ -3636,7 +3636,7 @@
       },
       {
         "question": "Is GAIA's cognitive architecture customizable?",
-        "answer": "Yes. Because GAIA is open source, its cognitive architecture is fully inspectable and customizable. You can modify how specific components behave, add new memory systems, or modify the reasoning flow for specific types of tasks."
+        "answer": "Yes. Because GAIA is source-available, its cognitive architecture is fully inspectable and customizable. You can modify how specific components behave, add new memory systems, or modify the reasoning flow for specific types of tasks."
       }
     ]
   },
@@ -4109,11 +4109,11 @@
     "faqs": [
       {
         "question": "Does GAIA store my passwords?",
-        "answer": "No. GAIA uses OAuth for all integrations, meaning it receives access tokens rather than your passwords. Your passwords remain in your accounts and password manager. GAIA's open-source architecture allows you to verify this behavior directly."
+        "answer": "No. GAIA uses OAuth for all integrations, meaning it receives access tokens rather than your passwords. Your passwords remain in your accounts and password manager. GAIA's source-available architecture allows you to verify this behavior directly."
       },
       {
         "question": "Which password manager is recommended for GAIA users?",
-        "answer": "Any reputable password manager improves your security posture. Bitwarden is popular among security-conscious users and is open source. 1Password and Dashlane offer polished experiences. The most important factor is using any password manager consistently."
+        "answer": "Any reputable password manager improves your security posture. Bitwarden is popular among security-conscious users and is source-available. 1Password and Dashlane offer polished experiences. The most important factor is using any password manager consistently."
       }
     ]
   },
@@ -4473,8 +4473,8 @@
   "langchain": {
     "term": "LangChain",
     "metaTitle": "What Is LangChain? The LLM Application Framework Explained",
-    "metaDescription": "LangChain is an open-source framework for building applications powered by large language models. Learn how it relates to agent frameworks and tools like LangGraph.",
-    "definition": "LangChain is an open-source Python and JavaScript framework that provides abstractions and components for building applications that use large language models, including chains, agents, memory, and tool integrations.",
+    "metaDescription": "LangChain is a source-available framework for building applications powered by large language models. Learn how it relates to agent frameworks and tools like LangGraph.",
+    "definition": "LangChain is a source-available Python and JavaScript framework that provides abstractions and components for building applications that use large language models, including chains, agents, memory, and tool integrations.",
     "extendedDescription": "Released in October 2022, LangChain became one of the most widely adopted frameworks in the LLM application ecosystem. It introduced standardized abstractions for the most common patterns in LLM-powered applications: connecting a model to external data sources, chaining multiple prompts together, enabling LLMs to use tools, and persisting context across interactions.\n\nLangChain's core primitives include:\n\n**Chains**: Sequences of LLM calls and other operations composed into a pipeline. A chain might retrieve relevant documents, inject them into a prompt, call the LLM, and parse the output.\n\n**Agents**: LLM-driven decision loops that choose which tools to use and in what order to accomplish a goal. LangChain popularized the ReAct (Reasoning + Acting) agent pattern.\n\n**Memory**: Mechanisms for persisting context across multiple LLM calls, from simple conversation buffers to vector-store-based long-term memory.\n\n**Tool integrations**: A large ecosystem of pre-built connectors to external APIs, databases, and services.\n\nAs agent use cases became more sophisticated, the LangChain team built LangGraph as a separate library for complex, stateful, multi-agent workflows. LangGraph provides more explicit control over agent execution flow using a graph-based model, addressing limitations of LangChain's sequential chain abstraction for production agentic systems.\n\nLangChain remains widely used for prototyping and simpler LLM applications, while LangGraph is preferred for production-grade agent systems that require fine-grained control, human-in-the-loop workflows, and persistent state.",
     "keywords": [
       "LangChain",

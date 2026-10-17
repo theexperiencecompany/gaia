@@ -300,7 +300,7 @@
       },
       {
         "question": "Meus dados estão seguros no grafo de conhecimento da GAIA?",
-        "answer": "Sim. A GAIA é open source e pode ser instalada em seu próprio servidor, o que significa que você pode rodá-la na sua própria infraestrutura com controle total dos dados. O seu grafo de conhecimento é privado e nunca é utilizado para treinar modelos de IA."
+        "answer": "Sim. A GAIA é source-available e pode ser instalada em seu próprio servidor, o que significa que você pode rodá-la na sua própria infraestrutura com controle total dos dados. O seu grafo de conhecimento é privado e nunca é utilizado para treinar modelos de IA."
       }
     ]
   },
@@ -399,7 +399,7 @@
       "implantação privada de IA",
       "assistente auto-hospedado"
     ],
-    "howGaiaUsesIt": "O GAIA é totalmente open source e projetado para auto-hospedagem. Você pode rodar toda a stack do GAIA em sua própria infraestrutura usando Docker Compose. Isso inclui o backend em FastAPI, frontend em Next.js, PostgreSQL, MongoDB, Redis, ChromaDB e RabbitMQ. Ao auto-hospedar o GAIA, seus e-mails, tarefas, dados de calendário e conversas com a IA nunca saem dos seus servidores. É completamente gratuito para auto-hospedagem, sem limitações de recursos em comparação à versão hospedada.",
+    "howGaiaUsesIt": "O GAIA é totalmente source-available e projetado para auto-hospedagem. Você pode rodar toda a stack do GAIA em sua própria infraestrutura usando Docker Compose. Isso inclui o backend em FastAPI, frontend em Next.js, PostgreSQL, MongoDB, Redis, ChromaDB e RabbitMQ. Ao auto-hospedar o GAIA, seus e-mails, tarefas, dados de calendário e conversas com a IA nunca saem dos seus servidores. É completamente gratuito para auto-hospedagem, sem limitações de recursos em comparação à versão hospedada.",
     "faqs": [
       {
         "question": "É difícil auto-hospedar o GAIA?",
@@ -414,9 +414,9 @@
   "open-source-ai": {
     "term": "IA Open Source",
     "metaTitle": "IA Open Source: Transparência, Controle e Comunidade",
-    "metaDescription": "IA open source oferece transparência, desenvolvimento colaborativo e controle dos dados. Saiba por que o GAIA foi criado como open source e o que isso significa para sua privacidade.",
-    "definition": "IA open source refere-se a softwares de inteligência artificial cujo código-fonte é publicamente disponível, permitindo que qualquer pessoa inspecione, modifique, distribua e contribua com o projeto.",
-    "extendedDescription": "A IA open source é importante por diversos motivos. A transparência permite que os usuários verifiquem o que o software faz com seus dados. A contribuição da comunidade acelera o desenvolvimento e a correção de bugs. A capacidade de auto-hospedagem garante controle total dos dados. A independência de fornecedores evita o lock-in. E a possibilidade de inspecionar o funcionamento da IA gera confiança. No universo dos assistentes de IA, o open source é especialmente valioso porque esses sistemas lidam com dados pessoais e empresariais sensíveis. Os usuários precisam poder verificar que seus e-mails, eventos de calendário e comunicações são tratados com segurança.",
+    "metaDescription": "IA source-available oferece transparência, desenvolvimento colaborativo e controle dos dados. Saiba por que o GAIA foi criado como source-available e o que isso significa para sua privacidade.",
+    "definition": "IA source-available refere-se a softwares de inteligência artificial cujo código-fonte é publicamente disponível, permitindo que qualquer pessoa inspecione, modifique, distribua e contribua com o projeto.",
+    "extendedDescription": "A IA source-available é importante por diversos motivos. A transparência permite que os usuários verifiquem o que o software faz com seus dados. A contribuição da comunidade acelera o desenvolvimento e a correção de bugs. A capacidade de auto-hospedagem garante controle total dos dados. A independência de fornecedores evita o lock-in. E a possibilidade de inspecionar o funcionamento da IA gera confiança. No universo dos assistentes de IA, o source-available é especialmente valioso porque esses sistemas lidam com dados pessoais e empresariais sensíveis. Os usuários precisam poder verificar que seus e-mails, eventos de calendário e comunicações são tratados com segurança.",
     "keywords": [
       "IA de código aberto",
       "assistente de IA de código aberto",
@@ -424,10 +424,10 @@
       "IA comunitária",
       "código-fonte de IA"
     ],
-    "howGaiaUsesIt": "A GAIA é totalmente de código aberto, com todo o código disponível no GitHub. Isso inclui os agentes de IA, API backend, frontend web, aplicativo para desktop, aplicativo móvel e todas as integrações. Qualquer pessoa pode inspecionar como a GAIA processa dados, contribuir com novas funcionalidades, criar integrações personalizadas e hospedar a plataforma por conta própria. O caráter open source da GAIA garante que você nunca precisa confiar seus dados pessoais a uma caixa-preta. A comunidade contribui ativamente com integrações, correções de bugs e melhorias de recursos.",
+    "howGaiaUsesIt": "A GAIA é totalmente de código aberto, com todo o código disponível no GitHub. Isso inclui os agentes de IA, API backend, frontend web, aplicativo para desktop, aplicativo móvel e todas as integrações. Qualquer pessoa pode inspecionar como a GAIA processa dados, contribuir com novas funcionalidades, criar integrações personalizadas e hospedar a plataforma por conta própria. O caráter source-available da GAIA garante que você nunca precisa confiar seus dados pessoais a uma caixa-preta. A comunidade contribui ativamente com integrações, correções de bugs e melhorias de recursos.",
     "faqs": [
       {
-        "question": "A GAIA é realmente gratuita e open source?",
+        "question": "A GAIA é realmente gratuita e source-available?",
         "answer": "Sim. Todo o código-fonte da GAIA está disponível no GitHub. Você pode hospedá-la gratuitamente, sem limitações de recursos. A versão hospedada oferece conveniência com infraestrutura gerenciada, mas a versão auto-hospedada possui toda a funcionalidade."
       },
       {
@@ -976,7 +976,7 @@
     "metaTitle": "O que são Embeddings em IA? Como Máquinas Compreendem Significados",
     "metaDescription": "Embeddings convertem textos, imagens e dados em vetores numéricos que capturam significado semântico. Saiba como a GAIA usa embeddings para busca semântica e memória.",
     "definition": "Embeddings são representações densas em vetor numérico de dados, como texto, imagens ou áudio, que capturam significados e relações semânticas em um espaço de alta dimensão.",
-    "extendedDescription": "Quando um modelo de aprendizado de máquina processa texto, ele precisa trabalhar com números, não com palavras. Os embeddings resolvem isso mapeando palavras, frases ou documentos para listas de números de ponto flutuante, normalmente de 768 a 4096 dimensões. A propriedade fundamental dos embeddings é que conteúdos semanticamente similares ficam numericamente próximos nesse espaço vetorial. \"Cachorro\" e \"filhote\" têm embeddings próximos. \"Agendar uma reunião\" e \"marcar uma ligação\" também aparecem como vizinhos.\n\nEssa propriedade geométrica torna os embeddings úteis para busca semântica, sistemas de recomendação, agrupamentos e classificação. Comparando as distâncias entre embeddings, sistemas de IA conseguem encontrar conteúdos relacionados, identificar duplicatas e entender relações conceituais sem regras explícitas.\n\nModelos de embedding são treinados separadamente dos modelos de geração. Modelos populares incluem o text-embedding-3-large da OpenAI, o embed-v3 da Cohere e modelos open-source como nomic-embed-text. Eles geram vetores de tamanho fixo independentemente do tamanho da entrada, permitindo armazenamento e recuperação eficientes em bancos de dados vetoriais.\n\nEm sistemas RAG, os embeddings são a ponte entre as consultas dos usuários e o conhecimento armazenado. A consulta é transformada em embedding, e o banco de dados vetorial encontra os embeddings armazenados mais próximos, trazendo o contexto relevante para a LLM utilizar na resposta.",
+    "extendedDescription": "Quando um modelo de aprendizado de máquina processa texto, ele precisa trabalhar com números, não com palavras. Os embeddings resolvem isso mapeando palavras, frases ou documentos para listas de números de ponto flutuante, normalmente de 768 a 4096 dimensões. A propriedade fundamental dos embeddings é que conteúdos semanticamente similares ficam numericamente próximos nesse espaço vetorial. \"Cachorro\" e \"filhote\" têm embeddings próximos. \"Agendar uma reunião\" e \"marcar uma ligação\" também aparecem como vizinhos.\n\nEssa propriedade geométrica torna os embeddings úteis para busca semântica, sistemas de recomendação, agrupamentos e classificação. Comparando as distâncias entre embeddings, sistemas de IA conseguem encontrar conteúdos relacionados, identificar duplicatas e entender relações conceituais sem regras explícitas.\n\nModelos de embedding são treinados separadamente dos modelos de geração. Modelos populares incluem o text-embedding-3-large da OpenAI, o embed-v3 da Cohere e modelos source-available como nomic-embed-text. Eles geram vetores de tamanho fixo independentemente do tamanho da entrada, permitindo armazenamento e recuperação eficientes em bancos de dados vetoriais.\n\nEm sistemas RAG, os embeddings são a ponte entre as consultas dos usuários e o conhecimento armazenado. A consulta é transformada em embedding, e o banco de dados vetorial encontra os embeddings armazenados mais próximos, trazendo o contexto relevante para a LLM utilizar na resposta.",
     "keywords": [
       "embeddings",
       "embeddings de IA",
@@ -1332,7 +1332,7 @@
     "faqs": [
       {
         "question": "Quais modelos fundamentais a GAIA oferece suporte?",
-        "answer": "GAIA oferece suporte a vários provedores de modelos fundamentais. Você pode configurar a GAIA para usar modelos da Anthropic, OpenAI, Google ou provedores open-source. Essa flexibilidade permite equilibrar custo, capacidade e privacidade conforme suas necessidades."
+        "answer": "GAIA oferece suporte a vários provedores de modelos fundamentais. Você pode configurar a GAIA para usar modelos da Anthropic, OpenAI, Google ou provedores source-available. Essa flexibilidade permite equilibrar custo, capacidade e privacidade conforme suas necessidades."
       },
       {
         "question": "Um modelo fundamental é o mesmo que um LLM?",
@@ -1380,11 +1380,11 @@
       "alinhamento de valores de IA",
       "alinhamento GAIA"
     ],
-    "howGaiaUsesIt": "Os princípios de alinhamento estão incorporados ao design do GAIA. O GAIA implementa controles com participação humana para ações sensíveis, é transparente sobre o que faz e por quê, permite fácil substituição e correção de suas decisões, limita ações autônomas apenas àquelas que você autorizou explicitamente e comunica claramente qualquer incerteza. O GAIA é open source, então seu funcionamento é totalmente auditável, e não uma caixa preta, o que é uma característica essencial de alinhamento.",
+    "howGaiaUsesIt": "Os princípios de alinhamento estão incorporados ao design do GAIA. O GAIA implementa controles com participação humana para ações sensíveis, é transparente sobre o que faz e por quê, permite fácil substituição e correção de suas decisões, limita ações autônomas apenas àquelas que você autorizou explicitamente e comunica claramente qualquer incerteza. O GAIA é source-available, então seu funcionamento é totalmente auditável, e não uma caixa preta, o que é uma característica essencial de alinhamento.",
     "faqs": [
       {
         "question": "O GAIA está alinhado com meus objetivos?",
-        "answer": "O GAIA é projetado em torno dos seus objetivos de produtividade, com mecanismos explícitos de alinhamento: você configura quais ações requerem aprovação, o GAIA explica seus raciocínios, você pode substituir qualquer decisão e todo o comportamento é open source e auditável. Alinhamento é uma consideração contínua de design, não uma solução pontual."
+        "answer": "O GAIA é projetado em torno dos seus objetivos de produtividade, com mecanismos explícitos de alinhamento: você configura quais ações requerem aprovação, o GAIA explica seus raciocínios, você pode substituir qualquer decisão e todo o comportamento é source-available e auditável. Alinhamento é uma consideração contínua de design, não uma solução pontual."
       },
       {
         "question": "Por que o alinhamento de IA é importante para um assistente de produtividade?",
@@ -1652,7 +1652,7 @@
       },
       {
         "question": "Posso limpar a memória da GAIA?",
-        "answer": "Sim. A GAIA oferece controles para limpar memórias específicas ou redefinir tudo. Como a GAIA é open source e pode ser hospedada por você, você tem total controle sobre os bancos de dados que armazenam seus dados de memória. Seus dados pessoais nunca são compartilhados ou usados para treinamento."
+        "answer": "Sim. A GAIA oferece controles para limpar memórias específicas ou redefinir tudo. Como a GAIA é source-available e pode ser hospedada por você, você tem total controle sobre os bancos de dados que armazenam seus dados de memória. Seus dados pessoais nunca são compartilhados ou usados para treinamento."
       }
     ]
   },
@@ -1727,7 +1727,7 @@
       "low-code vs no-code",
       "GAIA low-code"
     ],
-    "howGaiaUsesIt": "GAIA representa o próximo passo além da automação low-code. Em vez de configurar fluxos de trabalho em um construtor visual, você os descreve em linguagem natural. A GAIA cuida da implementação entre suas ferramentas conectadas sem exigir que você entenda lógica de fluxo, mapeamento de dados ou configurações de API. Para usuários técnicos que desejam mais controle, a arquitetura open-source da GAIA permite integrações MCP personalizadas e modificações de agentes no nível do código.",
+    "howGaiaUsesIt": "GAIA representa o próximo passo além da automação low-code. Em vez de configurar fluxos de trabalho em um construtor visual, você os descreve em linguagem natural. A GAIA cuida da implementação entre suas ferramentas conectadas sem exigir que você entenda lógica de fluxo, mapeamento de dados ou configurações de API. Para usuários técnicos que desejam mais controle, a arquitetura source-available da GAIA permite integrações MCP personalizadas e modificações de agentes no nível do código.",
     "faqs": [
       {
         "question": "GAIA é uma plataforma low-code ou no-code?",
@@ -2834,7 +2834,7 @@
     "metaTitle": "O que é um embedding em IA? Convertendo texto em vetores",
     "metaDescription": "Um embedding é uma representação vetorial numérica de texto que captura significado semântico. Saiba como o GAIA utiliza embeddings para memória e busca semântica.",
     "definition": "Um embedding é uma representação vetorial numérica densa de texto (ou outros dados) que codifica significado semântico, de modo que conceitos semelhantes fiquem próximos no espaço vetorial.",
-    "extendedDescription": "Embeddings são a ponte entre a linguagem humana e o cálculo matemático. Uma palavra como \"reunião\" não tem significado para o computador como texto simples. Como vetor dimensional de 768 ou 1536 elementos, ela pode ser comparada matematicamente a outros vetores. Embeddings codificam o significado, fazendo com que \"reunião\" e \"conferência\" fiquem próximas no espaço vetorial, enquanto \"reunião\" e \"banco de dados\" estejam distantes.\n\nO poder do embedding está na busca por similaridade semântica. Dada uma consulta como \"e-mails sobre o lançamento do produto\", um modelo de embedding converte a consulta em vetor e busca todos os embeddings de e-mail armazenados que sejam matematicamente semelhantes — trazendo à tona e-mails relevantes sem depender de palavras-chave exatas. Isso capta o significado, não apenas padrões textuais.\n\nModelos de embedding são treinados separadamente dos modelos de linguagem e otimizados especificamente para alta qualidade de representação. Modelos como os text-embedding-3 da OpenAI, embed da Cohere e soluções open-source como sentence-transformers são opções populares. Embeddings geralmente possuem de 768 a 3072 dimensões.\n\nAplicações que usam embeddings armazenam o conteúdo em bancos de dados vetoriais (ChromaDB, Pinecone, Weaviate), o que permite buscas aproximadas rápidas entre grandes coleções de embeddings.",
+    "extendedDescription": "Embeddings são a ponte entre a linguagem humana e o cálculo matemático. Uma palavra como \"reunião\" não tem significado para o computador como texto simples. Como vetor dimensional de 768 ou 1536 elementos, ela pode ser comparada matematicamente a outros vetores. Embeddings codificam o significado, fazendo com que \"reunião\" e \"conferência\" fiquem próximas no espaço vetorial, enquanto \"reunião\" e \"banco de dados\" estejam distantes.\n\nO poder do embedding está na busca por similaridade semântica. Dada uma consulta como \"e-mails sobre o lançamento do produto\", um modelo de embedding converte a consulta em vetor e busca todos os embeddings de e-mail armazenados que sejam matematicamente semelhantes — trazendo à tona e-mails relevantes sem depender de palavras-chave exatas. Isso capta o significado, não apenas padrões textuais.\n\nModelos de embedding são treinados separadamente dos modelos de linguagem e otimizados especificamente para alta qualidade de representação. Modelos como os text-embedding-3 da OpenAI, embed da Cohere e soluções source-available como sentence-transformers são opções populares. Embeddings geralmente possuem de 768 a 3072 dimensões.\n\nAplicações que usam embeddings armazenam o conteúdo em bancos de dados vetoriais (ChromaDB, Pinecone, Weaviate), o que permite buscas aproximadas rápidas entre grandes coleções de embeddings.",
     "keywords": [
       "embedding",
       "o que é um embedding",
@@ -3588,7 +3588,7 @@
     "faqs": [
       {
         "question": "Qual tecnologia de reconhecimento de fala o GAIA utiliza?",
-        "answer": "O agente de voz do GAIA utiliza ASR baseado no Whisper para transcrição. Whisper é o modelo de ASR open-source da OpenAI, que oferece alta precisão em diferentes sotaques e idiomas, tornando-o adequado para usuários profissionais diversos."
+        "answer": "O agente de voz do GAIA utiliza ASR baseado no Whisper para transcrição. Whisper é o modelo de ASR source-available da OpenAI, que oferece alta precisão em diferentes sotaques e idiomas, tornando-o adequado para usuários profissionais diversos."
       },
       {
         "question": "O GAIA consegue transcrever o áudio de reuniões?",
@@ -3642,7 +3642,7 @@
       },
       {
         "question": "A arquitetura cognitiva da GAIA é personalizável?",
-        "answer": "Sim. Como a GAIA é open source, sua arquitetura cognitiva é totalmente inspecionável e personalizável. Você pode modificar o comportamento de componentes específicos, adicionar novos sistemas de memória ou alterar o fluxo de raciocínio para tipos de tarefas específicas."
+        "answer": "Sim. Como a GAIA é source-available, sua arquitetura cognitiva é totalmente inspecionável e personalizável. Você pode modificar o comportamento de componentes específicos, adicionar novos sistemas de memória ou alterar o fluxo de raciocínio para tipos de tarefas específicas."
       }
     ]
   },
@@ -4124,7 +4124,7 @@
       },
       {
         "question": "Qual gerenciador de senhas é recomendado para usuários da GAIA?",
-        "answer": "Qualquer gerenciador de senhas confiável melhora sua segurança. O Bitwarden é popular entre usuários preocupados com segurança e é open source. O 1Password e o Dashlane oferecem experiências bem elaboradas. O mais importante é utilizar qualquer gerenciador de senhas de forma consistente."
+        "answer": "Qualquer gerenciador de senhas confiável melhora sua segurança. O Bitwarden é popular entre usuários preocupados com segurança e é source-available. O 1Password e o Dashlane oferecem experiências bem elaboradas. O mais importante é utilizar qualquer gerenciador de senhas de forma consistente."
       }
     ]
   },
@@ -4488,8 +4488,8 @@
   "langchain": {
     "term": "LangChain",
     "metaTitle": "O que é LangChain? O framework de aplicações LLM explicado",
-    "metaDescription": "LangChain é um framework open source para construir aplicações potencializadas por grandes modelos de linguagem. Saiba como ele se relaciona com frameworks de agentes e ferramentas como o LangGraph.",
-    "definition": "LangChain é um framework open source em Python e JavaScript que fornece abstrações e componentes para construir aplicações que usam grandes modelos de linguagem, incluindo chains, agentes, memória e integrações com ferramentas.",
+    "metaDescription": "LangChain é um framework source-available para construir aplicações potencializadas por grandes modelos de linguagem. Saiba como ele se relaciona com frameworks de agentes e ferramentas como o LangGraph.",
+    "definition": "LangChain é um framework source-available em Python e JavaScript que fornece abstrações e componentes para construir aplicações que usam grandes modelos de linguagem, incluindo chains, agentes, memória e integrações com ferramentas.",
     "extendedDescription": "Lançado em outubro de 2022, o LangChain se tornou um dos frameworks mais amplamente adotados no ecossistema de aplicações com LLM. Ele introduziu abstrações padronizadas para os padrões mais comuns em aplicações alimentadas por LLMs: conectar um modelo a fontes de dados externas, encadear múltiplos prompts, permitir que LLMs usem ferramentas e persistir o contexto entre interações.\n\nOs principais recursos do LangChain incluem:\n\n**Cadeias (Chains)**: Sequências de chamadas a LLMs e outras operações organizadas em um pipeline. Uma cadeia pode recuperar documentos relevantes, inseri-los em um prompt, chamar o LLM e analisar a resposta.\n\n**Agentes (Agents)**: Ciclos de decisão orientados por LLMs que escolhem quais ferramentas utilizar e em que ordem para atingir um objetivo. O LangChain popularizou o padrão de agente ReAct (Raciocínio + Ação).\n\n**Memória (Memory)**: Mecanismos para persistir contexto ao longo de várias chamadas a LLM, desde buffers simples de conversação até memórias de longo prazo baseadas em vetores.\n\n**Integração de ferramentas**: Um amplo ecossistema de conectores prontos para APIs externas, bancos de dados e serviços.\n\nÀ medida que os casos de uso de agentes se tornaram mais sofisticados, a equipe do LangChain desenvolveu o LangGraph como uma biblioteca separada para fluxos de trabalho complexos, com múltiplos agentes e estado. O LangGraph oferece controle mais explícito sobre o fluxo de execução dos agentes usando um modelo baseado em grafos, abordando limitações da abstração de cadeias sequenciais do LangChain para sistemas agentes de produção.\n\nO LangChain continua sendo amplamente utilizado para prototipagem e aplicações LLM mais simples, enquanto o LangGraph é preferido para sistemas agentes de produção que exigem controle detalhado, fluxos de trabalho com humanos no loop e estado persistente.",
     "keywords": [
       "LangChain",
@@ -4699,7 +4699,7 @@
       "spear street instinct",
       "lista de espera instinct"
     ],
-    "howGaiaUsesIt": "GAIA encontra você nos mesmos lugares: funciona em WhatsApp e Telegram, não só na web. A diferença é controle. GAIA é open source e auto-hospedável com mais de 50 integrações, então uma viagem reservada conecta agenda, caixa e tarefas num sistema que você pode ver.",
+    "howGaiaUsesIt": "GAIA encontra você nos mesmos lugares: funciona em WhatsApp e Telegram, não só na web. A diferença é controle. GAIA é source-available e auto-hospedável com mais de 50 integrações, então uma viagem reservada conecta agenda, caixa e tarefas num sistema que você pode ver.",
     "faqs": [
       {
         "question": "O que faz Instinct?",
@@ -4714,7 +4714,7 @@
   "openai-dots": {
     "term": "OpenAI Dots",
     "metaTitle": "O que é OpenAI Dots? Agente persistente explicado",
-    "metaDescription": "Dots é um agente persistente na nuvem da OpenAI. Saiba o que cobre e quando um assistente open source vale mais.",
+    "metaDescription": "Dots é um agente persistente na nuvem da OpenAI. Saiba o que cobre e quando um assistente source-available vale mais.",
     "definition": "Dots é o agente persistente da OpenAI para trabalho contínuo. Aprende suas preferências e metas, roda no próprio computador na nuvem e conecta milhares de apps por ChatGPT, Slack e Teams.",
     "extendedDescription": "A ideia por trás de Dots é simples: um agente que segue no trabalho após o chat. Guarda suas metas, aprende com retornos e segue trabalhando em segundo plano.\n\nEm 2026 a superfície ainda evolui, então trate o que lê sobre Dots como foto do momento, não como ficha técnica.\n\nDots divide um limite com todo agente fechado: roda na nuvem da OpenAI, então você não pode ver o código nem hospedar você mesmo. Essa falta de controle um assistente aberto cobre.",
     "keywords": [
@@ -4732,7 +4732,7 @@
       },
       {
         "question": "Como Dots difere de um assistente de IA completo?",
-        "answer": "Os dois lembram e agem. A diferença é controle: Dots roda fechado na nuvem da OpenAI, e GAIA é open source e auto-hospedável com memória sob seu controle."
+        "answer": "Os dois lembram e agem. A diferença é controle: Dots roda fechado na nuvem da OpenAI, e GAIA é source-available e auto-hospedável com memória sob seu controle."
       }
     ]
   },
@@ -4757,7 +4757,7 @@
       },
       {
         "question": "Para onde vão os ex-usuários de Dot?",
-        "answer": "Busque um assistente com memória real entre conversas e ferramentas. GAIA é open source, lembra como você trabalha e conecta e-mail e agenda."
+        "answer": "Busque um assistente com memória real entre conversas e ferramentas. GAIA é source-available, lembra como você trabalha e conecta e-mail e agenda."
       }
     ]
   },
@@ -4789,9 +4789,9 @@
   "omi": {
     "term": "OMI",
     "metaTitle": "O que é OMI? Pingente de IA aberto",
-    "metaDescription": "OMI é um pingente de IA open source que grava conversas para lembrar depois. Saiba como funciona e como GAIA age sobre o contexto.",
-    "definition": "OMI é um pingente de IA open source que ouve conversas e deixa para buscar depois. O hardware é aberto e barato.",
-    "extendedDescription": "OMI aposta na via aberta em wearables. O hardware ouve seu dia e o software aberto vira essas conversas em um registro pesquisável que você controla.\n\nPor ser open source, você pode conferir o que faz com seu áudio e rodar partes por conta própria. Essa transparência é rara numa categoria feita de microfones sempre ligados.\n\nCapturar é só meia tarefa. OMI lembra o que foi dito. Não redige o e-mail de follow-up, não cria a tarefa nem atualiza a agenda. Lembrar sem agir igual deixa a lista pendente.",
+    "metaDescription": "OMI é um pingente de IA source-available que grava conversas para lembrar depois. Saiba como funciona e como GAIA age sobre o contexto.",
+    "definition": "OMI é um pingente de IA source-available que ouve conversas e deixa para buscar depois. O hardware é aberto e barato.",
+    "extendedDescription": "OMI aposta na via aberta em wearables. O hardware ouve seu dia e o software aberto vira essas conversas em um registro pesquisável que você controla.\n\nPor ser source-available, você pode conferir o que faz com seu áudio e rodar partes por conta própria. Essa transparência é rara numa categoria feita de microfones sempre ligados.\n\nCapturar é só meia tarefa. OMI lembra o que foi dito. Não redige o e-mail de follow-up, não cria a tarefa nem atualiza a agenda. Lembrar sem agir igual deixa a lista pendente.",
     "keywords": [
       "omi ai",
       "o que é omi",
@@ -4799,15 +4799,15 @@
       "omi wearable",
       "pingente ia aberto"
     ],
-    "howGaiaUsesIt": "GAIA respeita a ética aberta e divide: GAIA é todo open source e auto-hospedável via Docker. Onde OMI para na lembrança, GAIA segue até a ação, e vira o contexto capturado em e-mails redigidos, tarefas criadas e eventos agendados em mais de 50 integrações.",
+    "howGaiaUsesIt": "GAIA respeita a ética aberta e divide: GAIA é todo source-available e auto-hospedável via Docker. Onde OMI para na lembrança, GAIA segue até a ação, e vira o contexto capturado em e-mails redigidos, tarefas criadas e eventos agendados em mais de 50 integrações.",
     "faqs": [
       {
         "question": "Quanto custa OMI?",
-        "answer": "OMI é hardware aberto de preço acessível, e o software é open source para inspecionar e auto-hospedar."
+        "answer": "OMI é hardware aberto de preço acessível, e o software é source-available para inspecionar e auto-hospedar."
       },
       {
-        "question": "OMI é mesmo open source?",
-        "answer": "Sim. OMI é open source, então você pode inspecionar o código e auto-hospedar partes. É uma vantagem real de privacidade contra wearables fechados."
+        "question": "OMI é mesmo source-available?",
+        "answer": "Sim. OMI é source-available, então você pode inspecionar o código e auto-hospedar partes. É uma vantagem real de privacidade contra wearables fechados."
       }
     ]
   },
@@ -4866,7 +4866,7 @@
     "metaTitle": "O que era ChatGPT Atlas? Fim explicado",
     "metaDescription": "ChatGPT Atlas foi um produto de IA encerrado em agosto de 2026. Saiba o que era e para onde vão seus usuários agora com um assistente completo.",
     "definition": "ChatGPT Atlas foi um produto de IA encerrado em agosto de 2026. Seus ex-usuários em busca de um assistente mais profundo costumam chegar a ferramentas abertas como GAIA.",
-    "extendedDescription": "Atlas teve seu momento e depois se foi. O encerramento de agosto de 2026 deixou usuários com hábitos construídos sobre um produto que já não abre.\n\nEncerramentos seguem um padrão: exporte o que puder, ache o equivalente vivo mais próximo e reconstrua o fluxo. Os usuários que se recuperam antes escolhem ferramentas que ninguém pode tirar.\n\nEsse último ponto favorece open source. Um assistente auto-hospedado segue funcionando sem importar o roteiro de uma empresa, que é justo a garantia que usuários de Atlas aprenderam a querer.",
+    "extendedDescription": "Atlas teve seu momento e depois se foi. O encerramento de agosto de 2026 deixou usuários com hábitos construídos sobre um produto que já não abre.\n\nEncerramentos seguem um padrão: exporte o que puder, ache o equivalente vivo mais próximo e reconstrua o fluxo. Os usuários que se recuperam antes escolhem ferramentas que ninguém pode tirar.\n\nEsse último ponto favorece source-available. Um assistente auto-hospedado segue funcionando sem importar o roteiro de uma empresa, que é justo a garantia que usuários de Atlas aprenderam a querer.",
     "keywords": [
       "chatgpt atlas",
       "o que era chatgpt atlas",
@@ -4874,7 +4874,7 @@
       "atlas ia fim",
       "produto atlas ia"
     ],
-    "howGaiaUsesIt": "GAIA é a resposta à prova de fins: open source, auto-hospedável via Docker, com plano gratuito para testar. Conecte seu Gmail e sua agenda, e GAIA reconstrói a camada útil que Atlas dava, desta vez em infraestrutura que você controla.",
+    "howGaiaUsesIt": "GAIA é a resposta à prova de fins: source-available, auto-hospedável via Docker, com plano gratuito para testar. Conecte seu Gmail e sua agenda, e GAIA reconstrói a camada útil que Atlas dava, desta vez em infraestrutura que você controla.",
     "faqs": [
       {
         "question": "O que aconteceu com ChatGPT Atlas?",
@@ -4882,7 +4882,7 @@
       },
       {
         "question": "O que substitui ChatGPT Atlas?",
-        "answer": "GAIA é toda open source e auto-hospedável, então nenhum fim tira ela de você. Cobre e-mail, agenda, tarefas e memória em mais de 50 ferramentas."
+        "answer": "GAIA é toda source-available e auto-hospedável, então nenhum fim tira ela de você. Cobre e-mail, agenda, tarefas e memória em mais de 50 ferramentas."
       }
     ]
   },
