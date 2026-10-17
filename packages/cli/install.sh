@@ -14,6 +14,9 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+NVM_INSTALLER_URL="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh"
+LOG_TAIL_LINES=20
+
 info() { printf "${BLUE}[info]${NC} %s\n" "$1"; }
 success() { printf "${GREEN}[ok]${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}[warn]${NC} %s\n" "$1"; }
@@ -40,40 +43,63 @@ check_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# Run "$@" with its output in LOG_FILE; on failure show the log's tail and exit.
+# Called directly (not in a subshell) so shell functions like nvm can change PATH.
+run_quiet() {
+  STEP="$1"
+  shift
+  printf "\n==> %s\n" "$STEP" >>"$LOG_FILE"
+  "$@" >>"$LOG_FILE" 2>&1 || {
+    STATUS=$?
+    printf "${RED}[error]${NC} %s failed (exit %s). Last %s lines of output:\n" "$STEP" "$STATUS" "$LOG_TAIL_LINES"
+    tail -n "$LOG_TAIL_LINES" "$LOG_FILE"
+    printf "Full log: %s\n" "$LOG_FILE"
+    exit 1
+  }
+}
+
+download_and_run_nvm_installer() {
+  NVM_INSTALLER=$(curl --proto '=https' --tlsv1.2 -fsSL "$NVM_INSTALLER_URL") || return
+  printf '%s\n' "$NVM_INSTALLER" | bash
+}
+
 install_node() {
   if [ "$(detect_os)" = "windows" ]; then
     error "Please install Node.js manually on Windows: https://nodejs.org"
   fi
-  curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+  run_quiet "Installing nvm" download_and_run_nvm_installer
   export NVM_DIR="$HOME/.nvm"
   # shellcheck source=/dev/null
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-  nvm install --lts
+  run_quiet "Installing Node.js LTS via nvm" nvm install --lts
   if ! check_command node; then
     error "Node.js installation failed. Please install manually: https://nodejs.org"
   fi
   success "Node.js $(node --version) installed successfully"
 }
 
-show_path_help() {
-  PKG="$1"
-  case "$PKG" in
-    npm)
-      BIN_DIR="$(npm config get prefix)/bin"
-      printf "  Run: ${BOLD}export PATH=\"%s:\$PATH\"${NC}\n" "$BIN_DIR"
-      printf "  Or add it to your shell profile (~/.bashrc, ~/.zshrc, etc.)\n"
-      printf "  Or run it directly: ${BOLD}%s/gaia up${NC}\n" "$BIN_DIR"
-      ;;
-    pnpm)
-      BIN_DIR="$(pnpm bin -g 2>/dev/null || echo '$HOME/.local/share/pnpm')"
-      printf "  Run: ${BOLD}export PATH=\"%s:\$PATH\"${NC}\n" "$BIN_DIR"
-      printf "  Or run: ${BOLD}pnpm setup${NC} to configure PATH automatically\n"
-      ;;
-    bun)
-      printf "  Run: ${BOLD}export PATH=\"\$HOME/.bun/bin:\$PATH\"${NC}\n"
-      printf "  Or add it to your shell profile (~/.bashrc, ~/.zshrc, etc.)\n"
-      ;;
+npm_install_cli() {
+  NPM_CONFIG_UPDATE_NOTIFIER=false npm install -g --ignore-scripts --no-fund --no-audit --loglevel=error @heygaia/cli
+}
+
+global_bin_dir() {
+  case "$1" in
+    npm)  printf '%s/bin\n' "$(npm config get prefix)" ;;
+    pnpm) pnpm bin -g ;;
+    bun)  bun pm bin -g ;;
   esac
+}
+
+# The user's shell cannot run a bare `gaia` yet: give the command that works now
+# and the PATH fix that makes `gaia` work from then on.
+show_not_on_path_help() {
+  GAIA_BIN="$1"
+  PATH_FIX="$2"
+  warn "GAIA CLI is installed, but 'gaia' is not on your shell's PATH yet."
+  printf "\n${BOLD}Get started:${NC}\n"
+  printf "  Run it now:  ${GREEN}%s up${NC}\n" "$GAIA_BIN"
+  printf "  Or fix PATH: ${BOLD}%s${NC}\n" "$PATH_FIX"
+  printf "               then run ${GREEN}gaia up${NC}\n\n"
 }
 
 main() {
@@ -86,6 +112,8 @@ main() {
   if [ "$OS" = "unknown" ]; then
     error "Unsupported operating system"
   fi
+
+  LOG_FILE=$(mktemp "${TMPDIR:-/tmp}/gaia-install.XXXXXX")
 
   # Determine package manager: prefer npm, then pnpm, then bun
   PKG_MGR=""
@@ -107,29 +135,27 @@ main() {
     PKG_MGR="npm"
   fi
 
-  # Install GAIA CLI globally
   info "Installing @heygaia/cli via $PKG_MGR..."
   case "$PKG_MGR" in
-    npm)  npm install -g --ignore-scripts @heygaia/cli ;;
-    pnpm) pnpm add -g @heygaia/cli ;;
-    bun)  bun install -g --ignore-scripts @heygaia/cli ;;
+    npm)  run_quiet "npm install -g @heygaia/cli" npm_install_cli ;;
+    pnpm) run_quiet "pnpm add -g @heygaia/cli" pnpm add -g @heygaia/cli ;;
+    bun)  run_quiet "bun install -g @heygaia/cli" bun install -g --ignore-scripts @heygaia/cli ;;
   esac
+  rm -f "$LOG_FILE"
+  success "GAIA CLI installed successfully!"
 
-  if ! check_command gaia; then
-    warn "Installation completed but 'gaia' command not found in PATH"
-    show_path_help "$PKG_MGR"
-    printf "\n"
+  # nvm only changed this installer's PATH, never the shell that piped it in.
+  if [ "$NODE_INSTALLED_VIA_NVM" = "1" ]; then
+    check_command gaia || error "nvm's npm installed @heygaia/cli but no 'gaia' binary is on nvm's PATH"
+    show_not_on_path_help "$(command -v gaia)" ". \"$NVM_DIR/nvm.sh\"  (or open a new terminal)"
     return
   fi
 
-  success "GAIA CLI installed successfully!"
-
-  # nvm only changed this installer's PATH; the shell that piped it in still
-  # cannot see node or gaia until nvm is loaded there too.
-  if [ "$NODE_INSTALLED_VIA_NVM" = "1" ]; then
-    warn "Node.js was installed with nvm, so 'gaia' is not on your current shell's PATH yet."
-    printf "  Load it now: ${BOLD}. \"%s/nvm.sh\"${NC}  (or open a new terminal)\n" "$NVM_DIR"
-    printf "  Or run it directly: ${BOLD}%s up${NC}\n" "$(command -v gaia)"
+  if ! check_command gaia; then
+    BIN_DIR=$(global_bin_dir "$PKG_MGR")
+    [ -x "$BIN_DIR/gaia" ] || error "$PKG_MGR installed @heygaia/cli but $BIN_DIR/gaia does not exist"
+    show_not_on_path_help "$BIN_DIR/gaia" "export PATH=\"$BIN_DIR:\$PATH\"  (add it to ~/.bashrc or ~/.zshrc to keep it)"
+    return
   fi
 
   printf "\n${BOLD}Get started:${NC}\n"
