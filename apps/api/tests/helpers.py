@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager, contextmanager
 import importlib.util
+import json
 import math
 import os
 from pathlib import Path
@@ -11,12 +12,13 @@ import re
 import socket
 import sys
 import time
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any, ClassVar
 import zoneinfo
 
 from bson import ObjectId
 from bson.errors import InvalidId
+from cryptography.fernet import Fernet
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
@@ -32,6 +34,8 @@ from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.providers.provider_credentials_service import ProviderConfig
+from app.services.runtime.secrets_store import fernet_key_from
 from shared.py.wide_events import log, log_context
 
 #: A well-formed user id with no users row behind it.
@@ -530,3 +534,47 @@ async def drain_at_most_once_sends() -> None:
     await asyncio.gather(
         *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
     )
+
+
+CREDENTIAL_STORE_SECRET = "unit-test-instance-secret"
+
+
+class InMemoryCredentialStore:
+    """The credential store's Mongo rows, held encrypted in memory exactly as the service reads them."""
+
+    def __init__(self) -> None:
+        self.configs: dict[str, ProviderConfig] = {}
+
+    def save(
+        self,
+        provider: str,
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        account_id: str | None = None,
+        api_secret: str | None = None,
+    ) -> None:
+        self.configs[provider] = ProviderConfig(
+            api_key=api_key,
+            base_url=base_url,
+            model=None,
+            preset=None,
+            account_id=account_id,
+            api_secret=api_secret,
+        )
+
+    async def find_by_provider(self, provider: str) -> SimpleNamespace | None:
+        config = self.configs.get(provider)
+        if config is None:
+            return None
+        ciphertext = Fernet(fernet_key_from(CREDENTIAL_STORE_SECRET)).encrypt(
+            json.dumps(config.model_dump()).encode()
+        )
+        return SimpleNamespace(provider=provider, data_encrypted=ciphertext.decode())
+
+    async def upsert_encrypted(self, provider: str, data_encrypted: str) -> None:
+        plaintext = Fernet(fernet_key_from(CREDENTIAL_STORE_SECRET)).decrypt(data_encrypted)
+        self.configs[provider] = ProviderConfig.model_validate_json(plaintext)
+
+    async def delete(self, provider: str) -> bool:
+        return self.configs.pop(provider, None) is not None

@@ -4,12 +4,34 @@ from starlette.requests import HTTPConnection
 from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
+from app.config.workos import get_async_workos_client
 from app.constants.auth import DEV_USER_HEADER
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import AuthenticatedUser, UserDocument
+from app.models.user_models import (
+    AuthenticatedUser,
+    OnboardingPhase,
+    OnboardingSubdocument,
+    UserDocument,
+)
 from app.utils.errors import AppError
 from shared.py.wide_events import log
+
+
+def session_cookie_secure(connection: HTTPConnection) -> bool:
+    """Whether a session cookie is set or cleared Secure for this request.
+
+    Always on an https-only deployment; elsewhere it follows the request's real
+    transport, since browsers drop Secure cookies over plain http.
+    """
+    if settings.deployment.https_only:
+        return True
+    proto_header = connection.headers.get(
+        "x-forwarded-proto",
+        "",  # pragma: no mutate — any default other than "https" reads the same
+    )
+    forwarded = proto_header.split(",")[0].strip()
+    return forwarded == "https" or connection.url.scheme == "https"
 
 
 class OwnerNotFoundError(AppError):
@@ -40,6 +62,24 @@ async def resolve_dev_bypass_user(connection: HTTPConnection) -> tuple[str, User
     return target_email, await user_repository.get_by_email(target_email)
 
 
+def with_local_onboarding_completed(
+    onboarding: OnboardingSubdocument | None,
+) -> OnboardingSubdocument | None:
+    """Return the effective onboarding subdoc with local completion forced True.
+
+    Local mode has no hosted pipeline so a stored False would lock the admin
+    out of chat; workos deployments pass through untouched and nothing writes
+    back to Mongo.
+    """
+    if onboarding is None or not settings.deployment.local_auth:
+        return onboarding
+    merged = onboarding.model_copy()
+    merged.completed = True
+    if not merged.phase:
+        merged.phase = OnboardingPhase.COMPLETED
+    return merged
+
+
 def build_user_context(
     user_doc: UserDocument,
     *,
@@ -65,7 +105,10 @@ def build_user_context(
         created_at=user_doc.created_at,
         updated_at=user_doc.updated_at,
         last_active_at=user_doc.last_active_at,
-        onboarding=user_doc.onboarding,
+        # Self-host has no hosted onboarding pipeline: report completed regardless of
+        # stored state. with_local_onboarding_completed is the ONE synthesis
+        # policy, shared with onboarding_service so the two surfaces cannot drift.
+        onboarding=with_local_onboarding_completed(user_doc.onboarding),
         hil_preferences=user_doc.hil_preferences,
         notification_channel_prefs=user_doc.notification_channel_prefs,
         platform_links=user_doc.platform_links,
@@ -78,6 +121,7 @@ def build_user_context(
         email_memory_processed_at=user_doc.email_memory_processed_at,
         email_memory_count=user_doc.email_memory_count,
         integration_scan_states=user_doc.integration_scan_states,
+        role=user_doc.role,
         is_active=user_doc.is_active,
         memory_backfilled=user_doc.memory_backfilled,
         last_inactive_email_sent=user_doc.last_inactive_email_sent,
@@ -138,11 +182,7 @@ async def authenticate_workos_session(
 
     Never raises: returns (None, None) on any failure.
     """
-    # Initialize WorkOS client if not provided
-    workos = workos_client or AsyncWorkOSClient(
-        api_key=settings.WORKOS_API_KEY,
-        client_id=settings.WORKOS_CLIENT_ID,
-    )
+    workos = workos_client or get_async_workos_client()
 
     try:
         # Load and authenticate the WorkOS session

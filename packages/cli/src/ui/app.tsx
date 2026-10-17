@@ -1,12 +1,15 @@
-import { Box, Text } from "ink";
+import { ThemeProvider } from "@inkjs/ui";
+import { Box, Text, useInput } from "ink";
 import React from "react";
+import { UpScreen } from "../commands/up/screen.js";
 import { InitScreen } from "./screens/init.js";
 import { ServiceScreen } from "./screens/service.js";
 import { SetupScreen } from "./screens/setup.js";
 import { StatusScreen } from "./screens/status.js";
 import type { CLIStore } from "./store.js";
+import { cliTheme } from "./theme.js";
 
-export type CLICommand = "init" | "setup" | "status" | "start" | "stop";
+export type CLICommand = "init" | "setup" | "status" | "start" | "stop" | "up";
 
 const AVAILABLE_COMMANDS: readonly CLICommand[] = [
   "init",
@@ -14,6 +17,7 @@ const AVAILABLE_COMMANDS: readonly CLICommand[] = [
   "status",
   "start",
   "stop",
+  "up",
 ];
 
 interface AppProps {
@@ -71,6 +75,8 @@ const CommandRouter: React.FC<AppProps> = ({ store, command }) => {
     case "start":
     case "stop":
       return <ServiceScreen store={store} command={command} />;
+    case "up":
+      return <UpScreen store={store} />;
     default:
       return (
         <Box flexDirection="column" padding={1}>
@@ -89,10 +95,25 @@ const CommandRouter: React.FC<AppProps> = ({ store, command }) => {
   }
 };
 
-export const App: React.FC<AppProps> = ({ store, command }) => {
+/** Ctrl-C in raw mode arrives as input, not SIGINT: hand it to the runner. */
+const CancelOnCtrlC: React.FC<{ onCancel: () => void }> = ({ onCancel }) => {
+  useInput((input, key) => {
+    if (key.ctrl && input === "c") onCancel();
+  });
+  return null;
+};
+
+export const App: React.FC<AppProps & { onCancel: () => void }> = ({
+  store,
+  command,
+  onCancel,
+}) => {
   return (
     <ErrorBoundary>
-      <CommandRouter store={store} command={command} />
+      <ThemeProvider theme={cliTheme}>
+        <CancelOnCtrlC onCancel={onCancel} />
+        <CommandRouter store={store} command={command} />
+      </ThemeProvider>
     </ErrorBoundary>
   );
 };

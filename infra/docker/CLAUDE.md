@@ -8,14 +8,18 @@ Docker Compose configuration for all GAIA environments.
 |---|---|
 | `docker-compose.yml` | Local development — profile-gated app services, infra always on |
 | `docker-compose.prod.yml` | **Moved** — production compose now lives in the private `theexperiencecompany/gaia-infra` repo (this repo is public; prod topology is not) |
-| `docker-compose.selfhost.yml` | Self-hosting — builds from source, includes web frontend |
+| `docker-compose.selfhost.yml` | Self-hosting (project `gaia-selfhost`) — image-only: pulls multi-arch `ghcr.io/theexperiencecompany/gaia` + `gaia-web`, all pinned to `GAIA_VERSION`; Caddy `proxy` profile is the single published port |
+| `docker-compose.build.yml` | Self-host override that builds the app images from this checkout (`gaia up --build`) |
+| `selfhost/Caddyfile` | Self-host proxy routes: `/api/v1/*` → `gaia-backend:8000`, everything else → `gaia-web:3000`; HTTPS when `GAIA_DOMAIN` is set |
 | `observability/` | Config files for Prometheus, Loki, Promtail, Grafana, Blackbox — see `observability/CLAUDE.md` before adding or editing an alert rule |
 
 ## Port Mappings (defaults, overridable via .env)
 
+Dev compose (`docker-compose.yml`). The self-host compose publishes only the proxy rows marked "selfhost only"; its API and datastores are unpublished (use `docker compose exec`).
+
 | Service | Host Port | Container Port | Override Var |
 |---|---|---|---|
-| API (gaia-backend) | 8000 | 80 (dev) / 8000 (selfhost) | `API_HOST_PORT` |
+| API (gaia-backend) | 8000 | 80 | `API_HOST_PORT` |
 | ChromaDB | 8080 | 8000 | `CHROMADB_HOST_PORT` |
 | PostgreSQL | 5432 | 5432 | `POSTGRES_HOST_PORT` |
 | Redis | 6379 | 6379 | `REDIS_HOST_PORT` |
@@ -27,7 +31,8 @@ Docker Compose configuration for all GAIA environments.
 | Mongo Express | 8083 | 8081 | `MONGO_EXPRESS_HOST_PORT` |
 | Grafana | 4000 | 3000 | `GRAFANA_HOST_PORT` |
 | Loki | 3100 | 3100 | `LOKI_HOST_PORT` |
-| Web (selfhost only) | 3000 | 3000 | `WEB_HOST_PORT` |
+| Proxy HTTP (selfhost only) | 3000 | 80 | `WEB_HOST_PORT` |
+| Proxy HTTPS (selfhost only) | 3443 | 443 | `HTTPS_HOST_PORT` |
 | Discord bot server | 3200 | 3200 | `DISCORD_BOT_PORT` |
 | Slack bot server | 3201 | 3201 | `SLACK_BOT_PORT` |
 | Telegram bot server | 3202 | 3202 | `TELEGRAM_BOT_PORT` |
@@ -58,8 +63,9 @@ docker compose --profile all up -d       # everything
 
 # Production — compose lives in gaia-infra (private); CI deploys it via Swarm
 
-# Self-hosting
-docker compose -f docker-compose.selfhost.yml up -d
+# Self-hosting (gaia up writes COMPOSE_PROFILES=proxy to .env; without it nothing is published)
+docker compose -f docker-compose.selfhost.yml --profile proxy up -d
+docker compose -f docker-compose.selfhost.yml -f docker-compose.build.yml --profile proxy up -d --build  # from source
 ```
 
 ## Profiles (docker-compose.yml)
@@ -88,13 +94,13 @@ promtail     → loki (healthy)
 ## Gotchas
 
 - **`gaia-backend` is profile-gated by design.** `docker compose up -d` (what `mise dev` and `nx docker:up` run) starts only infra services. The API is expected to run **natively** on the host via `nx dev api` for hot reload. To run the dockered API, opt in with `mise dev:vm` or `docker compose --profile backend up -d`. The dockered path is required for JuiceFS-backed features (workspace v2, file uploads, artifact streaming, sandbox file ops) because the FUSE mount needs `CAP_SYS_ADMIN` + `/dev/fuse` + `apparmor:unconfined`, which a native Mac process cannot provide. See `apps/api/CLAUDE.md` → "Native vs Dockered API" for what works in each mode.
-- **API listens on port 80 inside the container** in dev/prod compose files. The host-side port is 8000. The selfhost compose file uses 8000:8000 instead — check which file you're editing.
+- **API listens on port 80 inside the container** in dev/prod compose files. The host-side port is 8000. The selfhost compose file runs it on 8000 and never publishes it — the proxy is the only entrypoint, which is what makes the backend's `--forwarded-allow-ips *` safe. Do not add `ports:` to selfhost app or datastore services.
+- **Self-host containers have no `container_name`** — address them via `docker compose -f docker-compose.selfhost.yml <cmd> <service>` so a `gaia-dev` stack can coexist with `gaia-selfhost`.
 - **`LOG_FORMAT=json` and `LOG_COLORIZE=false`** are hardcoded in all compose files for Docker-hosted app services. Promtail expects NDJSON from stdout — do not change these.
 - **Promtail mounts `apps/api/logs`** to ship logs from services running outside Docker (e.g., `nx dev api`). This directory is created automatically when file logging is enabled.
 - **`arq_worker` uses the same `gaia` image as `gaia-backend`** — build once, run both.
 - **RabbitMQ requires `observability/rabbitmq-enabled-plugins`** to be present (in dev compose). This file enables the Prometheus plugin.
 - **Grafana default credentials**: admin / changeme (dev), admin / `$GRAFANA_ADMIN_PASSWORD` (prod). Set `GRAFANA_ADMIN_PASSWORD` in `.env` before production deployment.
 - **PostgreSQL database name is `langgraph`** (not `gaia` or `postgres`).
-- **`seed-models` service** in selfhost compose runs once (`restart: "no"`) to populate MongoDB with default model configs — it is not a persistent service.
 - **Voice agent caches HuggingFace models** in the `voice_agent_models` named volume. First start downloads models and is slow. In prod, `HF_HUB_OFFLINE=1` prevents re-downloads.
 - Port conflicts: ChromaDB uses port 8000 internally but exposes 8080 on the host specifically to avoid colliding with the API's host port 8000.

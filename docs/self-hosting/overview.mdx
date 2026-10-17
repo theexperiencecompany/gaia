@@ -1,68 +1,135 @@
 ---
 title: "Overview"
 sidebarTitle: "Self-Hosting GAIA"
-description: "Learn how to self-host GAIA on your own infrastructure"
+description: "Run GAIA on your own infrastructure with one command"
 icon: "circle-info"
 ---
 
-Run GAIA on your own machine with the GAIA CLI. It scaffolds your environment, starts every service with Docker, and gets you to a working instance in a few commands.
+<Tip>
+  New here? Follow the [self-hosting walkthrough](/self-hosting/walkthrough): every step from a fresh server to a GAIA your team uses, with screenshots.
+</Tip>
+
+Run GAIA entirely on your own machine. Install the CLI, run `gaia up`, and finish setup in your browser: create an admin account, paste an API key for any supported AI provider (or point GAIA at a local Ollama), and start chatting. No cloud accounts, no secret managers, no hand-edited environment files.
 
 ## What runs
 
-- **Web**: Next.js
-- **Backend**: FastAPI
-- **Databases/Infra**: PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ (via Docker)
-- **Workspace storage**: JuiceFS (per-user file uploads, agent artifacts, skills)
+Everything runs as Docker containers managed by Compose:
+
+| Component          | What it is                                                        |
+| ------------------ | ----------------------------------------------------------------- |
+| Proxy              | Caddy — the single entrypoint, http://localhost:3000               |
+| Web                | Next.js app, served by the proxy at `/`                            |
+| Backend            | FastAPI plus a background worker, served by the proxy at `/api/v1` |
+| Databases/Infra    | PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ                     |
+| File storage       | Local Docker volumes for uploads and each user's workspace (artifacts, installed skills) |
+
+Only the proxy publishes a port on your machine; the API and databases stay on the internal Docker network. Because the browser talks to a single origin, GAIA works on any hostname or IP with no URL configuration.
+
+All state lives in Docker volumes, so stopping containers or upgrading later keeps your chats, accounts, and settings intact.
 
 ## Prerequisites
 
-- Node.js 20+ and one package manager (npm, pnpm, or bun)
-- Docker Engine 20.10+ and Compose v2+
-- 2+ CPU cores, 4GB+ RAM, 10GB+ disk (8GB+ RAM recommended)
-- An API key for at least one supported LLM provider (OpenAI or Google Gemini), see [Environment variables](/configuration/environment-variables)
+- **Docker**. If it's not installed, `gaia up` detects that and offers to install it for you.
+- 2+ CPU cores, **8 GB RAM**, 10 GB+ disk. The stack boots in less, but the local embedding model loads about 1.8 GB into both the API and the worker the first time memory is used, so smaller machines run out of memory then, not at boot
+- One AI provider to power chat: an API key from OpenAI, OpenRouter or Google Gemini, any OpenAI-compatible gateway (OpenCode, Nous Research, …) — or [Ollama](https://ollama.com) running locally, which needs no key at all
 
-## Quick start
+## Install
 
-<Steps>
-  <Step title="Install the GAIA CLI">
-    <Snippet file="cli-install.mdx" />
-  </Step>
+The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start: install the CLI, run `gaia up`, create the admin account and pick an AI provider in the browser, with a screenshot of every step.
 
-  <Step title="Initialize self-host mode">
-    ```bash
-    gaia init
-    ```
+Prefer a hosting platform? See [Deploy options](/self-hosting/one-click-deploy) for DigitalOcean, Coolify, Render and Railway, and how far each is tested.
 
-    In the setup wizard, choose **Self-Host (Docker)**.
-  </Step>
+## What works out of the box
 
-  <Step title="Start services">
-    ```bash
-    gaia start
-    ```
-  </Step>
+Only the AI model needs setup. Everything else already works, or stays off until you add a key; only voice and browser automation can't run on self-host. Add any key later in **Settings → Providers & Tools**, where each feature shows **Working** or **Off** and which provider it is using. The environment variables named below still work instead.
 
-  <Step title="Monitor and open GAIA">
-    ```bash
-    gaia status
-    gaia logs
-    ```
+| Feature | Works out of the box with | Optional upgrades |
+| ------- | ------------------------- | ----------------- |
+| AI models | Nothing. You need one: an OpenRouter, Gemini or OpenAI key, a local Ollama, or any OpenAI-compatible server | The others work as alternatives or fallbacks |
+| Web search | DuckDuckGo (free, no key) | A Tavily, Exa or Brave key for better results, or the URL of your own SearXNG server. Once added, your SearXNG is tried before DuckDuckGo |
+| Reading web pages | The built-in reader (a headless browser) | A Firecrawl key, which helps with sites that block bots |
+| Running code | A local sandbox on your machine's Docker, once turned on with `LOCAL_CODE_SANDBOX=true` (or `gaia up --code-sandbox`). Off otherwise | An E2B key (cloud sandbox) |
+| File storage | Your server's disk | Cloudinary: set `BLOB_STORE=cloudinary`, then add the cloud name, API key and API secret in **Settings → Providers & Tools** |
+| Email | Off | A Resend key |
+| Weather | Off | An OpenWeather key (`OPENWEATHER_API_KEY`) |
+| Reading PDFs and Office files | Text PDFs and Office files, parsed on your server | A LlamaParse key (`LLAMA_INDEX_KEY`) to read scanned PDFs |
+| Skill lookups on GitHub | 60 lookups an hour, no key | A GitHub token (`GITHUB_TOKEN`) for 5000 an hour |
+| Integrations (Gmail, Calendar, Slack, ...) | Off | A Composio key, then set up each app in **Settings → Integrations setup**; see [Connect integrations](/self-hosting/composio-integrations) |
+| Voice and browser automation | Not available on self-host | None yet; see [Self-Host vs Cloud](/self-hosting/docker-setup#self-host-vs-cloud) |
 
-    - Web: http://localhost:3000
-    - Backend API: http://localhost:8000
-  </Step>
-</Steps>
+## Changing things later
 
-## Advanced: workspace storage on macOS and Windows
+Everything the setup wizard asks can be changed afterwards in **Settings → Providers & Tools**: add, replace, or remove providers any time. Changes apply immediately — no restart needed. Keys are stored encrypted. An AI provider key gets a live connection test, and only a key that answers is saved. Other keys, such as Tavily, Exa, Brave Search, Firecrawl or Resend, have no test and are saved as you enter them.
 
-You only need this if you plan to run the backend outside the default Docker setup.
+App integrations like Gmail, Calendar and GitHub connect through your own Composio project. Set them up in **Settings → Integrations setup**; see [Connect integrations](/self-hosting/composio-integrations).
 
-<Note>
-Run the backend in a container on every platform. Its workspace storage (file uploads, artifacts, skills) uses JuiceFS, which mounts through Linux FUSE, a native backend on macOS or Windows can't provide it. Docker Desktop covers this on all platforms. See [Docker setup](/self-hosting/docker-setup#persistent-workspace-storage-juicefs-and-fuse) for the FUSE requirements and configuration.
-</Note>
+## How self-hosting differs
+
+Self-hosted instances run the same code as GAIA Cloud, with a configuration profile designed to need almost nothing from you:
+
+- **Minimal required configuration.** The instance runs with `ENV=selfhost`. The only required values are database URLs (which Compose provides) and three machine secrets — `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, and `EMAIL_UNSUBSCRIBE_SECRET` — which `gaia up` generates for you.
+- **Local accounts, not WorkOS.** Self-host sets `AUTH_MODE=local`, which enables email-and-password sign-in. Hosted and development deployments use `AUTH_MODE=workos`; see [Environment variables](/configuration/environment-variables).
+- **One generated instance secret.** `INSTANCE_SECRET` signs sessions and encrypts the provider keys you save in Settings. `gaia up` generates it into `.env` on a fresh install, so the key lives apart from the database. Without it, the instance generates one on first boot and keeps it in the database alongside the encrypted keys, which means a database dump alone is enough to read them.
+- **No Infisical.** Self-host resolves all configuration locally and never contacts Infisical, even if leftover credentials exist in the environment.
+- **Unlimited usage.** Usage is tracked locally for insights, but plan limits are never enforced.
+- **No payments, no plans.** There is no billing integration in self-host mode: every user gets every feature, and billing UI is hidden.
+- **Opt-in code execution.** The coding tools need either an E2B key or the local sandbox (`gaia up --code-sandbox`), which gives the containers root-equivalent access to the host. See [Local coding sandbox](/self-hosting/docker-setup#local-coding-sandbox).
+- **Files stay on your server.** By default, uploads, generated images and each user's workspace live on local Docker volumes, with no Cloudinary or object-storage account. See [File storage](/self-hosting/docker-setup#file-storage).
+
+## Using Ollama
+
+The backend runs inside a container, so `localhost` inside the container is not your machine. The Compose stack maps `host.docker.internal` to the host gateway (`extra_hosts: host.docker.internal:host-gateway`), and the setup wizard prefills the Ollama base URL accordingly. If Ollama is running, just accept the prefill and pick a model from the live list.
+
+<Tip>
+  On Linux hosts, Ollama listens on `127.0.0.1` by default, which the container cannot reach. Start it with `OLLAMA_HOST=0.0.0.0 ollama serve` so it accepts connections through the gateway.
+</Tip>
+
+## Keeping GAIA up to date
+
+```bash
+gaia update
+```
+
+Each CLI release ships one tested GAIA release. `gaia update` pulls that release's images, checks out its compose files, pins `GAIA_VERSION` in `infra/docker/.env`, restarts, and prints what changed. If the pull fails, nothing about the install changes. For a newer GAIA, update the CLI first (`curl -fsSL https://heygaia.io/install.sh | sh`), then run `gaia update`.
+
+Data lives in Docker volumes and the database, so updating never touches your chats or settings.
+
+## When something breaks
+
+```bash
+gaia doctor
+```
+
+It walks the whole stack — Docker daemon, containers, API health, every database and queue (from the API's `GET /health/ready`), web reachability, configured providers, memory and disk — and prints what's broken with a specific fix for each problem. `gaia status` shows the same per-dependency view at a glance. See [CLI setup](/self-hosting/cli-setup) for everything the CLI can do.
+
+## Backups
+
+```bash
+gaia backup                  # dumps MongoDB + PostgreSQL to ./backups/
+gaia restore --from backups  # restores the latest dumps
+```
+
+MongoDB holds your accounts, chats and the encrypted provider keys; PostgreSQL holds agent state. See [Backups](/self-hosting/docker-setup#backups) for details.
 
 ## Next steps
 
-- [CLI setup](/self-hosting/cli-setup), full CLI installation and service management
-- [Docker setup](/self-hosting/docker-setup), advanced Docker operations and storage configuration
-- [Environment variables](/configuration/environment-variables), configure LLM providers, integrations, and optional features
+<CardGroup cols={2}>
+  <Card title="CLI Setup" icon="terminal" href="/self-hosting/cli-setup">
+    Full command reference and service management
+  </Card>
+  <Card title="Docker Setup" icon="docker" href="/self-hosting/docker-setup">
+    Advanced Docker operations and workspace storage
+  </Card>
+  <Card title="Deploy options" icon="cloud" href="/self-hosting/one-click-deploy">
+    DigitalOcean, Coolify, Render and Railway, with costs and test status
+  </Card>
+  <Card title="Connect Integrations" icon="plug" href="/self-hosting/composio-integrations">
+    Gmail, Calendar, GitHub and more through your own Composio project
+  </Card>
+  <Card title="MCP servers" icon="server" href="/self-hosting/mcp-servers">
+    Connect MCP servers on your machine or your network
+  </Card>
+  <Card title="Environment Variables" icon="key" href="/configuration/environment-variables">
+    Optional integrations and what they enable
+  </Card>
+</CardGroup>

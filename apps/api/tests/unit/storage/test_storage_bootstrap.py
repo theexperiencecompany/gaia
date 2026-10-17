@@ -884,6 +884,32 @@ def juicefs_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bootstrap.shutil, "which", lambda _n: "/usr/local/bin/juicefs")
 
 
+async def test_a_selfhost_workspace_is_the_local_volume_never_juicefs(
+    cfg: Path,
+    juicefs_on_path: None,
+    monkeypatch: pytest.MonkeyPatch,
+    spawned: list[threading.Event],
+) -> None:
+    # Fully configured R2 and an unmounted path would otherwise start a mount
+    # over the volume the local sandbox shares.
+    monkeypatch.setattr(bootstrap.settings, "ENV", "selfhost")
+    monkeypatch.setattr(bootstrap, "_is_mounted", lambda _p: False)
+    assert await _init_juicefs_mount()() == str(cfg)
+    assert bootstrap._bootstrap_thread is None
+
+
+async def test_production_still_mounts_juicefs(
+    cfg: Path,
+    juicefs_on_path: None,
+    monkeypatch: pytest.MonkeyPatch,
+    spawned: list[threading.Event],
+) -> None:
+    monkeypatch.setattr(bootstrap.settings, "ENV", "production")
+    monkeypatch.setattr(bootstrap, "_is_mounted", lambda _p: False)
+    await _init_juicefs_mount()()
+    assert bootstrap._bootstrap_thread is not None
+
+
 async def test_a_missing_juicefs_binary_skips_the_bootstrap_entirely(
     cfg: Path, monkeypatch: pytest.MonkeyPatch, spawned: list[threading.Event]
 ) -> None:

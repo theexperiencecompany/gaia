@@ -1,6 +1,6 @@
 ---
 title: "CLI Commands"
-description: "Full reference for GAIA CLI commands including init, setup, start, dev, logs, stop, and status for managing your instance."
+description: "Full reference for GAIA CLI commands including up, update, status, doctor, backup, restore, start, stop, logs and the developer commands."
 icon: "rectangle-terminal"
 ---
 
@@ -9,14 +9,19 @@ icon: "rectangle-terminal"
 The GAIA CLI provides commands for setup, running, logs, health checks, and shutdown.
 
 ```bash
-gaia init          # Full setup from scratch
-gaia setup         # Configure existing repo
+gaia up            # Install and start GAIA (self-host), or resume a half-finished install
+gaia update        # Move to the GAIA release this CLI ships (self-host)
+gaia status        # Services and every dependency, with latency
+gaia doctor        # Diagnose a GAIA install, with a fix per problem
+gaia backup        # Dump the databases, volumes and apps/api/.env
+gaia restore       # Restore that backup
 gaia start         # Start self-host services
+gaia stop          # Stop services
+gaia logs          # Stream logs
+gaia init          # Developer setup wizard (clone, configure, start)
+gaia setup         # Re-configure an existing checkout
 gaia dev           # Developer mode (Nx TUI)
 gaia dev full      # Developer mode + workers (Nx TUI)
-gaia logs          # Stream logs
-gaia stop          # Stop services
-gaia status        # Check service health
 gaia --version     # Show CLI version
 gaia --help        # Show all commands
 ```
@@ -25,14 +30,19 @@ gaia --help        # Show all commands
 
 | Command          | Description                                                                  |
 | ---------------- | ---------------------------------------------------------------------------- |
-| `gaia init`      | Full setup from scratch, clone repo, configure env, and initialize services |
+| `gaia up`        | One-command setup: configure, pull and start GAIA (self-host)                |
+| `gaia update`    | Move to the release this CLI ships: pin its images, pull them and restart    |
+| `gaia backup`    | Dump MongoDB, PostgreSQL, the storage volumes and `apps/api/.env` to `./backups` |
+| `gaia restore`   | Restore a backup, `apps/api/.env` (the credential key) first, then restart  |
+| `gaia init`      | Developer setup wizard: clone, configure env (manual or Infisical), start   |
 | `gaia setup`     | Configure an existing repository                                             |
 | `gaia start`     | Start GAIA services in self-host mode                                        |
 | `gaia dev`       | Run developer mode in Nx TUI (`mise dev`)                                    |
 | `gaia dev full`  | Run developer mode + workers in Nx TUI (`mise dev:full`)                     |
 | `gaia logs`      | Stream logs for currently running services                                   |
 | `gaia stop`      | Stop running GAIA services                                                   |
-| `gaia status`    | Check health and latency of GAIA services                                    |
+| `gaia status`    | Check health and latency of GAIA services and their dependencies             |
+| `gaia doctor`    | Diagnose a GAIA install: docker, services and setup checks                   |
 | `gaia --version` | Display the current CLI version                                              |
 | `gaia --help`    | Show help and available commands                                             |
 
@@ -49,7 +59,7 @@ gaia --help        # Show all commands
 
 ## `gaia init`
 
-Complete first-time setup.
+The full interactive wizard, mainly for contributors (it can set up developer mode and pull secrets from Infisical). Self-hosters use [`gaia up`](#gaia-up) instead.
 
 ```bash
 gaia init
@@ -72,6 +82,51 @@ The wizard walks through:
 3. Repository setup
 4. Environment setup (manual or Infisical)
 5. Project setup
+
+---
+
+## `gaia up`
+
+One-command setup: configure, pull and start GAIA (self-host).
+
+```bash
+gaia up
+```
+
+Combines configuration, image pull/build and startup into a single command. GAIA is served on one port through a bundled proxy: the web app at `/` and the API at `/api/v1`.
+
+**Options:**
+
+| Flag                     | Description                                                        |
+| ------------------------ | ------------------------------------------------------------------ |
+| `--yes`                  | Install git and Docker without asking when they are missing (apt-based Linux). Nothing else in `gaia up` asks a question |
+| `--llm-provider <name>`  | AI provider to save once GAIA is up, as the setup wizard would: `openrouter`, `gemini`, `openai`, `ollama` or `custom` |
+| `--llm-key <key>`        | API key for `--llm-provider`. Required for `openrouter`, `gemini`, `openai` and `custom`; refused for `ollama` |
+| `--llm-base-url <url>`   | Endpoint for `ollama` (optional, default `http://host.docker.internal:11434`) or `custom` (required) |
+| `--llm-model <model>`    | Model for `ollama` (optional) or `custom` (required) |
+| `--web-port <port>`      | Host port GAIA is served on (default 3000)                         |
+| `--domain <domain>`      | Serve GAIA at `https://<domain>` with an automatic certificate (uses ports 80 and 443) |
+| `-b, --build`            | Build images locally before starting                               |
+| `--code-sandbox`         | Run agent code in local containers through the host Docker socket (root-equivalent; saved for later starts and updates) — see [Local coding sandbox](/self-hosting/docker-setup#local-coding-sandbox) |
+| `--no-code-sandbox`      | Turn the local code sandbox off again                              |
+| `--no-start`             | Configure environment only; do not start services. Refused with `--llm-provider` |
+| `--force-dev-tree`       | Allow operating on a developer checkout that is not the install    |
+
+```bash
+# Fully non-interactive first boot
+gaia up --yes --llm-provider openai --llm-key <key>
+
+# A local Ollama, no key
+gaia up --yes --llm-provider ollama --llm-model qwen3
+
+# Any OpenAI-compatible gateway
+gaia up --llm-provider custom --llm-key <key> --llm-base-url https://gateway.example.com/v1 --llm-model <model>
+
+# Public server with HTTPS (DNS must already point at this host)
+gaia up --yes --domain gaia.example.com
+```
+
+On Linux, if your user cannot reach the Docker socket, `gaia up` adds it to the `docker` group and relaunches itself under `sg docker`, so the same command runs to completion.
 
 ---
 
@@ -101,7 +156,7 @@ gaia start
 | Flag      | Description                             |
 | --------- | --------------------------------------- |
 | `--build` | Rebuild Docker images before starting   |
-| `--pull`  | Pull latest base images before starting |
+| `--pull`  | Pull the images again before starting   |
 
 ```bash
 gaia start --build --pull
@@ -174,10 +229,66 @@ By default, `gaia stop` runs in safe mode and only targets GAIA-managed processe
 
 ## `gaia status`
 
-Check health and latency of GAIA services.
+Check health and latency of GAIA services and of every backing service the API depends on.
 
 ```bash
 gaia status
+```
+
+Besides the web app, the API and the containers, it calls the API's `GET /health/ready` and lists each dependency (MongoDB, PostgreSQL, Redis, RabbitMQ, ChromaDB) with whether it answered, its latency, the error type when it did not, and the command to inspect it.
+
+---
+
+## `gaia doctor`
+
+Diagnose a GAIA installation: docker, services and setup checks.
+
+```bash
+gaia doctor
+```
+
+Runs ordered checks against your installation and prints one `[ok]`/`[FAIL]`
+line per check with a remediation hint (`Fix: …`) on failure:
+
+1. **Docker daemon** — reachable via `docker info`
+2. **Ports** — the ports the stack publishes are free or already GAIA's
+3. **Compose containers** — expected services per setup mode
+   (`gaia-selfhost` or `gaia-dev`) are running
+4. **API health** — `/api/v1/ping` answers (honors `infra/docker/.env` port overrides)
+5. **Dependencies** — one line per backing service from `GET /health/ready`,
+   with latency, error type and a fix naming the service to inspect
+6. **Setup readiness** — plans seeded, LLM provider configured, admin account
+   created (and billing, outside self-host); each unconfigured item is a
+   warning pointing at the web setup wizard
+7. **Web** — reachable on its host port
+8. **Disk headroom** — ≥ 2 GB free on the Docker data root
+9. **Memory headroom** — warns under 4 GB available, fails under 2 GB
+10. **GAIA version** — warns when the pinned images are not the release this
+    CLI ships, pointing at `gaia update`
+
+Checks that depend on an earlier failure are skipped instead of failing again.
+
+**Exit code:** `1` only when a *blocking* check fails. Setup-readiness
+warnings never affect the exit code, so `gaia doctor` is safe to run in
+scripts and CI.
+
+Output is plain text in every environment (TTY or not), so reports can be
+piped or pasted directly into bug reports:
+
+```bash
+$ gaia doctor
+
+gaia doctor
+  [ok]  Docker daemon
+  [FAIL] Compose containers (gaia-selfhost) — gaia-web missing
+         Fix: Run 'gaia start' to bring the stack up, or check 'docker compose -p gaia-selfhost logs'.
+  [ok]  API health (http://localhost:3000/api/v1) — HTTP 200
+  [ok]  Dependency: mongodb — 1.4ms
+  [FAIL] Dependency: rabbitmq — TimeoutError after 2001ms
+         Fix: Check its logs: docker compose -p gaia-selfhost logs rabbitmq (it takes up to a minute to boot after a restart, so rerun first).
+  ...
+
+Summary: 2 blocking.
 ```
 
 ---
@@ -199,10 +310,14 @@ Overrides persist across restarts and are reused by `gaia start`, `gaia logs`, a
 ### Updating GAIA
 
 ```bash
-cd /path/to/gaia
-git pull
-gaia setup
+gaia update                 # add --yes to skip the confirmation
+gaia update --version v0.7.0  # move to another release: its images and its cli-v0.7.0 compose files
+gaia update --git           # contributors: pull your branch and rebuild from source
 ```
+
+Every CLI release ships one tested GAIA release. `gaia update` moves your install to it: it pulls that release's images first (so a failed pull changes nothing), checks out the matching `cli-v<version>` tag of the compose files, pins `GAIA_VERSION=v<version>` in `infra/docker/.env`, and restarts. It prints the old and new version and the commits in between, never deletes volumes, and keeps your `.env` files. Local edits to tracked files stop the update with a list of the files.
+
+To get a newer GAIA, update the CLI first (below), then run `gaia update`.
 
 ### Updating the CLI
 

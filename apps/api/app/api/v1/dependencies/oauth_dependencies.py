@@ -4,7 +4,7 @@ from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 from fastapi.exceptions import WebSocketException
 
 from app.config.settings import settings
-from app.constants.auth import DEV_USER_MISSING_HINT
+from app.constants.auth import DEV_USER_MISSING_HINT, WOS_SESSION_COOKIE
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
@@ -14,6 +14,7 @@ from app.utils.auth_utils import (
     build_user_context,
     resolve_dev_bypass_user,
 )
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, resolve_session_token
 from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -106,6 +107,51 @@ def _require_ws_user_id(user: AuthenticatedUser) -> AuthenticatedUser:
     return user
 
 
+def _ws_token(websocket: WebSocket, cookie_name: str) -> str | None:
+    """Session token from cookie, else the Sec-WebSocket-Protocol bearer fallback.
+
+    Mobile clients cannot send cookies, so the token also rides the protocol
+    header as "Bearer, <token>". Both WS branches read it the same way.
+    """
+    token = websocket.cookies.get(cookie_name)
+    if token:
+        return token
+    protocol_header = websocket.headers.get(
+        "sec-websocket-protocol",
+        "",  # pragma: no mutate — any default without the Bearer prefix reads the same
+    )
+    if protocol_header.startswith("Bearer, "):
+        return protocol_header[8:]
+    return None
+
+
+async def _local_ws_user(websocket: WebSocket) -> AuthenticatedUser:
+    """Authenticate a WS connection against the local session store.
+
+    Same session JWT the HTTP middleware accepts; WebSockets never pass
+    through that middleware, so the lookup is mirrored here.
+    """
+    token = _ws_token(websocket, LOCAL_SESSION_COOKIE)
+    if not token:
+        log.info(f"{LogTag.OAUTH} No local session cookie or protocol token in WebSocket request")
+        raise _ws_unauthenticated("no local session cookie or protocol token")
+
+    user_id = await resolve_session_token(token)
+    if not user_id:
+        log.warning(f"{LogTag.OAUTH} WebSocket local-session authentication failed")
+        raise _ws_unauthenticated("local session token rejected")
+
+    user_data = await user_repository.get(user_id)
+    if user_data is None:
+        log.warning(
+            f"{LogTag.OAUTH} WebSocket local session resolved to missing user",
+            user_id=user_id,
+        )
+        raise _ws_unauthenticated("local session user not found")
+
+    return build_user_context(user_data, auth_provider="email")
+
+
 async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
     """Authenticate a WebSocket connection from its cookie or Bearer subprotocol.
 
@@ -116,7 +162,7 @@ async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
     # WebSockets skip WorkOSAuthMiddleware (HTTP only), so the dev bypass —
     # including X-Dev-User impersonation — is mirrored here. get_settings()
     # hard-fails if this is set in production.
-    if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
+    if settings.deployment.dev_tools and settings.DEV_AUTH_BYPASS_EMAIL:
         target_email, user_data = await resolve_dev_bypass_user(websocket)
         if user_data is not None:
             return _require_ws_user_id(
@@ -129,17 +175,10 @@ async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
         )
         raise _ws_unauthenticated("dev bypass target has no Mongo user")
 
-    # Extract the session cookie from WebSocket
-    wos_session = websocket.cookies.get("wos_session")
+    if settings.deployment.local_auth:
+        return await _local_ws_user(websocket)
 
-    # Fallback: check Sec-WebSocket-Protocol header for mobile clients
-    # Client sends: new WebSocket(url, ['Bearer', token])
-    # Server receives: "Bearer, <token>" in sec-websocket-protocol header
-    if not wos_session:
-        protocol_header = websocket.headers.get("sec-websocket-protocol", "")
-        if protocol_header.startswith("Bearer, "):
-            wos_session = protocol_header[8:]  # Extract token after "Bearer, "
-
+    wos_session = _ws_token(websocket, WOS_SESSION_COOKIE)
     if not wos_session:
         log.info(f"{LogTag.OAUTH} No session cookie or protocol token in WebSocket request")
         raise _ws_unauthenticated("no session cookie or protocol token")

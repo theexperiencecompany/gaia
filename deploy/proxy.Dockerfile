@@ -1,0 +1,6 @@
+# The self-host Caddy proxy with its Caddyfile baked in, for platforms that
+# cannot bind-mount a file into a prebuilt image (render.yaml, Railway). Same image and
+# config as the compose `proxy` service; upstreams come from
+# GAIA_BACKEND_UPSTREAM / GAIA_WEB_UPSTREAM.
+FROM caddy:2.10.2-alpine
+COPY infra/docker/selfhost/Caddyfile /etc/caddy/Caddyfile

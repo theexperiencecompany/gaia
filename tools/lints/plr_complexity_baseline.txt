@@ -12,6 +12,7 @@
 # keep a touched file's known violation from failing until that date (CI
 # warns instead). Past the date it fails again: fix it, or renew the deferral
 # with a fresh reason. --update keeps the field.
+
 apps/api/app/agents/core/nodes/memory_node.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/agents/core/nodes/memory_node.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/agents/middleware/compaction.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
@@ -23,9 +24,6 @@ apps/api/app/agents/tools/coding/_filter.py	PLR0913	deferred-until=2026-10-15; d
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0911	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/agents/tools/core/mutations.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-apps/api/app/agents/tools/core/retrieval.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-apps/api/app/agents/tools/core/retrieval.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-apps/api/app/agents/tools/core/retrieval.py	PLR0915	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0912	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
 apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0915	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
 apps/api/app/agents/tools/integrations/linkedin_tool.py	PLR0912	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
@@ -33,25 +31,18 @@ apps/api/app/agents/tools/integrations/linkedin_tool.py	PLR0915	deferred-until=2
 apps/api/app/agents/tools/integrations/twitter_tool.py	PLR0915	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
 apps/api/app/agents/tools/todo_tools.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
 apps/api/app/agents/workspace/paths.py	PLR0911	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
-apps/api/app/core/lazy_loader.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
-apps/api/app/core/lazy_loader.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
 apps/api/app/db/repositories/e2b_sandboxes.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
 apps/api/app/memory/extraction.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
-apps/api/app/memory/ingestion.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
-apps/api/app/memory/ingestion.py	PLR0915	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
 apps/api/app/memory/pg_store/graph.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
 apps/api/app/memory/reconciliation.py	PLR0912
 apps/api/app/patches/langchain_merge_dicts_model_name_patch.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/services/chat/persistence.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/services/hil/approvals_store.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-apps/api/app/services/integrations/integration_connection_service.py	PLR0911	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-apps/api/app/services/integrations/integration_connection_service.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/services/mcp/resilient_adapter.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/services/mcp/resilient_adapter.py	PLR0915	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-apps/api/app/services/mcp/token_management.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/services/onboarding/social_profile_service.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/services/onboarding/social_profile_service.py	PLR0915	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-apps/api/app/services/tools/tools_service.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
+apps/api/app/services/sandbox/local_sandbox.py	PLR0913	deferred-until=2026-12-31; CommandsFacade.run mirrors e2b's AsyncSandbox.commands.run signature parameter-for-parameter (the local sandbox is its documented drop-in); collapsing to **kwargs would trade type safety for line count.
 apps/api/scripts/evals/__main__.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/scripts/evals/__main__.py	PLR0915	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/scripts/evals/core/counterfeit.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
@@ -77,7 +68,6 @@ apps/api/scripts/test_tracked_todos.py	PLR0912	deferred-until=2026-10-15; docstr
 apps/api/scripts/verify_sandbox_mounts.py	PLR0915	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/tests/integration/real/memory/llm.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/tests/unit/memory/pg_store/test_memories.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-apps/api/tests/unit/memory/test_ingestion.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/voice-agent/src/agent.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 libs/wake-word/training/src/synthesize.py	PLR0913

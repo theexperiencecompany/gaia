@@ -16,7 +16,6 @@ import pytest
 from redis.exceptions import DataError
 
 from app.agents.llm import client as client_module, dev_lane as dev_lane_module, lane as lane_module
-from app.agents.llm.client import PROVIDER_MODELS
 from app.agents.llm.lane import (
     AgentRole,
     ModelLane,
@@ -51,6 +50,15 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.payment_models import PlanType
+from app.services.providers.provider_credentials_service import ProviderConfig
+
+
+def _custom_config(model: str | None) -> ProviderConfig:
+    """Return a stored custom-endpoint credential, as the resolver returns it."""
+    return ProviderConfig(
+        api_key="sk-custom", base_url="https://llm.example.com/v1", model=model, preset=None
+    )
+
 
 #: The user every test resolves for; fakes below are keyed on it and raise on anything else.
 USER = "u1"
@@ -128,6 +136,18 @@ class TestPlanRouting:
         """A lane with no budget silently uncaps the summarization middleware."""
         for plan in (PlanType.FREE, PlanType.PRO):
             assert (await _resolve(plan)).max_input_tokens == DEFAULT_MAX_TOKENS
+
+    async def test_self_host_serves_its_configured_lane_not_the_hosted_paid_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Every self-host user resolves to Pro; that must not route them to the hosted paid model."""
+        monkeypatch.setattr(lane_module.settings, "ENV", "selfhost")
+        unreachable = AsyncMock(side_effect=AssertionError("no economic guard without plans"))
+        with patch.object(lane_module, "_pro_monthly_budget_exhausted", unreachable):
+            resolved, plan = await resolve_lane(USER, AgentRole.EXECUTOR)
+
+        assert plan is PlanType.PRO
+        assert resolved == lane_module._default_lane()
 
     async def test_no_user_id_resolves_the_default_lane_and_no_plan(self) -> None:
         resolved, plan = await resolve_lane(None, AgentRole.COMMS)
@@ -495,11 +515,16 @@ class TestDevOverride:
         assert resolved.provider_pin == option.provider_pin
         assert resolved.max_input_tokens == DEFAULT_MAX_TOKENS
 
+    @pytest.mark.usefixtures("stored_credentials")
     async def test_the_custom_endpoint_resolves_the_model_the_client_would_serve(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Leaving the lane's model None left LLMAccountingMiddleware pricing against DEFAULT_PRICING, ~11x the real rate."""
-        monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "nous/deepseek-v4-flash-cheap")
+        monkeypatch.setitem(
+            client_module._runtime_configs,
+            "custom",
+            _custom_config(model="nous/deepseek-v4-flash-cheap"),
+        )
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 
@@ -508,24 +533,12 @@ class TestDevOverride:
         assert resolved.provider == LLMProviderName.CUSTOM
         assert resolved.model == "nous/deepseek-v4-flash-cheap"
 
-    async def test_the_custom_endpoint_pins_no_model_when_dev_llm_model_is_unset(
+    @pytest.mark.usefixtures("stored_credentials")
+    async def test_the_custom_endpoint_pins_no_model_when_none_is_configured(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """None is still right; the client raises its own unconfigured-endpoint error rather than being priced against a made-up name."""
-        monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "")
-        option = dev_option_for("custom", use_defaults=False)
-        assert option is not None
-
-        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
-
-        assert resolved.provider == LLMProviderName.CUSTOM
-        assert resolved.model is None
-
-    async def test_a_lane_missing_from_provider_models_pins_no_model(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Here the lane is absent from the map entirely; the lookup's fallback still has to stay falsy."""
-        monkeypatch.delitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, raising=False)
+        monkeypatch.setitem(client_module._runtime_configs, "custom", _custom_config(model=None))
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 
@@ -646,7 +659,7 @@ class TestFallback:
 
         with patch.object(
             lane_module,
-            "next_fallback_provider",
+            "chat_route",
             lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
         ):
             fallback = paid.fallback()
@@ -668,7 +681,7 @@ class TestFallback:
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )
 
-        with patch.object(lane_module, "next_fallback_provider", lambda _current: None):
+        with patch.object(lane_module, "chat_route", lambda _current: None):
             assert only.fallback() is None
 
 
@@ -729,7 +742,11 @@ class TestRebindOntoAFallbackLane:
 @contextmanager
 def _openai_configured(available: bool = True) -> Iterator[None]:
     """Switch the comms lane on or off: it exists only with an OpenAI key, and tests blank every key."""
-    with patch.object(lane_module, "openai_lane_available", lambda: available):
+    with patch.object(
+        lane_module,
+        "provider_configured",
+        lambda provider: available and provider is LLMProviderName.OPENAI,
+    ):
         yield
 
 

@@ -1,15 +1,24 @@
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import type { PortCheckResult } from "../../lib/prerequisites.js";
-import { THEME_COLOR } from "../constants.js";
+import {
+  INSTALL_CONFIRM_INPUT,
+  type InstallablePrerequisite,
+  joinNames,
+} from "../../lib/prerequisite-install.js";
+import type { PortCheckResult } from "../../lib/prerequisites.types.js";
+import { wrapToWidth } from "../../lib/terminal-text.js";
+import { BOX_BORDER, MARK, type MarkKind, THEME_COLOR } from "../constants.js";
+import { Mark } from "./Mark.js";
+import { PercentBar } from "./PercentBar.js";
+import { useCardWidth } from "./use-card-width.js";
 
 export const SystemChecksStep: React.FC<{
-  checks: { git: string; docker: string; mise?: string };
+  checks: { git: string; docker?: string; mise?: string };
 }> = ({ checks }) => (
   <Box
     flexDirection="column"
-    borderStyle="round"
+    borderStyle={BOX_BORDER}
     paddingX={1}
     borderColor={THEME_COLOR}
   >
@@ -19,10 +28,12 @@ export const SystemChecksStep: React.FC<{
         label="Git"
         status={checks.git as "pending" | "success" | "error" | "missing"}
       />
-      <CheckItem
-        label="Docker"
-        status={checks.docker as "pending" | "success" | "error" | "missing"}
-      />
+      {checks.docker && (
+        <CheckItem
+          label="Docker"
+          status={checks.docker as "pending" | "success" | "error" | "missing"}
+        />
+      )}
       {checks.mise && (
         <CheckItem
           label="Mise"
@@ -40,49 +51,89 @@ export const EnvSetupSpinnerStep: React.FC<{ status?: string }> = ({
     flexDirection="column"
     marginTop={1}
     paddingX={1}
-    borderStyle="round"
+    borderStyle={BOX_BORDER}
     borderColor={THEME_COLOR}
   >
     <Text bold>Environment Setup</Text>
     <Box marginTop={1}>
-      <Spinner label={status || "Configuring environment..."} />
+      <Spinner label={status || "Configuring environment…"} />
     </Box>
   </Box>
 );
 
-export const ErrorStep: React.FC<{ message: string }> = ({ message }) => (
+export const RepositoryProgressStep: React.FC<{
+  title: string;
+  progress?: number;
+  phase?: string;
+}> = ({ title, progress, phase }) => (
   <Box
     flexDirection="column"
-    borderStyle="single"
-    borderColor="red"
+    borderStyle={BOX_BORDER}
     padding={1}
-    marginTop={2}
+    borderColor={THEME_COLOR}
   >
-    <Text color="red">Error: {message}</Text>
-    <Box marginTop={1}>
-      <Text dimColor>
-        <Text bold>Enter</Text> to exit
-      </Text>
+    <Text bold>{title}</Text>
+    <Box marginTop={1} flexDirection="column">
+      <PercentBar percent={progress || 0} />
+      {phase && <Text color="gray">{phase}</Text>}
     </Box>
   </Box>
 );
+
+/** Columns around the error text: border and paddingX on each side, and the mark or indent. */
+const ERROR_TEXT_INSET = 6;
+
+/** A failure: its first line is the cause, the rest the next step and where the log is. */
+export const ErrorStep: React.FC<{ message: string }> = ({ message }) => {
+  const [cause = "", ...rest] = message.split("\n");
+  const width = useCardWidth();
+  const textWidth = width - ERROR_TEXT_INSET;
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle={BOX_BORDER}
+      borderColor="red"
+      paddingX={1}
+      marginTop={1}
+      width={width}
+    >
+      <Box>
+        <Mark kind="fail" />
+        <Text bold>{wrapToWidth(cause, textWidth)}</Text>
+      </Box>
+      {/* A margin, not leading spaces, so a wrapped line keeps its indent. */}
+      <Box flexDirection="column" marginLeft={2}>
+        {rest.map((line) => (
+          <Text
+            key={line}
+            color={line.startsWith("Full log:") ? "gray" : undefined}
+          >
+            {wrapToWidth(line, textWidth)}
+          </Text>
+        ))}
+      </Box>
+    </Box>
+  );
+};
+
+const CHECK_MARK: Record<"success" | "error" | "missing", MarkKind> = {
+  success: "ok",
+  error: "fail",
+  missing: "warn",
+};
 
 const CheckItem: React.FC<{
   label: string;
   status: "pending" | "success" | "error" | "missing";
 }> = ({ label, status }) => (
   <Box>
-    <Box marginRight={1}>
-      {status === "pending" ? (
+    {status === "pending" ? (
+      <Box marginRight={1}>
         <Spinner type="dots" />
-      ) : status === "success" ? (
-        <Text color="green">✔</Text>
-      ) : status === "error" ? (
-        <Text color="red">✖</Text>
-      ) : (
-        <Text color="yellow">⚠</Text>
-      )}
-    </Box>
+      </Box>
+    ) : (
+      <Mark kind={CHECK_MARK[status]} />
+    )}
     <Text>{label}</Text>
   </Box>
 );
@@ -104,7 +155,7 @@ export const PortConflictStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor="yellow"
     >
       <Box marginBottom={1}>
@@ -120,7 +171,11 @@ export const PortConflictStep: React.FC<{
               result.available ? "green" : result.alternative ? "yellow" : "red"
             }
           >
-            {result.available ? "✔" : result.alternative ? "⚠" : "✖"}{" "}
+            {result.available
+              ? MARK.ok
+              : result.alternative
+                ? MARK.warn
+                : MARK.fail}{" "}
           </Text>
           <Text>
             {result.service} (:{result.port})
@@ -154,9 +209,62 @@ export const PortConflictStep: React.FC<{
         )}
       <Box marginTop={1}>
         <Text dimColor>
-          <Text bold>Enter</Text> continue · <Text bold>ESC</Text> abort
+          <Text bold>Enter</Text> continue · <Text bold>Esc</Text> cancel
         </Text>
       </Box>
     </Box>
+  );
+};
+
+const InstallPrompt: React.FC<{
+  missing: readonly InstallablePrerequisite[];
+  onConfirm: () => void;
+  onDecline: () => void;
+}> = ({ missing, onConfirm, onDecline }) => {
+  useInput((_input, key) => {
+    if (key.return) onConfirm();
+    if (key.escape) onDecline();
+  });
+  const them = missing.length > 1 ? "them" : "it";
+  const verb = missing.length > 1 ? "aren't" : "isn't";
+
+  return (
+    <Box flexDirection="column" marginTop={1} marginLeft={2}>
+      <Text>
+        GAIA needs <Text bold>{joinNames(missing)}</Text>, which {verb}{" "}
+        installed yet.
+      </Text>
+      <Text>Install {them} now? This uses sudo and takes a few minutes.</Text>
+      <Box marginTop={1}>
+        <Text color={THEME_COLOR} bold>
+          Enter
+        </Text>
+        <Text> install {them}</Text>
+        <Text color="gray"> · </Text>
+        <Text bold>Esc</Text>
+        <Text> I'll do it myself</Text>
+      </Box>
+    </Box>
+  );
+};
+
+/**
+ * The one install confirmation for every missing prerequisite on an apt-based
+ * Linux host; renders nothing for any other input. Enter installs them all;
+ * Escape declines and the flow stops with the manual-install links.
+ */
+export const InstallConfirmStep: React.FC<{
+  inputId: string | undefined;
+  missing: readonly InstallablePrerequisite[] | undefined;
+  onConfirm: () => void;
+  onDecline: () => void;
+}> = ({ inputId, missing, onConfirm, onDecline }) => {
+  if (inputId !== INSTALL_CONFIRM_INPUT || !missing?.length) return null;
+  return (
+    <InstallPrompt
+      missing={missing}
+      onConfirm={onConfirm}
+      onDecline={onDecline}
+    />
   );
 };

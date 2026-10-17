@@ -1,6 +1,6 @@
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import {
-  findRepoRoot,
+  findInstallRoot,
   type StopServicesOptions,
   stopServices,
 } from "../../lib/service-starter.js";
@@ -11,14 +11,12 @@ export async function runStopFlow(
   options?: StopServicesOptions,
 ): Promise<void> {
   store.setStep("Stopping");
-  store.setStatus("Locating GAIA repository...");
+  store.setStatus("Finding your GAIA install…");
 
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   if (!repoPath) {
     store.setError(
-      new Error(
-        "Could not find GAIA repository. Run from within a cloned gaia repo.",
-      ),
+      new Error("GAIA isn't installed here, so there is nothing to stop."),
     );
     return;
   }
@@ -30,26 +28,15 @@ export async function runStopFlow(
   try {
     await stopServices(
       repoPath,
-      (status) => {
-        store.setStatus(status);
-      },
+      (status) => store.setStatus(status),
       portOverrides,
       options,
     );
-
-    store.setStep("Stopped");
-    store.setStatus(
-      options?.forcePorts
-        ? "All services stopped (force-port mode)."
-        : "All services stopped (safe mode).",
-    );
-    store.updateData("stopped", true);
   } catch (e) {
-    store.setError(
-      new Error(`Failed to stop services: ${(e as Error).message}`),
-    );
+    store.setError(new Error(`GAIA didn't stop. ${(e as Error).message}`));
     return;
   }
-
-  await store.waitForInput("exit");
+  store.setStep("Stopped");
+  store.setStatus("GAIA stopped. Start it again with 'gaia start'.");
+  store.updateData("stopped", true);
 }

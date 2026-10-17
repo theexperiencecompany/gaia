@@ -10,10 +10,66 @@ export interface EnvValues {
   [key: string]: string;
 }
 
+/**
+ * Parse a raw `.env` body into KEY→VALUE pairs. Comments/blanks are skipped,
+ * surrounding quotes are stripped; blank values are omitted (a half-written
+ * entry counts as unset).
+ */
+export function parseEnvFileValues(content: string | null): EnvValues {
+  const values: EnvValues = {};
+  if (!content) return values;
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx <= 0) continue;
+    const key = trimmed.substring(0, eqIdx).trim();
+    const value = trimmed
+      .substring(eqIdx + 1)
+      .trim()
+      .replace(/^["']|["']$/g, "");
+    if (key && value) values[key] = value;
+  }
+  return values;
+}
+
+/**
+ * Environment files carry generated machine secrets (AGENT_SECRET et al.), so
+ * they must never be group/world-readable.
+ */
+const ENV_FILE_MODE = 0o600;
+
 function backupIfExists(filePath: string): void {
   if (fs.existsSync(filePath)) {
-    fs.copyFileSync(filePath, `${filePath}.bak`);
+    const backupPath = `${filePath}.bak`;
+    fs.copyFileSync(filePath, backupPath);
+    // copyFileSync lands on default perms; the backup holds the previous
+    // generation of secrets, so it gets the same owner-only bar.
+    fs.chmodSync(backupPath, ENV_FILE_MODE);
   }
+}
+
+/**
+ * Write an env file locked to 0600. `writeFileSync`'s mode option only applies
+ * at creation — a pre-existing file keeps its old mode — so the explicit chmod
+ * also tightens files left world-readable by older CLI versions.
+ */
+function writeFileOwnerOnly(filePath: string, contents: string): void {
+  fs.writeFileSync(filePath, contents, {
+    encoding: "utf-8",
+    mode: ENV_FILE_MODE,
+  });
+  fs.chmodSync(filePath, ENV_FILE_MODE);
+}
+
+/**
+ * Copy an env file owner-only, keeping a .bak of any file it replaces: the
+ * backup and restore of apps/api/.env, which holds INSTANCE_SECRET.
+ */
+export function copyEnvFileOwnerOnly(source: string, target: string): void {
+  backupIfExists(target);
+  writeFileOwnerOnly(target, fs.readFileSync(source, "utf-8"));
 }
 
 export function writeEnvFile(repoPath: string, values: EnvValues): void {
@@ -93,7 +149,7 @@ export function writeEnvFile(repoPath: string, values: EnvValues): void {
     lines.push("");
   }
 
-  fs.writeFileSync(envPath, lines.join("\n"), "utf-8");
+  writeFileOwnerOnly(envPath, lines.join("\n"));
 }
 
 export function writeWebEnvFile(
@@ -144,7 +200,7 @@ export function writeWebEnvFile(
     }
   }
 
-  fs.writeFileSync(webEnvPath, lines.join("\n"), "utf-8");
+  writeFileOwnerOnly(webEnvPath, lines.join("\n"));
 }
 
 const DOCKER_PORT_VAR_MAP: Record<number, string> = {
@@ -153,17 +209,70 @@ const DOCKER_PORT_VAR_MAP: Record<number, string> = {
   6379: "REDIS_HOST_PORT",
   27017: "MONGO_HOST_PORT",
   5672: "RABBITMQ_HOST_PORT",
+  15672: "RABBITMQ_MGMT_PORT",
   8080: "CHROMADB_HOST_PORT",
   8083: "MONGO_EXPRESS_HOST_PORT",
   3000: "WEB_HOST_PORT",
+  3443: "HTTPS_HOST_PORT",
 };
 
-export function writeDockerComposeEnv(
+const DOCKER_PORT_VAR_TO_PORT: Record<string, number> = Object.fromEntries(
+  Object.entries(DOCKER_PORT_VAR_MAP).map(([port, name]) => [
+    name,
+    Number(port),
+  ]),
+);
+
+/** Self-host values for infra/docker/.env beyond port mappings. */
+export interface SelfhostComposeSettings {
+  /** Group of the Docker socket inside containers (sandbox group_add). */
+  dockerSocketGid: number;
+  /** Public domain the proxy serves over HTTPS; kept from a prior run when absent. */
+  domain?: string;
+}
+
+/** Compose profile that runs the bundled single-origin proxy. */
+const SELFHOST_PROXY_PROFILE = "proxy";
+
+function dockerComposeEnvPath(repoRoot: string): string {
+  return path.join(repoRoot, "infra", "docker", ".env");
+}
+
+/** The values in infra/docker/.env; empty when the file does not exist. */
+function readDockerComposeEnv(repoRoot: string): EnvValues {
+  const envPath = dockerComposeEnvPath(repoRoot);
+  return fs.existsSync(envPath)
+    ? parseEnvFileValues(fs.readFileSync(envPath, "utf-8"))
+    : {};
+}
+
+/** The infra/docker/.env key that pins every GAIA app image to one tag. */
+export const GAIA_VERSION_ENV_KEY = "GAIA_VERSION";
+
+/** The image tag compose runs when infra/docker/.env pins no GAIA_VERSION. */
+const UNPINNED_IMAGE_TAG = "latest";
+
+/** The GAIA image tag the install runs today. */
+/** infra/docker/.env key holding the domain `gaia up --domain` serves GAIA at. */
+const GAIA_DOMAIN_ENV_KEY = "GAIA_DOMAIN";
+
+/** The domain the install serves GAIA at, if `gaia up --domain` set one. */
+export function readGaiaDomain(repoRoot: string): string | undefined {
+  return readDockerComposeEnv(repoRoot)[GAIA_DOMAIN_ENV_KEY] || undefined;
+}
+
+export function readPinnedGaiaVersion(repoRoot: string): string {
+  return (
+    readDockerComposeEnv(repoRoot)[GAIA_VERSION_ENV_KEY] ?? UNPINNED_IMAGE_TAG
+  );
+}
+
+/** Replace infra/docker/.env with these values, keeping the previous file as .env.bak. */
+function writeDockerComposeEnvValues(
   repoRoot: string,
-  portOverrides: Record<number, number>,
-  mode?: SetupMode,
+  values: EnvValues,
 ): void {
-  const envPath = path.join(repoRoot, "infra", "docker", ".env");
+  const envPath = dockerComposeEnvPath(repoRoot);
   backupIfExists(envPath);
 
   const lines: string[] = [
@@ -172,26 +281,52 @@ export function writeDockerComposeEnv(
     `# Created: ${new Date().toISOString()}`,
     "",
   ];
+  for (const [key, value] of Object.entries(values)) {
+    lines.push(`${key}=${value}`);
+  }
+  lines.push("");
+  writeFileOwnerOnly(envPath, lines.join("\n"));
+}
+
+/** Set one key in infra/docker/.env, keeping every other value. */
+export function setDockerComposeEnvValue(
+  repoRoot: string,
+  key: string,
+  value: string,
+): void {
+  writeDockerComposeEnvValues(repoRoot, {
+    ...readDockerComposeEnv(repoRoot),
+    [key]: value,
+  });
+}
+
+export function writeDockerComposeEnv(
+  repoRoot: string,
+  portOverrides: Record<number, number>,
+  mode?: SetupMode,
+  selfhost?: SelfhostComposeSettings,
+): void {
+  // Merge-don't-clobber, so a rerun never erases a prior port or domain. The
+  // retired NEXT_PUBLIC_APP_URL (the image calls a same-origin /api/v1) is dropped.
+  const { NEXT_PUBLIC_APP_URL: _retired, ...merged }: EnvValues =
+    readDockerComposeEnv(repoRoot);
 
   for (const [original, replacement] of Object.entries(portOverrides)) {
     const origPort = Number(original);
     const varName = DOCKER_PORT_VAR_MAP[origPort];
     if (varName) {
-      lines.push(`${varName}=${replacement}`);
+      merged[varName] = String(replacement);
     }
   }
 
-  // In selfhost mode, write the web build arg so docker-compose.selfhost.yml
-  // can substitute it with the correct (possibly overridden) API port.
-  if (mode === "selfhost") {
-    const apiPort = portOverrides[8000] ?? 8000;
-    lines.push("");
-    lines.push("# Web build args");
-    lines.push(`NEXT_PUBLIC_API_BASE_URL=http://localhost:${apiPort}/api/v1/`);
+  if (mode === "selfhost" && selfhost) {
+    // An explicit COMPOSE_PROFILES (e.g. a platform proxy instead) wins.
+    merged["COMPOSE_PROFILES"] ??= SELFHOST_PROXY_PROFILE;
+    merged["DOCKER_SOCKET_GID"] = String(selfhost.dockerSocketGid);
+    if (selfhost.domain) merged[GAIA_DOMAIN_ENV_KEY] = selfhost.domain;
   }
 
-  lines.push("");
-  fs.writeFileSync(envPath, lines.join("\n"), "utf-8");
+  writeDockerComposeEnvValues(repoRoot, merged);
 }
 
 /**
@@ -259,22 +394,21 @@ export function patchDockerComposePorts(repoRoot: string): void {
       changed = true;
     }
   }
+  // RabbitMQ management port is 15672 on both sides; handle without PORT_PATTERNS
+  // to keep the main table focused on the 8 original ports.
+  {
+    const hardcoded = `"15672:15672"`;
+    const variable = `"\${RABBITMQ_MGMT_PORT:-15672}:15672"`;
+    if (content.includes(hardcoded)) {
+      content = content.replaceAll(hardcoded, variable);
+      changed = true;
+    }
+  }
 
   if (changed) {
     fs.writeFileSync(composePath, content, "utf-8");
   }
 }
-
-const DOCKER_PORT_VAR_TO_PORT: Record<string, number> = {
-  API_HOST_PORT: 8000,
-  POSTGRES_HOST_PORT: 5432,
-  REDIS_HOST_PORT: 6379,
-  MONGO_HOST_PORT: 27017,
-  RABBITMQ_HOST_PORT: 5672,
-  CHROMADB_HOST_PORT: 8080,
-  MONGO_EXPRESS_HOST_PORT: 8083,
-  WEB_HOST_PORT: 3000,
-};
 
 export function readDockerComposePortOverrides(
   repoRoot: string,

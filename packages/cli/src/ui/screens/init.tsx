@@ -4,22 +4,28 @@
  * @module screens/init
  */
 
-import { ProgressBar, Select, Spinner } from "@inkjs/ui";
+import { Select, Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { localApiUrl } from "../../lib/endpoints.js";
 import type { EnvCategory, EnvVar, SetupMode } from "../../lib/env-parser.js";
-
+import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
+import { LogWindow } from "../components/LogWindow.js";
+import { PercentBar } from "../components/PercentBar.js";
 import { Shell } from "../components/Shell.js";
 import {
   EnvSetupSpinnerStep,
   ErrorStep,
+  InstallConfirmStep,
   PortConflictStep,
+  RepositoryProgressStep,
   SystemChecksStep,
 } from "../components/shared-steps.js";
-import { THEME_COLOR } from "../constants.js";
+import { BOX_BORDER, MARK, THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
+import { useCLIState } from "../use-cli-state.js";
 
 /**
  * Props for the WelcomeStep component.
@@ -44,7 +50,7 @@ const WelcomeStep: React.FC<WelcomeStepProps> = ({ onConfirm }) => {
     <Box
       flexDirection="column"
       paddingX={2}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Text bold>Welcome to GAIA Setup</Text>
@@ -77,7 +83,7 @@ const PathInputStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Text>Clone repository to:</Text>
@@ -108,7 +114,7 @@ const ExistingRepoStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor="yellow"
     >
       <Box marginBottom={1}>
@@ -135,8 +141,9 @@ const ExistingRepoStep: React.FC<{
 const FinishedStep: React.FC<{
   setupMode?: SetupMode;
   portOverrides?: Record<number, number>;
+  stillStarting?: boolean;
   onConfirm: () => void;
-}> = ({ setupMode, portOverrides, onConfirm }) => {
+}> = ({ setupMode, portOverrides, stillStarting, onConfirm }) => {
   useInput((_input, key) => {
     if (key.return) {
       onConfirm();
@@ -144,26 +151,36 @@ const FinishedStep: React.FC<{
   });
 
   const webPort = portOverrides?.[3000] ?? 3000;
-  const apiPort = portOverrides?.[8000] ?? 8000;
+  const apiUrl = localApiUrl(setupMode ?? "developer", portOverrides ?? {});
 
   if (setupMode === "selfhost") {
     return (
       <Box
         flexDirection="column"
         marginTop={2}
-        borderStyle="round"
+        borderStyle={BOX_BORDER}
         borderColor="green"
         padding={1}
       >
         <Text bold color="green">
-          GAIA is Running!
+          {stillStarting ? "GAIA is starting…" : "GAIA is running"}
         </Text>
 
         <Box marginTop={1}>
-          <Text color="green">✓ All services started</Text>
+          <Text color="green">
+            {stillStarting
+              ? "Containers are up but not answering yet"
+              : "✓ All services started"}
+          </Text>
         </Box>
 
         <Box marginTop={1} flexDirection="column">
+          <Text>
+            Finish setup in your browser:{" "}
+            <Text color="cyan" bold>
+              http://localhost:{webPort}/setup
+            </Text>
+          </Text>
           <Text>
             Web:{" "}
             <Text color="cyan" bold>
@@ -173,14 +190,14 @@ const FinishedStep: React.FC<{
           <Text>
             API:{" "}
             <Text color="cyan" bold>
-              http://localhost:{apiPort}
+              {apiUrl}
             </Text>
           </Text>
         </Box>
 
         <Box marginTop={1}>
           <Text color="gray">
-            gaia logs · gaia stop · gaia status · gaia setup
+            gaia logs · gaia stop · gaia status · gaia doctor
           </Text>
         </Box>
 
@@ -197,7 +214,7 @@ const FinishedStep: React.FC<{
     <Box
       flexDirection="column"
       marginTop={2}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
       padding={1}
     >
@@ -220,7 +237,7 @@ const FinishedStep: React.FC<{
         <Text>
           API:{" "}
           <Text color="cyan" bold>
-            http://localhost:{apiPort}
+            {apiUrl}
           </Text>
         </Text>
       </Box>
@@ -241,81 +258,21 @@ const FinishedStep: React.FC<{
 };
 
 // Dependency installation progress step
-const LOG_WINDOW_HEIGHT = 8;
-
-const LogWindow: React.FC<{ logs: string[]; height?: number }> = ({
-  logs,
-  height = LOG_WINDOW_HEIGHT,
-}) => {
-  const [scrollOffset, setScrollOffset] = useState(0);
-
-  // Auto-scroll to bottom when new logs arrive, unless user has scrolled up
-  const prevLenRef = useRef(logs.length);
-  useEffect(() => {
-    if (logs.length !== prevLenRef.current) {
-      prevLenRef.current = logs.length;
-      setScrollOffset(0);
-    }
-  }, [logs.length]);
-
-  useInput((_input, key) => {
-    if (key.upArrow) {
-      setScrollOffset((o) =>
-        Math.min(o + 1, Math.max(0, logs.length - height)),
-      );
-    } else if (key.downArrow) {
-      setScrollOffset((o) => Math.max(0, o - 1));
-    }
-  });
-
-  const totalLines = logs.length;
-  const start = Math.max(0, totalLines - height - scrollOffset);
-  const end = Math.max(0, totalLines - scrollOffset);
-  const visible = logs.slice(start, end);
-  const linesAbove = start;
-  const linesBelow = scrollOffset;
-
-  return (
-    <Box flexDirection="column" marginTop={1} marginLeft={1}>
-      {linesAbove > 0 && (
-        <Text color="gray" dimColor>
-          ↑ {linesAbove} more line{linesAbove !== 1 ? "s" : ""}
-        </Text>
-      )}
-      <Box flexDirection="column" height={height} overflow="hidden">
-        {visible.map((log, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: logs are append-only
-          <Text key={`${start}-${i}`} color="gray" wrap="truncate">
-            {log}
-          </Text>
-        ))}
-      </Box>
-      {linesBelow > 0 ? (
-        <Text color="gray" dimColor>
-          ↓ {linesBelow} more line{linesBelow !== 1 ? "s" : ""}
-        </Text>
-      ) : (
-        <Text color="gray" dimColor>
-          ↑↓ scroll
-        </Text>
-      )}
-    </Box>
-  );
-};
-
 export const DependencyInstallStep: React.FC<{
   phase: string;
   progress: number;
   isComplete: boolean;
   logs?: string[];
   title?: string;
-}> = ({ phase, progress, isComplete, logs, title }) => {
+  /** Shown under the logs while running; defaults to a generic wait note. */
+  hint?: string;
+}> = ({ phase, progress, isComplete, logs, title, hint }) => {
   return (
     <Box
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Box marginBottom={1}>
@@ -327,23 +284,21 @@ export const DependencyInstallStep: React.FC<{
       <Box flexDirection="column" gap={1}>
         <Box>
           {!isComplete ? (
-            <Spinner label={phase || "Preparing..."} />
+            <Spinner label={phase || "Preparing…"} />
           ) : (
-            <Text color="green">✓ {phase}</Text>
+            <Text color="green">
+              {MARK.ok} {phase}
+            </Text>
           )}
         </Box>
-        {!isComplete && progress > 0 && (
-          <Box width={50}>
-            <ProgressBar value={progress} />
-          </Box>
-        )}
+        {!isComplete && progress > 0 && <PercentBar percent={progress} />}
 
         {!isComplete && logs && logs.length > 0 && <LogWindow logs={logs} />}
 
         {!isComplete && (
           <Box marginTop={1}>
             <Text color="gray" dimColor>
-              This may take a few minutes...
+              {hint || "This may take a few minutes…"}
             </Text>
           </Box>
         )}
@@ -371,7 +326,7 @@ export const SetupModeSelectionStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Text bold>Setup Mode</Text>
@@ -407,7 +362,7 @@ export const EnvMethodSelectionStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Text bold>Environment Variables Setup</Text>
@@ -495,7 +450,7 @@ export const InfisicalSetupStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
     >
       <Box marginBottom={1}>
@@ -546,7 +501,7 @@ export const InfisicalSetupStep: React.FC<{
                     setValues((prev) => ({ ...prev, [field.key]: v }));
                     setError(null);
                   }}
-                  placeholder="Enter value..."
+                  placeholder="Enter value…"
                   mask={isSensitive ? "*" : undefined}
                 />
               </Box>
@@ -659,7 +614,7 @@ export const EnvGroupConfigStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={error ? "red" : THEME_COLOR}
     >
       <Box justifyContent="space-between">
@@ -731,7 +686,7 @@ export const EnvGroupConfigStep: React.FC<{
       {error && (
         <Box marginTop={1}>
           <Text color="red" bold>
-            ⚠ {error}
+            {MARK.warn} {error}
           </Text>
         </Box>
       )}
@@ -926,7 +881,7 @@ export const AlternativeGroupSelectionStep: React.FC<
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={error ? "red" : THEME_COLOR}
     >
       <Box justifyContent="space-between">
@@ -959,7 +914,7 @@ export const AlternativeGroupSelectionStep: React.FC<
                   {isProviderFocused ? "➜ " : "  "}
                 </Text>
                 <Text color={isEnabled ? "green" : "gray"}>
-                  {isEnabled ? "[✔]" : "[ ]"}
+                  {isEnabled ? `[${MARK.ok}]` : "[ ]"}
                 </Text>
                 <Text color={isEnabled ? THEME_COLOR : "gray"} bold={isEnabled}>
                   {" "}
@@ -1037,7 +992,7 @@ export const AlternativeGroupSelectionStep: React.FC<
                               placeholder={
                                 hasDefault
                                   ? `Default: ${envVar.defaultValue}`
-                                  : "Enter value..."
+                                  : "Enter value…"
                               }
                             />
                           </Box>
@@ -1055,7 +1010,7 @@ export const AlternativeGroupSelectionStep: React.FC<
       {error && (
         <Box marginTop={1}>
           <Text color="red" bold>
-            ⚠ {error}
+            {MARK.warn} {error}
           </Text>
         </Box>
       )}
@@ -1066,7 +1021,7 @@ export const AlternativeGroupSelectionStep: React.FC<
           {isOnSubmit ? "➜ " : "  "}
         </Text>
         <Box
-          borderStyle="round"
+          borderStyle={BOX_BORDER}
           borderColor={isOnSubmit ? THEME_COLOR : "gray"}
           paddingX={2}
         >
@@ -1128,7 +1083,7 @@ export const EnvConfigStep: React.FC<{
       flexDirection="column"
       marginTop={1}
       paddingX={1}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={error ? "red" : THEME_COLOR}
     >
       <Box justifyContent="space-between">
@@ -1195,21 +1150,7 @@ export const EnvConfigStep: React.FC<{
 };
 
 export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
-  const [state, setState] = useState(store.currentState);
-
-  useEffect(() => {
-    const update = () => setState({ ...store.currentState });
-    store.on("change", update);
-    return () => {
-      store.off("change", update);
-    };
-  }, [store]);
-
-  useInput((_input, key) => {
-    if ((key.return || key.escape) && state.error) {
-      store.submitInput("exit");
-    }
-  });
+  const state = useCLIState(store);
 
   return (
     <Shell status={state.status} step={state.step}>
@@ -1220,6 +1161,13 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
       {state.step === "Prerequisites" && state.data.checks && (
         <SystemChecksStep checks={state.data.checks} />
       )}
+
+      <InstallConfirmStep
+        inputId={state.inputRequest?.id}
+        missing={state.data[MISSING_PREREQUISITES_KEY]}
+        onConfirm={() => store.submitInput("install")}
+        onDecline={() => store.submitInput("decline")}
+      />
 
       {state.inputRequest?.id === "port_conflicts" &&
         state.data.portConflicts && (
@@ -1246,23 +1194,11 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         )}
 
       {state.step === "Repository Setup" && !state.inputRequest && (
-        <Box
-          flexDirection="column"
-          borderStyle="round"
-          padding={1}
-          borderColor={THEME_COLOR}
-        >
-          <Text bold>Cloning Repository</Text>
-          <Box marginTop={1} flexDirection="column">
-            <ProgressBar value={state.data.repoProgress || 0} />
-
-            {state.data.repoPhase && (
-              <Box marginTop={1}>
-                <Text color="gray">{state.data.repoPhase}</Text>
-              </Box>
-            )}
-          </Box>
-        </Box>
+        <RepositoryProgressStep
+          title="Cloning Repository"
+          progress={state.data.repoProgress}
+          phase={state.data.repoPhase}
+        />
       )}
 
       {state.inputRequest?.id === "setup_mode" && (
@@ -1322,6 +1258,7 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         <FinishedStep
           setupMode={state.data.setupMode}
           portOverrides={state.data.portOverrides}
+          stillStarting={state.data.stillStarting === true}
           onConfirm={() => store.submitInput("exit")}
         />
       )}

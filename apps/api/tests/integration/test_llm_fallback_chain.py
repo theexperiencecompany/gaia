@@ -21,8 +21,6 @@ from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
 import pytest
 
 from app.agents.llm.client import (
-    PROVIDER_MODELS,
-    PROVIDER_PRIORITY,
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
@@ -37,8 +35,10 @@ from app.config.model_pricing import (
     get_model_pricing,
 )
 from app.config.settings import settings
-from app.constants.llm import DEFAULT_LLM_PROVIDER, LLMProviderKey
+from app.constants.llm import DEFAULT_LLM_PROVIDER, LLMProviderKey, LLMProviderName
+from app.constants.providers import LLM_MODEL_PROFILES, LLM_PROVIDER_PRIORITY
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
+from app.services.providers.provider_credentials_service import ProviderConfig
 
 
 def _make_mock_llm(name: str = "mock_llm") -> MagicMock:
@@ -52,10 +52,10 @@ def _make_mock_llm(name: str = "mock_llm") -> MagicMock:
 
 @pytest.mark.integration
 class TestProviderPriorityOrdering:
-    """Verify provider ordering follows PROVIDER_PRIORITY and respects preferences."""
+    """Verify provider ordering follows LLM_PROVIDER_PRIORITY and respects preferences."""
 
     def test_default_priority_order(self) -> None:
-        """Without a preferred provider, ordering follows PROVIDER_PRIORITY (openrouter > gemini)."""
+        """Without a preferred provider, ordering follows LLM_PROVIDER_PRIORITY (openrouter > gemini)."""
         mock_gemini = _make_mock_llm("gemini")
         mock_openrouter = _make_mock_llm("openrouter")
 
@@ -251,21 +251,12 @@ class TestModelPricing:
 class TestProviderConstants:
     """Verify the provider configuration constants are consistent."""
 
-    def test_provider_priority_maps_to_valid_providers(self) -> None:
-        """Every provider in PROVIDER_PRIORITY must have a corresponding entry in PROVIDER_MODELS."""
-        for priority, provider_name in PROVIDER_PRIORITY.items():
-            assert provider_name in PROVIDER_MODELS, (
-                f"PROVIDER_PRIORITY[{priority}] = '{provider_name}' not found in PROVIDER_MODELS"
-            )
+    def test_every_priority_entry_has_a_model_profile(self) -> None:
+        assert set(LLM_PROVIDER_PRIORITY) <= set(LLM_MODEL_PROFILES)
 
     def test_default_priority_matches_the_default_provider(self) -> None:
         """Priority 1 is the provider serving DEFAULT_MODEL_NAME."""
-        assert PROVIDER_PRIORITY[1] == DEFAULT_LLM_PROVIDER == "openrouter"
-
-    def test_provider_models_have_expected_keys(self) -> None:
-        """PROVIDER_MODELS must contain gemini and openrouter."""
-        assert "gemini" in PROVIDER_MODELS
-        assert "openrouter" in PROVIDER_MODELS
+        assert LLM_PROVIDER_PRIORITY[0] == DEFAULT_LLM_PROVIDER == "openrouter"
 
 
 @pytest.mark.integration
@@ -309,7 +300,17 @@ class TestGetAvailableProviders:
         mock_openrouter_llm = _make_mock_llm("openrouter_llm")
         registry = self._build_registry({"openrouter_llm": mock_openrouter_llm})
 
-        with patch("app.agents.llm.client.providers", registry):
+        # Availability is decided by the runtime credential snapshot now
+        # (store entry → env fallback), not by import-time required_keys.
+        def fake_config(name):
+            if name is LLMProviderName.OPENROUTER:
+                return ProviderConfig(api_key="test-key")
+            return None
+
+        with (
+            patch("app.agents.llm.client.providers", registry),
+            patch("app.agents.llm.client.resolved_config", side_effect=fake_config),
+        ):
             available = _get_available_providers()
 
         assert "openrouter" in available

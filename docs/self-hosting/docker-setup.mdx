@@ -4,15 +4,22 @@ description: "Complete guide to deploying GAIA with Docker Compose"
 icon: "docker"
 ---
 
-## Docker Deployment Guide
-
 GAIA uses Docker Compose to orchestrate all the required services. This makes deployment simple and ensures consistency across different environments.
 
 <Note>
-**Looking for an easier setup?** The [GAIA CLI](/cli/installation) provides a guided wizard that handles Docker setup automatically, including prerequisite checks, environment variable discovery, and service management. This guide covers manual Docker setup for advanced users who prefer full control.
+  **Looking for the easy path?** [GAIA CLI](/self-hosting/cli-setup) does all of this for you — `gaia up` checks prerequisites, writes configuration, and starts the same Compose stack described here. This guide covers driving Docker directly for advanced users who prefer full control.
 </Note>
 
 ## Prerequisites
+
+Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confirm you have:
+
+- **Docker** — Docker Desktop (macOS/Windows), Docker Engine 20.10+ with Compose v2 (Linux), or OrbStack (macOS). `gaia up` will offer to install Docker if it is missing; to install it yourself, see **Docker Installation** below.
+- **Git** — only if you start from a clone (see [Quick Start](#quick-start)) (`sudo apt-get install -y git` on Ubuntu/Debian).
+- **8 GB RAM minimum** — plus 2+ CPU cores and 10 GB free disk. The local embedding model loads ~1.8 GB into each of `gaia-backend` and `arq_worker` on first use (see [Memory sizing](#memory-sizing)).
+- **Ports** — only `3000` must be free on the host (override with `WEB_HOST_PORT`); with a domain, `80` and `443` instead (see [HTTPS on your own domain](#https-on-your-own-domain)). The API and every datastore stay on the internal Docker network and are never published to the host.
+- **No API keys to boot** — the stack starts with no provider keys. Pass one to `gaia up --llm-provider openai --llm-key ...` (see the [walkthrough](/self-hosting/walkthrough#install-and-start-gaia) for every provider), add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
+- **No manual `.env` setup, no Infisical** — `gaia up` writes `apps/api/.env` (`ENV=selfhost`, `AUTH_MODE=local`) and generates the three machine secrets (`AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) for you. Never `cp .env.example .env` and self-host never contacts Infisical.
 
 <AccordionGroup>
   <Accordion icon="docker" title="Docker Installation">
@@ -35,393 +42,631 @@ GAIA uses Docker Compose to orchestrate all the required services. This makes de
 
   </Accordion>
 
-  <Accordion icon="server" title="System Requirements">
-    **Minimum Requirements:**
-    - 2 CPU cores
-    - 4GB RAM
-    - 10GB free disk space
-    - Docker Engine 20.10+
-    - Docker Compose v2.0+
-
-    **Recommended for Production:**
+  <Accordion icon="server" title="Recommended system">
+    The minimum is in the list above. Recommended:
     - 4+ CPU cores
-    - 8+ GB RAM
+    - 12+ GB RAM
     - 50+ GB SSD storage
     - Regular backups configured
 
   </Accordion>
 </AccordionGroup>
 
-## Project Structure
+## Quick Start
 
-<Note>
-When using the CLI quick start, running `gaia init` with **Self-Host (Docker)**
-scaffolds this structure automatically.
-</Note>
+The [self-hosting walkthrough](/self-hosting/walkthrough) is the quick start. `gaia up` writes the `.env` files (with `ENV=selfhost`), generates the machine secrets and starts the Compose stack this guide describes. The rest of this guide explains what it started and how to operate it by hand.
+
+To start from a clone instead of the installer (requires `git`):
+
+```bash
+git clone https://github.com/theexperiencecompany/gaia.git && cd gaia
+npm install -g @heygaia/cli # or: curl -fsSL https://heygaia.io/install.sh | sh
+gaia up                      # or: npx @heygaia/cli up (no global install)
+```
+
+Check on the containers:
+
+```bash
+docker compose -f infra/docker/docker-compose.selfhost.yml ps          # container status + health
+docker compose -f infra/docker/docker-compose.selfhost.yml logs -f     # stream all logs
+```
+
+<Tip>
+  **Back up in one line** — from the repo root, no manual `docker compose` needed:
+
+  ```bash
+  gaia backup                          # dumps MongoDB + PostgreSQL to ./backups/
+  gaia restore --from backups          # restores the latest dumps
+  ```
+
+  See [Backups](#backups) below for custom paths, `--dry-run`, and manual `mongodump` / `pg_dump` equivalents.
+</Tip>
+
+## Self-Host vs Cloud
+
+Same codebase, different operating profile. Self-host runs with `ENV=selfhost` and `AUTH_MODE=local`; Cloud and development use `AUTH_MODE=workos`.
+
+| Area | Cloud (heygaia.io) | Self-Host (`ENV=selfhost`) |
+| --- | --- | --- |
+| **Auth** | WorkOS / AuthKit — Google OAuth, hosted sessions | Local email + password, `AUTH_MODE=local`; the first account is the admin, others join by invite link (Settings → Members) |
+| **Billing** | Dodo Payments — plans and limits enforced | No billing integration and no plan limits: every user gets every feature; usage tracked locally only |
+| **In-app support** | Requests go to GAIA's support team | Off: nothing from your instance is sent to GAIA. The support form links to [GitHub issues](https://github.com/theexperiencecompany/gaia/issues) and [discussions](https://github.com/theexperiencecompany/gaia/discussions) instead |
+| **Secrets** | Infisical vault (required in production) | Local `.env` only; never contacts Infisical; `INSTANCE_SECRET` auto-generated into Mongo (`instance_settings`) on first boot |
+| **Required config** | Full SaaS keys (OpenRouter, Gemini, Tavily, Composio, R2, LiveKit, etc.) required to boot | Only infra + 3 machine secrets (`MONGO_DB`, `REDIS_URL`, `POSTGRES_URL`, `CHROMADB_*`, `RABBITMQ_URL`, `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) — everything else is optional and disables gracefully; providers configured at runtime via the setup wizard |
+| **LLM providers** | Managed keys via Infisical | Bring your own — OpenAI / OpenRouter / Gemini / Ollama / any OpenAI-compatible gateway via Settings; keys encrypted with the instance secret |
+| **File uploads** | Cloudinary (managed) | Local `gaia-selfhost_files` volume by default, no account needed; Cloudinary with `BLOB_STORE=cloudinary` — see [File storage](#file-storage) |
+| **Workspace storage** | Hosted R2 + JuiceFS (managed) | Local `gaia-selfhost_workspace` volume; no object store or FUSE needed — see [File storage](#file-storage) |
+| **Sandbox** | E2B (required) with warm pool | Off until you save an E2B key or opt into the local Docker-socket sandbox with `gaia up --code-sandbox` — see [Local coding sandbox](#local-coding-sandbox) |
+| **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Not available: the self-host stack ships no voice worker and no LiveKit server. Settings shows voice as unavailable |
+| **Browser automation** | Hosted browser for the agent's browser tasks | Not available: the self-host stack has no browser host, so the agent has no browser tool. Settings shows it as unavailable. Reading web pages still works through the built-in reader |
+| **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | DuckDuckGo with no key. Tavily, Exa, Brave, Firecrawl and your own SearXNG are optional, set in **Settings → Providers & Tools** (or env). A SearXNG you add is tried before DuckDuckGo |
+| **Email** | Resend (managed) | Optional `RESEND_*` — without it email features stay quiet |
+| **Observability** | Loki + Grafana, LogQL over shipped logs | Container `json-file` logs only (10 MB × 3 rotated files); no Loki shipper |
+| **Updates** | Deployed by the team | `gaia update` — moves to the release your CLI ships (pinned images + matching compose files) and restarts; volumes survive |
+| **Backups** | Managed | `gaia backup` / `gaia restore` — you own the dumps; see [Backups](#backups) |
+
+## Project Structure
 
 ```
 gaia/
 ├── apps/
 │   ├── api/
 │   │   ├── Dockerfile
-│   │   ├── .env                # API environment variables
-│   │   └── ...
-│   ├── web/
-│   │   ├── Dockerfile
-│   │   ├── .env                # Web environment variables
-│   │   └── ...
-├── docs/
+│   │   └── .env                # API environment variables
+│   └── web/
+│       ├── Dockerfile
+│       └── ...
 ├── infra/
 │   └── docker/
-│       ├── docker-compose.yml      # Development compose file
-│       └── docker-compose.prod.yml # Production compose file
+│       ├── .env                         # Compose settings written by gaia up
+│       ├── docker-compose.selfhost.yml  # Self-host stack (pulls images)
+│       ├── docker-compose.build.yml     # Override: build images from source
+│       ├── docker-compose.sandbox.yml   # Override: local code sandbox (Docker socket)
+│       └── selfhost/Caddyfile           # Single-origin proxy routes
 └── ...
 ```
 
-## Quick Start
+The self-host stack is `infra/docker/docker-compose.selfhost.yml`, project name `gaia-selfhost`. Every command below runs from `infra/docker/` and passes `-f docker-compose.selfhost.yml` — Compose only auto-detects the default filename, so without `-f` you'd hit the development compose file instead. Containers have no fixed names, so address them by service name through Compose (`docker compose -f docker-compose.selfhost.yml logs gaia-backend`, not `docker logs gaia-backend`); this also lets a development stack (project `gaia-dev`) run beside a self-hosted one.
 
-<Steps>
-  <Step title="Install CLI and initialize self-host mode">
-    <CodeGroup>
+The stack is image-only: it pulls the multi-arch (amd64 and arm64) images `ghcr.io/theexperiencecompany/gaia` (API and worker) and `ghcr.io/theexperiencecompany/gaia-web`, all pinned to the same `GAIA_VERSION` tag (default `latest`). `gaia update` sets `GAIA_VERSION` in `infra/docker/.env` to the release your CLI ships (`v<CLI version>`); set it yourself to pin another tag.
 
-    ```bash npm
-    npm install -g @heygaia/cli
+### Building from source
+
+To run your own changes, build the images from your checkout instead of pulling them:
+
+```bash
+gaia up --build
+# equivalent, from infra/docker/:
+docker compose -f docker-compose.selfhost.yml -f docker-compose.build.yml up -d --build
+```
+
+The build override keeps the same image tags, so a later plain `up` reuses your local build until the next pull.
+
+<AccordionGroup>
+  <Accordion icon="diagram-project" title="Advanced: Architecture">
+    **Stack at a glance** — one Compose project, one bridge network, named volumes:
+
+    ```
+    browser ──► proxy (WEB_HOST_PORT, default 3000)
+                  ├─ /api/v1/* ──► gaia-backend (8000) ──► postgres │ mongo │ redis │ chromadb │ rabbitmq
+                  │                     ├─ host.docker.internal ──► Ollama (host, optional)
+                  │                     └─ workspace + files volumes (local)
+                  └─ everything else ──► gaia-web (3000)
+    arq_worker ──► redis + mongo
     ```
 
-    ```bash pnpm
-    pnpm add -g @heygaia/cli
-    ```
+    - `proxy` is Caddy, the only service that publishes a host port. `/api/v1/*` — REST, SSE streams and the WebSocket — goes to `gaia-backend`; everything else goes to `gaia-web`.
+    - `gaia-web` is the Next.js frontend. The browser calls the same-origin `/api/v1/`, so the stack works on any hostname or IP with no URL configuration; server-side fetches reach the backend directly at `http://gaia-backend:8000`.
+    - `gaia-backend` + `arq_worker` are the same image with different `WORKER_TYPE`; both mount the `workspace` and `files` volumes and share `extra_hosts: host.docker.internal:host-gateway` for host services.
+    - The API and all datastores are reachable only on the internal network — see [Networking](#networking).
 
-    ```bash bun
-    bun add -g @heygaia/cli
-    ```
-
-    </CodeGroup>
-
-    ```bash
-    gaia init
-    ```
-
-    Choose **Self-Host (Docker)** in the setup wizard.
-  </Step>
-
-  <Step title="Start the stack">
-    ```bash
-    gaia start
-    ```
-  </Step>
-
-  <Step title="Verify and monitor">
-    ```bash
-    gaia status
-    gaia logs
-    ```
-
-    Access the applications:
-    - **GAIA Web**: http://localhost:3000
-    - **Backend API**: http://localhost:8000
-    - **API Docs**: http://localhost:8000/docs
-    - **ChromaDB**: http://localhost:8080
-    - **RabbitMQ Management**: http://localhost:15672 (guest/guest)
-    - **Mongo Express**: http://localhost:8081 (admin/password)
-
-  </Step>
-</Steps>
+    For the full container spec see `infra/docker/docker-compose.selfhost.yml`.
+  </Accordion>
+</AccordionGroup>
 
 ## Service Overview
 
-The Docker Compose setup includes the following services:
+The self-host Compose file includes the following services:
 
 <AccordionGroup>
+  <Accordion icon="globe" title="Proxy (proxy)">
+    **Caddy single-origin entrypoint** (compose profile `proxy`)
+    - Port: `${WEB_HOST_PORT:-3000}` → 80, and `${HTTPS_HOST_PORT:-3443}` → 443 for HTTPS
+    - Routes `/api/v1/*` and `/health/ready` to `gaia-backend:8000` and everything else to `gaia-web:3000`; routes live in `infra/docker/selfhost/Caddyfile` (override the upstreams with `GAIA_BACKEND_UPSTREAM` / `GAIA_WEB_UPSTREAM`)
+    - Runs only when the `proxy` profile is active — `gaia up` writes `COMPOSE_PROFILES=proxy` to `infra/docker/.env`. Leave it off if your platform brings its own proxy (see [Using your own reverse proxy](#using-your-own-reverse-proxy))
+
+  </Accordion>
+
   <Accordion icon="react" title="Web (gaia-web)">
     **Next.js React Application**
-    - Port: 3000
-    - Hot reload enabled in development
-    - Serves the web interface
-
-    ```yaml
-    web:
-      container_name: gaia-web
-      build: ./apps/web
-      ports:
-        - "3000:3000"
-      environment:
-        - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-    ```
+    - Internal port 3000, served through the proxy
+    - Defaults to the published image `ghcr.io/theexperiencecompany/gaia-web:${GAIA_VERSION}`
+    - Calls the API at the same-origin `/api/v1/`, so one published image works on any host or port
 
   </Accordion>
 
   <Accordion icon="server" title="Backend (gaia-backend)">
-    **FastAPI Python Application** 
-    - Port: 8000 
-    - Auto-reload enabled in development 
-    - RESTful API and WebSocket support 
-    
-    ```yaml 
-    gaia-backend:
-      container_name: gaia-backend
-      build: ./apps/api
-      ports:
-        - "8000:80"
-      command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--reload"]
-    ```
+    **FastAPI Python Application**
+    - Internal port 8000, served through the proxy at `/api/v1`
+    - RESTful API and WebSocket support
+    - Liveness at `/health`; per-dependency readiness at `/health/ready` (also served through the proxy, and what `gaia status` / `gaia doctor` read)
+    - Mounts the workspace and files volumes (see [File storage](#file-storage)) and reaches host services via `host.docker.internal`
+
   </Accordion>
 
   <Accordion icon="database" title="Databases">
-    **PostgreSQL** (Port: 5432)
-    - Stores user data and application state
+    **PostgreSQL** (`postgres:5432`)
+    - Stores agent state (LangGraph checkpoints) and application data
     - User: postgres, Password: postgres, DB: langgraph
 
-    **MongoDB** (Port: 27017)
-    - Document storage and metadata
-    - No authentication in development
+    **MongoDB** (`mongo:27017`)
+    - Primary document store: users, chats, settings, provider credentials
 
-    **Redis** (Port: 6379)
-    - Caching and session storage
-    - No authentication in development
+    **Redis** (`redis:6379`)
+    - Caching, sessions, task queue backend
 
-    **ChromaDB** (Port: 8080)
+    **ChromaDB** (`chromadb:8000`)
     - Vector database for embeddings
-    - Persistent storage in Docker volume
+
+    PostgreSQL, MongoDB, Redis, and ChromaDB ship without authentication, and RabbitMQ ships with well-known `guest`/`guest` credentials, so none of them publish a host port — see [Networking](#networking).
 
   </Accordion>
 
-  <Accordion title="Background Workers">
-    **Worker** - Handles scheduled tasks and background processing
-    **ARQ Worker** - Async task queue processing
-    **RabbitMQ** - Message broker (Port: 5672, Management: 15672)
+  <Accordion title="Workers & Messaging">
+    **arq_worker** — Async background task processing (reminders, workflows, email)
+    **RabbitMQ** — Message broker (`rabbitmq:5672`, guest/guest)
+
   </Accordion>
 </AccordionGroup>
 
-## Persistent Workspace Storage (JuiceFS and FUSE)
+## File storage
 
-GAIA's per-user workspace (file uploads, agent artifacts, installed skills) is backed by [JuiceFS](https://juicefs.com), a filesystem that stores file **data** in object storage (Cloudflare R2, S3, or any S3-compatible store) and file **metadata** in a database. The backend mounts it at `/mnt/jfs` and reads and writes files there like a local disk.
+By default a self-hosted instance keeps every file on two local Docker volumes. No Cloudinary, R2 or other storage account is needed, and attaching files works on a fresh install.
 
-JuiceFS mounts through **FUSE** (Filesystem in Userspace), a Linux kernel feature. This has direct consequences for where and how you can run the backend.
-
-### Run the backend in a container
-
-Because the mount needs Linux FUSE, run the backend in a container on every platform:
-
-| Host OS | Native (`uvicorn` on the host) | Containerized (Docker) |
+| Volume | Mounted at | Holds |
 | --- | --- | --- |
-| Linux | Works if `juicefs` is installed and `/dev/fuse` is accessible | Works |
-| macOS | Not supported (no Linux FUSE) | Works, Docker Desktop's Linux VM provides `/dev/fuse` |
-| Windows | Not supported (no Linux FUSE) | Works, Docker Desktop / WSL2 provides `/dev/fuse` |
+| `gaia-selfhost_files` | `/var/lib/gaia/files` | Files you attach in chat, generated images, profile pictures and support attachments |
+| `gaia-selfhost_workspace` | `/mnt/jfs` | Each user's workspace: the copy of their uploads the agent opens, agent artifacts, and installed skills |
 
-The self-host Compose stack already runs the backend in a container, so all three platforms are covered. The native path is a development-only convenience on Linux.
+Both are mounted into `gaia-backend` and `arq_worker`. The browser loads a stored file from `/api/v1/blobs/...` on your own domain, with your session. Profile pictures are visible to every signed-in member of the instance; everything else (chat uploads, generated images, support attachments) opens only for its owner. AI models never fetch a file by URL: they get its contents.
 
-<Note>
-Run the backend in a container even on macOS and Windows. Docker Desktop runs a Linux VM that exposes `/dev/fuse`, so the FUSE mount works inside the container even though the host OS cannot mount it directly.
-</Note>
+The workspace is a plain volume. Hosted GAIA keeps workspaces in JuiceFS on object storage so cloud sandboxes can mount them, which is why the hosted stack needs FUSE; a self-hosted instance does not use JuiceFS, and its containers run without extra privileges. With the [local coding sandbox](#local-coding-sandbox) on, each user's sandbox container mounts only that user's folder of the workspace volume.
 
-### How the mount works
+`R2_*` and `JUICEFS_META_URL_TEMPLATE` are used only by the hosted deployment. A self-hosted instance ignores them.
 
-FUSE lets a userspace program act as a filesystem instead of the kernel:
+### Choosing where files live
 
-1. The kernel exposes a device at `/dev/fuse`.
-2. The `juicefs mount` process opens that device and attaches itself as the driver for `/mnt/jfs`.
-3. When the backend reads or writes a path under `/mnt/jfs`, the kernel routes the call to the JuiceFS process.
-4. JuiceFS looks up metadata in its database, fetches or stores the file's chunks in object storage, and serves the result back through `/dev/fuse`.
+`BLOB_STORE` picks the store for uploaded and generated files:
 
-The backend never sees any of this, it just reads and writes files under `/mnt/jfs`.
+| `BLOB_STORE` | Files live in | Use it when |
+| --- | --- | --- |
+| `local` (the self-host default) | The `gaia-selfhost_files` volume at `LOCAL_FILE_STORAGE_PATH` | The backend and the worker run on one host and share the volume: `gaia up`, a VPS, Coolify |
+| `cloudinary` | Your Cloudinary account (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`) | The platform attaches a disk to one service only, as on Render and Railway |
 
-### Container settings that make it work
+With `local`, the backend and the worker refuse to start when `LOCAL_FILE_STORAGE_PATH` is not a mounted, writable volume, and the error names the fix, rather than saving files into a container that a restart would wipe. Cloudinary URLs are public to anyone who has the link; local files are served only to the users allowed to see them.
 
-A Docker container is unprivileged by default: it cannot mount filesystems, cannot see host devices, and runs under an AppArmor profile that blocks `mount`. The Compose file grants exactly what FUSE needs and nothing more:
+## Local coding sandbox
 
-```yaml
-gaia-backend:
-  environment:
-    # Where the backend expects the mount. Must match the mountpoint.
-    JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
-    # FUSE filesystems can't be watched with inotify, so artifact
-    # detection tails the JuiceFS access log instead.
-    ARTIFACT_DETECTION_MODE: accesslog
-  cap_add:
-    - SYS_ADMIN # the mount() syscall requires this capability
-  devices:
-    - /dev/fuse:/dev/fuse # pass the FUSE device into the container
-  security_opt:
-    - apparmor:unconfined # lift the default profile that denies mount
-  volumes:
-    - juicefs_cache:/var/cache/juicefs # keep the local chunk cache warm
-```
+GAIA's coding tools (run a command, read, write and edit files) need a sandbox to run in. A self-hosted instance has two options, and runs neither until you choose one:
 
-<AccordionGroup>
-  <Accordion icon="key" title="cap_add: SYS_ADMIN">
-    The `mount(2)` syscall requires the `CAP_SYS_ADMIN` capability, which Docker drops by default. Without it, `juicefs` cannot perform the mount and fails before it starts. This grants only that one capability, not full `privileged` access.
-  </Accordion>
-  <Accordion icon="microchip" title="devices: /dev/fuse">
-    The JuiceFS process opens `/dev/fuse` to talk to the kernel's FUSE module. Containers see no host devices by default, so this passes the device through. Without it you get `fusermount3: cannot open /dev/fuse: No such file or directory`.
-  </Accordion>
-  <Accordion icon="shield" title="security_opt: apparmor:unconfined">
-    On Ubuntu and Debian hosts, Docker applies a default AppArmor profile that denies the `mount` operation even when the container holds `CAP_SYS_ADMIN`. This lifts that profile. On hosts without AppArmor it has no effect.
-  </Accordion>
-  <Accordion icon="database" title="volumes: juicefs_cache">
-    JuiceFS keeps a local disk cache of file chunks so repeat reads don't go back to object storage. Persisting it in a named volume keeps the cache warm across restarts. This affects speed only, not correctness.
-  </Accordion>
-</AccordionGroup>
+| Option | How to turn it on | What it costs you |
+| --- | --- | --- |
+| **E2B** (recommended) | Save an E2B API key in **Settings → Providers & Tools**, or set `E2B_API_KEY` in `apps/api/.env` | An [E2B](https://e2b.dev) account; code never runs on your host |
+| **Local sandbox** | `gaia up --code-sandbox` | Root-equivalent access to your host for the API and worker containers (see below) |
+
+With neither, the coding tools answer with *"code execution is not enabled on this instance"* and name both fixes. Chat, memory, integrations and everything else keep working.
+
+The local sandbox runs each user's code in its own `gaia-sandbox-*` container. To create those containers, `gaia-backend` and `arq_worker` need the host Docker socket, so `--code-sandbox` adds the `docker-compose.sandbox.yml` override, which mounts `/var/run/docker.sock` into both services and adds them to the socket's group (`DOCKER_SOCKET_GID`, which `gaia up` writes to `infra/docker/.env`). The CLI saves the choice, so `gaia start` and `gaia update` keep it. Turn it off again with `gaia up --no-code-sandbox`.
 
 <Warning>
-Avoid `privileged: true` as a shortcut. It grants every capability and device to the container, which is a much larger attack surface. The four scoped settings above are the least-privilege way to enable a single FUSE mount.
+Access to the Docker socket is equivalent to root on the host. With the local sandbox on, anyone who compromises `gaia-backend` or `arq_worker` (for example through a prompt-injected agent that escapes its sandbox) controls the whole machine. Only turn it on for a machine that runs nothing else you care about. An E2B key gives the same coding tools without that exposure.
 </Warning>
 
-### Required configuration
+Each sandbox container sees only its own user's files: it mounts that user's folder of the `gaia-selfhost_workspace` volume at `/workspace` (with their installed skills and GAIA's shared system files read-only on top), never the whole volume. This uses Docker's `volume-subpath` mounts, so the local sandbox needs **Docker Engine 26 or newer**; `gaia start` refuses to start it on an older engine.
 
-The container settings make a mount *possible*. JuiceFS still needs an object store and a metadata database before it will mount. Set these in `apps/api/.env`:
+Each sandbox container is also fenced in, so one user's runaway job cannot take the host down or reach anything it should not:
 
-| Variable | Purpose |
+| Limit | Value |
 | --- | --- |
-| `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY`, `R2_SECRET_KEY` | Cloudflare R2 (or S3-compatible) object store for file data |
-| `JUICEFS_META_URL_TEMPLATE` | Connection URL for the metadata database (a PostgreSQL DB works well) |
+| Memory | 2 GB, no swap (`--memory 2g --memory-swap 2g`) |
+| Processes | 512 (`--pids-limit 512`) |
+| CPU | 2 cores (`--cpus 2`) |
+| Privileges | All Linux capabilities dropped, no privilege escalation (`--cap-drop ALL`, `no-new-privileges`) |
+| Network | Its own `gaia-sandbox` bridge network: internet access for `pip` and `npm` installs, but no route to GAIA's databases on the Compose network, and no traffic between users' sandboxes |
+| Command time | Each command is killed inside the container when its timeout runs out (5 minutes by default, 30 at most) |
 
-Until both are configured, the backend starts normally and chat works, but workspace features (uploads, artifacts, skill installs) degrade and log `JuiceFSUnavailable`. See [Environment Variables](/configuration/environment-variables) for the full list.
+The sandbox network can still reach ports your host publishes to all interfaces, as any internet client could. Sandboxes created before these limits existed are replaced with limited ones on their next use; their files stay in the workspace volume.
+
+Sandboxes created by an older version mounted one `gaia-sandbox-workspace` volume shared by every user. The first `gaia start`, `gaia up` or `gaia update` after upgrading replaces those containers and copies each conversation's files from the old volume into its owner's workspace. Files whose owner cannot be proven (anything outside a conversation folder) stay in the old volume and are listed in the command output and in `_migrations/legacy-sandbox-workspace.json` on the workspace volume. Nothing is deleted: remove the old volume yourself with `docker volume rm gaia-sandbox-workspace` once you have checked the report.
+
+When an E2B key is saved, E2B wins even with the local sandbox on, and the next tool call switches over with no restart. Driving Compose by hand, layer the override yourself:
+
+```bash
+docker compose -f docker-compose.selfhost.yml -f docker-compose.sandbox.yml up -d
+```
 
 ## Docker Commands
+
+All commands assume you're in `infra/docker/`.
 
 ### Starting and Stopping
 
 ```bash
 # Start all services
-docker compose up -d
-
-# Start specific services
-docker compose up -d gaia-backend postgres redis
+docker compose -f docker-compose.selfhost.yml up -d
 
 # Stop all services
-docker compose down
+docker compose -f docker-compose.selfhost.yml down
 
-# Stop and remove volumes (⚠️ deletes data)
-docker compose down -v
+# Stop and remove volumes (deletes ALL data)
+docker compose -f docker-compose.selfhost.yml down -v
 ```
+
+Start the stack with the CLI or with `COMPOSE_PROFILES=proxy` set in `infra/docker/.env` (`gaia up` writes it) — without the `proxy` profile no port is published and GAIA is unreachable from the host.
+
+<Tip>
+To move to a newer version, run `gaia update`, or by hand: `docker compose -f docker-compose.selfhost.yml pull && docker compose -f docker-compose.selfhost.yml up -d`. Data in volumes survives.
+</Tip>
 
 ### Viewing Logs
 
 ```bash
 # View logs for all services
-docker compose logs -f
+docker compose -f docker-compose.selfhost.yml logs -f
 
 # View logs for specific service
-docker compose logs -f gaia-backend
+docker compose -f docker-compose.selfhost.yml logs -f gaia-backend
 
 # View logs with timestamps
-docker compose logs -f -t
+docker compose -f docker-compose.selfhost.yml logs -f -t
 
 # View last 100 lines
-docker compose logs --tail=100 gaia-backend
+docker compose -f docker-compose.selfhost.yml logs --tail=100 gaia-backend
 ```
 
 ### Service Management
 
 ```bash
 # Restart a service
-docker compose restart gaia-backend
+docker compose -f docker-compose.selfhost.yml restart gaia-backend
 
-# Rebuild and restart a service
-docker compose up -d --build gaia-backend
+# Rebuild a service from source and restart it
+docker compose -f docker-compose.selfhost.yml -f docker-compose.build.yml up -d --build gaia-backend
 
 # Execute commands in running container
-docker compose exec gaia-backend bash
-docker compose exec postgres psql -U postgres -d langgraph
+docker compose -f docker-compose.selfhost.yml exec gaia-backend bash
+docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph
 
 # Check service status
-docker compose ps
+docker compose -f docker-compose.selfhost.yml ps
 ```
-
-## Development Mode
-
-For development, use the default `docker-compose.yml`:
-
-```bash
-# Start with hot reload
-docker compose up -d
-
-# View real-time logs
-docker compose logs -f gaia-backend frontend
-```
-
-**Development Features:**
-
-- Hot reload for both frontend and backend
-- Source code mounted as volumes
-- Debug logging enabled
-- Development databases with default credentials
 
 ## Health Checks
 
-All services include health checks. Monitor service health:
+Services include health checks. Monitor them:
 
 ```bash
-# Check health status
-docker compose ps
-
-# Services with health checks:
-# ✓ gaia-backend - HTTP health endpoint
-# ✓ postgres - pg_isready
-# ✓ redis - redis-cli ping
-# ✓ mongo - mongosh ping
-# ✓ chromadb - TCP connection check
-# ✓ rabbitmq - rabbitmqctl status
+docker compose -f docker-compose.selfhost.yml ps
 ```
 
-## Data Persistence
-
-Data is persisted using Docker volumes:
-
-```bash
-# View volumes
-docker volume ls | grep gaia
-
-# Backup a volume
-docker run --rm -v gaia-dev_pgdata:/data -v $(pwd):/backup alpine tar czf /backup/postgres-backup.tar.gz -C /data .
-
-# Restore a volume
-docker run --rm -v gaia-dev_pgdata:/data -v $(pwd):/backup alpine tar xzf /backup/postgres-backup.tar.gz -C /data
-```
-
-**Volume Locations:**
-
-- `pgdata` - PostgreSQL data
-- `mongo_data` - MongoDB data
-- `redis_data` - Redis data
-- `chroma_data` - ChromaDB vectors
-- `rabbitmq_data` - RabbitMQ messages
+- `proxy` — Caddy admin endpoint probe
+- `gaia-backend` — HTTP liveness endpoint (`/health`); `curl http://localhost:3000/health/ready` reports each dependency
+- `gaia-web` — HTTP probe on port 3000
+- `postgres` — `pg_isready`
+- `redis` — `redis-cli ping`
+- `mongo` — TCP connection check
+- `chromadb` — TCP connection check
+- `rabbitmq` — TCP connection check
+- `arq_worker` — liveness probe on the worker process (PID 1 must still be arq)
 
 ## Networking
 
 Services communicate through the `gaia_network` bridge network:
 
 ```bash
-# Inspect network
-docker network inspect gaia-dev_gaia_network
-
-# Services can reach each other by container name:
-# - gaia-backend → postgres:5432
-# - gaia-backend → redis:6379
-# - gaia-backend → chromadb:8000
+# Services reach each other by service name:
+# - proxy → gaia-backend:8000 (/api/v1/*), gaia-web:3000 (everything else)
+# - gaia-backend → mongo:27017, redis:6379, postgres:5432, chromadb:8000, rabbitmq:5672
+# - gaia-web → gaia-backend:8000 (server-side rendering)
 ```
+
+Only the proxy publishes a port. The API and every datastore are unreachable from the host and the internet. To open a database shell, go through Compose:
+
+```bash
+docker compose -f docker-compose.selfhost.yml exec mongo mongosh gaia
+docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph
+```
+
+<Warning>
+PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ run without authentication by default (RabbitMQ on its well-known `guest`/`guest`), and between them they hold every user, session, provider credential, and the instance secret — an exposed port is remote total data loss. Do not add `ports:` for them to the Compose file.
+</Warning>
+
+The backend and worker also get `extra_hosts: host.docker.internal:host-gateway`, which maps `host.docker.internal` to the host machine. This is how containers reach services running directly on your host — most notably a local Ollama at `http://host.docker.internal:11434`.
+
+<Tip>
+On Linux hosts, Ollama listens on `127.0.0.1` by default, which the container cannot reach through the gateway. Start it with `OLLAMA_HOST=0.0.0.0 ollama serve`.
+</Tip>
+
+The backend trusts `X-Forwarded-For` and `X-Forwarded-Proto`. That is safe because port 8000 is never published — the only peers are containers on `gaia_network` — and Caddy replaces any client-sent forwarding headers with the real client address. Rate limits (login/signup: 10/min per IP) therefore key off the true client IP, and session cookies are marked Secure whenever the browser is on HTTPS.
+
+<Warning>
+If you put another proxy in front of Caddy (Cloudflare Tunnel, a load balancer, …), Caddy sees that proxy as the client. Add its address to Caddy's [`trusted_proxies`](https://caddyserver.com/docs/caddyfile/options#trusted-proxies) in `infra/docker/selfhost/Caddyfile`, otherwise every visitor shares one rate-limit bucket.
+</Warning>
+
+### HTTPS on your own domain
+
+```bash
+gaia up --domain gaia.example.com
+```
+
+Caddy obtains and renews a Let's Encrypt certificate for the domain and redirects HTTP to HTTPS. Before running it, point the domain's DNS at the host and make sure ports `80` and `443` are reachable from the internet. `gaia up` sets `HOST` and `FRONTEND_URL` in `apps/api/.env` to `https://gaia.example.com`.
+
+Without the CLI, set `HOST` and `FRONTEND_URL` in `apps/api/.env` to `https://gaia.example.com`, set these in `infra/docker/.env`, and restart the stack:
+
+```bash
+GAIA_DOMAIN=gaia.example.com
+WEB_HOST_PORT=80
+HTTPS_HOST_PORT=443
+```
+
+### Using your own reverse proxy
+
+Platforms that bring their own proxy (Coolify, Traefik, …) don't need the bundled one. Leave the `proxy` profile off and route on the shared network:
+
+| Path        | Target              |
+| ----------- | ------------------- |
+| `/api/v1/*` | `gaia-backend:8000` |
+| `/health/ready` | `gaia-backend:8000` |
+| everything else | `gaia-web:3000` |
+
+Keep SSE responses unbuffered and allow WebSocket upgrades on `/api/v1`. Your proxy must overwrite, not append to, client-sent `X-Forwarded-For`, because the backend trusts it.
+
+## Data Persistence
+
+Data is persisted using Docker volumes, all prefixed `gaia-selfhost_`:
+
+| Volume                  | Contents              |
+| ----------------------- | --------------------- |
+| `gaia-selfhost_pgdata`      | PostgreSQL data   |
+| `gaia-selfhost_mongo_data`  | MongoDB data      |
+| `gaia-selfhost_redis_data`  | Redis data        |
+| `gaia-selfhost_chroma_data` | ChromaDB vectors  |
+| `gaia-selfhost_rabbitmq_data` | RabbitMQ messages |
+| `gaia-selfhost_files` | Uploaded and generated files |
+| `gaia-selfhost_workspace` | Every user's workspace: uploads the agent opens, artifacts, installed skills |
+| `gaia-selfhost_models_cache` | fastembed ONNX model cache (~1.85 GB, safe to delete — re-downloads) |
+| `gaia-selfhost_caddy_data` | Proxy TLS certificates and keys |
+| `gaia-selfhost_caddy_config` | Proxy runtime config |
+
+<Warning>
+Never reclaim disk space with `docker system prune --volumes` (or `docker volume prune`, or a routine `docker compose down -v`): the `--volumes` flag deletes every named volume above — the entire state of your instance, including users, sessions, provider credentials, and chats. Plain `docker system prune` (no flags) leaves volumes alone; it only removes stopped containers, dangling images, and build cache.
+</Warning>
+
+## Backups
+
+<Tip>
+**One-liner via the CLI** — from the repo root, no manual `docker compose` needed:
+
+```bash
+gaia backup                          # dumps MongoDB + PostgreSQL to ./backups/
+gaia backup --output /tmp/my-backups # custom directory
+gaia backup --dry-run                # print the exact docker commands without running them
+
+# Restore — picks the newest backup run in a directory, or pass explicit files:
+gaia restore --from backups          # restores every file of the newest run, e.g. mongo-2026-08-27T09-30-00Z.gz
+gaia restore --mongo backups/mongo-2026-08-27T09-30-00Z.gz --postgres backups/postgres-2026-08-27T09-30-00Z.sql \
+  --env backups/api-env-2026-08-27T09-30-00Z.env
+gaia restore --dry-run --from backups # preview restore commands
+```
+
+`gaia restore` puts `apps/api/.env` back first and restarts the stack afterwards. That file holds `INSTANCE_SECRET`, the key the stored provider credentials are encrypted under: a Mongo dump restored under a different secret leaves them undecryptable. `--from` restores it automatically; with explicit `--mongo`, pass the same run's `api-env-<stamp>.env` with `--env` (without it, the restore warns and keeps this install's current secret).
+
+Each run's files share one UTC stamp (`YYYY-MM-DDTHH-MM-SSZ`), so a second backup the same day never overwrites the first, and a run that fails part-way leaves no files behind.
+
+Equivalent one-copy-paste block for manual use (run from `infra/docker/`); keep the stamp format so `gaia restore --from` finds the files:
+
+```bash
+mkdir -p backups
+STAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
+docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$STAMP.sql
+install -m 600 ../../apps/api/.env backups/api-env-$STAMP.env
+```
+
+See the collapsed sections below for consistent-snapshot variants, ChromaDB/RabbitMQ, and restore steps.
+</Tip>
+
+Four stores hold data you cannot rebuild:
+
+- **MongoDB** — users, sessions, chats, settings, provider credentials (encrypted at rest), and the [instance secret](#day-2-operations). Lose it and every login and stored provider key is gone with it.
+- **PostgreSQL** — agent and conversation state (LangGraph checkpoints).
+- **`gaia-selfhost_files`** — the files users attached and the images GAIA generated.
+- **`gaia-selfhost_workspace`** — each user's workspace and installed skills.
+
+`gaia backup` archives both volumes (as `files-<stamp>.tar.gz` and `workspace-<stamp>.tar.gz`) next to the database dumps, and `gaia restore --from` puts them back. Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content) and RabbitMQ (transient messages) are lower-stakes.
+
+<AccordionGroup>
+  <Accordion title="Advanced: Manual backup & restore details">
+    Give every file of one backup the same stamp, set once in your shell — `gaia restore --from` restores only the files of the newest stamp:
+
+    ```bash
+    STAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+    ```
+
+    ### Back up MongoDB
+
+    The database tools ship inside the mongo container. Dump to a gzip archive and redirect it to a file on the host:
+
+    ```bash
+    mkdir -p backups
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
+    ```
+
+    For a fully consistent snapshot, stop the writers first so nothing changes mid-dump:
+
+    ```bash
+    docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
+    docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
+    ```
+
+    ### Back up PostgreSQL
+
+    `pg_dump` produces a consistent snapshot on its own — safe against a live stack:
+
+    ```bash
+    docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$STAMP.sql
+    ```
+
+    ### Back up ChromaDB
+
+    ChromaDB's vectors are re-embeddable from source content, so this is optional belt-and-braces — it saves you a full re-embedding run after a restore. Stop the writers first so the SQLite store isn't captured mid-write, then tar the data volume from inside the container (GNU tar ships in the image):
+
+    ```bash
+    mkdir -p backups
+    docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
+    docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma_data-$STAMP.tar.gz
+    docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
+    ```
+
+    To restore, untar into a fresh volume before starting the stack:
+
+    ```bash
+    docker volume create gaia-selfhost_chroma_data
+    docker run --rm -v gaia-selfhost_chroma_data:/data -v "$PWD/backups:/backups" alpine \
+      tar xzf /backups/chroma_data-2026-08-24T09-30-00Z.tar.gz -C /data
+    ```
+
+    ### Back up RabbitMQ
+
+    RabbitMQ holds transient messages only — queues and exchanges are re-declared by the backend on boot — so it usually needs no backup. If you've changed topology manually or want queued-job routing preserved across a rebuild, export the broker definitions to stdout:
+
+    ```bash
+    mkdir -p backups
+    docker compose -f docker-compose.selfhost.yml exec rabbitmq rabbitmqctl export_definitions - > backups/rabbitmq-definitions-$(date +%F).json
+    ```
+
+    Definitions capture topology and users (including password hashes) but **not** message contents — queued messages are lost with the volume. Treat an export like a credential file.
+
+    ### Restore MongoDB
+
+    `--drop` replaces existing collections so you don't merge stale and restored state; `-T` disables the pseudo-terminal so the redirected archive reaches `mongorestore`'s stdin:
+
+    ```bash
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-2026-08-24T09-30-00Z.gz
+    ```
+
+    Restart the app containers afterwards so sessions re-issue against the restored data.
+
+    ### Restore PostgreSQL
+
+    Start from an empty schema so the restore doesn't collide with existing tables:
+
+    ```bash
+    docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+    cat backups/postgres-2026-08-24T09-30-00Z.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+A Mongo backup decrypts your provider credentials — it contains the instance secret that protects them. Store backups with the same care as `.env` files: off-host, access-controlled, never in a public bucket.
+</Warning>
+
+## Day-2 Operations
+
+### Memory sizing
+
+The stack boots in less, but steady-state use is what sets the 8 GB minimum: the local embedding model (fastembed ONNX) loads lazily into **both** `gaia-backend` and `arq_worker` at roughly 1.8 GB resident each — two independent copies, since each process keeps its own singleton — on top of Postgres, MongoDB, Redis, ChromaDB, and RabbitMQ. Plan for a realistic floor of **~8 GB RAM** once memory features are in use; on smaller hosts the failure mode is OOM kills around the first embedding load, not at boot.
+
+### Upgrades
+
+```bash
+gaia update
+```
+
+It moves the install to the release your CLI ships: pulls that release's images first (a missing tag changes nothing), checks out the matching `cli-v<version>` compose files, pins `GAIA_VERSION=v<version>` in `infra/docker/.env`, restarts, and prints the old and new version with the commits in between. It never runs `down -v` and keeps your `.env` files. For a newer release, update the CLI first, then rerun it. By hand, from the repo root:
+
+```bash
+git fetch origin tag cli-v0.7.0 && git checkout --detach cli-v0.7.0
+# set GAIA_VERSION=v0.7.0 in infra/docker/.env, then from infra/docker/:
+docker compose -f docker-compose.selfhost.yml pull
+docker compose -f docker-compose.selfhost.yml up -d
+```
+
+Contributors running their own checkout use `gaia update --git`, which pulls the current branch and rebuilds the images from source.
+
+Named volumes survive the upgrade. After upgrading, watch for vector-index failures: an embedding-model bump makes previously stored vectors stale, and indexing failures are logged (and flagged for later reindexing) rather than taking writes down:
+
+```bash
+docker compose -f docker-compose.selfhost.yml logs -f gaia-backend arq_worker | grep -Ei 'index_failed|memory_embedding_failed'
+```
+
+### The instance secret
+
+On first boot GAIA generates a root secret and persists it inside MongoDB (the `instance_settings` collection). Everything sensitive derives from it: local session tokens and the encryption keys for stored provider credentials. **If that Mongo data is lost, every session is invalidated and every stored provider credential becomes undecryptable** — there is no recovery without the secret.
+
+`INSTANCE_SECRET` in `apps/api/.env` overrides the stored value unconditionally. Treat it as a break-glass override:
+
+- If you ever plan to manage the secret through the environment, pin `INSTANCE_SECRET` **before** storing any provider credentials — the value must match whatever encrypted them.
+- Never set a fresh random value on an instance whose credentials were encrypted under a different secret: that orphans every ciphertext.
+- The only copy of an auto-generated secret lives in your MongoDB backups. Keep [backups](#backups) current and protected before any maintenance that could touch the database.
+
+<AccordionGroup>
+  <Accordion icon="key" title="Advanced: Manual environment setup">
+    `gaia up` writes everything for you, but you can also configure by hand. Create `apps/api/.env`:
+
+    ```bash
+    ENV=selfhost
+    AUTH_MODE=local
+    # Infra — Compose provides these when you use the bundled compose file,
+    # but a hand-rolled setup must supply them:
+    MONGO_DB=mongodb://mongo:27017/gaia
+    REDIS_URL=redis://redis:6379/0
+    POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/langgraph
+    CHROMADB_HOST=chromadb
+    CHROMADB_PORT=8000
+    RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    # Machine secrets — generate once, keep stable:
+    AGENT_SECRET=$(openssl rand -hex 32)
+    BOT_SESSION_TOKEN_SECRET=$(openssl rand -hex 32)
+    EMAIL_UNSUBSCRIBE_SECRET=$(openssl rand -hex 32)
+    # Optional: pin INSTANCE_SECRET before storing any provider keys (see above)
+    # INSTANCE_SECRET=$(openssl rand -hex 32)
+    # Optional integrations — leave unset to disable that lane (see Self-Host vs Cloud):
+    # OPENROUTER_API_KEY=...
+    # LIVEKIT_URL=... LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=...
+    ```
+
+    Secrets must stay stable across restarts — rotating `INSTANCE_SECRET` or the machine secrets after data exists invalidates sessions and provider keys. See [Environment Variables](/configuration/environment-variables) for the full list.
+
+    Start the stack after writing the file:
+
+    ```bash
+    cd infra/docker && docker compose -f docker-compose.selfhost.yml --profile proxy up -d
+    ```
+
+    `gaia doctor` validates the result and prints a fix for any gap.
+  </Accordion>
+</AccordionGroup>
 
 ## Troubleshooting
 
 <AccordionGroup>
   <Accordion icon="triangle-exclamation" title="Logs show JuiceFSUnavailable">
-    The backend can't reach the workspace mount. Check, in order:
-    - **Object store and metadata are configured**: `R2_*` and `JUICEFS_META_URL_TEMPLATE` must be set in `apps/api/.env`. Without them JuiceFS never mounts.
-    - **FUSE settings are present**, confirm `cap_add: SYS_ADMIN`, `devices: /dev/fuse`, and `security_opt: apparmor:unconfined` are on `gaia-backend` and `arq_worker`.
-    - **The mount came up**, run `docker compose exec gaia-backend mountpoint /mnt/jfs`. A non-zero result means the mount failed; check `docker compose logs gaia-backend` for the JuiceFS error.
+    The backend can't see the workspace volume. Confirm `gaia-backend` and `arq_worker` both mount `workspace:/mnt/jfs` in `docker-compose.selfhost.yml`, and check it with `docker compose -f docker-compose.selfhost.yml exec gaia-backend mountpoint /mnt/jfs`. A compose file from before local storage lacks the mount: `gaia update` brings it in.
   </Accordion>
-  <Accordion icon="microchip" title="fusermount3: cannot open /dev/fuse">
-    The FUSE device isn't reaching the container. Confirm the `devices: /dev/fuse:/dev/fuse` mapping is present. On a Linux host, verify the device exists with `ls -l /dev/fuse` and load the module if missing: `sudo modprobe fuse`. On macOS and Windows, make sure Docker Desktop is running (it provides the device from its Linux VM).
+  <Accordion icon="plug" title="Ollama connection test fails">
+    The backend reaches Ollama through `http://host.docker.internal:11434`, which the Compose file wires via `extra_hosts: host.docker.internal:host-gateway`. If the test fails: confirm Ollama is running (`curl http://localhost:11434/api/tags` on the host), and on Linux start it with `OLLAMA_HOST=0.0.0.0 ollama serve` so it accepts connections from the Docker gateway.
   </Accordion>
-  <Accordion icon="lock" title="Mount fails with permission denied">
-    The container holds the capability but the host's security profile is blocking the mount. Confirm `security_opt: apparmor:unconfined` is set. On SELinux hosts, you may also need to allow the mount in your local policy.
+  <Accordion icon="stethoscope" title="Something else is broken">
+    Run `gaia doctor` — it walks the stack (Docker daemon, containers, API health, each dependency from `/health/ready`, setup status, web reachability, disk and memory headroom, release drift) and prints a named fix for each problem it finds.
   </Accordion>
 </AccordionGroup>
 
-## Alternative: CLI Setup
+## Development Mode
 
-For a simplified setup experience with automatic configuration, see the [CLI Setup Guide](/self-hosting/cli-setup). The CLI handles all the Docker commands, environment setup, and health checks automatically.
+This page covers the self-host stack. If you're contributing code and want hot reload, source mounts, and the dev toolchain, use developer mode instead — see [Development Setup](/developers/development-setup).
 
 ## Next Steps
 
@@ -431,6 +676,6 @@ For a simplified setup experience with automatic configuration, see the [CLI Set
     icon="gear"
     href="/configuration/environment-variables"
   >
-    Configure your API keys and settings
+    Optional integrations — everything required for boot is generated automatically
   </Card>
 </CardGroup>

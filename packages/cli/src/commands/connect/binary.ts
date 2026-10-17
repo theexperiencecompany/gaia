@@ -61,7 +61,7 @@ export async function ensureConnectBinary(
   if (await exists(target)) return target;
 
   const assetName = resolveAssetName(platform, arch);
-  console.info(`Downloading gaia-connect (${CONNECT_RELEASE_TAG})...`);
+  console.info(`Downloading gaia-connect (${CONNECT_RELEASE_TAG})…`);
 
   const [binary, checksums] = await Promise.all([
     fetchBytes(assetUrl(assetName)),

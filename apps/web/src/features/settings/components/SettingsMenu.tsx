@@ -34,7 +34,9 @@ import {
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
 import { useReleases } from "@/features/whats-new/hooks/useReleases";
@@ -44,7 +46,11 @@ import {
 } from "@/hooks/ui/usePlatformDetection";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
+import {
+  isSettingsSectionAllowed,
+  settingsPageItems,
+  socialMediaItems,
+} from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
 import { NestedMenuTooltip } from "./NestedMenuTooltip";
 
@@ -219,6 +225,8 @@ interface MenuItem {
   key: string;
   label: string;
   icon?: React.ComponentType<{ className?: string; color?: string }>;
+  /** Pre-rendered brand mark for entries without an @icons glyph (e.g. favicons). */
+  iconElement?: ReactNode;
   href?: string;
   action?: () => void;
   color?: "danger" | "default";
@@ -252,6 +260,11 @@ export default function SettingsMenu({
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
   const { isPaid, isUnknown } = useIsPaid();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
+  // Self-host instances have no billing — the entries make no sense there.
+  const deployment = useDeployment();
+  const billingHidden = !deployment.bills;
+  const selfHosted = deployment.kind === "selfhost";
+  const { role } = useCurrentUser();
   const { unseen: unseenReleases } = useReleases();
 
   const whatsNewMenu = useNestedMenu();
@@ -269,6 +282,14 @@ export default function SettingsMenu({
 
   const { currentPlatform, desktopPlatforms } = usePlatformDetection();
   const { openShortcutsModal } = useKeyboardShortcuts();
+
+  // Entries surfaced directly in this menu; Usage drops out on self-host.
+  const quickSettingsKeys = new Set([
+    "memory",
+    "linked-accounts",
+    "providers",
+    ...(billingHidden ? [] : ["usage"]),
+  ]);
 
   const openSupportModal = (type: string) => {
     setSupportModalType(type);
@@ -293,8 +314,9 @@ export default function SettingsMenu({
 
   const menuSections = [
     // Never show the upgrade item while the plan is unknown — a cold-cache
-    // paying user would otherwise see an "Upgrade to Pro" entry on reload.
-    ...(isUnknown || isPaid
+    // paying user would otherwise see an "Upgrade to Pro" entry on reload —
+    // nor on self-host, where billing does not exist at all.
+    ...(isUnknown || isPaid || billingHidden
       ? []
       : [
           {
@@ -322,8 +344,10 @@ export default function SettingsMenu({
       title: undefined,
       showDivider: true,
       items: [
-        ...settingsPageItems.filter((item) =>
-          ["memory", "linked-accounts", "usage"].includes(item.key),
+        ...settingsPageItems.filter(
+          (item) =>
+            quickSettingsKeys.has(item.key) &&
+            isSettingsSectionAllowed(item.key, role),
         ),
         {
           key: "keyboard_shortcuts",
@@ -344,16 +368,21 @@ export default function SettingsMenu({
       title: undefined,
       showDivider: false,
       items: [
-        {
-          key: "whats-new",
-          label: "What's new",
-          icon: PackageOpenIcon,
-          hasSubmenu: true,
-          badge:
-            unseenReleases.length > 0 ? (
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            ) : undefined,
-        },
+        // GAIA's release notes announce the hosted product.
+        ...(selfHosted
+          ? []
+          : [
+              {
+                key: "whats-new",
+                label: "What's new",
+                icon: PackageOpenIcon,
+                hasSubmenu: true,
+                badge:
+                  unseenReleases.length > 0 ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  ) : undefined,
+              },
+            ]),
         {
           key: "download",
           label: `Download for ${currentPlatform.isMobile ? "Desktop" : currentPlatform.shortName.split(" ")[0]}`,
@@ -463,9 +492,10 @@ export default function SettingsMenu({
                     }
                     style={iconColor ? { color: iconColor } : undefined}
                     startContent={
-                      Icon && (
+                      item.iconElement ??
+                      (Icon && (
                         <Icon className={ICON_CLASSES} color={iconColor} />
-                      )
+                      ))
                     }
                     classNames={item.customClassNames}
                   >

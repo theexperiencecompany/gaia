@@ -28,6 +28,7 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 from e2b import AsyncSandbox
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.config.deployment import DeploymentKind
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
@@ -39,9 +40,23 @@ from app.constants.sandbox import (
 )
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
+from app.decorators.rate_limiting import RateLimitDetail
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolve as resolve_e2b_config,
+)
 from app.services.sandbox.artifact_watcher import start_watcher_for
-from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimitError
+from app.services.sandbox.errors import (
+    CodeExecutionDisabledError,
+    SandboxAcquisitionError,
+    SandboxRateLimitError,
+)
+from app.services.sandbox.local_sandbox import (
+    LocalDockerSandbox,
+    get_local_sandbox,
+    pop_local_sandbox,
+)
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 from app.services.storage import (
@@ -63,6 +78,63 @@ MOUNT_SCRIPT_TIMEOUT_SECONDS = 120
 # Graceful JuiceFS unmount before a hard kill — short, best-effort.
 JFS_UNMOUNT_TIMEOUT_SECONDS = 15
 SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
+
+
+async def _resolved_e2b_api_key() -> str | None:
+    """Return the E2B key from the credential store, falling back to the environment.
+
+    Single seam for every E2B routing decision here: a key saved in Settings
+    wins over the env var without a restart, and resolutions cache for 60s.
+    """
+    config: ProviderConfig | None = await resolve_e2b_config("e2b")
+    return config.api_key if config else None
+
+
+async def use_local_sandbox() -> bool:
+    """Report whether coding sandboxes should be local Docker-exec containers.
+
+    Self-host without a resolvable E2B credential is the only mode that routes
+    here, and only when the operator opted in; otherwise CodeExecutionDisabledError.
+    Checked per acquire so saving an E2B key switches backends with no restart.
+    """
+    if settings.deployment.kind is not DeploymentKind.SELFHOST:
+        return False
+    if await _resolved_e2b_api_key() is not None:
+        return False
+    if not settings.deployment.local_code_sandbox:
+        raise CodeExecutionDisabledError
+    return True
+
+
+@contextlib.asynccontextmanager
+async def _acquire_local_sandbox(user_id: str) -> AsyncIterator[LocalDockerSandbox]:
+    """Yield the local Docker-exec sandbox with the E2B path acquire guarantees.
+
+    Per-user serialized with death-eviction of dead containers; JuiceFS mounts
+    and pause scheduling are absent because a local volume needs neither.
+    """
+    pool = get_sandbox_pool()
+    lock = await pool.get_lock(user_id)
+    await lock.acquire()
+    try:
+        sbx = get_local_sandbox(user_id)
+        async with fs_timer(FsOps.SBX_ACQUIRE):
+            await sbx.ensure_started()
+        _record(operation="acquire", source="local_docker", sandbox_id=sbx.sandbox_id)
+        try:
+            yield sbx
+        except Exception:
+            # Same contract as the E2B branch below: if a tool op failed AND
+            # the container died underneath it, evict so the next acquire
+            # doesn't hand out the same corpse.
+            if not await sbx.is_running():
+                _record(health_ok=False)
+                pop_local_sandbox(user_id)
+                with contextlib.suppress(Exception):
+                    await sbx.kill()
+            raise
+    finally:
+        lock.release()
 
 
 def _now() -> datetime:
@@ -139,7 +211,11 @@ async def _enforce_creation_limit(user_id: str) -> None:
         # RateLimitExceededException always sets it to a dict at runtime — cast
         # to Any so the isinstance check isn't (incorrectly) statically unreachable.
         raw_detail = cast(Any, e.detail)
-        detail: dict[str, Any] = raw_detail if isinstance(raw_detail, dict) else {}
+        detail: RateLimitDetail = (
+            cast(RateLimitDetail, raw_detail)
+            if isinstance(raw_detail, dict)
+            else cast(RateLimitDetail, {})
+        )
         _record(
             rate_limited=True,
             rate_limit_reset=detail.get("reset_time"),
@@ -169,7 +245,8 @@ async def _enforce_creation_limit(user_id: str) -> None:
 
 async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
     """Provision a new E2B sandbox for the user, run mount script, return handle."""
-    if not settings.E2B_API_KEY:
+    e2b_api_key = await _resolved_e2b_api_key()
+    if not e2b_api_key:
         raise SandboxAcquisitionError("E2B_API_KEY is not configured")
     if not settings.E2B_TEMPLATE_ID:
         raise SandboxAcquisitionError("E2B_TEMPLATE_ID is not configured")
@@ -191,6 +268,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
             template=settings.E2B_TEMPLATE_ID,
             timeout=SANDBOX_LIFETIME_SECONDS,
             metadata={"user_id": user_id, "shard_id": str(shard_id)},
+            api_key=e2b_api_key,
         )
     sandbox_id = getattr(sbx, "sandbox_id", None)
     _record(
@@ -329,10 +407,13 @@ async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
     server-side lifetime; bounded so a hung E2B control-plane call falls
     through to a fresh create instead of stalling the agent.
     """
+    e2b_api_key = await _resolved_e2b_api_key()
     async with fs_timer(FsOps.SBX_CONNECT_RESUME):
         try:
             return await asyncio.wait_for(
-                AsyncSandbox.connect(sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS),
+                AsyncSandbox.connect(
+                    sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS, api_key=e2b_api_key
+                ),
                 timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS,
             )
         except Exception as e:
@@ -684,13 +765,18 @@ async def pause_sandbox_for_user(user_id: str) -> bool:
 
 @contextlib.asynccontextmanager
 async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
-    """Context manager that yields a live AsyncSandbox for the user.
+    """Yield a live sandbox for the user, serialized per user with debounced pause.
 
-    Serializes against concurrent calls for the same user. Schedules a
-    debounced pause when the last in-flight call finishes.
+    On self-host without an E2B key this yields the local Docker-exec backend
+    and bypasses the E2B pool machinery entirely.
     """
     if not user_id:
         raise SandboxAcquisitionError("user_id is required")
+
+    if await use_local_sandbox():
+        async with _acquire_local_sandbox(user_id) as sbx:
+            yield sbx
+        return
 
     pool = get_sandbox_pool()
     async with pool.distributed_lock(user_id):

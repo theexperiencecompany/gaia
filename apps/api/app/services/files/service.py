@@ -1,7 +1,7 @@
 """FileService — the single entry point for user-uploaded-file operations.
 
 Each public method orchestrates the concern-specific helpers (store, sandbox,
-summaries) into one readable flow. Durable storage (Cloudinary) and metadata
+summaries) into one readable flow. Durable storage (the blob store) and metadata
 (Mongo) are authoritative; vector indexing and the sandbox mirror are best-effort.
 """
 
@@ -11,25 +11,23 @@ from datetime import UTC, datetime
 import uuid
 
 from fastapi import HTTPException, UploadFile
-import httpx
 
 from app.agents.workspace.paths import safe_upload_filename
 from app.constants.cache import FILES_CACHE_PATTERN
-from app.constants.files import FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS
+from app.constants.files import BlobKind
 from app.db.repositories.files import file_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.files_models import FileDocument, FileUpdate, PageWiseSummary
 from app.models.message_models import FileData as MessageFileData
 from app.schemas.file import FileDeletedResponse, UpdateFileRequest
 from app.services.analytics_service import capture
+from app.services.blob_store import blob_store
 from app.services.files.sandbox import mirror_upload, write_summary_sidecar
 from app.services.files.store import (
     delete_from_index,
-    destroy_in_cloudinary,
     index_file,
     insert_metadata,
     reindex_file,
-    upload_to_cloudinary,
 )
 from app.services.files.summaries import (
     process_summary,
@@ -134,10 +132,12 @@ class FileService:
     ) -> FileDocument:
         """Validate, store, summarize, and mirror an upload into the session.
 
-        Cloudinary (blob) + Mongo (metadata) always persist. The summary, the
+        The blob store + Mongo (metadata) always persist. The summary, the
         vector index, and the sandbox copy + .summary.md sidecar are layered on
         top; the latter two need JuiceFS and degrade gracefully without it.
         """
+        store = blob_store()
+        store.ensure_ready()
         content, content_type, resource_type = await validate_upload(
             file=file, content_length=content_length
         )
@@ -159,7 +159,14 @@ class FileService:
         try:
             # 1. Durable blob + AI content summary, in parallel.
             blob_url, generated_summary = await asyncio.gather(
-                upload_to_cloudinary(upload.content, resource_type, upload.public_id),
+                store.put(
+                    user_id,
+                    upload.public_id,
+                    upload.content,
+                    resource_type=resource_type,
+                    kind=BlobKind.CHAT_UPLOAD,
+                    content_type=content_type,
+                ),
                 generate_file_summary(
                     file_content=upload.content,
                     content_type=content_type,
@@ -269,7 +276,7 @@ class FileService:
     @staticmethod
     @CacheInvalidator(key_patterns=[FILES_CACHE_PATTERN])
     async def delete(file_id: str, user_id: str | None) -> FileDeletedResponse:
-        """Delete a file from Mongo, Cloudinary, and the vector index."""
+        """Delete a file from Mongo, the blob store, and the vector index."""
         log.info("[files] delete start file_id", file_id=file_id)
         if user_id is None:
             raise HTTPException(status_code=400, detail="User ID is required")
@@ -285,7 +292,7 @@ class FileService:
 
         public_id = file_data.public_id
         if public_id:
-            destroy_in_cloudinary(public_id)
+            await blob_store().delete(user_id, public_id)
         else:
             log.warning(
                 "[files] delete: file has no public_id; skipping blob delete",
@@ -376,7 +383,7 @@ class FileService:
     ) -> None:
         """Associate pre-conversation uploads with a freshly created session.
 
-        Files attached before a conversation existed landed in Cloudinary only.
+        Files attached before a conversation existed landed in the blob store only.
         Once the session exists, mirror each into user-uploaded/, write its
         summary sidecar, and stamp conversation_id on its Mongo record so
         conversation-scoped search can find it.
@@ -389,13 +396,9 @@ class FileService:
             file_data_count=len(file_data),
             conversation_id=conversation_id,
         )
-        async with httpx.AsyncClient(timeout=FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS) as client:
-            await asyncio.gather(
-                *(
-                    FileService._seed_one(client, file, user_id, conversation_id)
-                    for file in file_data
-                )
-            )
+        await asyncio.gather(
+            *(FileService._seed_one(file, user_id, conversation_id) for file in file_data)
+        )
 
     @staticmethod
     async def _mirror_to_session(
@@ -446,12 +449,11 @@ class FileService:
 
     @staticmethod
     async def _seed_one(
-        client: httpx.AsyncClient,
         file: MessageFileData,
         user_id: str,
         conversation_id: str,
     ) -> None:
-        """Download one Cloudinary-hosted file and associate it with the conversation."""
+        """Copy one of the user's stored uploads into the conversation and associate it."""
         try:
             safe_name = safe_upload_filename(file.filename)
         except ValueError:
@@ -463,9 +465,19 @@ class FileService:
             )
             return
 
+        # The stored document, not the request payload, says where the blob lives.
+        document = await file_repository.get_by_file_id(file.fileId, user_id)
+        if not document or not document.public_id:
+            log.warning(
+                "[files] seed: no stored upload for file id",
+                file_id=file.fileId,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+            return
+
         try:
-            resp = await client.get(file.url)
-            resp.raise_for_status()
+            content = await blob_store().read(user_id, document.public_id, document.url)
         except Exception as e:
             log.warning(
                 "[files] seed: download failed for",
@@ -481,13 +493,9 @@ class FileService:
             user_id=user_id,
             conversation_id=conversation_id,
             safe_filename=safe_name,
-            content=resp.content,
-            content_type=file.type or "application/octet-stream",
+            content=content,
+            content_type=document.type or file.type or "application/octet-stream",
         )
-
-        document = await file_repository.get_by_file_id(file.fileId, user_id)
-        if not document:
-            return
 
         if document.description or document.page_wise_summary:
             await write_summary_sidecar(

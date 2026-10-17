@@ -82,14 +82,14 @@ node.corepack = true
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks."setup:env"]
-description = "Check if environment files exist for all apps"
+description = "Create missing environment files for all apps from their examples (never overwrites)"
 run = '''
 echo "Checking environment files..."
-missing=""
 
-# API (Manual check)
+# API (Auto-copy; the template carries no secrets — fill in keys or use Infisical)
 if [ ! -f "apps/api/.env" ]; then
-    missing="$missing\n  cp apps/api/.env.example apps/api/.env"
+    echo "Creating apps/api/.env from example (add your keys, or use Infisical)"
+    cp apps/api/.env.example apps/api/.env
 fi
 
 # Web (Auto-copy)
@@ -104,13 +104,6 @@ if [ ! -f "apps/mobile/.env" ] && [ -f "apps/mobile/.env.example" ]; then
     cp apps/mobile/.env.example apps/mobile/.env
 fi
 
-if [ -n "$missing" ]; then
-    echo "ERROR: Missing API environment file!"
-    echo ""
-    echo "Please copy the example file (contains secrets):"
-    echo -e "$missing"
-    exit 1
-fi
 echo "Environment files ready"
 '''
 
@@ -141,6 +134,49 @@ echo "Installing voice-agent dependencies..."
 echo "All dependencies installed"
 '''
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SELF-HOST BOOTSTRAP (`mise bootstrap`)
+# ─────────────────────────────────────────────────────────────────────────────
+# Declarative machine setup for running GAIA as a self-hosted instance from a
+# checkout. Division of labor with the `gaia` CLI:
+#
+# - mise owns the MACHINE: host packages (Docker, git), the Docker service,
+#   the repo checkout, and the toolchain in [tools]. All of it converges —
+#   `status --missing` tells you what would change, `--dry-run` prints how.
+# - `gaia up` owns the APP journey: env files, secrets, ports, compose start,
+#   readiness wait, and the browser wizard pointer. It stays the zero-checkout
+#   path (`npm i -g @heygaia/cli && gaia up`) because a self-host box cannot
+#   be assumed to have mise.
+#
+# So [tasks.bootstrap] delegates app setup to the CLI instead of redeclaring
+# it: one writer for env content, no drift. `mise bootstrap` = packages,
+# service, repo, toolchain, then the CLI non-interactive `up --yes`.
+[bootstrap.packages]
+"apt:docker.io" = "latest"
+"apt:docker-compose-v2" = "latest"
+"apt:git" = "latest"
+"apt:curl" = "latest"
+"brew:docker" = { os = "macos" }
+"brew:git" = { os = "macos" }
+"brew:curl" = { os = "macos" }
+
+[bootstrap.services.docker]
+state = "running"
+enabled = true
+
+[bootstrap.repos]
+"~/gaia" = { url = "https://github.com/theexperiencecompany/gaia.git" }
+
+[tasks.bootstrap]
+description = "Self-host GAIA on this machine: packages, repo, toolchain, then `gaia up --yes`"
+run = """
+set -e
+pnpm install --frozen-lockfile --filter "@heygaia/cli..."
+pnpm --filter @heygaia/cli build
+node packages/cli/dist/index.js up --yes
+echo ""
+echo "GAIA is starting. Finish setup in your browser at the /setup URL above."
+"""
 [tasks.setup]
 description = "Complete project setup for all apps (API, Web, Desktop, Mobile, Voice)"
 depends = ["setup:env", "setup:deps", "setup:voice-agent"]
@@ -483,6 +519,10 @@ run = "cd apps/bots && pnpm vitest run"
 [tasks."test:cli"]
 description = "Run CLI tests"
 run = "cd packages/cli && pnpm vitest run"
+
+[tasks."cli:schema"]
+description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"
+run = "node scripts/ci/checks.mjs cli-config-schema --write"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LINTING & FORMATTING

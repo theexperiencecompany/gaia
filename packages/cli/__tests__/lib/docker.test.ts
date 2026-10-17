@@ -5,7 +5,12 @@ vi.mock("execa", () => ({
   execa: vi.fn(),
 }));
 
-import { getContainerStatuses, isDockerRunning } from "../../src/lib/docker.js";
+import {
+  assertEngineSupportsCodeSandbox,
+  dockerVolumeExists,
+  getContainerStatuses,
+  getProjectPublishedPorts,
+} from "../../src/lib/docker.js";
 
 const mockedExeca = vi.mocked(execa);
 
@@ -17,166 +22,88 @@ beforeEach(() => {
 // getContainerStatuses
 // ---------------------------------------------------------------------------
 describe("getContainerStatuses", () => {
-  const CONTAINER_NAMES = [
-    "gaia-backend",
-    "gaia-web",
-    "chromadb",
-    "postgres",
-    "redis",
-    "mongo",
-    "rabbitmq",
-    "arq_worker",
-  ];
-
-  it("parses batch docker inspect output correctly", async () => {
-    const inspectOutput = [
-      "/gaia-backend|running|none",
-      "/gaia-web|running|healthy",
-      "/chromadb|running|none",
-      "/postgres|running|healthy",
-      "/redis|running|none",
-      "/mongo|running|none",
-      "/rabbitmq|exited|none",
-      "/arq_worker|running|none",
-    ].join("\n");
-
+  it("lists the project's containers by compose service, with health", async () => {
     mockedExeca.mockResolvedValueOnce({
-      stdout: inspectOutput,
+      stdout: [
+        "gaia-backend|running|Up 3 minutes (healthy)",
+        "rabbitmq|exited|Exited (0) 2 minutes ago",
+        "arq_worker|running|Up 3 minutes (health: starting)",
+        "proxy|running|Up 1 minute",
+      ].join("\n"),
     } as Awaited<ResultPromise>);
 
-    const result = await getContainerStatuses();
+    const result = await getContainerStatuses("gaia-selfhost");
 
-    expect(result).toHaveLength(8);
     expect(mockedExeca).toHaveBeenCalledWith("docker", [
-      "inspect",
+      "ps",
+      "-a",
+      "--filter",
+      "label=com.docker.compose.project=gaia-selfhost",
       "--format",
-      "{{.Name}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",
-      ...CONTAINER_NAMES,
+      '{{.Label "com.docker.compose.service"}}|{{.State}}|{{.Status}}',
     ]);
-  });
-
-  it("maps running/stopped/not_found statuses", async () => {
-    const inspectOutput = [
-      "/gaia-backend|running|none",
-      "/gaia-web|exited|none",
-      "/chromadb|running|none",
-      "/postgres|running|none",
-      "/redis|running|none",
-      "/mongo|running|none",
-      "/rabbitmq|running|none",
-      // arq_worker missing from output
-    ].join("\n");
-
-    mockedExeca.mockResolvedValueOnce({
-      stdout: inspectOutput,
-    } as Awaited<ResultPromise>);
-
-    const result = await getContainerStatuses();
-
-    const backend = result.find((c) => c.name === "gaia-backend");
-    const web = result.find((c) => c.name === "gaia-web");
-    const worker = result.find((c) => c.name === "arq_worker");
-
-    expect(backend?.status).toBe("running");
-    expect(web?.status).toBe("stopped");
-    expect(worker?.status).toBe("not_found");
-  });
-
-  it("includes health status when present", async () => {
-    const inspectOutput = [
-      "/gaia-backend|running|none",
-      "/gaia-web|running|healthy",
-      "/chromadb|running|unhealthy",
-      "/postgres|running|none",
-      "/redis|running|none",
-      "/mongo|running|none",
-      "/rabbitmq|running|none",
-      "/arq_worker|running|none",
-    ].join("\n");
-
-    mockedExeca.mockResolvedValueOnce({
-      stdout: inspectOutput,
-    } as Awaited<ResultPromise>);
-
-    const result = await getContainerStatuses();
-
-    const web = result.find((c) => c.name === "gaia-web");
-    const chromadb = result.find((c) => c.name === "chromadb");
-    const backend = result.find((c) => c.name === "gaia-backend");
-
-    expect(web?.health).toBe("healthy");
-    expect(chromadb?.health).toBe("unhealthy");
-    expect(backend?.health).toBeUndefined();
-  });
-
-  it("falls back to individual inspects on batch failure", async () => {
-    // Batch call fails
-    mockedExeca.mockRejectedValueOnce(new Error("batch inspect failed"));
-
-    // Individual calls — make all succeed except one
-    for (const name of CONTAINER_NAMES) {
-      if (name === "arq_worker") {
-        mockedExeca.mockRejectedValueOnce(new Error("not found"));
-      } else {
-        mockedExeca.mockResolvedValueOnce({
-          stdout: "running|none",
-        } as Awaited<ResultPromise>);
-      }
-    }
-
-    const result = await getContainerStatuses();
-
-    expect(result).toHaveLength(8);
-
-    // The first call is the batch that fails, then 8 individual calls
-    expect(mockedExeca).toHaveBeenCalledTimes(9);
-
-    const worker = result.find((c) => c.name === "arq_worker");
-    expect(worker?.status).toBe("not_found");
-
-    const backend = result.find((c) => c.name === "gaia-backend");
-    expect(backend?.status).toBe("running");
-  });
-
-  it("returns not_found for containers that don't exist (fallback path)", async () => {
-    // Batch call fails
-    mockedExeca.mockRejectedValueOnce(new Error("batch inspect failed"));
-
-    // All individual calls fail
-    for (const _ of CONTAINER_NAMES) {
-      mockedExeca.mockRejectedValueOnce(new Error("not found"));
-    }
-
-    const result = await getContainerStatuses();
-
-    for (const container of result) {
-      expect(container.status).toBe("not_found");
-    }
+    expect(result).toEqual([
+      { name: "gaia-backend", status: "running", health: "healthy" },
+      { name: "rabbitmq", status: "stopped", health: undefined },
+      { name: "arq_worker", status: "running", health: "health: starting" },
+      { name: "proxy", status: "running", health: undefined },
+    ]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// isDockerRunning
+// getProjectPublishedPorts
 // ---------------------------------------------------------------------------
-describe("isDockerRunning", () => {
-  it("returns true when docker info succeeds", async () => {
+describe("getProjectPublishedPorts", () => {
+  it("collects host ports from every published mapping", async () => {
     mockedExeca.mockResolvedValueOnce({
-      stdout: "some docker info",
+      stdout: [
+        "0.0.0.0:3000->80/tcp, [::]:3000->80/tcp, 0.0.0.0:3443->443/tcp",
+        "8000/tcp",
+      ].join("\n"),
     } as Awaited<ResultPromise>);
 
-    const result = await isDockerRunning();
+    const ports = await getProjectPublishedPorts("gaia-selfhost");
 
-    expect(result).toBe(true);
-    expect(mockedExeca).toHaveBeenCalledWith("docker", ["info"]);
+    expect([...ports].sort()).toEqual([3000, 3443]);
+  });
+});
+
+describe("assertEngineSupportsCodeSandbox", () => {
+  const engine = (stdout: string) =>
+    mockedExeca.mockResolvedValueOnce({ stdout } as Awaited<ResultPromise>);
+
+  it.each(["26.0.0", "29.1.3"])("accepts Docker Engine %s", async (v) => {
+    engine(v);
+    await expect(assertEngineSupportsCodeSandbox()).resolves.toBeUndefined();
   });
 
-  it("returns false when docker info fails", async () => {
-    mockedExeca.mockRejectedValueOnce(
-      new Error("Cannot connect to Docker daemon"),
-    );
+  it.each(["25.0.5", "20.10.24", ""])(
+    "refuses Docker Engine '%s'",
+    async (v) => {
+      engine(v);
+      await expect(assertEngineSupportsCodeSandbox()).rejects.toThrow(
+        "Docker Engine 26 or newer",
+      );
+    },
+  );
+});
 
-    const result = await isDockerRunning();
+describe("dockerVolumeExists", () => {
+  it("matches the exact volume name only", async () => {
+    mockedExeca.mockResolvedValueOnce({
+      stdout: "gaia-sandbox-workspace",
+    } as Awaited<ResultPromise>);
+    expect(await dockerVolumeExists("gaia-sandbox-workspace")).toBe(true);
+    expect(mockedExeca).toHaveBeenCalledWith("docker", [
+      "volume",
+      "ls",
+      "--quiet",
+      "--filter",
+      "name=^gaia-sandbox-workspace$",
+    ]);
 
-    expect(result).toBe(false);
+    mockedExeca.mockResolvedValueOnce({ stdout: "" } as Awaited<ResultPromise>);
+    expect(await dockerVolumeExists("gaia-sandbox-workspace")).toBe(false);
   });
 });

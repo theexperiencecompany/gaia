@@ -7,11 +7,7 @@ icon: "git-alt"
 GAIA is built in the open, and contributions of every size are welcome, bug fixes, features, docs, and integrations. This page covers the conventions your contribution needs to follow.
 
 <Tip>
-**Quick Setup**: Install the GAIA CLI globally, then run `gaia init` to automatically set up your development environment.
-
-<Snippet file="cli-install.mdx" />
-
-This guide covers the manual process for contributors who prefer full control.
+**Quick Setup**: from a fresh clone, run `mise install`, `corepack enable`, `mise run setup`, then `mise dev`. See [Development Setup](/developers/development-setup) for details.
 </Tip>
 
 ## Getting Started
@@ -98,6 +94,27 @@ Before making your first contribution:
     Open a [pull request on GitHub](https://github.com/theexperiencecompany/gaia/pulls) with a clear description of your changes.
   </Step>
 </Steps>
+
+## Releasing the CLI
+
+The only step is merging the release-please PR that bumps `packages/cli`. Automation does the rest, in order:
+
+1. `build.yml` publishes the `gaia` and `gaia-web` images of the release commit as `:<sha>`.
+2. `publish-cli.yml` checks out the `cli-v<version>` tag and attaches the `gaia-connect` binaries to its GitHub Release.
+3. It waits up to 30 minutes for the `:<sha>` images, then tags them `v<version>`, the pair `gaia update` pins.
+4. Only then does it publish `@heygaia/cli` to npm.
+
+If a step fails, fix the cause and re-dispatch `publish-cli.yml` with the same inputs. A re-dispatch for a version already on npm still backfills the binaries and the image pin.
+
+`cli-v0.6.0` predates the per-commit `gaia:<sha>` tag, so backfilling it is a one-time alias of that commit's API image, then a re-dispatch:
+
+```bash
+docker buildx imagetools create \
+  -t ghcr.io/theexperiencecompany/gaia:fe2676f944bc83e157fc2eece63fe8b8a4b21451 \
+  ghcr.io/theexperiencecompany/gaia:2609.13.fe2676f
+gh workflow run publish-cli.yml --ref master \
+  -f tag=cli-v0.6.0 -f version=0.6.0 -f sha=fe2676f944bc83e157fc2eece63fe8b8a4b21451
+```
 
 ## Recognition
 

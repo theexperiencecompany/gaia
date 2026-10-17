@@ -629,13 +629,13 @@ If you are an agent fixing a bug here and you see `JuiceFSUnavailable`: do **not
 
 ## Environment
 
-Settings class is selected by `ENV` env var (`production` | `development`). `DevelopmentSettings` makes most keys optional. `ProductionSettings` requires all keys.
+There is one `Settings` class (`app/config/settings.py`); every integration key on it is optional. `ENV` (`production` | `development` | `selfhost`) and `AUTH_MODE` build the deployment profile (`settings.deployment`, `app/config/deployment.py`), and every behaviour that differs between deployments reads a capability off it — never `ENV` itself.
+
+What a deployment must set is one table, `app/config/capability_requirements.py`: each capability lists the keys it needs (billing → Dodo, a Cloudinary blob store → Cloudinary, a JuiceFS workspace → R2/JuiceFS/E2B, WorkOS auth → `WORKOS_*`, ...). Self-host refuses to boot without them; production and development warn and boot, so one unset integration key degrades that integration instead of taking GAIA Cloud down on deploy. Every real deployment refuses to boot with a development override set. The settings validator's warnings and the CLI's config schema (`mise cli:schema`, drift-checked in CI) derive from the same table. A new key: add the optional field, and if a capability needs it, add it to the table.
 
 Settings are loaded once via `@lru_cache` in `app/config/settings.py`. In tests, call `get_settings.cache_clear()` before recreating the app to pick up env changes.
 
-Secrets in production are injected from **Infisical** before Pydantic validates the settings object. In development, use `.env` only.
-
-See `apps/api/.env.example` or the `ProductionSettings` class in `app/config/settings.py` for the full list of required keys. For local dev, `DevelopmentSettings` makes most keys optional — set at minimum `ENV=development`, MongoDB URL, Redis URL, and WorkOS credentials.
+Secrets in production are injected from **Infisical** before Pydantic validates the settings object. In development, use `.env` only. For local dev set at minimum `ENV=development`, `MONGO_DB` and `REDIS_URL`.
 
 ### Dev auth bypass (`DEV_AUTH_BYPASS_EMAIL`)
 
@@ -649,7 +649,7 @@ Related: `GAIA_SIM_MODE=1` (`mise dev --sim`) routes every LLM call to the local
 - Direct layer invocation for tests: `POST /api/v1/dev/executor` runs the executor without the comms front door; `POST /api/v1/dev/subagents/{id}` runs one subagent without comms or the executor (`GET /api/v1/dev/subagents` lists ids). Both reuse the production preparation paths (`prepare_executor_execution` / `prepare_subagent_execution`) — see the `driving-gaia` skill §5.
 - Development only: `get_settings()` raises at startup if the var is set with `ENV=production` — never weaken that check.
 - The bypass user context carries `dev_bypass=True` for anything that needs to tell.
-- WorkOS is never called under the bypass, but `DevelopmentSettings` still requires the `WORKOS_*` keys — dummy values are fine locally.
+- WorkOS is never called under the bypass, so development runs without the `WORKOS_*` keys.
 - On Windows with a native Redis (Memurai), use `REDIS_URL=redis://127.0.0.1:6379` — Memurai binds IPv4 only and `localhost` resolves to `::1` first, which makes the ARQ/lifespan services time out and startup fail.
 - A `dev_bypass_user` cookie overrides the configured email per request, so two browser profiles can act as different users against one API instance (test free vs pro side by side).
 

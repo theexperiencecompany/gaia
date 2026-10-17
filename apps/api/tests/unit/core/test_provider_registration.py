@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import ExitStack
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -100,6 +100,42 @@ class TestBlockingStartupHonorsStrategy:
         await unified_startup("arq_worker")  # must not raise
 
         auto_init_spy.assert_awaited_once()
+
+
+class TestBootRequiresTheInstanceToolkits:
+    async def test_instance_toolkits_failing_to_load_aborts_the_boot_by_name(
+        self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            provider_registration,
+            "load_instance_toolkits",
+            AsyncMock(side_effect=RuntimeError("mongo down")),
+        )
+
+        with pytest.raises(RuntimeError, match="arq_worker startup failed") as raised:
+            await unified_startup("arq_worker")
+
+        assert str(raised.value.__cause__) == (
+            "Failed to initialize required services: ['instance_toolkits']"
+        )
+
+
+class TestBootRefusesAnUnusableBlobStore:
+    async def test_the_blob_store_check_failing_aborts_before_any_service(
+        self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        refused = RuntimeError("blob volume not writable")
+        monkeypatch.setattr(
+            provider_registration,
+            "ensure_local_blob_store_ready",
+            MagicMock(side_effect=refused),
+        )
+
+        with pytest.raises(RuntimeError) as raised:
+            await unified_startup("arq_worker")
+
+        assert raised.value is refused
+        auto_init_spy.assert_not_awaited()
 
 
 class TestMainAppRegistersTheBroadcastListener:

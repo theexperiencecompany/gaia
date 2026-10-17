@@ -5,15 +5,28 @@ from typing import cast
 from composio import Composio, after_execute, before_execute, schema_modifier
 from composio.types import Tool
 import composio_client
-from composio_client.types import ConnectedAccountRetrieveResponse
+from composio_client.types import (
+    AuthConfigListParams,
+    ConnectedAccountRetrieveResponse,
+    ToolkitListParams,
+    ToolkitRetrieveResponse,
+)
+from composio_client.types.auth_config_create_params import AuthConfig
+from composio_client.types.auth_config_list_response import Item as AuthConfigItem
+from composio_client.types.toolkit_list_response import Item as ToolkitListItem
 from composio_client.types.trigger_instance_upsert_response import (
     TriggerInstanceUpsertResponse,
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.config.oauth_config import get_composio_social_configs
+from app.config.oauth_config import get_composio_integrations_by_provider
 from app.config.settings import settings
-from app.constants.integrations import COMPOSIO_ACCOUNT_LIST_LIMIT, COMPOSIO_SERVICE_PROVIDER
+from app.constants.integrations import (
+    COMPOSIO_ACCOUNT_LIST_LIMIT,
+    COMPOSIO_AUTH_CONFIG_PAGE_SIZE,
+    COMPOSIO_SERVICE_PROVIDER,
+    COMPOSIO_TOOLKIT_PAGE_SIZE,
+)
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.integrations.composio import ComposioConnectLink
@@ -23,21 +36,28 @@ from app.models.trigger_config import TriggerConfig
 # that builds a Composio client, not just where an entrypoint imports app.patches.
 # Without the user_id-injection patch, custom tools 500 with "Missing user_id in auth_credentials".
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before patched SDKs are used
+from app.services.composio.auth_config_resolver import (
+    auth_config_id_for,
+    resolve_auth_configs,
+)
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import (
     LangchainProvider,
     StructuredTool,
 )
 from app.services.mcp.mcp_tools_service import RawToolMetadata, store_mcp_tools
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolved_config,
+)
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
     master_schema_modifier,
 )
+from app.utils.exceptions import ProviderNotConfiguredError
 from app.utils.query_utils import add_query_param
 from shared.py.wide_events import log
-
-COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
 
 
 class _ComposioEventTotals(BaseModel):
@@ -69,10 +89,10 @@ class ComposioService:
     """GAIA's Composio client: connect links, connected accounts, toolkits and triggers."""
 
     def __init__(self, api_key: str):
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
+        from app.config.oauth_config import all_integrations
 
         toolkit_versions: dict[str, str] = {}
-        for integration in OAUTH_INTEGRATIONS:
+        for integration in all_integrations():
             if integration.composio_config and integration.composio_config.toolkit_version:
                 toolkit_name = integration.composio_config.toolkit.lower()
                 toolkit_versions[toolkit_name] = integration.composio_config.toolkit_version
@@ -89,10 +109,12 @@ class ComposioService:
         self, provider: str, user_id: str, state_token: str
     ) -> ComposioConnectLink:
         """Mint a hosted Connect Link for this user; the account stays pending until they authorize it."""
-        if provider not in COMPOSIO_SOCIAL_CONFIGS:
+        integration = get_composio_integrations_by_provider().get(provider)
+        if integration is None:
             raise ValueError(f"Provider '{provider}' not supported")
-
-        config = COMPOSIO_SOCIAL_CONFIGS[provider]
+        auth_config_id = await auth_config_id_for(integration)
+        if auth_config_id is None:
+            raise ValueError(f"{integration.name} is not set up on this instance")
 
         log.set(composio_provider=provider, composio_user_id=user_id)
         try:
@@ -104,7 +126,7 @@ class ComposioService:
                 None,
                 lambda: self.composio.connected_accounts.link(
                     user_id=user_id,
-                    auth_config_id=config.auth_config_id,
+                    auth_config_id=auth_config_id,
                     callback_url=_callback_url(state_token),
                     allow_multiple=True,
                 ),
@@ -336,13 +358,16 @@ class ComposioService:
     async def check_connection_status(self, providers: list[str], user_id: str) -> dict[str, bool]:
         """Check if a user has active connections for given providers."""
         log.set(composio_user_id=user_id, composio_providers=providers)
-        result = {}
-        required_auth_config_ids = []
-
+        result = dict.fromkeys(providers, False)
+        resolved = await resolve_auth_configs()
+        auth_config_provider_map: dict[str, str] = {}
         for provider in providers:
-            result[provider] = False
-            if provider in COMPOSIO_SOCIAL_CONFIGS:
-                required_auth_config_ids.append(COMPOSIO_SOCIAL_CONFIGS[provider].auth_config_id)
+            integration = get_composio_integrations_by_provider().get(provider)
+            auth_config = resolved.get(integration.id) if integration else None
+            if auth_config is not None:
+                auth_config_provider_map[auth_config.auth_config_id] = provider
+        if not auth_config_provider_map:
+            return result
 
         try:
             loop = asyncio.get_event_loop()
@@ -350,17 +375,11 @@ class ComposioService:
                 None,
                 lambda: self.composio.connected_accounts.list(
                     user_ids=[user_id],
-                    auth_config_ids=required_auth_config_ids,
+                    auth_config_ids=list(auth_config_provider_map),
                     statuses=["ACTIVE"],
                     limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
                 ),
             )
-
-            auth_config_provider_map = {}
-            for provider in providers:
-                if provider in COMPOSIO_SOCIAL_CONFIGS:
-                    auth_config_id = COMPOSIO_SOCIAL_CONFIGS[provider].auth_config_id
-                    auth_config_provider_map[auth_config_id] = provider
 
             for account in user_accounts.items:
                 if not account.auth_config.is_disabled and account.status == "ACTIVE":
@@ -379,6 +398,45 @@ class ComposioService:
                 error_type=type(e).__name__,
             )
             return result
+
+    async def list_enabled_auth_configs(self) -> list[AuthConfigItem]:
+        """Return every enabled auth config in this key's Composio project, across all pages."""
+        configs: list[AuthConfigItem] = []
+        cursor: str | None = None  # pragma: no mutate — only read for truthiness
+        while True:
+            params: AuthConfigListParams = {"limit": COMPOSIO_AUTH_CONFIG_PAGE_SIZE}
+            if cursor:
+                params["cursor"] = cursor
+            page = await asyncio.to_thread(self.composio.auth_configs.list, **params)
+            configs.extend(item for item in page.items if item.status == "ENABLED")
+            if not page.next_cursor:
+                return configs
+            cursor = page.next_cursor
+
+    async def list_toolkits(self) -> list[ToolkitListItem]:
+        """Return Composio's whole toolkit catalog, across all pages."""
+        toolkits: list[ToolkitListItem] = []
+        cursor: str | None = None  # pragma: no mutate — only read for truthiness
+        while True:
+            params: ToolkitListParams = {"limit": COMPOSIO_TOOLKIT_PAGE_SIZE}
+            if cursor:
+                params["cursor"] = cursor
+            page = await asyncio.to_thread(self.composio.client.toolkits.list, **params)
+            toolkits.extend(page.items)
+            if not page.next_cursor:
+                return toolkits
+            cursor = page.next_cursor
+
+    async def get_toolkit(self, slug: str) -> ToolkitRetrieveResponse:
+        """Return one toolkit with its auth schemes and the fields each needs."""
+        return await asyncio.to_thread(self.composio.toolkits.get, slug)
+
+    async def create_auth_config(self, slug: str, options: AuthConfig) -> str:
+        """Create an auth config for the toolkit in this key's project; return its id."""
+        created = await asyncio.to_thread(
+            self.composio.client.auth_configs.create, toolkit={"slug": slug}, auth_config=options
+        )
+        return created.auth_config.id
 
     def get_connected_account_by_id(
         self, connected_account_id: str
@@ -414,14 +472,20 @@ class ComposioService:
     async def delete_all_connected_accounts(self, user_id: str, provider: str) -> int:
         """Revoke every account, of any status, the user holds on the provider; returns how many."""
         log.set(composio_user_id=user_id, composio_provider=provider)
-        if provider not in COMPOSIO_SOCIAL_CONFIGS:
+        integration = get_composio_integrations_by_provider().get(provider)
+        if integration is None:
             raise ValueError(f"Provider '{provider}' not supported")
-
-        config = COMPOSIO_SOCIAL_CONFIGS[provider]
+        auth_config_id = await auth_config_id_for(integration)
+        if auth_config_id is None:
+            log.info(
+                f"{LogTag.COMPOSIO} Integration not set up on this instance; no accounts to revoke",
+                provider=provider,
+            )
+            return 0
         user_accounts = await asyncio.to_thread(
             lambda: self.composio.connected_accounts.list(
                 user_ids=[user_id],
-                auth_config_ids=[config.auth_config_id],
+                auth_config_ids=[auth_config_id],
                 limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
             )
         )
@@ -487,20 +551,38 @@ class ComposioService:
 
 @lazy_provider(
     name=COMPOSIO_SERVICE_PROVIDER,
-    required_keys=[settings.COMPOSIO_KEY],
+    # Empty on purpose: the key is resolved at LOAD time from the credential
+    # store (see _load), so availability must not be decided by import-time
+    # env — a key saved in Settings has to register the service.
+    required_keys=[],
     strategy=MissingKeyStrategy.WARN,
+    warning_message="Composio is not configured. Composio-backed integrations and tools will not work.",
 )
 def init_composio_service() -> ComposioService:
-    """Build the ComposioService the lazy provider registry hands out."""
-    if settings.COMPOSIO_KEY is None:
-        raise RuntimeError("COMPOSIO_KEY is not set in settings")
-    return ComposioService(settings.COMPOSIO_KEY)
+    """Build the Composio service from a store-first resolved key (sync: the SDK is synchronous)."""
+    return ComposioService(_composio_api_key())
+
+
+def _composio_api_key() -> str:
+    """Return the store-first resolved Composio key; raise ProviderNotConfiguredError when none resolves."""
+    config: ProviderConfig | None = resolved_config("composio")
+    api_key = config.api_key if config else None
+    if not api_key:
+        raise ProviderNotConfiguredError(
+            "COMPOSIO_KEY is not set in settings and no composio credential is stored"
+        )
+    return api_key
 
 
 def get_composio_service() -> ComposioService:
-    """Return the registered ComposioService; raise when it is not available."""
+    """Return the registered ComposioService.
+
+    Raises ProviderNotConfiguredError when no key resolves, RuntimeError when
+    a key resolves but the service failed to build.
+    """
     service = providers.get(COMPOSIO_SERVICE_PROVIDER)
     if service is None:
+        _composio_api_key()
         raise RuntimeError("ComposioService is not available")
     # providers.get() is typed Any | None; "composio_service" is always
     # registered via init_composio_service(), which returns ComposioService.

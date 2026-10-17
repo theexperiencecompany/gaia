@@ -1,0 +1,113 @@
+---
+title: "Chat bots (Telegram, Discord, Slack)"
+sidebarTitle: "Chat bots"
+description: "Run GAIA's Telegram, Discord and Slack bots on your self-hosted instance with your own bot tokens"
+icon: "robot"
+---
+
+Your self-hosted GAIA can answer on Telegram, Discord and Slack. Each platform needs a bot of your own, created in that platform's developer tools. GAIA Cloud's bots only talk to GAIA Cloud, so they won't reach your instance.
+
+One command adds a bot. It asks for the bot's token, checks it with the platform, saves it, and starts the bot next to the rest of GAIA:
+
+```bash
+gaia bots add telegram
+gaia bots add discord
+gaia bots add slack
+```
+
+None of the three bots needs a public URL or a domain. Telegram and Discord connect out to their platform, and Slack uses Socket Mode, which also connects out. They work on a laptop or behind a firewall as well as on a server with a domain.
+
+<Note>
+  Run these commands on the machine where you ran `gaia up`. They need a working self-host install.
+</Note>
+
+<Warning>
+  Chat bots need a GAIA release that includes `gaia bots`. On an older install, run `gaia update` first. The bot images run on both amd64 and arm64 servers.
+</Warning>
+
+## Telegram
+
+1. In Telegram, message [@BotFather](https://t.me/BotFather) and send `/newbot`. Pick a name and a username.
+2. BotFather replies with a token like `123456789:AA...`. Copy it.
+3. Run `gaia bots add telegram` and paste the token when asked. The token doesn't show while you paste it.
+
+GAIA also sets the bot's command menu for you.
+
+`gaia bots add` checks the token with Telegram before it saves anything. A mistyped or revoked token stops there, and nothing changes on your install:
+
+<Frame caption="A token that Telegram rejects is never saved">
+  <img src="/images/self-hosting/terminal-gaia-bots-add.webp" width="537" alt="Terminal output of gaia bots add telegram: it explains where to get a token from @BotFather, asks for the Telegram bot token, checks the credentials, and stops with Error: Telegram rejected the bot token: Unauthorized. Copy it again from @BotFather." />
+</Frame>
+
+## Discord
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and create an application.
+2. On the **Bot** page, click **Reset Token** and copy the token.
+3. On the same page, turn on **Message Content Intent** under Privileged Gateway Intents. GAIA refuses a bot without it, because the bot can't read your messages.
+4. Run `gaia bots add discord` and paste the token when asked.
+
+When it finishes, the command prints a link that adds the bot to one of your servers. GAIA registers the bot's slash commands for you.
+
+## Slack
+
+Slack needs three values, all from your app's page at [api.slack.com/apps](https://api.slack.com/apps):
+
+1. Create an app **From scratch** and pick your workspace.
+2. **Socket Mode**: turn it on, and create an app-level token with the `connections:write` scope. It starts with `xapp-`.
+3. **OAuth & Permissions**: add the bot scopes `app_mentions:read`, `chat:write`, `commands`, `im:history`, `im:read` and `im:write`. Install the app to your workspace, then copy the **Bot User OAuth Token**. It starts with `xoxb-`.
+4. **Event Subscriptions**: turn them on and subscribe the bot to `app_mention` and `message.im`. Socket Mode needs no request URL.
+5. **Slash Commands**: create `/gaia`, `/auth`, `/workflow`, `/todo` and `/conversations`. The request URL can stay empty in Socket Mode.
+6. **Basic Information**: copy the **Signing Secret**.
+7. Run `gaia bots add slack`. It asks for the bot token, the app-level token and the signing secret.
+
+## Link your GAIA account
+
+The bot answers only people who have linked their chat account to a GAIA account on your instance. In a chat with the bot, send `/auth`. The bot replies with a link to your GAIA instance. Open it, sign in with your GAIA email and password, and the link is done.
+
+Each person on your instance links their own chat account the same way.
+
+## The Bots page
+
+Your instance's **Bots** page (`/bots`) links to the bots you added: your Telegram bot's chat, your Discord bot's invite link and your Slack workspace. A platform you haven't set up shows the `gaia bots add` command to run instead.
+
+## Check on your bots
+
+```bash
+gaia bots list     # every bot you added, and whether it is running
+gaia status        # the whole install, bots included
+gaia doctor        # flags a bot that is restarting or never started
+```
+
+Before you add a bot, `gaia bots list` tells you how to add one:
+
+<Frame caption="gaia bots list on an install with no bots yet">
+  <img src="/images/self-hosting/terminal-gaia-bots-list.webp" width="477" alt="Terminal output of gaia bots list: No chat bots enabled. Add one with: gaia bots add <telegram|discord|slack>" />
+</Frame>
+
+Once a bot is added, `gaia bots list` shows one line per bot with its container state, `gaia status` lists the bot's container next to the others, and `gaia doctor` adds a **Chat bot** check for each bot you added.
+
+A bot that keeps restarting usually has a token that was revoked or reset. Run `gaia bots add <platform>` again with a fresh token. To see the bot's own error, run `docker compose -p gaia-selfhost logs bot-telegram` (use `bot-discord` or `bot-slack` for the others).
+
+## Remove a bot
+
+```bash
+gaia bots remove telegram
+```
+
+This stops the bot and deletes its saved token. Accounts that people linked stay linked, so they keep working if you add the bot again.
+
+## Scripts and automation
+
+Without a terminal to ask in, pass the values as flags:
+
+```bash
+gaia bots add telegram --token <token>
+gaia bots add discord --token <token>
+gaia bots add slack --token xoxb-... --app-token xapp-... --signing-secret <secret>
+```
+
+## What GAIA sets up for you
+
+- The bots and the GAIA API share a key, `GAIA_BOT_API_KEY`. `gaia bots add` creates it in `apps/api/.env` if your install doesn't have one yet.
+- Bot tokens are saved in `apps/bots/.env`, which only your user can read.
+- The bots run the published GAIA bot images, at the same version as the rest of your install. `gaia update` updates them too.

@@ -62,7 +62,7 @@ def custom_endpoint() -> CustomEndpoint:
 def dev_default_model_id() -> str | None:
     """Return the dev-menu key DEV_DEFAULT_MODEL names; None outside development, when unset, or unknown."""
     model_id = settings.DEV_DEFAULT_MODEL
-    if settings.ENV != "development" or not model_id:
+    if not settings.deployment.dev_tools or not model_id:
         return None
     if model_id not in DEV_MODEL_OPTIONS:
         log.warning(
@@ -88,15 +88,20 @@ def custom_lane_forced() -> bool:
 
 @cache
 def build_custom_chat_model(
-    *, temperature: float, max_tokens: int, reasoning: ReasoningLevel | None = None
+    *,
+    temperature: float,
+    max_tokens: int,
+    reasoning: ReasoningLevel | None = None,
+    endpoint: CustomEndpoint | None = None,
 ) -> ChatOpenAI:
-    """Build the custom endpoint's chat model, over the API DEV_LLM_API names.
+    """Build the custom endpoint's chat model for the API that DEV_LLM_API names.
 
-    ChatOpenAI, not ChatOpenRouter: the openrouter SDK requires a
-    system_fingerprint that OpenAI-compatible lanes omit. Cached so each shape
-    keeps one connection pool instead of opening a new one per call.
+    ChatOpenAI, not ChatOpenRouter: the OpenRouter SDK requires a system
+    fingerprint that OpenAI-compatible lanes omit. Cached so each shape keeps
+    one connection pool. Pass endpoint to override the DEV_LLM_* settings read;
+    omit it and the forced dev lane reads settings directly.
     """
-    endpoint = custom_endpoint()
+    endpoint = endpoint or custom_endpoint()
     responses = endpoint.api is DevLLMApi.RESPONSES
     effort = OPENAI_REASONING_EFFORT[
         reasoning if reasoning is not None else DEV_LLM_DEFAULT_REASONING

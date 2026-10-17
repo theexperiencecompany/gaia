@@ -1,3 +1,4 @@
+import type { InstanceRole } from "@gaia/shared/api/generated";
 import {
   AiWebBrowsingIcon,
   Brain02Icon,
@@ -10,18 +11,25 @@ import {
   MessageMultiple02Icon,
   NoteEditIcon,
   NotificationIcon,
+  PlugSocketIcon,
   PuzzleIcon,
   UserCircleIcon,
+  UserGroupIcon,
   VoiceIdIcon,
   WhatsappIcon,
 } from "@icons";
+import Image from "next/image";
+import type { ReactNode } from "react";
 import { PostageStampIcon } from "@/components/shared/icons";
+import { providerFaviconUrl } from "@/features/settings/api/providersApi";
 
 export interface SettingsMenuItem {
   key: string;
   label: string;
   // Icons are SVG components — accept standard SVG props
   icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  /** Pre-rendered brand mark for entries without an @icons glyph (e.g. favicons). */
+  iconElement?: ReactNode;
   href?: string;
   action?: () => void;
   color?: "danger" | "default";
@@ -47,6 +55,33 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Linked Accounts",
     icon: Link04Icon,
     href: "/settings/linked-accounts",
+  },
+  {
+    key: "providers",
+    label: "Providers & Tools",
+    iconElement: (
+      <Image
+        src={providerFaviconUrl("opencode.ai")}
+        alt=""
+        width={18}
+        height={18}
+        className="mr-1 rounded-[4px] object-contain"
+        unoptimized
+      />
+    ),
+    href: "/settings/providers",
+  },
+  {
+    key: "integrations-setup",
+    label: "Integrations setup",
+    icon: PlugSocketIcon,
+    href: "/settings/integrations-setup",
+  },
+  {
+    key: "members",
+    label: "Members",
+    icon: UserGroupIcon,
+    href: "/settings/members",
   },
   {
     key: "notifications",
@@ -128,6 +163,31 @@ export const settingsPageItems: SettingsMenuItem[] = [
 
 /** Settings sections that only make sense inside the desktop app. */
 export const DESKTOP_ONLY_SETTINGS_KEYS = new Set(["desktop"]);
+
+/**
+ * Settings sections that only make sense when the instance bills — hidden
+ * from navigation and redirected away on self-host (deployment.bills=false).
+ */
+export const BILLING_ONLY_SETTINGS_KEYS = new Set(["subscription", "usage"]);
+
+/**
+ * Sections that configure the instance itself (its people, model keys and
+ * integration project). Only a self-host instance admin has them; hosted
+ * accounts carry no role, so they never see these.
+ */
+const INSTANCE_ADMIN_SETTINGS_KEYS = new Set([
+  "members",
+  "providers",
+  "integrations-setup",
+]);
+
+/** Whether an account with this instance role may open a settings section. */
+export function isSettingsSectionAllowed(
+  key: string,
+  role: InstanceRole | undefined,
+): boolean {
+  return !INSTANCE_ADMIN_SETTINGS_KEYS.has(key) || role === "admin";
+}
 
 export const socialMediaItems: SettingsMenuItem[] = [
   {

@@ -16,6 +16,7 @@ from app.api.v1.middleware.client_type import (
     request_client_source,
 )
 from app.config.settings import settings
+from app.config.workos import get_async_workos_client
 from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
@@ -30,7 +31,9 @@ from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
     resolve_dev_bypass_user,
+    session_cookie_secure,
 )
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, resolve_session_token
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.properties import Identifier
 from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
@@ -132,9 +135,13 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         exclude_paths: list[str] | None = None,
     ) -> None:
         super().__init__(app)
-        self.workos = workos_client or AsyncWorkOSClient(
-            api_key=settings.WORKOS_API_KEY,
-            client_id=settings.WORKOS_CLIENT_ID,
+        # Only AUTH_MODE="workos" has a WorkOS client: local (self-host) mode
+        # runs with no WorkOS credentials configured, so constructing the
+        # client there would either raise or carry a useless None-keyed client.
+        self.workos: AsyncWorkOSClient | None = (
+            workos_client
+            if workos_client is not None
+            else (None if settings.deployment.local_auth else get_async_workos_client())
         )
         self.exclude_paths = exclude_paths or [
             "/docs",
@@ -143,7 +150,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/oauth/login",
             "/oauth/workos/callback",
             "/oauth/google/callback",
-            "/user/logout",
             "/health",
             "/api/v1/bot",
             "/api/v1/webhook",
@@ -178,13 +184,38 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             # that bootstraps it. Trailing slash avoids matching "/api/v1/device".
             "/api/v1/dev/",
         ]
+        # Local-mode-only public surfaces: signup and login must be reachable
+        # before any session exists, and the setup status probe and provider
+        # catalog are read pre-auth. In workos mode these stay authenticated.
+        if settings.deployment.local_auth:
+            self.exclude_paths += [
+                "/api/v1/auth/signup",
+                "/api/v1/auth/login",
+                "/api/v1/setup/status",
+                "/api/v1/setup/catalog",
+            ]
+        # Exact-match exclusions — ``startswith`` on these would make
+        # ``/api/v1/setup/status/evil`` bypass auth. Only the literal path is
+        # public; any suffix must be authenticated.
+        _exact_candidates: set[str] = {
+            "/api/v1/auth/signup",
+            "/api/v1/auth/login",
+            "/api/v1/setup/status",
+            "/api/v1/setup/catalog",
+        }
+        self._exclude_exact: set[str] = _exact_candidates.intersection(self.exclude_paths)
+        # Everything else in exclude_paths is an intentional prefix (docs covers
+        # docs/... too). Matching uses path == p or startswith(p + "/") so
+        # /docs does not match /docsfoo.
+        self._exclude_prefix: list[str] = [
+            p for p in self.exclude_paths if p not in self._exclude_exact
+        ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie.
         self.agent_only_paths = ["/api/v1/chat-stream"]
-        self.agent_only_path_prefixes: tuple[str, ...] = ()
         self.user_cache_expiry = 3600
         self.dev_bypass_email = (
-            settings.DEV_AUTH_BYPASS_EMAIL if settings.ENV == "development" else None
+            settings.DEV_AUTH_BYPASS_EMAIL if settings.deployment.dev_tools else None
         )
         if self.dev_bypass_email:
             log.warning(
@@ -193,16 +224,28 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 dev_bypass_email=self.dev_bypass_email,
             )
 
+    def _is_excluded(self, path: str) -> bool:
+        """Whether path is excluded from authentication."""
+        if path in self._exclude_exact:
+            return True
+        return any(path == p or path.startswith(p.rstrip("/") + "/") for p in self._exclude_prefix)
+
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         """Authenticate, then invoke the next handler. Refresh cookies on the way out."""
-        if any(request.url.path.startswith(path) for path in self.exclude_paths):
+        if self._is_excluded(request.url.path):
             self._publish_user(request)
             return await call_next(request)
 
         if self.dev_bypass_email:
             return await self._dispatch_dev_bypass(request, call_next)
+
+        # Self-host mode: authenticate via the local session JWT instead of
+        # WorkOS. Everything below (agent-token fallback, cookie refresh) is
+        # WorkOS-specific and skipped entirely.
+        if settings.deployment.local_auth:
+            return await self._dispatch_local_session(request, call_next)
 
         wos_session = request.cookies.get("wos_session")
         if not wos_session:
@@ -217,11 +260,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         if wos_session:
             await self._authenticate_wos_session(request, wos_session)
 
-        accepts_agent_token = request.url.path in self.agent_only_paths or any(
-            request.url.path.startswith(p) for p in self.agent_only_path_prefixes
-        )
-        if not request.state.authenticated and accepts_agent_token:
-            await self._authenticate_agent_token(request)
+        await self._authenticate_agent_token(request, auth_provider="workos")
 
         self._publish_user(request)
         response = await call_next(request)
@@ -231,7 +270,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 key="wos_session",
                 value=request.state.new_session,
                 httponly=True,
-                secure=settings.ENV == "production",
+                secure=session_cookie_secure(request),
                 samesite="lax",
                 max_age=60 * 60 * 24 * 7,
             )
@@ -264,8 +303,16 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         if new_session:
             request.state.new_session = new_session
 
-    async def _authenticate_agent_token(self, request: Request) -> None:
-        """Resolve an agent bearer token onto request.state, if it carries one."""
+    async def _authenticate_agent_token(self, request: Request, *, auth_provider: str) -> None:
+        """Resolve an agent bearer token onto request.state, if it carries one.
+
+        One implementation serves both dispatch branches: voice and desktop
+        clients present an AGENT_SECRET-signed JWT instead of a browser cookie,
+        but only on the agent-only paths. auth_provider names which session
+        system the request would otherwise have used.
+        """
+        if request.state.authenticated or request.url.path not in self.agent_only_paths:
+            return
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             return
@@ -287,7 +334,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         # the agent token carries timezone + onboarding. Hand-picking fields here dropped
         # them, so voice mode lost the user's system instructions.
         request.state.user = build_user_context(
-            user_data, auth_provider="workos", impersonated=True
+            user_data, auth_provider=auth_provider, impersonated=True
         )
         request.state.authenticated = True
 
@@ -322,6 +369,64 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
         request.state.user = build_user_context(user_data, auth_provider="workos", dev_bypass=True)
         request.state.authenticated = True
+        self._publish_user(request)
+        return await call_next(request)
+
+    async def _dispatch_local_session(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Authenticate a local (self-host) session JWT and pass through.
+
+        An absent, invalid, or expired session leaves request.state.user as None
+        and the request flows on; route handlers enforce auth via get_current_user.
+        Read from the gaia_session cookie with the WorkOS path's Bearer fallback;
+        no refresh step, as tokens carry a fixed 30-day expiry.
+        """
+        request.state.user = None
+        request.state.authenticated = False
+        request.state.new_session = None
+
+        token: str | None = request.cookies.get(LOCAL_SESSION_COOKIE)
+        if not token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ", 1)[1]
+
+        if token:
+            try:
+                user_id = await resolve_session_token(token)
+            except Exception as e:
+                # Same stance as the WorkOS path below: a broken secret store
+                # must surface in logs/Sentry, not masquerade as a plain 401.
+                log.error(
+                    f"{LogTag.API} local session verification error",
+                    auth_failure=type(e).__name__,
+                    path=request.url.path,
+                    method=request.method,
+                    error=str(e),
+                )
+                user_id = None
+
+            if user_id:
+                try:
+                    user_data = await user_repository.get(user_id)
+                except Exception as e:
+                    log.error(
+                        f"{LogTag.API} Invalid user_id in local session token",
+                        error_type=type(e).__name__,
+                        error=str(e),
+                    )
+                    user_data = None
+                if user_data is not None:
+                    request.state.user = build_user_context(user_data, auth_provider="email")
+                    request.state.authenticated = True
+                else:
+                    request.state.auth_failure = "unknown_local_session_user"
+            else:
+                request.state.auth_failure = "invalid_or_expired_session"
+
+        await self._authenticate_agent_token(request, auth_provider="email")
+
         self._publish_user(request)
         return await call_next(request)
 

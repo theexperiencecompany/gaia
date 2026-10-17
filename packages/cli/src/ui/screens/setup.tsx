@@ -1,18 +1,20 @@
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { localApiUrl } from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
-
+import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
 import { SETUP_STEPS, Shell } from "../components/Shell.js";
 import {
   EnvSetupSpinnerStep,
   ErrorStep,
+  InstallConfirmStep,
   PortConflictStep,
   SystemChecksStep,
 } from "../components/shared-steps.js";
-import { THEME_COLOR } from "../constants.js";
+import { BOX_BORDER, THEME_COLOR } from "../constants.js";
 import type { CLIStore } from "../store.js";
+import { useCLIState } from "../use-cli-state.js";
 import {
   AlternativeGroupSelectionStep,
   DependencyInstallStep,
@@ -24,21 +26,7 @@ import {
 } from "./init.js";
 
 export const SetupScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
-  const [state, setState] = useState(store.currentState);
-
-  useEffect(() => {
-    const update = () => setState({ ...store.currentState });
-    store.on("change", update);
-    return () => {
-      store.off("change", update);
-    };
-  }, [store]);
-
-  useInput((_input, key) => {
-    if ((key.return || key.escape) && state.error) {
-      store.submitInput("exit");
-    }
-  });
+  const state = useCLIState(store);
 
   return (
     <Shell status={state.status} step={state.step} steps={SETUP_STEPS}>
@@ -46,12 +34,12 @@ export const SetupScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
         <Box
           flexDirection="column"
           paddingX={2}
-          borderStyle="round"
+          borderStyle={BOX_BORDER}
           borderColor={THEME_COLOR}
         >
           <Text bold>Detecting GAIA Repository</Text>
           <Box marginTop={1}>
-            <Spinner label="Searching for repository..." />
+            <Spinner label="Searching for repository…" />
           </Box>
           {state.data.repoPath && (
             <Box marginTop={1}>
@@ -64,6 +52,13 @@ export const SetupScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
       {state.step === "Prerequisites" && state.data.checks && (
         <SystemChecksStep checks={state.data.checks} />
       )}
+
+      <InstallConfirmStep
+        inputId={state.inputRequest?.id}
+        missing={state.data[MISSING_PREREQUISITES_KEY]}
+        onConfirm={() => store.submitInput("install")}
+        onDecline={() => store.submitInput("decline")}
+      />
 
       {state.inputRequest?.id === "port_conflicts" &&
         state.data.portConflicts && (
@@ -160,14 +155,14 @@ const FinishedStep: React.FC<{
   });
 
   const webPort = portOverrides?.[3000] ?? 3000;
-  const apiPort = portOverrides?.[8000] ?? 8000;
+  const apiUrl = localApiUrl(setupMode ?? "developer", portOverrides ?? {});
   const isSelfHost = setupMode === "selfhost";
 
   return (
     <Box
       flexDirection="column"
       marginTop={2}
-      borderStyle="round"
+      borderStyle={BOX_BORDER}
       borderColor={THEME_COLOR}
       padding={1}
     >
@@ -190,7 +185,7 @@ const FinishedStep: React.FC<{
         <Text>
           API:{" "}
           <Text color="cyan" bold>
-            http://localhost:{apiPort}
+            {apiUrl}
           </Text>
         </Text>
       </Box>

@@ -14,7 +14,7 @@ import type { CLIStore } from "../../ui/store.js";
 export async function runSetupFlow(store: CLIStore): Promise<void> {
   // 1. Detect repo root
   store.setStep("Detect Repo");
-  store.setStatus("Looking for GAIA repository...");
+  store.setStatus("Looking for GAIA repository…");
 
   const repoPath = findRepoRoot();
   if (!repoPath) {
@@ -32,20 +32,20 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
 
   // 2. Prerequisites
   store.setStep("Prerequisites");
-  store.setStatus("Checking system requirements...");
+  store.setStatus("Checking system requirements…");
 
   if (!(await runBasePrerequisiteChecks(store))) {
     return;
   }
 
-  // Port check
-  const portOverrides = await runPortChecks(store);
+  // 3. Setup Mode
+  const setupMode = await selectSetupMode(store);
+
+  // Each mode publishes different host ports, so check after choosing.
+  const portOverrides = await runPortChecks(store, setupMode);
   if (portOverrides === null) {
     return;
   }
-
-  // 3. Setup Mode
-  const setupMode = await selectSetupMode(store);
 
   if (setupMode === "developer") {
     const developerPrereqs = await runDeveloperPrerequisiteChecks(store);
@@ -71,9 +71,7 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
 
     store.updateData("setupMode", setupMode);
     store.setStep("Finished");
-    store.setStatus(
-      "Setup complete! Run 'gaia start' to build and start all services in Docker.",
-    );
+    store.setStatus("Set up. Run 'gaia start' to start GAIA.");
     await store.waitForInput("exit");
     return;
   }
@@ -101,6 +99,6 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
 
   store.updateData("setupMode", setupMode);
   store.setStep("Finished");
-  store.setStatus("Setup complete! Run 'gaia dev' to start development mode.");
+  store.setStatus("Set up. Run 'gaia dev' to start development mode.");
   await store.waitForInput("exit");
 }

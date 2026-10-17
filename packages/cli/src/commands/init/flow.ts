@@ -2,27 +2,29 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { writeConfig } from "../../lib/config.js";
+import { DEFAULT_WEB_PORT, localApiUrl } from "../../lib/endpoints.js";
 import { runEnvSetup, selectSetupMode } from "../../lib/env-setup.js";
 import { portOverridesToDockerEnv } from "../../lib/env-writer.js";
 import {
   createLogHandler,
   delay,
+  dependencyStepProgress,
   runBasePrerequisiteChecks,
   runDeveloperPrerequisiteChecks,
   runPortChecks,
 } from "../../lib/flow-utils.js";
 import * as git from "../../lib/git.js";
+import { waitForUpReadiness } from "../../lib/readiness.js";
 import {
   findRepoRoot,
+  isGaiaCheckout,
   runCommand,
   startServices,
 } from "../../lib/service-starter.js";
 import { CLI_VERSION } from "../../lib/version.js";
-import { LOG_BUFFER_LINES } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
 
 const DEV_MODE = process.env.GAIA_CLI_DEV === "true";
-const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
 export async function runInitFlow(
   store: CLIStore,
@@ -30,29 +32,27 @@ export async function runInitFlow(
 ): Promise<void> {
   // 0. Welcome
   store.setStep("Welcome");
-  store.setStatus("Waiting for user input...");
+  store.setStatus("Waiting for user input…");
   await store.waitForInput("welcome");
 
   const logHandler = createLogHandler(store);
 
   // 1. Prerequisites
   store.setStep("Prerequisites");
-  store.setStatus("Checking system requirements...");
+  store.setStatus("Checking system requirements…");
 
   if (!(await runBasePrerequisiteChecks(store))) {
     return;
   }
 
-  // Check Ports
-  // Note: 8083 (Mongo Express) is only used in dev mode, but we check it here
-  // since mode selection happens later in the flow.
-  const portOverrides = await runPortChecks(store);
+  // 2. Setup Mode
+  const setupMode = await selectSetupMode(store);
+
+  // Each mode publishes different host ports, so check after choosing.
+  const portOverrides = await runPortChecks(store, setupMode);
   if (portOverrides === null) {
     return;
   }
-
-  // 2. Setup Mode
-  const setupMode = await selectSetupMode(store);
 
   if (setupMode === "developer") {
     const developerPrereqs = await runDeveloperPrerequisiteChecks(store);
@@ -74,9 +74,9 @@ export async function runInitFlow(
       return;
     }
     store.setStep("Repository Setup");
-    store.setStatus("[DEV MODE] Using current workspace...");
+    store.setStatus("[DEV MODE] Using current workspace…");
     await delay(500);
-    store.setStatus("Repository ready!");
+    store.setStatus("Repository ready");
   } else {
     store.setStep("Repository Setup");
     const defaultPath =
@@ -109,11 +109,7 @@ export async function runInitFlow(
         }
 
         // Check if it's already a gaia repo
-        const isGaiaRepo = fs.existsSync(
-          path.join(repoPath, "apps/api/app/config/settings_validator.py"),
-        );
-
-        if (isGaiaRepo) {
+        if (isGaiaCheckout(repoPath)) {
           store.updateData("existingRepoPath", repoPath);
           const action = (await store.waitForInput("existing_repo")) as string;
 
@@ -121,7 +117,7 @@ export async function runInitFlow(
             cloneFresh = false;
             break;
           } else if (action === "delete_reclone") {
-            store.setStatus("Removing existing installation...");
+            store.setStatus("Removing existing installation…");
             try {
               fs.rmSync(repoPath, { recursive: true, force: true });
             } catch (e) {
@@ -160,7 +156,7 @@ export async function runInitFlow(
 
     if (cloneFresh) {
       store.setStep("Repository Setup");
-      store.setStatus("Preparing repository...");
+      store.setStatus("Preparing repository…");
       store.updateData("repoProgress", 0);
       store.updateData("repoPhase", "");
 
@@ -172,7 +168,7 @@ export async function runInitFlow(
             store.updateData("repoProgress", progress);
             if (phase) {
               store.updateData("repoPhase", phase);
-              store.setStatus(`${phase}...`);
+              store.setStatus(`${phase}…`);
             } else {
               store.setStatus(
                 `Cloning repository to ${repoPath}... ${progress}%`,
@@ -181,13 +177,13 @@ export async function runInitFlow(
           },
           branch,
         );
-        store.setStatus("Repository ready!");
+        store.setStatus("Repository ready");
       } catch (e) {
         store.setError(e as Error);
         return;
       }
     } else {
-      store.setStatus("Using existing repository!");
+      store.setStatus("Using the existing repository");
     }
   }
 
@@ -203,46 +199,35 @@ export async function runInitFlow(
   if (setupMode === "selfhost") {
     // Build and start services automatically on first init
     store.setStep("Project Setup");
-    store.setStatus("Building and starting all services in Docker...");
+    store.setStatus("Building and starting all services in Docker…");
     store.updateData(
       "dependencyPhase",
-      "Building and starting Docker services...",
+      "Building and starting Docker services…",
     );
     store.updateData("dependencyProgress", 0);
     store.updateData("dependencyLogs", []);
     store.updateData("dependencyComplete", false);
 
-    const dockerLogHandler = (chunk: string) => {
-      const lines = chunk
-        .split("\n")
-        .map((l: string) => l.replace(ANSI_ESCAPE_RE, "").trim())
-        .filter((l: string) => l.length > 0);
-      if (lines.length === 0) return;
-      const current: string[] = store.currentState.data.dependencyLogs || [];
-      store.updateData(
-        "dependencyLogs",
-        [...current, ...lines].slice(-LOG_BUFFER_LINES),
-      );
-    };
+    const dockerLogHandler = dependencyStepProgress(store);
 
     // Try to pull pre-built images from GHCR first (fast path for self-hosters).
     // Fall back to building locally if pull fails (e.g. first release, no auth).
     let pullSucceeded = false;
     try {
-      store.setStatus("Pulling pre-built images from registry...");
+      store.setStatus("Pulling pre-built images from registry…");
       await startServices(
         repoPath,
         "selfhost",
         (status) => store.setStatus(status),
         portOverrides,
         dockerLogHandler,
-        { pull: true },
+        { pull: "missing" },
       );
       pullSucceeded = true;
     } catch (e) {
       const reason = (e as Error).message?.split("\n")[0] ?? "unknown error";
       store.setStatus(
-        `Registry pull failed (${reason}) — building images locally (this takes a few minutes)...`,
+        `Registry pull failed (${reason}) — building images locally (this takes a few minutes)…`,
       );
     }
 
@@ -278,27 +263,40 @@ export async function runInitFlow(
     });
 
     store.updateData("setupMode", setupMode);
+
+    // Compose returning is not the stack answering — wait like `gaia up`;
+    // on timeout the finish screen says so, exit stays 0.
+    const readiness = await waitForUpReadiness(store, {
+      apiUrl: localApiUrl("selfhost", portOverrides),
+      webPort: portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT,
+    });
+    store.updateData("stillStarting", !readiness.ready);
+
     store.setStep("Finished");
-    store.setStatus("Setup complete! GAIA is running.");
+    store.setStatus(
+      readiness.ready
+        ? "Set up. GAIA is running."
+        : "Containers are up but not answering yet — give it a minute, then open the setup link below.",
+    );
     await store.waitForInput("exit");
     return;
   }
 
   // 4. Install Tools (developer mode only)
   store.setStep("Install Tools");
-  store.setStatus("Installing toolchain...");
-  store.updateData("dependencyPhase", "Initializing mise...");
+  store.setStatus("Installing toolchain…");
+  store.updateData("dependencyPhase", "Initializing mise…");
   store.updateData("dependencyProgress", 0);
   store.updateData("dependencyLogs", []);
 
   try {
-    store.updateData("dependencyPhase", "Trusting mise configuration...");
+    store.updateData("dependencyPhase", "Trusting mise configuration…");
     await runCommand("mise", ["trust"], repoPath, undefined, logHandler);
     store.updateData("dependencyProgress", 50);
 
     store.updateData(
       "dependencyPhase",
-      "Installing tools (node, python, uv, nx)...",
+      "Installing tools (node, python, uv, nx)…",
     );
     await runCommand(
       "mise",
@@ -323,7 +321,7 @@ export async function runInitFlow(
 
   // 5. Project Setup (developer mode only)
   store.setStep("Project Setup");
-  store.updateData("dependencyPhase", "Setting up project...");
+  store.updateData("dependencyPhase", "Setting up project…");
   store.updateData("dependencyProgress", 0);
   store.updateData("dependencyComplete", false);
   store.updateData("repoPath", repoPath);
@@ -333,7 +331,7 @@ export async function runInitFlow(
     store.updateData("dependencyProgress", 0);
     store.updateData(
       "dependencyPhase",
-      "Running mise setup (all dependencies)...",
+      "Running mise setup (all dependencies)…",
     );
 
     const dockerEnv =
@@ -353,7 +351,7 @@ export async function runInitFlow(
     );
 
     store.updateData("dependencyProgress", 100);
-    store.updateData("dependencyPhase", "Setup complete!");
+    store.updateData("dependencyPhase", "Set up");
     store.updateData("dependencyComplete", true);
   } catch (e) {
     store.setError(
@@ -375,6 +373,6 @@ export async function runInitFlow(
   });
 
   store.setStep("Finished");
-  store.setStatus("Setup complete! Run 'gaia dev' to start development mode.");
+  store.setStatus("Set up. Run 'gaia dev' to start development mode.");
   await store.waitForInput("exit");
 }

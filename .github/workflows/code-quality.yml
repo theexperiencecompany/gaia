@@ -613,6 +613,13 @@ jobs:
           node scripts/ci/checks.mjs analytics-catalog
           echo "::endgroup::"
           echo "### Analytics catalog — ✅ in sync" >> "$GITHUB_STEP_SUMMARY"
+      - name: Regenerate the CLI config schema and fail on drift
+        run: |
+          trap 'echo "::error::repro: node scripts/ci/checks.mjs cli-config-schema"' ERR
+          echo "::group::cli-config-schema regenerate + diff"
+          node scripts/ci/checks.mjs cli-config-schema
+          echo "::endgroup::"
+          echo "### CLI config schema — ✅ in sync" >> "$GITHUB_STEP_SUMMARY"
       - name: No hand-written twin of an API schema type
         run: |
           trap 'echo "::error::repro: node scripts/ci/checks.mjs api-schema-types"' ERR

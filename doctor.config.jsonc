@@ -33,6 +33,13 @@
         "files": ["**/commands/bridge/wizard.ts"],
         "rules": ["react-doctor/server-sequential-independent-await"]
       },
+      // `gaia bots add` prompts for each missing credential in turn. Same
+      // reason: the awaits each read a secret from stdin, so the loop must
+      // finish one prompt before showing the next.
+      {
+        "files": ["**/commands/bots/handler.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
       // deliverSources MUST await each send before the next: the bubbles of one
       // logical message have to arrive in published order, so fanning them out
       // with Promise.all (what async-await-in-loop suggests) would reorder the
@@ -80,6 +87,22 @@
       {
         "files": ["src/internal/use-wake-word-base.ts"],
         "rules": ["react-doctor/effect-needs-cleanup"]
+      },
+      // Backup and restore stream each volume one at a time on purpose: they
+      // are disk-bound on small self-host boxes, and restore must stop at the
+      // first failed volume rather than leave several half-written.
+      {
+        "files": [
+          "**/commands/backup/flow.ts",
+          "**/commands/restore/flow.ts"
+        ],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
+      // /health/ready's status is checked before the body is read: any non-OK
+      // other than 503 returns early, and a 503 body names the failing checks.
+      {
+        "files": ["**/lib/dependency-readiness.ts"],
+        "rules": ["react-doctor/no-fetch-response-used-without-status-check"]
       }
     ]
   }

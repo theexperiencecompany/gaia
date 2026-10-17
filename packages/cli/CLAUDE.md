@@ -6,12 +6,16 @@ The `@heygaia/cli` package — a Node.js CLI tool (`gaia`) for self-hosting GAIA
 
 | Command | Description |
 |---|---|
-| `gaia init [--branch <branch>]` | Clone the GAIA repo |
+| `gaia up [--yes] [--llm-provider/--llm-key/--llm-base-url/--llm-model] [--domain] [--code-sandbox]` | One-command self-host install/resume |
+| `gaia update [--yes] [--version <tag>] [--git]` | Pin the release this CLI ships (`v<version>` images + `cli-v<version>` compose files) and restart |
+| `gaia doctor` | Ordered diagnostics, incl. per-dependency `/health/ready` |
+| `gaia backup` / `gaia restore` | Dump / restore MongoDB + PostgreSQL, the storage volumes and `apps/api/.env` (INSTANCE_SECRET) |
+| `gaia init [--branch <branch>]` | Developer setup wizard (clone, configure) |
 | `gaia setup` | Interactive env setup (wizard) |
 | `gaia start [-b/--build] [--pull]` | Start services via Docker Compose |
 | `gaia dev [profile]` | Start infrastructure services for local development |
 | `gaia stop [--force-ports]` | Stop running services |
-| `gaia status` | Show service health status |
+| `gaia status` | Show service and per-dependency health |
 | `gaia logs` | Stream Docker Compose logs |
 | `gaia bridge <cmd>` | Connect this machine's local MCP servers to GAIA over an outbound tunnel; while connected, GAIA can also run commands and read/write files on it (`add`, `login`, `ls`, `rm`, `up`, `down`, `logout`) |
 

@@ -2,12 +2,12 @@ import secrets
 from typing import cast
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import RedirectResponse
 import httpx
-from workos import WorkOSClient
 
 from app.config.settings import settings
+from app.config.workos import get_workos_client
 from app.constants.auth import (
     DESKTOP_DEEP_LINK,
     MOBILE_DEEP_LINK,
@@ -35,12 +35,11 @@ from app.services.oauth.oauth_state_service import (
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
 )
+from app.utils.auth_utils import session_cookie_secure
 from shared.py.wide_events import OAuthContext, log
 
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
-
-workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
 @router.get("/client-metadata.json")
@@ -93,7 +92,7 @@ async def login_workos(return_url: str | None = None) -> RedirectResponse:
     if return_url:
         await redis_cache.client.setex(f"oauth_return_url:{state}", 600, return_url)
 
-    authorization_url = workos.user_management.get_authorization_url(
+    authorization_url = get_workos_client().user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_REDIRECT_URI,
         state=state,
@@ -146,7 +145,7 @@ async def login_workos_mobile(redirect_uri: str | None = None) -> MobileLoginUrl
         state_prefix=state[:8],
     )
 
-    authorization_url = workos.user_management.get_authorization_url(
+    authorization_url = get_workos_client().user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
         state=state,
@@ -178,7 +177,7 @@ async def login_google_mobile(redirect_uri: str | None = None) -> MobileLoginUrl
         state_prefix=state[:8],
     )
 
-    authorization_url = workos.user_management.get_authorization_url(
+    authorization_url = get_workos_client().user_management.get_authorization_url(
         provider="GoogleOAuth",
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
         state=state,
@@ -221,7 +220,7 @@ async def workos_mobile_callback(
             )
             return RedirectResponse(url=f"{mobile_redirect}?error=missing_code")
 
-        auth_response = workos.user_management.authenticate_with_code(
+        auth_response = get_workos_client().user_management.authenticate_with_code(
             code=code,
             session={
                 "seal_session": True,
@@ -295,7 +294,7 @@ async def login_workos_desktop() -> RedirectResponse:
         oauth_flow_type=OAUTH_FLOW_DESKTOP,
         oauth=OAuthContext(operation="authorize", provider="authkit"),
     )
-    authorization_url = workos.user_management.get_authorization_url(
+    authorization_url = get_workos_client().user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_DESKTOP_REDIRECT_URI,
     )
@@ -330,7 +329,7 @@ async def workos_desktop_callback(
             )
             return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=missing_code")
 
-        auth_response = workos.user_management.authenticate_with_code(
+        auth_response = get_workos_client().user_management.authenticate_with_code(
             code=code,
             session={
                 "seal_session": True,
@@ -393,6 +392,7 @@ async def workos_desktop_callback(
 
 @router.get("/workos/callback", response_class=RedirectResponse)
 async def workos_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
 ) -> RedirectResponse:
@@ -427,7 +427,7 @@ async def workos_callback(
             )
             return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=missing_code")
 
-        auth_response = workos.user_management.authenticate_with_code(
+        auth_response = get_workos_client().user_management.authenticate_with_code(
             code=code,
             session={
                 "seal_session": True,
@@ -479,7 +479,7 @@ async def workos_callback(
             key=WOS_SESSION_COOKIE,
             value=auth_response.sealed_session or auth_response.access_token,
             httponly=True,
-            secure=settings.ENV == "production",
+            secure=session_cookie_secure(request),
             samesite="lax",
         )
 

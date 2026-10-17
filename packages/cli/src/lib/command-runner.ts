@@ -13,22 +13,20 @@
 import { render } from "ink";
 import React from "react";
 import { App, type CLICommand } from "../ui/app.js";
+import { MARK } from "../ui/constants.js";
 import { type CLIStore, createStore } from "../ui/store.js";
+import {
+  type DockerGroupSwitch,
+  relaunchWithDockerGroup,
+  resumedStep,
+} from "./docker-group.js";
+import { SIGINT_EXIT_CODE } from "./exit-codes.js";
 import {
   attachPlainReporter,
   isInteractive,
   requireInteractive,
 } from "./non-tty.js";
-
-/**
- * Give Ink a tick to initialize and measure the terminal before the flow runs.
- * Without it, ink-big-text occasionally falls back to plain rendering because
- * dimensions aren't available yet.
- */
-const INK_INIT_DELAY_MS = 50;
-
-/** Exit code POSIX shells report for a process terminated by SIGINT. */
-const SIGINT_EXIT_CODE = 130;
+import { endActiveStep } from "./run-steps.js";
 
 /** An input id to resolve automatically in plain mode, with an optional value. */
 type AutoResolve = readonly [id: string, value?: unknown];
@@ -48,6 +46,8 @@ interface CommandRuntime {
   autoResolve?: readonly AutoResolve[];
   /** Plain-mode hook to print a final snapshot once the flow succeeds. */
   onPlainComplete?: (store: CLIStore) => void;
+  /** Said after "Cancelled." on Ctrl-C: what state things are in and how to resume. */
+  cancelHint?: string;
 }
 
 /**
@@ -74,12 +74,16 @@ async function runPlain(
   store: CLIStore,
   runtime: CommandRuntime,
 ): Promise<void> {
-  attachPlainReporter(store);
+  attachPlainReporter(store, resumedStep());
   for (const [id, value] of runtime.autoResolve ?? []) {
     store.setAutoResolve(id, value);
   }
   try {
     await runtime.runFlow(store);
+    const groupSwitch = dockerGroupRelaunch(store);
+    if (groupSwitch) {
+      await relaunchWithDockerGroup(store.currentState.step, groupSwitch);
+    }
     runtime.onPlainComplete?.(store);
   } catch (error) {
     store.setError(error as Error);
@@ -87,19 +91,45 @@ async function runPlain(
   exitForStore(store);
 }
 
+/** Ink draws at most this often; a committed change is on screen within a frame. */
+const RENDER_FPS = 30;
+const FRAME_MS = Math.ceil(1000 / RENDER_FPS);
+
+/**
+ * Put the store's last change on screen before unmounting: once a screen has
+ * written Static output, Ink's unmount skips its final frame and keeps the
+ * last one it drew. Two frames cover the throttled render and the throttled write.
+ */
+async function drawLastChange(store: CLIStore): Promise<void> {
+  store.flush();
+  await new Promise((resolve) => setTimeout(resolve, 2 * FRAME_MS));
+}
+
 async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
-  const { unmount } = render(
-    React.createElement(App, { store, command: runtime.command }),
+  // Ctrl-C reaches the flow as a cancel (below), not as Ink quietly unmounting
+  // while the work carries on and the process exits 0.
+  let cancel = async (): Promise<void> => undefined;
+  const { unmount, clear } = render(
+    React.createElement(App, {
+      store,
+      command: runtime.command,
+      onCancel: () => void cancel(),
+    }),
+    { exitOnCtrlC: false, maxFps: RENDER_FPS },
   );
 
-  const handleExit = () => {
+  const handleExit = async (): Promise<void> => {
+    // The last frame stays on screen: end its running step, not a frozen spinner.
+    endActiveStep(store, "cancelled");
+    await drawLastChange(store);
     unmount();
+    const hint = runtime.cancelHint ? ` ${runtime.cancelHint}` : "";
+    process.stdout.write(`\n${MARK.cancelled} Cancelled.${hint}\n`);
     process.exit(SIGINT_EXIT_CODE);
   };
+  cancel = handleExit;
   process.once("SIGINT", handleExit);
   process.once("SIGTERM", handleExit);
-
-  await new Promise((resolve) => setTimeout(resolve, INK_INIT_DELAY_MS));
 
   try {
     await runtime.runFlow(store);
@@ -110,12 +140,27 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
     process.off("SIGTERM", handleExit);
   }
 
-  if (store.currentState.error) {
-    await store.waitForInput("exit");
+  // The flow's last state (stop's result line, up's summary) must be on screen before it unmounts.
+  await drawLastChange(store);
+  const groupSwitch = dockerGroupRelaunch(store);
+  if (groupSwitch) {
+    // The relaunched process draws the same screen again: erase this one so
+    // the run reads as one screen, not two stacked copies.
+    clear();
+    unmount();
+    await relaunchWithDockerGroup(store.currentState.step, groupSwitch);
   }
-
   unmount();
+  // Ink leaves the cursor at the end of its last line; the shell prompt
+  // belongs on its own line.
+  process.stdout.write("\n");
   exitForStore(store);
+}
+
+/** How to relaunch, when the flow granted the docker group and stopped (ensureDocker). */
+function dockerGroupRelaunch(store: CLIStore): DockerGroupSwitch | undefined {
+  if (store.currentState.error) return undefined;
+  return store.currentState.data.dockerGroupSwitch;
 }
 
 /**
@@ -127,7 +172,8 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
  * seconds, so we force-exit after the drain.)
  */
 function exitForStore(store: CLIStore): void {
-  const code = store.currentState.error ? 1 : 0;
+  // A flow may set a failing exit code without an error (status with a part down).
+  const code = store.currentState.error ? 1 : Number(process.exitCode ?? 0);
   const pending = [process.stdout, process.stderr].filter(
     (stream) => stream.writableLength > 0,
   );

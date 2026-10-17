@@ -388,6 +388,8 @@ ignore_imports = [
   "app.utils.agent_utils -> app.agents.tools.core.registry",
   "app.utils.chat_utils -> app.agents.llm.chatbot",
   "app.utils.file_utils -> app.agents.llm.client",
+  # Catches the vision helper's not-configured error to degrade an image upload.
+  "app.utils.file_utils -> app.agents.llm.exceptions",
   "app.utils.file_utils -> app.agents.llm.vision",
   "app.utils.image_utils -> app.agents.llm.vision",
   "app.utils.profile_card -> app.agents.llm.client",

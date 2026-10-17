@@ -12,13 +12,15 @@ from typing import NamedTuple
 
 import pytest
 
-from app.config.settings import CommonSettings
+from app.config.capability_requirements import unused_keys
+from app.config.deployment import DeploymentKind, baseline_profile
+from app.config.settings import Settings
 from app.config.settings_validator import SettingsGroup, SettingsValidator
 from tests.helpers import captured_wide_event
 
 POSTHOG_GROUP = "Posthog Analytics"
 SHARE_GROUP = "File Sharing"
-POSTHOG_FIELDS = {name for name in CommonSettings.model_fields if name.startswith("POSTHOG_")}
+POSTHOG_FIELDS = {name for name in Settings.model_fields if name.startswith("POSTHOG_")}
 
 
 class _ExpectedGroup(NamedTuple):
@@ -32,6 +34,7 @@ class _ExpectedGroup(NamedTuple):
     all_required: bool
     docs_url: str | None
     alternative_group: str | None
+    selfhost_setup: bool = True
 
 
 # The full, in-order registration list `_register_predefined_groups()` builds.
@@ -97,16 +100,19 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://workos.com/docs/reference/api-keys",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Cloudinary Media Storage",
         ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"],
         "Cloudinary media storage service",
-        "File uploads, image storage, and support ticket attachments",
+        "File uploads, image storage, and support ticket attachments when "
+        "BLOB_STORE is cloudinary (hosted, or a self-host that chose it)",
         True,
         True,
         "https://cloudinary.com/documentation/cloudinary_credentials",
         None,
+        False,
     ),
     _ExpectedGroup(
         "File Sharing",
@@ -117,6 +123,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         None,
         None,
+        False,
     ),
     _ExpectedGroup(
         "Speech Processing",
@@ -177,6 +184,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://docs.llamaindex.ai/",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Resend Email Service",
@@ -197,6 +205,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://openweathermap.org/api",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Composio Integration",
@@ -217,6 +226,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://e2b.dev/docs",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Browser Host",
@@ -227,6 +237,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         None,
         None,
+        False,
     ),
     _ExpectedGroup(
         "Dodo Payments",
@@ -237,6 +248,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://docs.dodopayments.com/",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Blog Management",
@@ -247,6 +259,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         None,
         None,
+        False,
     ),
     _ExpectedGroup(
         "Sentry Monitoring",
@@ -257,6 +270,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://docs.sentry.io/platforms/python/",
         None,
+        False,
     ),
     _ExpectedGroup(
         "Posthog Analytics",
@@ -267,6 +281,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         "https://posthog.com/docs/api",
         None,
+        False,
     ),
 ]
 
@@ -298,10 +313,13 @@ def test_predefined_group_fields_match_exactly(expected: _ExpectedGroup) -> None
     assert group.keys == expected.keys
     assert group.description == expected.description
     assert group.affected_features == expected.affected_features
-    assert group.required_in_prod == expected.required_in_prod
+    assert (
+        group.required_in(baseline_profile(DeploymentKind.PRODUCTION)) == expected.required_in_prod
+    )
     assert group.all_required == expected.all_required
     assert group.docs_url == expected.docs_url
     assert group.alternative_group == expected.alternative_group
+    assert group.selfhost_setup == expected.selfhost_setup
 
 
 def test_a_configured_posthog_is_not_reported_missing() -> None:
@@ -322,20 +340,20 @@ def test_an_unconfigured_posthog_reports_every_posthog_setting() -> None:
 async def test_missing_posthog_is_not_warned_about_in_production() -> None:
     """Analytics is optional in production — a missing token must not raise a CRITICAL on every boot, while a genuinely required group still does."""
     validator = SettingsValidator()
-    validator.configure(show_warnings=True, is_production=True)
+    validator.configure(show_warnings=True, profile=baseline_profile(DeploymentKind.PRODUCTION))
     validator.validate_settings(SimpleNamespace())
 
     async with captured_wide_event() as event:
         validator.log_validation_results()
 
-    warned = {warning["group_name"] for warning in event["warnings"]}
+    warned = {warning["group_name"]: warning["severity"] for warning in event["warnings"]}
     assert POSTHOG_GROUP not in warned
-    assert "MongoDB Connection" in warned
+    assert warned["MongoDB Connection"] == "CRITICAL"
 
 
 async def test_missing_posthog_is_warned_about_outside_production() -> None:
     validator = SettingsValidator()
-    validator.configure(show_warnings=True, is_production=False)
+    validator.configure(show_warnings=True, profile=baseline_profile(DeploymentKind.DEVELOPMENT))
     validator.validate_settings(SimpleNamespace())
 
     async with captured_wide_event() as event:
@@ -343,6 +361,9 @@ async def test_missing_posthog_is_warned_about_outside_production() -> None:
 
     posthog_warnings = [w for w in event["warnings"] if w["group_name"] == POSTHOG_GROUP]
     assert [set(w["missing_keys"]) for w in posthog_warnings] == [POSTHOG_FIELDS]
+    # Off GAIA Cloud nothing is CRITICAL, required groups included.
+    assert "MongoDB Connection" in {w["group_name"] for w in event["warnings"]}
+    assert {w["severity"] for w in event["warnings"]} == {"WARNING"}
 
 
 def _group(validator: SettingsValidator, name: str) -> SettingsGroup:
@@ -375,7 +396,7 @@ def test_an_unconfigured_share_secret_is_reported_missing() -> None:
 async def test_a_missing_share_secret_names_what_it_breaks() -> None:
     """The warning is all an operator gets: without the affected-features line it says a key is missing but not that file attachments stop working."""
     validator = SettingsValidator()
-    validator.configure(show_warnings=True, is_production=False)
+    validator.configure(show_warnings=True, profile=baseline_profile(DeploymentKind.DEVELOPMENT))
     validator.validate_settings(SimpleNamespace())
 
     async with captured_wide_event() as event:
@@ -386,3 +407,35 @@ async def test_a_missing_share_secret_names_what_it_breaks() -> None:
     assert warnings[0]["missing_keys"] == ["SHARE_GRANT_SECRET"]
     assert "attachments" in warnings[0]["affected_features"].lower()
     assert "Composio" in warnings[0]["affected_features"]
+
+
+@pytest.mark.parametrize(
+    "group_name", ["WorkOS Authentication", "Dodo Payments", "Cloudinary Media Storage"]
+)
+def test_a_group_whose_capability_is_off_is_never_reported_missing(group_name: str) -> None:
+    """A self-hosted instance signs in locally, bills nothing and keeps files on disk."""
+    validator = SettingsValidator()
+    validator.configure(show_warnings=True, profile=baseline_profile(DeploymentKind.SELFHOST))
+
+    missing = validator.validate_settings(SimpleNamespace())
+
+    assert _missing_keys(missing, group_name) is None
+
+
+def test_production_still_reports_a_missing_workos_group() -> None:
+    missing = SettingsValidator().validate_settings(SimpleNamespace())
+
+    assert _missing_keys(missing, "WorkOS Authentication") is not None
+
+
+def test_self_host_setup_never_prompts_for_a_key_its_profile_cannot_use() -> None:
+    selfhost = baseline_profile(DeploymentKind.SELFHOST)
+    unused = unused_keys(selfhost)
+
+    prompted_but_unused = [
+        group.name
+        for group in SettingsValidator().groups
+        if group.selfhost_setup and unused.issuperset(group.keys)
+    ]
+
+    assert prompted_but_unused == []

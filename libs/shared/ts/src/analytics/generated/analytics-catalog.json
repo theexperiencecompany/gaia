@@ -3897,6 +3897,49 @@
       }
     },
     {
+      "event": "instance:invite_created",
+      "class": "InstanceInviteCreated",
+      "owner": "server",
+      "domain": "instance",
+      "description": "A self-host administrator created an invite link.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host administrator created an invite link.",
+        "properties": {},
+        "title": "InstanceInviteCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "instance:member_joined",
+      "class": "InstanceMemberJoined",
+      "owner": "server",
+      "domain": "instance",
+      "description": "A member account was created on a self-host instance, emitted for the new member.",
+      "previous_names": [],
+      "budget_per_user_day": 1,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A member account was created on a self-host instance, emitted for the new member.",
+        "properties": {
+          "via": {
+            "enum": ["invite", "open"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["via"],
+        "title": "InstanceMemberJoined",
+        "type": "object"
+      }
+    },
+    {
       "event": "integration:account_added",
       "class": "IntegrationAccountAdded",
       "owner": "server",
@@ -4350,6 +4393,38 @@
       }
     },
     {
+      "event": "integration:instance_setup_saved",
+      "class": "IntegrationInstanceSetupSaved",
+      "owner": "server",
+      "domain": "integration",
+      "description": "A self-host admin saved which Composio auth config each integration connects through.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host admin saved which Composio auth config each integration connects through.",
+        "properties": {
+          "stored_count": {
+            "title": "Stored Count",
+            "type": "integer"
+          },
+          "set_up_count": {
+            "title": "Set Up Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": ["stored_count", "set_up_count", "total_count"],
+        "title": "IntegrationInstanceSetupSaved",
+        "type": "object"
+      }
+    },
+    {
       "event": "integration:instructions_updated",
       "class": "IntegrationInstructionsUpdated",
       "owner": "server",
@@ -4400,6 +4475,65 @@
         },
         "required": ["integration_id", "account_count"],
         "title": "IntegrationPrimaryChanged",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:toolkit_disabled",
+      "class": "IntegrationToolkitDisabled",
+      "owner": "server",
+      "domain": "integration",
+      "description": "A self-host admin removed a Composio toolkit they had enabled.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host admin removed a Composio toolkit they had enabled.",
+        "properties": {
+          "toolkit": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Toolkit",
+            "type": "string"
+          }
+        },
+        "required": ["toolkit"],
+        "title": "IntegrationToolkitDisabled",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:toolkit_enabled",
+      "class": "IntegrationToolkitEnabled",
+      "owner": "server",
+      "domain": "integration",
+      "description": "A self-host admin enabled a Composio toolkit; GAIA created its auth config.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host admin enabled a Composio toolkit; GAIA created its auth config.",
+        "properties": {
+          "toolkit": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Toolkit",
+            "type": "string"
+          },
+          "origin": {
+            "enum": ["code", "instance"],
+            "title": "Origin",
+            "type": "string"
+          },
+          "composio_managed": {
+            "title": "Composio Managed",
+            "type": "boolean"
+          }
+        },
+        "required": ["toolkit", "origin", "composio_managed"],
+        "title": "IntegrationToolkitEnabled",
         "type": "object"
       }
     },

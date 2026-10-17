@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import type { SelfhostBot } from "./bots.js";
 import { CLI_VERSION } from "./version.js";
 
 export const GAIA_CONFIG_DIR = path.join(os.homedir(), ".gaia");
@@ -11,6 +12,23 @@ export interface GaiaConfig {
   setupComplete: boolean;
   setupMethod: "manual" | "infisical";
   repoPath: string;
+  /**
+   * Saved non-secret answers from previous runs (ports, paths). Provider
+   * keys must NEVER be persisted here — they come from flags or the web
+   * wizard only.
+   */
+  values?: Record<string, string>;
+  /**
+   * Run the local coding sandbox (docker-compose.sandbox.yml, which mounts the
+   * host Docker socket). Set by `gaia up --code-sandbox`; every later start
+   * and update keeps it until `gaia up --no-code-sandbox`.
+   */
+  codeSandbox?: boolean;
+  /**
+   * Chat bots layered on the stack (docker-compose.bot-<bot>.yml), set by
+   * `gaia bots add/remove`; every later start and update keeps them.
+   */
+  bots?: SelfhostBot[];
   createdAt: string;
   updatedAt: string;
 }

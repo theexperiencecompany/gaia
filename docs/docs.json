@@ -80,7 +80,16 @@
           {
             "group": "Self-Hosting",
             "pages": [
-              "self-hosting/overview"
+              "self-hosting/walkthrough",
+              "self-hosting/overview",
+              "self-hosting/cli-setup",
+              "self-hosting/docker-setup",
+              "self-hosting/one-click-deploy",
+              "self-hosting/composio-integrations",
+              "self-hosting/mcp-servers",
+              "self-hosting/bots",
+              "self-hosting/desktop-app",
+              "configuration/environment-variables"
             ]
           },
           {
@@ -109,16 +118,6 @@
             ]
           },
           {
-            "group": "Self-Hosting",
-            "pages": [
-              "self-hosting/overview",
-              "self-hosting/cli-setup",
-              "self-hosting/docker-setup",
-              "configuration/environment-variables",
-              "configuration/docker"
-            ]
-          },
-          {
             "group": "CLI",
             "pages": [
               "cli/installation",
@@ -132,8 +131,10 @@
               "developers/development-setup",
               "developers/monorepo",
               "developers/commands",
+              "configuration/docker",
               "developers/testing",
               "developers/logging",
+              "developers/native-integrations",
               "developers/contributing"
             ]
           },

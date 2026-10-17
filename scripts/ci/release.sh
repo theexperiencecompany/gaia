@@ -11,6 +11,22 @@
 #                        not own (gaia-web, gaia-grafana), registry-side.
 #   dispatch-cli-publish Dispatch the CLI publish workflow and block until the
 #                        version is actually on npm.
+#   cli-release-images   Does HEAD release the CLI? Its gaia + gaia-web images
+#                        must then be published even when nx sees api/web
+#                        unaffected. Writes required=true|false.
+#   pin-selfhost-release Wait for the release commit's gaia + gaia-web +
+#                        self-host bot :<sha> images and main.yml's quality
+#                        gate on it, then tag them v<CLI version>, the set that
+#                        CLI release's `gaia update` pins.
+#   cli-beta-release     Create the cli-v<beta> GitHub Release as a
+#                        prerelease, or mark an existing one; release-please
+#                        owns every stable release, so a stable tag is refused.
+#   selfhost-bots-arm64  Build the self-host bot images for linux/arm64 and
+#                        push them by digest, untagged. Writes digests to
+#                        $GITHUB_OUTPUT.
+#   selfhost-bots-manifest Fold those arm64 digests and the release's amd64
+#                        bot images into multi-arch :<sha> indexes, the tag
+#                        pin-selfhost-release waits for.
 #   connect-cross-check  Cross-compile tools/gaia-connect for every published
 #                        target and discard the result — the pre-merge proof
 #                        that a release build cannot fail on a target the
@@ -27,7 +43,20 @@
 #   promote-latest        WEB_IMAGE_TAG / GRAFANA_IMAGE_TAG — the immutable tag
 #                         pushed by this run's build phase; empty means that
 #                         image wasn't built this run. Needs a GHCR login.
-#   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION (required).
+#   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION, SHA (required).
+#   cli-release-images    GITHUB_OUTPUT; full history (HEAD^ must exist);
+#                         RELEASE_IMAGES=true (optional) requires the images
+#                         for any commit (build.yml's release_images input).
+#   cli-beta-release      GH_TOKEN (contents:write), RELEASE_TAG (required).
+#   selfhost-bots-arm64   GIT_COMMIT_SHA (required); GITHUB_OUTPUT. Needs a
+#                         GHCR login and an arm64 buildx builder.
+#   selfhost-bots-manifest BOTS_TAG, COMMIT_SHA, ARM64_DIGESTS (required; the
+#                         digests output of selfhost-bots-arm64). Needs a
+#                         GHCR login.
+#   pin-selfhost-release  VERSION, SHA (required; HEAD must be SHA);
+#                         GH_TOKEN (actions:read), GITHUB_REPOSITORY;
+#                         PIN_WAIT_SECONDS (default 1800), PIN_POLL_SECONDS
+#                         (default 30). Needs a GHCR login.
 #   connect-cross-check   none.
 #   connect-binaries      GH_TOKEN (contents:write), RELEASE_TAG (required);
 #                         OUT_DIR (optional, default tools/gaia-connect/dist).
@@ -51,22 +80,31 @@ source "$(dirname "$0")/lib/image-repos.sh"
 # timezone handling) can never silently produce a tag the images don't carry.
 #
 # VERSION_SCHEME is production | develop; deploys only run from master, where
-# the scheme is production, and anything else resolves to empty tags. The
-# outputs are empty when that group was not released this run (the deploy then
-# falls back to :latest via the compose file's ${VAR:-latest} defaults).
+# the scheme is production. The outputs are empty when that group was not
+# released this run (the deploy then falls back to :latest via the compose
+# file's ${VAR:-latest} defaults).
 cmd_resolve_image_tags() {
 
   : "${VERSION_SCHEME:?VERSION_SCHEME is required}"
   : "${APPS_RELEASE_OUTCOME:?APPS_RELEASE_OUTCOME is required}"
   : "${BOTS_RELEASE_OUTCOME:?BOTS_RELEASE_OUTCOME is required}"
 
-  # Production scheme: YYMM.DD.<short sha>. Anchored so :latest and dev tags
-  # never match.
-  local TAG_RE='^[0-9]{4}\.[0-9]{2}\.[0-9a-f]{6,12}$'
+  # The tag shape each nx.json versionScheme produces, anchored so :latest and
+  # the other scheme's tags never match. Branch runs resolve their develop tag
+  # too: the multi-arch API manifest needs it, and deploys stay master-only.
+  local TAG_RE
+  case "$VERSION_SCHEME" in
+    production) TAG_RE='^[0-9]{4}\.[0-9]{2}\.[0-9a-f]{6,12}$' ;;
+    develop) TAG_RE='^develop-[0-9a-f]{6,12}$' ;;
+    *)
+      echo "::error::release: unknown VERSION_SCHEME '$VERSION_SCHEME'" >&2
+      return 1
+      ;;
+  esac
 
   # Prints the group's tag on stdout (empty = group not released). Fails loud
   # when a released group's local images carry no/ambiguous/mismatched
-  # production tags, or when the tag cannot be made to exist in GHCR — a deploy
+  # tags of this run's scheme, or when the tag cannot be made to exist in GHCR — a deploy
   # pinned to a missing tag would fail far later, on the Swarm host.
   resolve_group() {
     local group="$1" outcome="$2"
@@ -83,11 +121,11 @@ cmd_resolve_image_tags() {
     for repo in "${repos[@]}"; do
       candidates=$(docker image ls --format '{{.Tag}}' "$GHCR_NAMESPACE/$repo" | grep -E "$TAG_RE" || true)
       if [[ -z "$candidates" ]]; then
-        echo "::error::release: $group released but $GHCR_NAMESPACE/$repo has no local production tag matching $TAG_RE" >&2
+        echo "::error::release: $group released but $GHCR_NAMESPACE/$repo has no local $VERSION_SCHEME tag matching $TAG_RE" >&2
         return 1
       fi
       if [[ "$(echo "$candidates" | wc -l)" -ne 1 ]]; then
-        echo "::error::release: $GHCR_NAMESPACE/$repo has multiple production tags locally: $(echo "$candidates" | tr '\n' ' ')" >&2
+        echo "::error::release: $GHCR_NAMESPACE/$repo has multiple $VERSION_SCHEME tags locally: $(echo "$candidates" | tr '\n' ' ')" >&2
         return 1
       fi
       if [[ -z "$tag" ]]; then
@@ -117,13 +155,9 @@ cmd_resolve_image_tags() {
     echo "$tag"
   }
 
-  local apps_tag="" bots_tag=""
-  if [[ "$VERSION_SCHEME" = "production" ]]; then
-    apps_tag=$(resolve_group apps "$APPS_RELEASE_OUTCOME" "${APPS_IMAGE_REPOS[@]}")
-    bots_tag=$(resolve_group bots "$BOTS_RELEASE_OUTCOME" "${BOTS_IMAGE_REPOS[@]}")
-  else
-    echo "release: scheme is '$VERSION_SCHEME' (not production) — deploys are disabled off-master, skipping tag resolution"
-  fi
+  local apps_tag bots_tag
+  apps_tag=$(resolve_group apps "$APPS_RELEASE_OUTCOME" "${APPS_IMAGE_REPOS[@]}")
+  bots_tag=$(resolve_group bots "$BOTS_RELEASE_OUTCOME" "${BOTS_IMAGE_REPOS[@]}")
 
   {
     echo "apps_tag=$apps_tag"
@@ -183,11 +217,14 @@ cmd_dispatch_cli_publish() {
   : "${GH_TOKEN:?GH_TOKEN is required}"
   : "${TAG:?TAG is required}"
   : "${VERSION:?VERSION is required}"
+  : "${SHA:?SHA is required (the release commit)}"
 
   local WORKFLOW="publish-cli.yml"
   local PACKAGE="@heygaia/cli"
   local POLL_SECONDS=20
-  local TIMEOUT_SECONDS=900
+  # npm publish is the last job: gaia-connect binaries (~15 min), then the
+  # image pin's wait for the release commit's build (<= 30 min), then npm.
+  local TIMEOUT_SECONDS=3600
 
   published() {
     # Exits non-zero when the exact version is absent from the registry.
@@ -208,7 +245,7 @@ cmd_dispatch_cli_publish() {
   fi
 
   echo "Dispatching $WORKFLOW for $TAG ($VERSION)"
-  gh workflow run "$WORKFLOW" --ref master -f "tag=$TAG" -f "version=$VERSION"
+  gh workflow run "$WORKFLOW" --ref master -f "tag=$TAG" -f "version=$VERSION" -f "sha=$SHA"
 
   local runs_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-theexperiencecompany/gaia}/actions/workflows/${WORKFLOW}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -236,6 +273,12 @@ cmd_dispatch_cli_publish() {
   done
 
   ci_die "Timed out after ${TIMEOUT_SECONDS}s waiting for ${PACKAGE}@${VERSION} on npm. See ${runs_url}"
+}
+
+# Whether a CLI version is a beta (X.Y.Z-beta.N): npm dist-tag beta, a
+# prerelease GitHub Release, and a quality gate that may come from its PR.
+is_cli_beta() {
+  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
 }
 
 # Best-effort probe/disable for Cloudflare Workers Builds. If a Git-connected
@@ -375,8 +418,207 @@ cmd_connect_binaries() {
   ci_ok "gaia-connect: OK (${#ASSETS[@]} binaries + $SUMS attached to $RELEASE_TAG in ${SECONDS}s)"
 }
 
+# Whether HEAD is a CLI release commit: release-please bumps packages/cli's
+# version in the commit it tags cli-v<version>. pin-selfhost-release waits for
+# that commit's gaia, gaia-web and self-host bot :<sha> images, so build.yml
+# publishes them for a release commit even when nx sees none of them as
+# affected (a CLI-only release).
+cmd_cli_release_images() {
+
+  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+
+  local required=false
+  if [[ "${RELEASE_IMAGES:-false}" == "true" ]]; then
+    required=true
+  else
+    local manifest="packages/cli/package.json" before after
+    before=$(git show "HEAD^:$manifest" | jq -r .version)
+    after=$(git show "HEAD:$manifest" | jq -r .version)
+    [[ "$before" != "$after" ]] && required=true
+  fi
+  echo "required=$required" >> "$GITHUB_OUTPUT"
+  ci_ok "cli-release-images: required=$required"
+}
+
+# Gives a CLI release its own immutable image set. `gaia update` pins
+# GAIA_VERSION=v<CLI version> for gaia (API + worker), gaia-web and the
+# self-host bots together, so each must carry that tag before the CLI reaches
+# npm, and each must be the release commit's own build (build.yml tags every
+# master build :<sha>). That
+# build runs alongside this publish, so the pair is awaited, bounded, and a
+# timeout fails loud instead of falling back to whatever :latest is. Nothing is
+# tagged until all exist, so a timeout never leaves a partial set. Idempotent:
+# an existing v<version> tag is kept, because an install may already run it.
+# main.yml's quality-gate verdict across the runs on <sha> of the given events:
+# passed when any run's gate succeeded, failed when every run's gate finished
+# otherwise, pending while one is still running or no run exists yet.
+main_quality_gate() {
+  local sha="$1"
+  shift
+  local api="repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}/actions"
+  local event event_runs run_ids="" run_id state verdict=pending finished=0 running=0
+  # Called inside $(...), where errexit does not reach: every gh call returns
+  # its own failure so the caller can die on it.
+  for event in "$@"; do
+    event_runs=$(gh api "$api/workflows/main.yml/runs?head_sha=$sha&event=$event" --jq '.workflow_runs[].id') || return 1
+    run_ids+=" $event_runs"
+  done
+  for run_id in $run_ids; do
+    state=$(gh api "$api/runs/$run_id/jobs?filter=latest&per_page=100" \
+      --jq '.jobs[] | select(.name == "quality-gate") | "\(.status) \(.conclusion)"') || return 1
+    case "$state" in
+      "completed success") verdict=passed ;;
+      completed\ *) finished=1 ;;
+      *) running=1 ;;
+    esac
+  done
+  if [[ "$verdict" != passed ]] && ((finished == 1 && running == 0)); then
+    verdict=failed
+  fi
+  echo "$verdict"
+}
+
+cmd_pin_selfhost_release() {
+
+  : "${VERSION:?VERSION is required}"
+  : "${SHA:?SHA is required (the release commit)}"
+  local wait_seconds="${PIN_WAIT_SECONDS:-1800}"
+  local poll_seconds="${PIN_POLL_SECONDS:-30}"
+
+  [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || ci_die "SHA '$SHA' must be a full 40-character commit sha"
+  local head
+  head=$(git rev-parse HEAD)
+  [[ "$head" == "$SHA" ]] || ci_die "checked-out commit $head is not the release commit $SHA"
+
+  local tag="v${VERSION}"
+  # A stable release is a master commit, judged by its push run. A beta may be
+  # cut from a PR head, whose only gate is that PR's run on the same sha.
+  local gate_events=(push)
+  is_cli_beta "$VERSION" && gate_events+=(pull_request)
+  local repo pending=()
+  for repo in gaia "$WEB_IMAGE_REPO" "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    if docker buildx imagetools inspect "$GHCR_NAMESPACE/$repo:$tag" >/dev/null 2>&1; then
+      ci_ok "$GHCR_NAMESPACE/$repo:$tag already exists; keeping it."
+    else
+      pending+=("$repo")
+    fi
+  done
+
+  # build.yml publishes :<sha> before main.yml's quality gate has judged the
+  # commit, so the images alone do not say the release commit is green.
+  local deadline=$((SECONDS + wait_seconds))
+  local missing gate
+  while :; do
+    missing=()
+    for repo in ${pending[@]+"${pending[@]}"}; do
+      if ! docker buildx imagetools inspect "$GHCR_NAMESPACE/$repo:$SHA" >/dev/null 2>&1; then
+        missing+=("$GHCR_NAMESPACE/$repo:$SHA")
+      fi
+    done
+    gate=$(main_quality_gate "$SHA" "${gate_events[@]}") ||
+      ci_die "could not read main.yml's runs for $SHA from the Actions API (GH_TOKEN needs actions:read)."
+    if [[ "$gate" == failed ]]; then
+      ci_die "main.yml's quality gate failed on $SHA; a release commit must pass it. Fix master and cut the release from a green commit."
+    fi
+    [[ "$gate" == passed ]] && ((${#missing[@]} == 0)) && break
+    if ((SECONDS >= deadline)); then
+      [[ "$gate" == passed ]] || ci_die "Timed out after ${wait_seconds}s waiting for main.yml's quality gate to pass on $SHA (a run cancelled by a newer master push needs a re-run: gh run rerun <id>), then re-dispatch this publish."
+      ci_die "Timed out after ${wait_seconds}s waiting for ${missing[*]}. build.yml publishes them for the release commit: re-run the master run for $SHA, then re-dispatch this publish."
+    fi
+    echo "Waiting for: quality gate ${gate}${missing[*]:+, ${missing[*]}}"
+    sleep "$poll_seconds"
+  done
+
+  for repo in ${pending[@]+"${pending[@]}"}; do
+    echo "Tagging $GHCR_NAMESPACE/$repo:$SHA as :$tag"
+    docker buildx imagetools create -t "$GHCR_NAMESPACE/$repo:$tag" "$GHCR_NAMESPACE/$repo:$SHA"
+  done
+  echo "### Self-host release pinned: \`GAIA_VERSION=$tag\` (images of \`$SHA\`)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+}
+
+# A beta has no release-please release, so its publish creates one, marked
+# prerelease so neither GitHub's "latest release" nor connect.sh's newest
+# stable cli-v* lookup ever lands on it. Idempotent across re-dispatches.
+cmd_cli_beta_release() {
+
+  : "${GH_TOKEN:?GH_TOKEN is required}"
+  : "${RELEASE_TAG:?RELEASE_TAG is required (e.g. cli-v0.7.0-beta.1)}"
+
+  local version="${RELEASE_TAG#cli-v}"
+  [[ "$RELEASE_TAG" == cli-v* ]] && is_cli_beta "$version" ||
+    ci_die "RELEASE_TAG '$RELEASE_TAG' is not a CLI beta (cli-vX.Y.Z-beta.N); release-please creates stable releases"
+
+  local prerelease
+  if prerelease=$(gh release view "$RELEASE_TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null); then
+    if [[ "$prerelease" == "true" ]]; then
+      ci_ok "$RELEASE_TAG is already a prerelease."
+      return 0
+    fi
+    gh release edit "$RELEASE_TAG" --prerelease --latest=false
+    ci_ok "$RELEASE_TAG marked prerelease."
+    return 0
+  fi
+  gh release create "$RELEASE_TAG" --verify-tag --prerelease --latest=false \
+    --title "GAIA CLI $version (beta)" \
+    --notes "Beta of the GAIA CLI. Install it with: curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh"
+  ci_ok "$RELEASE_TAG created as a prerelease."
+}
+
+# Self-hosters run the bots on arm64 too, while production's bot images stay
+# amd64-only. Only a CLI release commit builds the arm64 half: nx release keeps
+# publishing the amd64 tag the Swarm deploy pins, untouched.
+cmd_selfhost_bots_arm64() {
+
+  : "${GIT_COMMIT_SHA:?GIT_COMMIT_SHA is required}"
+  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+  local repo metadata digest digests=()
+  metadata=$(mktemp)
+  for repo in "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    ci_group "build $GHCR_NAMESPACE/$repo (linux/arm64)"
+    docker buildx build \
+      --platform linux/arm64 \
+      --file apps/bots/Dockerfile \
+      --build-arg "BOT_NAME=${repo#gaia-bot-}" \
+      --build-arg "GIT_COMMIT_SHA=$GIT_COMMIT_SHA" \
+      --cache-from "type=registry,ref=$GHCR_NAMESPACE/$repo:buildcache-arm64" \
+      --cache-to "type=registry,ref=$GHCR_NAMESPACE/$repo:buildcache-arm64,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd" \
+      --output "type=image,name=$GHCR_NAMESPACE/$repo,push-by-digest=true,name-canonical=true,push=true" \
+      --metadata-file "$metadata" \
+      .
+    ci_endgroup
+    digest=$(jq -r '."containerimage.digest"' "$metadata")
+    [[ "$digest" == sha256:* ]] || ci_die "no digest recorded for the $repo arm64 build"
+    digests+=("$repo@$digest")
+  done
+  echo "digests=${digests[*]}" >> "$GITHUB_OUTPUT"
+  ci_ok "selfhost-bots-arm64: ${digests[*]}"
+}
+
+# Tags each self-host bot :<sha> as an index of the release's amd64 image
+# (:<bots tag>, left as it is) and its arm64 digest. Every digest is checked
+# before anything is tagged, so a missing one never leaves a partial set.
+cmd_selfhost_bots_manifest() {
+
+  : "${BOTS_TAG:?BOTS_TAG is required}"
+  : "${COMMIT_SHA:?COMMIT_SHA is required}"
+  : "${ARM64_DIGESTS:?ARM64_DIGESTS is required (selfhost-bots-arm64 did not succeed)}"
+  local repo digest digests=()
+  for repo in "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    digest=$(tr ' ' '\n' <<< "$ARM64_DIGESTS" | sed -n "s|^$repo@||p")
+    [[ -n "$digest" ]] || ci_die "no arm64 image for $repo in ARM64_DIGESTS; its :$COMMIT_SHA would be amd64-only"
+    digests+=("$digest")
+  done
+  local i
+  for i in "${!SELFHOST_BOT_IMAGE_REPOS[@]}"; do
+    repo="${SELFHOST_BOT_IMAGE_REPOS[$i]}"
+    docker buildx imagetools create -t "$GHCR_NAMESPACE/$repo:$COMMIT_SHA" \
+      "$GHCR_NAMESPACE/$repo:$BOTS_TAG" "$GHCR_NAMESPACE/$repo@${digests[$i]}"
+  done
+  ci_ok "selfhost-bots-manifest: ${SELFHOST_BOT_IMAGE_REPOS[*]} tagged :$COMMIT_SHA (amd64 + arm64)"
+}
+
 usage() {
-  sed -n '2,19p' "$0" >&2
+  sed -n '2,/^# Env contract/p' "$0" >&2
 }
 
 main() {
@@ -386,6 +628,11 @@ main() {
     resolve-image-tags)   cmd_resolve_image_tags "$@" ;;
     promote-latest)       cmd_promote_latest "$@" ;;
     dispatch-cli-publish) cmd_dispatch_cli_publish "$@" ;;
+    cli-release-images)   cmd_cli_release_images "$@" ;;
+    pin-selfhost-release) cmd_pin_selfhost_release "$@" ;;
+    cli-beta-release)     cmd_cli_beta_release "$@" ;;
+    selfhost-bots-arm64)  cmd_selfhost_bots_arm64 "$@" ;;
+    selfhost-bots-manifest) cmd_selfhost_bots_manifest "$@" ;;
     connect-cross-check) cmd_connect_cross_check "$@" ;;
     connect-binaries)     cmd_connect_binaries "$@" ;;
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;

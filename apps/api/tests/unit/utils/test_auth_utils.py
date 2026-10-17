@@ -10,10 +10,11 @@ import pytest
 from starlette.requests import Request
 
 from app.config.feature_flags import FeatureFlag
-from app.constants.auth import DEV_USER_HEADER
+from app.config.settings import settings
+from app.constants.auth import DEV_USER_HEADER, InstanceRole
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.first_steps_models import FirstStepsState
-from app.models.user_models import OnboardingSubdocument, UserDocument
+from app.models.user_models import OnboardingPhase, OnboardingSubdocument, UserDocument
 from app.utils import auth_utils
 from app.utils.auth_utils import (
     authenticate_workos_session,
@@ -21,6 +22,7 @@ from app.utils.auth_utils import (
     load_user_context,
     resolve_bot_user,
     resolve_dev_bypass_user,
+    with_local_onboarding_completed,
 )
 from tests.helpers import UNKNOWN_USER_ID, users_get
 
@@ -39,7 +41,7 @@ def _as_user(db_doc: dict) -> UserDocument:
 _PATCH_SETTINGS = "app.utils.auth_utils.settings"
 _PATCH_USER_REPO = "app.utils.auth_utils.user_repository"
 _PATCH_LOG = "app.utils.auth_utils.log"
-_PATCH_WORKOS_CLIENT = "app.utils.auth_utils.AsyncWorkOSClient"
+_PATCH_WORKOS_CLIENT = "app.utils.auth_utils.get_async_workos_client"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -475,8 +477,7 @@ class TestAuthenticateWorkosSession:
         mock_cls.assert_not_called()
         client.user_management.load_sealed_session.assert_awaited_once()
 
-    async def test_creates_workos_client_when_none_provided(self) -> None:
-        """When no workos_client is provided, create one with settings credentials."""
+    async def test_uses_the_shared_workos_client_when_none_provided(self) -> None:
         workos_user = _make_workos_user()
         auth_response = _make_auth_response(authenticated=True, user=workos_user)
         session = _make_session(auth_response)
@@ -486,22 +487,14 @@ class TestAuthenticateWorkosSession:
         with (
             patch(_PATCH_USER_REPO) as mock_col,
             patch(_PATCH_LOG),
-            patch(_PATCH_WORKOS_CLIENT, return_value=mock_client) as mock_cls,
-            patch(_PATCH_SETTINGS) as mock_settings,
+            patch(_PATCH_WORKOS_CLIENT, return_value=mock_client) as get_client,
         ):
-            mock_settings.WORKOS_API_KEY = "sk_test_key"  # pragma: allowlist secret
-            mock_settings.WORKOS_CLIENT_ID = "client_id_123"  # pragma: allowlist secret
-            mock_settings.WORKOS_COOKIE_PASSWORD = (
-                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
-            )
             mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             await authenticate_workos_session(session_token="tok", workos_client=None)
 
-        mock_cls.assert_called_once_with(
-            api_key="sk_test_key",  # pragma: allowlist secret
-            client_id="client_id_123",
-        )
+        get_client.assert_called_once_with()
+        mock_client.user_management.load_sealed_session.assert_awaited_once()
 
     # -- Verify correct MongoDB query --------------------------------------
 
@@ -702,6 +695,90 @@ class TestAuthenticateWorkosSession:
 
 
 # ---------------------------------------------------------------------------
+# with_local_onboarding_completed — the ONE AUTH_MODE=local synthesis policy
+# ---------------------------------------------------------------------------
+
+
+class TestLocalOnboardingSynthesis:
+    """Pin the one AUTH_MODE=local synthesis policy shared by two readers.
+
+    The F8 contract: build_user_context and onboarding_service must agree, so
+    under AUTH_MODE=local BOTH report completed=True regardless of stored state —
+    self-host has no pipeline that could produce a meaningful False.
+    """
+
+    def test_local_forces_completed_over_stored_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Force-override a stored False so local admins reach chat; setdefault honored it."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        result = with_local_onboarding_completed(OnboardingSubdocument(completed=False))
+
+        assert result is not None
+        assert result.completed is True
+
+    def test_local_synthesizes_when_nothing_stored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Report completed for a self-host user with no onboarding subdoc."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        result = with_local_onboarding_completed(OnboardingSubdocument())
+
+        assert result is not None
+        assert result.completed is True
+        assert result.phase is OnboardingPhase.COMPLETED
+
+    def test_local_preserves_stored_phase_and_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        stored = OnboardingSubdocument(
+            completed=False, phase=OnboardingPhase.PERSONALIZATION_PENDING
+        )
+
+        result = with_local_onboarding_completed(stored)
+
+        assert result is not None
+        assert result.completed is True  # forced…
+        assert result.phase is OnboardingPhase.PERSONALIZATION_PENDING  # …stored phase kept
+        # Read-only synthesis: the caller's subdoc is never mutated.
+        assert stored.completed is False
+
+    def test_workos_returns_stored_state_untouched(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        stored = OnboardingSubdocument(completed=False)
+
+        result = with_local_onboarding_completed(stored)
+
+        # Same object: hosted reads stored state verbatim, and synthesis never
+        # writes back to Mongo.
+        assert result is stored
+
+
+class TestBuildUserContextLocalOnboarding:
+    """build_user_context applies the same synthesis to request.state.user."""
+
+    def test_local_reports_completed_regardless_of_stored_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        user_doc = _as_user({"_id": "u1", "email": "a@b.c", "onboarding": {"completed": False}})
+
+        context = build_user_context(user_doc, auth_provider="local")
+
+        assert context.onboarding is not None
+        assert context.onboarding.completed is True
+
+    def test_workos_stays_byte_for_byte(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Hosted deployments are untouched: stored False stays False."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        user_doc = _as_user({"_id": "u1", "email": "a@b.c", "onboarding": {"completed": False}})
+
+        context = build_user_context(user_doc, auth_provider="workos")
+
+        assert context.onboarding is not None
+        assert context.onboarding.completed is False
+
+
+# ---------------------------------------------------------------------------
 # build_user_context / resolve_bot_user / load_user_context
 # ---------------------------------------------------------------------------
 
@@ -715,6 +792,7 @@ _SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
     ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
     ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_STAMP)),
     ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),
+    ("InstanceRole", InstanceRole.ADMIN),
     ("datetime", _STAMP),
     ("bool", True),
     ("int", 3),
@@ -956,3 +1034,37 @@ class TestAuthenticateWorkosSessionFailureLogs:
             error="bad seal",
             error_type="ValueError",
         )
+
+
+def _connection(scheme: str, forwarded_proto: str | None = None) -> Request:
+    headers = [] if forwarded_proto is None else [(b"x-forwarded-proto", forwarded_proto.encode())]
+    return Request(
+        {"type": "http", "scheme": scheme, "path": "/", "headers": headers, "server": ("t", 80)}
+    )
+
+
+class TestSessionCookieSecure:
+    @pytest.mark.parametrize(
+        ("scheme", "forwarded", "secure"),
+        [
+            ("http", None, False),
+            ("https", None, True),
+            ("http", "https", True),
+            ("http", "https, http", True),
+            ("http", "http, https", False),
+        ],
+        ids=["plain-http", "direct-https", "proxied-https", "first-hop-https", "first-hop-http"],
+    )
+    def test_off_gaia_cloud_it_follows_the_callers_real_transport(
+        self, monkeypatch: pytest.MonkeyPatch, scheme: str, forwarded: str | None, secure: bool
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        assert auth_utils.session_cookie_secure(_connection(scheme, forwarded)) is secure
+
+    def test_gaia_cloud_is_always_secure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+
+        assert auth_utils.session_cookie_secure(_connection("http")) is True

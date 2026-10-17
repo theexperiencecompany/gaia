@@ -1,14 +1,12 @@
 import { execa } from "execa";
-
-export type CheckResult = "success" | "error" | "missing" | "pending";
-
-export interface PrerequisiteInfo {
-  name: string;
-  installUrl: string;
-  installed: boolean;
-  working: boolean;
-  errorMessage?: string;
-}
+import { COMPOSE_PROJECT_BY_MODE, getProjectPublishedPorts } from "./docker.js";
+import {
+  DEFAULT_API_PORT,
+  DEFAULT_HTTPS_PORT,
+  DEFAULT_WEB_PORT,
+} from "./endpoints.js";
+import type { SetupMode } from "./env-parser.js";
+import type { CheckResult, PortCheckResult } from "./prerequisites.types.js";
 
 export const PREREQUISITE_URLS = {
   git: "https://git-scm.com/downloads",
@@ -16,24 +14,64 @@ export const PREREQUISITE_URLS = {
   mise: "https://mise.jdx.dev/getting-started.html",
 } as const;
 
-export interface PortCheckResult {
-  port: number;
-  service: string;
-  available: boolean;
-  usedBy?: string;
-  alternative?: number;
-}
-
 const PORT_SERVICE_MAP: Record<number, string> = {
   8000: "API Server",
   5432: "PostgreSQL",
   6379: "Redis",
   27017: "MongoDB",
   5672: "RabbitMQ",
-  3000: "Web Frontend",
+  15672: "RabbitMQ Management",
+  [DEFAULT_WEB_PORT]: "Web Frontend",
+  [DEFAULT_HTTPS_PORT]: "Web Frontend (HTTPS)",
   8080: "ChromaDB",
   8083: "Mongo Express",
 };
+
+/**
+ * Host ports each mode publishes, by default value. Self-host publishes only
+ * its proxy; developer mode publishes every infra service plus the native
+ * API and web dev servers.
+ */
+const REQUIRED_HOST_PORTS: Record<SetupMode, readonly number[]> = {
+  selfhost: [DEFAULT_WEB_PORT, DEFAULT_HTTPS_PORT],
+  developer: [
+    DEFAULT_API_PORT,
+    5432,
+    6379,
+    27017,
+    5672,
+    15672,
+    DEFAULT_WEB_PORT,
+    8080,
+    8083,
+  ],
+};
+
+/**
+ * Port check for a mode's host ports (after overrides). Ports already
+ * published by this mode's own compose project count as available, so a
+ * rerun or `gaia doctor` against a running stack never reports GAIA itself.
+ */
+export async function checkModePorts(
+  mode: SetupMode,
+  overrides: Record<number, number> = {},
+): Promise<PortCheckResult[]> {
+  const ownPorts = await getProjectPublishedPorts(
+    COMPOSE_PROJECT_BY_MODE[mode],
+  );
+  const effective = REQUIRED_HOST_PORTS[mode].map((p) => overrides[p] ?? p);
+  const toCheck = effective.filter((p) => !ownPorts.has(p));
+  const results = await checkPortsWithFallback(toCheck);
+  const byPort = new Map(results.map((r) => [r.port, r]));
+  return effective.map(
+    (port) =>
+      byPort.get(port) ?? {
+        port,
+        service: PORT_SERVICE_MAP[port] || `Port ${port}`,
+        available: true,
+      },
+  );
+}
 
 export async function checkGit(): Promise<CheckResult> {
   try {
@@ -42,41 +80,6 @@ export async function checkGit(): Promise<CheckResult> {
   } catch {
     return "error";
   }
-}
-
-export async function checkDockerDetailed(): Promise<PrerequisiteInfo> {
-  let installed = false;
-  let working = false;
-  let errorMessage: string | undefined;
-
-  try {
-    await execa("docker", ["--version"]);
-    installed = true;
-  } catch {
-    return {
-      name: "Docker",
-      installUrl: PREREQUISITE_URLS.docker,
-      installed: false,
-      working: false,
-      errorMessage: "Docker is not installed",
-    };
-  }
-
-  try {
-    await execa("docker", ["info"], { timeout: 5000 });
-    working = true;
-  } catch {
-    errorMessage =
-      "Docker is installed but the daemon is not running. Please start Docker Desktop or the Docker daemon.";
-  }
-
-  return {
-    name: "Docker",
-    installUrl: PREREQUISITE_URLS.docker,
-    installed,
-    working,
-    errorMessage,
-  };
 }
 
 export async function checkMise(): Promise<CheckResult> {
@@ -112,7 +115,7 @@ export async function installMise(): Promise<boolean> {
   }
 }
 
-export async function checkPortsWithFallback(
+async function checkPortsWithFallback(
   ports: number[],
 ): Promise<PortCheckResult[]> {
   const net = await import("node:net");

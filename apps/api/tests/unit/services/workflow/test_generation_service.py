@@ -245,7 +245,7 @@ class _FakeIntegration:
 
 
 def _catalog(*integrations: _FakeIntegration):
-    return patch(f"{MODULE}.OAUTH_INTEGRATIONS", list(integrations))
+    return patch("app.config.oauth_config.OAUTH_INTEGRATIONS", list(integrations))
 
 
 class TestCollectSubagentCategories:

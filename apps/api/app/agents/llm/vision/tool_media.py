@@ -16,15 +16,17 @@ from typing import Any
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.vision.capability import model_can_view_images
 from app.agents.llm.vision.describe import describe_image
 from app.constants.log_tags import LogTag
 from app.constants.media import (
     MEDIA_DESCRIBE_FAILED,
     MEDIA_DESCRIPTIONS_KEY,
+    MEDIA_VISION_NOT_CONFIGURED,
     TOOL_MEDIA_DESCRIBE_PROMPT,
 )
-from app.utils.multimodal import extract_text_content, media_blocks
+from app.utils.multimodal import InlineMediaBlock, extract_text_content, media_blocks
 from shared.py.wide_events import log
 
 
@@ -52,17 +54,22 @@ async def describe_tool_media(
         context=extract_text_content(message.content) or "(none)",
     )
     # Bounded by MAX_MEDIA_BLOCKS_PER_TOOL_RESULT at every producer.
-    described = await asyncio.gather(
-        *(
-            describe_image(
-                block["base64"],
-                block["mime_type"],
-                prompt=prompt,
-                label="tool_media_vision",
+    try:
+        described: list[str | None] = await asyncio.gather(
+            *(
+                describe_image(
+                    media.base64,
+                    media.mime_type,
+                    prompt=prompt,
+                    label="tool_media_vision",
+                )
+                for media in (InlineMediaBlock.model_validate(block) for block in blocks)
             )
-            for block in blocks
         )
-    )
+    except LLMNotConfiguredError as e:
+        # The tool result still lands; the model is told plainly why it is blind.
+        log.warning(f"{LogTag.TOOL} No vision provider for tool media", error=str(e))
+        described = [MEDIA_VISION_NOT_CONFIGURED] * len(blocks)
     log.info(
         f"{LogTag.TOOL} Described tool media for a text-only lane",
         tool_media={

@@ -13,15 +13,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage
 import pytest
 
+from app.agents.llm import client as client_module
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.vision.capability import model_can_view_images
 from app.agents.llm.vision.describe import describe_image
 from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     VISION_MODEL_NAME,
-    VISION_MODEL_PROVIDER,
     ModelUse,
 )
+from app.constants.providers import CREDENTIAL_PROVIDERS, HOSTED_ONE_SHOT_PROVIDERS
 from app.utils.multimodal import image_content_block
 
 _MOD = "app.agents.llm.vision.describe"
@@ -38,7 +40,7 @@ class TestTheDescriberCanSee:
         config = {
             "configurable": {
                 "lane": {
-                    "provider": VISION_MODEL_PROVIDER,
+                    "provider": HOSTED_ONE_SHOT_PROVIDERS[ModelUse.VISION],
                     "model": VISION_MODEL_NAME,
                     "reasoning": None,
                     "provider_pin": None,
@@ -115,6 +117,18 @@ class TestDegradation:
             patch(f"{_MOD}.ainvoke_llm", AsyncMock(side_effect=RuntimeError("provider down"))),
         ):
             assert await describe_image("BASE64", "image/png", prompt="p") is None
+
+    async def test_no_vision_provider_raises_instead_of_returning_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nothing configured can see: that is a setup problem to surface, not a transient miss."""
+        monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False)
+        monkeypatch.setattr(client_module.settings, "ENV", "selfhost")
+        monkeypatch.setattr(client_module.settings, "DEV_DEFAULT_MODEL", None)
+        monkeypatch.setattr(client_module, "_runtime_configs", dict.fromkeys(CREDENTIAL_PROVIDERS))
+
+        with pytest.raises(LLMNotConfiguredError, match="vision"):
+            await describe_image("BASE64", "image/png", prompt="p")
 
     async def test_an_empty_description_is_reported_as_no_description(self) -> None:
         with (

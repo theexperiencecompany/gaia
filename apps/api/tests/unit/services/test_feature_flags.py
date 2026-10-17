@@ -8,7 +8,7 @@ import pytest
 import time_machine
 
 from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage, kill_switch_key
-from app.config.settings import CommonSettings, ProductionSettings, settings as app_settings
+from app.config.settings import Settings, settings as app_settings
 from app.constants.analytics import ANALYTICS_DAY_TIMEZONE
 from app.constants.error_codes import FEATURE_KILLED
 from app.constants.feature_flags import (
@@ -328,9 +328,8 @@ FLAG_KILL_SWITCHES = {
 
 class TestShippedDefaults:
     @pytest.mark.parametrize("setting", ["ENABLE_HIL_LEDGER", "ENABLE_CODE_MODE"])
-    @pytest.mark.parametrize("settings_class", [CommonSettings, ProductionSettings])
-    def test_ships_on(self, setting: str, settings_class: type[CommonSettings]) -> None:
-        assert settings_class.model_fields[setting].default is True
+    def test_ships_on(self, setting: str) -> None:
+        assert Settings.model_fields[setting].default is True
 
 
 class TestEveryFlagFailsOpenToItsOwnSetting:

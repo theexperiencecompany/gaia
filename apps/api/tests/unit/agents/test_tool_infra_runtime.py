@@ -22,6 +22,7 @@ from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewar
 from app.agents.tools.core import retrieval as retrieval_module
 from app.agents.tools.core.registry import ToolRegistry
 from app.agents.tools.core.retrieval import (
+    _RankedHits,
     _render_discovery_response,
     _split_prefixed_entry,
     get_retrieve_tools_function,
@@ -1107,14 +1108,12 @@ def _render_text(
     """Return the raw string the model receives, formatting and all."""
     opts = options or _DiscoveryOptions()
     return _render_discovery_response(
-        final_tools,
+        _RankedHits(final_tools, opts.total_candidates, opts.limit),
         _DiscoveryRegistry(opts.categories or {}, opts.destructive),
         opts.connected or {},
         query,
-        opts.total_candidates,
-        opts.limit,
-        not_connected=(),
-        background=False,
+        (),
+        False,
     )
 
 

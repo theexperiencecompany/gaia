@@ -13,6 +13,13 @@ d57c64207d2a4275bbd922fc7fe898a4419298a6:apps/api/tests/integration/api/test_sha
 # here: reproducing it makes this file itself a finding.
 b93f415acf402c230a5692af29d55ae49c486337:apps/api/tests/unit/api/test_oauth_dependencies.py:generic-api-key:176
 
+# generic-api-key reads the build_user_context kwargs
+# (auth_provider=auth_provider, impersonated=True) as key=value credentials.
+# No secret is on the line. Fixed going forward by splitting the call
+# one-kwarg-per-line — with each kwarg isolated, the lone identifier falls below
+# the rule's entropy bar — so this entry only silences the original single-line
+# commit already on this branch.
+fa4d4185200a547d33ff265635d244ec70a349fc:apps/api/app/api/v1/middleware/auth.py:generic-api-key:276
 # generic-api-key reads the hex ObjectId user ids these bridge e2e callers
 # were first given as literals (entropy of 24 hex chars). They identify test
 # users, not credentials; the file now generates them, but gitleaks scans the

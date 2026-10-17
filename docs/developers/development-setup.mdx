@@ -25,13 +25,11 @@ icon: "laptop-code"
   <Accordion icon="docker" title="Docker & Docker Compose">
     - Docker Desktop or Docker Engine
     - Docker Compose v2+
-    - At least 4GB of available RAM
     - 10GB of free disk space
   </Accordion>
 
-  <Accordion icon="code" title="CLI Requirements">
-    - Node.js 20+
-    - one package manager: npm, pnpm, or bun
+  <Accordion icon="code" title="Toolchain">
+    - [mise](https://mise.jdx.dev/getting-started.html) — installs Node, Python, uv and Nx at the versions the repo pins, and runs every dev task
     - Git
   </Accordion>
 
@@ -44,17 +42,9 @@ icon: "laptop-code"
 
 ---
 
-## Install GAIA CLI
-
-<Snippet file="cli-install.mdx" />
-
-Verify installation:
-
-```bash
-gaia --help
-```
-
----
+<Note>
+  Just want to run GAIA, not change it? Use `gaia up` instead — see [Self-hosting](/self-hosting/overview).
+</Note>
 
 ## First-Time Setup
 
@@ -66,22 +56,38 @@ gaia --help
     ```
   </Step>
 
-  <Step title="Run setup wizard">
+  <Step title="Install the toolchain">
     ```bash
-    gaia init
+    mise install
+    corepack enable   # pnpm, at the version package.json pins
     ```
-
-    In the wizard:
-    - Choose **Developer Mode (Local)**
-    - Choose your env setup method (Manual or Infisical)
   </Step>
 
-  <Step title="Start development in Nx TUI">
+  <Step title="Set up the project">
     ```bash
-    gaia dev
+    mise run setup
     ```
 
-    This runs `mise dev` for you and opens the Nx TUI in your current terminal.
+    Creates any missing `.env` files from their examples (`apps/api/.env`, `apps/web/.env`, `apps/mobile/.env` — existing files are never overwritten), installs JS and Python dependencies, downloads the voice models, and starts the Docker infrastructure. Team members with Infisical access can instead prefix any task with `mise infisical`.
+  </Step>
+
+  <Step title="Pick a sign-in mode and an AI key">
+    You don't need a WorkOS account. Add these to `apps/api/.env`:
+
+    ```bash
+    AUTH_MODE=local          # email + password sign-in, no WorkOS
+    OPENAI_API_KEY=sk-...    # or any one provider key; see Environment Variables
+    ```
+
+    With `AUTH_MODE=local`, open http://localhost:3000/signup after starting and create the first account. Leave `AUTH_MODE` unset to use WorkOS (fill the `WORKOS_*` values). Everything else is optional — see [Environment Variables](/configuration/environment-variables).
+  </Step>
+
+  <Step title="Start development">
+    ```bash
+    mise dev
+    ```
+
+    Runs the API and web app natively with hot reload (API on port 8000, web on 3000) and the infrastructure in Docker. `mise dev --agent` skips sign-in entirely with the dev auth bypass.
   </Step>
 </Steps>
 
@@ -91,12 +97,12 @@ gaia --help
 
 | Command | Description |
 | ------- | ----------- |
-| `gaia dev` | API + web in Nx TUI (developer mode) |
-| `gaia dev full` | API + web + workers in Nx TUI (developer mode) |
-| `gaia logs` | Stream logs for currently running services |
-| `gaia status` | Health check for GAIA services |
-| `gaia stop` | Stop services safely (GAIA-managed processes) |
-| `gaia setup` | Re-run setup for an existing clone |
+| `mise dev` | API + web with hot reload |
+| `mise dev:vm` | API in a container (needed for JuiceFS workspace features) + web natively |
+| `mise dev:arq` | API + web + ARQ background worker |
+| `mise dev:full` | API + web + worker + voice agent + all bots |
+
+See [Commands Reference](/developers/commands) for the full list.
 
 ---
 
@@ -123,49 +129,26 @@ gaia/
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="gaia command not found">
-    Reinstall globally, then open a new terminal session:
+  <Accordion title="mise tasks not found or wrong tool versions">
+    Make sure mise is [activated in your shell](https://mise.jdx.dev/getting-started.html), trust the repo config, and reinstall the toolchain from the repo root:
 
-    <CodeGroup>
-
-    ```bash npm
-    npm install -g @heygaia/cli
-    gaia --help
+    ```bash
+    mise trust
+    mise install
     ```
-
-    ```bash pnpm
-    pnpm add -g @heygaia/cli
-    gaia --help
-    ```
-
-    ```bash bun
-    bun add -g @heygaia/cli
-    gaia --help
-    ```
-
-    </CodeGroup>
   </Accordion>
 
   <Accordion title="Docker services not starting">
-    Check Docker is running:
+    Check Docker is running, then look at the infrastructure containers:
 
     ```bash
     docker ps
-    ```
-
-    Then check GAIA service health:
-
-    ```bash
-    gaia status
+    docker compose -f infra/docker/docker-compose.yml ps
     ```
   </Accordion>
 
   <Accordion title="Need to reconfigure environment">
-    From your repo root, run:
-
-    ```bash
-    gaia setup
-    ```
+    Edit `apps/api/.env` and restart `mise dev`. To start over from the template, delete the file and run `mise run setup:env`.
   </Accordion>
 </AccordionGroup>
 

@@ -6,37 +6,24 @@ icon: "terminal"
 
 ## Overview
 
-Use the **GAIA CLI** for day-to-day setup and running. Under the hood, GAIA uses **mise + Nx**.
+Contributors work through **mise + Nx**; self-hosters use the **GAIA CLI**.
 
-- **GAIA CLI** - primary interface for setup, run, status, and logs
-- **[mise](https://mise.jdx.dev)** - task runner and tool version manager (advanced/direct usage)
+- **[mise](https://mise.jdx.dev)** - task runner and tool version manager; the contributor entrypoint
 - **[Nx](https://nx.dev)** - build system with caching and project graph
+- **GAIA CLI** - self-host setup and service management (`gaia up`)
 
 ---
 
 ## Quick Start
 
-<CodeGroup>
-
-```bash npm
-npm install -g @heygaia/cli
-```
-
-```bash pnpm
-pnpm add -g @heygaia/cli
-```
-
-```bash bun
-bun add -g @heygaia/cli
-```
-
-</CodeGroup>
-
 ```bash
-gaia init         # First-time setup wizard
-gaia dev          # Developer mode (Nx TUI)
-gaia dev full     # Developer mode + workers (Nx TUI)
+mise install      # Node, Python, uv and nx at the pinned versions
+corepack enable   # pnpm, at the version package.json pins
+mise run setup    # env files, dependencies, Docker infra
+mise dev          # API + web with hot reload
 ```
+
+See [Development Setup](/developers/development-setup) for details.
 
 ---
 
@@ -46,20 +33,23 @@ Run from project root.
 
 | Command | Description |
 |---------|-------------|
-| `gaia init` | Full setup wizard (self-host or developer mode) |
+| `gaia up` | One-command self-host: configure, pull and start |
+| `gaia init` | Developer setup wizard (self-hosters use `gaia up`) |
 | `gaia setup` | Configure an existing repository |
 | `gaia start` | Start services in self-host mode |
 | `gaia dev` | Run developer mode in Nx TUI |
 | `gaia dev full` | Run developer mode + workers in Nx TUI |
 | `gaia logs` | Stream logs for running services |
 | `gaia stop` | Stop services safely (GAIA-managed processes) |
-| `gaia status` | Check service health |
+| `gaia status` | Check service and per-dependency health |
+| `gaia doctor` | Diagnose an install, with a fix per problem |
+| `gaia update` | Move a self-host install to the release this CLI ships |
 
 Use `gaia stop --force-ports` only when needed to aggressively clear listeners on API/Web ports.
 
 ---
 
-## Development Commands (Advanced: mise)
+## Development Commands (mise)
 
 Run from project root.
 
@@ -68,12 +58,11 @@ Run from project root.
 | `mise dev`      | API + web in parallel (starts Docker) |
 | `mise dev:api`  | API server only (port 8000)           |
 | `mise dev:web`  | Web app only (port 3000)              |
-| `mise dev:mobile` | Mobile app (Expo dev server)        |
-| `mise dev:desktop` | Desktop app (Electron)             |
-| `mise dev:arq`  | ARQ background worker                 |
-| `mise dev:voice` | Voice agent worker                   |
-| `mise dev:full` | API + web + ARQ + voice worker        |
-| `mise dev:docs` | Documentation server                  |
+| `mise dev:vm`   | API in a container (JuiceFS FUSE mount) + web natively |
+| `mise dev:mobile` | Mobile app + API                    |
+| `mise dev:arq`  | API + web + ARQ background worker     |
+| `mise dev:bots` | All bots in parallel                  |
+| `mise dev:full` | API + web + ARQ + voice agent + all bots |
 
 ---
 
@@ -81,10 +70,8 @@ Run from project root.
 
 | Command                  | Description                                                    |
 | ------------------------ | -------------------------------------------------------------- |
-| `mise setup`             | Complete setup for all apps (env check → deps → docker → seed) |
-| `mise setup:env`         | Check if `.env` files exist (api, mobile)                      |
-| `mise setup:api`         | Install API dependencies (uv sync)                             |
-| `mise setup:web`         | Install web dependencies (pnpm install)                        |
+| `mise setup`             | Complete setup: env files → deps → voice models → Docker infra |
+| `mise setup:env`         | Create missing `.env` files from their examples (api, web, mobile); never overwrites |
 | `mise setup:mobile`      | Install mobile dependencies (pnpm install)                     |
 | `mise setup:desktop`     | Install desktop dependencies (pnpm install)                    |
 | `mise setup:voice-agent` | Install voice agent dependencies + download models             |
@@ -97,8 +84,6 @@ Run from project root.
 | Command               | Description                 |
 | --------------------- | --------------------------- |
 | `mise build`          | Build all projects          |
-| `mise build:web`      | Build web only              |
-| `mise build:docs`     | Build documentation         |
 | `mise build:affected` | Build only changed projects |
 
 ---
@@ -111,8 +96,8 @@ Run from project root.
 | -------------------- | ----------------------------------------- |
 | `mise lint`          | Lint all projects (parallel with caching) |
 | `mise lint:fix`      | Lint and auto-fix all projects            |
-| `mise lint:api`      | Lint API only (ruff)                      |
-| `mise lint:web`      | Lint web only (biome)                     |
+| `mise lint:py`       | Whole-repo Python lint + format check (CI's ruff command) |
+| `mise lint:py:fix`   | Same, with autofix                        |
 | `mise lint:affected` | Lint only changed projects                |
 
 ### Formatting
@@ -121,8 +106,6 @@ Run from project root.
 | ---------------------- | -------------------------------- |
 | `mise format`          | Format all projects              |
 | `mise format:check`    | Check formatting without changes |
-| `mise format:api`      | Format API only                  |
-| `mise format:web`      | Format web only                  |
 | `mise format:affected` | Format only changed projects     |
 
 ### Type Checking
@@ -138,9 +121,9 @@ Run from project root.
 
 | Command              | Description                |
 | -------------------- | -------------------------- |
-| `mise test`          | Run all tests              |
-| `mise test:api`      | Run API tests (pytest)     |
-| `mise test:web`      | Run web tests              |
+| `mise test`          | Run all JS/TS tests        |
+| `mise test:python`   | Run all Python tests with real services |
+| `mise test:one <file>` | Run one Python test file (no xdist) |
 | `mise test:affected` | Test only changed projects |
 
 ---

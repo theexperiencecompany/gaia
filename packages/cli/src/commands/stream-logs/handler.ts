@@ -9,11 +9,13 @@ import {
   runInteractiveCommand,
 } from "../../lib/interactive.js";
 import {
+  composeFileArgs,
   DEV_LOG_FILE,
   detectSetupMode,
-  findRepoRoot,
+  findInstallRoot,
   isPidAlive,
   readStoredDevPid,
+  selfhostComposeFiles,
 } from "../../lib/service-starter.js";
 
 function getDockerEnvFileArgs(dockerDir: string): string[] {
@@ -25,7 +27,7 @@ function getDockerEnvFileArgs(dockerDir: string): string[] {
 }
 
 export async function runLogs(): Promise<void> {
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   if (!repoPath) {
     throw new Error(
       "Could not find GAIA repository. Run from within a cloned gaia repo.",
@@ -52,8 +54,7 @@ export async function runLogs(): Promise<void> {
       "docker",
       [
         "compose",
-        "-f",
-        "docker-compose.selfhost.yml",
+        ...composeFileArgs(selfhostComposeFiles()),
         ...envArgs,
         "logs",
         "-f",
@@ -73,7 +74,7 @@ export async function runLogs(): Promise<void> {
     typeof devPid === "number" && isPidAlive(devPid);
 
   if (fs.existsSync(devLogPath) && isDeveloperProcessAlive) {
-    console.log("Streaming app and infrastructure logs...");
+    console.log("Streaming app and infrastructure logs…");
     if (process.platform === "win32") {
       await runConcurrentInteractiveCommands([
         {

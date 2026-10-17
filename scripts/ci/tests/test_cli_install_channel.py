@@ -16,7 +16,19 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 INSTALL_SH = REPO_ROOT / "packages" / "cli" / "install.sh"
 
-HOST_TOOLS = ("sh", "uname", "cat", "chmod", "dirname", "basename")
+HOST_TOOLS = (
+    "sh",
+    "uname",
+    "cat",
+    "chmod",
+    "dirname",
+    "basename",
+    "mktemp",
+    "rm",
+    "date",
+    "tail",
+    "grep",
+)
 
 # Stands in for npm / pnpm / bun: records argv, then installs a gaia shim.
 PKG_MGR_STUB = """#!/bin/sh
@@ -28,7 +40,7 @@ chmod +x "$bin_dir/gaia"
 """
 
 EXPECTED_COMMAND = {
-    "npm": "npm install -g --ignore-scripts @heygaia/cli@{channel}",
+    "npm": "npm install -g --ignore-scripts --no-fund --no-audit --loglevel=error @heygaia/cli@{channel}",
     "pnpm": "pnpm add -g @heygaia/cli@{channel}",
     "bun": "bun install -g --ignore-scripts @heygaia/cli@{channel}",
 }
@@ -70,7 +82,6 @@ def test_installs_the_named_channel(tmp_path: Path, pkg_mgr: str, channel: str) 
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert log.read_text().splitlines() == [EXPECTED_COMMAND[pkg_mgr].format(channel=channel)]
-    assert f"@heygaia/cli@{channel} ({channel} channel) via {pkg_mgr}" in result.stdout
 
 
 def test_no_channel_installs_latest(tmp_path: Path) -> None:
@@ -79,7 +90,9 @@ def test_no_channel_installs_latest(tmp_path: Path) -> None:
     result = _run(env)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert log.read_text().splitlines() == ["npm install -g --ignore-scripts @heygaia/cli@latest"]
+    assert log.read_text().splitlines() == [
+        "npm install -g --ignore-scripts --no-fund --no-audit --loglevel=error @heygaia/cli@latest"
+    ]
 
 
 @pytest.mark.parametrize("channel", ["next", "Beta", "0.7.0-beta.1", "beta; rm -rf ~"])

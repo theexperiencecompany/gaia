@@ -168,6 +168,9 @@ const config: KnipConfig = {
   // package.json). Includes nx target names invoked as `nx run <target>`.
   ignoreBinaries: [
     "wrangler",
+    // shadow-utils on the self-host box: the CLI re-runs itself under the
+    // docker group right after adding the user to it (packages/cli docker-group).
+    "sg",
     "biome",
     "clean",
     "check",
@@ -188,6 +191,7 @@ const config: KnipConfig = {
     "web",
     "eslint",
     "prettier",
+    "vm_stat",
     "lsof",
     "netstat",
     "tasklist",
@@ -405,7 +409,12 @@ const config: KnipConfig = {
 
     // ── CLI Package ──────────────────────────────────────────────────
     "packages/cli": {
-      entry: ["src/index.{ts,tsx}", "src/commands/**/*.{ts,tsx}"],
+      // scripts/: generators run from package.json (bake:logo), not imported.
+      entry: [
+        "src/index.{ts,tsx}",
+        "src/commands/**/*.{ts,tsx}",
+        "scripts/*.mjs",
+      ],
       // Tests are not live references — see apps/bots note.
       project: [
         "src/**/*.{ts,tsx}",

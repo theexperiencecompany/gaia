@@ -29,6 +29,9 @@ from app.constants.sandbox import (
     SANDBOX_LOCK_RENEW_SECONDS,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.services.providers.provider_credentials_service import (
+    resolve as resolve_e2b_config,
+)
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.errors import SandboxAcquisitionError
 from app.services.sandbox.shard_router import shard_for
@@ -141,14 +144,10 @@ _pool_singleton: SandboxPool | None = None
 
 @lazy_provider(
     name="e2b_sandbox_pool",
-    required_keys=[settings.E2B_API_KEY],
+    required_keys=[],
     strategy=MissingKeyStrategy.WARN,
-    warning_message=(
-        "E2B_API_KEY is not configured. Coding tools (bash/read/write/edit) "
-        "will return errors until it is set."
-    ),
 )
-def init_sandbox_pool() -> SandboxPool:
+async def init_sandbox_pool() -> SandboxPool:
     """Lazy-provider factory; also memoizes the module-level singleton.
 
     Registered with @lazy_provider purely to expose the E2B_API_KEY
@@ -160,6 +159,13 @@ def init_sandbox_pool() -> SandboxPool:
     if _pool_singleton is None:
         log.info(f"{LogTag.SANDBOX} initializing pool")
         _pool_singleton = SandboxPool()
+    config = await resolve_e2b_config("e2b")
+    if config is None:
+        log.warning(
+            "E2B is not configured (no stored credential and no E2B_API_KEY): "
+            "hosted sandboxes are unavailable. On self-host, coding tools "
+            "fall back to the local Docker backend."
+        )
     return _pool_singleton
 
 

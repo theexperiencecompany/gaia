@@ -1,0 +1,29 @@
+# Opt-in local coding sandbox. Layer it on the self-host stack:
+#   docker compose -f docker-compose.selfhost.yml -f docker-compose.sandbox.yml up -d
+# (`gaia up --code-sandbox` does exactly this, and `gaia start` / `gaia update`
+# keep it on). Without an E2B key, the agent runs each user's code in a sibling
+# `gaia-sandbox-*` container it creates through the host Docker daemon, so the
+# two processes that run agents get the daemon socket. Each container mounts
+# only its own user's subpaths of the gaia-selfhost_workspace volume
+# (volume-subpath, Docker Engine 26+).
+#
+# SECURITY: Docker socket access is root-equivalent on the host. A compromise
+# of gaia-backend or arq_worker with this file applied is a compromise of the
+# machine. Saving an E2B key in Settings moves sandboxes off-host instead and
+# needs no socket at all.
+#
+# DOCKER_SOCKET_GID is the socket's group as seen in containers (`gaia up`
+# writes it to .env; 0 on Docker Desktop and OrbStack).
+services:
+  gaia-backend:
+    environment: &sandbox_environment
+      LOCAL_CODE_SANDBOX: "true"
+    group_add: &docker_socket_group
+      - "${DOCKER_SOCKET_GID:-0}"
+    volumes: &docker_socket_volume
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  arq_worker:
+    environment: *sandbox_environment
+    group_add: *docker_socket_group
+    volumes: *docker_socket_volume
