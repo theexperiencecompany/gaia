@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 
 import BestAssistantHub, {
   type BestHubConfig,
-  generateBestHubMetadata,
 } from "@/components/seo/BestAssistantHub";
+import { generatePageMetadata } from "@/lib/seo";
 
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-assistant",
@@ -136,7 +136,12 @@ const CONFIG: BestHubConfig = {
 };
 
 export function generateMetadata(): Metadata {
-  return generateBestHubMetadata(CONFIG);
+  return generatePageMetadata({
+    title: CONFIG.pageTitle,
+    description: CONFIG.pageDescription,
+    path: CONFIG.pagePath,
+    keywords: CONFIG.keywords,
+  });
 }
 
 export default function BestAiAssistantPage() {

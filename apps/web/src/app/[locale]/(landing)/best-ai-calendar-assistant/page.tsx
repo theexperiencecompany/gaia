@@ -3,8 +3,8 @@ import Link from "next/link";
 
 import BestAssistantHub, {
   type BestHubConfig,
-  generateBestHubMetadata,
 } from "@/components/seo/BestAssistantHub";
+import { generatePageMetadata } from "@/lib/seo";
 
 const CONFIG: BestHubConfig = {
   pagePath: "/best-ai-calendar-assistant",
@@ -114,7 +114,12 @@ const CONFIG: BestHubConfig = {
 };
 
 export function generateMetadata(): Metadata {
-  return generateBestHubMetadata(CONFIG);
+  return generatePageMetadata({
+    title: CONFIG.pageTitle,
+    description: CONFIG.pageDescription,
+    path: CONFIG.pagePath,
+    keywords: CONFIG.keywords,
+  });
 }
 
 export default function BestAiCalendarAssistantPage() {
