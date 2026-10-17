@@ -1,16 +1,12 @@
 "use client";
 
-import { Pagination } from "@heroui/pagination";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
-import {
-  PublicIntegrationCard,
-  PublicIntegrationCardSkeletonGrid,
-} from "@/features/integrations/components/PublicIntegrationCard";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { MarketplaceResults } from "./MarketplaceResults";
 
 const ITEMS_PER_PAGE = 18;
 
@@ -200,56 +196,18 @@ export function IntegrationsPageClient({
           </p>
         )}
 
-        {displayLoading ? (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <PublicIntegrationCardSkeletonGrid count={6} />
-          </div>
-        ) : filteredNativeIntegrations.length === 0 &&
-          integrations.length === 0 ? (
-          <div className="py-20 text-center">
-            <p className="text-zinc-400">No integrations found</p>
-            <p className="mt-2 text-sm text-zinc-500">
-              Try adjusting your search or filters
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {/* Native integrations are not paginated by the community endpoint,
-                  so show them once on the first page instead of re-pinning them
-                  on top of every page. */}
-              {currentPage === 1 &&
-                filteredNativeIntegrations.map((integration) => (
-                  <PublicIntegrationCard
-                    key={integration.integrationId}
-                    integration={integration}
-                  />
-                ))}
-              {integrations.map((integration) => (
-                <PublicIntegrationCard
-                  key={integration.integrationId}
-                  integration={integration}
-                />
-              ))}
-            </div>
-
-            {/* Pagination — community only */}
-            {totalPages > 1 && (
-              <div className="mt-12 flex justify-center">
-                <Pagination
-                  total={totalPages}
-                  page={currentPage}
-                  onChange={handlePageChange}
-                  showControls
-                  variant="faded"
-                  classNames={{
-                    base: "cursor-pointer!",
-                  }}
-                />
-              </div>
-            )}
-          </>
-        )}
+        <MarketplaceResults
+          isLoading={displayLoading}
+          isEmpty={
+            filteredNativeIntegrations.length === 0 && integrations.length === 0
+          }
+          nativeIntegrations={filteredNativeIntegrations}
+          integrations={integrations}
+          showNative={currentPage === 1}
+          totalPages={totalPages}
+          currentPage={currentPage}
+          onPageChange={handlePageChange}
+        />
       </div>
 
       <FinalSection />

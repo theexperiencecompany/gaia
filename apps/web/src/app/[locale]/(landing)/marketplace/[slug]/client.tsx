@@ -1,27 +1,21 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { BreadcrumbItem, Breadcrumbs, ScrollShadow } from "@heroui/react";
-import { Spinner } from "@heroui/spinner";
+import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import {
   CheckmarkBadge01Icon,
   DateTimeIcon,
   GitForkIcon,
   LayersIcon,
-  PackageOpenIcon,
   UserCircle02Icon,
 } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
-import { RaisedButton } from "@/components/ui/raised-button";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { integrationKeys } from "@/features/integrations/api/queryKeys";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
@@ -33,13 +27,14 @@ import type {
   CommunityIntegration,
   PublicIntegrationResponse,
 } from "@/features/integrations/types";
-import ShareButton from "@/features/use-cases/components/ShareButton";
 import type { DocsGuideLink } from "@/lib/docs-links";
 import { toast } from "@/lib/toast";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
+import { IntegrationAutomateCombos } from "./IntegrationAutomateCombos";
+import { IntegrationDetailHeader } from "./IntegrationDetailHeader";
 import { IntegrationRichContent } from "./IntegrationRichContent";
+import { IntegrationToolsCard } from "./IntegrationToolsCard";
 import { IntegrationUseCases } from "./IntegrationUseCases";
-import { ToolCard } from "./ToolCard";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
@@ -297,109 +292,23 @@ export function IntegrationDetailClient({
           </div>
 
           {/* Header with title and actions */}
-          <div className="flex w-full items-start justify-between gap-2">
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center gap-4">
-                <div className="flex max-w-12 min-w-12 min-h-12 max-h-12 items-center justify-center rounded-lg overflow-hidden">
-                  {getToolCategoryIcon(
-                    integration.integrationId,
-                    { size: 48, width: 48, height: 48, showBackground: false },
-                    integration.iconUrl || undefined,
-                  ) || (
-                    <div className="flex h-16 w-16 aspect-square items-center justify-center rounded-xl bg-zinc-700 font-medium text-zinc-300">
-                      <PackageOpenIcon width={48} height={48} />
-                    </div>
-                  )}
-                </div>
-                <h1 className="text-5xl font-medium text-foreground">
-                  {integration.name}
-                </h1>
-              </div>
-              <p className="text-lg leading-relaxed text-zinc-500 max-w-5xl mt-6">
-                {integration.description ||
-                  `Connect ${integration.name} to your AI assistant and automate your ${integration.category} workflows.`}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <ShareButton
-                id={integration.integrationId}
-                basePath="/marketplace"
-              />
-              {alreadyHasIntegration ? (
-                <RaisedButton
-                  color="#00bbff"
-                  className="shrink-0 text-black!"
-                  onClick={() =>
-                    router.push(`/integrations?id=${integration.integrationId}`)
-                  }
-                >
-                  View Integration
-                </RaisedButton>
-              ) : (
-                <RaisedButton
-                  color="#00bbff"
-                  className="shrink-0 text-black!"
-                  onClick={handleAdd}
-                  disabled={isAdding || isAdded}
-                >
-                  {isAdding ? (
-                    <>
-                      <Spinner size="sm" color="default" />
-                      Adding...
-                    </>
-                  ) : isAdded ? (
-                    "Added to your GAIA"
-                  ) : (
-                    "Add to your GAIA"
-                  )}
-                </RaisedButton>
-              )}
-            </div>
-          </div>
+          <IntegrationDetailHeader
+            integration={integration}
+            alreadyHasIntegration={alreadyHasIntegration}
+            isAdding={isAdding}
+            isAdded={isAdded}
+            onAdd={handleAdd}
+            onView={() =>
+              router.push(`/integrations?id=${integration.integrationId}`)
+            }
+          />
 
           <IntegrationMetaBar integration={integration} isNative={isNative} />
 
           {/* What you can do: value prop above the technical tool list */}
           <IntegrationUseCases integration={integration} />
 
-          <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
-            {integration.tools && integration.tools.length > 0 && (
-              <CardHeader>
-                <h2 className="text-lg font-normal">
-                  Available Tools ({integration.toolCount})
-                </h2>
-              </CardHeader>
-            )}
-            <CardBody>
-              {integration.tools && integration.tools.length > 0 ? (
-                <ScrollShadow className="max-h-100">
-                  <div className="grid grid-cols-2 gap-4">
-                    {integration.tools.map((tool) => (
-                      <ToolCard
-                        key={tool.name}
-                        name={tool.name}
-                        description={tool.description}
-                      />
-                    ))}
-                  </div>
-                </ScrollShadow>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <PackageOpenIcon
-                    width={48}
-                    height={48}
-                    className="text-foreground-300 mb-4"
-                  />
-                  <p className="text-foreground-400 max-w-md text-sm">
-                    This integration might not have tools available yet because
-                    no one has connected to it, or the tools haven&apos;t been
-                    synced. Try refreshing the page.
-                  </p>
-                </div>
-              )}
-            </CardBody>
-          </Card>
+          <IntegrationToolsCard integration={integration} />
 
           {/* Related community workflows */}
           <IntegrationRelatedWorkflows
@@ -426,33 +335,10 @@ export function IntegrationDetailClient({
 
           {/* Matching automate guides: detail -> automate cross-links */}
           {automateCombos && automateCombos.length > 0 && (
-            <section className="space-y-6 rounded-3xl bg-zinc-900/50 p-8 backdrop-blur-md">
-              <div>
-                <h2 className="mb-2 text-2xl font-medium text-foreground">
-                  Automate {integration.name} with other tools
-                </h2>
-                <p className="text-sm leading-relaxed text-zinc-400">
-                  Step-by-step guides for connecting {integration.name} to the
-                  tools you already use.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {automateCombos.map((combo) => (
-                  <Link
-                    key={combo.slug}
-                    href={`/automate/${combo.slug}`}
-                    className="group rounded-3xl bg-zinc-800 p-4 transition-colors select-none hover:bg-zinc-700/50"
-                  >
-                    <h3 className="mb-1 text-base font-medium text-zinc-100 group-hover:text-primary">
-                      {combo.toolA} + {combo.toolB}
-                    </h3>
-                    <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
-                      {combo.tagline}
-                    </p>
-                  </Link>
-                ))}
-              </div>
-            </section>
+            <IntegrationAutomateCombos
+              combos={automateCombos}
+              integrationName={integration.name}
+            />
           )}
 
           {/* Curated docs guides for this integration (server-resolved). */}

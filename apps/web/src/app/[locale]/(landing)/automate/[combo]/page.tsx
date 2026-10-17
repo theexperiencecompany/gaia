@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import AutomateComboLinks from "@/components/seo/AutomateComboLinks";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
@@ -275,96 +276,21 @@ export default async function AutomateComboPage({ params }: PageProps) {
           <FAQAccordion faqs={data.faqs} />
         </section>
 
-        {/* Integration Links */}
-        <section className="mb-16">
-          <h2 className="mb-6 text-2xl font-semibold text-white">
-            {t("automate.explore_integrations")}
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Link
-              href={toolAHref}
-              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-            >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                {t("automate.tool_integration", { tool: data.toolA })}
-              </h3>
-              <p className="text-sm leading-relaxed text-zinc-400">
-                {t("automate.see_everything_gaia", { tool: data.toolA })}
-              </p>
-            </Link>
-            <Link
-              href={toolBHref}
-              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-            >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                {t("automate.tool_integration", { tool: data.toolB })}
-              </h3>
-              <p className="text-sm leading-relaxed text-zinc-400">
-                {t("automate.discover_automations", { tool: data.toolB })}
-              </p>
-            </Link>
-          </div>
-        </section>
-
-        {/* Compare the tools */}
-        {(toolACompareHref || toolBCompareHref) && (
-          <section className="mb-16">
-            <h2 className="mb-6 text-2xl font-semibold text-white">
-              Compare the tools
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {toolACompareHref && (
-                <Link
-                  href={toolACompareHref}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                    GAIA vs {data.toolA}: full comparison
-                  </h3>
-                  <p className="text-sm leading-relaxed text-zinc-400">
-                    See how GAIA compares to {data.toolA} head-to-head.
-                  </p>
-                </Link>
-              )}
-              {toolBCompareHref && (
-                <Link
-                  href={toolBCompareHref}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                    GAIA vs {data.toolB}: full comparison
-                  </h3>
-                  <p className="text-sm leading-relaxed text-zinc-400">
-                    See how GAIA compares to {data.toolB} head-to-head.
-                  </p>
-                </Link>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* Related Automations */}
-        {relatedCombos.length > 0 && (
-          <section className="mb-16">
-            <h2 className="mb-6 text-2xl font-semibold text-white">
-              {t("common.related_automations")}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {relatedCombos.map((related) => (
-                <Link
-                  key={related.slug}
-                  href={`/automate/${related.slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
-                    {related.toolA} + {related.toolB}
-                  </h3>
-                  <p className="text-xs text-zinc-400">{related.tagline}</p>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
+        <AutomateComboLinks
+          tools={[
+            {
+              tool: data.toolA,
+              href: toolAHref,
+              compareHref: toolACompareHref,
+            },
+            {
+              tool: data.toolB,
+              href: toolBHref,
+              compareHref: toolBCompareHref,
+            },
+          ]}
+          relatedCombos={relatedCombos}
+        />
 
         <DocsGuidesSection
           heading={t("common.docs_guides")}

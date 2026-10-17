@@ -37,7 +37,7 @@ describe("generateFAQSchema", () => {
     expect(schema["@type"]).toBe("FAQPage");
     // schema-dts types mainEntity as a wide union — round-trip through
     // JSON to assert on the actually-emitted shape.
-    const emitted = JSON.parse(JSON.stringify(schema)) as {
+    const emitted = structuredClone(schema) as unknown as {
       mainEntity: Array<{
         "@type": string;
         name: string;
@@ -113,7 +113,7 @@ describe("generateItemListSchema", () => {
 
     expect(schema["@context"]).toBe("https://schema.org");
     expect(schema["@type"]).toBe("ItemList");
-    const emitted = JSON.parse(JSON.stringify(schema)) as {
+    const emitted = structuredClone(schema) as unknown as {
       itemListElement: Array<{
         "@type": string;
         position: number;
@@ -141,7 +141,7 @@ describe("generateItemListSchema", () => {
         [{ name: "Entry", url: "https://heygaia.io/x" }],
         listType,
       );
-      const emitted = JSON.parse(JSON.stringify(schema)) as {
+      const emitted = structuredClone(schema) as unknown as {
         itemListElement: Array<{ item: { "@type": string } }>;
       };
       expect(emitted.itemListElement[0].item["@type"]).toBe(listType);
@@ -157,7 +157,7 @@ describe("generateBreadcrumbSchema", () => {
     ]);
 
     expect(schema["@type"]).toBe("BreadcrumbList");
-    const emitted = JSON.parse(JSON.stringify(schema)) as {
+    const emitted = structuredClone(schema) as unknown as {
       itemListElement: Array<{
         position: number;
         name: string;
