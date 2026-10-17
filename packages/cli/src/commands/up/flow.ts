@@ -273,8 +273,9 @@ export async function runUpFlow(
     options,
     readiness.ready,
   );
-  if (!providerError && options.llmProvider) {
-    outcome.savedProvider = options.llmProvider;
+  if (options.llmProvider) {
+    if (providerError) outcome.unsavedProvider = options.llmProvider;
+    else outcome.savedProvider = options.llmProvider;
   }
   finishUp(store, targetPath, {
     ...outcome,

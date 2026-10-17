@@ -19,6 +19,8 @@ export interface UpOutcome {
   setupComplete: boolean;
   codeSandbox: boolean;
   savedProvider?: LlmProvider;
+  /** The flagged provider whose key this run could not save. */
+  unsavedProvider?: LlmProvider;
   joinedDockerGroup: boolean;
   /** How long the whole run took. */
   elapsedMs: number;
@@ -57,10 +59,14 @@ export const DOCKER_GROUP_NOTE =
 function headline(outcome: UpOutcome): string {
   if (outcome.noStart) return "GAIA is set up · nothing was started";
   if (outcome.stillStarting) return "GAIA is still starting";
-  if (outcome.startedServices === 0) {
-    return "GAIA is already running · nothing to do";
+  const state =
+    outcome.startedServices === 0
+      ? "GAIA is already running"
+      : `GAIA is running · ready in ${formatElapsed(outcome.elapsedMs)}`;
+  if (outcome.unsavedProvider) {
+    return `${state} · your ${LLM_PROVIDER_NAMES[outcome.unsavedProvider]} key wasn't saved`;
   }
-  return `GAIA is running · ready in ${formatElapsed(outcome.elapsedMs)}`;
+  return outcome.startedServices === 0 ? `${state} · nothing to do` : state;
 }
 
 /** One line saying how agent code runs on this instance. */

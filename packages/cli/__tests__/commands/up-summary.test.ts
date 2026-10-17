@@ -73,6 +73,18 @@ describe("gaia up summary", () => {
     );
   });
 
+  it("names the unsaved key instead of 'nothing to do' when it was the only thing that failed", () => {
+    const summary = buildUpSummary({
+      ...READY,
+      startedServices: 0,
+      unsavedProvider: "openai",
+    });
+
+    expect(summary.headline).toBe(
+      "GAIA is already running · your OpenAI key wasn't saved",
+    );
+  });
+
   it("says set up, not running, when --no-start started nothing", () => {
     const summary = buildUpSummary({ ...READY, noStart: true });
 
