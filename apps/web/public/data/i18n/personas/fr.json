@@ -1814,7 +1814,7 @@
       },
       {
         "question": "GAIA fonctionne-t-elle avec les outils que j'utilise déjà ?",
-        "answer": "GAIA se connecte à Gmail, Google Calendar, Slack et Todoist dès l'installation, avec plus de 50 intégrations supplémentaires disponibles via MCP. Elle s'intègre à vos outils existants sans vous obliger à adopter un nouveau système, ce qui réduit les coûts de transition et accélère la prise en main."
+        "answer": "GAIA se connecte à Gmail, Google Calendar, Slack et Todoist dès l'installation, avec de nombreuses intégrations supplémentaires disponibles via MCP. Elle s'intègre à vos outils existants sans vous obliger à adopter un nouveau système, ce qui réduit les coûts de transition et accélère la prise en main."
       }
     ]
   },
@@ -1862,7 +1862,7 @@
       },
       {
         "title": "Coordination des tâches entre outils",
-        "description": "Avec plus de 50 intégrations via MCP, GAIA connecte Gmail, Google Agenda, Slack, Notion et Todoist dans une couche opérationnelle unifiée — le Chief of Staff peut ainsi suivre livrables, échéances et décisions dans tous les outils depuis une seule interface."
+        "description": "Avec de nombreuses intégrations via MCP, GAIA connecte Gmail, Google Agenda, Slack, Notion et Todoist dans une couche opérationnelle unifiée — le Chief of Staff peut ainsi suivre livrables, échéances et décisions dans tous les outils depuis une seule interface."
       },
       {
         "title": "Open source et auto-hébergeable",
@@ -1928,7 +1928,7 @@
       },
       {
         "title": "Intégration avec les outils clients via MCP",
-        "description": "Grâce à plus de 50 intégrations via MCP, GAIA se connecte aux outils déjà utilisés par chaque client — Notion, Slack, Todoist, Google Workspace — permettant à l’assistant virtuel de travailler dans l’environnement existant du client, sans devoir lui faire adopter une nouvelle solution."
+        "description": "Grâce à de nombreuses intégrations via MCP, GAIA se connecte aux outils déjà utilisés par chaque client — Notion, Slack, Todoist, Google Workspace — permettant à l’assistant virtuel de travailler dans l’environnement existant du client, sans devoir lui faire adopter une nouvelle solution."
       },
       {
         "title": "Open source et gratuit pour démarrer",
