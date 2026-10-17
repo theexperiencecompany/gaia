@@ -5,10 +5,10 @@
  */
 
 import * as readline from "node:readline";
-import { SIGINT_EXIT_CODE } from "../../lib/command-runner.js";
 import { explainImageGap } from "../../lib/compose-failure.js";
 import { readConfig } from "../../lib/config.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
+import { SIGINT_EXIT_CODE } from "../../lib/exit-codes.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import { homeRelative } from "../../lib/paths.js";

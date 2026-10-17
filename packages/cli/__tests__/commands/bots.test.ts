@@ -225,3 +225,44 @@ describe("gaia bots remove", () => {
     expect(config.current?.bots).toEqual([]);
   });
 });
+describe("gaia bots add with a pasted token the platform rejects", () => {
+  it("asks again in place instead of exiting, and goes on with the good token", async () => {
+    askSecret.mockResolvedValueOnce("bad-token").mockResolvedValueOnce(TOKEN);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        Response.json(
+          url.includes("bad-token")
+            ? { ok: false, description: "Unauthorized" }
+            : { ok: true, result: { username: "my_gaia_bot" } },
+        ),
+      ),
+    );
+    botContainerStatuses("running|Up 30 seconds (healthy)");
+
+    await runBotsAdd("telegram", {});
+
+    expect(askSecret).toHaveBeenCalledTimes(2);
+    expect(config.current?.bots).toEqual(["telegram"]);
+  });
+
+  it("stops after three rejected tries", async () => {
+    askSecret.mockResolvedValue("bad-token");
+    platformAnswers({ ok: false, description: "Unauthorized" });
+
+    await expect(runBotsAdd("telegram", {})).rejects.toThrow(
+      "Telegram rejected the bot token: Unauthorized.",
+    );
+    expect(askSecret).toHaveBeenCalledTimes(3);
+    expect(config.current).toBeNull();
+  });
+
+  it("fails at once on a rejected --token flag: nobody is there to paste again", async () => {
+    platformAnswers({ ok: false, description: "Unauthorized" });
+
+    await expect(runBotsAdd("telegram", { token: "bad" })).rejects.toThrow(
+      "Telegram rejected the bot token",
+    );
+    expect(askSecret).not.toHaveBeenCalled();
+  });
+});

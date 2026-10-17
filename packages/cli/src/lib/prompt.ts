@@ -2,6 +2,7 @@
 
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
+import { SIGINT_EXIT_CODE } from "./exit-codes.js";
 
 export async function ask(
   question: string,
@@ -17,26 +18,77 @@ export async function ask(
   }
 }
 
-/** Ask without echoing the typed value (for tokens/secrets). */
+/** Characters of a secret left readable once it is entered, so a paste can be checked. */
+const SECRET_VISIBLE_TAIL = 4;
+const ESC = "\u001b";
+const CTRL_C = "\u0003";
+const BACKSPACES = new Set(["\u007f", "\b"]);
+/** A terminal escape sequence: bracketed-paste markers, arrow keys. */
+const ESCAPE_SEQUENCE_RE = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z~]`, "g");
+
+/** "••••••••ABCd": a secret masked except its last few characters. */
+export function maskSecret(secret: string): string {
+  const visible =
+    secret.length > SECRET_VISIBLE_TAIL * 2 ? SECRET_VISIBLE_TAIL : 0;
+  return (
+    "•".repeat(secret.length - visible) + secret.slice(secret.length - visible)
+  );
+}
+
+/**
+ * Ask for a token or secret: each typed or pasted character shows as •, so
+ * a paste visibly landed, and the last few show once it is entered. Esc
+ * returns "" (the caller treats it as cancel); Ctrl-C cancels the command.
+ */
 export async function askSecret(question: string): Promise<string> {
-  process.stdout.write(`${question}: `);
-  const muted = new Writable({
-    write(_chunk, _encoding, callback) {
-      callback();
-    },
-  });
-  const rl = createInterface({
-    input: process.stdin,
-    output: muted,
-    terminal: true,
-  });
-  try {
-    const answer = (await rl.question("")).trim();
-    process.stdout.write("\n");
-    return answer;
-  } finally {
-    rl.close();
+  process.stdout.write(`${question}\n› `);
+  if (!process.stdin.isTTY) {
+    const rl = createInterface({
+      input: process.stdin,
+      output: new Writable({ write: (_c, _e, cb) => cb() }),
+    });
+    try {
+      return (await rl.question("")).trim();
+    } finally {
+      rl.close();
+    }
   }
+  return new Promise((resolve) => {
+    let value = "";
+    const finish = (answer: string, shown: string): void => {
+      process.stdin.off("data", onData);
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdout.write(`\r› ${shown}${ESC}[K\n`);
+      resolve(answer);
+    };
+    const onData = (chunk: Buffer): void => {
+      // Terminal escape sequences (bracketed-paste markers, arrow keys) are not
+      // part of the secret.
+      const text = chunk.toString("utf-8").replace(ESCAPE_SEQUENCE_RE, "");
+      if (text === CTRL_C) {
+        finish("", "");
+        process.stdout.write("■ Cancelled · nothing changed.\n");
+        process.exit(SIGINT_EXIT_CODE);
+      }
+      if (text === ESC) {
+        finish("", "");
+        return;
+      }
+      for (const ch of text) {
+        if (ch === "\r" || ch === "\n") {
+          finish(value.trim(), maskSecret(value.trim()));
+          return;
+        }
+        if (BACKSPACES.has(ch)) value = value.slice(0, -1);
+        else if (ch >= " ") value += ch;
+      }
+      process.stdout.write(`\r› ${"•".repeat(value.length)}${ESC}[K`);
+    };
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("data", onData);
+  });
 }
 
 export async function confirm(

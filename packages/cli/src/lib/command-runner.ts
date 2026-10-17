@@ -20,14 +20,12 @@ import {
   relaunchWithDockerGroup,
   resumedStep,
 } from "./docker-group.js";
+import { SIGINT_EXIT_CODE } from "./exit-codes.js";
 import {
   attachPlainReporter,
   isInteractive,
   requireInteractive,
 } from "./non-tty.js";
-
-/** Exit code POSIX shells report for a process terminated by SIGINT. */
-export const SIGINT_EXIT_CODE = 130;
 
 /** An input id to resolve automatically in plain mode, with an optional value. */
 type AutoResolve = readonly [id: string, value?: unknown];

@@ -37,6 +37,8 @@ import {
   runSelfhostOneOff,
   startServices,
 } from "../../lib/service-starter.js";
+import { wrapForTerminal } from "../../lib/terminal-text.js";
+import { MARK } from "../../ui/constants.js";
 
 /** Registers the bot's commands with its platform, from inside its image. */
 const COMMAND_REGISTRATION: Partial<Record<SelfhostBot, string[]>> = {
@@ -110,6 +112,16 @@ function requireOption(value: string | undefined, flag: string): string {
   return value;
 }
 
+/** How the bots are named in copy. */
+const BOT_NAMES: Record<SelfhostBot, string> = {
+  telegram: "Telegram",
+  discord: "Discord",
+  slack: "Slack",
+};
+
+/** Tries a person gets at pasting credentials the platform accepts. */
+const CREDENTIAL_ATTEMPTS = 3;
+
 /** Fill each credential not passed as a flag by prompting, or name the flag when there is no terminal. */
 async function resolveCredentials(
   bot: SelfhostBot,
@@ -121,12 +133,38 @@ async function resolveCredentials(
     if (!isInteractive()) {
       throw new Error(`Missing ${prompt.flag}. ${prompt.hint}`);
     }
-    out(prompt.hint);
+    out();
+    out(wrapForTerminal(prompt.hint));
     const value = await askSecret(prompt.label);
-    if (!value) throw new Error(`No ${prompt.label} entered.`);
+    if (!value) throw new Error(`No ${prompt.label} entered. Nothing changed.`);
     resolved[prompt.key] = value;
   }
   return resolved;
+}
+
+/**
+ * Check the credentials with the platform. A person who pasted them gets
+ * another try (up to CREDENTIAL_ATTEMPTS) instead of retyping the command;
+ * credentials from flags fail at once.
+ */
+async function verifiedCredentials(
+  bot: SelfhostBot,
+  given: BotCredentials,
+): Promise<VerifiedBot> {
+  for (let attempt = 1; ; attempt++) {
+    const resolved = await resolveCredentials(bot, given);
+    out(`Checking your ${BOT_NAMES[bot]} credentials…`);
+    try {
+      return await verifyCredentials(bot, resolved);
+    } catch (error) {
+      const prompted = CREDENTIAL_PROMPTS[bot].some((p) => !given[p.key]);
+      const triesLeft = CREDENTIAL_ATTEMPTS - attempt;
+      if (!prompted || !isInteractive() || triesLeft === 0) throw error;
+      out(
+        `${MARK.fail} ${(error as Error).message} Paste ${triesLeft === 1 ? "it" : "them"} again (${triesLeft} ${triesLeft === 1 ? "try" : "tries"} left), or press Esc to stop.`,
+      );
+    }
+  }
 }
 
 /** The self-host install to change; bots run only alongside its compose stack. */
@@ -204,7 +242,7 @@ async function waitForBotHealthy(bot: SelfhostBot): Promise<void> {
     if (state.health === "healthy") return;
     if (Date.now() >= deadline) {
       throw new Error(
-        `The ${bot} bot did not come up (${state.detail}). See why with 'docker compose -p ${project} logs ${botService(bot)}'; 'gaia bots remove ${bot}' undoes the setup.`,
+        `The ${BOT_NAMES[bot]} bot did not come up (${state.detail}). See why with 'docker compose -p ${project} logs ${botService(bot)}'; 'gaia bots remove ${bot}' undoes the setup.`,
       );
     }
     await delay(BOT_POLL_INTERVAL_MS);
@@ -228,9 +266,7 @@ export async function runBotsAdd(
   credentials: BotCredentials,
 ): Promise<void> {
   const repoPath = await requireSelfhostInstall();
-  const resolved = await resolveCredentials(bot, credentials);
-  out(`Checking the ${bot} credentials…`);
-  const verified = await verifyCredentials(bot, resolved);
+  const verified = await verifiedCredentials(bot, credentials);
 
   writeBotsEnv(repoPath, { set: verified.botsEnv });
   updateApiEnv(repoPath, { set: { [BOT_API_ENV_KEYS[bot]]: verified.handle } });
@@ -240,13 +276,13 @@ export async function runBotsAdd(
   await restartStack(repoPath);
   const registration = COMMAND_REGISTRATION[bot];
   if (registration) {
-    out(`Registering the ${bot} bot's commands…`);
+    out(`Registering the ${BOT_NAMES[bot]} bot's commands…`);
     await runSelfhostOneOff(repoPath, botService(bot), registration);
   }
 
-  out(`Waiting for the ${bot} bot to connect…`);
+  out(`Waiting for the ${BOT_NAMES[bot]} bot to connect…`);
   await waitForBotHealthy(bot);
-  out(`The ${bot} bot is running.`);
+  out(`${MARK.ok} The ${BOT_NAMES[bot]} bot is running`);
   for (const step of verified.nextSteps) out(step);
 }
 
@@ -254,14 +290,18 @@ export async function runBotsRemove(bot: SelfhostBot): Promise<void> {
   const repoPath = await requireSelfhostInstall();
   const enabled = readConfig()?.bots ?? [];
   if (!enabled.includes(bot)) {
-    throw new Error(`The ${bot} bot is not enabled. See 'gaia bots list'.`);
+    throw new Error(
+      `The ${BOT_NAMES[bot]} bot is not enabled. See 'gaia bots list'.`,
+    );
   }
 
   updateConfig({ bots: enabled.filter((b) => b !== bot) });
   writeBotsEnv(repoPath, { unset: BOT_ENV_KEYS[bot] });
   updateApiEnv(repoPath, { unset: [BOT_API_ENV_KEYS[bot]] });
   await restartStack(repoPath);
-  out(`The ${bot} bot is stopped and its credentials are deleted.`);
+  out(
+    `${MARK.ok} The ${BOT_NAMES[bot]} bot is stopped and its credentials are deleted`,
+  );
 }
 
 export async function runBotsList(): Promise<void> {
