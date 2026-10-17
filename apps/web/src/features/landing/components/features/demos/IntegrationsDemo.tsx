@@ -32,7 +32,7 @@ export default function IntegrationsDemo() {
   return (
     <div ref={ref} className="w-full">
       <m.div
-        className="rounded-full bg-[#00bbff]/20 border border-[#00bbff]/30 px-6 py-2 text-sm font-medium text-[#00bbff] mx-auto w-fit mb-4"
+        className="rounded-full bg-primary/10 px-6 py-2 text-sm font-medium text-primary mx-auto w-fit mb-4"
         initial={{ opacity: 0, scale: 0.9 }}
         animate={inView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
@@ -63,7 +63,6 @@ export default function IntegrationsDemo() {
                 size="sm"
                 variant="flat"
                 classNames={{
-                  base: "bg-zinc-800 border-0",
                   content: "text-zinc-300 text-xs font-medium",
                 }}
                 startContent={

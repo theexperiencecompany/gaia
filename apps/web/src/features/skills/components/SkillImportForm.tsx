@@ -131,7 +131,8 @@ export function SkillImportForm({
             size="sm"
             color="primary"
             variant="flat"
-            className="-mr-1 shrink-0 rounded-lg"
+            radius="md"
+            className="-mr-1 shrink-0"
             isLoading={discovering}
             isDisabled={!repoValid}
             onPress={handleDiscover}
@@ -152,7 +153,7 @@ export function SkillImportForm({
               size="sm"
               color="primary"
               variant="flat"
-              className="rounded-xl"
+              radius="md"
               isLoading={installingAll}
               isDisabled={installBusy && !installingAll}
               startContent={
@@ -179,7 +180,7 @@ export function SkillImportForm({
                   size="sm"
                   color="primary"
                   variant="flat"
-                  className="rounded-xl"
+                  radius="md"
                   isLoading={installingPath === skill.path}
                   isDisabled={installBusy && installingPath !== skill.path}
                   startContent={

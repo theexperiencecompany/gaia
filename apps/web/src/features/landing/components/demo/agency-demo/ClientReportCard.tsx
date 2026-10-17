@@ -34,7 +34,7 @@ export default function ClientReportCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Weekly Status Report: TechCorp
         </span>
-        <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-500">
           Draft ready
         </span>
       </div>
@@ -50,47 +50,47 @@ export default function ClientReportCard() {
           <CheckmarkCircle02Icon
             width={12}
             height={12}
-            className="text-emerald-400"
+            className="text-emerald-500"
           />
           Completed this week:
         </p>
-        {COMPLETED_ITEMS.map((item) => (
-          <p key={item} className="text-xs text-zinc-400">
-            • {item}
-          </p>
-        ))}
+        <ul className="list-disc pl-4 text-xs text-zinc-400">
+          {COMPLETED_ITEMS.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
 
         <p className="mb-0.5 mt-2 flex items-center gap-1 text-xs font-medium text-zinc-200">
-          <Loading03Icon width={12} height={12} className="text-amber-400" />
+          <Loading03Icon width={12} height={12} className="text-amber-500" />
           In Progress:
         </p>
-        {IN_PROGRESS_ITEMS.map((item) => (
-          <p key={item} className="text-xs text-zinc-400">
-            • {item}
-          </p>
-        ))}
+        <ul className="list-disc pl-4 text-xs text-zinc-400">
+          {IN_PROGRESS_ITEMS.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
 
         <p className="mb-0.5 mt-2 flex items-center gap-1 text-xs font-medium text-zinc-200">
           <Calendar03Icon width={12} height={12} className="text-zinc-400" />
           Next Week:
         </p>
-        {NEXT_WEEK_ITEMS.map((item) => (
-          <p key={item} className="text-xs text-zinc-400">
-            • {item}
-          </p>
-        ))}
+        <ul className="list-disc pl-4 text-xs text-zinc-400">
+          {NEXT_WEEK_ITEMS.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
 
         <p className="mb-0.5 mt-2 flex items-center gap-1 text-xs font-medium text-zinc-200">
           <Target02Icon width={12} height={12} className="text-zinc-400" />
           Timeline:
         </p>
-        <p className="text-xs text-emerald-400">
+        <p className="text-xs text-emerald-500">
           On track: launch target March 22
         </p>
       </div>
 
       <div className="mt-3 flex items-center gap-2">
-        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] text-primary">
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
           cc: project@techcorp.com
         </span>
       </div>

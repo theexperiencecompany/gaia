@@ -18,36 +18,38 @@ export default function ContactListCard({ contacts }: ContactListCardProps) {
     >
       <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
         {/* Contact List */}
-        <ScrollShadow className="max-h-[400px] divide-y divide-zinc-700">
-          {contacts.map((contact) => (
-            <div
-              key={contact.email}
-              className="group flex cursor-default items-start gap-4 p-3 transition-colors hover:bg-zinc-700"
-            >
-              {/* Name Column */}
-              <div className="w-40 flex-shrink-0">
-                <span className="block truncate text-sm font-medium text-gray-300">
-                  {contact.name}
-                </span>
-              </div>
+        <ScrollShadow className="max-h-[400px]">
+          <div className="divide-y divide-zinc-800">
+            {contacts.map((contact) => (
+              <div
+                key={contact.email}
+                className="group flex cursor-default items-start gap-4 p-3 transition-colors hover:bg-zinc-700"
+              >
+                {/* Name Column */}
+                <div className="w-40 flex-shrink-0">
+                  <span className="block truncate text-sm font-medium text-zinc-300">
+                    {contact.name}
+                  </span>
+                </div>
 
-              {/* Details Column */}
-              <div className="min-w-0 flex-1 space-y-1">
-                {contact.email && (
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
-                    <Mail01Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="truncate">{contact.email}</span>
-                  </div>
-                )}
-                {contact.phone && (
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
-                    <Call02Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span>{contact.phone}</span>
-                  </div>
-                )}
+                {/* Details Column */}
+                <div className="min-w-0 flex-1 space-y-1">
+                  {contact.email && (
+                    <div className="flex items-center gap-2 text-sm text-zinc-400">
+                      <Mail01Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate">{contact.email}</span>
+                    </div>
+                  )}
+                  {contact.phone && (
+                    <div className="flex items-center gap-2 text-sm text-zinc-400">
+                      <Call02Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span>{contact.phone}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </ScrollShadow>
       </div>
     </CollapsibleListWrapper>

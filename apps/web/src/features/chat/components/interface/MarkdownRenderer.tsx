@@ -89,7 +89,7 @@ const MarkdownImage: React.FC<MarkdownImageProps> = ({
       width={500}
       height={500}
       alt={alt || "image"}
-      className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
+      className="mx-auto my-4 h-auto max-h-[320px] w-auto max-w-full cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
       src={resolved}
       onClick={() => onOpen(resolved)}
       unoptimized
@@ -153,7 +153,7 @@ function buildMarkdownComponents(
     ),
     blockquote: ({ ...props }) => (
       <blockquote
-        className="my-2 border-gray-300 bg-gray-300/10 py-3 pl-4 italic"
+        className="my-2 border-zinc-300 bg-zinc-300/10 py-3 pl-4 italic"
         {...props}
       />
     ),
@@ -166,15 +166,6 @@ function buildMarkdownComponents(
     pre: ({ ...props }) => <pre className="font-serif! text-wrap" {...props} />,
     table: ({ ...props }) => (
       <div className="markdown-table my-4 overflow-x-auto rounded-3xl bg-zinc-900 p-3">
-        <style>{`
-                .markdown-table table { border-separate: separate; border-spacing: 0; }
-                .markdown-table tbody tr:first-child td:first-child { border-top-left-radius: 0.75rem; }
-                .markdown-table tbody tr:first-child td:last-child { border-top-right-radius: 0.75rem; }
-                .markdown-table tbody tr:last-child td:first-child { border-bottom-left-radius: 0.75rem; }
-                .markdown-table tbody tr:last-child td:last-child { border-bottom-right-radius: 0.75rem; }
-                .markdown-table tbody tr:last-child td { border-bottom: none; }
-                .markdown-table tbody tr:hover td { background-color: #27272A80; }
-              `}</style>
         <table
           className="min-w-full border-separate border-spacing-0 text-sm"
           {...props}
@@ -254,10 +245,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   return (
     <div
       className={cn(
-        "prose fadein-style max-w-none",
+        "max-w-none",
         lightBackground
           ? "text-black [--tw-prose-body:#000] [--tw-prose-headings:#000] [--tw-prose-bold:#000] [--tw-prose-links:#000] [--tw-prose-code:#000]"
-          : "dark:prose-invert text-white",
+          : "text-white",
         className,
       )}
     >

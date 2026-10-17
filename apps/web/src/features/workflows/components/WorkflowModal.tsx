@@ -316,9 +316,7 @@ export default function WorkflowModal({
         // flex/overflow chain (h-full → min-h-0 → overflow-y-auto) resolves
         // and the Steps panel doesn't clip.
         className={
-          isTwoColumn
-            ? "h-[85vh] max-h-208 max-w-6xl bg-secondary-bg"
-            : "max-h-[90vh] bg-secondary-bg"
+          isTwoColumn ? "h-[85vh] max-h-208 max-w-6xl" : "max-h-[90vh]"
         }
         backdrop="blur"
       >

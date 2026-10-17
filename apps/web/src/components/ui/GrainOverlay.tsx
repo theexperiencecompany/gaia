@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import { cn } from "@/lib/utils";
 
 /**
@@ -44,11 +46,11 @@ export function GrainOverlay({
     <div
       aria-hidden
       className={cn(
-        "pointer-events-none absolute inset-0",
+        "pointer-events-none absolute inset-0 bg-[image:var(--grain-tile)]",
         VARIANT_CLASSES[variant],
         className,
       )}
-      style={{ backgroundImage: GRAIN_TILE }}
+      style={{ "--grain-tile": GRAIN_TILE } as CSSProperties}
     />
   );
 }

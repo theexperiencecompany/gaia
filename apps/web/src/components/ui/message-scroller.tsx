@@ -96,7 +96,7 @@ function MessageScrollerButton({
       data-slot="message-scroller-button"
       direction={direction}
       className={cn(
-        "-translate-x-1/2 absolute bottom-4 left-1/2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-zinc-800 shadow-md hover:bg-zinc-700",
+        "-translate-x-1/2 absolute bottom-4 left-1/2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-zinc-800 hover:bg-zinc-700",
         // Fade + slide with the primitive's data-active state; inert when hidden.
         "transition-[translate,scale,opacity,background-color] duration-200",
         "data-[active=false]:pointer-events-none data-[active=false]:translate-y-full data-[active=false]:scale-95 data-[active=false]:opacity-0",

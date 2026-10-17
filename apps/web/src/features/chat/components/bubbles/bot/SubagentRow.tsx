@@ -65,7 +65,7 @@ function ThinkingStepRow({
               transition={expandTransition}
               className="overflow-hidden"
             >
-              <div className="mt-2 mb-3 w-fit rounded-xl bg-zinc-800/50 p-3 text-[11px] text-zinc-400">
+              <div className="mt-2 mb-3 w-fit rounded-xl bg-zinc-800/50 p-3 text-xs text-zinc-400">
                 <CompactMarkdown content={reasoning} />
               </div>
             </m.div>
@@ -156,9 +156,7 @@ function SubagentTextBlock({
   className,
 }: Readonly<{ title: string; content: string; className: string }>) {
   return (
-    <div
-      className={`${className} text-[11px] bg-zinc-800/50 rounded-xl p-3 w-fit`}
-    >
+    <div className={`${className} text-xs bg-zinc-800/50 rounded-xl p-3 w-fit`}>
       <span className="text-zinc-500 font-medium mb-0.5 block">{title}</span>
       <CompactMarkdown content={content} />
     </div>
@@ -274,7 +272,7 @@ function CompletedSubagentHeader({
         </span>
         <div className="flex items-center gap-1 ml-4 shrink-0">
           {group.duration_ms != null && (
-            <span className="text-[10px] text-zinc-600 tabular-nums">
+            <span className="text-xs text-zinc-600 tabular-nums">
               {(group.duration_ms / 1000).toFixed(1)}s
             </span>
           )}
@@ -285,7 +283,7 @@ function CompletedSubagentHeader({
           />
         </div>
       </div>
-      <p className="text-[11px] text-zinc-600 leading-tight">
+      <p className="text-xs text-zinc-600 leading-tight">
         Subagent
         {toolCount > 0 && ` · ${toolCount} tool${toolCount === 1 ? "" : "s"}`}
       </p>

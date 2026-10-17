@@ -3,6 +3,7 @@ import {
   formatDateWithRelative,
   formatTimeRange,
 } from "@gaia/shared";
+import { Divider } from "@heroui/divider";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import type { CalendarOptions } from "@/types/features/calendarTypes";
 
@@ -43,49 +44,51 @@ export function CalendarEventReadonlySection({
 
   return (
     <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
-      <ScrollShadow className="mt-2 max-h-[400px] space-y-3">
-        {Object.entries(eventsByDate).map(([dateString, dayEvents]) => (
-          <div key={dateString} className="space-y-3">
-            <div className="relative flex items-center">
-              <div className="flex-1 border-t border-zinc-700" />
-              <span className="px-3 text-xs text-zinc-500">
-                {formatDateWithRelative(dateString)}
-              </span>
-              <div className="flex-1 border-t border-zinc-700" />
-            </div>
+      <ScrollShadow className="mt-2 max-h-[400px]">
+        <div className="space-y-3">
+          {Object.entries(eventsByDate).map(([dateString, dayEvents]) => (
+            <div key={dateString} className="space-y-3">
+              <div className="relative flex items-center">
+                <Divider className="flex-1" />
+                <span className="px-3 text-xs text-zinc-500">
+                  {formatDateWithRelative(dateString)}
+                </span>
+                <Divider className="flex-1" />
+              </div>
 
-            <div className="space-y-2">
-              {dayEvents.map((option) => (
-                <EventCard
-                  key={`${option.summary}:${option.start ?? ""}:${option.end ?? ""}`}
-                  eventColor={option.background_color || DEFAULT_EVENT_COLOR}
-                  variant="display"
-                >
-                  <div className="text-base leading-tight text-white">
-                    {option.summary}
-                  </div>
-                  {option.description && (
-                    <div className="mt-1 text-xs text-zinc-400">
-                      {option.description}
+              <div className="space-y-2">
+                {dayEvents.map((option) => (
+                  <EventCard
+                    key={`${option.summary}:${option.start ?? ""}:${option.end ?? ""}`}
+                    eventColor={option.background_color || DEFAULT_EVENT_COLOR}
+                    variant="display"
+                  >
+                    <div className="text-base leading-tight text-white">
+                      {option.summary}
                     </div>
-                  )}
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-400">
-                    <span>{eventTimeDisplay(option)}</span>
-                    {option.calendar_name && (
-                      <span>{option.calendar_name}</span>
+                    {option.description && (
+                      <div className="mt-1 text-xs text-zinc-400">
+                        {option.description}
+                      </div>
                     )}
-                    {option.attendees && option.attendees.length > 0 && (
-                      <span>
-                        {option.attendees.length}
-                        {option.attendees.length === 1 ? " guest" : " guests"}
-                      </span>
-                    )}
-                  </div>
-                </EventCard>
-              ))}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-400">
+                      <span>{eventTimeDisplay(option)}</span>
+                      {option.calendar_name && (
+                        <span>{option.calendar_name}</span>
+                      )}
+                      {option.attendees && option.attendees.length > 0 && (
+                        <span>
+                          {option.attendees.length}
+                          {option.attendees.length === 1 ? " guest" : " guests"}
+                        </span>
+                      )}
+                    </div>
+                  </EventCard>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </ScrollShadow>
     </div>
   );

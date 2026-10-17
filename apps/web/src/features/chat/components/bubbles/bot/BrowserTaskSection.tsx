@@ -116,7 +116,7 @@ function StepsAccordion({
               size="sm"
               variant="flat"
               classNames={{
-                base: "h-5 bg-zinc-700",
+                base: "h-5",
                 content: "px-1.5 text-xs text-zinc-300",
               }}
             >
@@ -142,10 +142,10 @@ function StepsAccordion({
 function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
   return (
     <>
-      <Divider className="my-3 bg-zinc-700/50" />
+      <Divider className="my-3" />
       <div className="flex items-start gap-2.5">
         {result.success ? (
-          <CheckmarkCircle02Icon className="mt-px size-4 shrink-0 text-emerald-400" />
+          <CheckmarkCircle02Icon className="mt-px size-4 shrink-0 text-emerald-500" />
         ) : (
           <Alert01Icon className="mt-px size-4 shrink-0 text-zinc-500" />
         )}
@@ -165,7 +165,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
   const { surface, closePanel } = useBrowserSidePanel(task);
 
   return (
-    <div className="w-full max-w-lg rounded-2xl bg-zinc-800 p-4">
+    <div className="w-full max-w-lg rounded-3xl bg-zinc-800 p-4">
       {/* While this card owns the side panel, mount the live browser into the
           layout's right-sidebar slot; closing the chrome releases the session. */}
       {surface.kind === "panel" && (
@@ -188,7 +188,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
       </div>
 
       {session?.task && (
-        <p className="mt-1 line-clamp-1 text-[13px] leading-snug text-zinc-500">
+        <p className="mt-1 line-clamp-1 text-sm leading-snug text-zinc-500">
           {session.task}
         </p>
       )}

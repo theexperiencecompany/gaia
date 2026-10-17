@@ -157,6 +157,15 @@
       "command": "bash scripts/dead-code-check.sh --strict --verbose"
     },
     {
+      "name": "shadcn-lint",
+      "ci_job": "shadcn-lint",
+      "scope": "^apps/web/(src/.*\\.(tsx|ts|jsx|js)|\\.oxlintrc\\.json)$",
+      "heavy": false,
+      "timeout_s": 180,
+      "require_cmd": [],
+      "command": "pnpm --filter ./apps/web exec oxlint"
+    },
+    {
       "name": "python-ruff",
       "ci_job": "python-static",
       "scope": "\\.py$|^pyproject\\.toml$|^ruff\\.toml$",

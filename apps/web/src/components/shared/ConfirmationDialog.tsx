@@ -96,7 +96,7 @@ export function ConfirmationDialog({
                   onCancel();
                   onClose();
                 }}
-                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                className="text-zinc-300"
                 endContent={<Kbd keys={["escape"]} />}
                 isDisabled={isLoading}
               >

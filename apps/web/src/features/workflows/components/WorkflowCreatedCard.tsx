@@ -41,7 +41,6 @@ export default function WorkflowCreatedCard({
           label: "Manual",
           icon: <FlashIcon className="size-3.5" />,
           color: "default" as const,
-          bgColor: "bg-zinc-700/50",
         };
       case "schedule": {
         const cronLabel = workflow.trigger_config.cron_expression
@@ -51,7 +50,6 @@ export default function WorkflowCreatedCard({
           label: cronLabel,
           icon: <Clock01Icon className="size-3.5" />,
           color: "primary" as const,
-          bgColor: "bg-primary/15",
         };
       }
       case "integration":
@@ -64,14 +62,12 @@ export default function WorkflowCreatedCard({
               .join(" ") || "Integration",
           icon: <Calendar03Icon className="size-3.5" />,
           color: "secondary" as const,
-          bgColor: "bg-secondary/15",
         };
       default:
         return {
           label: "Unknown",
           icon: <FlashIcon className="size-3.5" />,
           color: "default" as const,
-          bgColor: "bg-zinc-700/50",
         };
     }
   };
@@ -116,7 +112,7 @@ export default function WorkflowCreatedCard({
 
   return (
     <>
-      <div className="group relative z-1 flex w-full max-w-md flex-col gap-3 rounded-3xl bg-zinc-800/40 p-4 outline-1 outline-zinc-800/50 backdrop-blur-lg">
+      <div className="group relative z-1 flex w-full max-w-md flex-col gap-3 rounded-3xl bg-zinc-800/40 p-4 backdrop-blur-lg">
         {/* Header with workflow icon and success indicator */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -136,7 +132,7 @@ export default function WorkflowCreatedCard({
             color="success"
             startContent={<CheckmarkCircle02Icon className="size-3" />}
             classNames={{
-              base: "bg-success/15 shrink-0",
+              base: "shrink-0",
               content: "text-xs font-medium",
             }}
           >
@@ -156,7 +152,7 @@ export default function WorkflowCreatedCard({
           color={trigger.color}
           startContent={trigger.icon}
           classNames={{
-            base: `${trigger.bgColor} shrink-0`,
+            base: "shrink-0",
             content: "text-xs font-medium",
           }}
         >
@@ -171,7 +167,8 @@ export default function WorkflowCreatedCard({
           startContent={<PencilEdit01Icon className="size-3.5" />}
           isLoading={isLoading}
           onPress={handleOpenModal}
-          className="mt-1 w-full rounded-xl font-medium"
+          radius="md"
+          className="mt-1 w-full font-medium"
         >
           View & Edit
         </Button>

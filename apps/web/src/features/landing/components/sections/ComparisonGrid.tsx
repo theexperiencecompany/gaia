@@ -194,22 +194,20 @@ function BrandLogo({ competitor }: { competitor: CompetitorInfo }) {
 
 function Cell({ value }: { value: CellValue }) {
   if (value.type === "yes") {
-    return <Tick02Icon width={18} className="mx-auto text-emerald-400" />;
+    return <Tick02Icon width={18} className="mx-auto text-emerald-500" />;
   }
   if (value.type === "no") {
     return <Cancel01Icon width={18} className="mx-auto text-zinc-700" />;
   }
   if (value.type === "partial") {
     return (
-      <span className="text-[11px] leading-snug text-amber-400/90">
+      <span className="text-xs leading-snug text-amber-500/90">
         {value.label}
       </span>
     );
   }
   return (
-    <span className="text-[11px] leading-snug text-zinc-300">
-      {value.label}
-    </span>
+    <span className="text-xs leading-snug text-zinc-300">{value.label}</span>
   );
 }
 

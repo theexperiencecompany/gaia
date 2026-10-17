@@ -171,3 +171,22 @@ def test_a_findings_file_the_lane_never_wrote_is_not_an_error(tmp_path: Path) ->
         == 0
     )
     assert json.loads((out / "biome.json").read_text())["findings"] == []
+
+
+OXLINT_UNIX_OUTPUT = """\
+apps/web/src/a.tsx:12:5: Stay on the scale for text-[13px] [Error/shadcn(no-arbitrary-values)]
+apps/web/src/b.tsx:7:9: Inline style sets color [Warning/shadcn(no-inline-styles)]
+
+2 problems
+"""
+
+
+def test_oxlint_unix_findings_land_on_their_file_and_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found = _collect(OXLINT_UNIX_OUTPUT, tmp_path / "f.jsonl", monkeypatch)
+    assert [(f["file"], f["line"]) for f in found] == [
+        ("apps/web/src/a.tsx", 12),
+        ("apps/web/src/b.tsx", 7),
+    ]
+    assert "shadcn(no-arbitrary-values)" in found[0]["message"]

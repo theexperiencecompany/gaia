@@ -160,7 +160,7 @@ export default function PaymentSuccessPage() {
                 </p>
                 <RaisedButton
                   color="#00bbff"
-                  className="w-full text-black!"
+                  className="w-full"
                   onClick={() => router.push(continueDestination)}
                 >
                   Continue to chat
@@ -196,7 +196,7 @@ export default function PaymentSuccessPage() {
       {status === "error" && (
         <div className="relative z-10 w-full max-w-md rounded-3xl bg-zinc-900/60 p-8 text-center backdrop-blur-2xl">
           <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-red-500/15">
-            <Alert02Icon className="size-8 text-red-400" />
+            <Alert02Icon className="size-8 text-red-500" />
           </div>
           <h1 className="mb-2 text-2xl font-semibold text-white">
             Payment not completed
@@ -207,7 +207,7 @@ export default function PaymentSuccessPage() {
           <div className="flex flex-col gap-2">
             <RaisedButton
               color="#00bbff"
-              className="w-full text-black!"
+              className="w-full"
               onClick={handleTryAgain}
               disabled={isRestarting}
             >
@@ -216,7 +216,8 @@ export default function PaymentSuccessPage() {
             </RaisedButton>
             <Button
               variant="flat"
-              className="w-full rounded-xl"
+              radius="md"
+              className="w-full"
               onPress={() => router.push("/pricing")}
             >
               Back to pricing

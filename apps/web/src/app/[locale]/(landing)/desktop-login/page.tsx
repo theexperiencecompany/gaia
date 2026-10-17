@@ -122,7 +122,7 @@ export default function DesktopLoginPage() {
           {status === "ready" && (
             <RaisedButton
               color="#00bbff"
-              className="w-fit gap-3 text-black!"
+              className="w-fit gap-3"
               onClick={handleOpenLogin}
             >
               <ArrowUpRight className="h-5 w-5" />
@@ -173,7 +173,7 @@ export default function DesktopLoginPage() {
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="text-red-400"
+                  className="text-red-500"
                   aria-hidden="true"
                 >
                   <circle cx="12" cy="12" r="10" />
@@ -181,7 +181,7 @@ export default function DesktopLoginPage() {
                   <line x1="9" y1="9" x2="15" y2="15" />
                 </svg>
               </div>
-              <p className="text-center text-red-400">Failed to open browser</p>
+              <p className="text-center text-red-500">Failed to open browser</p>
               <button
                 type="button"
                 onClick={() => setStatus("ready")}

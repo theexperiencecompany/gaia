@@ -72,12 +72,7 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-900/60 px-6 py-12 text-center">
         <p className="text-sm text-zinc-400">Couldn't load built-in skills.</p>
-        <Button
-          size="sm"
-          variant="flat"
-          className="rounded-xl"
-          onPress={() => load()}
-        >
+        <Button size="sm" variant="flat" radius="md" onPress={() => load()}>
           Retry
         </Button>
       </div>
@@ -114,7 +109,6 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                     variant="flat"
                     color="warning"
                     classNames={{
-                      base: "bg-warning/15",
                       content: "text-xs font-medium",
                     }}
                   >
@@ -126,7 +120,7 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                     size="sm"
                     color="primary"
                     variant="flat"
-                    className="rounded-lg"
+                    radius="md"
                   >
                     Connect
                   </Button>

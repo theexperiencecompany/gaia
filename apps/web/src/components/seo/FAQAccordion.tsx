@@ -25,7 +25,7 @@ export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
             content: "text-base text-zinc-400 font-light pb-4",
           }}
         >
-          {faq.answer}
+          <div className="pb-4">{faq.answer}</div>
         </AccordionItem>
       ))}
     </Accordion>

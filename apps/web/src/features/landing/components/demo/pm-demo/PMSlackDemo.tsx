@@ -8,7 +8,7 @@ const phase1Content = (
     <Alert01Icon
       width={14}
       height={14}
-      className="inline-block align-middle text-amber-400"
+      className="inline-block align-middle text-amber-500"
     />{" "}
     ENG-445 needs a decision before planning.
   </p>

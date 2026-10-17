@@ -78,7 +78,7 @@ export default function CalendarHeader() {
           className="w-34"
           // className="max-w-fit min-w-24"
           classNames={{
-            trigger: "bg-zinc-800 text-xs! cursor-pointer",
+            trigger: "text-xs! cursor-pointer",
             value: "text-zinc-300",
           }}
           renderValue={(items) => {
@@ -114,7 +114,7 @@ export default function CalendarHeader() {
           <Button isIconOnly size="sm" variant="light" onPress={goToNextDay}>
             <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
-          <Button variant="flat" onPress={goToToday} size="sm" className="ml-">
+          <Button variant="flat" onPress={goToToday} size="sm">
             Today
           </Button>
         </div>

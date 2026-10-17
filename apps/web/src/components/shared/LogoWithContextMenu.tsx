@@ -9,7 +9,7 @@ import {
 } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { type CSSProperties, useCallback, useState } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -17,6 +17,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { toast } from "@/lib/toast";
+
+const MENU_ITEM_STAGGER_MS = 50;
 
 const menuItemsConfig = [
   {
@@ -207,26 +209,22 @@ export function LogoWithContextMenu({
         </Button>
       </ContextMenuTrigger>
       {isOpen && (
-        <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">
+        <ContextMenuContent className="p-1.5">
           {menuItemsConfig.map((item, index) => {
-            const className =
-              "hover:bg-zinc-700! hover:text-white text-zinc-400 animate-in fade-in slide-in-from-left-2 duration-100";
+            // --stagger-delay must sit on the animated node: animation-delay is
+            // not inherited.
+            const itemAnimationClass = "animate-stagger-in-left";
             const style = {
-              animationDelay: `${index * 50}ms`,
-              animationFillMode: "both",
-            } as const;
+              "--stagger-delay": `${index * MENU_ITEM_STAGGER_MS}ms`,
+            } as CSSProperties;
 
             if (item.type === "link") {
               return (
-                <ContextMenuItem
-                  key={item.id}
-                  asChild
-                  className={className}
-                  style={style}
-                >
+                <ContextMenuItem key={item.id} asChild>
                   <Link
                     href={item.href}
-                    className="flex w-full items-center gap-3 cursor-pointer"
+                    style={style}
+                    className={`flex w-full items-center gap-3 cursor-pointer ${itemAnimationClass}`}
                     target={item.target}
                   >
                     {item.icon}
@@ -239,11 +237,12 @@ export function LogoWithContextMenu({
             return (
               <ContextMenuItem
                 key={item.id}
-                className={className}
-                style={style}
                 onSelect={() => handleAction(item.action)}
               >
-                <div className="flex w-full items-center gap-3 cursor-pointer">
+                <div
+                  style={style}
+                  className={`flex w-full items-center gap-3 cursor-pointer ${itemAnimationClass}`}
+                >
                   {item.icon}
                   <span>{item.label}</span>
                 </div>

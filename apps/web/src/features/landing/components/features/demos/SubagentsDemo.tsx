@@ -37,8 +37,8 @@ function GitHubAgentCard() {
     <div className="rounded-2xl bg-zinc-800 p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-400/10">
-            <ChatBotIcon width={15} height={15} className="text-blue-400" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-500/10">
+            <ChatBotIcon width={15} height={15} className="text-blue-500" />
           </div>
           <span className="text-sm font-semibold text-zinc-100">
             GitHub Agent
@@ -46,10 +46,10 @@ function GitHubAgentCard() {
         </div>
         <div className="flex items-center gap-1.5">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-400" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
           </span>
-          <span className="text-xs font-medium text-blue-400">Active</span>
+          <span className="text-xs font-medium text-blue-500">Active</span>
         </div>
       </div>
       <div className="mb-2.5 flex items-center gap-1.5">
@@ -60,7 +60,7 @@ function GitHubAgentCard() {
             showBackground: false,
           })}
         </div>
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           Reviewing 3 open pull requests
         </span>
       </div>
@@ -71,7 +71,7 @@ function GitHubAgentCard() {
               <p className="truncate text-sm font-medium text-zinc-200">
                 {pr.title}
               </p>
-              <span className="shrink-0 rounded-full bg-blue-400/10 px-2 py-0.5 text-[10px] font-medium text-blue-400">
+              <span className="shrink-0 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500">
                 PR #{pr.number}
               </span>
             </div>

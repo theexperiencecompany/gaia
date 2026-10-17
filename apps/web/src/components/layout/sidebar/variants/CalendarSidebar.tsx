@@ -36,7 +36,7 @@ export default function CalendarSidebar() {
         content={
           <span className="flex items-center gap-2">
             New Event
-            <Kbd className="text-[10px]">C</Kbd>
+            <Kbd className="text-xs">C</Kbd>
           </span>
         }
         placement="right"

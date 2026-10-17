@@ -54,8 +54,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
   return (
     <div className="flex h-full flex-col">
-      <SidebarContent className="flex-1 overflow-y-auto pl-6 pr-3 outline-0">
-        <div className="space-y-4 pt-4">
+      <SidebarContent className="flex-1 overflow-y-auto">
+        <div className="space-y-4 pt-4 pl-6 pr-3">
           <TodoSidebarTitle
             title={todo.title}
             completed={todo.completed}
@@ -119,7 +119,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           </div>
 
           <div
-            className={`py-4 border-y-1 border-zinc-800 ${todo?.subtasks?.length > 0 ? "pt-6r" : ""}`}
+            className={`py-4 border-y-1 border-zinc-800 ${todo?.subtasks?.length > 0 ? "pt-6" : ""}`}
           >
             <SubtaskManager
               subtasks={todo.subtasks}
@@ -139,28 +139,30 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
-        <div className="flex items-center justify-between">
-          <div className="py-2">
-            <span className="text-xs text-zinc-600">
-              Created{" "}
-              {formatDistanceToNow(new Date(todo.created_at), {
-                addSuffix: true,
-              })}
-            </span>
-          </div>
+      <SidebarFooter>
+        <div className="p-3">
+          <div className="flex items-center justify-between">
+            <div className="py-2">
+              <span className="text-xs text-zinc-600">
+                Created{" "}
+                {formatDistanceToNow(new Date(todo.created_at), {
+                  addSuffix: true,
+                })}
+              </span>
+            </div>
 
-          <Button
-            type="button"
-            isIconOnly
-            color="danger"
-            size="sm"
-            variant="flat"
-            onPress={handleDelete}
-            aria-label="Delete todo"
-          >
-            <Delete02Icon className="size-5" />
-          </Button>
+            <Button
+              type="button"
+              isIconOnly
+              color="danger"
+              size="sm"
+              variant="flat"
+              onPress={handleDelete}
+              aria-label="Delete todo"
+            >
+              <Delete02Icon className="size-5" />
+            </Button>
+          </div>
         </div>
       </SidebarFooter>
     </div>

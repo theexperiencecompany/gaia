@@ -1,0 +1,70 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Flat-card consistency: bg-zinc-800|900 surfaces must not carry heavy shadows
+// (shadow-md|lg|xl|2xl). Element-aware: matches JSX elements (not bare
+// JsxAttribute nodes) so overlay/tooltip elements never fire. Overlays
+// (Popover/Tooltip/Modal/Dialog/DropdownMenu/ContextMenu/Sheet/Drawer/
+// HoverCard/Select, popovers, tooltips, dropdowns, chart tooltips, scroller
+// buttons) keep shadows for elevation.
+// Narrow content exclusions (each provable via grep in apps/web/src):
+// - popoverContent: HeroUI Select popover slot (overlay)
+// - min-w-[8rem]: chart tooltip (unique to overlay tooltips)
+// - px-2.5: DayByDay/UsageView/chart tooltip bodies (real card shadows use
+//   p-4/p-3, never px-2.5 with text-xs + shadow-xl)
+// - max-w-64 / max-w-56: HeroUI Tooltip content slots (also covers StatCard
+//   accent nesting that inlines a Tooltip)
+// - max-h-52: MentionList dropdown (unique size)
+// - max-h-[90vh]: ChartDisplay modal (unique size)
+// - rounded-[22px]: SendNotificationSection OS-banner (unique radius)
+// - pointer-events-none + whitespace-nowrap: UsageHeatmap hover tip (tooltips
+//   are non-interactive; real cards never combine both with shadow-xl)
+// - fixed: floating overlay widgets (FirstStepsWidget bottom-right dock — the
+//   only fixed+zinc+shadow site in src; in-flow cards never use fixed)
+// Left firing (no clean marker — triage as keeps, do NOT strip):
+// - MemoryGraphDemo Card tooltip (border-zinc-600 also in real fixes)
+//
+// GritQL notes: `<$tag $attrs>$_</$tag>` + `<$tag $attrs />` cover normal and
+// self-closing elements. Regexes use non-capturing (?:...) groups only.
+or {
+  `<$tag $attrs>$_</$tag>` as $node where {
+    $attrs <: r"[\s\S]*bg-zinc-(?:800|900)[\s\S]*",
+    $attrs <: r"[\s\S]*shadow-(?:md|lg|xl|2xl)[\s\S]*",
+    $tag <: not r"[\s\S]*(?:Popover|Tooltip|Modal|Dialog|DropdownMenu|ContextMenu|Sheet|Drawer|HoverCard|Select)[\s\S]*",
+    $attrs <: not r"[\s\S]*popoverContent[\s\S]*",
+    $attrs <: not r"[\s\S]*min-w-\[8rem\][\s\S]*",
+    $attrs <: not r"[\s\S]*px-2\.5[\s\S]*",
+    $attrs <: not r"[\s\S]*max-w-64[\s\S]*",
+    $attrs <: not r"[\s\S]*max-w-56[\s\S]*",
+    $attrs <: not r"[\s\S]*max-h-52[\s\S]*",
+    $attrs <: not r"[\s\S]*max-h-\[90vh\][\s\S]*",
+    $attrs <: not r"[\s\S]*rounded-\[22px\][\s\S]*",
+    $attrs <: not r"[\s\S]*pointer-events-none[\s\S]*whitespace-nowrap[\s\S]*",
+    $attrs <: not r"[\s\S]*\bfixed\b[\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Flat cards: remove shadow-md/lg/xl/2xl from bg-zinc-800/900 surfaces. Overlays (popovers, tooltips, dropdowns, modals, sheets, chart tooltips) keep shadows — leave those.",
+      severity = "error"
+    )
+  },
+  `<$tag $attrs />` as $node where {
+    $attrs <: r"[\s\S]*bg-zinc-(?:800|900)[\s\S]*",
+    $attrs <: r"[\s\S]*shadow-(?:md|lg|xl|2xl)[\s\S]*",
+    $tag <: not r"[\s\S]*(?:Popover|Tooltip|Modal|Dialog|DropdownMenu|ContextMenu|Sheet|Drawer|HoverCard|Select)[\s\S]*",
+    $attrs <: not r"[\s\S]*popoverContent[\s\S]*",
+    $attrs <: not r"[\s\S]*min-w-\[8rem\][\s\S]*",
+    $attrs <: not r"[\s\S]*px-2\.5[\s\S]*",
+    $attrs <: not r"[\s\S]*max-w-64[\s\S]*",
+    $attrs <: not r"[\s\S]*max-w-56[\s\S]*",
+    $attrs <: not r"[\s\S]*max-h-52[\s\S]*",
+    $attrs <: not r"[\s\S]*max-h-\[90vh\][\s\S]*",
+    $attrs <: not r"[\s\S]*rounded-\[22px\][\s\S]*",
+    $attrs <: not r"[\s\S]*pointer-events-none[\s\S]*whitespace-nowrap[\s\S]*",
+    $attrs <: not r"[\s\S]*\bfixed\b[\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Flat cards: remove shadow-md/lg/xl/2xl from bg-zinc-800/900 surfaces. Overlays (popovers, tooltips, dropdowns, modals, sheets, chart tooltips) keep shadows — leave those.",
+      severity = "error"
+    )
+  }
+}

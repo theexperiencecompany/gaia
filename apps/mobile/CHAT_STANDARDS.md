@@ -160,7 +160,7 @@ Reference: Claude app — large centered logo, elegant greeting, nothing else.
 ### Standard: visible, full-width, above message text
 - Tool cards render at **full screen width** — never inside a max-width text container
 - Tool cards appear above the AI's text response, in the order tools were called
-- Styling follows the design system card contract: `rounded-2xl`, `bg-zinc-800 p-4`
+- Styling follows the design system card contract: `rounded-3xl`, `bg-zinc-800 p-4`
 - Inner data sections: `rounded-2xl bg-zinc-900 p-3`
 - No borders on outer card
 

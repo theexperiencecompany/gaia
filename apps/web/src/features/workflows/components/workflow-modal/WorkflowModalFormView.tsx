@@ -240,7 +240,7 @@ export default function WorkflowModalFormView({
 
       {/* Full-width footer */}
       <div className="shrink-0">
-        <Divider className="bg-zinc-700" />
+        <Divider />
         <div className="px-6 py-4">
           {mode === "preview" ? (
             <PreviewFooter onClose={onClose} />

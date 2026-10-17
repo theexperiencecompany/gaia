@@ -44,13 +44,14 @@ export function CopyableContentView(
         variant="flat"
         onPress={copy}
         aria-label={copied ? "Copied" : "Copy content"}
-        className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors px-3 py-1.5 min-w-0 h-auto"
+        radius="full"
+        className="inline-flex items-center gap-1.5 transition-colors px-3 py-1.5 min-w-0 h-auto"
       >
         <span className="font-mono text-xs text-zinc-200 truncate">
           {props.content}
         </span>
         {copied ? (
-          <CheckmarkCircle02Icon className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+          <CheckmarkCircle02Icon className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
         ) : (
           <Copy01Icon className="w-3 h-3 shrink-0 text-zinc-500" />
         )}
@@ -82,7 +83,7 @@ export function CopyableContentView(
           aria-label={copied ? "Copied" : "Copy content"}
           className={cn(
             "shrink-0 aspect-square min-w-7 w-7 h-7 p-0",
-            copied ? "text-emerald-400" : "text-zinc-500",
+            copied ? "text-emerald-500" : "text-zinc-500",
           )}
         >
           {copied ? (

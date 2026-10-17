@@ -9,7 +9,7 @@ const METRICS = [
     valueClass: "text-xl font-semibold text-white",
     trendUp: true,
     trend: "from 79%",
-    trendClass: "text-[10px] text-emerald-400",
+    trendClass: "text-xs text-emerald-500",
   },
   {
     id: "m-2",
@@ -18,7 +18,7 @@ const METRICS = [
     valueClass: "text-xl font-semibold text-white",
     trendUp: true,
     trend: "from 12h",
-    trendClass: "text-[10px] text-red-400",
+    trendClass: "text-xs text-red-500",
   },
   {
     id: "m-3",
@@ -27,7 +27,7 @@ const METRICS = [
     valueClass: "text-xl font-semibold text-white",
     trendUp: false,
     trend: "on track",
-    trendClass: "text-[10px] text-emerald-400",
+    trendClass: "text-xs text-emerald-500",
   },
 ];
 
@@ -35,31 +35,31 @@ const TEAM_MEMBERS = [
   {
     id: "t-1",
     name: "Alex M.",
-    dotClass: "bg-emerald-400",
+    dotClass: "bg-emerald-500",
     status: "4 tickets done · 1 PR in review · no blockers",
   },
   {
     id: "t-2",
     name: "Sarah K.",
-    dotClass: "bg-amber-400",
+    dotClass: "bg-amber-500",
     status: "2 tickets done · PR #214 awaiting review (4d)",
   },
   {
     id: "t-3",
     name: "Maya R.",
-    dotClass: "bg-amber-400",
+    dotClass: "bg-amber-500",
     status: "Blocked on API schema decision (ENG-407)",
   },
   {
     id: "t-4",
     name: "James T.",
-    dotClass: "bg-emerald-400",
+    dotClass: "bg-emerald-500",
     status: "3 tickets done · led incident response",
   },
   {
     id: "t-5",
     name: "Dev K.",
-    dotClass: "bg-red-400",
+    dotClass: "bg-red-500",
     status: "OOO until Thursday · ENG-412 unassigned",
   },
 ];
@@ -82,9 +82,9 @@ export default function TeamHealthCard() {
         {METRICS.map((metric) => (
           <div
             key={metric.id}
-            className="flex flex-1 flex-col items-center rounded-lg bg-zinc-900 p-2 text-center"
+            className="flex flex-1 flex-col items-center rounded-xl bg-zinc-900 p-2 text-center"
           >
-            <p className="text-[10px] text-zinc-500 mb-0.5">{metric.label}</p>
+            <p className="text-xs text-zinc-500 mb-0.5">{metric.label}</p>
             <p className={metric.valueClass}>{metric.value}</p>
             <p
               className={`${metric.trendClass} flex items-center justify-center gap-0.5`}
@@ -97,7 +97,7 @@ export default function TeamHealthCard() {
       </div>
 
       <div className="mt-3">
-        <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
           Team status
         </p>
         <div className="rounded-xl bg-zinc-900 p-3">
@@ -121,7 +121,7 @@ export default function TeamHealthCard() {
       </div>
 
       <div className="mt-2 pt-2 border-t border-zinc-800">
-        <p className="flex items-center gap-1 text-[11px] text-amber-400">
+        <p className="flex items-center gap-1 text-xs text-amber-500">
           <Alert01Icon width={12} height={12} />
           PR cycle time up 53%, likely PR #214 bottleneck
         </p>

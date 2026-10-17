@@ -66,14 +66,14 @@ function buildDashboardSections({
   const sections: DashboardSection[] = [];
   if (todaysMeetings > 0) {
     sections.push({
-      icon: <Calendar03Icon className="w-7 h-7 text-blue-400" />,
+      icon: <Calendar03Icon className="w-7 h-7 text-blue-500" />,
       count: todaysMeetings,
       label: todaysMeetings === 1 ? "meeting" : "meetings",
     });
   }
   if (tasksDue > 0) {
     sections.push({
-      icon: <CheckmarkCircle02Icon className="w-7 h-7 text-emerald-400" />,
+      icon: <CheckmarkCircle02Icon className="w-7 h-7 text-emerald-500" />,
       count: tasksDue,
       label: tasksDue === 1 ? "task due" : "tasks due",
     });
@@ -87,7 +87,7 @@ function buildDashboardSections({
   }
   if (unreadEmailsCount > 0) {
     sections.push({
-      icon: <Mail01Icon className="w-7 h-7 text-sky-400" />,
+      icon: <Mail01Icon className="w-7 h-7 text-blue-500" />,
       count: unreadEmailsCount,
       label: unreadEmailsCount === 1 ? "unread email" : "unread emails",
     });
@@ -106,7 +106,7 @@ function SummaryItem({ icon, count, label }: DashboardSection) {
   return (
     <span className="inline-flex items-center gap-1.5">
       {icon}
-      <span className="font-medium text-white">{count}</span>
+      <span className="font-medium text-white tabular-nums">{count}</span>
       <span>{label}</span>
     </span>
   );

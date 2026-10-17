@@ -96,7 +96,7 @@ const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
     if (loadFailed) {
       // Same box as the spinner state so the card doesn't jump when swapping.
       return (
-        <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900">
+        <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-xl bg-zinc-900">
           <p className="text-xs text-zinc-500">Chart failed to load.</p>
           <Button
             size="sm"
@@ -109,7 +109,7 @@ const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
       );
     }
     return (
-      <div className="flex h-64 w-full items-center justify-center rounded-lg bg-zinc-900">
+      <div className="flex h-64 w-full items-center justify-center rounded-xl bg-zinc-900">
         <Spinner size="sm" />
       </div>
     );
@@ -182,7 +182,7 @@ const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
         );
       default:
         return (
-          <div className="flex h-64 w-full items-center justify-center rounded-lg bg-zinc-900">
+          <div className="flex h-64 w-full items-center justify-center rounded-xl bg-zinc-900">
             <p className="text-sm text-zinc-500">Unsupported chart type</p>
           </div>
         );
@@ -198,7 +198,7 @@ const StaticChartItem: React.FC<{
   onFullscreen: () => void;
   onDownload: () => void;
 }> = ({ chart, onFullscreen, onDownload }) => (
-  <div className="group relative space-y-2 rounded-lg p-3 transition-colors">
+  <div className="group relative space-y-2 rounded-xl p-3 transition-colors">
     {chart.title && (
       <h3 className="text-sm font-medium text-zinc-200">{chart.title}</h3>
     )}
@@ -209,28 +209,32 @@ const StaticChartItem: React.FC<{
         alt={chart.text}
         width={1000}
         height={1000}
-        className="h-auto w-full cursor-pointer rounded-lg transition-opacity hover:opacity-90"
+        className="h-auto w-full cursor-pointer rounded-xl transition-opacity hover:opacity-90"
         onClick={onFullscreen}
       />
 
       {/* Action buttons */}
       <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={onFullscreen}
-          className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
-          title="View fullscreen"
+        <Button
+          isIconOnly
+          size="sm"
+          variant="flat"
+          onPress={onFullscreen}
+          aria-label="View fullscreen"
+          className="text-white"
         >
           <MaximizeScreenIcon className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={onDownload}
-          className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
-          title="Download"
+        </Button>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="flat"
+          onPress={onDownload}
+          aria-label="Download"
+          className="text-white"
         >
           <Download01Icon className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       </div>
     </div>
   </div>
@@ -241,7 +245,7 @@ const DynamicChartItem: React.FC<{
   chart: ChartData;
   onFullscreen: () => void;
 }> = ({ chart, onFullscreen }) => (
-  <div className="group relative m-1 mb-5 space-y-2 rounded-lg p-3 outline-1 outline-zinc-600 backdrop-blur-sm transition-colors">
+  <div className="group relative m-1 mb-5 space-y-2 rounded-xl p-3 backdrop-blur-sm transition-colors">
     {chart.title && (
       <h3 className="text-sm font-medium text-zinc-200">{chart.title}</h3>
     )}
@@ -251,14 +255,16 @@ const DynamicChartItem: React.FC<{
 
       {/* Action buttons */}
       <div className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={onFullscreen}
-          className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
-          title="View fullscreen"
+        <Button
+          isIconOnly
+          size="sm"
+          variant="flat"
+          onPress={onFullscreen}
+          aria-label="View fullscreen"
+          className="text-white"
         >
           <MaximizeScreenIcon className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -309,22 +315,26 @@ const ChartModal: React.FC<{
           )}
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => onDownload(chart)}
-            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-            title="Download"
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            onPress={() => onDownload(chart)}
+            aria-label="Download"
+            className="text-zinc-400 hover:text-zinc-300"
           >
             <Download01Icon className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-            title="Close"
+          </Button>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            onPress={onClose}
+            aria-label="Close"
+            className="text-zinc-400 hover:text-zinc-300"
           >
             <Cancel01Icon className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -334,7 +344,7 @@ const ChartModal: React.FC<{
         <img
           src={chart.url}
           alt={chart.text}
-          className="h-auto w-full rounded-lg"
+          className="h-auto w-full rounded-xl"
         />
       </div>
     </div>

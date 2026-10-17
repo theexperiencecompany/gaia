@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@heroui/table";
+import { cn } from "@/lib/utils";
 
 export interface ComparisonColumn {
   key: string;
@@ -26,39 +27,38 @@ interface Props {
 
 export default function ComparisonTable({ columns, rows, ariaLabel }: Props) {
   return (
-    <Table
-      aria-label={ariaLabel ?? "Feature comparison"}
-      removeWrapper
-      classNames={{
-        base: "overflow-hidden rounded-3xl bg-zinc-800",
-        table: "min-w-full",
-        thead: "[&>tr]:border-b [&>tr]:border-zinc-700",
-        th: "bg-zinc-800 text-sm font-medium",
-        tr: "border-b border-zinc-700/50 transition-colors hover:bg-white/[0.02]",
-        td: "text-sm px-4 py-4",
-      }}
-    >
-      <TableHeader>
-        {columns.map((col) => (
-          <TableColumn
-            key={col.key}
-            className={col.headerClassName ?? "text-zinc-400"}
-          >
-            {col.label}
-          </TableColumn>
-        ))}
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row[columns[0]?.key ?? ""] ?? ""}>
-            {columns.map((col) => (
-              <TableCell key={col.key} className={col.cellClassName}>
-                {row[col.key] ?? ""}
-              </TableCell>
-            ))}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div className="overflow-hidden rounded-3xl bg-zinc-800">
+      <Table
+        aria-label={ariaLabel ?? "Feature comparison"}
+        removeWrapper
+        classNames={{
+          table: "min-w-full",
+          th: "text-sm font-medium",
+          td: "text-sm",
+        }}
+      >
+        <TableHeader>
+          {columns.map((col) => (
+            <TableColumn key={col.key} className="text-zinc-400">
+              <span className={col.headerClassName}>{col.label}</span>
+            </TableColumn>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row[columns[0]?.key ?? ""] ?? ""}>
+              {columns.map((col) => (
+                <TableCell key={col.key}>
+                  {/* Marketing rows stay airy; TableCell itself takes no spacing overrides. */}
+                  <span className={cn("block px-1 py-2", col.cellClassName)}>
+                    {row[col.key] ?? ""}
+                  </span>
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

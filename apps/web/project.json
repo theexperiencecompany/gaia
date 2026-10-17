@@ -59,6 +59,14 @@
       },
       "cache": false
     },
+    "lint:shadcn": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm lint:shadcn",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
     "format": {
       "executor": "nx:run-commands",
       "options": {

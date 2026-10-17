@@ -2,6 +2,7 @@
 
 import "katex/dist/katex.min.css";
 
+import { Divider } from "@heroui/divider";
 import Image from "next/image";
 import type React from "react";
 import ReactMarkdown from "react-markdown";
@@ -11,7 +12,6 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkSmartypants from "remark-smartypants";
 import remarkSupersub from "remark-supersub";
-
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import { cn } from "@/lib/utils";
@@ -41,7 +41,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
   return (
     <div
       className={cn(
-        "prose dark:prose-invert max-w-none text-[17px] leading-relaxed font-light text-zinc-300",
+        "max-w-none text-base leading-relaxed font-light text-zinc-300",
       )}
     >
       <ReactMarkdown
@@ -89,17 +89,15 @@ export default function MarkdownWrapper({ content }: { content: string }) {
           ),
           blockquote: ({ ...props }) => (
             <blockquote
-              className="my-6 border-l-2 border-t-0 border-gray-300 bg-gray-300/10 py-4 pl-5 not-italic"
+              className="my-6 border-l-2 border-t-0 border-zinc-300 bg-zinc-300/10 py-4 pl-5 not-italic"
               {...props}
             />
           ),
-          hr: ({ ...props }) => (
-            <hr className="my-12 border-t border-zinc-800" {...props} />
-          ),
+          hr: () => <Divider className="my-12" />,
           p: ({ ...props }) => (
-            <p className="my-5 leading-[1.8] first:mt-0 last:mb-0" {...props} />
+            <p className="my-5 leading-loose first:mt-0 last:mb-0" {...props} />
           ),
-          li: ({ ...props }) => <li className="leading-[1.7]" {...props} />,
+          li: ({ ...props }) => <li className="leading-relaxed" {...props} />,
           img: ({ ...props }) => (
             <Image
               width={500}
@@ -123,7 +121,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
           ),
           thead: ({ ...props }) => (
             <thead
-              className="bg-opacity-20 border border-zinc-700 bg-zinc-700"
+              className="bg-zinc-700/80 border border-zinc-700"
               {...props}
             />
           ),

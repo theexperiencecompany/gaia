@@ -1,5 +1,6 @@
 "use client";
 
+import { Cancel01Icon, MinusSignIcon } from "@icons";
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
@@ -179,7 +180,11 @@ export default function InboxZeroAiClient() {
               delay={i * 0.08}
               className="flex items-start gap-3 rounded-2xl bg-zinc-800/60 p-5"
             >
-              <span className="mt-0.5 shrink-0 text-red-400">✕</span>
+              <Cancel01Icon
+                width={18}
+                height={18}
+                className="mt-1 shrink-0 text-red-500"
+              />
               <p className="text-lg leading-relaxed text-zinc-300">{point}</p>
             </AnimatedCard>
           ))}
@@ -225,8 +230,8 @@ export default function InboxZeroAiClient() {
         />
         <div className="w-full max-w-3xl">
           <div className="grid gap-4 sm:grid-cols-2">
-            <AnimatedCard className="rounded-2xl border border-red-900/30 bg-red-950/20 p-6 text-left">
-              <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-red-400">
+            <AnimatedCard className="rounded-2xl bg-red-500/10 p-6 text-left">
+              <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-red-500">
                 Before
               </p>
               <ul className="space-y-3">
@@ -235,9 +240,7 @@ export default function InboxZeroAiClient() {
                     key={item}
                     className="flex items-start gap-2 text-sm text-zinc-300"
                   >
-                    <span className="mt-0.5 shrink-0 text-red-400">
-                      &#x2212;
-                    </span>
+                    <MinusSignIcon className="mt-0.5 shrink-0 text-red-500" />
                     {item}
                   </li>
                 ))}
@@ -245,9 +248,9 @@ export default function InboxZeroAiClient() {
             </AnimatedCard>
             <AnimatedCard
               delay={0.1}
-              className="rounded-2xl border border-emerald-900/30 bg-emerald-950/20 p-6 text-left"
+              className="rounded-2xl bg-emerald-500/10 p-6 text-left"
             >
-              <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-emerald-400">
+              <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-emerald-500">
                 After
               </p>
               <ul className="space-y-3">
@@ -256,7 +259,7 @@ export default function InboxZeroAiClient() {
                     key={item}
                     className="flex items-start gap-2 text-sm text-zinc-300"
                   >
-                    <span className="mt-0.5 shrink-0 text-emerald-400">
+                    <span className="mt-0.5 shrink-0 text-emerald-500">
                       &#x2714;
                     </span>
                     {item}

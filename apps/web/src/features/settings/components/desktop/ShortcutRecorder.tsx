@@ -113,11 +113,7 @@ function eventModifiers(event: KeyboardEvent): string[] {
 
 function ShortcutKbd({ accelerator }: Readonly<{ accelerator: string }>) {
   const { keys, label } = acceleratorToKbd(accelerator);
-  return (
-    <Kbd keys={keys} classNames={{ base: "bg-zinc-700/80 shadow-none" }}>
-      {label}
-    </Kbd>
-  );
+  return <Kbd keys={keys}>{label}</Kbd>;
 }
 
 /**

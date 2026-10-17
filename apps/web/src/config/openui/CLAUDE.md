@@ -62,7 +62,7 @@ agent (`openui_prompts.py`) reads that artifact and prepends GAIA's SURFACE POLI
 
 OpenUI renders **outside** the `imessage-bubble` wrapper (both use `bg-zinc-800`, so inside is
 invisible). react-ui components are themed via `theme.ts`; GAIA components use the same zinc
-tokens (`rounded-2xl`, zinc-800 outer / zinc-900 inner, borderless). Status colors: emerald /
+tokens (`rounded-3xl`, zinc-800 outer / zinc-900 inner, borderless). Status colors: emerald /
 amber / red / blue. Primary `#00bbff`.
 
 ## 6. Actions

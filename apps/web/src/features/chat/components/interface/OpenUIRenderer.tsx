@@ -31,8 +31,8 @@ function OpenUIErrorCard({ code, error }: { code: string; error?: string }) {
   return (
     <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-lg">
       <div className="flex items-center gap-2 mb-2">
-        <Alert01Icon className="h-4 w-4 text-red-400 shrink-0" />
-        <p className="text-sm font-medium text-red-400">
+        <Alert01Icon className="h-4 w-4 text-red-500 shrink-0" />
+        <p className="text-sm font-medium text-red-500">
           Component failed to render
         </p>
       </div>

@@ -366,59 +366,6 @@ export default function Tired() {
 
   return (
     <section className="relative flex flex-col items-center justify-center px-4 sm:px-6 py-12 sm:py-20">
-      <style>{`
-        @keyframes tool-float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-10px); }
-        }
-        @keyframes logo-pulse {
-          0%, 100% { box-shadow: 0px 0px 120px 50px rgba(0, 187, 255, 0.2); }
-          50% { box-shadow: 0px 0px 140px 60px rgba(0, 187, 255, 0.35); }
-        }
-        @keyframes tool-scatter {
-          0% {
-            top: 50%;
-            left: 50%;
-            opacity: 0;
-            transform: translate(-50%, -50%) scale(0.3);
-          }
-          60% {
-            opacity: 1;
-            transform: translate(0, 0) scale(1.05);
-          }
-          100% {
-            top: var(--end-top);
-            left: var(--end-left);
-            opacity: var(--end-opacity);
-            transform: translate(0, 0) scale(1);
-          }
-        }
-        @keyframes tool-gather {
-          0% {
-            top: var(--end-top);
-            left: var(--end-left);
-            opacity: var(--end-opacity);
-            transform: translate(0, 0) scale(1);
-          }
-          100% {
-            top: 50%;
-            left: 50%;
-            opacity: 0;
-            transform: translate(-50%, -50%) scale(0.3);
-          }
-        }
-        .tool-icon-btn {
-          cursor: pointer;
-          transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        .tool-icon-btn:hover {
-          transform: scale(1.12);
-        }
-        .tool-icon-btn:active {
-          transform: scale(0.88);
-        }
-      `}</style>
-
       <LargeHeader
         chipText="Stop context-switching"
         headingText="Every tool. One assistant."
@@ -443,11 +390,12 @@ export default function Tired() {
             width={120}
             height={120}
             loading="lazy"
-            className="rounded-[31px]"
+            className={
+              hasAnimated
+                ? "rounded-[31px] animate-logo-pulse"
+                : "rounded-[31px]"
+            }
             style={{
-              animation: hasAnimated
-                ? "logo-pulse 4s ease-in-out infinite"
-                : "none",
               boxShadow: "0px 0px 120px 50px rgba(0, 187, 255, 0.2)",
             }}
           />
@@ -470,30 +418,38 @@ export default function Tired() {
           return (
             <div
               key={icon.alt}
-              className="absolute"
+              className={
+                isLeaving
+                  ? "absolute animate-tool-gather"
+                  : hasAnimated
+                    ? "absolute animate-tool-scatter-float"
+                    : "absolute"
+              }
               style={
                 isLeaving
                   ? ({
                       "--end-top": icon.top,
                       "--end-left": icon.left,
                       "--end-opacity": String(icon.opacity),
+                      "--gather-delay": `${gatherDelay}s`,
                       top: "50%",
                       left: "50%",
                       opacity: 0,
                       transform: "translate(-50%, -50%) scale(0.3)",
-                      animation: `tool-gather 0.6s cubic-bezier(0.55, 0, 1, 0.45) ${gatherDelay}s both`,
                     } as React.CSSProperties)
                   : hasAnimated
                     ? ({
                         "--end-top": icon.top,
                         "--end-left": icon.left,
                         "--end-opacity": String(icon.opacity),
+                        "--scatter-duration": `${scatterDuration}s`,
+                        "--scatter-delay": `${scatterDelay}s`,
+                        "--float-delay": `${floatDelay}s`,
                         top: icon.top,
                         left: icon.left,
                         opacity: icon.opacity,
                         filter:
                           icon.blur > 0 ? `blur(${icon.blur}px)` : undefined,
-                        animation: `tool-scatter ${scatterDuration}s cubic-bezier(0.34, 1.56, 0.64, 1) ${scatterDelay}s backwards, tool-float 5s ease-in-out ${floatDelay}s infinite`,
                       } as React.CSSProperties)
                     : {
                         top: "50%",
@@ -509,11 +465,10 @@ export default function Tired() {
                 delay={200}
                 closeDelay={0}
                 classNames={{
-                  content:
-                    "bg-zinc-900 text-white text-xs px-2.5 py-1 rounded-lg",
+                  content: "text-white text-xs px-2.5 py-1",
                 }}
               >
-                <div className="tool-icon-btn">
+                <div className="cursor-pointer transition-transform duration-150 ease-out-back hover:scale-112 active:scale-88">
                   <Image
                     src={icon.src}
                     alt={icon.alt}
@@ -536,7 +491,7 @@ export default function Tired() {
 
       {/* CTA */}
       <Link href="/integrations" className="mt-6 sm:mt-8">
-        <RaisedButton color="#00bbff" className="text-black!">
+        <RaisedButton color="#00bbff">
           See All Integrations
           <CircleArrowRight02Icon width={20} height={20} />
         </RaisedButton>

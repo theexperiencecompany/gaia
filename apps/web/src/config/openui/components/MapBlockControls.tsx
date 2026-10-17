@@ -36,7 +36,7 @@ export function MapBlockControls({
         radius="lg"
         onPress={handleZoomIn}
         aria-label="Zoom in"
-        className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
+        className="text-zinc-200"
       >
         <PlusSignIcon className="size-3.5" />
       </Button>
@@ -47,7 +47,7 @@ export function MapBlockControls({
         radius="lg"
         onPress={handleZoomOut}
         aria-label="Zoom out"
-        className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
+        className="text-zinc-200"
       >
         <MinusSignIcon className="size-3.5" />
       </Button>
@@ -58,7 +58,7 @@ export function MapBlockControls({
         radius="lg"
         onPress={handleReset}
         aria-label="Reset view"
-        className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
+        className="text-zinc-200"
       >
         <RefreshIcon className="size-3.5" />
       </Button>

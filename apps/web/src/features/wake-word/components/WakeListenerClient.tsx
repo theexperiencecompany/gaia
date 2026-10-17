@@ -28,7 +28,7 @@ export function WakeListenerClient() {
     <div className="flex h-screen flex-col items-center justify-center gap-1 bg-black font-mono text-xs text-zinc-500">
       <p>wake-listener: {state}</p>
       <p data-wake-score>{lastScore?.toFixed(4) ?? "0"}</p>
-      {error && <p className="px-4 text-red-400">{error.message}</p>}
+      {error && <p className="px-4 text-red-500">{error.message}</p>}
     </div>
   );
 }

@@ -36,7 +36,7 @@ function NodeTypeIcon({
     );
   }
   return node.type === "dir" ? (
-    <Folder02Icon className="w-4 h-4 shrink-0 text-[#00bbff]" />
+    <Folder02Icon className="w-4 h-4 shrink-0 text-primary" />
   ) : (
     <File01Icon className="w-4 h-4 shrink-0 text-zinc-500" />
   );
@@ -75,7 +75,7 @@ export function FileTreeNodeRow({
   return (
     <div>
       <div
-        className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg transition cursor-pointer select-none group/file [&_span]:hover:text-zinc-100"
+        className="flex items-center justify-between gap-2 px-2 py-1 rounded-xl transition cursor-pointer select-none group/file [&_span]:hover:text-zinc-100"
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         role={isExpandable ? "button" : undefined}
         tabIndex={isExpandable ? 0 : undefined}

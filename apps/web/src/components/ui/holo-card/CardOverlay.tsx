@@ -13,10 +13,9 @@ export const CardOverlay: React.FC<CardOverlayProps> = ({
 
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-3"
+      className="pointer-events-none absolute inset-0 z-3 mix-blend-overlay"
       style={{
         background: overlayColor,
-        mixBlendMode: "overlay",
         opacity: overlayOpacity / 100,
       }}
     />

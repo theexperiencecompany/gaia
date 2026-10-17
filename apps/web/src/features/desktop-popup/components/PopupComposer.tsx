@@ -110,13 +110,10 @@ export default function PopupComposer({
           </Button>
         }
         classNames={{
-          // Fully transparent: the window's liquid glass IS the field's
-          // background — no overlay tints, no borders, no focus ring.
-          // No send button — Enter sends; the orb carries the state.
+          // The window's liquid glass IS the field's background: no tint, shadow or focus ring.
           inputWrapper:
-            "bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-0.5 pr-2 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
-          input:
-            "px-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-400",
+            "bg-transparent py-0 pl-0.5 pr-2 shadow-none data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0",
+          input: "px-1.5 text-sm text-zinc-100 placeholder:text-zinc-400",
         }}
       />
     </div>

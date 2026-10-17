@@ -1,4 +1,5 @@
 import { Button } from "@heroui/button";
+import { Divider } from "@heroui/divider";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Cancel01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
@@ -76,40 +77,42 @@ export function CalendarDeleteSection({
 
   return (
     <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
-      <ScrollShadow className="mt-2 max-h-[400px] space-y-3">
-        {Object.entries(eventsByDate).map(([dateString, events]) => (
-          <div key={dateString} className="space-y-3">
-            <div className="relative flex items-center">
-              <div className="flex-1 border-t border-zinc-700" />
-              <span className="px-3 text-xs text-zinc-500">
-                {formatDateWithRelative(dateString)}
-              </span>
-              <div className="flex-1 border-t border-zinc-700" />
-            </div>
+      <ScrollShadow className="mt-2 max-h-[400px]">
+        <div className="space-y-3">
+          {Object.entries(eventsByDate).map(([dateString, events]) => (
+            <div key={dateString} className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Divider className="flex-1" />
+                <span className="px-3 text-xs text-zinc-500">
+                  {formatDateWithRelative(dateString)}
+                </span>
+                <Divider className="flex-1" />
+              </div>
 
-            <div className="space-y-2">
-              {events.map((event) => {
-                const status = eventStatuses[event.event_id] || "idle";
-                const eventColor = event.background_color || "#00bbff";
+              <div className="space-y-2">
+                {events.map((event) => {
+                  const status = eventStatuses[event.event_id] || "idle";
+                  const eventColor = event.background_color || "#00bbff";
 
-                return (
-                  <EventCard
-                    key={event.event_id}
-                    eventColor={eventColor}
-                    status={status}
-                    variant="action"
-                    buttonColor="danger"
-                    completedLabel="Deleted"
-                    icon={Cancel01Icon}
-                    onAction={() => handleDelete(event)}
-                  >
-                    <EventContent event={event} />
-                  </EventCard>
-                );
-              })}
+                  return (
+                    <EventCard
+                      key={event.event_id}
+                      eventColor={eventColor}
+                      status={status}
+                      variant="action"
+                      buttonColor="danger"
+                      completedLabel="Deleted"
+                      icon={Cancel01Icon}
+                      onAction={() => handleDelete(event)}
+                    >
+                      <EventContent event={event} />
+                    </EventCard>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </ScrollShadow>
 
       {calendar_delete_options.length > 1 && (

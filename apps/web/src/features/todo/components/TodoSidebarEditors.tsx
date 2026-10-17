@@ -55,16 +55,13 @@ export function TodoSidebarTitle({
             autoFocus
             classNames={{
               input:
-                "text-2xl font-medium bg-transparent text-zinc-100 placeholder:text-zinc-500",
-              inputWrapper:
-                "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
+                "text-2xl font-medium text-zinc-100 placeholder:text-zinc-500",
             }}
             variant="underlined"
           />
         ) : (
           <h1
-            style={{ wordBreak: "break-all" }}
-            className={`text-2xl leading-tight font-medium ${completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
+            className={`text-2xl leading-tight font-medium break-all ${completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
           >
             <button
               type="button"
@@ -111,9 +108,7 @@ export function TodoSidebarDescription({
         maxRows={6}
         autoFocus
         classNames={{
-          input: "bg-transparent text-zinc-200 placeholder:text-zinc-500",
-          inputWrapper:
-            "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+          input: "text-zinc-200 placeholder:text-zinc-500",
         }}
         variant="flat"
       />

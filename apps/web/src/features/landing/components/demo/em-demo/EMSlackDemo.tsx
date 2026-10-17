@@ -7,7 +7,7 @@ const phase1Content = (
     <Alert01Icon
       width={14}
       height={14}
-      className="inline-block align-middle text-amber-400"
+      className="inline-block align-middle text-amber-500"
     />{" "}
     PR #214 needs review · Dev K. out until Thursday
   </p>

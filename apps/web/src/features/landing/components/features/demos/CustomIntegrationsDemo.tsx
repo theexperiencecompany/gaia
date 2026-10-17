@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowDown01Icon, Tick02Icon } from "@icons";
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useRef, useState } from "react";
@@ -48,28 +49,28 @@ export default function CustomIntegrationsDemo() {
           >
             <div className="flex flex-col gap-1">
               <span className="text-xs text-zinc-500">Name</span>
-              <div className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-300">
+              <div className="rounded-xl bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
                 Notion Tasks Sync
               </div>
             </div>
 
             <div className="flex flex-col gap-1">
               <span className="text-xs text-zinc-500">URL</span>
-              <div className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-300">
+              <div className="rounded-xl bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
                 https://api.notion.com/v1
               </div>
             </div>
 
             <div className="flex flex-col gap-1">
               <span className="text-xs text-zinc-500">Auth</span>
-              <div className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-300 flex items-center justify-between">
+              <div className="rounded-xl bg-zinc-900 px-3 py-2 text-sm text-zinc-300 flex items-center justify-between">
                 <span>Bearer Token</span>
-                <span className="text-zinc-500">▼</span>
+                <ArrowDown01Icon className="size-4 text-zinc-500" />
               </div>
             </div>
 
             <div className="flex items-center gap-2 py-1">
-              <div className="h-4 w-4 rounded border border-zinc-600 bg-zinc-900 flex items-center justify-center shrink-0">
+              <div className="h-4 w-4 rounded-md bg-zinc-700 flex items-center justify-center shrink-0">
                 <div className="h-2 w-2 rounded-sm bg-zinc-600" />
               </div>
               <span className="text-xs text-zinc-400">
@@ -93,7 +94,7 @@ export default function CustomIntegrationsDemo() {
                     </span>
                     <div className="h-1.5 w-full rounded-full bg-zinc-700 overflow-hidden">
                       <m.div
-                        className="h-full rounded-full bg-[#00bbff]"
+                        className="h-full rounded-full bg-primary"
                         initial={{ width: "0%" }}
                         animate={{ width: `${progressWidth}%` }}
                         transition={{ duration: 1.1, ease: "easeInOut" }}
@@ -105,7 +106,7 @@ export default function CustomIntegrationsDemo() {
             </AnimatePresence>
 
             {stage === "form" && (
-              <div className="rounded-lg bg-[#00bbff]/10 px-4 py-2 text-sm font-medium text-[#00bbff] text-center w-full mt-1">
+              <div className="rounded-xl bg-primary/10 px-4 py-2 text-sm font-medium text-primary text-center w-full mt-1">
                 Create Integration
               </div>
             )}
@@ -116,10 +117,10 @@ export default function CustomIntegrationsDemo() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: "easeOut" }}
-            className="rounded-2xl bg-[#00bbff]/5 border border-[#00bbff]/20 p-4 flex flex-col gap-3"
+            className="rounded-2xl bg-primary/10 p-4 flex flex-col gap-3"
           >
             <div className="flex items-center gap-2">
-              <span className="text-[#00bbff] text-base leading-none">✓</span>
+              <Tick02Icon className="size-4 text-primary" />
               <span className="text-sm font-semibold text-zinc-100">
                 Integration Created
               </span>
@@ -137,8 +138,8 @@ export default function CustomIntegrationsDemo() {
             </p>
 
             <div className="flex items-center gap-1.5">
-              <div className="h-1.5 w-1.5 rounded-full bg-[#00bbff]" />
-              <span className="text-xs text-[#00bbff]">
+              <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+              <span className="text-xs text-primary">
                 Published to Marketplace
               </span>
             </div>

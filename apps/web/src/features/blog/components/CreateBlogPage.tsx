@@ -303,8 +303,8 @@ function FeaturedImageUpload({
       </div>
 
       {selectedFile ? (
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
+        <Card>
+          <div className="flex items-center justify-between p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded bg-primary/10">
                 <File01Icon className="h-6 w-6 text-primary" />
@@ -328,7 +328,7 @@ function FeaturedImageUpload({
           </div>
         </Card>
       ) : (
-        <div className="rounded-lg border-2 border-dashed border-foreground-300 p-8 text-center transition-colors hover:border-primary">
+        <div className="rounded-xl border-2 border-dashed border-foreground-300 p-8 text-center transition-colors hover:border-primary">
           <input
             id="image-upload"
             type="file"
@@ -432,9 +432,9 @@ export default function CreateBlogPage() {
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
-      <Card className="shadow-lg">
-        <CardHeader className="pb-6">
-          <div className="flex items-center gap-3">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3 pb-6">
             <File01Icon className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Create New Blog Post</h1>
           </div>

@@ -46,8 +46,7 @@ export const TodoLinkPreview = memo(function TodoLinkPreview({
           aria-hidden="true"
           width={20}
           height={20}
-          style={{ verticalAlign: "-0.25em" }}
-          className="mr-1 inline-block size-4 rounded-full"
+          className="mr-1 inline-block size-4 rounded-full align-middle"
           onError={() => setFaviconFailed(true)}
           unoptimized
         />

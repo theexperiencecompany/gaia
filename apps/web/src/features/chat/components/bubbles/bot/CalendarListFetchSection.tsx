@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { CalendarListFetchData } from "@/types/features/calendarTypes";
 
 interface CalendarListFetchSectionProps {
@@ -29,10 +30,13 @@ export function CalendarListFetchSection({
             >
               <div
                 aria-hidden
-                className="mt-1 size-2 shrink-0 rounded-full"
-                style={{
-                  backgroundColor: calendar.backgroundColor || "#00bbff",
-                }}
+                className="mt-1 size-2 shrink-0 rounded-full bg-(--calendar-color)"
+                style={
+                  {
+                    "--calendar-color":
+                      calendar.backgroundColor || "var(--color-primary)",
+                  } as CSSProperties
+                }
               />
               <div className="min-w-0">
                 <div className="text-sm leading-tight text-zinc-100">

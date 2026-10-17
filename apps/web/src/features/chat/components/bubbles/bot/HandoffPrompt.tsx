@@ -101,12 +101,12 @@ export function HandoffPrompt({
     browserApi.postHandoffDecision(handoff.handoff_id, decision);
 
   return (
-    <div className="rounded-2xl bg-zinc-900 p-3.5">
+    <div className="rounded-2xl bg-zinc-900 p-3">
       <div className="flex items-center gap-2">
-        <Icon className="size-4 shrink-0 text-[#00bbff]" />
+        <Icon className="size-4 shrink-0 text-primary" />
         <p className="text-sm font-semibold text-zinc-100">{meta.title}</p>
       </div>
-      <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-zinc-400">
+      <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-zinc-400">
         {handoff.reason}
       </p>
 
@@ -114,7 +114,7 @@ export function HandoffPrompt({
           really keep it: never for payments/confirmations, never with login
           persistence off. */}
       {handoff.saves_login && (
-        <p className="mt-1 text-[12px] text-zinc-500">
+        <p className="mt-1 text-xs text-zinc-500">
           Saved encrypted so next time skips the login.
         </p>
       )}
@@ -191,10 +191,9 @@ export function HandoffDecision({
       {primary}
       <Button
         variant={primary ? "flat" : "solid"}
+        color={primary ? "default" : "primary"}
         radius="sm"
-        className={`flex-1 font-semibold ${
-          primary ? "text-zinc-100" : "bg-[#00bbff] text-zinc-900"
-        }`}
+        className="flex-1 font-semibold"
         onPress={() => decide("continue")}
       >
         I&rsquo;m done
@@ -223,7 +222,7 @@ function TakeOverButton({
   onPress?: () => void;
   href?: string;
 }) {
-  const className = "flex-1 bg-[#00bbff] font-semibold text-zinc-900";
+  const className = "flex-1 font-semibold";
   if (href) {
     return (
       <Button
@@ -231,6 +230,7 @@ function TakeOverButton({
         href={href}
         target="_blank"
         rel="noopener noreferrer"
+        color="primary"
         radius="sm"
         className={className}
       >
@@ -239,7 +239,7 @@ function TakeOverButton({
     );
   }
   return (
-    <Button radius="sm" className={className} onPress={onPress}>
+    <Button color="primary" radius="sm" className={className} onPress={onPress}>
       {cta}
     </Button>
   );

@@ -93,7 +93,8 @@ export function RecapSlideshow({
             isIconOnly
             radius="full"
             size="sm"
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 data-[hover=true]:bg-black/65"
+            variant="flat"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white opacity-0 transition group-hover:opacity-100"
             aria-label="Previous step"
             onPress={() => go(safeIdx - 1)}
           >
@@ -105,7 +106,8 @@ export function RecapSlideshow({
             isIconOnly
             radius="full"
             size="sm"
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 data-[hover=true]:bg-black/65"
+            variant="flat"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white opacity-0 transition group-hover:opacity-100"
             aria-label="Next step"
             onPress={() => go(safeIdx + 1)}
           >
@@ -137,7 +139,7 @@ export function RecapSlideshow({
               aria-label={`Go to step ${s.index}`}
               className={`shrink-0 overflow-hidden rounded-lg transition ${
                 i === safeIdx
-                  ? "opacity-100 ring-2 ring-[#00bbff]"
+                  ? "opacity-100 ring-2 ring-primary"
                   : "opacity-60 ring-1 ring-white/10 hover:opacity-100 hover:ring-white/25"
               }`}
             >

@@ -1,6 +1,7 @@
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { useParams } from "next/navigation";
+import type { CSSProperties } from "react";
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 
 export function GalleryImage({
@@ -16,8 +17,8 @@ export function GalleryImage({
     <m.div
       whileHover={{ scale: 1.02 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
-      className="relative overflow-hidden rounded-xl cursor-pointer"
-      style={{ aspectRatio }}
+      className="relative aspect-(--ar) cursor-pointer overflow-hidden rounded-xl"
+      style={{ "--ar": aspectRatio } as CSSProperties}
     >
       {/* Remote LLM-provided URLs can't be allow-listed as remotePatterns,
           so the Next.js optimizer is bypassed with `unoptimized`. */}

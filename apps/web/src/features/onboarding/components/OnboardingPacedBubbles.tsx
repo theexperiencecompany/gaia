@@ -56,7 +56,7 @@ export function OnboardingPacedBubbles({
                 variant="dots"
                 color="default"
                 size="md"
-                classNames={{ wrapper: "h-6", dots: "bg-zinc-400" }}
+                classNames={{ wrapper: "h-6" }}
               />
             </m.output>
           </div>

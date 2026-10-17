@@ -175,7 +175,7 @@ export function GitHubSettings({
                   key={item.value}
                   textValue={item.label}
                   isReadOnly={item.isLoader}
-                  className={item.isLoader ? "h-unit-8" : ""}
+                  className={item.isLoader ? "h-8" : ""}
                 >
                   {item.isLoader ? (
                     <div className="flex justify-center w-full">

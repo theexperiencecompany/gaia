@@ -42,7 +42,7 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
               language={match ? match[1] : undefined}
             />
             <Button
-              className="text-xs text-zinc-400 hover:text-gray-300"
+              className="text-xs text-zinc-400 hover:text-zinc-300"
               size="sm"
               isIconOnly
               variant="light"

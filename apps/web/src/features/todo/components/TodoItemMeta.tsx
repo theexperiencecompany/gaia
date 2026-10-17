@@ -14,7 +14,7 @@ import {
 } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
-import { memo } from "react";
+import { type CSSProperties, memo } from "react";
 import { Priority, type Project, type Todo } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
 
@@ -25,13 +25,6 @@ interface TodoItemMetaProps {
   isToday: boolean;
   isOverdue: boolean;
 }
-
-const PRIORITY_CHIP_CLASS: Record<Priority, string> = {
-  [Priority.HIGH]: "text-red-400 bg-red-400/10",
-  [Priority.MEDIUM]: "text-yellow-400 bg-yellow-400/10",
-  [Priority.LOW]: "text-blue-400 bg-blue-400/10",
-  [Priority.NONE]: "text-zinc-500",
-};
 
 const todoHasMeta = (todo: Todo): boolean =>
   todo.priority !== Priority.NONE ||
@@ -58,7 +51,13 @@ function TodoPriorityChip({ priority }: { priority: Todo["priority"] }) {
         size="sm"
         variant="flat"
         radius="sm"
-        className={`px-2 ${PRIORITY_CHIP_CLASS[priority]}`}
+        className={
+          priority === Priority.HIGH
+            ? "px-2 text-red-500 bg-red-500/10"
+            : priority === Priority.MEDIUM
+              ? "px-2 text-yellow-500 bg-yellow-500/10"
+              : "px-2 text-blue-500 bg-blue-500/10"
+        }
         startContent={<Flag02Icon width={15} height={15} className="mx-1" />}
       >
         {capitalize(priority)}
@@ -162,9 +161,9 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         <Chip
           size="sm"
           variant="flat"
-          className=" text-zinc-400 px-1"
+          className="text-zinc-400 px-1 text-(--todo-project-color)"
           radius="sm"
-          style={{ color: todoProject.color }}
+          style={{ "--todo-project-color": todoProject.color } as CSSProperties}
           startContent={
             <Folder02Icon width={15} height={15} className="mx-1" />
           }
@@ -195,7 +194,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
         <Chip
           size="sm"
           variant="flat"
-          className=" text-zinc-400 px-1"
+          className="text-zinc-400 px-1"
           radius="sm"
           startContent={
             <CheckmarkCircle02Icon width={15} height={15} className="mx-1" />

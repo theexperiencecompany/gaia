@@ -138,7 +138,7 @@ function TabStrip({
   const [faviconFailed, setFaviconFailed] = useState(false);
   return (
     <div className="flex items-end px-4 pt-2">
-      <div className="relative flex h-9 min-w-0 max-w-[60%] items-center gap-2 rounded-t-[14px] bg-zinc-800 px-4">
+      <div className="relative flex h-9 min-w-0 max-w-[60%] items-center gap-2 rounded-t-2xl bg-zinc-800 px-4">
         <TabCove side="left" />
         {(favicon || host) && !faviconFailed ? (
           <Image

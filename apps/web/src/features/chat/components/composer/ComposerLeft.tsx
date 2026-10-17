@@ -67,8 +67,9 @@ export default function ComposerLeft({
         <DropdownMenuTrigger asChild>
           <Button
             size="icon"
+            variant="composer"
             className={cn(
-              "group relative h-9 w-9 rounded-full border-none bg-zinc-700 p-0 hover:bg-zinc-600/90",
+              "group relative h-9 w-9 p-0",
               isMainResponseStreaming ? "cursor-wait!" : "",
             )}
             disabled={isMainResponseStreaming}
@@ -83,7 +84,7 @@ export default function ComposerLeft({
         <DropdownMenuContent
           align="end"
           side="top"
-          className="w-fit gap-2 rounded-xl border-none bg-zinc-900 p-1 text-white outline-2! outline-zinc-800!"
+          className="w-fit border-none"
         >
           {dropdownItems.map((item) => (
             <Tooltip
@@ -104,14 +105,14 @@ export default function ComposerLeft({
                     handleSelectionChange(item.id as ComposerMode);
                   else if (item.action) item.action();
                 }}
-                className={cn(
-                  "cursor-pointer rounded-lg px-3 py-2",
-                  currentMode === item.id
-                    ? "bg-[#00bbff50] text-primary focus:bg-[#00bbff50] focus:text-primary"
-                    : "focus:bg-zinc-800 focus:text-white",
-                )}
+                className="cursor-pointer p-0"
               >
-                <div className="flex w-full items-center justify-between gap-3">
+                <div
+                  className={cn(
+                    "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2",
+                    currentMode === item.id ? "bg-primary/30 text-primary" : "",
+                  )}
+                >
                   <div className="flex flex-col">
                     <div className="flex flex-row items-center gap-2">
                       {item.icon}
@@ -144,11 +145,10 @@ export default function ComposerLeft({
         >
           <Button
             size="icon"
+            variant={isSlashCommandDropdownOpen ? "composerActive" : "composer"}
             className={cn(
-              "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 fill-zinc-400 p-0 text-zinc-400 hover:bg-zinc-600/90",
+              "group relative flex h-9 w-9 items-center justify-center p-0",
               isMainResponseStreaming ? "cursor-wait!" : "",
-              isSlashCommandDropdownOpen &&
-                "border-primary/50 bg-primary/20 text-primary hover:bg-primary/40",
             )}
             disabled={isMainResponseStreaming}
             onClick={() => {

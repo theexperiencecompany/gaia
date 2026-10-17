@@ -28,22 +28,12 @@ export function SkillTargetIcon({
   size = 16,
 }: Readonly<SkillTargetIconProps>) {
   if (value === EXECUTOR_TARGET || icon === EXECUTOR_TARGET) {
-    return (
-      <AiMagicIcon
-        className="text-primary"
-        style={{ width: size, height: size }}
-      />
-    );
+    return <AiMagicIcon className="text-primary" width={size} height={size} />;
   }
 
   const Builtin = BUILTIN_ICONS[icon] ?? BUILTIN_ICONS[value];
   if (Builtin) {
-    return (
-      <Builtin
-        className="text-zinc-300"
-        style={{ width: size, height: size }}
-      />
-    );
+    return <Builtin className="text-zinc-300" width={size} height={size} />;
   }
 
   return getToolCategoryIcon(icon, {

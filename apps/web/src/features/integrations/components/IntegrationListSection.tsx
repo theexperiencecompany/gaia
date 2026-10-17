@@ -267,8 +267,10 @@ function IntegrationListSection({
           />
         }
       >
-        <ScrollShadow className="max-h-[150px] divide-y divide-zinc-700">
-          {suggestedIntegrations.map(renderSuggested)}
+        <ScrollShadow className="max-h-[150px]">
+          <div className="divide-y divide-zinc-700">
+            {suggestedIntegrations.map(renderSuggested)}
+          </div>
         </ScrollShadow>
         <div className="mt-3 flex justify-center">
           <Link
@@ -276,7 +278,7 @@ function IntegrationListSection({
             className="text-xs text-primary hover:underline gap-1"
           >
             <span>Go to Marketplace</span>
-            <ArrowRight02Icon width={16} height={16} />
+            <ArrowRight02Icon width={16} height={16} className="ml-1" />
           </Link>
         </div>
       </AccordionItem>

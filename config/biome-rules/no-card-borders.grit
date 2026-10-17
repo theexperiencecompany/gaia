@@ -1,0 +1,87 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Flat-card consistency: plain-element surfaces with bg-zinc-800|900 must not
+// carry borders. @shadcn/lint only sees UI components, so plain divs slip
+// through — this rule covers them.
+// Element-aware: matches JSX elements (not bare JsxAttribute nodes) so
+// overlay/table/prose elements never fire. Overlays (PopoverContent,
+// TooltipContent, ModalContent, DropdownMenuContent, ContextMenuContent,
+// SheetContent, Dialog, Drawer, HoverCard, Select + popover/tooltip/modal
+// slots) intentionally keep hairlines. Tables (table/thead/tbody/tr/td/th +
+// HeroUI Table) keep row chrome. Markdown component maps keep prose chrome.
+// Excludes border-0, border-transparent, focus-visible: and aria-invalid:.
+// Narrow content exclusions (each provable via grep in apps/web/src):
+// - popoverContent: HeroUI Select popover slot (overlay, never a data card)
+// - ProseMirror: DocumentEditor prose selectors (different elements combined)
+// - components=: Markdown/MarkdownWrapper component maps (unrelated slots combined)
+// - bg-primary-bg: calendar grid lines (AllDayEventsSection/DateStrip
+//   border-r pattern; only firing bg-primary-bg sites also carry hover:bg-zinc)
+// - slash-command-dropdown: composer dropdown overlay (unique class)
+// - [&>button: map control-group dividers (only map.tsx + sidebar without bg)
+// - min-w-[8rem]: chart tooltip (unique to overlay tooltips)
+// Left firing (no clean marker — triage as keeps, do NOT strip):
+// - MemoryGraphDemo Card tooltip (border-zinc-600 also in real fixes)
+//
+// GritQL notes: `<$tag $attrs>$_</$tag>` + `<$tag $attrs />` cover normal and
+// self-closing elements. `$tag <: r"..."` filters element names (regex on the
+// tag text; backtick code patterns do not match here). Regexes use
+// non-capturing (?:...) groups only — capturing (...) groups abort the rule.
+or {
+  `<$tag $attrs>$_</$tag>` as $node where {
+    $attrs <: r"[\s\S]*bg-zinc-(?:800|900)[\s\S]*",
+    $attrs <: r"[\s\S]*border-(?:[1-9]|zinc|t|b)[\s\S]*",
+    $attrs <: not r"[\s\S]*border-0[\s\S]*",
+    $attrs <: not r"[\s\S]*border-transparent[\s\S]*",
+    $attrs <: not r"[\s\S]*focus-visible:[\s\S]*",
+    $attrs <: not r"[\s\S]*aria-invalid:[\s\S]*",
+    $tag <: not r"[\s\S]*(?:Popover|Tooltip|Modal|Dialog|DropdownMenu|ContextMenu|Sheet|Drawer|HoverCard|Select)[\s\S]*",
+    $tag <: not r"[\s\S]*[Tt][Aa][Bb][Ll][Ee][\s\S]*",
+    $tag <: not r"[\s\S]*[Tt][Hh][Ee][Aa][Dd][\s\S]*",
+    $tag <: not r"[\s\S]*[Tt][Bb][Oo][Dd][Yy][\s\S]*",
+    $tag <: not r"[\s\S]*\b[Tt][Dd]\b[\s\S]*",
+    $tag <: not r"[\s\S]*\b[Tt][Rr]\b[\s\S]*",
+    $tag <: not r"[\s\S]*\b[Tt][Hh]\b[\s\S]*",
+    $tag <: not r"[\s\S]*Markdown[\s\S]*",
+    $attrs <: not r"[\s\S]*popoverContent[\s\S]*",
+    $attrs <: not r"[\s\S]*ProseMirror[\s\S]*",
+    $attrs <: not r"[\s\S]*components=[\s\S]*",
+    $attrs <: not r"[\s\S]*bg-primary-bg[\s\S]*",
+    $attrs <: not r"[\s\S]*slash-command-dropdown[\s\S]*",
+    $attrs <: not r"[\s\S]*\[&>button[\s\S]*",
+    $attrs <: not r"[\s\S]*min-w-\[8rem\][\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Flat cards: remove border from bg-zinc-800/900 surfaces (flat design). Overlays (*Content/*Popover/*Tooltip/*Modal/*DropdownMenu/*ContextMenu/*Sheet*) keep hairlines — leave those.",
+      severity = "error"
+    )
+  },
+  `<$tag $attrs />` as $node where {
+    $attrs <: r"[\s\S]*bg-zinc-(?:800|900)[\s\S]*",
+    $attrs <: r"[\s\S]*border-(?:[1-9]|zinc|t|b)[\s\S]*",
+    $attrs <: not r"[\s\S]*border-0[\s\S]*",
+    $attrs <: not r"[\s\S]*border-transparent[\s\S]*",
+    $attrs <: not r"[\s\S]*focus-visible:[\s\S]*",
+    $attrs <: not r"[\s\S]*aria-invalid:[\s\S]*",
+    $tag <: not r"[\s\S]*(?:Popover|Tooltip|Modal|Dialog|DropdownMenu|ContextMenu|Sheet|Drawer|HoverCard|Select)[\s\S]*",
+    $tag <: not r"[\s\S]*[Tt][Aa][Bb][Ll][Ee][\s\S]*",
+    $tag <: not r"[\s\S]*[Tt][Hh][Ee][Aa][Dd][\s\S]*",
+    $tag <: not r"[\s\S]*[Tt][Bb][Oo][Dd][Yy][\s\S]*",
+    $tag <: not r"[\s\S]*\b[Tt][Dd]\b[\s\S]*",
+    $tag <: not r"[\s\S]*\b[Tt][Rr]\b[\s\S]*",
+    $tag <: not r"[\s\S]*\b[Tt][Hh]\b[\s\S]*",
+    $tag <: not r"[\s\S]*Markdown[\s\S]*",
+    $attrs <: not r"[\s\S]*popoverContent[\s\S]*",
+    $attrs <: not r"[\s\S]*ProseMirror[\s\S]*",
+    $attrs <: not r"[\s\S]*components=[\s\S]*",
+    $attrs <: not r"[\s\S]*bg-primary-bg[\s\S]*",
+    $attrs <: not r"[\s\S]*slash-command-dropdown[\s\S]*",
+    $attrs <: not r"[\s\S]*\[&>button[\s\S]*",
+    $attrs <: not r"[\s\S]*min-w-\[8rem\][\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Flat cards: remove border from bg-zinc-800/900 surfaces (flat design). Overlays (*Content/*Popover/*Tooltip/*Modal/*DropdownMenu/*ContextMenu/*Sheet*) keep hairlines — leave those.",
+      severity = "error"
+    )
+  }
+}

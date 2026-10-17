@@ -50,8 +50,8 @@ export const CustomSidebarTrigger = ({
         <span className="flex items-center gap-2 text-xs">
           {open ? "Collapse Sidebar" : "Open Sidebar"}
           <div>
-            <Kbd className="text-xs rounded-md">{isMac ? "⌘" : "Ctrl"}</Kbd>
-            <Kbd className="text-xs rounded-md">B</Kbd>
+            <Kbd className="text-xs">{isMac ? "⌘" : "Ctrl"}</Kbd>
+            <Kbd className="text-xs">B</Kbd>
           </div>
         </span>
       }
@@ -70,11 +70,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
   const { isMac } = usePlatform();
 
   return (
-    <Sidebar
-      variant="sidebar"
-      collapsible="offcanvas"
-      className="sidebar border-none!"
-    >
+    <Sidebar variant="sidebar" collapsible="offcanvas">
       {/* In the desktop app the window chrome owns the top-left corner:
           no logo, and on macOS extra top padding clears the traffic
           lights (hiddenInset title bar, lights at y=16). The empty strip

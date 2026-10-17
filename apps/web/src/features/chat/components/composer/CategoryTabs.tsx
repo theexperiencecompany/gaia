@@ -35,7 +35,7 @@ export function CategoryTabs({
             className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${selectedCategory === category ? "bg-zinc-700/40 text-white" : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"}`}
           >
             {category === "all" ? (
-              <GridIcon size={16} strokeWidth={2} className="text-gray-400" />
+              <GridIcon size={16} strokeWidth={2} className="text-zinc-400" />
             ) : (
               // Tinted background like the list rows and the tool-call
               // thread, at tab size.

@@ -1,4 +1,5 @@
 import { Button } from "@heroui/button";
+import { Divider } from "@heroui/divider";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { CalendarCheckIn01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
@@ -79,57 +80,59 @@ export function CalendarEditSection({
 
   return (
     <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
-      <ScrollShadow className="mt-2 max-h-[400px] space-y-3">
-        {Object.entries(eventsByDate).map(([dateString, events]) => (
-          <div key={dateString} className="space-y-3">
-            <div className="relative flex items-center">
-              <div className="flex-1 border-t border-zinc-700" />
-              <span className="px-3 text-xs text-zinc-500">
-                {formatDateWithRelative(dateString)}
-              </span>
-              <div className="flex-1 border-t border-zinc-700" />
-            </div>
+      <ScrollShadow className="mt-2 max-h-[400px]">
+        <div className="space-y-3">
+          {Object.entries(eventsByDate).map(([dateString, events]) => (
+            <div key={dateString} className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Divider className="flex-1" />
+                <span className="px-3 text-xs text-zinc-500">
+                  {formatDateWithRelative(dateString)}
+                </span>
+                <Divider className="flex-1" />
+              </div>
 
-            <div className="space-y-2">
-              {events.map((event) => {
-                const status = eventStatuses[event.event_id] || "idle";
-                const eventColor = event.background_color || "#00bbff";
-                const showChanges = hasEventChanges(event);
+              <div className="space-y-2">
+                {events.map((event) => {
+                  const status = eventStatuses[event.event_id] || "idle";
+                  const eventColor = event.background_color || "#00bbff";
+                  const showChanges = hasEventChanges(event);
 
-                return (
-                  <div key={event.event_id} className="space-y-2">
-                    {status !== "completed" && showChanges && (
+                  return (
+                    <div key={event.event_id} className="space-y-2">
+                      {status !== "completed" && showChanges && (
+                        <EventCard
+                          eventColor={eventColor}
+                          label="Current Event"
+                          variant="display"
+                          opacity={0.6}
+                        >
+                          <EventContent event={event} showOriginal />
+                        </EventCard>
+                      )}
+
                       <EventCard
                         eventColor={eventColor}
-                        label="Current Event"
-                        variant="display"
-                        opacity={0.6}
+                        status={status}
+                        label={
+                          status === "completed" ? undefined : "Updated Event"
+                        }
+                        variant="action"
+                        buttonColor="primary"
+                        completedLabel="Updated"
+                        icon={CalendarCheckIn01Icon}
+                        onAction={() => handleEdit(event)}
+                        isDotted={showChanges && status !== "completed"}
                       >
-                        <EventContent event={event} showOriginal />
+                        <EventContent event={event} />
                       </EventCard>
-                    )}
-
-                    <EventCard
-                      eventColor={eventColor}
-                      status={status}
-                      label={
-                        status === "completed" ? undefined : "Updated Event"
-                      }
-                      variant="action"
-                      buttonColor="primary"
-                      completedLabel="Updated"
-                      icon={CalendarCheckIn01Icon}
-                      onAction={() => handleEdit(event)}
-                      isDotted={showChanges && status !== "completed"}
-                    >
-                      <EventContent event={event} />
-                    </EventCard>
-                  </div>
-                );
-              })}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </ScrollShadow>
 
       {calendar_edit_options.length > 1 && (

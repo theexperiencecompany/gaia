@@ -99,7 +99,7 @@ Never have the same rule in two files. Pick one owner.
 This is the critical pass. Ask of every line: *"Is this design language or is this how a specific component works?"*
 
 **Keep (design language):**
-- "Outer cards use `rounded-2xl bg-zinc-800 p-4`" — a reusable token/pattern
+- "Outer cards use `rounded-3xl bg-zinc-800 p-4`" — a reusable token/pattern
 - "Status colors use `/10` opacity backgrounds" — a system-wide rule
 - "Use `font-serif` for editorial headings only" — a design decision
 - A card template with status colors — a reusable starting point
@@ -150,7 +150,7 @@ Some things feel like code standards but are actually design decisions. When in 
 | Belongs in DESIGN.md | Belongs in code rules |
 |---|---|
 | `cn()` / `cva` usage patterns (class composition is a styling tool) | "Use `import type` for type-only imports" |
-| Card contract: `rounded-2xl bg-zinc-800 p-4` | "Named exports only, no default exports" |
+| Card contract: `rounded-3xl bg-zinc-800 p-4` | "Named exports only, no default exports" |
 | Status color pattern: `bg-emerald-400/10 text-emerald-400` | "No `any` type — use `unknown` and narrow" |
 | "Never add borders to cards" | "TailwindCSS exclusively, no inline styles" |
 | Animation timing defaults | Import ordering rules |
@@ -163,7 +163,7 @@ Most apps have a dominant card pattern for displaying structured data. Document 
 
 **What to include:**
 1. The exact classes for outer container, inner items, headers, body text, meta text
-2. Hard constraints (e.g. "no borders", "always rounded-2xl")
+2. Hard constraints (e.g. "no borders", "always rounded-3xl outer / rounded-2xl inner")
 3. Status color application (the `/10` opacity pattern or whatever the project uses)
 4. A ready-to-use template component with all patterns applied
 5. A checklist to verify before committing
@@ -171,7 +171,7 @@ Most apps have a dominant card pattern for displaying structured data. Document 
 **Example contract (from a dark-first app):**
 
 ```
-Outer:  rounded-2xl bg-zinc-800 p-4
+Outer:  rounded-3xl bg-zinc-800 p-4
 Inner:  rounded-2xl bg-zinc-900 p-3
 Header: text-sm font-semibold text-zinc-100 mb-3
 Title:  text-sm font-medium text-zinc-200
@@ -186,7 +186,7 @@ The template should be a real component someone can copy, rename, and fill in �
 ## Common Mistakes
 
 ### Being too specific
-"The PDF container is 330x150px" — this is one component's spec, not design language. The design system should say "use `rounded-2xl` for cards" and let each component decide its own dimensions.
+"The PDF container is 330x150px" — this is one component's spec, not design language. The design system should say "use `rounded-3xl` for outer cards" and let each component decide its own dimensions.
 
 ### Duplicating across files
 The card contract appears in DESIGN.md, also in the TypeScript rules, also in a component-level doc. Now they'll drift. Pick one home.
@@ -195,7 +195,7 @@ The card contract appears in DESIGN.md, also in the TypeScript rules, also in a 
 Don't list every Shadcn component's props — that's in the component file. Document *when to use which* (the overlay hierarchy) and *what they look like in this project* (the customizations).
 
 ### Mixing design language with developer workflow
-"Register the component in TOOL_RENDERERS" is a workflow step. "All data cards use `rounded-2xl bg-zinc-800`" is design language. The design system file should only contain the latter.
+"Register the component in TOOL_RENDERERS" is a workflow step. "All data cards use `rounded-3xl bg-zinc-800`" is design language. The design system file should only contain the latter.
 
 ### Skipping the philosophy section
 Without it, the tokens are just a list of values with no rationale. "Flat depth — never borders, only background layering" explains *why* there are no border classes anywhere and prevents someone from adding them.

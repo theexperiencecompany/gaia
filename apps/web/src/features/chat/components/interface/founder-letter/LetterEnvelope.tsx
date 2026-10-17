@@ -32,7 +32,7 @@ export function LetterEnvelope({
         onClick={onOpen}
         aria-label="A letter from Aryan Randeriya"
         title="A letter from Aryan"
-        className="isolate cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#00bbff]"
+        className="isolate cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-primary"
         initial={false}
         whileHover={reduceMotion ? undefined : { scale: 1.06 }}
         whileTap={reduceMotion ? undefined : { scale: 0.94 }}
@@ -67,7 +67,7 @@ export function LetterEnvelope({
         <button
           type="button"
           onClick={onDismiss}
-          className="cursor-pointer pr-1 text-[11px] font-normal text-zinc-400 outline-none transition-colors hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-[#00bbff]"
+          className="cursor-pointer pr-1 text-xs font-normal text-zinc-400 outline-none transition-colors hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-primary"
         >
           Don't show again
         </button>

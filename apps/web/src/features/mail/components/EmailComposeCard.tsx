@@ -206,13 +206,13 @@ function ComposeFields({
             isLocked={isLocked}
             onEdit={() => onEditField(field)}
           />
-          <Separator className="my-1.5 bg-zinc-700" />
+          <Separator className="my-1.5 bg-zinc-700/50" />
         </div>
       ))}
-      <div className="flex w-full items-center justify-between text-sm text-gray-400">
+      <div className="flex w-full items-center justify-between text-sm text-zinc-400">
         <div className="flex items-center gap-2">
           <span>Subject:</span>
-          <span className="font-medium text-gray-200">{subject}</span>
+          <span className="font-medium text-zinc-200">{subject}</span>
         </div>
 
         {!isLocked && (
@@ -221,7 +221,7 @@ function ComposeFields({
           </Button>
         )}
       </div>
-      <Separator className="my-1.5 bg-zinc-700" />
+      <Separator className="my-1.5 bg-zinc-700/50" />
 
       <EmailBodyPreview html={body} isLocked={isLocked} onEdit={onEdit} />
 
@@ -333,7 +333,7 @@ function EditEmailModal({
               variant="light"
               size="sm"
               onPress={onClose}
-              className="h-7 px-2 text-xs text-gray-300"
+              className="h-7 px-2 text-xs text-zinc-300"
             >
               Cancel
             </Button>
@@ -431,7 +431,7 @@ function RecipientSelectionModal({
             </div>
           )}
 
-          {suggestions.length > 0 && <Divider className="my-2 bg-zinc-700" />}
+          {suggestions.length > 0 && <Divider className="my-2" />}
 
           <div className="flex gap-2">
             <Input

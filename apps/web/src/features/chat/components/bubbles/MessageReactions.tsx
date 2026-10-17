@@ -1,6 +1,7 @@
 import { groupReactions } from "@shared/utils";
 import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
+import type { CSSProperties } from "react";
 import type { MessageReaction } from "@/config/registries/baseMessageRegistry";
 import {
   CAPSULE_TAIL,
@@ -41,33 +42,29 @@ export function MessageReactions({ reactions }: MessageReactionsProps) {
       initial={reduceMotion ? false : { scale: 0.4, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.3, ease: POP_EASE }}
-      className="absolute z-10 select-none"
-      style={{
-        top: -REACTION_OVERHANG_TOP_PX,
-        left: -REACTION_OVERHANG_SIDE_PX,
-        transformOrigin: "right bottom",
-      }}
+      className="absolute top-(--reaction-top) left-(--reaction-left) z-10 origin-bottom-right select-none"
+      style={
+        {
+          "--reaction-top": `${-REACTION_OVERHANG_TOP_PX}px`,
+          "--reaction-left": `${-REACTION_OVERHANG_SIDE_PX}px`,
+          "--reaction-badge": `${REACTION_BADGE_HEIGHT_PX}px`,
+          "--reaction-pad": `${isSingle ? 0 : REACTION_BADGE_HEIGHT_PX * 0.3}px`,
+          "--reaction-ring": PAGE_BG_RING,
+          "--reaction-emoji": `${REACTION_EMOJI_PX}px`,
+        } as CSSProperties
+      }
     >
       <div
         className={cn(
-          "flex items-center justify-center gap-1 rounded-full leading-none",
+          "flex h-(--reaction-badge) min-w-(--reaction-badge) items-center justify-center gap-1 rounded-full px-(--reaction-pad) text-(length:--reaction-emoji) leading-none shadow-(--reaction-ring)",
           REACTION_FILL_CLASS,
         )}
-        style={{
-          height: REACTION_BADGE_HEIGHT_PX,
-          minWidth: REACTION_BADGE_HEIGHT_PX,
-          paddingInline: isSingle ? 0 : REACTION_BADGE_HEIGHT_PX * 0.3,
-          boxShadow: PAGE_BG_RING,
-          fontSize: REACTION_EMOJI_PX,
-        }}
       >
         {grouped.map(({ emoji, count }) => (
           <span key={emoji} className="flex items-center gap-0.5">
             <span>{emoji}</span>
             {count > 1 && (
-              <span
-                className={cn("font-medium text-[10px]", REACTION_COUNT_CLASS)}
-              >
+              <span className={cn("font-medium text-xs", REACTION_COUNT_CLASS)}>
                 {count}
               </span>
             )}
@@ -78,8 +75,17 @@ export function MessageReactions({ reactions }: MessageReactionsProps) {
         <span
           key={top}
           aria-hidden
-          className={cn("absolute rounded-full", REACTION_FILL_CLASS)}
-          style={{ width: size, height: size, top, right: edge }}
+          className={cn(
+            "absolute top-(--dot-top) right-(--dot-edge) size-(--dot-size) rounded-full",
+            REACTION_FILL_CLASS,
+          )}
+          style={
+            {
+              "--dot-size": `${size}px`,
+              "--dot-top": `${top}px`,
+              "--dot-edge": `${edge}px`,
+            } as CSSProperties
+          }
         />
       ))}
     </m.div>

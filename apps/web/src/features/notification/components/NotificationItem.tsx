@@ -92,7 +92,7 @@ export const NotificationItem = ({
                   key={action.id}
                   variant={action.style === "primary" ? "solid" : "flat"}
                   size="sm"
-                  className={`h-7 bg-zinc-800/50 text-xs text-zinc-200 hover:bg-zinc-800/70 ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
+                  className={`h-7 text-xs text-zinc-200 ${isExecuted ? "cursor-not-allowed" : ""}`}
                   disabled={isDisabled}
                   onPress={() => executeAction(notification.id, action)}
                 >
@@ -104,7 +104,9 @@ export const NotificationItem = ({
                   ) : (
                     <>
                       {action.label}
-                      {isExecuted && <span className="ml-1">✓</span>}
+                      {isExecuted && (
+                        <CheckmarkCircle02Icon className="ml-1 h-3.5 w-3.5" />
+                      )}
                     </>
                   )}
                 </Button>

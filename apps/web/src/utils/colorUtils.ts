@@ -108,11 +108,15 @@ export function getLuminance(rgb: { r: number; g: number; b: number }): number {
 /**
  * Determine contrasting text color (black or white) based on background luminance
  * @param luminance Background color luminance
- * @returns "#ffffff" for dark backgrounds, "#000000" for light backgrounds
+ * @returns "#000000" or "#ffffff", whichever has the higher WCAG contrast ratio
+ * against the background. A fixed 0.5 threshold misclassifies saturated
+ * mid-luminance brand colors (e.g. #00bbff at 0.427 reads white-on-cyan),
+ * which previously forced every caller to add a `text-black!` override.
  */
 export function getContrastColor(luminance: number): string {
-  // WCAG 2.0 contrast threshold (simplified)
-  return luminance > 0.5 ? "#000000" : "#ffffff";
+  const contrastWithBlack = (luminance + 0.05) / 0.05;
+  const contrastWithWhite = 1.05 / (luminance + 0.05);
+  return contrastWithBlack >= contrastWithWhite ? "#000000" : "#ffffff";
 }
 
 /**

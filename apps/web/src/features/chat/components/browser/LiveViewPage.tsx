@@ -62,7 +62,7 @@ export function LiveViewPage({ code, token }: LiveViewPageProps) {
           priority
           className="mr-auto h-6 w-auto"
         />
-        <div className="flex items-center gap-2 whitespace-nowrap text-[13px] text-zinc-400 sm:order-last">
+        <div className="flex items-center gap-2 whitespace-nowrap text-sm text-zinc-400 sm:order-last">
           <span className={`size-2 rounded-full ${status.dot}`} />
           {status.label}
         </div>

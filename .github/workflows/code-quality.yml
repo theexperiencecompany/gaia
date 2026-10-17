@@ -415,6 +415,57 @@ jobs:
           status: ${{ job.status }}
           name: biome
 
+  # --- Design-system lint (shadcn/lint via Oxlint) --------------------------
+  shadcn-lint:
+    name: Design-system lint (shadcn)
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'shadcn-lint') }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or jscpd must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.changes.outputs.base_ref }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Design-system lint (oxlint + @shadcn/lint)
+        run: |
+          # shellcheck source=scripts/ci/lib/log.sh
+          source scripts/ci/lib/log.sh
+          # The whole app, not the diff: a token or contract change in
+          # .oxlintrc.json re-judges files the PR never touched.
+          echo "::group::oxlint shadcn"
+          OXLINT_STATUS=0
+          OXLINT_OUT=$(pnpm --filter ./apps/web exec oxlint --format unix 2>&1) || OXLINT_STATUS=$?
+          echo "$OXLINT_OUT"
+          echo "::endgroup::"
+          # oxlint prints app-relative paths; the verdict needs repo-relative ones.
+          printf '%s\n' "$OXLINT_OUT" | sed 's|^src/|apps/web/src/|' \
+            | python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/shadcn-lint.jsonl"
+          FINDINGS=$(wc -l < "$RUNNER_TEMP/shadcn-lint.jsonl" 2>/dev/null || echo 0)
+          if [ "$OXLINT_STATUS" -ne 0 ]; then
+            ci_verdict_die --lane shadcn-lint --status fail \
+              --summary "design-system lint: $FINDINGS finding(s)" \
+              --findings "$RUNNER_TEMP/shadcn-lint.jsonl" \
+              --advice "Reproduce: pnpm --filter ./apps/web exec oxlint. Each message names the prop or token to use instead (DESIGN.md)."
+          fi
+          ci_verdict --lane shadcn-lint --status pass \
+            --summary "design-system lint: 0 findings"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: shadcn-lint
+
   # --- Workspace dependency hygiene ---------------------------------------
   deps:
     name: Workspace dependency hygiene
@@ -2095,6 +2146,7 @@ jobs:
       - select-runner-services
       - changes
       - biome
+      - shadcn-lint
       - deps
       - circular
       - file-size
@@ -2159,7 +2211,7 @@ jobs:
           # carried would go unmutated (see consolidate --help).
           # Results go through env, not inline expansion.
           EXPECT: >-
-            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},doc-comments=${{ needs.doc-comments.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},go-connect=${{ needs.go-connect.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-audit=${{ needs.python-audit.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},analytics-check=${{ needs.analytics-check.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
+            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},shadcn-lint=${{ needs.shadcn-lint.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},doc-comments=${{ needs.doc-comments.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},go-connect=${{ needs.go-connect.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-audit=${{ needs.python-audit.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},analytics-check=${{ needs.analytics-check.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
           # reuse-plan's notes, so a reused lane reads as reused rather than untouched.
           REUSED: ${{ needs.changes.outputs.reused }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT" --reused "$REUSED"

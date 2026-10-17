@@ -203,7 +203,7 @@ export function InstallPageClient() {
             aria-label="Available GAIA CLI commands"
             removeWrapper
             classNames={{
-              th: "bg-zinc-800 text-zinc-400 font-medium",
+              th: "text-zinc-400 font-medium",
               td: "text-zinc-300",
             }}
           >

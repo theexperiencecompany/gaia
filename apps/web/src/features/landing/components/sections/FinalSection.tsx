@@ -74,7 +74,7 @@ export default function FinalSection({
 
           <GetStartedButton
             btnColor="#00bbff"
-            classname="w-full max-w-xs sm:w-auto text-black! text-sm sm:text-lg h-9 sm:h-12 px-6 rounded-xl hover:scale-105"
+            className="w-full max-w-xs sm:w-auto text-sm sm:text-lg h-9 sm:h-12 px-6 rounded-xl hover:scale-105"
             text="Get Started"
           />
 

@@ -49,7 +49,7 @@ export default function Sidebar() {
           content={
             <span className="flex items-center gap-2">
               New Chat
-              <Kbd className="text-[10px]">C</Kbd>
+              <Kbd className="text-xs">C</Kbd>
             </span>
           }
           placement="right"

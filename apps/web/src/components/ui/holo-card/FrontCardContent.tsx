@@ -20,15 +20,7 @@ export const FrontCardContent: React.FC<FrontCardContentProps> = ({
 }) => {
   return (
     <>
-      <div
-        style={{
-          position: "absolute",
-          right: 32,
-          bottom: 32,
-          zIndex: 3,
-          pointerEvents: "none",
-        }}
-      >
+      <div className="absolute right-8 bottom-8 z-3 pointer-events-none">
         <RotatingExperienceLogo size={96} />
       </div>
       <div className={CARD_CLASSES.INFO_BOX}>

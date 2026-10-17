@@ -5,13 +5,14 @@ import { ArrowUp02Icon, BubbleChatIcon } from "@icons";
 import Link from "next/link";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { RedditIcon } from "@/components/shared/icons";
+import { MetaDot } from "@/components/shared/MetaDot";
 import { track } from "@/lib/analytics";
 import type { RedditSearchData } from "@/types/features/redditTypes";
 
 interface RedditSearchCardProps {
   posts?: RedditSearchData[] | null;
   backgroundColor?: string;
-  maxHeight?: string;
+  maxHeight?: "max-h-[400px]" | "max-h-[500px]";
   isCollapsible?: boolean;
 }
 
@@ -54,78 +55,86 @@ export default function RedditSearchCard({
     <div
       className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
     >
-      <ScrollShadow className={`${maxHeight} divide-y divide-gray-700`}>
-        {posts.map((post) => (
-          <div
-            className="group w-full cursor-pointer p-3 transition-colors hover:bg-zinc-700"
-            key={post.id}
-          >
-            <Link
-              href={`https://reddit.com${post?.permalink}`}
+      <ScrollShadow
+        className={
+          maxHeight === "max-h-[500px]" ? "max-h-[500px]" : "max-h-[400px]"
+        }
+      >
+        <div className="divide-y divide-zinc-800">
+          {posts.map((post) => (
+            <div
+              className="group w-full cursor-pointer p-3 transition-colors hover:bg-zinc-700"
               key={post.id}
-              target="_blank"
-              onClick={() => {
-                track("reddit:post_viewed", {
-                  subreddit: post.subreddit,
-                  score: post.score,
-                  num_comments: post.num_comments,
-                  has_selftext: Boolean(post.selftext),
-                  has_external_link: Boolean(post.url),
-                });
-              }}
             >
-              <div className="space-y-2">
-                {/* Header */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex items-center gap-1.5 text-xs">
-                      <span className="font-semibold text-[#FF4500]">
-                        {post.subreddit}
-                      </span>
-                      <span className="text-gray-500">•</span>
-                      <span className="text-gray-500">u/{post.author}</span>
-                      <span className="text-gray-500">•</span>
-                      <span className="text-gray-500">
-                        {formatTime(post.created_utc)}
+              <Link
+                href={`https://reddit.com${post?.permalink}`}
+                key={post.id}
+                target="_blank"
+                onClick={() => {
+                  track("reddit:post_viewed", {
+                    subreddit: post.subreddit,
+                    score: post.score,
+                    num_comments: post.num_comments,
+                    has_selftext: Boolean(post.selftext),
+                    has_external_link: Boolean(post.url),
+                  });
+                }}
+              >
+                <div className="space-y-2">
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center gap-1.5 text-xs">
+                        <span className="font-semibold text-orange-500">
+                          {post.subreddit}
+                        </span>
+                        <MetaDot />
+                        <span className="text-zinc-500">u/{post.author}</span>
+                        <MetaDot />
+                        <span className="text-zinc-500">
+                          {formatTime(post.created_utc)}
+                        </span>
+                      </div>
+                      <h4 className="line-clamp-2 text-sm leading-snug font-medium text-white group-hover:text-orange-500">
+                        {post.title}
+                      </h4>
+                    </div>
+                  </div>
+
+                  {/* Content preview */}
+                  {post.selftext && (
+                    <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">
+                      {post.selftext}
+                    </p>
+                  )}
+
+                  {/* Stats */}
+                  <div className="flex items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1 text-orange-500">
+                      <ArrowUp02Icon width={18} height={18} />
+                      <span className="font-medium tabular-nums">
+                        {formatNumber(post.score)}
                       </span>
                     </div>
-                    <h4 className="line-clamp-2 text-sm leading-snug font-medium text-white group-hover:text-[#FF4500]">
-                      {post.title}
-                    </h4>
+                    <div className="flex items-center gap-1 text-zinc-400">
+                      <BubbleChatIcon className="h-3.5 w-3.5" />
+                      <span className="tabular-nums">
+                        {formatNumber(post.num_comments)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-
-                {/* Content preview */}
-                {post.selftext && (
-                  <p className="line-clamp-2 text-xs leading-relaxed text-gray-400">
-                    {post.selftext}
-                  </p>
-                )}
-
-                {/* Stats */}
-                <div className="flex items-center gap-3 text-xs">
-                  <div className="flex items-center gap-1 text-[#FF4500]">
-                    <ArrowUp02Icon width={18} height={18} />
-                    <span className="font-medium">
-                      {formatNumber(post.score)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 text-gray-400">
-                    <BubbleChatIcon className="h-3.5 w-3.5" />
-                    <span>{formatNumber(post.num_comments)}</span>
-                  </div>
-                </div>
-              </div>
-            </Link>
-          </div>
-        ))}
+              </Link>
+            </div>
+          ))}
+        </div>
       </ScrollShadow>
     </div>
   );
 
   return (
     <CollapsibleListWrapper
-      icon={<RedditIcon color="#FF4500" />}
+      icon={<RedditIcon width={20} height={20} color="#FF4500" />}
       count={posts.length}
       label="Reddit Post"
       isCollapsible={isCollapsible}

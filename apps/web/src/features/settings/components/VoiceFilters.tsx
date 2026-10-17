@@ -28,7 +28,7 @@ export function GenderIcon({ gender }: Readonly<{ gender: string }>) {
     return <FemaleSymbolIcon className="h-3.5 w-3.5 shrink-0 text-pink-400" />;
   }
   if (gender === "Male") {
-    return <MaleSymbolIcon className="h-3.5 w-3.5 shrink-0 text-blue-400" />;
+    return <MaleSymbolIcon className="h-3.5 w-3.5 shrink-0 text-blue-500" />;
   }
   return null;
 }

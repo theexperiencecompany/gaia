@@ -16,13 +16,6 @@ const priorityColors = {
   [Priority.NONE]: "default",
 } as const;
 
-const priorityRingColors = {
-  [Priority.HIGH]: "border-red-500",
-  [Priority.MEDIUM]: "border-yellow-500",
-  [Priority.LOW]: "border-blue-500",
-  [Priority.NONE]: "border-zinc-500",
-} as const;
-
 // Intl.DateTimeFormat is expensive to build; cache one per timezone instead
 // of rebuilding on every call.
 const scheduledLabelFormatters = new Map<string, Intl.DateTimeFormat>();
@@ -108,7 +101,6 @@ export function useTodoItem({
   const checkboxColor = todo.completed
     ? "default"
     : priorityColors[todo.priority];
-  const checkboxWrapperClassName = `mt-1 ${todo.completed ? "" : `${priorityRingColors[todo.priority]} border-dashed! border-1 before:border-0! bg-zinc-900`}`;
   const titleClassName = `text-base font-normal ${
     todo.completed ? "text-zinc-500 line-through" : ""
   }`;
@@ -120,7 +112,6 @@ export function useTodoItem({
     isOverdue,
     isToday,
     checkboxColor,
-    checkboxWrapperClassName,
     titleClassName,
   };
 }

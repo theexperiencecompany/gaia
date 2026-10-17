@@ -76,7 +76,7 @@ function PlatformIcons({ platforms }: PlatformIconsProps) {
           width={18}
           height={18}
           aria-hidden
-          className="inline-block size-[18px] shrink-0 rounded-[5px]"
+          className="inline-block size-4 shrink-0 rounded"
         />
         {BOT_PLATFORM_LABELS[platform]}
       </span>

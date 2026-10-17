@@ -1,0 +1,39 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Flat-card consistency: outline-1|2 + outline-zinc on bg-zinc-800|900 surfaces
+// must go (flat design, no hairlines). Same overlay exclusions as
+// no-card-borders: *PopoverContent *TooltipContent *ModalContent
+// *DropdownMenu* *ContextMenu* *SheetContent keep hairlines — triage as keeps.
+// Focus/aria outlines are left alone.
+//
+// GritQL notes: `<$tag $attrs>$_</$tag>` + `<$tag $attrs />` cover normal and
+// self-closing elements. Regexes use non-capturing (?:...) groups only.
+or {
+  `<$tag $attrs>$_</$tag>` as $node where {
+    $attrs <: r"[\s\S]*bg-zinc-(?:800|900)[\s\S]*",
+    $attrs <: r"[\s\S]*outline-(?:1|2)[\s\S]*",
+    $attrs <: r"[\s\S]*outline-zinc[\s\S]*",
+    $attrs <: not r"[\s\S]*focus-visible:[\s\S]*",
+    $attrs <: not r"[\s\S]*aria-invalid:[\s\S]*",
+    $tag <: not r"[\s\S]*(?:Popover|Tooltip|Modal|Dialog|DropdownMenu|ContextMenu|Sheet|Drawer|HoverCard|Select)[\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Flat cards: remove outline-1/2 + outline-zinc from bg-zinc-800/900 surfaces. Overlays (*Content/*Popover/*Tooltip/*Modal/*DropdownMenu/*ContextMenu/*Sheet*) keep hairlines — leave those.",
+      severity = "error"
+    )
+  },
+  `<$tag $attrs />` as $node where {
+    $attrs <: r"[\s\S]*bg-zinc-(?:800|900)[\s\S]*",
+    $attrs <: r"[\s\S]*outline-(?:1|2)[\s\S]*",
+    $attrs <: r"[\s\S]*outline-zinc[\s\S]*",
+    $attrs <: not r"[\s\S]*focus-visible:[\s\S]*",
+    $attrs <: not r"[\s\S]*aria-invalid:[\s\S]*",
+    $tag <: not r"[\s\S]*(?:Popover|Tooltip|Modal|Dialog|DropdownMenu|ContextMenu|Sheet|Drawer|HoverCard|Select)[\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Flat cards: remove outline-1/2 + outline-zinc from bg-zinc-800/900 surfaces. Overlays (*Content/*Popover/*Tooltip/*Modal/*DropdownMenu/*ContextMenu/*Sheet*) keep hairlines — leave those.",
+      severity = "error"
+    )
+  }
+}

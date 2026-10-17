@@ -23,8 +23,8 @@ const PR_ITEMS = [
     number: 42,
     title: "feat: add streaming support to chat API",
     status: "Changes requested",
-    statusColor: "text-amber-400",
-    statusBg: "bg-amber-400/10",
+    statusColor: "text-amber-500",
+    statusBg: "bg-amber-500/10",
     branch: "feat/streaming-chat",
     comments: 3,
   },
@@ -33,8 +33,8 @@ const PR_ITEMS = [
     number: 38,
     title: "fix: resolve race condition in auth token refresh",
     status: "Review pending",
-    statusColor: "text-blue-400",
-    statusBg: "bg-blue-400/10",
+    statusColor: "text-blue-500",
+    statusBg: "bg-blue-500/10",
     branch: "fix/token-refresh",
     comments: 1,
   },
@@ -61,7 +61,7 @@ function GitHubPRSummaryCard() {
             showBackground: false,
           })}
         </div>
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           3 open pull requests
         </span>
       </div>
@@ -78,7 +78,7 @@ function GitHubPRSummaryCard() {
                 </p>
               </div>
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${pr.statusBg} ${pr.statusColor}`}
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${pr.statusBg} ${pr.statusColor}`}
               >
                 {pr.status}
               </span>

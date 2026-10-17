@@ -340,7 +340,7 @@ function IntegrationBadge({ name }: { name: string }) {
       <Chip
         variant="flat"
         size="md"
-        className="bg-zinc-800 text-zinc-300"
+        className="text-zinc-300"
         startContent={
           domain ? (
             <Image
@@ -478,7 +478,7 @@ export default async function PersonaPage({ params }: PageProps) {
                 key={point}
                 className="flex items-start gap-3 rounded-2xl bg-zinc-800 p-5"
               >
-                <span className="mt-0.5 shrink-0 text-red-400">&#x2212;</span>
+                <span className="mt-0.5 shrink-0 text-red-500">&#x2212;</span>
                 <p className="leading-relaxed text-zinc-300">{point}</p>
               </div>
             ))}
@@ -493,7 +493,7 @@ export default async function PersonaPage({ params }: PageProps) {
           <div className="grid gap-6 md:grid-cols-2">
             {data.howGaiaHelps.map((feature) => (
               <div key={feature.title} className="rounded-3xl bg-zinc-800 p-6">
-                <h3 className="mb-3 text-lg font-medium text-emerald-400">
+                <h3 className="mb-3 text-lg font-medium text-emerald-500">
                   {feature.title}
                 </h3>
                 <p className="leading-relaxed text-zinc-400">

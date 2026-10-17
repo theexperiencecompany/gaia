@@ -14,14 +14,14 @@ export default function OneOnOnePrepCard() {
           1:1 Prep: Alex M.
         </span>
       </div>
-      <p className="mb-1 text-[11px] text-zinc-500">Today, 2:00 PM</p>
+      <p className="mb-1 text-xs text-zinc-500">Today, 2:00 PM</p>
 
       <div>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           This Sprint
         </p>
-        <div className="rounded-lg bg-zinc-900 p-2.5 space-y-1">
-          <p className="flex items-start gap-1 text-xs text-emerald-400">
+        <div className="rounded-xl bg-zinc-900 p-2.5 space-y-1">
+          <p className="flex items-start gap-1 text-xs text-emerald-500">
             <CheckmarkCircle02Icon
               width={12}
               height={12}
@@ -29,7 +29,7 @@ export default function OneOnOnePrepCard() {
             />
             Merged 4 PRs (avg +347 lines, solid output)
           </p>
-          <p className="flex items-start gap-1 text-xs text-emerald-400">
+          <p className="flex items-start gap-1 text-xs text-emerald-500">
             <CheckmarkCircle02Icon
               width={12}
               height={12}
@@ -38,16 +38,16 @@ export default function OneOnOnePrepCard() {
             Closed 6 Linear tickets (ENG-398, ENG-399, ENG-401, ENG-403,
             ENG-408, ENG-411)
           </p>
-          <p className="flex items-start gap-1 text-xs text-amber-400">
+          <p className="flex items-start gap-1 text-xs text-amber-500">
             <Alert01Icon width={12} height={12} className="shrink-0 mt-0.5" />
             PR #214 (feat/auth-refactor) waiting 4 days for review: blocker
           </p>
         </div>
 
-        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           Potential topics
         </p>
-        <div className="rounded-lg bg-zinc-900 p-2.5 space-y-1">
+        <div className="rounded-xl bg-zinc-900 p-2.5 space-y-1">
           <p className="flex items-start gap-1 text-xs text-zinc-300">
             <ArrowRight02Icon
               width={12}
@@ -74,26 +74,26 @@ export default function OneOnOnePrepCard() {
           </p>
         </div>
 
-        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           From last 1:1 (Feb 20)
         </p>
-        <div className="rounded-lg bg-zinc-900 p-2.5 space-y-1">
-          <p className="text-xs text-zinc-400">
-            • Action: you&apos;d get clarity on Q2 roadmap, not yet shared
-          </p>
-          <p className="flex items-center gap-1 text-xs text-zinc-400">
-            • Action: she&apos;d ramp on Rust, 2 merged PRs using it{" "}
-            <CheckmarkCircle02Icon
-              width={12}
-              height={12}
-              className="text-emerald-400"
-            />
-          </p>
-        </div>
+        <ul className="list-disc space-y-1 rounded-xl bg-zinc-900 p-2.5 pl-6.5 text-xs text-zinc-400">
+          <li>Action: you&apos;d get clarity on Q2 roadmap, not yet shared</li>
+          <li>
+            <span className="inline-flex items-center gap-1">
+              Action: she&apos;d ramp on Rust, 2 merged PRs using it
+              <CheckmarkCircle02Icon
+                width={12}
+                height={12}
+                className="text-emerald-500"
+              />
+            </span>
+          </li>
+        </ul>
       </div>
 
       <div className="mt-2 pt-2 border-t border-zinc-800">
-        <p className="text-[11px] text-amber-400">
+        <p className="text-xs text-amber-500">
           Open questions: 1 (ENG-407 API schema, needs your decision)
         </p>
       </div>
