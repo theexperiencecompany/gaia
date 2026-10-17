@@ -172,7 +172,10 @@ async function verifiedCredentials(
         throw error;
       }
       out(
-        `${MARK.fail} ${(error as Error).message} Paste ${pasted.length === 1 ? "it" : "them"} again (${triesLeft} ${triesLeft === 1 ? "try" : "tries"} left), or press Esc to stop.`,
+        wrapForTerminal(
+          `${MARK.fail} ${(error as Error).message} Paste ${pasted.length === 1 ? "it" : "them"} again (${triesLeft} ${triesLeft === 1 ? "try" : "tries"} left), or press Esc to stop.`,
+          2,
+        ),
       );
     }
   }

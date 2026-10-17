@@ -2,6 +2,7 @@
 
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
+import { MARK } from "../ui/constants.js";
 import { SIGINT_EXIT_CODE } from "./exit-codes.js";
 
 export async function ask(
@@ -37,8 +38,8 @@ export function maskSecret(secret: string): string {
 
 /**
  * Ask for a token or secret: each typed or pasted character shows as •, so
- * a paste visibly landed, and the last few show once it is entered. Esc
- * returns "" (the caller treats it as cancel); Ctrl-C cancels the command.
+ * a paste visibly landed, and the last few show once it is entered. Esc or
+ * Ctrl-C cancels the command; an empty entry returns "" for the caller to judge.
  */
 export async function askSecret(question: string): Promise<string> {
   process.stdout.write(`${question}\n› `);
@@ -66,14 +67,12 @@ export async function askSecret(question: string): Promise<string> {
       // Terminal escape sequences (bracketed-paste markers, arrow keys) are not
       // part of the secret.
       const text = chunk.toString("utf-8").replace(ESCAPE_SEQUENCE_RE, "");
-      if (text === CTRL_C) {
+      if (text === CTRL_C || text === ESC) {
         finish("", "");
-        process.stdout.write("■ Cancelled · nothing changed.\n");
+        process.stdout.write(
+          `${MARK.cancelled} Cancelled · nothing changed.\n`,
+        );
         process.exit(SIGINT_EXIT_CODE);
-      }
-      if (text === ESC) {
-        finish("", "");
-        return;
       }
       for (const ch of text) {
         if (ch === "\r" || ch === "\n") {
