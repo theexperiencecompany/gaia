@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.notifications import USER_CONFIGURABLE_CHANNELS
-from app.services import account_settings
+from app.services import account_settings, user_timezone
 from app.utils.errors import AppError
 
 MODULE = "app.services.account_settings"
@@ -28,8 +28,11 @@ def repo():
             account_settings.user_repository, "update_onboarding_preferences", new=AsyncMock()
         ) as update_prefs,
         patch.object(account_settings.user_repository, "update", new=AsyncMock()) as update,
+        patch.object(user_timezone, "resync_briefing_schedules", new=AsyncMock()) as resync,
     ):
-        yield SimpleNamespace(set_channels=set_channels, update_prefs=update_prefs, update=update)
+        yield SimpleNamespace(
+            set_channels=set_channels, update_prefs=update_prefs, update=update, resync=resync
+        )
 
 
 async def test_notification_channels_write_only_the_given_flags(repo) -> None:
@@ -88,6 +91,8 @@ async def test_timezone_writes_the_root_level_field(repo) -> None:
     update = repo.update.await_args
     assert update.args[0] == USER_ID
     assert update.args[1].timezone == "Asia/Kolkata"
+    # The briefs move onto the new clock with it.
+    repo.resync.assert_awaited_once_with(repo.update.return_value)
 
 
 async def test_custom_instructions_patch_exactly_one_field_and_cap_length(repo) -> None:

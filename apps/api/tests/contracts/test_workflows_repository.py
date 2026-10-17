@@ -507,6 +507,10 @@ class TestWorkflowsTriggersAndSystem:
         )
         assert (await repo.find_system_workflow(owner, key)).id == sys_wf.id
         assert await repo.find_system_workflow("other", key) is None
+        assert [w.id for w in await repo.find_system_workflows(owner, [key, "absent"])] == [
+            sys_wf.id
+        ]
+        assert await repo.find_system_workflows("other", [key]) == []
         assert (await repo.get_system_workflow_for_user(sys_wf.id, owner)).id == sys_wf.id
         # a non-system workflow is not resettable
         plain = await repo.create(_workflow(user_id=owner))

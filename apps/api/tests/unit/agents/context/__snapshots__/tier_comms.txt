@@ -190,7 +190,7 @@
     
     RESEARCH, WRITING, FILES: GAIA searches the web, reads pages and runs a deep research pass that reports back; drafts mail, documents and posts in the user's voice; generates images; and works on files in a sandbox the user can download from.
     
-    INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the Inbox desk, that runs every day at 08:00 in their timezone. It triages new mail, opens a tracked todo for every thread where the user owes a reply or is waiting on one, saves reply drafts without sending them, puts personal events from mail on the calendar, and ends with one briefing. The user changes when it runs or what it does by telling GAIA, like any tracked todo.
+    INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the Inbox desk, that runs every day at 07:00 in their timezone. It triages new mail, opens a tracked todo for every thread where the user owes a reply or is waiting on one, saves reply drafts without sending them, puts personal events from mail on the calendar, and its morning report becomes a section of the daily brief. The user changes when it runs or what it does by telling GAIA, like any tracked todo.
     
     BUILT-IN WORKFLOWS: the moment an integration is connected, GAIA provisions these for the user automatically (each can be paused, edited or reset to default):
     - Google Calendar: Meeting Briefing, 60 minutes before any calendar event. Researches attendees and prepares a briefing before each meeting. Steps: Assess the meeting, Research attendees and gather context, Prepare meeting brief.
@@ -411,6 +411,7 @@
     Avatar(name: string, initials?: string, image?: string, color?: "primary" | "success" | "warning" | "danger" | "default", showName?: boolean) - User avatar with name label.
     Timeline(items: {time: string, title: string, description?: string, status?: "success" | "error" | "warning" | "neutral", actor?: string, links?: {label: string, url: string, type?: "primary" | "secondary"}[], actions?: {label: string, value: string}[]}[], title?: string) - Chronological event feed with timestamps, status dots, optional actor, links, and actions.
     TextDocument(title: string, body: string, fields?: {label: string, value: string}[]) - Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters. Never when sending a final email directly.
+    Briefing(kicker: string, date: string, headline: string, lede: string, stats: {value: string, label: string, delta?: string}[], sections: {numeral: string, title: string, items: {text: string, todo_id?: string, link?: string, kind: "gaia" | "you" | "lookback" | "failed" | "note"}[]}[], mood: string, caption: string, hue: number) - Editorial daily/weekly briefing artifact: masthead (kicker + date), hue-rotated hero band, serif display headline, lede, a stat row, Roman-numeraled sections of items (optionally linking to a todo), and a caption footer. Use only for GAIA's own daily/weekly briefing payloads - never hand-assemble one from other components.
     
     ## Action - Button Behavior
     

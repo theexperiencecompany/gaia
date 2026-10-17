@@ -1186,3 +1186,52 @@ class TestOpenExternalRefIndex:
         assert found is not None and found.id == open_todo.id
         assert await repo.find_open_by_external_ref("u2", self._thread()) is None
         assert await repo.find_open_by_external_ref("u1", self._thread("thread-3")) is None
+
+
+class TestBriefingReads:
+    """The briefing's look-back (completed since) and open-todos reads."""
+
+    async def test_lists_todos_completed_since_the_cutoff_newest_first(
+        self, repo, make_doc, raw_collection
+    ):
+        since = datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        done = {
+            "at_cutoff": since,
+            "latest": since + timedelta(hours=2),
+            "before": since - timedelta(seconds=1),
+        }
+        ids: dict[str, str] = {}
+        for title, completed_at in done.items():
+            todo = await repo.create(make_doc(user_id="u-lookback", title=title, completed=True))
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)}, {"$set": {"completed_at": completed_at}}
+            )
+            ids[title] = todo.id
+        still_open = await repo.create(make_doc(user_id="u-lookback", title="open"))
+        await raw_collection.update_one(
+            {"_id": ObjectId(still_open.id)}, {"$set": {"completed_at": since}}
+        )
+
+        found = await repo.list_completed_since("u-lookback", since=since)
+
+        assert [t.id for t in found] == [ids["latest"], ids["at_cutoff"]]
+
+    async def test_lists_the_users_own_open_todos_most_recently_updated_first(
+        self, repo, make_doc, raw_collection
+    ):
+        user_id = "u-open"
+        older = await repo.create(make_doc(user_id=user_id, title="older"))
+        newer = await repo.create(make_doc(user_id=user_id, title="newer"))
+        await repo.create(make_doc(user_id=user_id, title="tracked", labels=[GAIA_TRACKED_LABEL]))
+        await repo.create(make_doc(user_id=user_id, title="done", completed=True))
+        await repo.create(make_doc(user_id="someone-else", title="theirs"))
+        for hour, todo in enumerate([older, newer]):
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)},
+                {"$set": {"updated_at": datetime(2026, 10, 14, hour, tzinfo=UTC)}},
+            )
+
+        found = await repo.list_open_user_todos(user_id, limit=10)
+
+        assert [t.id for t in found] == [newer.id, older.id]
+        assert [t.id for t in await repo.list_open_user_todos(user_id, limit=1)] == [newer.id]

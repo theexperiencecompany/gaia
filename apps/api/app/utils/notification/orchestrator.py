@@ -30,6 +30,7 @@ from app.utils.notification.actions import (
 from app.utils.notification.channels import (
     ChannelAdapter,
     DiscordChannelAdapter,
+    EmailChannelAdapter,
     ImessageChannelAdapter,
     InAppChannelAdapter,
     SlackChannelAdapter,
@@ -64,6 +65,7 @@ class NotificationOrchestrator:
         self.register_channel_adapter(DiscordChannelAdapter())
         self.register_channel_adapter(WhatsAppChannelAdapter())
         self.register_channel_adapter(SlackChannelAdapter())
+        self.register_channel_adapter(EmailChannelAdapter())
         self.register_channel_adapter(ImessageChannelAdapter())
 
         self.register_action_handler(ApiCallActionHandler())
@@ -143,11 +145,7 @@ class NotificationOrchestrator:
 
             # Compute overall status: DELIVERED only if at least one channel
             # actually succeeded (i.e. not failed and not skipped).
-            delivered_channels = [
-                s
-                for s in channel_statuses
-                if s.status == NotificationStatus.DELIVERED and not s.skipped
-            ]
+            delivered_channels = [s for s in channel_statuses if s.reached_user]
             overall_status = (
                 NotificationStatus.DELIVERED if delivered_channels else NotificationStatus.FAILED
             )

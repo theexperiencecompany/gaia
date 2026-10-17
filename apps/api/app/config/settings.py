@@ -125,6 +125,8 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
+    # Sender address for outbound briefing email; the same in every environment.
+    EMAIL_FROM: str = "brief@heygaia.io"
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True

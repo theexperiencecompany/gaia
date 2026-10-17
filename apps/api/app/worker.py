@@ -51,6 +51,7 @@ from app.workers.tasks import (
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
 )
+from app.workers.tasks.day_zero_hello_tasks import send_day_zero_hello
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.inbox_desk_tasks import (
@@ -121,6 +122,7 @@ _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
+_send_day_zero_hello = arq_task(send_day_zero_hello)
 # keep_result=0: the per-user job id means a kept result blocks re-enqueue for
 # an hour, including the hourly recovery sweep's retry of an ESP-rejected
 # delivery. Re-runs are made harmless by delivery stamps, not by the result.
@@ -183,6 +185,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,
+    _send_day_zero_hello,
     _promote_usage_badges,
     _sweep_dormant_user_workflows,
     _sweep_abandoned_imessage_registrations,

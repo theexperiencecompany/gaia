@@ -145,9 +145,9 @@ def _inbox_desk_line() -> str:
         f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the {INBOX_DESK_TITLE}, "
         f"that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It triages new mail, opens a tracked "
         "todo for every thread where the user owes a reply or is waiting on one, saves reply "
-        "drafts without sending them, puts personal events from mail on the calendar, and ends "
-        "with one briefing. The user changes when it runs or what it does by telling GAIA, like "
-        "any tracked todo."
+        "drafts without sending them, puts personal events from mail on the calendar, and its "
+        "morning report becomes a section of the daily brief. The user changes when it runs or "
+        "what it does by telling GAIA, like any tracked todo."
     )
 
 

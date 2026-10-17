@@ -1,9 +1,10 @@
 """Post a proactive message into the user's chat with GAIA on a messaging platform.
 
 Anything GAIA sends on its own initiative to Telegram/WhatsApp/Discord/Slack/
-iMessage (a workflow result, a fired reminder, a notification) goes through
-post_to_platform_chat, so it lands where the user will reply: saved into
-their DM conversation and recorded in that conversation's LangGraph thread.
+iMessage (a workflow result, a fired reminder, a notification, the morning
+brief with its edition image) goes through post_to_platform_chat, so it lands
+where the user will reply: saved into their DM conversation and recorded in
+that conversation's LangGraph thread.
 Without both, the user's reply reaches an agent that has no idea what it just
 said.
 
@@ -12,6 +13,7 @@ holds (app/services/delivery/quiet_hours.py) is scheduled as a durable job for
 the window's end instead of being sent, so no caller knows about quiet hours.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 from uuid import uuid4
@@ -21,6 +23,7 @@ from pydantic import BaseModel, ConfigDict
 from app.agents.core.background.thread_record import record_platform_delivery
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
+    CHAT_CAPTION_MAX_CHARS,
     DEFERRED_CHAT_MESSAGE_JOB_PREFIX,
     DEFERRED_CHAT_MESSAGE_TASK,
     ProactiveMessageClass,
@@ -32,17 +35,58 @@ from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.delivery.quiet_hours import held_until
-from app.services.outbound_delivery import OutboundResult, publish_outbound_message
-from app.utils.message_breaks import split_message_bubbles
+from app.services.outbound_delivery import (
+    OutboundResult,
+    publish_outbound_message,
+    publish_outbound_photo,
+)
+from app.utils.message_breaks import split_for_caption, split_message_bubbles
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 
+@dataclass(frozen=True, slots=True)
+class PlatformImage:
+    """A hosted image sent as a photo, the message text as its caption."""
+
+    url: str
+    filename: str
+
+
+async def _publish(
+    channel: ChatChannel, user_id: str, bubbles: list[str], image: PlatformImage | None
+) -> OutboundResult:
+    """Publish the bubbles, or the image captioned with them.
+
+    A caption past the platform limit continues as follow-up text in the same
+    chat lane, so it arrives after the photo; nothing follows a failed photo.
+    """
+    source, platform_user_id = channel.source, channel.platform_user_id
+    if image is None:
+        return await publish_outbound_message(
+            source, user_id, bubbles, destination_override=platform_user_id
+        )
+    caption, *rest = split_for_caption("\n\n".join(bubbles), limit=CHAT_CAPTION_MAX_CHARS)
+    result = await publish_outbound_photo(
+        source,
+        user_id,
+        image.url,
+        image.filename,
+        caption=caption,
+        destination_override=platform_user_id,
+    )
+    if result is OutboundResult.PUBLISHED and rest:
+        return await publish_outbound_message(
+            source, user_id, rest, destination_override=platform_user_id
+        )
+    return result
+
+
 class DeferredChatMessage(BaseModel):
     """A proactive message held for quiet hours: everything needed to post it later."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, revalidate_instances="always")
 
     user_id: str
     source: ConversationSource
@@ -50,6 +94,7 @@ class DeferredChatMessage(BaseModel):
     text: str
     origin: str
     message_class: ProactiveMessageClass
+    image: PlatformImage | None = None
 
     @property
     def channel(self) -> ChatChannel:
@@ -64,12 +109,13 @@ async def post_to_platform_chat(
     text: str,
     origin: str,
     message_class: ProactiveMessageClass,
+    image: PlatformImage | None = None,
 ) -> OutboundResult:
     """Save, send, and remember one proactive message in the user's DM on channel's platform.
 
     A message the user's quiet hours hold is scheduled for their end (DEFERRED).
-    Otherwise it is saved to the DM, published as bubbles, and once published
-    recorded in that conversation's checkpoint. Session, storage or scheduling
+    Otherwise it is saved to the DM, published as bubbles (or as image captioned
+    with them), and once published recorded in that conversation's checkpoint. Session, storage or scheduling
     failures raise.
     """
     deliver_at = await _quiet_hours_end(user.user_id, message_class)
@@ -82,6 +128,7 @@ async def post_to_platform_chat(
                 text=text,
                 origin=origin,
                 message_class=message_class,
+                image=image,
             ),
             deliver_at,
         )
@@ -108,9 +155,7 @@ async def post_to_platform_chat(
     )
     # The channel already carries the account id; destination_override skips a
     # second read of the user document to recompute it.
-    result = await publish_outbound_message(
-        source, user.user_id, bubbles, destination_override=platform_user_id
-    )
+    result = await _publish(channel, user.user_id, bubbles, image)
     outcome: dict[str, object] = {
         "platform": source.value,
         "conversation_id": conversation_id,

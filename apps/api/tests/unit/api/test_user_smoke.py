@@ -9,9 +9,11 @@ Covers:
 - POST /logout — logout (cookie-based)
 """
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.models.user_models import (
     OnboardingPreferences,
@@ -81,7 +83,12 @@ class TestUpdateName:
 class TestUpdateTimezone:
     """PATCH /api/v1/user/timezone."""
 
-    async def test_valid_timezone(self, client: AsyncClient):
+    @pytest.fixture(autouse=True)
+    def resync(self) -> Iterator[AsyncMock]:
+        with patch("app.services.user_timezone.resync_briefing_schedules", AsyncMock()) as mock:
+            yield mock
+
+    async def test_valid_timezone(self, client: AsyncClient, resync: AsyncMock):
         updated = UserDocument.model_validate(
             {
                 "id": FAKE_USER.user_id,
@@ -89,7 +96,7 @@ class TestUpdateTimezone:
                 "timezone": "America/New_York",
             }
         )
-        with patch("app.api.v1.endpoints.user.user_repository") as mock_repo:
+        with patch("app.services.user_timezone.user_repository") as mock_repo:
             mock_repo.update = AsyncMock(return_value=updated)
             resp = await client.patch(
                 "/api/v1/user/timezone",
@@ -105,9 +112,11 @@ class TestUpdateTimezone:
         user_id, update = mock_repo.update.await_args.args
         assert user_id == FAKE_USER.user_id
         assert update.timezone == "America/New_York"
+        # The briefs move onto the new clock with it.
+        resync.assert_awaited_once_with(updated)
 
-    async def test_unknown_user_returns_404(self, client: AsyncClient):
-        with patch("app.api.v1.endpoints.user.user_repository") as mock_repo:
+    async def test_unknown_user_returns_404(self, client: AsyncClient, resync: AsyncMock):
+        with patch("app.services.user_timezone.user_repository") as mock_repo:
             mock_repo.update = AsyncMock(return_value=None)
             resp = await client.patch(
                 "/api/v1/user/timezone",
@@ -115,6 +124,7 @@ class TestUpdateTimezone:
             )
 
         assert resp.status_code == 404
+        resync.assert_not_awaited()
 
     async def test_invalid_timezone(self, client: AsyncClient):
         resp = await client.patch(

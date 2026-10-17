@@ -415,6 +415,13 @@ jobs:
         with:
           node: ${{ matrix.slice.node }}
           services: ${{ matrix.slice.services }}
+      # tests/integration/test_edition_families_render.py rasterizes every
+      # briefing edition family through real headless Chromium; the browser is
+      # not part of the uv environment, so the integration slice fetches it.
+      - name: Install headless Chromium for the edition render test
+        if: matrix.slice.name == 'integration'
+        working-directory: apps/api
+        run: uv run --frozen playwright install chromium-headless-shell
       # An engine slice runs real browser hosts: Chrome from the runner image and
       # Obscura as the obscura-bin job built it. A missing binary fails the slice;
       # it never skips.

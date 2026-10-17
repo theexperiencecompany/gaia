@@ -6,6 +6,7 @@ import {
   ConnectIcon,
   DiscordIcon,
   MessageMultiple02Icon,
+  News01Icon,
   NotificationIcon,
   PencilEdit01Icon,
   Settings01Icon,
@@ -67,6 +68,12 @@ const PAGE_ITEMS: MenuItemConfig[] = [
     label: "Workflows",
     icon: <ZapIcon width={18} height={18} />,
     path: "/workflows",
+  },
+  {
+    id: "briefings",
+    label: "Briefings",
+    icon: <News01Icon width={18} height={18} />,
+    path: "/briefings",
   },
   {
     id: "chats",

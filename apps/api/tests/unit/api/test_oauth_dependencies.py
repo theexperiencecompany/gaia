@@ -282,3 +282,12 @@ class TestGetCurrentUserWs:
                 await get_current_user_ws(_websocket())
 
         assert exc.value.reason == "dev bypass target has no Mongo user"
+
+
+class TestTimezoneBackfill:
+    async def test_the_header_zone_is_stored_through_the_one_timezone_writer(self) -> None:
+        """The writer also moves the briefs onto the new clock; a raw update would not."""
+        with patch(f"{_DEPS}.set_user_timezone", new_callable=AsyncMock) as store:
+            await oauth_dependencies._backfill_user_timezone("u1", "Asia/Kolkata")
+
+        store.assert_awaited_once_with("u1", "Asia/Kolkata")

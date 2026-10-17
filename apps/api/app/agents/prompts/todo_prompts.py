@@ -22,6 +22,7 @@ from app.constants.todos import (
     OBSERVATIONS_PEOPLE_SECTION,
     OBSERVATIONS_RECURRING_SECTION,
     OBSERVATIONS_SENDERS_SECTION,
+    WAITING_FOR_APPROVAL_LABEL,
     WAITING_FOR_REPLY_LABEL,
 )
 
@@ -213,7 +214,8 @@ HEALTH_CHECK_VERDICT_ONLY = (
 # What the user reads as the Inbox desk's description; how it works rides on every run.
 INBOX_DESK_DESCRIPTION = (
     "Triages your mail each morning and as it arrives: opens a sub-todo for each thread "
-    "that needs you, drafts replies, briefs you daily and alerts you to what cannot wait."
+    "that needs you, drafts replies, reports into your morning brief and alerts you to what "
+    "cannot wait."
 )
 
 # The Inbox desk's first standing rule: delivery may otherwise shorten a long briefing
@@ -278,12 +280,12 @@ TO_REPLY: a person expects an answer from the user, or the user promised them so
 AWAITING_REPLY: the user awaits an answer to their question or request.
 FYI: nobody awaits an answer, including documents and notices to review (statements, invoices, receipts, reports).
 ACTIONED: all answered, nobody waiting.
-6. For TO_REPLY and AWAITING_REPLY: create_tracked_todo(gmail_thread_id, gmail_account=<the id of the account it was fetched from>, parent_todo_id=this todo's id, labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"], scheduled_at=its first follow-up: 2 business days out for {NEEDS_REPLY_LABEL}, 3 for {WAITING_FOR_REPLY_LABEL}). If the thread already has a todo, that todo comes back: it watches the thread and owns it, so leave the thread to it.
+6. For TO_REPLY and AWAITING_REPLY: create_tracked_todo(title="<who> · <what>", like "Priya · pitch deck", the line the user's morning brief lists it by, gmail_thread_id, gmail_account=<the id of the account it was fetched from>, parent_todo_id=this todo's id, labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"], scheduled_at=its first follow-up: 2 business days out for {NEEDS_REPLY_LABEL}, 3 for {WAITING_FOR_REPLY_LABEL}). If the thread already has a todo, that todo comes back: it watches the thread and owns it, so leave the thread to it.
 7. For each todo you created this run, {REPLY_DRAFT_RULE}
-8. Note mail carrying events: flights, bookings, invites, deadlines. Only if CONNECTED INTEGRATIONS lists Google Calendar: add the user's own events confirmed by the provider's own confirmation mail and not yet on the calendar; propose everything else (events with other people, dates a person merely mentions) in the briefing; skip mail carrying an invite file. Without Google Calendar call no calendar tool.
+8. Note mail carrying events: flights, bookings, invites, deadlines. Only if CONNECTED INTEGRATIONS lists Google Calendar: add the user's own events confirmed by the provider's own confirmation mail and not yet on the calendar; propose everything else (events with other people, dates a person merely mentions) as a sub-todo awaiting the user's yes: create_tracked_todo(title="Add to calendar: <event> <day> <time>", parent_todo_id=this todo's id, labels=["{WAITING_FOR_APPROVAL_LABEL}"]), unless one is already open for it; skip mail carrying an invite file. Without Google Calendar call no calendar tool.
 9. Once per run, rewrite observations.md whole in one write, in the block format its comment shows; when this prompt shows only its conclusions, read it first. {OBSERVATIONS_SENDERS_SECTION}: for each address with an entry already, or whose messages today reach {OBSERVATION_MIN_MESSAGES} with step 3's counts, add step 3's count to today's figure in its {OBSERVATION_DAILY_COUNTS} (a later run the same day adds to it) and make today its {OBSERVATION_LAST_SEEN}; an address gets its entry the first day it reaches {OBSERVATION_MIN_MESSAGES}, never for a one-off. {OBSERVATIONS_RECURRING_SECTION} from the counts and subjects, {OBSERVATIONS_PEOPLE_SECTION} from the threads you read. Keep the {OBSERVATION_DAILY_COUNT_DAYS} most recent days in {OBSERVATION_DAILY_COUNTS} and fold older ones into {OBSERVATION_EARLIER}. Change a {OBSERVATION_CONCLUSION} only when the evidence has moved for several days, like a volume that held for 3 or more; raise its {OBSERVATION_CONFIDENCE} as consistent days accumulate and lower it when they disagree. Keep the file under {OBSERVATIONS_MAX_CHARS} characters by dropping the entries seen least recently.
 10. Last write, once every fetched thread is handled: set each account's last processed time to the {TOOL_RESULT_FETCHED_AT_KEY} of that account's first fetch in step 2, the Unix seconds it returned, even when it found nothing. Only an account whose step 2 fetch failed keeps its old time; a failed step 3 sweep does not stop its account's mail being triaged or its time advancing. Until then leave them unchanged.
-11. Woken by your schedule, your final report is the user's briefing, read in five seconds, and nothing else: never an account of the run ("I checked 9 messages"), your reasoning, ids, account numbers or how you classified anything, and nothing an earlier briefing or alert reported unless its state changed. Every item comes from your sub-todos, this run's mail or the calendar; observations.md never adds one. Its first line counts what follows, zero parts left out, like "2 need you · 1 waiting · 2 events today". Then each section with items: its name alone on one line, then one "- " line per item of at most {INBOX_DESK_BRIEFING_ITEM_MAX_WORDS} words, a blank line between sections, a section with no items left out, in this order:
+11. Your final report is read in five seconds, and nothing else: never an account of the run ("I checked 9 messages"), your reasoning, ids, account numbers or how you classified anything, and nothing an earlier briefing or alert reported unless its state changed. Every item comes from your sub-todos, this run's mail or the calendar; observations.md never adds one. Its first line counts what follows, zero parts left out, like "2 need you · 1 waiting · 2 events today". Then each section with items: its name alone on one line, then one "- " line per item of at most {INBOX_DESK_BRIEFING_ITEM_MAX_WORDS} words, a blank line between sections, a section with no items left out, in this order:
 Needs you: your {NEEDS_REPLY_LABEL} sub-todos, each "<who> · <what> · <when> · <status>", like "Priya · pitch deck · by Fri · draft ready"; at most {INBOX_DESK_NEEDS_YOU_MAX_ITEMS}, then "+<n> more".
 Waiting on others: your {WAITING_FOR_REPLY_LABEL} sub-todos that are overdue or changed, in the same form.
 Today: today's events, then every event you added or propose from mail, whatever its date; each event you propose on one line, like "Arjun call Tue 4pm · reply yes to add"; without Google Calendar, the events found and one line asking to connect it.
@@ -291,7 +293,7 @@ FYI: grouped by kind with counts, like "4 newsletters · 2 product updates", at 
 Noticed: each conclusion you added or changed in observations.md this run, one line ending "reply to change", like "GitHub notifications are low priority; reply to change".
 Filtered: the number only, from step 3.
 Nothing in any section: say only that nothing is new.
-Woken by new mail, your final report is an alert in the briefing's form and under its rules, with only the Needs you items you opened this run and the events you added or proposed for today or tomorrow; with neither, it is only that nothing is new, and the next briefing carries the rest.
+Woken by your schedule, nobody is sent the report: the user's morning brief lists your sub-todos (steps 6 and 8) and today's calendar instead, so everything they must see lives there. Woken by new mail, your final report is an alert in this form and under these rules, with only the Needs you items you opened this run and the events you added or proposed for today or tomorrow; with neither, it is only that nothing is new, and the next briefing carries the rest.
 GAIA records this run and your report in activity.md itself: write nothing there, write observations.md only in step 9, and edit canvas.md only for step 10. Standing rules are the user's own instructions, never yours, in canvas.md or a todo you open: what you notice goes to observations.md."""
 
 

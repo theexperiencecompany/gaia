@@ -22,6 +22,7 @@ from typing import cast
 from bson import ObjectId
 
 from app.config.feature_flags import FeatureFlag
+from app.constants.briefing import BriefingBag
 from app.constants.cache import (
     LAST_ACTIVE_DEBOUNCE_SECONDS,
     LAST_ACTIVE_GATE_PREFIX,
@@ -51,16 +52,21 @@ from app.models.onboarding_models import (
 )
 from app.models.user_models import (
     BioStatus,
+    BriefingBootstrap,
+    DayZeroHello,
     OnboardingPhase,
     OnboardingPreferences,
     PersonalizationBundle,
     PlatformLinkRecord,
+    ShuffleBag,
     UserDocument,
     UserUpdate,
 )
 from shared.py.wide_events import log
 
 _SOCIAL_PROFILES_FIELD = "onboarding.social_profiles"
+# $unset reads only the field names; the value is ignored.
+_UNSET = ""
 
 
 class UserRepository(MongoRepository[UserDocument, UserUpdate]):
@@ -317,7 +323,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Wipe the user's onboarding subdocument."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$unset": {"onboarding": ""}},
+            {"$unset": {"onboarding": _UNSET}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
@@ -771,11 +777,94 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             {"_id": self._id_value(user_id)},
             {
                 "$unset": {
-                    f"platform_links.{platform}": "",
-                    f"platform_links_connected_at.{platform}": "",
+                    f"platform_links.{platform}": _UNSET,
+                    f"platform_links_connected_at.{platform}": _UNSET,
                 }
             },
             scope=REPO_GLOBAL_SCOPE,
+        )
+
+    # ------------------------------------------------------------ briefing engine
+
+    async def clear_briefing_bootstrap(self, user_id: str) -> None:
+        """Clear the pending-bootstrap marker once a real briefing goes out."""
+        await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id)},
+            {"$unset": {"briefing_bootstrap": _UNSET}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
+        )
+
+    async def set_briefing_bag(self, user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
+        """Persist one shuffle bag's advanced state (see shuffle_bag.draw)."""
+        await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id)},
+            {"$set": {f"briefing_shuffle_bags.{bag.value}": state.model_dump()}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
+        )
+
+    async def set_briefing_bootstrap_pending(self, user_id: str) -> None:
+        """Hold briefings for a sparse existing-user rollout.
+
+        Held until a goal arrives or the grace window elapses. Only a user with no
+        marker yet is stamped, so a re-run never restarts a running grace window.
+        """
+        await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id), "briefing_bootstrap": {"$exists": False}},
+            {
+                "$set": {
+                    "briefing_bootstrap": BriefingBootstrap(
+                        pending=True, since=datetime.now(UTC)
+                    ).model_dump()
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
+        )
+
+    async def set_dormancy_day(self, user_id: str, *, idle_days: int, date_str: str) -> None:
+        """Persist today's idle/active outcome on the dormancy ladder."""
+        await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id)},
+            {
+                "$set": {
+                    "briefing_dormancy.idle_days": idle_days,
+                    "briefing_dormancy.date": date_str,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
+        )
+
+    async def enter_briefing_dormancy(self, user_id: str) -> None:
+        await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"briefing_dormancy.dormant_since": datetime.now(UTC)}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
+        )
+
+    async def clear_briefing_dormancy(self, user_id: str) -> None:
+        await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id)},
+            {"$unset": {"briefing_dormancy": _UNSET}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
+        )
+
+    async def mark_day_zero_hello_sent(self, user_id: str, platform: str) -> None:
+        await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id)},
+            {
+                "$set": {
+                    "day_zero_hello": DayZeroHello(
+                        sent_at=datetime.now(UTC), platform=platform
+                    ).model_dump()
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
         )
 
 

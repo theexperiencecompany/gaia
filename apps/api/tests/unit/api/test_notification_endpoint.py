@@ -830,11 +830,23 @@ class TestQuietHoursEndpoints:
         assert response.json() == {"message": "User not found"}
 
     async def test_an_update_is_stored_echoed_and_reported(self, client: AsyncClient) -> None:
+        sentinel_user = UserDocument(
+            id=FAKE_USER_ID, quiet_hours=QuietHours(start_hour=23, end_hour=7)
+        )
         with (
             patch(
                 "app.api.v1.endpoints.notification.user_repository.set_quiet_hours",
                 new_callable=AsyncMock,
             ) as store,
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=sentinel_user,
+            ) as get,
+            patch(
+                "app.api.v1.endpoints.notification.resync_briefing_schedules",
+                new_callable=AsyncMock,
+            ) as move_brief,
             patch(ANALYTICS_PATCH) as capture,
             patch("app.api.v1.endpoints.notification.log") as log,
         ):
@@ -849,9 +861,37 @@ class TestQuietHoursEndpoints:
         assert response.status_code == 200
         assert response.json() == {"start_hour": 23, "end_hour": 7}
         store.assert_awaited_once_with(FAKE_USER_ID, QuietHours(start_hour=23, end_hour=7))
+        get.assert_awaited_once_with(FAKE_USER_ID)
+        move_brief.assert_awaited_once_with(sentinel_user)
         capture.assert_called_once_with(
             UserId(FAKE_USER_ID), SettingsQuietHoursUpdated(start_hour=23, end_hour=7)
         )
+
+    async def test_updating_a_user_that_vanished_is_a_404_and_moves_no_brief(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.set_quiet_hours",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.api.v1.endpoints.notification.resync_briefing_schedules",
+                new_callable=AsyncMock,
+            ) as move_brief,
+        ):
+            response = await client.put(
+                f"{NOTIF_BASE}/preferences/quiet-hours", json={"start_hour": 23, "end_hour": 7}
+            )
+
+        assert response.status_code == 404
+        assert response.json() == {"message": "User not found"}
+        move_brief.assert_not_awaited()
 
     async def test_an_empty_window_is_refused_before_anything_is_stored(
         self, client: AsyncClient

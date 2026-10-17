@@ -139,6 +139,87 @@ async def test_a_failed_publish_is_logged_as_an_error() -> None:
     assert posted.log.error.call_args.kwargs["bubbles"] == 2
 
 
+IMAGE = platform_chat.PlatformImage(url="https://cdn.test/brief.png", filename="brief.png")
+
+
+async def _post_with_image(text: str, photo: OutboundResult) -> tuple[_Posted, AsyncMock]:
+    session = AsyncMock(return_value="dm-conv")
+    save = AsyncMock()
+    publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
+    send_photo = AsyncMock(return_value=photo)
+    record = AsyncMock()
+    with (
+        patch.object(platform_chat.BotService, "get_or_create_session", session),
+        patch.object(platform_chat, "update_messages", save),
+        patch.object(platform_chat, "publish_outbound_message", publish),
+        patch.object(platform_chat, "publish_outbound_photo", send_photo),
+        patch.object(platform_chat, "record_platform_delivery", record),
+        patch.object(platform_chat, "log") as log,
+        patch.object(platform_chat.user_repository, "get", AsyncMock(return_value=AWAKE_USER)),
+        time_machine.travel(NOON_UTC, tick=False),
+    ):
+        returned = await platform_chat.post_to_platform_chat(
+            user=USER,
+            channel=CHANNEL,
+            text=text,
+            origin="daily brief",
+            message_class=ProactiveMessageClass.ROUTINE,
+            image=IMAGE,
+        )
+    return _Posted(session, save, publish, record, log, returned), send_photo
+
+
+async def test_an_image_goes_out_as_one_photo_with_the_text_as_its_caption() -> None:
+    posted, send_photo = await _post_with_image("Two replies need you.", OutboundResult.PUBLISHED)
+
+    send_photo.assert_awaited_once_with(
+        ConversationSource.TELEGRAM,
+        "user-1",
+        "https://cdn.test/brief.png",
+        "brief.png",
+        caption="Two replies need you.",
+        destination_override="tg-7",
+    )
+    posted.publish.assert_not_awaited()
+    assert posted.returned is OutboundResult.PUBLISHED
+    posted.record.assert_awaited_once_with(
+        "dm-conv", "[Delivered to the user on Telegram (daily brief)]: Two replies need you."
+    )
+
+
+async def test_several_bubbles_share_one_caption_as_paragraphs() -> None:
+    _, send_photo = await _post_with_image(
+        f"Two replies need you.{NEW_MESSAGE_BREAKER}Priya first.", OutboundResult.PUBLISHED
+    )
+
+    assert send_photo.await_args.kwargs["caption"] == "Two replies need you.\n\nPriya first."
+
+
+async def test_a_caption_past_the_platform_limit_continues_as_follow_up_text() -> None:
+    long_text = "\n\n".join(["a" * 700, "b" * 700])
+
+    posted, send_photo = await _post_with_image(long_text, OutboundResult.PUBLISHED)
+
+    assert send_photo.await_args.kwargs["caption"] == "a" * 700
+    assert posted.publish.await_args.args == (ConversationSource.TELEGRAM, "user-1", ["b" * 700])
+    assert posted.publish.await_args.kwargs == {"destination_override": "tg-7"}
+
+
+async def test_a_failed_photo_is_a_failed_post_and_sends_no_follow_up() -> None:
+    posted, _ = await _post_with_image("\n\n".join(["a" * 700, "b" * 700]), OutboundResult.FAILED)
+
+    assert posted.returned is OutboundResult.FAILED
+    posted.publish.assert_not_awaited()
+    posted.record.assert_not_awaited()
+
+
+async def test_the_dm_saves_the_text_the_image_carried() -> None:
+    posted, _ = await _post_with_image("Two replies need you.", OutboundResult.PUBLISHED)
+
+    (message,) = posted.save.await_args.args[0].messages
+    assert message.response == "Two replies need you."
+
+
 class TestQuietHours:
     """The chokepoint holds a message inside the user's window for a job at its end."""
 

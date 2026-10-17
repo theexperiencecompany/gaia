@@ -11,16 +11,15 @@ UserDocument without adding it here (and to build_user_context) and CI fails
 instead of the model silently going stale.
 """
 
-from datetime import UTC, datetime
-
 from pydantic import ValidationError
 import pytest
 
-from app.config.feature_flags import FeatureFlag
-from app.models.first_steps_models import FirstStepsState
-from app.models.notification.notification_models import QuietHours
-from app.models.user_models import AuthenticatedUser, OnboardingSubdocument, UserDocument
+from app.models.user_models import (
+    AuthenticatedUser,
+    UserDocument,
+)
 from app.utils.auth_utils import build_user_context
+from tests.factories import user_document_sample_values
 
 # Set by build_user_context(), not present on the document.
 AUTH_CONTEXT_ONLY_KEYS = {
@@ -33,36 +32,6 @@ AUTH_CONTEXT_ONLY_KEYS = {
 
 # `id` exists on MongoDocument; build_user_context carries it as `user_id`.
 DOCUMENT_KEYS_NOT_PROPAGATED = {"id"}
-
-
-_STAMP = datetime(2024, 5, 1, tzinfo=UTC)
-
-# One distinct non-default sample per declared field type, matched by the
-# first type name found in the field's annotation (order matters: the nested
-# models are named before the primitives their annotations also mention).
-_SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
-    ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
-    ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_STAMP)),
-    ("QuietHours", QuietHours(start_hour=1, end_hour=6)),
-    ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),
-    ("datetime", _STAMP),
-    ("bool", True),
-    ("int", 3),
-    ("list", ["item"]),
-    ("dict", {"k": "v"}),
-)
-
-
-def _sample_values() -> dict[str, object]:
-    """Return a non-default value for every declared UserDocument field but id."""
-    return {
-        name: next(
-            (value for type_name, value in _SAMPLE_BY_TYPE if type_name in str(field.annotation)),
-            f"{name}-value",
-        )
-        for name, field in UserDocument.model_fields.items()
-        if name != "id"
-    }
 
 
 def test_authenticated_user_covers_every_user_document_field() -> None:
@@ -93,7 +62,7 @@ def test_authenticated_user_declares_no_unknown_fields() -> None:
 
 def test_build_user_context_copies_every_document_field() -> None:
     """A field build_user_context forgets to copy is declared yet never set, the drift this guards."""
-    values = _sample_values()
+    values = user_document_sample_values()
     doc = UserDocument(id="507f1f77bcf86cd799439011", **values)
 
     user = build_user_context(doc, auth_provider="workos")

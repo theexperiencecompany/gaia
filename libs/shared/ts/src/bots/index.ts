@@ -149,6 +149,7 @@ export {
   handleWorkflowList,
   hashLogIdentifier,
   htmlToPlainText,
+  isLegibleAsPhoto,
   isTableRow,
   isTableSeparator,
   MEDIA_READ_TIMEOUT_MS,

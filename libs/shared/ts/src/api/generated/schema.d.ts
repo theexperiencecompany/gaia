@@ -380,6 +380,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/briefings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Briefings
+         * @description Archive of the user's briefings (daily + weekly), newest first.
+         */
+        get: operations["briefings_list_briefings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/{briefing_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Briefing
+         * @description Return one of the user's briefs; the first open marks it and emits briefing:opened.
+         */
+        get: operations["briefings_get_briefing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/browser/handoffs/{handoff_id}/decision": {
         parameters: {
             query?: never;
@@ -3055,7 +3095,7 @@ export interface paths {
         get: operations["notification_read_quiet_hours"];
         /**
          * Update Quiet Hours
-         * @description Replace the user's quiet hours; echoes back what was stored.
+         * @description Replace the user's quiet hours, moving the daily brief out of them; echoes back what was stored.
          */
         put: operations["notification_update_quiet_hours"];
         post?: never;
@@ -6560,6 +6600,212 @@ export interface components {
             user_name?: string | null;
         };
         /**
+         * BriefingEvent
+         * @description One calendar event on the user's own clock, read from their calendar.
+         */
+        BriefingEvent: {
+            /** Date */
+            date: string;
+            /** Location */
+            location?: string | null;
+            /** Start */
+            start?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefingItem
+         * @description A single line inside a section, optionally bound to a todo.
+         */
+        BriefingItem: {
+            /**
+             * Kind
+             * @default note
+             * @enum {string}
+             */
+            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            /** Link */
+            link: string | null;
+            /** Text */
+            text: string;
+            /** Todo Id */
+            todo_id: string | null;
+        };
+        /**
+         * BriefingListResponse
+         * @description Archive response shape (frontend is coded against this).
+         */
+        BriefingListResponse: {
+            /** Briefings */
+            briefings: components["schemas"]["BriefingModel"][];
+        };
+        /**
+         * BriefingModel
+         * @description Persisted briefing document (``briefings`` collection).
+         *
+         *     Doubles as the repository's document model (``BriefingsRepository`` in
+         *     ``app/db/repositories/briefings.py``) — one canonical model for the
+         *     persisted shape and every consumer (endpoints, ``BriefingListResponse``,
+         *     the archive/dashboard reads). Identity is the string business key ``id``,
+         *     persisted as Mongo's ``_id`` (``uses_object_id=False``).
+         */
+        BriefingModel: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Date */
+            date: string;
+            /** Delivered Channels */
+            delivered_channels: string[];
+            /** Edition Image Url */
+            edition_image_url: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @default daily
+             * @enum {string}
+             */
+            kind: "daily" | "weekly";
+            /** Opened At */
+            opened_at: string | null;
+            payload: components["schemas"]["BriefingPayload"];
+            /** Updated At */
+            updated_at: string | null;
+            /** User Id */
+            user_id: string;
+        };
+        /**
+         * BriefingPayload
+         * @description The structured briefing the run emits and every channel renders.
+         */
+        BriefingPayload: {
+            /**
+             * Bubbles
+             * @description One chat bubble per goal — each led by the goal, concrete details inline, a heygaia.link only when the artifact is large/actionable. Delivered as separate messages so each goal reads on its own.
+             */
+            bubbles: string[];
+            /**
+             * Calendar
+             * @description Today's calendar events, in start order.
+             */
+            calendar: components["schemas"]["BriefingEvent"][];
+            /** Caption */
+            caption: string;
+            /** Date */
+            date: string;
+            /**
+             * Generated At
+             * @description User-local generation time, e.g. "6:02 AM".
+             */
+            generated_at: string | null;
+            /** Headline */
+            headline: string;
+            /**
+             * Hue
+             * @default 0
+             */
+            hue: number;
+            /** Kicker */
+            kicker: string;
+            /** Lede */
+            lede: string;
+            /**
+             * Message
+             * @description Casual texting-voice rendering of the brief for chat platforms (Telegram/WhatsApp/etc). The editorial fields above are for the dashboard card and email; this is what GAIA 'texts' the user. Derived from `bubbles` (joined) for single-string consumers.
+             */
+            message: string | null;
+            /**
+             * Mood
+             * @enum {string}
+             */
+            mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            /**
+             * Recipient Name
+             * @description The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.
+             */
+            recipient_name: string | null;
+            /** Sections */
+            sections: components["schemas"]["BriefingSection"][];
+            /**
+             * Stamp City
+             * @description Air Mail editions only: the city stamp (a stamps/cities.json slug) this brief carried. The Postmarks page reads it.
+             */
+            stamp_city: string | null;
+            /** Stats */
+            stats: components["schemas"]["BriefingStat"][];
+            tallies: components["schemas"]["BriefingTallies"] | null;
+            /**
+             * Template Family
+             * @description The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever; None on legacy rows.
+             */
+            template_family: string | null;
+            week: components["schemas"]["BriefingWeek"] | null;
+        };
+        /**
+         * BriefingSection
+         * @description A Roman-numeraled section of the briefing.
+         */
+        BriefingSection: {
+            /** Items */
+            items: components["schemas"]["BriefingItem"][];
+            /** Numeral */
+            numeral: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefingStat
+         * @description One tuple in the stat row (e.g. value="12" label="drafts staged").
+         */
+        BriefingStat: {
+            /** Delta */
+            delta: string | null;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * BriefingTallies
+         * @description Completed-todo counts behind the brief, computed from the todos store —
+         *     never parsed back out of stat labels, so every renderer agrees with them.
+         */
+        BriefingTallies: {
+            /** Done By Gaia */
+            done_by_gaia: number;
+            /** Done By You */
+            done_by_you: number;
+        };
+        /**
+         * BriefingWeek
+         * @description The real week the weekly edition draws: Monday-to-Sunday completions,
+         *     what shipped, what GAIA handled, and the calendar ahead. Every field is
+         *     counted or read, never estimated.
+         */
+        BriefingWeek: {
+            /** Ahead */
+            ahead?: components["schemas"]["BriefingEvent"][];
+            /** Days */
+            days: components["schemas"]["BriefingWeekDay"][];
+            /** Handled */
+            handled?: string[];
+            /** Shipped */
+            shipped?: string[];
+        };
+        /**
+         * BriefingWeekDay
+         * @description Todos completed on one day of the week, by owner.
+         */
+        BriefingWeekDay: {
+            /** Gaia */
+            gaia: number;
+            /** You */
+            you: number;
+        };
+        /**
          * BrowserImportRequest
          * @description A profile upload from the local CLI: the mint code plus a Playwright
          *     storage_state (cookies + localStorage), split per host on the server.
@@ -8965,6 +9211,8 @@ export interface components {
             htmlLink?: string | null;
             /** Id */
             id?: string | null;
+            /** Location */
+            location?: string | null;
             /** Recurrence */
             recurrence?: string[] | null;
             start?: components["schemas"]["GoogleCalendarEventDateTime"] | null;
@@ -11821,7 +12069,7 @@ export interface components {
          * @description What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.
          * @enum {string}
          */
-        ProactiveMessageClass: "routine" | "user_timed";
+        ProactiveMessageClass: "routine" | "user_timed" | "user_triggered";
         /**
          * ProjectCreate
          * @description Model for creating projects
@@ -15678,6 +15926,16 @@ export type Body_user_update_user_timezone = components['schemas']['Body_user_up
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
+export type BriefingEvent = components['schemas']['BriefingEvent'];
+export type BriefingItem = components['schemas']['BriefingItem'];
+export type BriefingListResponse = components['schemas']['BriefingListResponse'];
+export type BriefingModel = components['schemas']['BriefingModel'];
+export type BriefingPayload = components['schemas']['BriefingPayload'];
+export type BriefingSection = components['schemas']['BriefingSection'];
+export type BriefingStat = components['schemas']['BriefingStat'];
+export type BriefingTallies = components['schemas']['BriefingTallies'];
+export type BriefingWeek = components['schemas']['BriefingWeek'];
+export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
@@ -17223,6 +17481,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnlinkAccountResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_list_briefings: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_briefing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                briefing_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingModel"];
                 };
             };
             /** @description Unprocessable Entity */

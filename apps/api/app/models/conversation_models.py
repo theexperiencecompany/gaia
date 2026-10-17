@@ -180,6 +180,23 @@ class _ConversationIdRow(BaseModel):
     conversation_id: str
 
 
+class UserMessageDateRow(BaseModel):
+    """The send date (UTC ISO string) of one unwound user message —
+    ``ConversationRepository.latest_user_message_since``."""
+
+    date: str
+
+
+class BotReplyRow(BaseModel):
+    """One unwound bot-platform user message — the briefing engine's reply-sync
+    read (``ConversationRepository.list_bot_replies_since``)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    source: str | None = None
+    text: str | None = None
+
+
 class _MessageProjectionRow(BaseModel):
     """A projection of part of ``messages``: the positional ``messages.$`` (one
     element) or a ``$slice`` window (e.g. the follow-up action dedup read)."""

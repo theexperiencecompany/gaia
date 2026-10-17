@@ -3,21 +3,27 @@
 from contextlib import asynccontextmanager, contextmanager
 from datetime import timedelta
 import io
+import json
 from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 import zipfile
 
 from bson import ObjectId
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 import pytest
 
+from app.api.v1.endpoints.dev import _BRIEFING_RUNS, run_briefing_now
 from app.constants.auth import DEV_USER_MISSING_HINT
+from app.constants.briefing import BriefingRunOutcome
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
+from app.services.briefing.service import BriefingGenerationError
+from app.utils.errors import AppError
+from tests.helpers import captured_wide_event
 
 DEV_EMAIL = "dev@gaia.local"
 
@@ -857,3 +863,112 @@ class TestDevAttachments:
                 )
 
         assert response.status_code == 415, response.text
+
+
+class TestDevBriefingRun:
+    async def test_runs_the_kinds_pipeline_for_the_users_id(self):
+        run_daily = AsyncMock(return_value=BriefingRunOutcome.SENT)
+        run_weekly = AsyncMock()
+        user = SimpleNamespace(id="u-brief")
+        with (
+            patch.dict(_BRIEFING_RUNS, {"daily": run_daily, "weekly": run_weekly}),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ) as get_by_email,
+        ):
+            async with captured_wide_event() as event:
+                response = await run_briefing_now("daily", DEV_EMAIL)
+
+        get_by_email.assert_awaited_once_with(DEV_EMAIL)
+        run_daily.assert_awaited_once_with("u-brief")
+        run_weekly.assert_not_awaited()
+        assert json.loads(response.body) == {
+            "user_id": "u-brief",
+            "kind": "daily",
+            "status": "completed",
+            "outcome": "sent",
+        }
+        assert event["dev"] == {
+            "operation": "run_briefing",
+            "kind": "daily",
+            "email": DEV_EMAIL,
+            "user_id": "u-brief",
+            "outcome": "sent",
+        }
+
+    async def test_an_unknown_kind_is_a_400_through_the_mounted_route(self, monkeypatch):
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
+        client = await _client(_build_app())
+        async with client:
+            response = await client.post(f"/api/v1/dev/briefing/monthly/{DEV_EMAIL}")
+
+        assert (response.status_code, response.json()["message"]) == (
+            400,
+            "kind must be 'daily' or 'weekly'",
+        )
+
+    async def test_an_unknown_email_is_a_404_naming_how_to_mint_it(self):
+        run_daily = AsyncMock()
+        with (
+            patch.dict(_BRIEFING_RUNS, {"daily": run_daily}),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            pytest.raises(HTTPException) as caught,
+        ):
+            await run_briefing_now("daily", "ghost@gaia.local")
+
+        assert caught.value.status_code == 404
+        assert caught.value.detail == (
+            "No GAIA user exists for 'ghost@gaia.local' — mint it via POST /api/v1/dev/users"
+        )
+        run_daily.assert_not_awaited()
+
+    async def test_a_failed_generation_is_an_envelope_naming_the_reason(self, monkeypatch):
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
+        reason = "The brief's headline and lede contradict its items: x"
+        run_daily = AsyncMock(side_effect=BriefingGenerationError(reason))
+        with (
+            patch.dict(_BRIEFING_RUNS, {"daily": run_daily}),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(id="u-brief"),
+            ),
+        ):
+            client = await _client(_build_app())
+            async with client:
+                response = await client.post(f"/api/v1/dev/briefing/daily/{DEV_EMAIL}")
+
+        body = response.json()
+        assert response.status_code == 502
+        assert {k: body[k] for k in ("message", "why", "fix", "code")} == {
+            "message": "The daily briefing could not be generated",
+            "why": reason,
+            "fix": "Read the reason and rerun; a recurring one is a prompt or voice-check bug",
+            "code": "briefing_generation_failed",
+        }
+
+    async def test_a_failed_generation_carries_the_user_id_and_cause_for_the_wide_event(self):
+        failure = BriefingGenerationError("the lede contradicts the items")
+        with (
+            patch.dict(_BRIEFING_RUNS, {"weekly": AsyncMock(side_effect=failure)}),
+            patch(
+                "app.api.v1.endpoints.dev.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(id="u-brief"),
+            ),
+            pytest.raises(AppError) as caught,
+        ):
+            await run_briefing_now("weekly", DEV_EMAIL)
+
+        assert caught.value.meta == {"user_id": "u-brief"}
+        assert caught.value.__cause__ is failure

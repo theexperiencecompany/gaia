@@ -1828,6 +1828,520 @@
         "title": "BotSettingsResponse",
         "type": "object"
       },
+      "BriefingEvent": {
+        "description": "One calendar event on the user's own clock, read from their calendar.",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "title"
+        ],
+        "title": "BriefingEvent",
+        "type": "object"
+      },
+      "BriefingItem": {
+        "description": "A single line inside a section, optionally bound to a todo.",
+        "properties": {
+          "kind": {
+            "default": "note",
+            "enum": [
+              "gaia",
+              "you",
+              "lookback",
+              "failed",
+              "note"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          }
+        },
+        "required": [
+          "text",
+          "todo_id",
+          "kind",
+          "link"
+        ],
+        "title": "BriefingItem",
+        "type": "object"
+      },
+      "BriefingListResponse": {
+        "description": "Archive response shape (frontend is coded against this).",
+        "properties": {
+          "briefings": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingModel"
+            },
+            "title": "Briefings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "briefings"
+        ],
+        "title": "BriefingListResponse",
+        "type": "object"
+      },
+      "BriefingModel": {
+        "description": "Persisted briefing document (``briefings`` collection).\n\nDoubles as the repository's document model (``BriefingsRepository`` in\n``app/db/repositories/briefings.py``) \u2014 one canonical model for the\npersisted shape and every consumer (endpoints, ``BriefingListResponse``,\nthe archive/dashboard reads). Identity is the string business key ``id``,\npersisted as Mongo's ``_id`` (``uses_object_id=False``).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "delivered_channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Delivered Channels",
+            "type": "array"
+          },
+          "edition_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition Image Url"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "daily",
+            "enum": [
+              "daily",
+              "weekly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "opened_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opened At"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BriefingPayload"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "date",
+          "kind",
+          "payload",
+          "delivered_channels",
+          "edition_image_url",
+          "opened_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BriefingModel",
+        "type": "object"
+      },
+      "BriefingPayload": {
+        "description": "The structured briefing the run emits and every channel renders.",
+        "properties": {
+          "bubbles": {
+            "description": "One chat bubble per goal \u2014 each led by the goal, concrete details inline, a heygaia.link only when the artifact is large/actionable. Delivered as separate messages so each goal reads on its own.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Bubbles",
+            "type": "array"
+          },
+          "calendar": {
+            "description": "Today's calendar events, in start order.",
+            "items": {
+              "$ref": "#/components/schemas/BriefingEvent"
+            },
+            "title": "Calendar",
+            "type": "array"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User-local generation time, e.g. \"6:02 AM\".",
+            "title": "Generated At"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "hue": {
+            "default": 0,
+            "maximum": 360.0,
+            "minimum": 0.0,
+            "title": "Hue",
+            "type": "integer"
+          },
+          "kicker": {
+            "title": "Kicker",
+            "type": "string"
+          },
+          "lede": {
+            "title": "Lede",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Casual texting-voice rendering of the brief for chat platforms (Telegram/WhatsApp/etc). The editorial fields above are for the dashboard card and email; this is what GAIA 'texts' the user. Derived from `bubbles` (joined) for single-string consumers.",
+            "title": "Message"
+          },
+          "mood": {
+            "enum": [
+              "clear",
+              "packed",
+              "idle",
+              "winback",
+              "weekly"
+            ],
+            "title": "Mood",
+            "type": "string"
+          },
+          "recipient_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.",
+            "title": "Recipient Name"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "stamp_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Air Mail editions only: the city stamp (a stamps/cities.json slug) this brief carried. The Postmarks page reads it.",
+            "title": "Stamp City"
+          },
+          "stats": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingStat"
+            },
+            "title": "Stats",
+            "type": "array"
+          },
+          "tallies": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefingTallies"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "template_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever; None on legacy rows.",
+            "title": "Template Family"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefingWeek"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kicker",
+          "date",
+          "headline",
+          "lede",
+          "stats",
+          "sections",
+          "mood",
+          "caption",
+          "hue",
+          "template_family",
+          "stamp_city",
+          "recipient_name",
+          "generated_at",
+          "calendar",
+          "tallies",
+          "week",
+          "message",
+          "bubbles"
+        ],
+        "title": "BriefingPayload",
+        "type": "object"
+      },
+      "BriefingSection": {
+        "description": "A Roman-numeraled section of the briefing.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "numeral": {
+            "title": "Numeral",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "numeral",
+          "title",
+          "items"
+        ],
+        "title": "BriefingSection",
+        "type": "object"
+      },
+      "BriefingStat": {
+        "description": "One tuple in the stat row (e.g. value=\"12\" label=\"drafts staged\").",
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "delta"
+        ],
+        "title": "BriefingStat",
+        "type": "object"
+      },
+      "BriefingTallies": {
+        "description": "Completed-todo counts behind the brief, computed from the todos store \u2014\nnever parsed back out of stat labels, so every renderer agrees with them.",
+        "properties": {
+          "done_by_gaia": {
+            "minimum": 0.0,
+            "title": "Done By Gaia",
+            "type": "integer"
+          },
+          "done_by_you": {
+            "minimum": 0.0,
+            "title": "Done By You",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "done_by_you",
+          "done_by_gaia"
+        ],
+        "title": "BriefingTallies",
+        "type": "object"
+      },
+      "BriefingWeek": {
+        "description": "The real week the weekly edition draws: Monday-to-Sunday completions,\nwhat shipped, what GAIA handled, and the calendar ahead. Every field is\ncounted or read, never estimated.",
+        "properties": {
+          "ahead": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingEvent"
+            },
+            "title": "Ahead",
+            "type": "array"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingWeekDay"
+            },
+            "maxItems": 7,
+            "minItems": 7,
+            "title": "Days",
+            "type": "array"
+          },
+          "handled": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Handled",
+            "type": "array"
+          },
+          "shipped": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Shipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "days"
+        ],
+        "title": "BriefingWeek",
+        "type": "object"
+      },
+      "BriefingWeekDay": {
+        "description": "Todos completed on one day of the week, by owner.",
+        "properties": {
+          "gaia": {
+            "minimum": 0.0,
+            "title": "Gaia",
+            "type": "integer"
+          },
+          "you": {
+            "minimum": 0.0,
+            "title": "You",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "you",
+          "gaia"
+        ],
+        "title": "BriefingWeekDay",
+        "type": "object"
+      },
       "BrowserImportRequest": {
         "description": "A profile upload from the local CLI: the mint code plus a Playwright\nstorage_state (cookies + localStorage), split per host on the server.",
         "properties": {
@@ -6876,6 +7390,17 @@
               }
             ],
             "title": "Id"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
           },
           "recurrence": {
             "anyOf": [
@@ -12922,7 +13447,8 @@
         "description": "What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.",
         "enum": [
           "routine",
-          "user_timed"
+          "user_timed",
+          "user_triggered"
         ],
         "title": "ProactiveMessageClass",
         "type": "string"
@@ -21954,6 +22480,137 @@
         "summary": "Unlink Platform Account",
         "tags": [
           "Bot"
+        ]
+      }
+    },
+    "/api/v1/briefings": {
+      "get": {
+        "description": "Archive of the user's briefings (daily + weekly), newest first.",
+        "operationId": "briefings_list_briefings",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Briefings",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/{briefing_id}": {
+      "get": {
+        "description": "Return one of the user's briefs; the first open marks it and emits briefing:opened.",
+        "operationId": "briefings_get_briefing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "briefing_id",
+            "required": true,
+            "schema": {
+              "title": "Briefing Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Briefing",
+        "tags": [
+          "Briefings",
+          "Briefings"
         ]
       }
     },
@@ -31434,7 +32091,7 @@
         ]
       },
       "put": {
-        "description": "Replace the user's quiet hours; echoes back what was stored.",
+        "description": "Replace the user's quiet hours, moving the daily brief out of them; echoes back what was stored.",
         "operationId": "notification_update_quiet_hours",
         "requestBody": {
           "content": {

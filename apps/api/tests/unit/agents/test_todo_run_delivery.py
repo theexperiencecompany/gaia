@@ -43,6 +43,7 @@ RUN = ExecutorRun(
     user_message_id=None,
 )
 SCHEDULED = TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO)
+MAIL_WOKEN = TodoRun(todo_id="todo-1", trigger_type=TriggerType.INTEGRATION)
 
 
 @dataclass
@@ -157,7 +158,11 @@ class TestResultsThatReachNobody:
 
 
 class TestABriefingThatOwnsItsForm:
-    """The desk's run guidance sets its briefing's form; comms decides only whether it is sent."""
+    """The desk's run guidance sets its report's form; comms decides only whether it is sent.
+
+    Its scheduled sweep waits for the morning brief (test_tracked_todo_run_delivery.py), so
+    the report that goes out at once is the alert new mail wakes it for.
+    """
 
     BRIEFING = "1 need you\n\nNeeds you\n- Priya · pitch deck · by Fri · draft ready"
 
@@ -172,7 +177,7 @@ class TestABriefingThatOwnsItsForm:
     async def test_a_desk_briefing_reaches_the_app_as_the_desk_wrote_it(self) -> None:
         """Regression: comms retold a sectioned desk briefing as flat lines, its headings gone."""
         with _seams(todo=self._desk(), narrated="Priya: send the deck by Friday.") as seams:
-            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+            await deliver_todo_run_result(RUN, MAIL_WOKEN, self.BRIEFING, "final")
 
         assert seams.in_app.await_args.args[0].content.body == self.BRIEFING
 
@@ -182,13 +187,13 @@ class TestABriefingThatOwnsItsForm:
             narrated="Priya: send the deck by Friday.",
             sent_on=ConversationSource.TELEGRAM,
         ) as seams:
-            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+            await deliver_todo_run_result(RUN, MAIL_WOKEN, self.BRIEFING, "final")
 
         assert seams.send.await_args.kwargs["notification_text"] == self.BRIEFING
 
     async def test_comms_can_still_keep_a_desk_briefing_quiet(self) -> None:
         with _seams(todo=self._desk(), narrated="<SILENCE>nothing new</SILENCE>") as seams:
-            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+            await deliver_todo_run_result(RUN, MAIL_WOKEN, self.BRIEFING, "final")
 
         seams.send.assert_not_awaited()
         seams.in_app.assert_not_awaited()

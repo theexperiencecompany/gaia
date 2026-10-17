@@ -136,10 +136,10 @@ class TestCapabilityBlock:
 
     def test_schedules_and_event_triggers_read_as_times_not_cron(self) -> None:
         block = build_capability_block()
-        assert "every day at 08:00 in their timezone" in block
+        assert "every day at 07:00 in their timezone" in block
         assert "60 minutes before any calendar event" in block
         assert "10 minutes before any calendar event" in block
-        assert "0 8 * * *" not in block
+        assert "0 7 * * *" not in block
 
     def test_every_trigger_type_is_explained(self) -> None:
         block = build_capability_block()
@@ -169,7 +169,8 @@ class TestCapabilityBlock:
             f"{INBOX_DESK_TITLE}, that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It triages "
             "new mail, opens a tracked todo for every thread where the user owes a reply or is "
             "waiting on one, saves reply drafts without sending them, puts personal events from "
-            "mail on the calendar, and ends with one briefing. The user changes when it runs or "
+            "mail on the calendar, and its morning report becomes a section of the daily brief. "
+            "The user changes when it runs or "
             "what it does by telling GAIA, like any tracked todo."
         )
 

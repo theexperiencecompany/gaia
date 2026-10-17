@@ -173,7 +173,7 @@ def test_the_briefing_opens_with_one_line_of_counts_and_repeats_nothing_unchange
         'Its first line counts what follows, zero parts left out, like "2 need you · 1 waiting '
         '· 2 events today"'
     ) in heading
-    assert heading.startswith("Woken by your schedule, your final report is the user's briefing")
+    assert heading.startswith("Your final report is read in five seconds, and nothing else")
     assert "nothing an earlier briefing or alert reported unless its state changed" in heading
     assert "your reasoning, ids, account numbers or how you classified anything" in heading
     assert "Nothing in any section: say only that nothing is new." in INBOX_DESK_RUN_GUIDANCE
@@ -277,7 +277,8 @@ def test_every_gmail_account_is_worked_and_keeps_its_own_cursor() -> None:
     ) in guidance
     assert "holds the last processed time of each Gmail account, under its id" in guidance
     assert (
-        "create_tracked_todo(gmail_thread_id, gmail_account=<the id of the account it was "
+        "the line the user's morning brief lists it by, gmail_thread_id, "
+        "gmail_account=<the id of the account it was "
         "fetched from>"
     ) in guidance
     assert "set each account's last processed time to the" in guidance
@@ -303,10 +304,14 @@ def test_three_lines_hold_over_every_standing_rule() -> None:
 
 
 def test_a_mail_woken_run_alerts_only_for_what_cannot_wait_for_the_briefing() -> None:
-    (alert,) = [line for line in _step(BRIEFING_STEP) if line.startswith("Woken by new mail")]
+    (alert,) = [line for line in _step(BRIEFING_STEP) if line.startswith("Woken by your schedule")]
     assert (
-        "your final report is an alert in the briefing's form and under its rules, with only "
-        "the Needs you items you "
+        "Woken by your schedule, nobody is sent the report: the user's morning brief lists your "
+        "sub-todos (steps 6 and 8) and today's calendar instead"
+    ) in alert
+    assert (
+        "Woken by new mail, your final report is an alert in this form and under these rules, "
+        "with only the Needs you items you "
         "opened this run and the events you added or proposed for today or tomorrow"
     ) in alert
     assert (
@@ -424,3 +429,14 @@ def test_the_sweep_is_counted_per_address_by_query_json_never_read() -> None:
     assert 'group_count_by="from")' not in step
     assert "from_address" in todo_prompts.INBOX_DESK_SWEEP_FIELDS
     assert {"path", "group_count_by"} <= set(query_json.args)
+
+
+def test_the_desk_leaves_its_findings_as_sub_todos_the_morning_brief_lists() -> None:
+    """The brief lists the desk's sub-todos: threads by who and what, proposals awaiting a yes."""
+    (thread_step,) = _step(THREAD_TODO_STEP)
+    assert 'create_tracked_todo(title="<who> · <what>", like "Priya · pitch deck"' in thread_step
+    (event_step,) = _step(8)
+    assert (
+        'create_tracked_todo(title="Add to calendar: <event> <day> <time>", parent_todo_id='
+        f'this todo\'s id, labels=["{todo_constants.WAITING_FOR_APPROVAL_LABEL}"])'
+    ) in event_step

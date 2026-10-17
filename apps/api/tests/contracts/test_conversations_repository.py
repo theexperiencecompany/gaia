@@ -8,7 +8,7 @@ concrete values against real Mongo.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 import uuid
 
 import pytest
@@ -22,6 +22,7 @@ from app.models.chat_models import (
     SystemPurpose,
 )
 from app.models.conversation_models import ConversationDocument
+from tests.helpers import local_timezone
 
 
 def _uid() -> str:
@@ -1096,3 +1097,106 @@ class TestActivitySignal:
 
         cutoff = datetime.now(UTC) - timedelta(days=1)
         assert await repo.has_activity_since(mine.user_id, cutoff) is False
+
+
+_SINCE = datetime(2026, 10, 14, 3, 0, tzinfo=UTC)
+
+
+def _at(minutes: int) -> str:
+    return (_SINCE + timedelta(minutes=minutes)).isoformat()
+
+
+def _said(kind: str, minutes: int, text: str = "hi") -> MessageModel:
+    return MessageModel(type=kind, response=text, date=_at(minutes))
+
+
+class TestLatestUserMessageSince:
+    async def test_a_user_message_at_the_cutoff_counts(self, repo):
+        user_id = _uid()
+        await repo.create(_doc(user_id=user_id, messages=[_said("user", 0)]))
+
+        assert await repo.latest_user_message_since(user_id, _SINCE) == _SINCE
+
+    async def test_only_the_users_own_later_messages_count(self, repo):
+        user_id = _uid()
+        await repo.create(_doc(user_id=user_id, messages=[_said("user", -1), _said("bot", 5)]))
+        await repo.create(_doc(messages=[_said("user", 5)]))
+
+        assert await repo.latest_user_message_since(user_id, _SINCE) is None
+
+    async def test_the_newest_message_across_conversations_wins(self, repo):
+        user_id = _uid()
+        await repo.create(_doc(user_id=user_id, messages=[_said("user", 3), _said("user", 1)]))
+        await repo.create(_doc(user_id=user_id, messages=[_said("user", 7), _said("bot", 9)]))
+
+        latest = await repo.latest_user_message_since(user_id, _SINCE)
+
+        assert latest == _SINCE + timedelta(minutes=7)
+
+    async def test_a_cutoff_in_another_timezone_is_compared_in_utc(self, repo):
+        user_id = _uid()
+        await repo.create(_doc(user_id=user_id, messages=[_said("user", 1)]))
+        new_york = timezone(timedelta(hours=-5))
+
+        with local_timezone("Asia/Kolkata"):
+            found = await repo.latest_user_message_since(user_id, _SINCE.astimezone(new_york))
+
+        assert found == _SINCE + timedelta(minutes=1)
+
+
+class TestBotRepliesSince:
+    async def _seed(self, repo) -> str:
+        user_id = _uid()
+        await repo.create(
+            _doc(
+                user_id=user_id,
+                source=ConversationSource.TELEGRAM,
+                messages=[
+                    _said("user", 0, "at the cutoff"),
+                    _said("user", 1, "first"),
+                    _said("user", 3, "latest"),
+                    _said("bot", 4, "gaia's reply"),
+                ],
+            )
+        )
+        await repo.create(
+            _doc(
+                user_id=user_id,
+                source=ConversationSource.WHATSAPP,
+                messages=[_said("user", 2, "middle")],
+            )
+        )
+        await repo.create(
+            _doc(user_id=user_id, source=ConversationSource.WEB, messages=[_said("user", 5)])
+        )
+        await repo.create(
+            _doc(source=ConversationSource.TELEGRAM, messages=[_said("user", 5, "someone else")])
+        )
+        return user_id
+
+    async def test_lists_the_users_bot_platform_messages_after_the_cutoff_newest_first(self, repo):
+        user_id = await self._seed(repo)
+
+        rows = await repo.list_bot_replies_since(user_id, _SINCE, limit=10)
+
+        assert [(row.source, row.text) for row in rows] == [
+            ("telegram", "latest"),
+            ("whatsapp", "middle"),
+            ("telegram", "first"),
+        ]
+
+    async def test_the_limit_keeps_the_newest(self, repo):
+        user_id = await self._seed(repo)
+
+        rows = await repo.list_bot_replies_since(user_id, _SINCE, limit=1)
+
+        assert [row.text for row in rows] == ["latest"]
+
+    async def test_a_cutoff_in_another_timezone_is_compared_in_utc(self, repo):
+        user_id = await self._seed(repo)
+        new_york = timezone(timedelta(hours=-5))
+
+        with local_timezone("Asia/Kolkata"):
+            rows = await repo.list_bot_replies_since(user_id, _SINCE.astimezone(new_york), limit=10)
+
+        assert len(rows) == 3

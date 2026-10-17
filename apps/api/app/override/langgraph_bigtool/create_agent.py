@@ -8,6 +8,7 @@ Type/lint errors here are expected: adapted from an external library.
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import dataclasses
 import functools
+import hashlib
 import math
 from typing import Any, cast
 
@@ -63,6 +64,7 @@ from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
+    OPENAI_PROMPT_CACHE_KEY_MAX_CHARS,
     RECURSION_WRAPUP_MIN_STEPS,
     RECURSION_WRAPUP_REMAINING_FRACTION,
 )
@@ -173,8 +175,18 @@ def _bind_session_id(
     if key and _is_openrouter_wire(llm_with_tools):
         return llm_with_tools.bind(session_id=key)
     if key and _is_openai_wire(llm_with_tools):
-        return llm_with_tools.bind(prompt_cache_key=key)
+        return llm_with_tools.bind(prompt_cache_key=_fit_openai_cache_key(key))
     return llm_with_tools
+
+
+def _fit_openai_cache_key(key: str) -> str:
+    """Return key, or its sha256 hex digest (64 characters) when OpenAI's limit would reject it.
+
+    A digest of the same key is the same digest, so the chain still lands on one cache.
+    """
+    if len(key) <= OPENAI_PROMPT_CACHE_KEY_MAX_CHARS:
+        return key
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 def _agent_sticky_key(

@@ -1226,6 +1226,9 @@ importers:
       hono:
         specifier: ^4.12.29
         version: 4.12.29
+      image-size:
+        specifier: ^2.0.4
+        version: 2.0.4
       posthog-node:
         specifier: ^5.51.4
         version: 5.51.4(rxjs@7.8.2)
@@ -13936,6 +13939,11 @@ packages:
   image-size@0.5.5:
     resolution: {integrity: sha512-6TDAlDPZxUFCv+fuOkIoXT/V/f3Qbq8e37p+YOiYrUv3v9cc3/6x78VdfPgFVaB9dZYeLUfKgHRebpkm/oP2VQ==}
     engines: {node: '>=0.10.0'}
+    hasBin: true
+
+  image-size@2.0.4:
+    resolution: {integrity: sha512-QRUkFFsRV/6fuESxb9Vkq+a0LkSrgKXuc2NEqfikiXxxN/G3tjWt5EVUlMaImRBZRZK/jRBEbYvpPYZL8t08Zw==}
+    engines: {node: '>=18'}
     hasBin: true
 
   immutable@5.1.9:
@@ -35776,6 +35784,8 @@ snapshots:
 
   image-size@0.5.5:
     optional: true
+
+  image-size@2.0.4: {}
 
   immutable@5.1.9: {}
 
