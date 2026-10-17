@@ -41,6 +41,10 @@ for (const file of files) {
     slug,
     title: data.title,
     date: data.date,
+    // Optional: when a post is revised, set `updated:` in frontmatter so
+    // Article dateModified (and the visible "Updated" label) reflect reality.
+    // Absent => never revised => dateModified falls back to date.
+    ...(data.updated ? { updated: data.updated } : {}),
     authors: data.authors,
     category: data.category,
     image: data.image,

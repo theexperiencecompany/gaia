@@ -15,8 +15,10 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -27,9 +29,14 @@ import { IntegrationRelatedIntegrations } from "@/features/integrations/componen
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import type { PublicIntegrationResponse } from "@/features/integrations/types";
+import type {
+  CommunityIntegration,
+  PublicIntegrationResponse,
+} from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
+import type { DocsGuideLink } from "@/lib/docs-links";
 import { toast } from "@/lib/toast";
+import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 import { IntegrationRichContent } from "./IntegrationRichContent";
 import { IntegrationUseCases } from "./IntegrationUseCases";
 import { ToolCard } from "./ToolCard";
@@ -37,6 +44,20 @@ import { ToolCard } from "./ToolCard";
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
   comparisonSlug?: string;
+  alternativeSlug?: string;
+  /** Server-fetched so related links render in SSR HTML for crawlers. */
+  initialRelatedIntegrations?: CommunityIntegration[];
+  /** Server-fetched so related links render in SSR HTML for crawlers. */
+  initialRelatedWorkflows?: CommunityWorkflow[];
+  /** Matching automate combos from local JSON (no backend needed). */
+  automateCombos?: Array<{
+    slug: string;
+    toolA: string;
+    toolB: string;
+    tagline: string;
+  }>;
+  /** Curated docs guides for this slug (server-resolved, fallback included). */
+  docsGuides?: readonly DocsGuideLink[];
 }
 
 function IntegrationMetaBar({
@@ -155,6 +176,11 @@ function IntegrationMetaBar({
 export function IntegrationDetailClient({
   integration,
   comparisonSlug,
+  alternativeSlug,
+  initialRelatedIntegrations,
+  initialRelatedWorkflows,
+  automateCombos,
+  docsGuides,
 }: IntegrationDetailClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -380,12 +406,14 @@ export function IntegrationDetailClient({
             integrationId={integration.integrationId}
             integrationName={integration.name}
             variant="section"
+            initialWorkflows={initialRelatedWorkflows}
           />
 
           {/* Rich content sections for SEO and user education */}
           <IntegrationRichContent
             integration={integration}
             comparisonSlug={comparisonSlug}
+            alternativeSlug={alternativeSlug}
           />
 
           {/* Related integrations in the same category */}
@@ -393,7 +421,48 @@ export function IntegrationDetailClient({
             currentSlug={integration.slug}
             category={integration.category}
             integrationName={integration.name}
+            initialIntegrations={initialRelatedIntegrations}
           />
+
+          {/* Matching automate guides: detail -> automate cross-links */}
+          {automateCombos && automateCombos.length > 0 && (
+            <section className="space-y-6 rounded-3xl bg-zinc-900/50 p-8 backdrop-blur-md">
+              <div>
+                <h2 className="mb-2 text-2xl font-medium text-foreground">
+                  Automate {integration.name} with other tools
+                </h2>
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  Step-by-step guides for connecting {integration.name} to the
+                  tools you already use.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {automateCombos.map((combo) => (
+                  <Link
+                    key={combo.slug}
+                    href={`/automate/${combo.slug}`}
+                    className="group rounded-3xl bg-zinc-800 p-4 transition-colors select-none hover:bg-zinc-700/50"
+                  >
+                    <h3 className="mb-1 text-base font-medium text-zinc-100 group-hover:text-primary">
+                      {combo.toolA} + {combo.toolB}
+                    </h3>
+                    <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
+                      {combo.tagline}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Curated docs guides for this integration (server-resolved). */}
+          {docsGuides && docsGuides.length > 0 && (
+            <DocsGuidesSection
+              heading="Guides in the docs"
+              guides={docsGuides}
+              headingClassName="mb-2 text-2xl font-medium text-foreground"
+            />
+          )}
         </div>
       </div>
 

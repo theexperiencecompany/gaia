@@ -5,10 +5,8 @@ import {
   type CommunityWorkflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
-import { useCasesFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
-  generateFAQSchema,
   generateItemListSchema,
   generatePageMetadata,
   generateWebPageSchema,
@@ -57,28 +55,21 @@ export default async function UseCasesPage() {
     { name: "Home", url: siteConfig.url },
     { name: "Use Cases", url: `${siteConfig.url}/use-cases` },
   ]);
-  const itemListInput: Array<{
-    name: string;
-    url: string;
-    description: string;
-  }> = [];
+  const itemListInput: Array<{ name: string; url: string }> = [];
   for (const workflow of communityWorkflows) {
     if (!workflow.slug) continue;
     itemListInput.push({
       name: workflow.title,
       url: `${siteConfig.url}/use-cases/${workflow.slug}`,
-      description: workflow.description || "",
     });
   }
-  const itemListSchema = generateItemListSchema(itemListInput, "Article");
-
-  const faqSchema = generateFAQSchema(useCasesFAQs);
+  const itemListSchema = generateItemListSchema(itemListInput);
 
   return (
     <div className="relative h-fit min-h-screen pt-16 sm:pt-24">
-      <JsonLd
-        data={[webPageSchema, breadcrumbSchema, itemListSchema, faqSchema]}
-      />
+      {/* No FAQPage schema here: this list page renders no visible FAQs,
+          and FAQ rich results require the questions to be on the page. */}
+      <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
 
       <UseCasesPageClient communityWorkflows={communityWorkflows} />
     </div>

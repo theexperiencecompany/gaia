@@ -2,11 +2,9 @@ import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
 import About from "@/features/about/components/About";
-import { manifestoFAQs } from "@/lib/page-faqs";
 import {
   generateAboutPageSchema,
   generateBreadcrumbSchema,
-  generateFAQSchema,
   generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
@@ -47,13 +45,11 @@ export default function Manifesto() {
     { name: "Manifesto", url: `${siteConfig.url}/manifesto` },
   ]);
 
-  const faqSchema = generateFAQSchema(manifestoFAQs);
-
   return (
     <>
-      <JsonLd
-        data={[aboutSchema, webPageSchema, breadcrumbSchema, faqSchema]}
-      />
+      {/* No FAQPage schema here: this page renders no visible FAQs,
+          and FAQ rich results require the questions to be on the page. */}
+      <JsonLd data={[aboutSchema, webPageSchema, breadcrumbSchema]} />
       <About />
     </>
   );

@@ -1,10 +1,9 @@
 import { Button } from "@heroui/button";
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-
 import JsonLd from "@/components/seo/JsonLd";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
@@ -102,13 +101,13 @@ function ToolFavicon({
 export default async function AutomateHubPage({ params }: PageProps) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const [t, tCommon, allCombosRaw] = await Promise.all([
+  const [t, tCommon, allCombos] = await Promise.all([
     getTranslations({ locale, namespace: "automate" }),
     getTranslations({ locale, namespace: "common" }),
     getTranslatedCombos(locale),
   ]);
-
-  const allCombos = allCombosRaw.filter((c) => !c.canonicalSlug);
+  // getTranslatedCombos is _slugs-driven: consolidated victims (which 308 via
+  // canonical-redirects.mjs) are already excluded — no marker filter needed.
 
   const webPageSchema = generateWebPageSchema(
     t("hub_title"),
@@ -129,9 +128,7 @@ export default async function AutomateHubPage({ params }: PageProps) {
     allCombos.slice(0, 50).map((c) => ({
       name: `${t("automate_with_gaia", { toolA: c.toolA, toolB: c.toolB })}`,
       url: `${siteConfig.url}/automate/${c.slug}`,
-      description: c.tagline,
     })),
-    "Article",
   );
 
   // Group by first letter of toolA
@@ -181,7 +178,7 @@ export default async function AutomateHubPage({ params }: PageProps) {
             </h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {grouped[letter].map((combo) => (
-                <Link
+                <SiteLink
                   key={combo.slug}
                   href={`/automate/${combo.slug}`}
                   className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
@@ -206,7 +203,7 @@ export default async function AutomateHubPage({ params }: PageProps) {
                   <p className="line-clamp-2 text-sm leading-relaxed text-zinc-500">
                     {combo.tagline}
                   </p>
-                </Link>
+                </SiteLink>
               ))}
             </div>
           </div>

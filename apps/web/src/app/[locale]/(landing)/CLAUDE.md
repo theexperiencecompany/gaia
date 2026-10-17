@@ -141,7 +141,8 @@ export async function generateMetadata({ params }): Promise<Metadata> {
 **Canonical URLs:**
 - For untranslated pages, `generatePageMetadata({ path })` emits the canonical automatically — never construct URLs manually
 - For translated pages, the canonical MUST be locale-aware (self-referential): use `getLocalizedAlternates(path, locale)` (see Hreflang below). A locale variant must canonical to itself (`/es/my-page`), never to the default-locale URL — otherwise the sitemap lists URLs that disavow themselves ("non-canonical page in sitemap")
-- For near-duplicate pages (glossary terms, synonym slugs), pass the primary slug as `canonicalPath` (3rd arg of `getLocalizedAlternates`, or the `canonicalPath` option of `generatePageMetadata`)
+- For near-duplicate pages (reverse-order combos, synonym slugs, compare/alternative-to same-tool pairs): do NOT use canonical-tag consolidation. Remove the loser's slug from its family `_slugs.json` (the live page set) and add a victim→winner row in `apps/web/canonical-redirects.mjs` — the loser 308-redirects (locale-preserving) before it ever renders, so every rendered page self-canonicalizes. Build internal links to pages that may be consolidated with `canonicalHref()` / `isRedirectedPath()` from `src/lib/canonicalLinks.ts`, never by reading flags off the JSON.
+- Link with `SiteLink` (`src/components/seo/SiteLink.tsx`), not `next/link`: inside the translated families it keeps the visitor's locale (`/es/learn/x` links `/es/compare/y`), everywhere else it stays English.
 
 ---
 
@@ -165,9 +166,9 @@ export async function generateMetadata({ params }) {
   };
 }
 
-// Near-duplicate pages (synonym slug -> primary): pass canonicalPath as the 3rd arg
-// so both canonical and hreflang resolve to the primary, never a non-canonical URL.
-// getLocalizedAlternates(`/learn/${term}`, locale, `/learn/${primarySlug}`)
+// Near-duplicate pages consolidate at the router, not in metadata:
+// the loser 308s via canonical-redirects.mjs and never renders, so every
+// rendered page self-canonicalizes (no canonical override parameter exists).
 ```
 
 **Translated (needs hreflang):** `/compare`, `/alternative-to`, `/automate`, `/for`, `/learn`, `/use-cases`
