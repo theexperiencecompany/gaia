@@ -723,7 +723,7 @@ jobs:
       - name: Check the persistent shared builder exists (self-hosted)
         if: runner.environment == 'self-hosted'
         run: docker buildx inspect gaia-ci >/dev/null || { echo "::error::gaia-ci builder missing — run setup.sh from the private gaia-infra repo (self-hosted-runner/setup.sh)"; exit 1; }
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: runner.environment != 'self-hosted'
       # Rebuild the image on a PR only when its inputs changed: Dockerfile,
       # Python deps, ignore file. Code-only changes rebuild the last COPY layer
