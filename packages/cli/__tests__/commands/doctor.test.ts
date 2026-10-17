@@ -784,6 +784,25 @@ describe("printDoctorReport", () => {
     expect(text).toContain("1 problem");
   });
 
+  it("opens on its heading: the header above already ends with a blank line", () => {
+    let text = "";
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((c) => {
+      text += String(c);
+      return true;
+    });
+
+    printDoctorReport({
+      install: "~/gaia (self-host)",
+      installed: true,
+      results: [],
+    });
+    write.mockRestore();
+
+    expect(stripVTControlCharacters(text).split("\n")[0]).toBe(
+      "Checking ~/gaia (self-host)",
+    );
+  });
+
   it("says a fix shared by consecutive problems once, under the last of them", () => {
     let text = "";
     const write = vi.spyOn(process.stdout, "write").mockImplementation((c) => {
