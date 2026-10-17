@@ -1,21 +1,28 @@
 /**
- * Handler for `gaia update` — show what an update changes, confirm, apply.
+ * Handler for `gaia update` — say whether a newer release is available here,
+ * confirm, apply.
  * @module commands/update/handler
  */
 
 import * as readline from "node:readline";
+import { explainImageGap } from "../../lib/compose-failure.js";
+import { readConfig } from "../../lib/config.js";
+import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
+import { findReleaseImageGap } from "../../lib/image-availability.js";
 import { isInteractive } from "../../lib/non-tty.js";
 import { newerReleaseHint } from "../../lib/release.js";
 import { findInstallRoot } from "../../lib/service-starter.js";
+import { isNewerRelease, releaseVersion } from "../../lib/update-check.js";
 import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
+import { MARK } from "../../ui/constants.js";
 import {
   applyGitUpdate,
   applyReleaseUpdate,
   type ChangeSummary,
+  decideReleaseUpdate,
   isReleaseCurrent,
   planGitUpdate,
   planReleaseUpdate,
-  type ReleasePlan,
 } from "./flow.js";
 
 export interface UpdateOptions {
@@ -37,23 +44,21 @@ function err(line = ""): void {
   process.stderr.write(`${line}\n`);
 }
 
+/** A yes/no question that defaults to no: an update never starts on a stray Enter. */
 async function askConfirm(question: string): Promise<boolean> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
   const answer = await new Promise<string>((resolve) => {
-    rl.question(question, (ans) => resolve(ans));
+    rl.question(`${question} [y/N] `, (ans) => resolve(ans));
   });
   rl.close();
   const normalized = answer.trim().toLowerCase();
-  return normalized === "" || normalized === "y" || normalized === "yes";
+  return normalized === "y" || normalized === "yes";
 }
 
 function printChanges(changes: ChangeSummary): void {
-  for (const [prefix, count] of Object.entries(changes.files)) {
-    out(`    ${prefix}: ${count} file(s)`);
-  }
   for (const commit of changes.commits.slice(0, MAX_LISTED_COMMITS)) {
     out(`    ${commit}`);
   }
@@ -62,52 +67,74 @@ function printChanges(changes: ChangeSummary): void {
   }
 }
 
-function printReleasePlan(plan: ReleasePlan): void {
-  out(`\nGAIA images: ${plan.fromVersion} -> ${plan.toVersion}`);
-  if (plan.checkout === null) {
-    out(
-      "Compose files: unchanged (this install is not a git checkout; replace infra/docker by hand if the release changed it)",
-    );
-    return;
-  }
-  if (plan.checkout.atTag) {
-    out(`Compose files: already at ${plan.checkout.toTag}`);
-    return;
-  }
-  out(`Compose files: ${plan.checkout.fromRef} -> ${plan.checkout.toTag}`);
-  printChanges(plan.checkout.changes);
-}
-
 /** Ask unless --yes; a non-interactive run without --yes only reports. */
-async function confirmed(options: UpdateOptions): Promise<boolean> {
+async function confirmed(
+  options: UpdateOptions,
+  question: string,
+): Promise<boolean> {
   if (options.yes) return true;
   if (!isInteractive()) {
-    out("\nNon-interactive terminal: rerun with --yes to apply.");
+    out("\nNo terminal to confirm in: rerun with --yes to apply.");
     return false;
   }
-  return askConfirm("\nApply and restart now? [Y/n] ");
+  return askConfirm(`\n${question}`);
 }
-
 async function runReleaseUpdate(
   repoPath: string,
   options: UpdateOptions,
 ): Promise<void> {
-  const plan = await planReleaseUpdate(
-    repoPath,
-    options.version ?? GAIA_RELEASE_IMAGE_TAG,
-  );
+  const current = readPinnedGaiaVersion(repoPath);
+  const target = options.version ?? GAIA_RELEASE_IMAGE_TAG;
+  const explicit = options.version !== undefined;
+  // Only a target that would be offered is worth a registry round trip.
+  const worthChecking =
+    explicit ||
+    (releaseVersion(current) !== null && isNewerRelease(target, current));
+  const gap = worthChecking
+    ? await findReleaseImageGap(target, readConfig()?.bots ?? [])
+    : null;
+  const decision = decideReleaseUpdate({ current, target, explicit, gap });
+
+  switch (decision.kind) {
+    case "development-build":
+      out(
+        `This install runs a development build of GAIA (${current}), not a release, so there is nothing to update.`,
+      );
+      out(
+        `To switch it to the ${target} release: gaia update --version ${target}`,
+      );
+      return;
+    case "up-to-date":
+      out(`GAIA ${current} is up to date.`);
+      for (const line of newerReleaseHint(CLI_VERSION)) out(line);
+      return;
+    case "unavailable":
+      out(
+        `${explainImageGap(decision.gap, "gaia up --build").cause} Nothing was changed.`,
+      );
+      if (explicit) process.exitCode = 1;
+      return;
+    case "offer":
+      break;
+  }
+
+  const plan = await planReleaseUpdate(repoPath, target);
   if (isReleaseCurrent(plan)) {
-    out(`Already on GAIA ${plan.toVersion}.`);
-    for (const line of newerReleaseHint(CLI_VERSION)) out(line);
+    out(`GAIA ${current} is up to date.`);
     return;
   }
-  printReleasePlan(plan);
-  out("Volumes, apps/api/.env and infra/docker/.env are kept.");
-  if (!(await confirmed(options))) return;
+  out(
+    decision.downgrade
+      ? `\nSwitch GAIA ${current} back to ${target}`
+      : `\nUpdate available: GAIA ${current} → ${target}`,
+  );
+  out(`What's new: ${RELEASE_NOTES_URL}`);
+  out("Your data and settings are kept.");
+  if (!(await confirmed(options, "Update and restart now?"))) return;
 
   await applyReleaseUpdate(plan, (message) => out(`  ${message}`));
-  out(`\nGAIA is on ${plan.toVersion}. What's new: ${RELEASE_NOTES_URL}`);
-  out("Run 'gaia doctor' to confirm every dependency is ready.");
+  out(`\n${MARK.ok} GAIA is on ${target}.`);
+  out("Run 'gaia doctor' to check that everything is ready.");
 }
 
 async function runGitUpdate(
@@ -122,7 +149,7 @@ async function runGitUpdate(
   out(`\n${changes.commits.length} new commit(s) touch the self-host stack:`);
   printChanges(changes);
   out("The images are rebuilt from this checkout (slow on small machines).");
-  if (!(await confirmed(options))) return;
+  if (!(await confirmed(options, "Pull, rebuild and restart now?"))) return;
 
   await applyGitUpdate(repoPath, (message) => out(`  ${message}`));
   out("\nUpdated and restarted from source.");

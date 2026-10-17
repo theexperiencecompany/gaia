@@ -159,7 +159,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   results.push(await checkMemoryHeadroom());
 
   // 8. Release drift — warns when the images are not this CLI's release.
-  results.push(checkReleaseVersion(ctx.repoPath, ctx.mode));
+  results.push(await checkReleaseVersion(ctx.repoPath, ctx.mode));
 
   return { install: describeInstall(ctx.repoPath, ctx.mode), results };
 }

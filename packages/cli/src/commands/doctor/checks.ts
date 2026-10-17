@@ -35,7 +35,11 @@ import {
   fetchWithTimeout,
   readSetupEndpoint,
 } from "../../lib/setup-endpoints.js";
-import { GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
+import {
+  isNewerRelease,
+  refreshLatestRelease,
+  releaseVersion,
+} from "../../lib/update-check.js";
 import type { CheckResult } from "./types";
 
 /** How a failed check influences the exit code. */
@@ -680,13 +684,14 @@ export async function checkMemoryHeadroom(): Promise<CheckResult> {
 }
 
 /**
- * Warns when a self-host install runs other images than the release this CLI
- * ships. Reads infra/docker/.env only, so it costs no network round-trip.
+ * Warns only when a newer release is published for this computer; a
+ * development build (latest, a commit) is never told to "update" backwards.
  */
-export function checkReleaseVersion(
+export async function checkReleaseVersion(
   repoPath: string | null,
   mode: SetupMode | null,
-): CheckResult {
+  latestRelease: () => Promise<string | null> = refreshLatestRelease,
+): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "gaia-version",
     label: "GAIA version",
@@ -703,19 +708,19 @@ export function checkReleaseVersion(
     };
   }
   const pinned = readPinnedGaiaVersion(repoPath);
-  if (pinned === GAIA_RELEASE_IMAGE_TAG) {
+  if (releaseVersion(pinned) === null) {
+    return { ...base, state: "ok", detail: `development build (${pinned})` };
+  }
+  const latest = await latestRelease();
+  if (latest && isNewerRelease(latest, pinned)) {
     return {
       ...base,
-      state: "ok",
-      detail: `${pinned}, the release this CLI ships`,
+      state: "fail",
+      detail: `${latest} is available (this install runs ${pinned})`,
+      fix: "Run 'gaia update'. Your data and settings are kept.",
     };
   }
-  return {
-    ...base,
-    state: "fail",
-    detail: `Running ${pinned}; this CLI ships ${GAIA_RELEASE_IMAGE_TAG}`,
-    fix: "Run 'gaia update' to move to it (keeps volumes and .env files).",
-  };
+  return { ...base, state: "ok", detail: pinned };
 }
 
 /** One result per enabled chat bot; a bot is optional, so a failure only warns. */

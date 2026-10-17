@@ -15,6 +15,7 @@ import {
   readDockerComposePortOverrides,
   readPinnedGaiaVersion,
 } from "../../lib/env-writer.js";
+import type { ReleaseImageGap } from "../../lib/image-availability.js";
 import {
   assertReleaseTagPublished,
   pinReleaseImages,
@@ -24,6 +25,7 @@ import {
   pullSelfhostImages,
   startServices,
 } from "../../lib/service-starter.js";
+import { isNewerRelease, releaseVersion } from "../../lib/update-check.js";
 
 /** Paths whose change matters for a self-host deploy. */
 export const WATCH_PATHS = ["apps/web", "apps/api", "infra/docker"] as const;
@@ -31,8 +33,35 @@ export const WATCH_PATHS = ["apps/web", "apps/api", "infra/docker"] as const;
 /** What changed between two git refs, limited to {@link WATCH_PATHS}. */
 export interface ChangeSummary {
   commits: string[];
-  /** Changed file count per watch path. */
-  files: Record<string, number>;
+}
+
+/** What `gaia update` does about a release, decided before anything changes. */
+export type ReleaseDecision =
+  /** The install runs a non-release build (latest, a commit) and no --version named one. */
+  | { kind: "development-build" }
+  /** The target is not newer than what runs, and no --version asked for it. */
+  | { kind: "up-to-date" }
+  /** The target's images are missing for this computer. */
+  | { kind: "unavailable"; gap: ReleaseImageGap }
+  | { kind: "offer"; downgrade: boolean };
+
+/**
+ * Offer an update only when the target is a newer release whose images exist
+ * here; an explicit --version may move anywhere its images exist.
+ */
+export function decideReleaseUpdate(options: {
+  current: string;
+  target: string;
+  explicit: boolean;
+  gap: ReleaseImageGap | null;
+}): ReleaseDecision {
+  const { current, target, explicit, gap } = options;
+  if (!explicit) {
+    if (releaseVersion(current) === null) return { kind: "development-build" };
+    if (!isNewerRelease(target, current)) return { kind: "up-to-date" };
+  }
+  if (gap) return { kind: "unavailable", gap };
+  return { kind: "offer", downgrade: isNewerRelease(current, target) };
 }
 
 /** Where a release-mode update moves the install from and to. */
@@ -45,7 +74,6 @@ export interface ReleasePlan {
     fromRef: string;
     toTag: string;
     atTag: boolean;
-    changes: ChangeSummary;
   } | null;
 }
 
@@ -79,16 +107,14 @@ async function summarizeChanges(
   repoPath: string,
   range: string,
 ): Promise<ChangeSummary> {
-  const [log, names] = await Promise.all([
-    git(repoPath, ["log", range, "--oneline", "--", ...WATCH_PATHS]),
-    git(repoPath, ["diff", "--name-only", range, "--", ...WATCH_PATHS]),
+  const log = await git(repoPath, [
+    "log",
+    range,
+    "--oneline",
+    "--",
+    ...WATCH_PATHS,
   ]);
-  const files: Record<string, number> = {};
-  for (const file of lines(names)) {
-    const prefix = WATCH_PATHS.find((p) => file.startsWith(p));
-    if (prefix) files[prefix] = (files[prefix] ?? 0) + 1;
-  }
-  return { commits: lines(log), files };
+  return { commits: lines(log) };
 }
 
 /**
@@ -131,7 +157,6 @@ export async function planReleaseUpdate(
       fromRef,
       toTag,
       atTag: head === tagCommit,
-      changes: await summarizeChanges(repoPath, `HEAD..${toTag}`),
     },
   };
 }
@@ -169,18 +194,18 @@ export async function applyReleaseUpdate(
     }
   }
 
-  onStatus(`Pulling the GAIA ${plan.toVersion} images...`);
+  onStatus(`Downloading GAIA ${plan.toVersion}...`);
   await pullSelfhostImages(plan.repoPath, plan.toVersion);
 
   if (plan.checkout && !plan.checkout.atTag) {
-    onStatus(`Checking out ${plan.checkout.toTag}...`);
+    onStatus(`Updating the setup files to ${plan.toVersion}...`);
     await git(plan.repoPath, ["checkout", "--detach", plan.checkout.toTag]);
   }
 
-  onStatus(`Pinning GAIA_VERSION=${plan.toVersion} in infra/docker/.env...`);
+  onStatus(`Switching to GAIA ${plan.toVersion}...`);
   pinReleaseImages(plan.repoPath, plan.toVersion);
 
-  onStatus("Restarting services...");
+  onStatus("Restarting GAIA...");
   await startServices(
     plan.repoPath,
     "selfhost",

@@ -19,6 +19,7 @@ vi.mock("../../src/lib/version.js", () => ({
 
 import {
   applyReleaseUpdate,
+  decideReleaseUpdate,
   isReleaseCurrent,
   planReleaseUpdate,
 } from "../../src/commands/update/flow.js";
@@ -156,5 +157,72 @@ describe("gaia update (release mode)", () => {
     expect(fs.readFileSync(path.join(install, COMPOSE), "utf-8")).toBe(
       "hand edited",
     );
+  });
+});
+describe("decideReleaseUpdate", () => {
+  const missing = { kind: "not-published", image: "gaia-web:v0.6.0" } as const;
+
+  // cli-audit 25: an install on `latest` was offered "latest -> v0.6.0", a downgrade to unpublished images.
+  it("offers nothing to a development build", () => {
+    expect(
+      decideReleaseUpdate({
+        current: "latest",
+        target: "v0.6.0",
+        explicit: false,
+        gap: missing,
+      }),
+    ).toEqual({ kind: "development-build" });
+  });
+
+  it("offers nothing when the target is not newer", () => {
+    expect(
+      decideReleaseUpdate({
+        current: "v0.6.0",
+        target: "v0.6.0",
+        explicit: false,
+        gap: null,
+      }),
+    ).toEqual({ kind: "up-to-date" });
+    expect(
+      decideReleaseUpdate({
+        current: "v0.7.0",
+        target: "v0.6.0",
+        explicit: false,
+        gap: null,
+      }),
+    ).toEqual({ kind: "up-to-date" });
+  });
+
+  it("offers nothing when the newer release's images are missing here", () => {
+    expect(
+      decideReleaseUpdate({
+        current: "v0.5.0",
+        target: "v0.6.0",
+        explicit: false,
+        gap: missing,
+      }),
+    ).toEqual({ kind: "unavailable", gap: missing });
+  });
+
+  it("offers a newer release whose images exist", () => {
+    expect(
+      decideReleaseUpdate({
+        current: "v0.5.0",
+        target: "v0.6.0",
+        explicit: false,
+        gap: null,
+      }),
+    ).toEqual({ kind: "offer", downgrade: false });
+  });
+
+  it("lets an explicit --version move back, and says it is a downgrade", () => {
+    expect(
+      decideReleaseUpdate({
+        current: "v0.7.0",
+        target: "v0.6.0",
+        explicit: true,
+        gap: null,
+      }),
+    ).toEqual({ kind: "offer", downgrade: true });
   });
 });

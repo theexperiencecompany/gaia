@@ -6,6 +6,7 @@
  */
 
 import { serviceName } from "./display-names.js";
+import type { ReleaseImageGap } from "./image-availability.js";
 
 /** What failed and what to do next. */
 export interface ComposeFailure {
@@ -34,17 +35,38 @@ function imageLabel(name: string): string {
   return role ? `GAIA's ${role} image (${name})` : `the ${name} image`;
 }
 
+/** Why a release's image cannot run here, and how to get GAIA anyway. */
+export function explainImageGap(
+  gap: ReleaseImageGap,
+  rebuildCommand: string,
+): ComposeFailure {
+  const [name = gap.image, tag = ""] = gap.image.split(":");
+  if (gap.kind === "wrong-cpu") {
+    return {
+      cause: `${imageLabel(name)} at ${tag} has no build for this computer's processor (${gap.arch}).`,
+      next: `Build it on this machine instead: ${rebuildCommand} (15-30 minutes).`,
+    };
+  }
+  return {
+    cause: `GAIA ${tag} isn't published: ${imageLabel(name)} doesn't exist in the registry.`,
+    next: `Update the CLI (curl -fsSL https://heygaia.io/install.sh | sh) and run it again, or build from source: ${rebuildCommand}.`,
+  };
+}
+
 type Matcher = (text: string, ctx: FailureContext) => ComposeFailure | null;
 
 const archMissing: Matcher = (text, ctx) => {
   const arch = /no matching manifest for linux\/([\w]+)/.exec(text)?.[1];
   if (!arch) return null;
   const image = gaiaImage(text);
-  const what = image
-    ? `${imageLabel(image.name)} at ${image.tag}`
-    : "One of GAIA's images";
+  if (image) {
+    return explainImageGap(
+      { kind: "wrong-cpu", image: `${image.name}:${image.tag}`, arch },
+      ctx.rebuildCommand,
+    );
+  }
   return {
-    cause: `${what} has no build for this computer's processor (${arch}).`,
+    cause: `One of GAIA's images has no build for this computer's processor (${arch}).`,
     next: `Build it on this machine instead: ${ctx.rebuildCommand} (15-30 minutes).`,
   };
 };
@@ -59,10 +81,10 @@ const imageMissing: Matcher = (text, ctx) => {
   }
   const image = gaiaImage(text);
   if (image) {
-    return {
-      cause: `GAIA ${image.tag} isn't published: ${imageLabel(image.name)} doesn't exist in the registry.`,
-      next: `Update the CLI (curl -fsSL https://heygaia.io/install.sh | sh) and run it again, or build from source: ${ctx.rebuildCommand}.`,
-    };
+    return explainImageGap(
+      { kind: "not-published", image: `${image.name}:${image.tag}` },
+      ctx.rebuildCommand,
+    );
   }
   const local = /No such image: ([\w./-]+:[\w.-]+)/.exec(text)?.[1];
   return {

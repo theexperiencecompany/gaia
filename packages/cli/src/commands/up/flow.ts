@@ -18,6 +18,7 @@ import {
   resolveRecordedInstall,
   type UpFlags,
 } from "../../lib/answers.js";
+import { explainImageGap } from "../../lib/compose-failure.js";
 import { readConfig, updateConfig } from "../../lib/config.js";
 import { joinedDockerGroupThisRun } from "../../lib/docker-group.js";
 import {
@@ -27,11 +28,13 @@ import {
   reachableWebUrls,
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
+import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
 import {
   delay,
   dependencyStepProgress,
   runPortChecks,
 } from "../../lib/flow-utils.js";
+import { findReleaseImageGap } from "../../lib/image-availability.js";
 import { saveLlmProvider, validateLlmFlags } from "../../lib/llm-flags.js";
 import { checkGit, ensureDocker, ensureGit } from "../../lib/prerequisites.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
@@ -42,7 +45,7 @@ import {
   startServices,
 } from "../../lib/service-starter.js";
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
-import { CLI_VERSION } from "../../lib/version.js";
+import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import type { CLIStore } from "../../ui/store.js";
 
 export async function runUpFlow(
@@ -83,6 +86,23 @@ export async function runUpFlow(
   } catch (e) {
     store.setError(e as Error);
     return;
+  }
+
+  // 1b. Images — fail in seconds, not after a clone, when the release cannot
+  //     run on this computer.
+  if (!options.build) {
+    const tag = needsClone
+      ? GAIA_RELEASE_IMAGE_TAG
+      : readPinnedGaiaVersion(targetPath);
+    store.setStatus(
+      `Checking that GAIA ${tag} is available for this computer...`,
+    );
+    const gap = await findReleaseImageGap(tag, readConfig()?.bots ?? []);
+    if (gap) {
+      const { cause, next } = explainImageGap(gap, UP_REBUILD_COMMAND);
+      store.setError(new Error(`${cause}\n${next}`));
+      return;
+    }
   }
 
   // 2. Ports — conflict-derived alternatives, then explicit flag overrides
