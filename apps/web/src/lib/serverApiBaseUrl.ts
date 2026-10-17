@@ -6,7 +6,20 @@
  *
  * Falls back to the public var for local dev (where the two are the same); returns null instead of guessing localhost.
  */
+/**
+ * Builds that have no backend to reach (PR previews, the self-host image) set
+ * GAIA_PRERENDER_WITHOUT_BACKEND=1: their prerender treats the API as
+ * unconfigured and API-backed pages fill on first request. Runtime reads ignore it.
+ */
+function prerendersWithoutBackend(): boolean {
+  return (
+    process.env.GAIA_PRERENDER_WITHOUT_BACKEND === "1" &&
+    process.env.NEXT_PHASE === "phase-production-build"
+  );
+}
+
 export function getServerApiBaseUrl(): string | null {
+  if (prerendersWithoutBackend()) return null;
   const apiUrl =
     process.env.API_BASE_URL_INTERNAL?.trim() ||
     process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
