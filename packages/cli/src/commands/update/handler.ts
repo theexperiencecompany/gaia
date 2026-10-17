@@ -5,9 +5,9 @@
 
 import * as readline from "node:readline";
 import { isInteractive } from "../../lib/non-tty.js";
-import { CLI_INSTALL_COMMAND } from "../../lib/release.js";
+import { newerReleaseHint } from "../../lib/release.js";
 import { findInstallRoot } from "../../lib/service-starter.js";
-import { GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
+import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import {
   applyGitUpdate,
   applyReleaseUpdate,
@@ -98,9 +98,7 @@ async function runReleaseUpdate(
   );
   if (isReleaseCurrent(plan)) {
     out(`Already on GAIA ${plan.toVersion}.`);
-    out(
-      `For a newer release, update the CLI first (${CLI_INSTALL_COMMAND}), then rerun 'gaia update'.`,
-    );
+    for (const line of newerReleaseHint(CLI_VERSION)) out(line);
     return;
   }
   printReleasePlan(plan);

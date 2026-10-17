@@ -15,8 +15,40 @@ import { GAIA_RELEASE_IMAGE_TAG } from "./version.js";
 
 export const GAIA_REPO_URL = "https://github.com/theexperiencecompany/gaia.git";
 
-export const CLI_INSTALL_COMMAND =
-  "curl -fsSL https://heygaia.io/install.sh | sh";
+const INSTALL_SCRIPT_URL = "https://heygaia.io/install.sh";
+
+/** The npm dist-tag a CLI version is published to; install.sh takes it as GAIA_CHANNEL. */
+export type CliChannel = "latest" | "beta";
+
+/** A beta CLI version, X.Y.Z-beta.N; publish-cli.yml sends every other release to latest. */
+const BETA_VERSION_RE = /^\d+\.\d+\.\d+-beta\.\d+$/;
+
+export function cliChannel(version: string): CliChannel {
+  return BETA_VERSION_RE.test(version) ? "beta" : "latest";
+}
+
+export function cliInstallCommand(channel: CliChannel): string {
+  return channel === "beta"
+    ? `curl -fsSL ${INSTALL_SCRIPT_URL} | GAIA_CHANNEL=beta sh`
+    : `curl -fsSL ${INSTALL_SCRIPT_URL} | sh`;
+}
+
+/**
+ * How to get past the release a CLI version installs: a newer CLI on its own
+ * channel, and for a beta also the way back to stable.
+ */
+export function newerReleaseHint(version: string): string[] {
+  const channel = cliChannel(version);
+  const hint = [
+    `For a newer release, update the CLI first (${cliInstallCommand(channel)}), then rerun 'gaia update'.`,
+  ];
+  if (channel === "beta") {
+    hint.push(
+      `This is a beta CLI. To move to the stable channel once a stable release newer than ${version} is out, install it with ${cliInstallCommand("latest")} and rerun 'gaia update'.`,
+    );
+  }
+  return hint;
+}
 
 /** `git ls-remote --exit-code` status when no ref matched. */
 const LS_REMOTE_NO_MATCH = 2;
@@ -56,7 +88,7 @@ export async function assertReleaseTagPublished(
   if (result.exitCode === LS_REMOTE_NO_MATCH) {
     throw new Error(
       `GAIA ${imageTag} has no published release: ${remote} has no tag ${gitTag}.\n` +
-        `Install a released CLI (${CLI_INSTALL_COMMAND}) and rerun.`,
+        `Install a released CLI (${cliInstallCommand("latest")}) and rerun.`,
     );
   }
   throw new Error(
