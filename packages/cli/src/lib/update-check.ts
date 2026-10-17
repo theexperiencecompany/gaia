@@ -45,11 +45,6 @@ function readCache(): UpdateCheckCache | null {
   return cache.arch === dockerArch() ? cache : null;
 }
 
-/** The newest installable release from the last check, without touching the network. */
-export function cachedLatestRelease(): string | null {
-  return readCache()?.latest ?? null;
-}
-
 /** Ask npm for the newest stable CLI, then GHCR whether its images exist for this CPU. */
 async function fetchLatestInstallableRelease(): Promise<string | null> {
   const res = await fetch(NPM_LATEST_URL, {

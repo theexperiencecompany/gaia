@@ -30,15 +30,6 @@ export const SETUP_STEPS: readonly StepDef[] = [
   { id: "Finished", label: "Done" },
 ];
 
-/** Only the steps `gaia up` runs, named for what each does. */
-export const UP_STEPS: readonly StepDef[] = [
-  { id: "Prerequisites", label: "Check" },
-  { id: "Repository Setup", label: "Download" },
-  { id: "Environment Setup", label: "Configure" },
-  { id: "Project Setup", label: "Start" },
-  { id: "Finished", label: "Done" },
-];
-
 interface ShellProps {
   children: ReactNode;
   status: string;

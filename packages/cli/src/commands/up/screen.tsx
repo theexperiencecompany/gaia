@@ -1,244 +1,144 @@
 /**
- * Ink screen for `gaia up`. Reuses the shared step components and renders
- * only the states the up flow drives; all prompts are pre-answered by the
- * values layer except the explicit Docker-install confirmation.
+ * Ink screen for `gaia up`: the step list (each row with its own timer), the
+ * one prompt it may ask, and a single card once GAIA is ready.
  * @module commands/up/screen
  */
 
 import { Box, Text } from "ink";
 import type React from "react";
-import { Shell, UP_STEPS } from "../../ui/components/Shell.js";
+import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
+import type { RunStep } from "../../lib/run-steps.js";
+import { Header } from "../../ui/components/Header.js";
+import { StepList } from "../../ui/components/StepList.js";
 import {
-  EnvSetupSpinnerStep,
   ErrorStep,
   InstallConfirmStep,
   PortConflictStep,
-  RepositoryProgressStep,
-  SystemChecksStep,
 } from "../../ui/components/shared-steps.js";
-import { BOX_BORDER, THEME_COLOR } from "../../ui/constants.js";
-import { DependencyInstallStep } from "../../ui/screens/init.js";
+import { BOX_BORDER, MARK, THEME_COLOR } from "../../ui/constants.js";
 import type { CLIState, CLIStore } from "../../ui/store.js";
 import { useCLIState } from "../../ui/use-cli-state.js";
 import {
-  codeSandboxSummary,
-  DOCKER_GROUP_NOTE,
-  savedProviderSummary,
-  upHeadline,
-} from "./flow.js";
+  buildUpSummary,
+  NEXT_COMMANDS,
+  type SummaryRow,
+  type UpOutcome,
+} from "./summary.js";
 
-const BUILD_WAIT_HINT =
-  "This can take 5-30 min on 4 GB RAM — please do not cancel.";
+const ROW_LABEL_WIDTH = 16;
+const COMMAND_WIDTH = 14;
+const COMMAND_COLUMN_WIDTH = 30;
 
-const UpFinishedStep: React.FC<{
-  webUrl: string;
-  reachableUrls: string[];
-  apiUrl: string;
-  noStart: boolean;
-  stillStarting: boolean;
-  savedProvider?: string;
-  codeSandbox: boolean;
-  setupComplete: boolean;
-  joinedDockerGroup: boolean;
-}> = ({
-  webUrl,
-  reachableUrls,
-  apiUrl,
-  noStart,
-  stillStarting,
-  savedProvider,
-  codeSandbox,
-  setupComplete,
-  joinedDockerGroup,
-}) => {
-  const success = !noStart && !stillStarting;
+const ROW_COLOR: Record<NonNullable<SummaryRow["tone"]>, string | undefined> = {
+  primary: undefined,
+  warn: "yellow",
+  dim: "gray",
+};
+
+/** A row's text, with its URL bold, underlined and cyan. */
+const RowText: React.FC<{ row: SummaryRow }> = ({ row }) => {
+  const color = row.tone ? ROW_COLOR[row.tone] : undefined;
+  if (!row.url) return <Text color={color}>{row.text}</Text>;
+  const [before, after] = row.text.split(row.url);
   return (
-    <Box
-      flexDirection="column"
-      marginTop={2}
-      borderStyle={BOX_BORDER}
-      borderColor={success ? "green" : THEME_COLOR}
-      padding={1}
-    >
-      <Text bold color={success ? "green" : THEME_COLOR}>
-        {upHeadline({ noStart, stillStarting })}
+    <Text color={color}>
+      {before}
+      <Text color="cyan" bold underline>
+        {row.url}
       </Text>
+      {after}
+    </Text>
+  );
+};
 
-      {success && (
-        <Box marginTop={1}>
-          <Text color="green">✓ All services started</Text>
+const SummaryCard: React.FC<{ outcome: UpOutcome }> = ({ outcome }) => {
+  const summary = buildUpSummary(outcome);
+  const accent = summary.tone === "success" ? "green" : THEME_COLOR;
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Box
+        flexDirection="column"
+        borderStyle={BOX_BORDER}
+        borderColor={accent}
+        paddingX={2}
+        paddingY={1}
+      >
+        <Text bold color={accent}>
+          {summary.tone === "success" ? `${MARK.ok} ` : ""}
+          {summary.headline}
+        </Text>
+        <Box flexDirection="column" marginTop={1}>
+          {summary.rows.map((row) => (
+            <Box key={row.label}>
+              <Box width={ROW_LABEL_WIDTH} flexShrink={0}>
+                <Text bold={row.tone === "primary"}>{row.label}</Text>
+              </Box>
+              <RowText row={row} />
+            </Box>
+          ))}
         </Box>
-      )}
-
-      {stillStarting && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>
-            Containers are up but not answering yet — they are still
-            initializing.
-          </Text>
-          <Text>
-            Run{" "}
-            <Text color="cyan" bold>
-              gaia status
-            </Text>{" "}
-            to check progress. Services keep running.
-          </Text>
-        </Box>
-      )}
-
-      <Box marginTop={1} flexDirection="column">
-        <Text>Open GAIA at:</Text>
-        {reachableUrls.map((url) => (
-          <Text key={url} color="cyan" bold>
-            {"  "}
-            {url}
-          </Text>
+      </Box>
+      <Box flexDirection="row" flexWrap="wrap" marginTop={1} paddingX={2}>
+        {NEXT_COMMANDS.map(([command, purpose]) => (
+          <Box key={command} width={COMMAND_COLUMN_WIDTH}>
+            <Box width={COMMAND_WIDTH}>
+              <Text color={THEME_COLOR}>{command}</Text>
+            </Box>
+            <Text color="gray">{purpose}</Text>
+          </Box>
         ))}
-        <Text>
-          API:{" "}
-          <Text color="cyan" bold>
-            {apiUrl}
-          </Text>
-        </Text>
-      </Box>
-
-      {!setupComplete && (
-        <Box marginTop={1}>
-          <Text>
-            Finish setup in your browser:{" "}
-            <Text color="cyan" bold underline>
-              {webUrl}/setup
-            </Text>
-          </Text>
-        </Box>
-      )}
-
-      <Box marginTop={1}>
-        <Text color="gray">{codeSandboxSummary(codeSandbox)}</Text>
-      </Box>
-
-      {savedProvider && (
-        <Box marginTop={1}>
-          <Text color="gray">{savedProviderSummary(savedProvider)}</Text>
-        </Box>
-      )}
-
-      {joinedDockerGroup && (
-        <Box marginTop={1}>
-          <Text color="yellow">{DOCKER_GROUP_NOTE}</Text>
-        </Box>
-      )}
-
-      {noStart && (
-        <Box marginTop={1}>
-          <Text color="gray">Start services later with 'gaia start'.</Text>
-        </Box>
-      )}
-
-      <Box marginTop={1}>
-        <Text color="gray">
-          Run 'gaia doctor' anytime · gaia logs · gaia stop · gaia status
-        </Text>
       </Box>
     </Box>
   );
 };
 
 /** The install and port-conflict prompts, the only input gaia up asks for. */
-const UpPromptStep: React.FC<{ state: CLIState; store: CLIStore }> = ({
+const UpPrompt: React.FC<{ state: CLIState; store: CLIStore }> = ({
   state,
   store,
 }) => {
-  switch (state.inputRequest?.id) {
-    case "port_conflicts":
-      return state.data.portConflicts ? (
-        <PortConflictStep
-          portResults={state.data.portConflicts}
-          onAccept={() => store.submitInput("accept")}
-          onAbort={() => store.submitInput("abort")}
-        />
-      ) : null;
-    default:
-      return (
-        <InstallConfirmStep
-          inputId={state.inputRequest?.id}
-          onConfirm={() => store.submitInput("install")}
-          onDecline={() => store.submitInput("decline")}
-        />
-      );
+  if (state.inputRequest?.id === "port_conflicts") {
+    return state.data.portConflicts ? (
+      <PortConflictStep
+        portResults={state.data.portConflicts}
+        onAccept={() => store.submitInput("accept")}
+        onAbort={() => store.submitInput("abort")}
+      />
+    ) : null;
   }
-};
-
-/** Image build and container start progress, shown until the instance is up. */
-const UpStartStep: React.FC<{ state: CLIState }> = ({ state }) => {
-  const phase = state.data.dependencyPhase || "";
-  const starting =
-    (state.step === "Project Setup" || state.step === "Finished") &&
-    !state.data.finished &&
-    phase !== "";
-  if (!starting) return null;
   return (
-    <DependencyInstallStep
-      title="Starting GAIA"
-      phase={phase}
-      progress={state.data.dependencyProgress || 0}
-      isComplete={state.data.dependencyComplete || false}
-      logs={state.data.dependencyLogs}
-      hint={
-        phase.toLowerCase().includes("building") ? BUILD_WAIT_HINT : undefined
-      }
-    />
-  );
-};
-
-/** The finish summary, once gaia up has nothing left to do. */
-const UpSummaryStep: React.FC<{ state: CLIState }> = ({ state }) => {
-  if (state.step !== "Finished" || !state.data.finished) return null;
-  const noStart = state.data.upNoStart === true;
-  return (
-    <UpFinishedStep
-      webUrl={state.data.upWebUrl}
-      reachableUrls={state.data.upReachableUrls}
-      apiUrl={state.data.upApiUrl}
-      noStart={noStart}
-      stillStarting={!noStart && state.data.upStillStarting === true}
-      savedProvider={state.data.upSavedProvider}
-      codeSandbox={state.data.upCodeSandbox === true}
-      setupComplete={state.data.upSetupComplete === true}
-      joinedDockerGroup={state.data.upJoinedDockerGroup === true}
+    <InstallConfirmStep
+      inputId={state.inputRequest?.id}
+      missing={state.data[MISSING_PREREQUISITES_KEY]}
+      onConfirm={() => store.submitInput("install")}
+      onDecline={() => store.submitInput("decline")}
     />
   );
 };
 
 export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
-  const idle = !state.inputRequest;
+  const steps = (state.data.steps ?? []) as RunStep[];
+  const outcome = state.data.upOutcome as UpOutcome | undefined;
+  const logPath = state.data.logPath as string | undefined;
+  const finished = state.data.finished === true && outcome !== undefined;
 
   return (
-    <Shell status={state.status} step={state.step} steps={UP_STEPS}>
-      {state.step === "Prerequisites" && state.data.checks && (
-        <SystemChecksStep checks={state.data.checks} />
+    <Box flexDirection="column" width="100%">
+      <Header />
+      <StepList
+        steps={steps}
+        waiting={state.inputRequest !== null}
+        status={state.status}
+      />
+      <UpPrompt state={state} store={store} />
+      {logPath && !finished && (
+        <Box marginTop={1} marginLeft={2}>
+          <Text color="gray">Full log: {logPath}</Text>
+        </Box>
       )}
-
-      <UpPromptStep state={state} store={store} />
-
-      {state.step === "Repository Setup" && idle && (
-        <RepositoryProgressStep
-          title="Downloading GAIA"
-          progress={state.data.repoProgress}
-          phase={state.data.repoPhase}
-        />
-      )}
-
-      {state.step === "Environment Setup" && idle && (
-        <EnvSetupSpinnerStep status={state.status} />
-      )}
-
-      <UpStartStep state={state} />
-
-      <UpSummaryStep state={state} />
-
+      {finished && <SummaryCard outcome={outcome} />}
       {state.error && <ErrorStep message={state.error.message} />}
-    </Shell>
+    </Box>
   );
 };

@@ -68,7 +68,7 @@ describe("runCompose", () => {
     expect(fs.readFileSync(path.join(dir, "args"), "utf-8")).toMatch(
       /^compose --progress json -f docker-compose.selfhost.yml up -d/,
     );
-    expect(phases.at(-1)?.label).toBe("Starting GAIA: 1 of 1 services started");
+    expect(phases.at(-1)?.label).toBe("Starting GAIA: 1 of 1 services up");
   });
 
   it("fails with the plain cause and the log path, the raw output kept in the log", async () => {

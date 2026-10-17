@@ -19,7 +19,7 @@ import {
 import { createLineSplitter, newLogPath } from "./logs.js";
 
 /** First Compose whose JSON progress carries byte counts (current/total). */
-export const MIN_COMPOSE_VERSION = "2.29.1";
+const MIN_COMPOSE_VERSION = "2.29.1";
 
 /** Plain (non-JSON) output lines kept for explaining a failure. */
 const KEPT_PLAIN_LINES = 40;
@@ -27,7 +27,7 @@ const KEPT_PLAIN_LINES = 40;
 let composeVersionChecked: Promise<void> | undefined;
 
 /** @throws Error naming both versions when Compose is too old for JSON progress. */
-export function assertComposeVersion(): Promise<void> {
+function assertComposeVersion(): Promise<void> {
   composeVersionChecked ??= (async () => {
     const { stdout } = await execa("docker", ["compose", "version", "--short"]);
     const version = semver.coerce(stdout.trim());
@@ -41,6 +41,12 @@ export function assertComposeVersion(): Promise<void> {
   return composeVersionChecked;
 }
 
+/** What a successful run did. */
+export interface ComposeRunResult {
+  /** Services this run started; 0 when all were already running. */
+  startedServices: number;
+}
+
 export interface ComposeRunOptions {
   cwd: string;
   /** Extra environment; it outranks infra/docker/.env in compose interpolation. */
@@ -50,6 +56,8 @@ export interface ComposeRunOptions {
   logName: string;
   /** The command that retries with a local build, named in image errors. */
   rebuildCommand: string;
+  /** Told where the raw output goes, before compose starts. */
+  onLogFile?: (logPath: string) => void;
   /** Called on every progress change with the phase and the finished steps. */
   onProgress?: (phase: ComposePhase, finished: readonly string[]) => void;
 }
@@ -71,10 +79,11 @@ function parseEvent(line: string): ComposeEvent | null {
 export async function runCompose(
   args: readonly string[],
   options: ComposeRunOptions,
-): Promise<void> {
+): Promise<ComposeRunResult> {
   await assertComposeVersion();
   const logPath = newLogPath(options.logName);
   const log = fs.createWriteStream(logPath);
+  options.onLogFile?.(logPath);
   const state = createComposeProgress();
   const plainLines: string[] = [];
 
@@ -122,4 +131,5 @@ export async function runCompose(
       logPath,
     );
   }
+  return { startedServices: state.started.size };
 }

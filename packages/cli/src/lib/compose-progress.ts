@@ -37,8 +37,10 @@ export interface ComposeProgressState {
   layers: Map<string, Layer>;
   /** Build steps (BuildKit vertices named `[n/m] ...`) -> completed yet. */
   steps: Map<string, { name: string; done: boolean }>;
-  /** Service -> started yet. */
+  /** Service -> up yet (started by this run, or already running). */
   containers: Map<string, boolean>;
+  /** Services this run started; an already-running one is not among them. */
+  started: Set<string>;
   /** Finished steps worth showing, newest last. */
   finished: string[];
   /** Error messages compose reported, in order. */
@@ -53,6 +55,7 @@ export function createComposeProgress(): ComposeProgressState {
     layers: new Map(),
     steps: new Map(),
     containers: new Map(),
+    started: new Set(),
     finished: [],
     errors: [],
     downloadPercent: 0,
@@ -66,7 +69,7 @@ const BUILD_STEP_RE = /^\[[^\]]*\d+\/\d+\]/;
 const CONTAINER_NAME_RE = /^gaia-(?:selfhost|dev)-(.+)-\d+$/;
 
 /** The last path segment of an image ref, e.g. gaia-web:v0.7.0. */
-export function shortImageName(ref: string): string {
+function shortImageName(ref: string): string {
   return ref.slice(ref.lastIndexOf("/") + 1);
 }
 
@@ -112,17 +115,16 @@ function applyContainerEvent(
   e: ComposeEvent,
 ): void {
   const service = containerService(e.id ?? "");
-  const started = e.text === "Started" || e.text === "Healthy";
+  // "Running": compose found it up already; "Healthy": a dependency check passed.
+  const up = ["Started", "Running", "Healthy"].includes(e.text ?? "");
   if (e.status === "Error") {
     state.errors.push(`${service}: ${e.details ?? e.text ?? "error"}`);
   }
-  if (started && !state.containers.get(service)) {
+  if (e.text === "Started" && !state.started.has(service)) {
+    state.started.add(service);
     state.finished.push(`Started ${serviceName(service)}`);
   }
-  state.containers.set(
-    service,
-    state.containers.get(service) === true || started,
-  );
+  state.containers.set(service, state.containers.get(service) === true || up);
 }
 
 /** Fold one compose event into the progress state (mutates and returns it). */
@@ -148,7 +150,7 @@ export function applyComposeEvent(
 }
 
 /** 1.3 GB, 412 MB: decimal units, as registries and `docker images` show sizes. */
-export function formatBytes(bytes: number): string {
+function formatBytes(bytes: number): string {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
   return `${Math.round(bytes / 1e6)} MB`;
 }
@@ -203,7 +205,7 @@ export function describeComposeProgress(
   if (containers.length > 0) {
     const started = containers.filter(Boolean).length;
     return {
-      label: `Starting GAIA: ${started} of ${containers.length} services started`,
+      label: `Starting GAIA: ${started} of ${containers.length} services up`,
       percent: Math.floor((started / containers.length) * 100),
     };
   }

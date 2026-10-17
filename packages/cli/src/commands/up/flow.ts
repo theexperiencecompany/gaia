@@ -1,10 +1,11 @@
 /**
  * `gaia up` — one-command self-hosted setup.
  *
- * Flow: ensure prerequisites (Docker incl. install offer) → resolve target
- * repo (recorded install or fresh clone) → env-setup selfhost pipeline with
- * pre-sourced answers (flags → saved config → defaults) → compose pull-first
- * start → print the URL + browser wizard pointer.
+ * Flow: ensure prerequisites (Git and Docker, one install offer) → check the
+ * release's images exist for this computer → resolve the install (recorded or
+ * fresh clone) → env-setup selfhost pipeline with pre-sourced answers (flags →
+ * saved config → defaults) → compose start → wait for GAIA to answer → save a
+ * flagged AI provider → the summary card. Each phase is one row of the step list.
  * @module commands/up/flow
  */
 
@@ -29,16 +30,23 @@ import {
 } from "../../lib/endpoints.js";
 import { runEnvSetup } from "../../lib/env-setup.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
-import {
-  delay,
-  dependencyStepProgress,
-  runPortChecks,
-} from "../../lib/flow-utils.js";
+import { runPortChecks } from "../../lib/flow-utils.js";
 import { findReleaseImageGap } from "../../lib/image-availability.js";
-import { saveLlmProvider, validateLlmFlags } from "../../lib/llm-flags.js";
-import { checkGit, ensureDocker, ensureGit } from "../../lib/prerequisites.js";
+import {
+  LLM_PROVIDER_NAMES,
+  saveLlmProvider,
+  validateLlmFlags,
+} from "../../lib/llm-flags.js";
+import { ensurePrerequisites } from "../../lib/prerequisite-install.js";
 import { waitForUpReadiness } from "../../lib/readiness.js";
 import { cloneRelease, GAIA_REPO_URL } from "../../lib/release.js";
+import {
+  failActiveStep,
+  finishStep,
+  initSteps,
+  startStep,
+  updateStep,
+} from "../../lib/run-steps.js";
 import {
   detectSetupMode,
   isGaiaCheckout,
@@ -47,6 +55,78 @@ import {
 import { readSetupEndpoint } from "../../lib/setup-endpoints.js";
 import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import type { CLIStore } from "../../ui/store.js";
+import type { UpOutcome } from "./summary.js";
+
+/** The command a missing-image error points `gaia up` users to. */
+const UP_REBUILD_COMMAND = "gaia up --build";
+
+/** Shown under a source build: it is long, and stopping it is safe. */
+const BUILD_HINT = "usually 10-20 minutes · safe to leave running";
+
+/** The rows `gaia up` shows, in order; start and wait drop out with --no-start. */
+function upSteps(options: UpFlags, needsClone: boolean) {
+  const provider = options.llmProvider
+    ? LLM_PROVIDER_NAMES[options.llmProvider]
+    : null;
+  return [
+    {
+      id: "check",
+      label: "Checking Git and Docker",
+      doneLabel: "Git and Docker are ready",
+    },
+    needsClone
+      ? {
+          id: "download",
+          label: "Downloading GAIA",
+          doneLabel: "Downloaded GAIA",
+        }
+      : {
+          id: "download",
+          label: "Finding your install",
+          doneLabel: "Using your install",
+        },
+    {
+      id: "configure",
+      label: "Configuring GAIA",
+      doneLabel: "Configured GAIA",
+    },
+    ...(options.noStart
+      ? []
+      : [
+          options.build
+            ? {
+                id: "start",
+                label: "Building GAIA (first time only)",
+                doneLabel: "Built and started GAIA",
+              }
+            : {
+                id: "start",
+                label: "Starting GAIA",
+                doneLabel: "Started GAIA",
+              },
+          {
+            id: "wait",
+            label: "Waiting for GAIA to answer",
+            doneLabel: "GAIA is answering",
+          },
+        ]),
+    ...(provider
+      ? [
+          {
+            id: "provider",
+            label: `Checking your ${provider} key`,
+            doneLabel: `Saved your ${provider} key`,
+          },
+        ]
+      : []),
+  ];
+}
+
+/** Record a failure: the running row turns red and the error is shown under the list. */
+function fail(store: CLIStore, error: Error): void {
+  failActiveStep(store);
+  store.setError(error);
+}
 
 export async function runUpFlow(
   store: CLIStore,
@@ -55,105 +135,66 @@ export async function runUpFlow(
   // Fail loud on contradictory flags before any side effect — every message
   // names the flag that fixes it.
   validateLlmFlags(options);
+  const runStartedAt = Date.now();
 
   const recordedInstall = resolveRecordedInstall();
   const targetPath = recordedInstall ?? DEFAULT_INSTALL_DIR;
+  const needsClone = !isGaiaCheckout(targetPath);
 
   // Seed the values layer BEFORE any waitForInput can block: every prompt the
   // pipeline raises resolves from flags → saved config → defaults.
   store.pushAnswerResolver(createUpAnswerResolver({ repoPath: targetPath }));
+  initSteps(store, upSteps(options, needsClone));
 
-  // 1. Prerequisites — git (needed when cloning) and Docker, each with an
-  //    install offer on apt-based Linux.
+  // 1. Prerequisites, the release's images, and ports.
   store.setStep("Prerequisites");
-  store.setStatus("Checking system requirements...");
-
-  const needsClone = !isGaiaCheckout(targetPath);
-  const consent = { assumeYes: options.yes === true };
+  startStep(store, "check");
   try {
-    if (needsClone) {
-      await ensureGit(store, consent);
-    } else {
-      // An existing install needs no clone: git is reported, not required.
-      const gitStatus = await checkGit();
-      store.updateData("checks", {
-        git: gitStatus === "success" ? gitStatus : "missing",
-      });
-    }
-    if ((await ensureDocker(store, consent)) === "relaunch") {
-      return;
-    }
+    const readiness = await ensurePrerequisites(store, {
+      needGit: needsClone,
+      assumeYes: options.yes === true,
+    });
+    if (readiness === "relaunch") return;
   } catch (e) {
-    store.setError(e as Error);
+    fail(store, e as Error);
     return;
   }
-
-  // 1b. Images — fail in seconds, not after a clone, when the release cannot
-  //     run on this computer.
-  if (!options.build) {
-    const tag = needsClone
-      ? GAIA_RELEASE_IMAGE_TAG
-      : readPinnedGaiaVersion(targetPath);
-    store.setStatus(
-      `Checking that GAIA ${tag} is available for this computer...`,
-    );
-    const gap = await findReleaseImageGap(tag, readConfig()?.bots ?? []);
-    if (gap) {
-      const { cause, next } = explainImageGap(gap, UP_REBUILD_COMMAND);
-      store.setError(new Error(`${cause}\n${next}`));
-      return;
-    }
+  if (
+    !options.build &&
+    !(await checkReleaseImages(store, targetPath, needsClone))
+  ) {
+    return;
   }
-
-  // 2. Ports — conflict-derived alternatives, then explicit flag overrides
-  //    win (user intent beats automatic fallback).
   const portOverrides = await runPortChecks(store, "selfhost");
   if (portOverrides === null) {
+    failActiveStep(store);
     return;
   }
   Object.assign(portOverrides, portOverridesFromFlags(options));
 
-  // 3. Never rewrite a developer-mode checkout's .env; an unconfigured or
-  //    self-host one (a half-finished first run) is safe to resume.
+  // Never rewrite a developer-mode checkout's .env; an unconfigured or
+  // self-host one (a half-finished first run) is safe to resume.
   if (
     !needsClone &&
     targetPath !== recordedInstall &&
     !options.forceDevTree &&
     (await detectSetupMode(targetPath)) === "developer"
   ) {
-    store.setError(
+    fail(
+      store,
       new Error(
-        `${targetPath} is configured as a developer checkout (apps/api/.env is in developer mode).\n` +
-          "'gaia up' would overwrite its environment files.\n" +
-          "Re-run with --force-dev-tree to proceed anyway.",
+        `${targetPath} is set up for development (apps/api/.env is in developer mode), and 'gaia up' would overwrite its settings.\n` +
+          "Run it with --force-dev-tree to go ahead anyway.",
       ),
     );
     return;
   }
+  finishStep(store, "check");
 
-  // 4. Repository — reuse the recorded/existing install or clone fresh.
+  // 2. The install: the recorded/existing one, or a fresh clone of this CLI's release.
   store.setStep("Repository Setup");
-  if (!needsClone) {
-    store.setStatus(`Using your install at ${targetPath}`);
-    await delay(500);
-  } else {
-    store.setStatus(`Downloading GAIA into ${targetPath}`);
-    store.updateData("repoProgress", 0);
-    store.updateData("repoPhase", "Connecting to GitHub...");
-    try {
-      await cloneRelease(targetPath, GAIA_REPO_URL, (progress, phase) => {
-        store.updateData("repoProgress", progress);
-        if (phase) store.updateData("repoPhase", phase);
-      });
-    } catch (e) {
-      store.setError(
-        new Error(
-          `Couldn't download GAIA into ${targetPath}: ${(e as Error).message}`,
-        ),
-      );
-      return;
-    }
-  }
+  startStep(store, "download");
+  if (!(await prepareInstall(store, targetPath, needsClone))) return;
   // Record the install before anything else can fail, so a rerun resumes
   // this checkout instead of tripping over it. The sandbox choice is saved
   // here too: every compose start reads it from the config.
@@ -162,57 +203,138 @@ export async function runUpFlow(
       ? { repoPath: targetPath }
       : { repoPath: targetPath, codeSandbox: options.codeSandbox },
   );
+  finishStep(
+    store,
+    "download",
+    needsClone ? undefined : `Using your install at ${targetPath}`,
+  );
 
-  // 5. Environment — selfhost pipeline with pre-sourced answers; prompts
-  //    never block because the answer resolver covers them.
+  // 3. Settings — selfhost pipeline with pre-sourced answers.
+  store.setStep("Environment Setup");
+  startStep(store, "configure");
   await runEnvSetup(store, targetPath, "selfhost", portOverrides, {
     llmProvider: options.llmProvider,
     domain: options.domain,
   });
   if (store.currentState.error) {
+    failActiveStep(store);
     return;
   }
+  finishStep(store, "configure");
 
   const webPort = portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
-  const webUrl = primaryWebUrl(webPort, options.domain);
-  const reachableUrls = reachableWebUrls(webPort, options.domain);
-
-  // 6. Start — pull-first fast path, local build fallback.
+  const outcome: UpOutcome = {
+    webUrl: primaryWebUrl(webPort, options.domain),
+    reachableUrls: reachableWebUrls(webPort, options.domain),
+    noStart: options.noStart === true,
+    stillStarting: false,
+    setupComplete: false,
+    codeSandbox: readConfig()?.codeSandbox === true,
+    joinedDockerGroup: joinedDockerGroupThisRun(),
+    elapsedMs: 0,
+    startedServices: 0,
+  };
   if (options.noStart) {
-    store.setStep("Finished");
-    store.setStatus(
-      "Environment configured. Start services later with 'gaia start'.",
-    );
-    finishUp(store, targetPath, webUrl, reachableUrls, { noStart: true });
+    finishUp(store, targetPath, {
+      ...outcome,
+      elapsedMs: Date.now() - runStartedAt,
+    });
     return;
   }
 
+  // 4. Start, then wait for GAIA to answer (a timeout still exits 0).
+  store.setStep("Project Setup");
   try {
-    await startSelfhostServices(store, targetPath, portOverrides, options);
+    outcome.startedServices = await startSelfhostServices(
+      store,
+      targetPath,
+      portOverrides,
+      options,
+    );
   } catch (e) {
-    store.setError(e as Error);
+    fail(store, e as Error);
     return;
   }
-
-  // Compose returning is not the stack answering. Probe localhost: the proxy
-  // answers there even before a GAIA_DOMAIN resolves. A timeout exits 0.
+  startStep(store, "wait");
   const apiUrl = localApiUrl("selfhost", portOverrides);
   const readiness = await waitForUpReadiness(store, { apiUrl, webPort });
+  if (readiness.ready) finishStep(store, "wait");
+  else updateStep(store, "wait", { state: "failed", endedAt: Date.now() });
+  outcome.stillStarting = !readiness.ready;
+  outcome.setupComplete = readiness.ready && (await isSetupComplete(apiUrl));
 
-  if (
-    !(await saveFlaggedProvider(store, targetPath, options, readiness.ready))
-  ) {
+  // 5. The flagged AI provider, checked by the API's live probe before saving.
+  const providerError = await saveFlaggedProvider(
+    store,
+    targetPath,
+    options,
+    readiness.ready,
+  );
+  if (!providerError && options.llmProvider) {
+    outcome.savedProvider = options.llmProvider;
+  }
+  finishUp(store, targetPath, {
+    ...outcome,
+    elapsedMs: Date.now() - runStartedAt,
+  });
+  if (providerError) {
+    store.setError(providerError);
     return;
   }
+  if (readiness.ready) openSetupWizard(outcome.webUrl, options);
+}
 
-  finishUp(store, targetPath, webUrl, reachableUrls, {
-    noStart: false,
-    savedProvider: options.llmProvider,
-    stillStarting: !readiness.ready,
-    setupComplete: readiness.ready && (await isSetupComplete(apiUrl)),
+/**
+ * Fail in seconds, not after a clone, when the release cannot run on this
+ * computer. Returns false after recording the error.
+ */
+async function checkReleaseImages(
+  store: CLIStore,
+  targetPath: string,
+  needsClone: boolean,
+): Promise<boolean> {
+  const tag = needsClone
+    ? GAIA_RELEASE_IMAGE_TAG
+    : readPinnedGaiaVersion(targetPath);
+  store.setStatus(
+    `Checking that GAIA ${tag} is available for this computer...`,
+  );
+  const gap = await findReleaseImageGap(tag, readConfig()?.bots ?? []);
+  if (!gap) return true;
+  const { cause, next } = explainImageGap(gap, UP_REBUILD_COMMAND);
+  fail(store, new Error(`${cause}\n${next}`));
+  return false;
+}
+
+/** Clone this CLI's release when there is no install yet. Returns false after recording the error. */
+async function prepareInstall(
+  store: CLIStore,
+  targetPath: string,
+  needsClone: boolean,
+): Promise<boolean> {
+  if (!needsClone) return true;
+  updateStep(store, "download", {
+    detail: "Connecting to GitHub...",
+    percent: 0,
   });
-
-  if (readiness.ready) openSetupWizard(webUrl, options);
+  try {
+    await cloneRelease(targetPath, GAIA_REPO_URL, (percent, phase) => {
+      updateStep(
+        store,
+        "download",
+        phase ? { percent, detail: phase } : { percent },
+      );
+    });
+  } catch (e) {
+    fail(
+      store,
+      new Error(
+        `Couldn't download GAIA into ${targetPath}: ${(e as Error).message}`,
+      ),
+    );
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -229,36 +351,36 @@ function openSetupWizard(webUrl: string, options: UpFlags): void {
 
 /**
  * Save the `--llm-provider` the run was given into the now-running instance.
- * Returns false after recording the error when it could not be saved.
+ * Returns the error to show when it was not saved, else null.
  */
 async function saveFlaggedProvider(
   store: CLIStore,
   repoPath: string,
   options: UpFlags,
   ready: boolean,
-): Promise<boolean> {
+): Promise<Error | null> {
   const { llmProvider } = options;
-  if (!llmProvider) return true;
+  if (!llmProvider) return null;
+  const name = LLM_PROVIDER_NAMES[llmProvider];
+  startStep(store, "provider");
   if (!ready) {
-    store.setError(
-      new Error(
-        `GAIA did not answer in time, so --llm-provider ${llmProvider} was not saved. Once 'gaia status' shows it healthy, run 'gaia up' again with the same flags.`,
-      ),
+    failActiveStep(store);
+    return new Error(
+      `GAIA didn't answer in time, so your ${name} key wasn't saved.\n` +
+        "Once 'gaia status' shows it running, run 'gaia up' again with the same flags.",
     );
-    return false;
   }
-  store.setStatus("Saving the AI provider...");
   try {
     await saveLlmProvider(repoPath, { ...options, llmProvider });
   } catch (e) {
-    store.setError(
-      new Error(
-        `Could not save --llm-provider ${llmProvider}: ${(e as Error).message}`,
-      ),
+    failActiveStep(store);
+    return new Error(
+      `Your ${name} key wasn't saved: ${(e as Error).message}\n` +
+        `Check the key and run 'gaia up --llm-provider ${llmProvider} --llm-key <key>' again, or add it in Finish setup above.`,
     );
-    return false;
   }
-  return true;
+  finishStep(store, "provider");
+  return null;
 }
 
 /**
@@ -273,39 +395,32 @@ async function startSelfhostServices(
   repoPath: string,
   portOverrides: Record<number, number>,
   options: UpFlags,
-): Promise<void> {
-  store.setStep("Project Setup");
-  store.updateData(
-    "dependencyPhase",
-    options.build ? "Building GAIA from source" : "Getting GAIA's images",
-  );
-  store.updateData("dependencyProgress", 0);
-  store.updateData("dependencyLogs", []);
-  store.updateData("dependencyComplete", false);
-  store.setStatus(RESUME_HINT);
-
-  await startServices(
+): Promise<number> {
+  startStep(store, "start", options.build ? { hint: BUILD_HINT } : {});
+  const { startedServices } = await startServices(
     repoPath,
     "selfhost",
-    () => store.setStatus(RESUME_HINT),
+    (status) => updateStep(store, "start", { detail: status }),
     portOverrides,
-    dependencyStepProgress(store),
+    (phase) =>
+      updateStep(store, "start", {
+        detail: phase.label,
+        percent: phase.percent,
+      }),
     // A rerun keeps the images it has; `gaia update` refreshes them.
-    options.build
-      ? { build: true, rebuildCommand: UP_REBUILD_COMMAND }
-      : { pull: "missing", rebuildCommand: UP_REBUILD_COMMAND },
+    {
+      ...(options.build ? { build: true } : { pull: "missing" as const }),
+      rebuildCommand: UP_REBUILD_COMMAND,
+      onLogFile: (logPath) => store.updateData("logPath", logPath),
+    },
   );
-  store.updateData("dependencyPhase", "GAIA's services are running");
-  store.updateData("dependencyProgress", 100);
-  store.updateData("dependencyComplete", true);
+  finishStep(
+    store,
+    "start",
+    startedServices === 0 ? "GAIA was already running" : undefined,
+  );
+  return startedServices;
 }
-
-/** What `gaia up` says while Docker works: stopping is safe, a rerun resumes. */
-const RESUME_HINT =
-  "Ctrl+C stops here; run 'gaia up' again to pick up where it left off.";
-
-/** The command a missing-image error points `gaia up` users to. */
-const UP_REBUILD_COMMAND = "gaia up --build";
 
 /**
  * Whether the browser wizard has nothing left to do (an admin and a working
@@ -317,45 +432,8 @@ async function isSetupComplete(apiUrl: string): Promise<boolean> {
   return "data" in status && !status.data.needs_setup;
 }
 
-/** What a finished `gaia up` reached: configured only, started but not answering, or running. */
-export function upHeadline(outcome: {
-  noStart: boolean;
-  stillStarting: boolean;
-}): string {
-  if (outcome.noStart) return "GAIA is configured. Nothing was started.";
-  if (outcome.stillStarting) return "GAIA is still starting...";
-  return "GAIA is ready!";
-}
-
-/** One line on the finished screen naming the AI provider `--llm-provider` saved. */
-export function savedProviderSummary(provider: string): string {
-  return `AI provider: ${provider} saved (change it any time in Settings → Providers & Tools)`;
-}
-
-/** One line on the finished screen saying how agent code runs on this instance. */
-export function codeSandboxSummary(enabled: boolean): string {
-  return enabled
-    ? "Code execution: local sandbox (the host Docker socket is mounted into the API and worker)"
-    : "Code execution: off until you save an E2B key, or rerun with --code-sandbox";
-}
-
-/** What the finished screen says when this run added the user to the docker group. */
-export const DOCKER_GROUP_NOTE =
-  "Your user was added to the 'docker' group. Other terminals get it after you log out and back in (or run 'newgrp docker'); until then, 'gaia status' there can't reach Docker.";
-
-/** Record the install and move to the Finished step. */
-function finishUp(
-  store: CLIStore,
-  repoPath: string,
-  webUrl: string,
-  reachableUrls: string[],
-  flags?: {
-    noStart?: boolean;
-    savedProvider?: string;
-    stillStarting?: boolean;
-    setupComplete?: boolean;
-  },
-): void {
+/** Record the install and hand the outcome to the summary card. */
+function finishUp(store: CLIStore, repoPath: string, outcome: UpOutcome): void {
   // A partial update: the saved sandbox choice must survive a finished run.
   updateConfig({
     version: CLI_VERSION,
@@ -364,19 +442,8 @@ function finishUp(
       (store.currentState.data.envMethod as "manual" | "infisical") || "manual",
     repoPath,
   });
-
   store.updateData("setupMode", "selfhost");
-  store.updateData("upCodeSandbox", readConfig()?.codeSandbox === true);
-  store.updateData("upWebUrl", webUrl);
-  store.updateData("upReachableUrls", reachableUrls);
-  store.updateData("upApiUrl", `${webUrl}/api/v1`);
-  store.updateData("upNoStart", flags?.noStart === true);
-  // Services started but never answered within the readiness budget — the
-  // finished screen must say so instead of claiming GAIA is running.
-  store.updateData("upStillStarting", flags?.stillStarting === true);
-  store.updateData("upSetupComplete", flags?.setupComplete === true);
-  store.updateData("upSavedProvider", flags?.savedProvider);
-  store.updateData("upJoinedDockerGroup", joinedDockerGroupThisRun());
+  store.updateData("upOutcome", outcome);
   store.updateData("finished", true);
   store.setStep("Finished");
 }

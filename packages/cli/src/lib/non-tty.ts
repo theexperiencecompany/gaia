@@ -1,4 +1,23 @@
+import { MARK } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
+import {
+  formatElapsed,
+  type RunStep,
+  type RunStepState,
+  STEPS_KEY,
+} from "./run-steps.js";
+
+/** One plain line for a step that just started, finished or failed. */
+function plainStepLine(step: RunStep): string | null {
+  const took =
+    step.startedAt !== undefined && step.endedAt !== undefined
+      ? ` (${formatElapsed(step.endedAt - step.startedAt)})`
+      : "";
+  if (step.state === "active") return `  ${step.label}...`;
+  if (step.state === "done") return `${MARK.ok} ${step.doneLabel}${took}`;
+  if (step.state === "failed") return `${MARK.fail} ${step.label}${took}`;
+  return null;
+}
 
 /**
  * True only when both stdin and stdout are connected to a real TTY.
@@ -36,8 +55,17 @@ export function attachPlainReporter(store: CLIStore, resumedStep = ""): void {
   let lastStatus = "";
   let lastErrorMsg = "";
 
+  const stepStates = new Map<string, RunStepState>();
   store.on("change", (state) => {
-    if (state.step && state.step !== lastStep) {
+    const steps = (state.data[STEPS_KEY] ?? []) as RunStep[];
+    for (const step of steps) {
+      if (stepStates.get(step.id) === step.state) continue;
+      stepStates.set(step.id, step.state);
+      const line = plainStepLine(step);
+      if (line) console.info(line);
+    }
+    // A run with a step list reports through it; the bare step names add nothing.
+    if (steps.length === 0 && state.step && state.step !== lastStep) {
       lastStep = state.step;
       console.info(`\n[${state.step}]`);
     }

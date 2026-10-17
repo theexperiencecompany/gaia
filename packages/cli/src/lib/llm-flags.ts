@@ -113,33 +113,52 @@ export function saveProviderArgs(
 /** The env var app.scripts.save_provider reads the key from. */
 const API_KEY_ENV = "GAIA_PROVIDER_API_KEY";
 
+/** How the finished screen names each provider. */
+export const LLM_PROVIDER_NAMES: Record<LlmProvider, string> = {
+  openrouter: "OpenRouter",
+  gemini: "Gemini",
+  openai: "OpenAI",
+  ollama: "Ollama",
+  custom: "custom provider",
+};
+
+/** save_provider's refusal line: "Could not save <provider>: <why>". */
+const REFUSAL_RE = /Could not save \w+: (.+)/;
+
 /**
- * Save the flagged provider into the running instance's credential store.
+ * Save the flagged provider into the running instance's credential store,
+ * after the API's live probe accepted it (the probe the setup wizard runs).
  *
- * @throws Error carrying the API's refusal (an unreachable endpoint, a private URL).
+ * @throws Error whose message is the API's refusal alone, e.g. "OpenAI rejected the key: ...".
  */
 export async function saveLlmProvider(
   repoPath: string,
   flags: LlmFlags & { llmProvider: LlmProvider },
 ): Promise<void> {
   const dockerDir = path.join(repoPath, "infra/docker");
-  await runCommand(
-    "docker",
-    [
-      ...selfhostComposeArgs(dockerDir),
-      "exec",
-      "-T",
-      "-e",
-      API_KEY_ENV,
-      "gaia-backend",
-      "python",
-      "-m",
-      "app.scripts.save_provider",
-      ...saveProviderArgs(flags),
-    ],
-    dockerDir,
-    undefined,
-    undefined,
-    { [API_KEY_ENV]: flags.llmKey ?? "" },
-  );
+  try {
+    await runCommand(
+      "docker",
+      [
+        ...selfhostComposeArgs(dockerDir),
+        "exec",
+        "-T",
+        "-e",
+        API_KEY_ENV,
+        "gaia-backend",
+        "python",
+        "-m",
+        "app.scripts.save_provider",
+        ...saveProviderArgs(flags),
+      ],
+      dockerDir,
+      undefined,
+      undefined,
+      { [API_KEY_ENV]: flags.llmKey ?? "" },
+    );
+  } catch (error) {
+    const refusal = REFUSAL_RE.exec((error as Error).message)?.[1];
+    if (refusal) throw new Error(refusal, { cause: error });
+    throw error;
+  }
 }

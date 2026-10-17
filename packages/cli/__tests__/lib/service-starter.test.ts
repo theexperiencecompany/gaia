@@ -71,7 +71,7 @@ function composeArgs(call = 0): string[] {
 
 function startSelfhost(
   options?: Parameters<typeof startServices>[5],
-): Promise<void> {
+): Promise<unknown> {
   return startServices(
     "/no/such/repo",
     "selfhost",

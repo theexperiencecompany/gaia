@@ -181,6 +181,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+      # First boot runs migrations and loads models; on a small ARM box that
+      # outlasts 5 x 30s and compose fails the services waiting on a healthy API.
+      start_period: 10m
+      start_interval: 5s
 
   arq_worker:
     logging: *default_logging

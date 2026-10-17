@@ -127,7 +127,7 @@ describe("describeComposeProgress while building and starting", () => {
     ]);
 
     expect(phases.at(-1)).toEqual({
-      label: "Starting GAIA: 1 of 2 services started",
+      label: "Starting GAIA: 1 of 2 services up",
       percent: 50,
     });
     expect(state.finished).toEqual(["Started Web proxy"]);

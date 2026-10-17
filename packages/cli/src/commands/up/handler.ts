@@ -5,47 +5,32 @@
 
 import { runCommandUI } from "../../lib/command-runner.js";
 import type { LlmProvider } from "../../lib/llm-flags.js";
+import { MARK } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
-import {
-  codeSandboxSummary,
-  DOCKER_GROUP_NOTE,
-  runUpFlow,
-  savedProviderSummary,
-  upHeadline,
-} from "./flow.js";
+import { runUpFlow } from "./flow.js";
+import { buildUpSummary, NEXT_COMMANDS, type UpOutcome } from "./summary.js";
 
+const ROW_LABEL_WIDTH = 16;
+const COMMAND_WIDTH = 14;
+
+function out(line = ""): void {
+  process.stdout.write(`${line}\n`);
+}
+
+/** The same card the Ink screen shows, as plain text for a non-TTY run. */
 export function printUpSummary(store: CLIStore): void {
-  const data = store.currentState.data;
-  if (data.error || !data.finished) return;
-  const webUrl = data.upWebUrl as string;
-  const apiUrl = data.upApiUrl as string;
-  const noStart = data.upNoStart === true;
-  const stillStarting = !noStart && data.upStillStarting === true;
-  console.info(`\n${upHeadline({ noStart, stillStarting })}`);
-  if (noStart) {
-    console.info("  Start it with 'gaia start'.");
-  } else {
-    if (stillStarting) {
-      console.info("  Containers are up but not answering yet.");
-      console.info("  Run 'gaia status' to check progress.");
-    }
-    console.info("  Open GAIA at:");
-    for (const url of data.upReachableUrls as string[]) {
-      console.info(`    ${url}`);
-    }
-    console.info(`  API: ${apiUrl}`);
+  const outcome = store.currentState.data.upOutcome as UpOutcome | undefined;
+  if (!outcome) return;
+  const summary = buildUpSummary(outcome);
+  out();
+  out(`${summary.tone === "success" ? `${MARK.ok} ` : ""}${summary.headline}`);
+  for (const row of summary.rows) {
+    out(`  ${row.label.padEnd(ROW_LABEL_WIDTH)}${row.text}`);
   }
-  if (data.upSetupComplete !== true) {
-    console.info(`Finish setup in your browser: ${webUrl}/setup`);
+  out();
+  for (const [command, purpose] of NEXT_COMMANDS) {
+    out(`  ${command.padEnd(COMMAND_WIDTH)}${purpose}`);
   }
-  if (data.upSavedProvider) {
-    console.info(savedProviderSummary(data.upSavedProvider as string));
-  }
-  console.info(codeSandboxSummary(data.upCodeSandbox === true));
-  if (data.upJoinedDockerGroup === true) console.info(DOCKER_GROUP_NOTE);
-  console.info(
-    "Next: gaia doctor — run 'gaia doctor' anytime to verify your installation",
-  );
 }
 
 export async function runUp(

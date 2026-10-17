@@ -1,6 +1,10 @@
 import type { NetworkInterfaceInfo } from "node:os";
 import { describe, expect, it } from "vitest";
-import { primaryWebUrl, reachableWebUrls } from "../../src/lib/endpoints.js";
+import {
+  browsesFromElsewhere,
+  primaryWebUrl,
+  reachableWebUrls,
+} from "../../src/lib/endpoints.js";
 
 function iface(
   address: string,
@@ -47,7 +51,7 @@ describe("reachableWebUrls", () => {
 
 describe("primaryWebUrl", () => {
   it("points a browser on another machine at the host's LAN address", () => {
-    expect(primaryWebUrl(3000, undefined, INTERFACES)).toBe(
+    expect(primaryWebUrl(3000, undefined, INTERFACES, true)).toBe(
       "http://192.168.64.7:3000",
     );
   });
@@ -59,8 +63,25 @@ describe("primaryWebUrl", () => {
   });
 
   it("falls back to localhost on a host with no LAN address", () => {
-    expect(primaryWebUrl(3000, undefined, { lo: INTERFACES.lo })).toBe(
+    expect(primaryWebUrl(3000, undefined, { lo: INTERFACES.lo }, true)).toBe(
       "http://localhost:3000",
     );
+  });
+
+  it("points a browser on this machine at localhost, the address the setup link uses", () => {
+    expect(primaryWebUrl(3000, undefined, INTERFACES, false)).toBe(
+      "http://localhost:3000",
+    );
+  });
+});
+
+describe("browsesFromElsewhere", () => {
+  it("is true over SSH and on a headless Linux host, false on a desktop", () => {
+    expect(browsesFromElsewhere({ SSH_CONNECTION: "1 2 3 4" }, "darwin")).toBe(
+      true,
+    );
+    expect(browsesFromElsewhere({}, "linux")).toBe(true);
+    expect(browsesFromElsewhere({ DISPLAY: ":0" }, "linux")).toBe(false);
+    expect(browsesFromElsewhere({}, "darwin")).toBe(false);
   });
 });

@@ -103,7 +103,8 @@ describe("explainComposeFailure", () => {
       UP,
     );
 
-    expect(failure.cause).toBe("MongoDB started but never became healthy.");
+    expect(failure.cause).toBe("GAIA's MongoDB didn't start.");
+    expect(failure.service).toBe("mongo");
   });
 
   it.each([
@@ -134,14 +135,14 @@ describe("explainComposeFailure", () => {
 });
 
 describe("ComposeError", () => {
-  it("reads as cause, next step, then the log path, with no compose dump", () => {
+  it("reads as cause, the log path, then the next step last, with no compose dump", () => {
     const error = new ComposeError(
       { cause: "The disk is full.", next: "Free some space." },
       "/home/u/.gaia/logs/compose-up-1.log",
     );
 
     expect(error.message).toBe(
-      "The disk is full.\nFree some space.\nFull log: /home/u/.gaia/logs/compose-up-1.log",
+      "The disk is full.\nFull log: /home/u/.gaia/logs/compose-up-1.log\nFree some space.",
     );
   });
 });

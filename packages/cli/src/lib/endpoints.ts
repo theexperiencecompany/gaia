@@ -71,14 +71,29 @@ export function reachableWebUrls(
 }
 
 /**
- * The one address to send a browser to, which may sit on another machine: the
- * domain, else the host's first LAN address, else localhost.
+ * True when the browser that opens GAIA is on another machine: the CLI runs
+ * over SSH, or on a Linux host with no desktop session.
+ */
+export function browsesFromElsewhere(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (env.SSH_CONNECTION || env.SSH_TTY) return true;
+  return platform === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY;
+}
+
+/**
+ * The one address to send a browser to: the domain, else localhost when the
+ * browser is on this machine, else the host's first LAN address.
  */
 export function primaryWebUrl(
   webPort: number,
   domain: string | undefined,
   interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = networkInterfaces(),
+  remote: boolean = browsesFromElsewhere(),
 ): string {
   if (domain) return `https://${domain}`;
-  return hostWebUrls(webPort, interfaces)[0] ?? `http://localhost:${webPort}`;
+  const local = `http://localhost:${webPort}`;
+  if (!remote) return local;
+  return hostWebUrls(webPort, interfaces)[0] ?? local;
 }

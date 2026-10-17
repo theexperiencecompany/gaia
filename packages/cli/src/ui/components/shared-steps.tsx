@@ -1,7 +1,11 @@
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { INSTALL_CONFIRM_INPUT } from "../../lib/prerequisites.js";
+import {
+  INSTALL_CONFIRM_INPUT,
+  type InstallablePrerequisite,
+  joinNames,
+} from "../../lib/prerequisite-install.js";
 import type { PortCheckResult } from "../../lib/prerequisites.types.js";
 import { BOX_BORDER, MARK, type MarkKind, THEME_COLOR } from "../constants.js";
 import { Mark } from "./Mark.js";
@@ -204,63 +208,55 @@ export const PortConflictStep: React.FC<{
   );
 };
 
-/** The copy for each install confirmation, by its input id. */
-const INSTALL_PROMPTS: Record<string, { title: string; detail: string }> = {
-  [INSTALL_CONFIRM_INPUT.docker]: {
-    title: "Install Docker Engine now? (recommended)",
-    detail: "Runs the official Docker install script — needs sudo/apt.",
-  },
-  [INSTALL_CONFIRM_INPUT.git]: {
-    title: "Install Git now?",
-    detail: "Installs git with apt — needs sudo.",
-  },
-};
-
 const InstallPrompt: React.FC<{
-  title: string;
-  detail: string;
+  missing: readonly InstallablePrerequisite[];
   onConfirm: () => void;
   onDecline: () => void;
-}> = ({ title, detail, onConfirm, onDecline }) => {
+}> = ({ missing, onConfirm, onDecline }) => {
   useInput((_input, key) => {
     if (key.return) onConfirm();
     if (key.escape) onDecline();
   });
+  const them = missing.length > 1 ? "them" : "it";
+  const verb = missing.length > 1 ? "aren't" : "isn't";
 
   return (
-    <Box
-      flexDirection="column"
-      marginTop={1}
-      paddingX={1}
-      borderStyle={BOX_BORDER}
-      borderColor="yellow"
-    >
-      <Text bold color="yellow">
-        {title}
+    <Box flexDirection="column" marginTop={1} marginLeft={2}>
+      <Text>
+        GAIA needs <Text bold>{joinNames(missing)}</Text>, which {verb}{" "}
+        installed yet.
       </Text>
-      <Box marginTop={1} flexDirection="column">
-        <Text>{detail}</Text>
-        <Text color="gray" dimColor>
-          Enter to install · Esc to cancel
+      <Text>Install {them} now? This uses sudo and takes a few minutes.</Text>
+      <Box marginTop={1}>
+        <Text color={THEME_COLOR} bold>
+          Enter
         </Text>
+        <Text> install {them}</Text>
+        <Text color="gray"> · </Text>
+        <Text bold>Esc</Text>
+        <Text> I'll do it myself</Text>
       </Box>
     </Box>
   );
 };
 
 /**
- * Confirmation shown when a prerequisite (Docker, git) is missing on an
- * apt-based Linux host; renders nothing for any other input. Enter accepts
- * the guided install; Escape declines and the flow aborts with remediation copy.
+ * The one install confirmation for every missing prerequisite on an apt-based
+ * Linux host; renders nothing for any other input. Enter installs them all;
+ * Escape declines and the flow stops with the manual-install links.
  */
 export const InstallConfirmStep: React.FC<{
   inputId: string | undefined;
+  missing: readonly InstallablePrerequisite[] | undefined;
   onConfirm: () => void;
   onDecline: () => void;
-}> = ({ inputId, onConfirm, onDecline }) => {
-  const prompt = inputId === undefined ? undefined : INSTALL_PROMPTS[inputId];
-  if (!prompt) return null;
+}> = ({ inputId, missing, onConfirm, onDecline }) => {
+  if (inputId !== INSTALL_CONFIRM_INPUT || !missing?.length) return null;
   return (
-    <InstallPrompt {...prompt} onConfirm={onConfirm} onDecline={onDecline} />
+    <InstallPrompt
+      missing={missing}
+      onConfirm={onConfirm}
+      onDecline={onDecline}
+    />
   );
 };

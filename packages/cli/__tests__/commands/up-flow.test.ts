@@ -24,7 +24,7 @@ describe("gaia up without git on a fresh machine", () => {
 
     await runUpFlow(store);
 
-    expect(store.currentState.error?.message).toMatch(/Git is required/);
+    expect(store.currentState.error?.message).toMatch(/GAIA needs Git/);
     expect(store.currentState.data.checks).toEqual({ git: "error" });
   });
 });

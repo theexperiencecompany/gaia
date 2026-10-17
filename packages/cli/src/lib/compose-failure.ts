@@ -7,11 +7,17 @@
 
 import { serviceName } from "./display-names.js";
 import type { ReleaseImageGap } from "./image-availability.js";
+import { cliChannel, cliInstallCommand } from "./release.js";
+import { CLI_VERSION } from "./version.js";
 
 /** What failed and what to do next. */
 export interface ComposeFailure {
   cause: string;
   next: string;
+  /** The compose service that failed, when one is named (an unhealthy container). */
+  service?: string;
+  /** That service's last log lines, when they were fetched. */
+  logTail?: string[];
 }
 
 /** The command that retries with a local build, e.g. "gaia up --build". */
@@ -49,7 +55,7 @@ export function explainImageGap(
   }
   return {
     cause: `GAIA ${tag} isn't published: ${imageLabel(name)} doesn't exist in the registry.`,
-    next: `Update the CLI (curl -fsSL https://heygaia.io/install.sh | sh) and run it again, or build from source: ${rebuildCommand}.`,
+    next: `Update the CLI (${cliInstallCommand(cliChannel(CLI_VERSION))}) and run it again, or build from source: ${rebuildCommand}.`,
   };
 }
 
@@ -151,10 +157,11 @@ const SIMPLE_MATCHERS: readonly [RegExp, ComposeFailure][] = [
 const unhealthy: Matcher = (text) => {
   const service = /container ([\w-]+?)(?:-\d+)? is unhealthy/.exec(text)?.[1];
   if (!service) return null;
-  const name = serviceName(service.replace(/^gaia-(selfhost|dev)-/, ""));
+  const composeService = service.replace(/^gaia-(selfhost|dev)-/, "");
   return {
-    cause: `${name} started but never became healthy.`,
-    next: "See what it logged with 'gaia logs', then try again.",
+    cause: `GAIA's ${serviceName(composeService)} didn't start.`,
+    next: "Try: gaia doctor",
+    service: composeService,
   };
 };
 
@@ -192,8 +199,13 @@ export class ComposeError extends Error {
   readonly logPath: string;
 
   constructor(failure: ComposeFailure, logPath: string) {
+    // What failed, why (its own last words), where the full log is, then the
+    // most actionable line last.
+    const tail = failure.logTail?.length
+      ? ["Its last log lines:", ...failure.logTail.map((line) => `  ${line}`)]
+      : [];
     super(
-      [failure.cause, failure.next, `Full log: ${logPath}`]
+      [failure.cause, ...tail, `Full log: ${logPath}`, failure.next]
         .filter(Boolean)
         .join("\n"),
     );

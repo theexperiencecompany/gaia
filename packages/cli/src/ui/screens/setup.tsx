@@ -3,7 +3,7 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { localApiUrl } from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
-
+import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
 import { SETUP_STEPS, Shell } from "../components/Shell.js";
 import {
   EnvSetupSpinnerStep,
@@ -55,6 +55,7 @@ export const SetupScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
 
       <InstallConfirmStep
         inputId={state.inputRequest?.id}
+        missing={state.data[MISSING_PREREQUISITES_KEY]}
         onConfirm={() => store.submitInput("install")}
         onDecline={() => store.submitInput("decline")}
       />

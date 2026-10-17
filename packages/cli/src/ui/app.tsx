@@ -1,3 +1,4 @@
+import { ThemeProvider } from "@inkjs/ui";
 import { Box, Text } from "ink";
 import React from "react";
 import { UpScreen } from "../commands/up/screen.js";
@@ -6,6 +7,7 @@ import { ServiceScreen } from "./screens/service.js";
 import { SetupScreen } from "./screens/setup.js";
 import { StatusScreen } from "./screens/status.js";
 import type { CLIStore } from "./store.js";
+import { cliTheme } from "./theme.js";
 
 export type CLICommand = "init" | "setup" | "status" | "start" | "stop" | "up";
 
@@ -96,7 +98,9 @@ const CommandRouter: React.FC<AppProps> = ({ store, command }) => {
 export const App: React.FC<AppProps> = ({ store, command }) => {
   return (
     <ErrorBoundary>
-      <CommandRouter store={store} command={command} />
+      <ThemeProvider theme={cliTheme}>
+        <CommandRouter store={store} command={command} />
+      </ThemeProvider>
     </ErrorBoundary>
   );
 };

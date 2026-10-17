@@ -46,15 +46,25 @@ describe("runCommandUI under a terminal", () => {
       command: "up",
       whenNonInteractive: "plain",
       runFlow: async (store) => {
-        store.updateData("upWebUrl", "http://localhost:3000");
-        store.updateData("upReachableUrls", ["http://localhost:3000"]);
-        store.updateData("upApiUrl", "http://localhost:3000/api/v1");
+        store.updateData("upOutcome", {
+          webUrl: "http://localhost:3000",
+          reachableUrls: ["http://localhost:3000"],
+          noStart: false,
+          stillStarting: false,
+          setupComplete: false,
+          codeSandbox: false,
+          joinedDockerGroup: false,
+          elapsedMs: 5000,
+          startedServices: 9,
+        });
         store.updateData("finished", true);
         store.setStep("Finished");
       },
     });
     await exited;
 
-    expect(written).toContain("GAIA is ready!");
+    expect(written).toContain("GAIA is running · ready in 5s");
+    // The shell prompt starts on its own line, not glued to the last frame.
+    expect(written.endsWith("\n")).toBe(true);
   });
 });

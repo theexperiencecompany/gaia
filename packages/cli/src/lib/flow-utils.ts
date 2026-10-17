@@ -2,6 +2,7 @@ import { LOG_BUFFER_LINES } from "../ui/constants.js";
 import type { CLIStore } from "../ui/store.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
+import { ensurePrerequisites } from "./prerequisite-install.js";
 import * as prereqs from "./prerequisites.js";
 import { runCommand, type StartProgress } from "./service-starter.js";
 
@@ -43,10 +44,9 @@ export async function runBasePrerequisiteChecks(
   await delay(500);
 
   try {
-    await prereqs.ensureGit(store);
     // "relaunch": the command runner restarts this command with the docker
     // group active, so this run stops here without an error.
-    return (await prereqs.ensureDocker(store)) === "ready";
+    return (await ensurePrerequisites(store, { needGit: true })) === "ready";
   } catch (e) {
     store.setError(e as Error);
     return false;

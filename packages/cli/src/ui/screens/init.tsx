@@ -11,7 +11,7 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { localApiUrl } from "../../lib/endpoints.js";
 import type { EnvCategory, EnvVar, SetupMode } from "../../lib/env-parser.js";
-
+import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
 import { LogWindow } from "../components/LogWindow.js";
 import { PercentBar } from "../components/PercentBar.js";
 import { Shell } from "../components/Shell.js";
@@ -1164,6 +1164,7 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
 
       <InstallConfirmStep
         inputId={state.inputRequest?.id}
+        missing={state.data[MISSING_PREREQUISITES_KEY]}
         onConfirm={() => store.submitInput("install")}
         onDecline={() => store.submitInput("decline")}
       />

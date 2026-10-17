@@ -1,7 +1,13 @@
+import { execa } from "execa";
 import * as fs from "fs";
 import * as path from "path";
 import { botComposeFile, botService, writeBotsEnv } from "./bots.js";
-import { type ComposeRunOptions, runCompose } from "./compose-run.js";
+import { ComposeError } from "./compose-failure.js";
+import {
+  type ComposeRunOptions,
+  type ComposeRunResult,
+  runCompose,
+} from "./compose-run.js";
 import { readConfig, updateConfig } from "./config.js";
 import {
   assertEngineSupportsCodeSandbox,
@@ -36,6 +42,8 @@ export interface StartServicesOptions {
    * start); "always" refreshes every tag (`gaia update`, `gaia start --pull`).
    */
   pull?: "always" | "missing";
+  /** Told where the raw compose output goes. */
+  onLogFile?: (logPath: string) => void;
   /** The command a missing-image error tells the user to build with. */
   rebuildCommand?: string;
 }
@@ -164,7 +172,7 @@ export async function startServices(
   portOverrides?: Record<number, number>,
   onProgress?: StartProgress,
   options?: StartServicesOptions,
-): Promise<void> {
+): Promise<ComposeRunResult> {
   if (setupMode !== "selfhost") {
     onStatus?.("Developer mode must run in foreground.");
     throw new Error(
@@ -188,13 +196,20 @@ export async function startServices(
   const files = selfhostComposeFiles({ build: options?.build });
   const envArgs = getEnvFileArgs(dockerComposePath);
 
-  await runCompose(buildSelfhostUpArgs(files, envArgs, options), {
-    cwd: dockerComposePath,
-    env: dockerEnv,
-    timeoutMs: resolveStartTimeoutMs(),
-    logName: options?.build ? "compose-build" : "compose-up",
-    rebuildCommand: options?.rebuildCommand ?? "gaia start --build",
-    onProgress,
+  const composeArgs = [...composeFileArgs(files), ...envArgs];
+  const result = await runCompose(
+    buildSelfhostUpArgs(files, envArgs, options),
+    {
+      cwd: dockerComposePath,
+      env: dockerEnv,
+      timeoutMs: resolveStartTimeoutMs(),
+      logName: options?.build ? "compose-build" : "compose-up",
+      rebuildCommand: options?.rebuildCommand ?? "gaia start --build",
+      onLogFile: options?.onLogFile,
+      onProgress,
+    },
+  ).catch(async (error: unknown) => {
+    throw await withServiceLogTail(error, composeArgs, dockerComposePath);
   });
   if (await dockerVolumeExists(LEGACY_SANDBOX_VOLUME)) {
     onStatus?.("Moving code-sandbox files into per-user workspaces...");
@@ -208,6 +223,38 @@ export async function startServices(
     );
   }
   onStatus?.("GAIA's services are running.");
+  return result;
+}
+
+/** How many of a failed service's last log lines an error quotes. */
+const FAILED_SERVICE_LOG_LINES = 8;
+
+/**
+ * Add the failed service's own last log lines to a compose error that names
+ * one (an unhealthy container); its words say why far better than compose's.
+ */
+async function withServiceLogTail(
+  error: unknown,
+  composeArgs: string[],
+  cwd: string,
+): Promise<unknown> {
+  if (!(error instanceof ComposeError) || !error.failure.service) return error;
+  const { stdout } = await execa(
+    "docker",
+    [
+      "compose",
+      ...composeArgs,
+      "logs",
+      "--no-color",
+      "--no-log-prefix",
+      "--tail",
+      String(FAILED_SERVICE_LOG_LINES),
+      error.failure.service,
+    ],
+    { cwd },
+  );
+  const logTail = stdout.split("\n").filter((line) => line.trim());
+  return new ComposeError({ ...error.failure, logTail }, error.logPath);
 }
 
 /** `docker compose` plus the self-host install's files and env file, run from dockerDir. */

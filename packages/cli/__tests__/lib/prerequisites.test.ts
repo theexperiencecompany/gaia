@@ -19,11 +19,12 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import {
-  checkModePorts,
   dockerInstallPhase,
-  ensureDocker,
-  ensureGit,
-} from "../../src/lib/prerequisites.js";
+  ensurePrerequisites,
+  INSTALL_CONFIRM_INPUT,
+  MISSING_PREREQUISITES_KEY,
+} from "../../src/lib/prerequisite-install.js";
+import { checkModePorts } from "../../src/lib/prerequisites.js";
 import { createStore } from "../../src/ui/store.js";
 
 const mockedExeca = vi.mocked(execa);
@@ -57,8 +58,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(os.platform).mockReturnValue("linux");
   vi.mocked(fs.existsSync).mockReturnValue(true);
-  Object.defineProperty(process.stdin, "isTTY", { value: false });
-  Object.defineProperty(process.stdout, "isTTY", { value: false });
+  Object.defineProperty(process.stdin, "isTTY", {
+    value: false,
+    configurable: true,
+  });
+  Object.defineProperty(process.stdout, "isTTY", {
+    value: false,
+    configurable: true,
+  });
 });
 
 describe("ensureDocker on a fresh apt-based Linux box", () => {
@@ -81,7 +88,10 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
       },
     });
 
-    const result = await ensureDocker(createStore(), { assumeYes: true });
+    const result = await ensurePrerequisites(createStore(), {
+      assumeYes: true,
+      needGit: false,
+    });
 
     expect(result).toBe("ready");
     expect(calls.some(([cmd]) => cmd === "curl")).toBe(true);
@@ -99,7 +109,7 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
       dockerInstallPhase(
         "+ sh -c DEBIAN_FRONTEND=noninteractive apt-get -y -qq install docker-ce docker-ce-cli",
       ),
-    ).toBe("Installing Docker Engine");
+    ).toBe("Installing Docker");
     expect(dockerInstallPhase("+ sh -c apt-get -qq update >/dev/null")).toBe(
       "Updating the package list",
     );
@@ -110,7 +120,9 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
     routeExeca({});
     const store = createStore();
 
-    await expect(ensureDocker(store)).rejects.toThrow(/--yes/);
+    await expect(
+      ensurePrerequisites(store, { needGit: false }),
+    ).rejects.toThrow(/--yes/);
     expect(store.currentState.data.checks.docker).toBe("error");
   });
 
@@ -134,7 +146,10 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
     });
     const store = createStore();
 
-    const result = await ensureDocker(store, { assumeYes: true });
+    const result = await ensurePrerequisites(store, {
+      assumeYes: true,
+      needGit: false,
+    });
 
     expect(result).toBe("relaunch");
     expect(store.currentState.data.dockerGroupSwitch).toBe("sg");
@@ -153,7 +168,10 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
     });
     const store = createStore();
 
-    const result = await ensureDocker(store, { assumeYes: true });
+    const result = await ensurePrerequisites(store, {
+      assumeYes: true,
+      needGit: false,
+    });
 
     expect(result).toBe("relaunch");
     expect(store.currentState.data.dockerGroupSwitch).toBe("sudo");
@@ -163,7 +181,9 @@ describe("ensureDocker on a fresh apt-based Linux box", () => {
     routeExeca(socketRefused);
     const store = createStore();
 
-    await expect(ensureDocker(store, { assumeYes: true })).rejects.toThrow(
+    await expect(
+      ensurePrerequisites(store, { assumeYes: true, needGit: false }),
+    ).rejects.toThrow(
       /log out and back in \(or run 'newgrp docker'\), then rerun/i,
     );
     expect(store.currentState.data.dockerGroupSwitch).toBeUndefined();
@@ -179,6 +199,7 @@ describe("ensureGit on a fresh apt-based Linux box", () => {
         return { stdout: "git version 2.51" };
       },
       "sudo -n true": () => ({ stdout: "" }),
+      "docker info": () => ({ stdout: "ok" }),
       "sudo -n apt-get update": () => ({ stdout: "" }),
       "sudo -n apt-get install -y git": () => {
         installed = true;
@@ -187,7 +208,7 @@ describe("ensureGit on a fresh apt-based Linux box", () => {
     });
     const store = createStore();
 
-    await ensureGit(store, { assumeYes: true });
+    await ensurePrerequisites(store, { assumeYes: true, needGit: true });
 
     expect(store.currentState.data.checks.git).toBe("success");
     expect(
@@ -199,7 +220,9 @@ describe("ensureGit on a fresh apt-based Linux box", () => {
     routeExeca({});
     const store = createStore();
 
-    await expect(ensureGit(store)).rejects.toThrow(/--yes/);
+    await expect(ensurePrerequisites(store, { needGit: true })).rejects.toThrow(
+      /--yes/,
+    );
     expect(store.currentState.data.checks.git).toBe("error");
   });
 });
@@ -236,5 +259,81 @@ describe("checkModePorts", () => {
     } finally {
       server.close();
     }
+  });
+});
+describe("ensurePrerequisites asks once for everything missing", () => {
+  it("offers Git and Docker in one confirmation, then installs both", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+    let gitInstalled = false;
+    let dockerInstalled = false;
+    routeExeca({
+      "git --version": () => {
+        if (!gitInstalled) throw new Error("ENOENT git");
+        return { stdout: "git version 2.51" };
+      },
+      "docker info": () => {
+        if (!dockerInstalled) {
+          throw Object.assign(new Error("spawn docker ENOENT"), {
+            code: "ENOENT",
+          });
+        }
+        return { stdout: "ok" };
+      },
+      curl: () => ({ stdout: "" }),
+      "sudo -n true": () => ({ stdout: "" }),
+      "sudo -n apt-get": () => {
+        gitInstalled = true;
+        return { stdout: "" };
+      },
+      "sudo -n sh": () => {
+        dockerInstalled = true;
+        return { stdout: "" };
+      },
+    });
+    const store = createStore();
+    const ask = vi.spyOn(store, "waitForInput").mockResolvedValue("install");
+
+    const result = await ensurePrerequisites(store, { needGit: true });
+
+    expect(result).toBe("ready");
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ask).toHaveBeenCalledWith(INSTALL_CONFIRM_INPUT);
+    expect(store.currentState.data[MISSING_PREREQUISITES_KEY]).toEqual([
+      "git",
+      "docker",
+    ]);
+    expect(store.currentState.data.checks).toEqual({
+      git: "success",
+      docker: "success",
+    });
+  });
+
+  it("names both manual installs when the user declines", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+    routeExeca({});
+    const store = createStore();
+    vi.spyOn(store, "waitForInput").mockResolvedValue("decline");
+
+    await expect(ensurePrerequisites(store, { needGit: true })).rejects.toThrow(
+      /GAIA needs Git and Docker/,
+    );
+    expect(store.currentState.data.checks).toEqual({
+      git: "error",
+      docker: "error",
+    });
   });
 });
