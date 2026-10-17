@@ -93,6 +93,11 @@ export class CLIStore extends EventEmitter {
     }
   }
 
+  /** Deliver a throttled change now: the run is ending and its last state must be drawn. */
+  flush(): void {
+    if (this.emitPending) this.emitNow();
+  }
+
   /**
    * Emits immediately — flushes any pending throttled emit and
    * fires the change event right away. Used for user-facing changes

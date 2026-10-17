@@ -67,4 +67,29 @@ describe("runCommandUI under a terminal", () => {
     // The shell prompt starts on its own line, not glued to the last frame.
     expect(written.endsWith("\n")).toBe(true);
   });
+
+  // Real run: `gaia stop` exited with its result line never drawn, because
+  // the last change was still inside the store's throttle window.
+  it("draws a last change that arrived inside the throttle window", async () => {
+    const exited = new Promise<void>((resolve) => {
+      vi.spyOn(process, "exit").mockImplementation((() => {
+        resolve();
+      }) as typeof process.exit);
+    });
+
+    await runCommandUI({
+      command: "stop",
+      whenNonInteractive: "plain",
+      runFlow: async (store) => {
+        store.setStep("Stopped");
+        store.setStatus("GAIA stopped. Start it again with 'gaia start'.");
+        store.updateData("stopped", true);
+      },
+    });
+    await exited;
+
+    expect(written).toContain(
+      "GAIA stopped. Start it again with 'gaia start'.",
+    );
+  });
 });
