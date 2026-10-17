@@ -97,7 +97,7 @@ function upSteps(options: UpFlags, needsClone: boolean) {
           options.build
             ? {
                 id: "start",
-                label: "Building GAIA (first time only)",
+                label: "Building GAIA",
                 doneLabel: "Built and started GAIA",
               }
             : {
