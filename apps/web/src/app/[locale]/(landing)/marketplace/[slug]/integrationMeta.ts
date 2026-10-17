@@ -81,11 +81,8 @@ export function generateIntegrationTitle(
   category: string,
   slug?: string,
 ): string {
-  // Per-tool MCP queries (GSC 2026-07-19..2026-10-17) land on these
-  // marketplace pages with "... mcp" intent. Only slugs whose ranking
-  // queries carry that intent get the MCP Server phrasing; every other
-  // page keeps its category title below. Slugs are the page slugs the
-  // detail route is served under (native integration id or community slug).
+  // Only slugs with ranking "... mcp" intent get MCP Server phrasing; others use category titles.
+  // Intent set from GSC 2026-07-19..2026-10-17 ranking queries.
   if (slug && MCP_SERVER_SLUGS.has(slug)) {
     return `${name} MCP Server: Automate with AI`;
   }
