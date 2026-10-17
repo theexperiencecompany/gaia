@@ -9,7 +9,8 @@
     "related_automations": "Automações relacionadas",
     "dont_see_your_tool": "Não encontrou sua ferramenta?",
     "view_comparisons": "Ver comparações",
-    "get_started": "Começar"
+    "get_started": "Começar",
+    "docs_guides": "Guias na documentação"
   },
   "alternatives": {
     "breadcrumb": "Alternativas",
@@ -47,7 +48,7 @@
     "category_automation": "Automação",
     "category_notes": "Notas & Conhecimento",
     "dont_see_your_tool": "Não encontrou sua ferramenta?",
-    "dont_see_your_tool_desc": "O GAIA se conecta a mais de 50 ferramentas via MCP e suporta integrações personalizadas. Compare o GAIA com qualquer ferramenta que você usa hoje."
+    "dont_see_your_tool_desc": "O GAIA se conecta a diversas ferramentas via MCP e suporta integrações personalizadas. Compare o GAIA com qualquer ferramenta que você usa hoje."
   },
   "comparisons": {
     "breadcrumb": "Comparações",

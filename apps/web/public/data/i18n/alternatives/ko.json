@@ -40,7 +40,7 @@
     ],
     "gaiaAdvantages": [
       "능동적 알림 — 내가 요청하지 않아도 GAIA가 중요한 일을 먼저 제안합니다",
-      "별도의 설정 없이 Gmail, Google 캘린더 등 50개 이상의 도구에 즉시 연결 가능",
+      "별도의 설정 없이 Gmail, Google 캘린더 등 다양한 도구에 즉시 연결 가능",
       "오픈 소스 및 자체 호스팅 지원, 데이터가 온전히 사용자 통제 하에 유지됩니다",
       "무료 플랜 제공, 프로는 개별 사용자에 한해 좌석별 과금 없이 월 ${{PRO_MONTHLY_PRICE}}부터 시작",
       "데스크톱, 모바일, 웹, CLI, Discord, Slack, Telegram 등 다양한 플랫폼에서 사용 가능"
@@ -72,7 +72,7 @@
     "comparisonRows": [
       {
         "feature": "핵심 목적",
-        "gaia": "이메일, 캘린더, 할 일, 50개 이상의 도구를 사용자의 대신 모니터링하고 자동으로 처리하는 능동형 AI 생산성 OS",
+        "gaia": "이메일, 캘린더, 할 일, 다양한 도구를 사용자의 대신 모니터링하고 자동으로 처리하는 능동형 AI 생산성 OS",
         "competitor": "노트, 문서, 위키, 프로젝트 데이터베이스를 수동으로 구축 및 관리하는 올인원 작업 공간"
       },
       {
@@ -474,7 +474,7 @@
       "수동 목록 정렬 대신 AI 기반 업무 우선순위 지정",
       "무료 요금제 및 자체 호스팅으로 비용을 중요시하는 개인에게 적합",
       "웹, 모바일, 데스크톱, 봇 등 어디서나 접근 가능한 대화형 인터페이스",
-      "Basecamp의 제한적 연결 기능을 넘어서는 MCP 기반 50개 이상의 통합 지원"
+      "Basecamp의 제한적 연결 기능을 넘어서는 MCP 기반 다양한 통합 지원"
     ],
     "migrationSteps": [
       "Basecamp에서 데이터 내보내기 기능을 사용해 프로젝트와 할 일을 추출합니다",
@@ -535,11 +535,11 @@
       "Gmail의 전체 맥락을 활용한 이메일 작성 및 인박스 관리",
       "일정 잡기, 변경, 충돌 감지를 포함한 캘린더 관리",
       "대화 중 바로 작업 생성 및 우선순위 지정",
-      "50개 이상 도구와 연동되는 워크플로 자동화"
+      "다양한 도구와 연동되는 워크플로 자동화"
     ],
     "gaiaAdvantages": [
       "세션 간 맥락을 기억하는 그래프 기반의 지속형 메모리",
-      "Gmail, Google 캘린더, Todoist 등 50개 이상의 도구와 직접 연결",
+      "Gmail, Google 캘린더, Todoist 등 다양한 도구와 직접 연결",
       "실제 행동 실행 — 미팅 예약, 이메일 발송, 작업 생성",
       "적극적으로 중요한 정보 선제 제공",
       "오픈소스 및 자체 호스팅 가능, OpenAI 데이터 보관 걱정 없음"
@@ -566,12 +566,16 @@
       {
         "question": "GAIA에도 ChatGPT의 메모리 기능처럼 기억 기능이 있나요?",
         "answer": "네, GAIA의 메모리는 훨씬 더 정교합니다. 사람, 프로젝트, 이벤트 간의 관계를 이해하는 그래프 기반 메모리 시스템을 사용합니다. 단순한 사실 목록이 아니며, 기억하라고 요청하지 않아도 자동으로 정보가 유지됩니다."
+      },
+      {
+        "question": "Does GAIA replace ChatGPT?",
+        "answer": "Only partially. For open-ended chat, brainstorming, and frontier-model reasoning, ChatGPT itself remains stronger, and GAIA does not replace that; the fit score of 4/5 reflects overlapping but different jobs. For email, calendar, tasks, and proactive workflow execution across your tools, GAIA covers ground ChatGPT does not."
       }
     ],
     "comparisonRows": [
       {
         "feature": "핵심 접근 방식",
-        "gaia": "워크플로우에 탑재된 능동형 AI 에이전트 — 이메일 읽기, 캘린더 관리, 작업 생성, 50개 이상의 도구에서 자율적으로 행동",
+        "gaia": "워크플로우에 탑재된 능동형 AI 에이전트 — 이메일 읽기, 캘린더 관리, 작업 생성, 다양한 도구에서 자율적으로 행동",
         "competitor": "채팅창에서 대화만 가능한 AI — 질문에 답하거나 텍스트 생성만 가능하며, 기본적으로 도구 접근 불가"
       },
       {
@@ -581,7 +585,7 @@
       },
       {
         "feature": "툴 통합",
-        "gaia": "Gmail, Google Calendar, Todoist, Slack, GitHub, Notion 등 50개 이상의 통합 기능이 MCP를 통해 제공되며 모두 기본적으로 연결되어 있습니다.",
+        "gaia": "Gmail, Google Calendar, Todoist, Slack, GitHub, Notion 등 다양한 통합 기능이 MCP를 통해 제공되며 모두 기본적으로 연결되어 있습니다.",
         "competitor": "웹 브라우징과 코드 실행이 내장되어 있으나, 외부 툴 사용은 직접 GPT 생성 혹은 API 연동이 필요합니다."
       },
       {
@@ -605,7 +609,7 @@
     "name": "Microsoft Copilot",
     "tagline": "Microsoft 365 제품군에 통합된 마이크로소프트 AI 어시스턴트",
     "metaTitle": "2026년 최고의 Microsoft Copilot 대안",
-    "metaDescription": "Microsoft 365를 사용하지 않으시나요? GAIA는 Gmail, Google Calendar, 50개 이상의 툴과 연동되는 능동형 AI 어시스턴트입니다. 마이크로소프트 구독 없이 사용 가능하며, 무료 요금제도 제공됩니다.",
+    "metaDescription": "Microsoft 365를 사용하지 않으시나요? GAIA는 Gmail, Google Calendar, 다양한 툴과 연동되는 능동형 AI 어시스턴트입니다. 마이크로소프트 구독 없이 사용 가능하며, 무료 요금제도 제공됩니다.",
     "keywords": [
       "microsoft copilot 대안",
       "copilot 대안",
@@ -629,7 +633,7 @@
       "마이크로소프트가 기업 데이터를 처리하는 것에 대한 개인정보 보호 우려",
       "마이크로소프트 환경에 깊이 통합되지 않은 사용자에게는 효과가 떨어짐"
     ],
-    "whyPeopleLook": "Microsoft Copilot은 Microsoft 365 생태계 내에서는 강력하지만 Outlook, Teams, Word를 주로 사용하지 않는 사람에게는 접근이 불가능합니다. 엔터프라이즈 라이선스 비용이 Microsoft 365 외에 사용자당 월 $30부터 시작하므로 개인이나 소규모 기업에게는 부담이 큽니다. Google Workspace 사용자, 혹은 여러 업체의 다양한 도구를 사용하는 경우 Copilot은 도움이 되지 않습니다. GAIA는 생태계에 얽매이지 않는 대안으로, Gmail, Google Calendar, Todoist, Slack, Discord 및 MCP를 통한 50개 이상의 도구와 연동할 수 있으며 마이크로소프트 구독 없이도 이용할 수 있습니다.",
+    "whyPeopleLook": "Microsoft Copilot은 Microsoft 365 생태계 내에서는 강력하지만 Outlook, Teams, Word를 주로 사용하지 않는 사람에게는 접근이 불가능합니다. 엔터프라이즈 라이선스 비용이 Microsoft 365 외에 사용자당 월 $30부터 시작하므로 개인이나 소규모 기업에게는 부담이 큽니다. Google Workspace 사용자, 혹은 여러 업체의 다양한 도구를 사용하는 경우 Copilot은 도움이 되지 않습니다. GAIA는 생태계에 얽매이지 않는 대안으로, Gmail, Google Calendar, Todoist, Slack, Discord 및 MCP를 통한 다양한 도구와 연동할 수 있으며 마이크로소프트 구독 없이도 이용할 수 있습니다.",
     "gaiaReplaces": [
       "Gmail 사용자를 위한 이메일 분류 및 작성",
       "Outlook 이외에서도 가능한 캘린더 관리 및 일정 예약",
@@ -642,7 +646,7 @@
       "엔터프라이즈 라이선스 불필요 — 무료 버전 제공",
       "오픈소스 기반으로 공급업체 종속 없음",
       "데이터 준수 기준을 갖춘 기관도 자체 서버에서 사용 가능",
-      "마이크로소프트 생태계를 넘어서는 50개 이상의 도구와 연동"
+      "마이크로소프트 생태계를 넘어서는 다양한 도구와 연동"
     ],
     "migrationSteps": [
       "OAuth를 통해 GAIA를 Gmail 계정에 연결하세요",
@@ -709,7 +713,7 @@
       "기본적으로 능동적 — 따로 요청하지 않아도 중요한 정보를 제공",
       "그래프 기반 메모리로 몇 개월간 맥락 유지",
       "오픈소스이며 Google 데이터 보관 우려 없음",
-      "MCP를 통한 50개 이상의 써드파티 연동 지원",
+      "MCP를 통한 다양한 써드파티 연동 지원",
       "완벽한 데이터 통제를 위한 자체 호스팅 가능"
     ],
     "migrationSteps": [
@@ -725,7 +729,7 @@
       },
       {
         "question": "GAIA도 Gemini처럼 Google 서비스와 연동되나요?",
-        "answer": "네, GAIA는 Gmail과 Google 캘린더와 기본적으로 연동됩니다. 또한 Gemini에서 지원하지 않는 50개 이상의 추가 툴과도 연동되어 Google 생태계를 넘어 확장됩니다."
+        "answer": "네, GAIA는 Gmail과 Google 캘린더와 기본적으로 연동됩니다. 또한 Gemini에서 지원하지 않는 다양한 추가 툴과도 연동되어 Google 생태계를 넘어 확장됩니다."
       },
       {
         "question": "Gemini는 오픈소스가 아니지만 GAIA는 오픈소스인가요?",
@@ -843,7 +847,7 @@
       "이메일 중심: Gmail의 메일 내용에서 작업이 자동 생성됨",
       "일정 충돌 및 다가오는 마감에 대한 사전 알림 제공",
       "무료 요금제 제공, 셀프 호스팅은 항상 무료",
-      "캘린더 외 50개 이상의 통합—전체 디지털 워크플로우 관리",
+      "캘린더 외 다양한 통합—전체 디지털 워크플로우 관리",
       "Motion은 폐쇄형, GAIA는 오픈소스 코드베이스"
     ],
     "migrationSteps": [
@@ -859,7 +863,7 @@
       },
       {
         "question": "GAIA가 Motion보다 저렴한가요?",
-        "answer": "Motion은 월 $19~$34의 비용이 듭니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 50개 이상의 통합, 워크플로 자동화 등 훨씬 더 폭넓은 기능을 제공합니다. 셀프 호스팅 GAIA는 무료입니다."
+        "answer": "Motion은 월 $19~$34의 비용이 듭니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 다양한 통합, 워크플로 자동화 등 훨씬 더 폭넓은 기능을 제공합니다. 셀프 호스팅 GAIA는 무료입니다."
       },
       {
         "question": "GAIA는 Motion과 달리 이메일에서 작업을 생성할 수 있나요?",
@@ -908,7 +912,7 @@
     "gaiaAdvantages": [
       "이메일 연동으로 받은 편지함부터 캘린더, 할 일까지 전체 과정을 연결",
       "사전 인텔리전스로 충돌 문제를 미리 파악",
-      "캘린더 관리 외에 50개 이상의 툴 연동",
+      "캘린더 관리 외에 다양한 툴 연동",
       "오픈소스 및 자체 호스팅 옵션 제공",
       "무료 요금제 제공, 좌석 단위 기업 과금 없음"
     ],
@@ -933,7 +937,7 @@
       },
       {
         "question": "GAIA의 가격은 Reclaim과 어떻게 비교되나요?",
-        "answer": "Reclaim Pro는 사용자당 월 $8에서 시작합니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 50개 이상의 연동, 메모리, 워크플로우 자동화 등이 포함되어 있습니다. 셀프호스팅 GAIA는 무료입니다."
+        "answer": "Reclaim Pro는 사용자당 월 $8에서 시작합니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 다양한 연동, 메모리, 워크플로우 자동화 등이 포함되어 있습니다. 셀프호스팅 GAIA는 무료입니다."
       }
     ]
   },
@@ -1065,7 +1069,7 @@
       },
       {
         "question": "GAIA가 Fantastical Premium보다 저렴한가요?",
-        "answer": "Fantastical Premium은 달에 $4.75(연 $57)로 캘린더 앱만 제공됩니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 할 일 관리, 50개 이상의 통합, 자동화 워크플로우까지 모두 포함합니다. 직접 서버에 설치하는 GAIA는 무료입니다."
+        "answer": "Fantastical Premium은 달에 $4.75(연 $57)로 캘린더 앱만 제공됩니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 할 일 관리, 다양한 통합, 자동화 워크플로우까지 모두 포함합니다. 직접 서버에 설치하는 GAIA는 무료입니다."
       }
     ]
   },
@@ -1199,7 +1203,7 @@
       },
       {
         "question": "GAIA의 가격 정책은 Superhuman과 비교해 어떤가요?",
-        "answer": "Superhuman은 월 $30, 무료 버전이 없습니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}에 무료 버전도 제공됩니다. 자체 호스팅 GAIA는 완전 무료입니다. GAIA는 이메일, 캘린더, 작업, 50개 이상의 연동을 제공합니다."
+        "answer": "Superhuman은 월 $30, 무료 버전이 없습니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}에 무료 버전도 제공됩니다. 자체 호스팅 GAIA는 완전 무료입니다. GAIA는 이메일, 캘린더, 작업, 다양한 연동을 제공합니다."
       }
     ],
     "comparisonRows": [
@@ -1220,7 +1224,7 @@
       },
       {
         "feature": "도구 통합",
-        "gaia": "이메일을 캘린더, 작업 및 50개 이상의 도구와 연결 – 이메일에서 작업 생성, 스레드에서 회의 일정 관리",
+        "gaia": "이메일을 캘린더, 작업 및 다양한 도구와 연결 – 이메일에서 작업 생성, 스레드에서 회의 일정 관리",
         "competitor": "이메일 전용 기능만 제공; 이메일에서 작업 생성, 캘린더 일정 생성, 워크플로 자동화 모두 미지원"
       },
       {
@@ -1286,7 +1290,7 @@
       },
       {
         "question": "GAIA가 SaneBox보다 더 비싼가요?",
-        "answer": "SaneBox는 기본 필터링 기능이 월 $7부터 시작합니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 능동적인 이메일 관리, 캘린더, 할 일 관리, 메모리, 50개 이상의 통합 기능을 모두 제공합니다. 셀프 호스팅 GAIA는 무료입니다."
+        "answer": "SaneBox는 기본 필터링 기능이 월 $7부터 시작합니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 능동적인 이메일 관리, 캘린더, 할 일 관리, 메모리, 다양한 통합 기능을 모두 제공합니다. 셀프 호스팅 GAIA는 무료입니다."
       },
       {
         "question": "GAIA가 SaneBox처럼 내 이메일 패턴을 학습할 수 있나요?",
@@ -1407,7 +1411,7 @@
       "이메일에서 능동적으로 작업을 생성하므로 수동 입력이 필요 없음",
       "캘린더 인식을 통해 일정에 맞는 현실적인 마감일 자동 설정",
       "무료 요금제에서도 실질적인 작업 관리가 가능하며, 기능별 유료 제한 없음",
-      "이메일, 캘린더, 50개 이상의 다양한 도구와 함께 작업을 통합 관리"
+      "이메일, 캘린더, 다양한 다양한 도구와 함께 작업을 통합 관리"
     ],
     "migrationSteps": [
       "OAuth 연동을 통해 현재 Todoist 계정을 GAIA에 연결하세요",
@@ -1456,7 +1460,7 @@
       },
       {
         "feature": "가격",
-        "gaia": "무료 플랜 제공; Pro는 이메일, 캘린더, 50개 이상의 통합 포함 월 ${{PRO_MONTHLY_PRICE}}; 자체 호스팅 무료",
+        "gaia": "무료 플랜 제공; Pro는 이메일, 캘린더, 다양한 통합 포함 월 ${{PRO_MONTHLY_PRICE}}; 자체 호스팅 무료",
         "competitor": "무료 플랜 제공; Pro는 알림 및 필터 기능 포함 월 $4; 비즈니스는 사용자당 월 $6"
       }
     ]
@@ -1500,7 +1504,7 @@
       "이메일을 작업으로 자동 변환해 수동 입력이 필요 없음",
       "일정 연동을 통해 실현 가능한 마감일 자동 설정",
       "알아서 중요한 일을 알려주므로 따로 작업 목록을 검토하지 않아도 됨",
-      "이메일, 일정, 50개 이상의 도구 연동으로 생산성 확장",
+      "이메일, 일정, 다양한 도구 연동으로 생산성 확장",
       "오픈 소스로 자가 호스팅 가능"
     ],
     "migrationSteps": [
@@ -1524,7 +1528,7 @@
       },
       {
         "question": "GAIA가 TickTick 프리미엄보다 저렴한가요?",
-        "answer": "TickTick 프리미엄은 월 $2.99(또는 연 $27.99)입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 이메일 관리, 캘린더 연동, 50개 이상의 툴 연동, AI 워크플로 자동화를 모두 포함합니다. 셀프 호스팅 GAIA는 무료입니다."
+        "answer": "TickTick 프리미엄은 월 $2.99(또는 연 $27.99)입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 이메일 관리, 캘린더 연동, 다양한 툴 연동, AI 워크플로 자동화를 모두 포함합니다. 셀프 호스팅 GAIA는 무료입니다."
       }
     ]
   },
@@ -1635,7 +1639,7 @@
       "이메일 기반의 작업 생성으로 수동 입력이 전혀 필요 없음",
       "지속적인 메모리로 세션과 도구 전반에 걸쳐 문맥을 연결",
       "오픈소스 및 셀프-호스팅 지원으로 데이터 프라이버시 보장",
-      "Any.do의 제한된 커넥터 세트를 넘는 50개 이상의 툴 통합"
+      "Any.do의 제한된 커넥터 세트를 넘는 다양한 툴 통합"
     ],
     "migrationSteps": [
       "Any.do 계정 설정에서 작업 내보내기",
@@ -1658,7 +1662,7 @@
       },
       {
         "question": "GAIA가 Any.do Premium보다 저렴한가요?",
-        "answer": "Any.do Premium은 월 $5.99입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 이메일 관리, 캘린더 연동, 메모리, 50개 이상의 통합, 워크플로 자동화가 포함되어 있습니다. 자체 호스팅 GAIA는 완전히 무료입니다."
+        "answer": "Any.do Premium은 월 $5.99입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 이메일 관리, 캘린더 연동, 메모리, 다양한 통합, 워크플로 자동화가 포함되어 있습니다. 자체 호스팅 GAIA는 완전히 무료입니다."
       }
     ]
   },
@@ -1666,7 +1670,7 @@
     "name": "Zapier",
     "tagline": "코드 작성 없이 수천 개 앱을 Zaps로 연결하는 자동화",
     "metaTitle": "2026년 최고의 Zapier 대안",
-    "metaDescription": "Zapier는 비용이 비싸고 AI 기반이 아닙니다. GAIA는 내장 워크플로 자동화와 50개 이상의 통합 기능을 갖춘 능동적 AI 어시스턴트입니다. 오픈 소스이며 무료 요금제가 제공됩니다.",
+    "metaDescription": "Zapier는 비용이 비싸고 AI 기반이 아닙니다. GAIA는 내장 워크플로 자동화와 다양한 통합 기능을 갖춘 능동적 AI 어시스턴트입니다. 오픈 소스이며 무료 요금제가 제공됩니다.",
     "keywords": [
       "zapier 대안",
       "최고의 zapier 대안",
@@ -1714,7 +1718,7 @@
     "faqs": [
       {
         "question": "GAIA도 Zapier처럼 동일한 앱과 연결되나요?",
-        "answer": "GAIA는 MCP를 통해 50개 이상의 통합을 지원합니다. Zapier는 7,000개 이상의 앱과 연결되므로, 지원 범위 면에서는 Zapier가 강점이 있습니다. GAIA의 강점은 AI 기반의 문맥 인식 자동화이며, 단순한 지원 앱 수가 아니라 지능적인 처리에 있습니다."
+        "answer": "GAIA는 MCP를 통해 다양한 통합을 지원합니다. Zapier는 7,000개 이상의 앱과 연결되므로, 지원 범위 면에서는 Zapier가 강점이 있습니다. GAIA의 강점은 AI 기반의 문맥 인식 자동화이며, 단순한 지원 앱 수가 아니라 지능적인 처리에 있습니다."
       },
       {
         "question": "GAIA가 자동화에 있어 Zapier보다 저렴한가요?",
@@ -1941,7 +1945,7 @@
     "faqs": [
       {
         "question": "GAIA도 Bardeen처럼 브라우저 자동화를 하나요?",
-        "answer": "GAIA는 브라우저 자동화나 웹 스크래핑을 수행하지 않습니다. GAIA의 강점은 Gmail, 구글 캘린더, Todoist 등 50개 이상의 특정 도구와의 깊이 있는 통합에 있으며, 범용적인 브라우저 제어에는 특화되어 있지 않습니다."
+        "answer": "GAIA는 브라우저 자동화나 웹 스크래핑을 수행하지 않습니다. GAIA의 강점은 Gmail, 구글 캘린더, Todoist 등 다양한 특정 도구와의 깊이 있는 통합에 있으며, 범용적인 브라우저 제어에는 특화되어 있지 않습니다."
       },
       {
         "question": "GAIA와 Bardeen을 함께 사용할 수 있나요?",
@@ -2146,7 +2150,7 @@
       },
       {
         "question": "GAIA가 Mem.ai보다 저렴한가요?",
-        "answer": "Mem.ai는 월 $14.99입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 이메일 관리, 캘린더, 작업, 50개 이상의 통합, 워크플로우 자동화 등 지식 관리 외에 더 많은 기능을 포함합니다. 셀프 호스팅 GAIA는 무료입니다."
+        "answer": "Mem.ai는 월 $14.99입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 이메일 관리, 캘린더, 작업, 다양한 통합, 워크플로우 자동화 등 지식 관리 외에 더 많은 기능을 포함합니다. 셀프 호스팅 GAIA는 무료입니다."
       },
       {
         "question": "GAIA에도 Mem처럼 시맨틱 검색 기능이 있나요?",
@@ -2213,7 +2217,7 @@
       },
       {
         "question": "GAIA가 Reflect보다 저렴한가요?",
-        "answer": "Reflect는 월 $10입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일, 캘린더, 할 일, 메모리, 50개 이상의 통합 기능을 포함합니다. 자체 호스팅 GAIA는 무료입니다."
+        "answer": "Reflect는 월 $10입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일, 캘린더, 할 일, 메모리, 다양한 통합 기능을 포함합니다. 자체 호스팅 GAIA는 무료입니다."
       },
       {
         "question": "GAIA가 Reflect를 대체해 네트워크형 노트 필기를 할 수 있나요?",
@@ -2229,7 +2233,7 @@
     "name": "Notion AI",
     "tagline": "Notion 작업 공간에 내장된 AI 글쓰기·Q&A 확장 기능",
     "metaTitle": "2026년 최고의 Notion AI 대안",
-    "metaDescription": "Notion AI는 Notion 내에서만 사용 가능합니다. GAIA는 이메일, 캘린더, 할 일, 50개 이상의 도구를 자동으로 관리하는 능동형 AI 어시스턴트입니다. 무료 요금제 및 자체 호스팅 지원.",
+    "metaDescription": "Notion AI는 Notion 내에서만 사용 가능합니다. GAIA는 이메일, 캘린더, 할 일, 다양한 도구를 자동으로 관리하는 능동형 AI 어시스턴트입니다. 무료 요금제 및 자체 호스팅 지원.",
     "keywords": [
       "notion ai 대안",
       "최고의 notion ai 대안",
@@ -2259,7 +2263,7 @@
       "Notion 데이터베이스 트리거 한계를 넘어서는 워크플로우 자동화"
     ],
     "gaiaAdvantages": [
-      "Gmail, 구글 캘린더, Todoist 등 50개 이상의 툴을 연결해 사용 가능 — 특정 앱에만 한정되지 않음",
+      "Gmail, 구글 캘린더, Todoist 등 다양한 툴을 연결해 사용 가능 — 특정 앱에만 한정되지 않음",
       "디자인부터 능동적: 따로 명령하지 않아도 바로 필요한 것을 알려줌",
       "오픈소스 및 자체 호스팅 가능; Notion AI는 닫힌 독점 기능임",
       "무료 요금제 지원; 좌석당 비즈니스 플랜 필요 없음",
@@ -2278,7 +2282,7 @@
       },
       {
         "question": "GAIA가 Notion의 비즈니스 플랜으로 Notion AI를 이용하는 것보다 더 저렴한가요?",
-        "answer": "무제한 AI가 포함된 Notion 비즈니스 플랜은 사용자당 월 $20입니다. GAIA Pro는 개인 요금제로 월 ${{PRO_MONTHLY_PRICE}}이지만, 메일 관리, 캘린더 연동, 50개 이상의 툴 연결, 워크플로 자동화 등 다양한 기능을 제공하며, 단순히 한 앱 내에서 AI 글쓰기에만 국한되지 않습니다. 직접 서버에 설치하는 GAIA는 무료입니다."
+        "answer": "무제한 AI가 포함된 Notion 비즈니스 플랜은 사용자당 월 $20입니다. GAIA Pro는 개인 요금제로 월 ${{PRO_MONTHLY_PRICE}}이지만, 메일 관리, 캘린더 연동, 다양한 툴 연결, 워크플로 자동화 등 다양한 기능을 제공하며, 단순히 한 앱 내에서 AI 글쓰기에만 국한되지 않습니다. 직접 서버에 설치하는 GAIA는 무료입니다."
       },
       {
         "question": "GAIA도 Notion AI처럼 콘텐츠를 작성하고 문서를 요약해 주나요?",
@@ -2344,7 +2348,7 @@
       },
       {
         "question": "2026년에 GAIA가 에버노트보다 저렴한가요?",
-        "answer": "에버노트 스타터 요금제는 연 100달러(월 8.33달러), 어드밴스드 요금제는 연 250달러(월 20.83달러)입니다. GAIA Pro는 이메일 관리, 작업 자동화, 캘린더 연동, 50개 이상의 도구 연결 기능이 포함되어 월 {{PRO_MONTHLY_PRICE}}달러입니다. 직접 호스팅하는 GAIA는 완전히 무료입니다."
+        "answer": "에버노트 스타터 요금제는 연 100달러(월 8.33달러), 어드밴스드 요금제는 연 250달러(월 20.83달러)입니다. GAIA Pro는 이메일 관리, 작업 자동화, 캘린더 연동, 다양한 도구 연결 기능이 포함되어 월 {{PRO_MONTHLY_PRICE}}달러입니다. 직접 호스팅하는 GAIA는 완전히 무료입니다."
       },
       {
         "question": "GAIA도 에버노트처럼 노트북과 태그 기능이 있나요?",
@@ -2478,7 +2482,7 @@
       },
       {
         "question": "GAIA가 Craft보다 저렴한가요?",
-        "answer": "Craft의 Plus 요금제는 월 $8(연 $96)입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 이메일 관리, 캘린더 연동, 작업, 50개 이상의 도구 연결을 모두 포함합니다. 셀프호스팅 GAIA는 항상 무료입니다."
+        "answer": "Craft의 Plus 요금제는 월 $8(연 $96)입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만, 이메일 관리, 캘린더 연동, 작업, 다양한 도구 연결을 모두 포함합니다. 셀프호스팅 GAIA는 항상 무료입니다."
       },
       {
         "question": "GAIA와 Craft를 함께 사용할 수 있나요?",
@@ -2604,7 +2608,7 @@
       },
       {
         "question": "GAIA가 Airtable보다 더 저렴한가요?",
-        "answer": "Airtable의 팀 요금제는 1인당 월 $20입니다. GAIA Pro는 이메일 관리, 작업 자동화, 50개 이상의 통합 기능을 포함해 한 명 기준 월 ${{PRO_MONTHLY_PRICE}}입니다. 팀 단위로도 GAIA의 개인 요금제가 인당 더 경제적일 수 있습니다. 자체 호스팅 GAIA는 무료입니다."
+        "answer": "Airtable의 팀 요금제는 1인당 월 $20입니다. GAIA Pro는 이메일 관리, 작업 자동화, 다양한 통합 기능을 포함해 한 명 기준 월 ${{PRO_MONTHLY_PRICE}}입니다. 팀 단위로도 GAIA의 개인 요금제가 인당 더 경제적일 수 있습니다. 자체 호스팅 GAIA는 무료입니다."
       },
       {
         "question": "GAIA에 Airtable의 갤러리 및 간트(Gantt) 뷰가 있나요?",
@@ -2674,7 +2678,7 @@
       },
       {
         "question": "GAIA 비용이 Sunsama와 동일합니까?",
-        "answer": "Sunsama는 무료 등급 없이 월 $20입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 워크플로 자동화, 메모리 및 50개 이상의 통합이 포함되어 있습니다. GAIA에는 무료 등급도 있으며 자체 호스팅 GAIA는 완전히 무료입니다."
+        "answer": "Sunsama는 무료 등급 없이 월 $20입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 워크플로 자동화, 메모리 및 다양한 통합이 포함되어 있습니다. GAIA에는 무료 등급도 있으며 자체 호스팅 GAIA는 완전히 무료입니다."
       },
       {
         "question": "GAIA가 Sunsama와 같은 하루 마감 검토에 도움이 될 수 있습니까?",
@@ -2721,7 +2725,7 @@
       "캘린더 가용성에 따른 적극적인 예약 제안",
       "무료 등급 사용 가능; Akiflow에는 무료 플랜이 없습니다.",
       "완전한 데이터 제어를 위한 오픈 소스 및 자체 호스팅 가능",
-      "기본 이메일 및 캘린더 관리와 함께 MCP를 통한 50개 이상의 통합"
+      "기본 이메일 및 캘린더 관리와 함께 MCP를 통한 다양한 통합"
     ],
     "migrationSteps": [
       "Akiflow 또는 연결된 도구에서 작업을 내보냅니다.",
@@ -2752,7 +2756,7 @@
     "name": "Spark Email",
     "tagline": "팀 협업 및 스마트 받은 편지함을 갖춘 AI 기반 이메일 클라이언트",
     "metaTitle": "2026년 최고의 Spark Email 대안",
-    "metaDescription": "Spark Email은 더 빠르게 작성하는 데 도움이 되지만 적극적이지 않습니다. GAIA는 Gmail을 관리하고, 이메일에서 작업을 생성하고, 50개 이상의 도구에 연결합니다. 무료 등급 + 자체 호스팅.",
+    "metaDescription": "Spark Email은 더 빠르게 작성하는 데 도움이 되지만 적극적이지 않습니다. GAIA는 Gmail을 관리하고, 이메일에서 작업을 생성하고, 다양한 도구에 연결합니다. 무료 등급 + 자체 호스팅.",
     "keywords": [
       "스파크 이메일 대안",
       "최고의 스파크 메일 대안",
@@ -2783,7 +2787,7 @@
       "답변이 없는 이메일 스레드에 대한 후속 알림"
     ],
     "gaiaAdvantages": [
-      "받은 편지함 보기뿐만 아니라 이메일과 캘린더, 작업 및 50개 이상의 도구를 관리합니다.",
+      "받은 편지함 보기뿐만 아니라 이메일과 캘린더, 작업 및 다양한 도구를 관리합니다.",
       "적극적: 요청하지 않고도 이메일을 모니터링하고 주의가 필요한 내용을 표시합니다.",
       "오픈 소스 및 자체 호스팅 가능; Spark는 폐쇄형 소스 SaaS입니다.",
       "기능별 AI 크레딧 제한 없이 무료 등급 사용 가능",
@@ -2806,7 +2810,7 @@
       },
       {
         "question": "GAIA가 Spark Premium보다 저렴합니까?",
-        "answer": "Spark의 프리미엄 개인 플랜은 월 $7.99입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 캘린더, 작업, 메모리 및 50개 이상의 통합이 포함되어 있습니다. 이메일 전용으로 사용하는 경우 Spark가 더 저렴합니다. 전체 생산성 관리의 경우 GAIA가 더 많은 가치를 제공합니다. 자체 호스팅 GAIA는 무료입니다."
+        "answer": "Spark의 프리미엄 개인 플랜은 월 $7.99입니다. GAIA Pro는 월 ${{PRO_MONTHLY_PRICE}}이지만 이메일 관리, 캘린더, 작업, 메모리 및 다양한 통합이 포함되어 있습니다. 이메일 전용으로 사용하는 경우 Spark가 더 저렴합니다. 전체 생산성 관리의 경우 GAIA가 더 많은 가치를 제공합니다. 자체 호스팅 GAIA는 무료입니다."
       },
       {
         "question": "GAIA가 Spark가 할 수 없는 것처럼 이메일에서 작업을 생성할 수 있습니까?",
@@ -2852,7 +2856,7 @@
       "무료 등급 사용 가능; Missive에는 전체 기능에 대한 영구 무료 플랜이 없습니다.",
       "공동 받은 편지함 관리보다는 적극적인 이메일 인텔리전스",
       "Missive의 폐쇄형 SaaS와 달리 오픈 소스 및 자체 호스팅 가능",
-      "받은 편지함을 넘어 캘린더, 작업 및 50개 이상의 도구에 이메일을 연결합니다.",
+      "받은 편지함을 넘어 캘린더, 작업 및 다양한 도구에 이메일을 연결합니다.",
       "팀뿐만 아니라 개인 파워 사용자를 위해 설계됨"
     ],
     "migrationSteps": [
@@ -2868,7 +2872,7 @@
       },
       {
         "question": "GAIA가 Missive보다 저렴합니까?",
-        "answer": "Missive의 스타터 플랜은 연간 청구되는 사용자당 월 $14입니다. GAIA Pro는 이메일 관리, 캘린더, 작업 및 50개 이상의 통합을 갖춘 1인당 월 ${{PRO_MONTHLY_PRICE}}입니다. 자체 호스팅 GAIA는 완전히 무료입니다."
+        "answer": "Missive의 스타터 플랜은 연간 청구되는 사용자당 월 $14입니다. GAIA Pro는 이메일 관리, 캘린더, 작업 및 다양한 통합을 갖춘 1인당 월 ${{PRO_MONTHLY_PRICE}}입니다. 자체 호스팅 GAIA는 완전히 무료입니다."
       },
       {
         "question": "GAIA에 Missive의 내부 댓글 및 할당 기능이 있습니까?",
@@ -3048,7 +3052,7 @@
       "Knowledge built automatically from email and calendar — zero manual input",
       "Proactive surfacing: relevant knowledge appears when you need it",
       "Graph-based memory models relationships between entities automatically",
-      "Open-source and self-hostable; Capacities is closed-source SaaS",
+      "Source-available and self-hostable; Capacities is closed-source SaaS",
       "Free tier without object or block limits"
     ],
     "migrationSteps": [
@@ -3064,15 +3068,15 @@
       },
       {
         "question": "Is GAIA cheaper than Capacities Pro?",
-        "answer": "Capacities Pro is $11.99/month. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, calendar integration, task management, and 50+ tool connections alongside knowledge management. Self-hosted GAIA is free."
+        "answer": "Capacities Pro is a paid plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, calendar integration, task management, and tool connections alongside knowledge management. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Does GAIA have an AI chat for knowledge queries like Capacities?",
         "answer": "Yes. GAIA's conversational interface can query your knowledge base, summarize past discussions, and surface relevant context from memory — similar to Capacities' AI chat but drawing from a richer data source including email and calendar."
       },
       {
-        "question": "Is GAIA open-source where Capacities is not?",
-        "answer": "Yes. GAIA is fully open-source on GitHub. Capacities is a closed-source SaaS product. With GAIA you can self-host and keep all your knowledge data on your own infrastructure."
+        "question": "Is GAIA source-available where Capacities is not?",
+        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) on GitHub. Capacities is a closed-source SaaS product. With GAIA you can self-host and keep all your knowledge data on your own infrastructure."
       }
     ]
   },
@@ -3080,7 +3084,7 @@
     "name": "Tana",
     "tagline": "Outliner-database hybrid with Supertags, AI automation, and connected notes",
     "metaTitle": "Best Tana Alternative in 2026",
-    "metaDescription": "Tana has a steep learning curve and no automatic knowledge capture. GAIA builds knowledge from email and calendar proactively. Free tier + open-source self-hosting.",
+    "metaDescription": "Tana has a steep learning curve and no automatic knowledge capture. GAIA builds knowledge from email and calendar proactively. Free tier + source-available self-hosting.",
     "keywords": [
       "tana alternative",
       "best tana notes alternative",
@@ -3091,13 +3095,13 @@
       "tana outliner replacement",
       "proactive ai pkm tool",
       "free tana alternative",
-      "open source tana alternative",
+      "source-available tana alternative",
       "self-hosted tana alternative",
       "tana alternative 2026"
     ],
     "painPoints": [
       "Steep learning curve for Supertags, schemas, and node-based thinking",
-      "Plus plan at $10/month for AI features and Google Calendar sync",
+      "Paid Plus plan for AI features and Google Calendar sync",
       "AI features automate within Tana but do not connect to email or external workflows",
       "Outliner format does not suit everyone — forces a node-first mental model",
       "Knowledge is only as good as what you put in — no automatic data capture"
@@ -3113,7 +3117,7 @@
       "Zero learning curve — GAIA works immediately without schemas or Supertags",
       "Knowledge is captured automatically from email and calendar data",
       "Proactive surfacing means relevant context appears without querying",
-      "Open-source and self-hostable; Tana is closed-source SaaS",
+      "Source-available and self-hostable; Tana is closed-source SaaS",
       "Free tier without the complexity of Tana's structural requirements"
     ],
     "migrationSteps": [
@@ -3133,7 +3137,7 @@
       },
       {
         "question": "Is GAIA cheaper than Tana Plus?",
-        "answer": "Tana Plus is $10/month. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, calendar integration, task management, workflow automation, and 50+ tool connections alongside knowledge management. Self-hosted GAIA is free."
+        "answer": "Tana Plus is a paid plan. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, calendar integration, task management, workflow automation, and tool connections alongside knowledge management. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Can GAIA connect to Gmail like Tana cannot?",
@@ -3145,11 +3149,11 @@
     "name": "Google Calendar",
     "tagline": "The world's most-used calendar — but it only stores events, not intelligence",
     "metaTitle": "Google Calendar Alternative — GAIA — AI-Powered Smart Calendar",
-    "metaDescription": "Looking for a smarter Google Calendar alternative? GAIA adds an AI intelligence layer to your calendar: proactive briefings, automatic event creation from email, conflict detection, and 50+ integrations. Open source, self-hostable.",
+    "metaDescription": "Looking for a smarter Google Calendar alternative? GAIA adds an AI intelligence layer to your calendar: proactive briefings, automatic event creation from email, conflict detection, and the rest of your tools. Source-available, self-hostable.",
     "keywords": [
       "google calendar alternative",
       "google calendar alternative free",
-      "google calendar alternative open source",
+      "google calendar alternative source-available",
       "google calendar app alternative",
       "better google calendar app",
       "ai google calendar alternative",
@@ -3175,7 +3179,7 @@
       "Automatic event creation from Gmail confirmations and meeting invites",
       "Conflict detection across calendar + task load, not just event overlaps",
       "GAIA connects calendar context to email threads, tasks, and notes in one place",
-      "Open source and self-hostable; Google Calendar is a closed cloud service"
+      "Source-available and self-hostable; Google Calendar is a closed cloud service"
     ],
     "migrationSteps": [
       "Connect your Google Calendar to GAIA via the Google integration (GAIA reads and writes events)",
@@ -3194,7 +3198,7 @@
       },
       {
         "question": "Is GAIA free compared to Google Calendar?",
-        "answer": "Google Calendar is free. GAIA has a free tier and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat (no per-seat fees). For self-hosters, GAIA is entirely free to run on your own infrastructure via Docker."
+        "answer": "Google Calendar is free. GAIA has a free tier and a Pro plan at ${{PRO_MONTHLY_PRICE}}/month flat (no per-seat fees). For self-hosters, GAIA is free for non-commercial use to run on your own infrastructure via Docker (plus your own model API costs)."
       },
       {
         "question": "What does GAIA add to Google Calendar that Google doesn't?",
@@ -3206,11 +3210,11 @@
     "name": "Linear",
     "tagline": "Engineering issue tracking built for teams — not personal productivity",
     "metaTitle": "Linear Alternative — GAIA — AI Task Manager for Individuals & Small Teams",
-    "metaDescription": "Want Linear's clean UX without the engineering-team overhead? GAIA is an open-source AI productivity assistant that manages tasks, email, and calendar in one place. Free tier available. Self-hostable.",
+    "metaDescription": "Want Linear's clean UX without the engineering-team overhead? GAIA is a source-available AI productivity assistant that manages tasks, email, and calendar in one place. Free tier available. Self-hostable.",
     "keywords": [
       "linear alternative",
       "linear alternative free",
-      "linear alternative open source",
+      "linear alternative source-available",
       "linear alternative self hosted",
       "linear alternative reddit",
       "linear app alternative",
@@ -3234,7 +3238,7 @@
       "GAIA handles personal tasks, email, and calendar together — Linear handles only engineering issues",
       "Tasks created automatically from emails and meeting action items without manual entry",
       "Proactive workload awareness — GAIA knows your calendar is full and adjusts task surfacing",
-      "Open source and self-hostable; Linear is closed-source SaaS",
+      "Source-available and self-hostable; Linear is closed-source SaaS",
       "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Linear's per-seat model"
     ],
     "migrationSteps": [
@@ -3250,11 +3254,11 @@
       },
       {
         "question": "Can GAIA integrate with Linear?",
-        "answer": "GAIA supports 50+ integrations via MCP. While direct Linear sync depends on available MCP connectors, GAIA can capture action items from email and meetings and manage them independently, reducing your reliance on Linear for personal task tracking."
+        "answer": "GAIA supports deep integrations via MCP. While direct Linear sync depends on available MCP connectors, GAIA can capture action items from email and meetings and manage them independently, reducing your reliance on Linear for personal task tracking."
       },
       {
         "question": "Is there a free Linear alternative?",
-        "answer": "GAIA has a free tier and is open source — you can self-host it at no cost via Docker. Linear's free plan is limited to small teams and lacks advanced features."
+        "answer": "GAIA has a free tier and is source-available — you can self-host it free for non-commercial use (plus your own model API costs) via Docker. Linear's free plan is limited to small teams and lacks advanced features."
       },
       {
         "question": "Why do solo developers leave Linear?",
@@ -3266,7 +3270,7 @@
     "name": "HEY Email",
     "tagline": "Opinionated email reinvented — but manual triage rituals aren't AI automation",
     "metaTitle": "HEY Email Alternative — GAIA — AI Email Assistant That Automates What HEY Asks You to Do Manually",
-    "metaDescription": "Tired of HEY Email's manual triage rituals? GAIA is an open-source AI assistant that automatically sorts email, creates tasks, and connects your inbox to your calendar — no Screener required. Free tier available.",
+    "metaDescription": "Tired of HEY Email's manual triage rituals? GAIA is a source-available AI assistant that automatically sorts email, creates tasks, and connects your inbox to your calendar — no Screener required. Free tier available.",
     "keywords": [
       "hey email alternative",
       "hey email alternative free",
@@ -3274,17 +3278,17 @@
       "hey.com alternative",
       "hey mail alternative",
       "affordable hey email alternative",
-      "open source hey email alternative",
+      "source-available hey email alternative",
       "hey email alternative 2026"
     ],
     "painPoints": [
       "HEY's Screener, Imbox, The Feed, and Paper Trail are manual sorting rituals — every new sender requires a human decision, every time",
       "No task creation from emails: action items in HEY stay as emails, not tasks connected to your calendar or to-do list",
       "No calendar integration — HEY doesn't know about your meetings or help schedule based on your availability",
-      "At $99/year for personal use, HEY is expensive compared to AI-first alternatives that automate what HEY requires you to do manually",
+      "As a paid plan for personal use, HEY is expensive compared to AI-first alternatives that automate what HEY requires you to do manually",
       "HEY's opinionated structure makes it hard to use alongside existing Gmail or Outlook workflows; it's all-or-nothing"
     ],
-    "whyPeopleLook": "HEY attracted users frustrated with Gmail's clutter, but its solution — the Imbox, Screener, and Paper Trail — replaces Gmail chaos with manual rituals that still require your attention for every decision. Users who expected AI automation discover HEY is opinionated workflow design, not intelligence. The $99/year price tag becomes hard to justify when AI-native tools can automate the triage HEY asks you to do by hand.",
+    "whyPeopleLook": "HEY attracted users frustrated with Gmail's clutter, but its solution — the Imbox, Screener, and Paper Trail — replaces Gmail chaos with manual rituals that still require your attention for every decision. Users who expected AI automation discover HEY is opinionated workflow design, not intelligence. The paid price tag becomes hard to justify when AI-native tools can automate the triage HEY asks you to do by hand.",
     "gaiaReplaces": [
       "Manual Screener decisions for every new sender",
       "Manually sorting newsletters into The Feed vs Imbox",
@@ -3295,8 +3299,8 @@
       "GAIA automatically triages email with AI — no manual Screener workflow required",
       "Tasks and calendar events created directly from email threads without copy-paste",
       "Email context connects to calendar and tasks in one unified workspace",
-      "Open source and self-hostable; HEY is a closed SaaS product",
-      "GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month flat vs HEY's $99/year — and includes task, calendar, and workflow features HEY lacks"
+      "Source-available and self-hostable; HEY is a closed SaaS product",
+      "GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month flat and includes task, calendar, and workflow features HEY lacks"
     ],
     "migrationSteps": [
       "Export your HEY contacts and set up email forwarding or connect your existing Gmail/Outlook account to GAIA",
@@ -3311,7 +3315,7 @@
       },
       {
         "question": "Is GAIA cheaper than HEY?",
-        "answer": "HEY costs $99/year ($8.25/month) for personal use. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, task tracking, calendar integration, workflow automation, and 50+ tool connections. GAIA also has a free tier and a self-hosted option at no cost."
+        "answer": "HEY is a paid plan for personal use. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes email management, task tracking, calendar integration, workflow automation, and tool connections. GAIA also has a free tier and a self-hosted option, free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Can GAIA work with my existing Gmail account?",
@@ -3319,33 +3323,33 @@
       },
       {
         "question": "Why do people leave HEY Email?",
-        "answer": "The most common reasons are the $99/year cost, the all-or-nothing migration to a new email address, and the realization that HEY's 'opinionated' approach still requires significant manual effort. Users who wanted AI automation find HEY offers designed workflows instead."
+        "answer": "The most common reasons are the paid cost, the all-or-nothing migration to a new email address, and the realization that HEY's 'opinionated' approach still requires significant manual effort. Users who wanted AI automation find HEY offers designed workflows instead."
       }
     ]
   },
   "omnifocus": {
     "name": "OmniFocus",
-    "tagline": "The gold standard GTD app for Apple — but Mac/iOS only, $150, and no AI",
+    "tagline": "The gold standard GTD app for Apple — but Mac/iOS only, paid upfront, and no AI",
     "metaTitle": "OmniFocus Alternative — GAIA — AI Task Manager for Mac, Windows, Android & Web",
-    "metaDescription": "Looking for a cross-platform OmniFocus alternative with AI? GAIA works on web, desktop, mobile, and CLI — with automatic task capture from email and proactive prioritization. Open source and self-hostable.",
+    "metaDescription": "Looking for a cross-platform OmniFocus alternative with AI? GAIA works on web, desktop, mobile, and CLI — with automatic task capture from email and proactive prioritization. Source-available and self-hostable.",
     "keywords": [
       "omnifocus alternative",
       "omnifocus alternative free",
       "omnifocus alternative android",
       "omnifocus alternative windows",
       "omnifocus alternative reddit",
-      "omnifocus alternative open source",
+      "omnifocus alternative source-available",
       "free omnifocus alternative",
       "omnifocus alternative 2026"
     ],
     "painPoints": [
       "OmniFocus is Apple-only — no Windows, no Android, no web app beyond a limited browser version; your GTD system is locked to the Apple ecosystem",
-      "Pricing starts at $99.99 (Standard) or $149.99 (Pro) as one-time purchases, plus subscription options — expensive for individuals just needing personal task management",
+      "Pricing starts with paid Standard or Pro one-time purchases, plus subscription options — expensive for individuals just needing personal task management",
       "No email integration: action items from Gmail or Outlook require manual capture into OmniFocus via share sheets or manual entry",
       "No AI — OmniFocus does not suggest priorities, surface overdue tasks proactively, or learn from your patterns",
       "GTD setup requires significant manual configuration of Areas, Projects, Contexts, and Perspectives before the system becomes useful"
     ],
-    "whyPeopleLook": "OmniFocus is the most powerful GTD app available for Apple devices, but its $150 price tag, Apple-only availability, and zero AI capabilities push users to look elsewhere. Android and Windows users are completely excluded. Even Mac users who love OmniFocus often struggle with the upfront setup cost and the absence of email-driven task capture — every action item must be entered manually.",
+    "whyPeopleLook": "OmniFocus is the most powerful GTD app available for Apple devices, but its paid price tag, Apple-only availability, and zero AI capabilities push users to look elsewhere. Android and Windows users are completely excluded. Even Mac users who love OmniFocus often struggle with the upfront setup cost and the absence of email-driven task capture — every action item must be entered manually.",
     "gaiaReplaces": [
       "Manual task entry that OmniFocus requires for every inbox item",
       "Separate email client for action-item capture into OmniFocus",
@@ -3356,8 +3360,8 @@
       "Runs on web, desktop (Electron), mobile, and CLI — no Apple ecosystem lock-in",
       "Tasks created automatically from Gmail and calendar meeting action items",
       "Proactive surfacing of what to work on without configuring Perspectives manually",
-      "Open source and self-hostable via Docker at no cost",
-      "Free tier and ${{PRO_MONTHLY_PRICE}}/month Pro — no one-time $150 purchase required"
+      "Source-available and self-hostable via Docker, free for non-commercial use (plus your own model API costs)",
+      "Free tier and ${{PRO_MONTHLY_PRICE}}/month Pro — no one-time purchase required"
     ],
     "migrationSteps": [
       "Export your OmniFocus database as a plain text or OmniOutliner file to extract project and task structure",
@@ -3376,11 +3380,11 @@
       },
       {
         "question": "Is there a free OmniFocus alternative?",
-        "answer": "GAIA has a free tier and is fully open source — self-hosters can run it for free via Docker. OmniFocus has no free tier; its cheapest option is a $99.99 one-time purchase."
+        "answer": "GAIA has a free tier and is source-available (PolyForm Noncommercial) — self-hosters can run it for free via Docker. OmniFocus has no free tier; its cheapest option is a paid one-time purchase."
       },
       {
         "question": "How does GAIA compare to OmniFocus for power users?",
-        "answer": "OmniFocus offers deeper GTD customization (custom Perspectives, AppleScript automation, complex project hierarchies) for Apple power users. GAIA trades that depth for breadth: email integration, calendar awareness, workflow automation, and AI prioritization across 50+ connected tools."
+        "answer": "OmniFocus offers deeper GTD customization (custom Perspectives, AppleScript automation, complex project hierarchies) for Apple power users. GAIA trades that depth for breadth: email integration, calendar awareness, workflow automation, and AI prioritization across your connected tools."
       }
     ]
   },
@@ -3388,12 +3392,12 @@
     "name": "Limitless AI",
     "tagline": "Passive meeting capture is powerful — but memory without action is still a to-do list",
     "metaTitle": "Limitless AI Alternative — GAIA — AI Assistant That Remembers and Acts",
-    "metaDescription": "Want an AI that doesn't just capture your meetings but also manages your inbox, creates tasks, and updates your calendar? GAIA is an open-source Limitless AI alternative with proactive action across all your tools.",
+    "metaDescription": "Want an AI that doesn't just capture your meetings but also manages your inbox, creates tasks, and updates your calendar? GAIA is a source-available Limitless AI alternative with proactive action across all your tools.",
     "keywords": [
       "limitless ai alternative",
       "limitless ai alternative free",
       "limitless ai alternative reddit",
-      "limitless ai open source alternative",
+      "limitless ai source-available alternative",
       "rewind ai alternative",
       "rewind ai alternative free",
       "rewind ai alternative windows",
@@ -3406,7 +3410,7 @@
       "Primarily a capture and recall tool; it surfaces what was said but doesn't organize, prioritize, or automate next steps",
       "Cloud-dependent with no self-hosted option — sensitive meeting recordings are stored on Limitless's infrastructure"
     ],
-    "whyPeopleLook": "Limitless AI (formerly Rewind) excels at passive capture — its Pendant wearable and screen recording create a searchable memory of your day. But users quickly discover that remembering what was discussed is different from acting on it. Limitless won't draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates.",
+    "whyPeopleLook": "Limitless AI (formerly Rewind) captured meetings passively — its Pendant wearable and screen recording created a searchable memory of your day. In December 2025 Meta acquired Limitless, stopped selling the pendant, and began winding the service down. Users quickly discover that remembering what was discussed is different from acting on it. Limitless won’t draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates — on a product that is still shipping.",
     "gaiaReplaces": [
       "Manual follow-up drafting after meetings Limitless records",
       "Copying meeting action items into a separate task manager",
@@ -3417,7 +3421,7 @@
       "GAIA captures meeting context and immediately creates tasks, drafts follow-ups, and updates calendar",
       "Email integration connects meeting outcomes to email threads without manual copy-paste",
       "Proactive surfacing — GAIA acts on information without waiting to be queried",
-      "Open source and self-hostable; Limitless is a closed cloud service",
+      "Source-available and self-hostable; Limitless is a closed cloud service",
       "Works across web, desktop, mobile, Discord, Slack, and Telegram — not limited to a wearable device"
     ],
     "migrationSteps": [
@@ -3432,12 +3436,12 @@
         "answer": "GAIA integrates with calendar and email to capture meeting context and action items, but it does not provide always-on audio recording or a physical wearable like Limitless's Pendant. GAIA's strength is acting on meeting outcomes rather than passive audio capture."
       },
       {
-        "question": "Is there an open-source alternative to Limitless AI?",
-        "answer": "GAIA is fully open source and self-hostable via Docker — a significant privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps all your meeting context on your own servers."
+        "question": "Is there a source-available alternative to Limitless AI?",
+        "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable via Docker — a significant privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps all your meeting context on your own servers."
       },
       {
         "question": "What is Rewind AI called now?",
-        "answer": "Rewind AI rebranded to Limitless AI in 2024 and launched the Pendant wearable. The core product remains passive capture and recall of meetings and screen activity."
+        "answer": "Rewind AI rebranded to Limitless AI in 2024 and launched the Pendant wearable. Meta acquired Limitless in December 2025, stopped hardware sales, and began winding the service down through 2026."
       },
       {
         "question": "Can GAIA replace both Limitless and my task manager?",
@@ -3448,12 +3452,12 @@
   "lindy-ai": {
     "name": "Lindy AI",
     "tagline": "Capable AI agent builder — but closed-source and cloud-only with usage-based pricing",
-    "metaTitle": "Lindy AI Alternative — GAIA — Open-Source AI Assistant with Email & Calendar Depth",
-    "metaDescription": "Looking for an open-source Lindy AI alternative you can self-host? GAIA is a proactive AI productivity assistant with deep email, calendar, and task integration — flat ${{PRO_MONTHLY_PRICE}}/month or free to self-host.",
+    "metaTitle": "Lindy AI Alternative — GAIA — Source-Available AI Assistant with Email & Calendar Depth",
+    "metaDescription": "Looking for a source-available Lindy AI alternative you can self-host? GAIA is a proactive AI productivity assistant with deep email, calendar, and task integration — flat ${{PRO_MONTHLY_PRICE}}/month or free to self-host.",
     "keywords": [
       "lindy ai alternative",
       "lindy ai alternatives free",
-      "lindy ai open source alternative",
+      "lindy ai source-available alternative",
       "lindy ai alternative reddit",
       "lindy ai self hosted alternative",
       "lindy ai replacement",
@@ -3465,9 +3469,9 @@
       "Pricing scales with usage and agent runs, making costs unpredictable as you automate more workflows",
       "Building effective Lindies requires meaningful prompt engineering and workflow configuration — not truly zero-setup",
       "Email and calendar integrations exist but the primary use case is general-purpose agent building, not deep inbox or scheduling intelligence",
-      "No open-source community, no public roadmap transparency, and no ability to audit or extend the core platform"
+      "No source-available community, no public roadmap transparency, and no ability to audit or extend the core platform"
     ],
-    "whyPeopleLook": "Lindy AI is a polished AI agent platform, but users seeking alternatives typically cite three concerns: the closed-source nature prevents self-hosting or auditing, usage-based pricing creates budget uncertainty as automation scales, and Lindy's general-purpose agent approach means email and calendar integrations are broad rather than deeply specialized. Users who want a Lindy-style AI with open-source transparency and predictable pricing land on GAIA.",
+    "whyPeopleLook": "Lindy AI is a polished AI agent platform, but users seeking alternatives typically cite three concerns: the closed-source nature prevents self-hosting or auditing, usage-based pricing creates budget uncertainty as automation scales, and Lindy's general-purpose agent approach means email and calendar integrations are broad rather than deeply specialized. Users who want a Lindy-style AI with source-available transparency and predictable pricing land on GAIA.",
     "gaiaReplaces": [
       "Lindy agents built for email triage and response drafting",
       "Lindy workflows for task creation from emails",
@@ -3475,7 +3479,7 @@
       "General-purpose Lindy agents for personal productivity orchestration"
     ],
     "gaiaAdvantages": [
-      "Fully open source — audit the code, fork it, extend it, or contribute",
+      "Source-available (PolyForm Noncommercial) — audit the code, fork it, extend it, or contribute",
       "Self-hostable via Docker with no usage-based metering on self-hosted instances",
       "Flat ${{PRO_MONTHLY_PRICE}}/month Pro pricing vs Lindy's usage-scaled costs",
       "Deeper email and calendar specialization — GAIA is purpose-built for personal productivity, not general agent building",
@@ -3489,20 +3493,20 @@
     ],
     "faqs": [
       {
-        "question": "Is GAIA open source unlike Lindy AI?",
-        "answer": "Yes. GAIA is fully open source (MIT-licensed) and self-hostable via Docker. Lindy AI is a proprietary closed-source product with no self-hosted option."
+        "question": "Is GAIA source-available unlike Lindy AI?",
+        "answer": "Yes. GAIA is source-available (PolyForm Noncommercial) and self-hostable via Docker. Lindy AI is a proprietary closed-source product with no self-hosted option."
       },
       {
         "question": "How does GAIA's pricing compare to Lindy AI?",
-        "answer": "Lindy charges based on usage and agent runs, which scales unpredictably. GAIA Pro is a flat ${{PRO_MONTHLY_PRICE}}/month regardless of how many automations you run. Self-hosted GAIA is free."
+        "answer": "Lindy charges based on usage and agent runs, which scales unpredictably. GAIA Pro is a flat ${{PRO_MONTHLY_PRICE}}/month regardless of how many automations you run. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
       },
       {
         "question": "Can GAIA build custom agents like Lindy?",
-        "answer": "GAIA provides a proactive AI assistant with configurable workflows and 50+ tool integrations via MCP — covering the personal productivity use cases most Lindies are built for. It does not offer Lindy's visual agent builder for arbitrary enterprise workflow automation."
+        "answer": "GAIA provides a proactive AI assistant with configurable workflows and your other tool integrations via MCP — covering the personal productivity use cases most Lindies are built for. It does not offer Lindy's visual agent builder for arbitrary enterprise workflow automation."
       },
       {
         "question": "Who should choose GAIA over Lindy AI?",
-        "answer": "GAIA is the better fit for individuals and small teams who want open-source transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
+        "answer": "GAIA is the better fit for individuals and small teams who want source-available transparency, self-hosting control, predictable pricing, and deeper email + calendar intelligence. Lindy is better for teams needing a no-code visual builder for complex multi-system enterprise automations."
       }
     ]
   },
@@ -3510,12 +3514,12 @@
     "name": "Perplexity",
     "tagline": "The best AI search engine — but searching the web is very different from managing your life",
     "metaTitle": "Perplexity Alternative — GAIA — AI Assistant That Manages Your Work, Not Just Searches It",
-    "metaDescription": "Need more than AI search? GAIA is a personal AI assistant that manages your email, tasks, and calendar — with persistent memory and 50+ integrations. Open source, self-hostable, free tier available.",
+    "metaDescription": "Need more than AI search? GAIA is a personal AI assistant that manages your email, tasks, and calendar — with persistent memory and the rest of your tools. Source-available, self-hostable, free tier available.",
     "keywords": [
       "perplexity alternative",
       "perplexity alternative free",
       "perplexity alternative reddit",
-      "perplexity alternative open source",
+      "perplexity alternative source-available",
       "perplexity alternative for research",
       "free perplexity alternative",
       "perplexity ai replacement",
@@ -3525,7 +3529,7 @@
       "Perplexity answers questions about the world, not about your personal context — it has no access to your email, tasks, calendar, or meeting history",
       "Every interaction starts from scratch: Perplexity has no persistent memory of you, your projects, or your preferences",
       "No task management, no calendar integration, and no email capabilities — it's a research tool, not a productivity assistant",
-      "Perplexity Pro is $20/month but is limited to web search and AI answers; it doesn't automate or manage anything",
+      "Perplexity Pro is a paid plan but is limited to web search and AI answers; it doesn't automate or manage anything",
       "No automation or workflow capabilities — Perplexity surfaces information but never takes action on your behalf"
     ],
     "whyPeopleLook": "Users searching for a Perplexity alternative usually fall into two distinct camps: those who want a different research AI (faster, cheaper, or with different citation sources), and those who realize they need an AI that manages their personal productivity rather than answers web questions. GAIA squarely addresses the second group — users who want an AI that knows their inbox, tracks their tasks, and coordinates their calendar, not one that searches the open web.",
@@ -3537,8 +3541,8 @@
     "gaiaAdvantages": [
       "Persistent graph-based memory of your email, tasks, calendar, and meetings — Perplexity has no memory of you",
       "GAIA takes action: creates tasks, drafts emails, updates calendar — Perplexity only provides answers",
-      "50+ tool integrations connect GAIA to your actual work context vs Perplexity's web-only knowledge",
-      "Open source and self-hostable; Perplexity is a closed cloud service",
+      "Tool integrations connect GAIA to your actual work context vs Perplexity's web-only knowledge",
+      "Source-available and self-hostable; Perplexity is a closed cloud service",
       "GAIA Pro at ${{PRO_MONTHLY_PRICE}}/month includes full productivity management vs Perplexity Pro's search-only scope"
     ],
     "migrationSteps": [
@@ -3558,7 +3562,7 @@
       },
       {
         "question": "Is there a free Perplexity alternative?",
-        "answer": "GAIA has a free tier and is open source — self-hosters can run it for free. However, if you specifically want AI web search with citations, GAIA is not a direct substitute for Perplexity's core use case."
+        "answer": "GAIA has a free tier and is source-available — self-hosters can run it for free. However, if you specifically want AI web search with citations, GAIA is not a direct substitute for Perplexity's core use case."
       },
       {
         "question": "Can GAIA and Perplexity be used together?",
@@ -3570,12 +3574,12 @@
     "name": "Roam Research",
     "tagline": "Networked thought for PKM enthusiasts — but your knowledge graph shouldn't require daily feeding",
     "metaTitle": "Roam Research Alternative — GAIA — AI Knowledge Assistant That Builds Its Own Graph",
-    "metaDescription": "Tired of manually feeding Roam Research? GAIA is an open-source AI assistant with graph-based memory that builds itself from your email, calendar, and meetings — no daily notes ritual required.",
+    "metaDescription": "Tired of manually feeding Roam Research? GAIA is a source-available AI assistant with graph-based memory that builds itself from your email, calendar, and meetings — no daily notes ritual required.",
     "keywords": [
       "roam research alternative",
       "roam research alternative free",
       "roam research alternative reddit",
-      "roam research alternative open source",
+      "roam research alternative source-available",
       "roam alternative",
       "obsidian vs roam research",
       "roam research replacement",
@@ -3584,11 +3588,11 @@
     "painPoints": [
       "Roam requires you to manually capture everything — it has no email integration, calendar sync, or automatic knowledge enrichment from your digital activity",
       "The learning curve is steep: block references, bidirectional links, Clojure-based plugins, and daily note discipline take weeks to master",
-      "At $15/month, Roam is expensive compared to free alternatives like Obsidian, yet offers no AI capabilities",
+      "As a paid plan, Roam is expensive compared to free alternatives like Obsidian, yet offers no AI capabilities",
       "Roam is web-only with limited offline support — a significant drawback for users who need mobile or desktop-native experiences",
       "The knowledge graph is only as good as your capture discipline; missed meetings and unlogged emails leave gaps that passive tools would have filled automatically"
     ],
-    "whyPeopleLook": "Roam Research attracted PKM enthusiasts with the promise of a self-building knowledge graph, but the reality is that Roam only knows what you manually type into it. Users grow frustrated with the $15/month price for a tool that requires significant daily discipline to deliver value, especially when free alternatives like Obsidian offer similar bidirectional linking. The deeper frustration is that Roam's graph is entirely manual — it doesn't capture anything from your email, calendar, or meetings on its own.",
+    "whyPeopleLook": "Roam Research attracted PKM enthusiasts with the promise of a self-building knowledge graph, but the reality is that Roam only knows what you manually type into it. Users grow frustrated with the paid price for a tool that requires significant daily discipline to deliver value, especially when free alternatives like Obsidian offer similar bidirectional linking. The deeper frustration is that Roam's graph is entirely manual — it doesn't capture anything from your email, calendar, or meetings on its own.",
     "gaiaReplaces": [
       "Manual daily notes logging in Roam to capture what happened today",
       "Copy-pasting email action items and meeting notes into Roam blocks",
@@ -3598,7 +3602,7 @@
     "gaiaAdvantages": [
       "GAIA's graph-based memory builds itself from your email, calendar, and meeting data — no manual capture required",
       "Tasks, emails, and calendar events are linked automatically without block references or daily note discipline",
-      "Open source and self-hostable; Roam is a closed SaaS at $15/month",
+      "Source-available and self-hostable; Roam is a closed paid SaaS",
       "GAIA adds action to knowledge: it creates tasks, drafts emails, and updates calendar from the context it captures",
       "Free tier available; Roam has no free plan"
     ],
@@ -3615,15 +3619,897 @@
       },
       {
         "question": "Is GAIA free compared to Roam Research?",
-        "answer": "Roam costs $15/month with no free tier. GAIA has a free tier and is open source — self-hosters can run it for free via Docker. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes task management, email integration, and calendar coordination alongside knowledge management."
+        "answer": "Roam is a paid plan with no free tier. GAIA has a free tier and is source-available — self-hosters can run it for free via Docker. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes task management, email integration, and calendar coordination alongside knowledge management."
       },
       {
         "question": "Why do people leave Roam Research for Obsidian?",
-        "answer": "The most common reasons are Roam's $15/month cost (Obsidian is free), Obsidian's local file storage (Roam is cloud-only), and Obsidian's larger plugin ecosystem. For users who want AI and active task management on top of PKM, GAIA is the next step beyond both."
+        "answer": "The most common reasons are Roam's paid cost (Obsidian is free), Obsidian's local file storage (Roam is cloud-only), and Obsidian's larger plugin ecosystem. For users who want AI and active task management on top of PKM, GAIA is the next step beyond both."
       },
       {
         "question": "Can GAIA replace both Roam and my task manager?",
         "answer": "Yes. GAIA combines automatic knowledge capture with task management, email triage, and calendar coordination — covering the PKM role Roam fills plus the active productivity management that Roam doesn't attempt."
+      }
+    ]
+  },
+  "instinct": {
+    "name": "Instinct",
+    "tagline": "문자의 심부름. 열린 코드 없이.",
+    "metaTitle": "Instinct 대안 추천. 열린 SMS AI",
+    "metaDescription": "속을 볼 수 있는 Instinct 대안이 필요하신가요. GAIA는 WhatsApp과 Telegram으로 답하고 열린 코드와 50개가 넘는 도구와 셀프호스팅을 더합니다.",
+    "keywords": [
+      "instinct 대안",
+      "instinct ai 대신",
+      "instinct sms 대안",
+      "instinct 무료 대안",
+      "instinct 오픈소스 대안",
+      "instinct ai 대용",
+      "instinct 대안 2026"
+    ],
+    "painPoints": [
+      "Instinct는 문자와 통화로 심부름을 맡으며 맥락은 닫힌 제품 안에 있습니다",
+      "대기 순번 시절의 이용이라 바뀜이 이어집니다",
+      "여행과 심부름이 중심이라 수십 개 도구에 걸친 넓은 흐름은 딴곳에 있습니다",
+      "직접 쥐는 길도 공개된 길도 없는 닫힌 제품",
+      "취향과 내역은 보고 직접 둘 수 없는 체계 안에 남습니다"
+    ],
+    "whyPeopleLook": "Instinct는 문자로 심부름을 넘기는 편이 도구를 여는 것보다 빠르다고 보였습니다. 하지만 사용자들은 닫힌 통로에서 자랍니다. 맥락은 보고 직접 둘 수 없는 제품 안에 남습니다. Instinct 대안을 찾는 사람들은 열린 코드와 넓은 연동과 직접 관리하는 기억에 받쳐진 같은 문자 습관을 원합니다.",
+    "gaiaReplaces": [
+      "지금 Instinct에 문자로 보내는 여행과 심부름 부탁",
+      "예약 내용을 손으로 옮겨 적어 넣기",
+      "따로 떨어진 도구 사이에서 심부름 좇기",
+      "여행 맥락을 조수가 아닌 머리에 두기"
+    ],
+    "gaiaAdvantages": [
+      "갖고 있는 문자 습관 그대로 WhatsApp과 Telegram에서 GAIA에 보낼 수 있습니다",
+      "움직이기 전에 이메일과 캘린더를 읽으니 심부름이 일정에 맞습니다",
+      "주도 달도 맥락을 갖고 가는 그래프 기반 메모리",
+      "하나의 문자 통로가 아닌 다양한 연동",
+      "오픈소스에 무료 포함. Docker로 셀프호스팅 가능"
+    ],
+    "migrationSteps": [
+      "Instinct에 문자로 보내는 심부름을 나열합니다. 여행, 예약, 알림",
+      "Gmail과 구글 캘린더를 연결해 일정과 받은함을 쥐여 줍니다",
+      "다음 심부름을 WhatsApp이나 Telegram으로 GAIA에 보냅니다",
+      "심부름이 일정과 이어지는 모습을 보고 계속 맡깁니다"
+    ],
+    "faqs": [
+      {
+        "answer": "GAIA는 웹에 더해 WhatsApp과 Telegram에서 돕니다. 같은 방식으로 문자로 맡길 수 있고 움직일 때 이메일과 캘린더를 봅니다.",
+        "question": "Instinct처럼 GAIA에 문자로 맡길 수 있나요."
+      },
+      {
+        "answer": "GAIA에는 무료가 있고 Pro는 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 건별 과금도 살 기계도 없습니다.",
+        "question": "GAIA는 얼마인가요."
+      },
+      {
+        "answer": "맥락을 위해 먼저 Gmail과 구글 캘린더를 연결합니다. 다음에 Slack이나 Notion이나 업무 도구를 더합니다. 대부분 몇 분 만에 첫 심부름을 맡깁니다.",
+        "question": "Instinct에서 GAIA로 어떻게 옮기나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "이메일과 일정과 할 일과 대화에 움직이는 완전한 생산 OS입니다",
+        "competitor": "문자로 여행 예약과 심부름을 맡습니다"
+      },
+      {
+        "feature": "화면",
+        "gaia": "웹과 데스크톱과 모바일에 WhatsApp과 Telegram 봇까지입니다",
+        "competitor": "WhatsApp과 iMessage와 이메일의 문자나 통화"
+      },
+      {
+        "feature": "이메일과 일정",
+        "gaia": "Gmail을 읽고 Google 캘린더를 챙기며 둘 다 매 부탁에 잇습니다",
+        "competitor": "이메일과 문자와 일정과 기기에 이어집니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "모든 도구에서 버릇을 배우는 그래프 기반 기억입니다",
+        "competitor": "취향을 담고 이은 도구들을 가로질러 움직입니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스로 셀프호스팅되며 무료가 딸립니다",
+        "competitor": "대기 줄로 내는 닫힌 제품입니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "도구를 한 번 연결하면 어디서든 문자도 음성도 입력도 됩니다",
+        "competitor": "문자 보내면 끝이며 갖출 것이 없습니다"
+      }
+    ]
+  },
+  "openai-dots": {
+    "name": "OpenAI Dots",
+    "tagline": "OpenAI 클라우드에 남는 지속 도움.",
+    "metaTitle": "OpenAI Dots 대안 추천. 전체 AI 기반",
+    "metaDescription": "열린 형태의 Dots식 도움이 필요하신가요. GAIA는 기억과 50개가 넘는 도구와 셀프호스팅을 갖춘 오픈소스 OpenAI Dots 대안입니다.",
+    "keywords": [
+      "openai dots 대안",
+      "openai dots 대신",
+      "dots ai 대안",
+      "가벼운 ai 대행 대안",
+      "openai dots 대신 앱",
+      "오픈소스 dots 대안"
+    ],
+    "painPoints": [
+      "OpenAI의 닫힌 클라우드에 있어 내 관리 밖에 있는 지속 기억",
+      "ChatGPT와 Slack과 Teams에 묶이며 문자는 아직 오는 중",
+      "내 에이전트는 OpenAI 서버에서 돌아서 맥락은 저쪽 터전에 남습니다",
+      "닫혀 있고 바뀌는 중이라 되는 일이 발밑에서 움직입니다",
+      "열린 코드도 직접 둘 수 있는 선택지도 없어 개인적인 업무나 규제를 받는 업무에는 맞지 않습니다"
+    ],
+    "whyPeopleLook": "Dots는 상시 실행 도움이 쓸모 있다고 보였습니다. 사용자들은 같은 지속을 열린 코드로 원할 때 대안을 찾습니다. 기억하고 도구에 이어지며 내가 쥔 터전에서 도는 조수를.",
+    "gaiaReplaces": [
+      "내가 쥔 터전에서 돌리고 싶은 상시 실행 업무",
+      "이메일에 일정에 업무까지 아우르는 업무",
+      "답하는 데서 끝나지 않고 해야 하는 후속 조치",
+      "매번 백지부터 다시 만드는 흐름"
+    ],
+    "gaiaAdvantages": [
+      "업무마다 쌓이는 영속 메모리",
+      "이메일, 캘린더, 할 일, 대화의 다양한 연동",
+      "묻고 기다리는 대신 먼저 움직이는 방식",
+      "완전한 오픈소스이며 Docker로 셀프호스팅 가능",
+      "하나의 대화가 아닌 WhatsApp과 Telegram에서 움직임"
+    ],
+    "migrationSteps": [
+      "내가 쥔 터전에서 돌리고 싶은 Dots 업무를 적어냅니다",
+      "Gmail과 일정을 연결해 GAIA에 모자라는 맥락을 쥐여 줍니다",
+      "가장 되풀이하는 Dots 부탁을 GAIA 흐름으로 다시 만듭니다",
+      "매번 묻는 대신 먼저 돌리게 합니다"
+    ],
+    "faqs": [
+      {
+        "answer": "Dots는 OpenAI 클라우드의 지속형 에이전트입니다. 취향을 배우고 대화 사이에도 계속 일합니다. GAIA는 기억과 50개가 넘는 도구와 셀프호스팅을 갖춘 열린 대안입니다.",
+        "question": "GAIA는 OpenAI Dots와 어떻게 다른가요."
+      },
+      {
+        "answer": "GAIA에는 무료가 있고 Pro는 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 셀프호스팅 GAIA에는 건별 과금이 전혀 없습니다.",
+        "question": "GAIA는 얼마인가요."
+      },
+      {
+        "answer": "맥락을 위해 Gmail과 일정부터 시작하고 다음에 Slack이나 업무 도구를 더합니다. GAIA의 기억은 연결한 첫날부터 쌓이기 시작합니다.",
+        "question": "GAIA로 어떻게 바꾸나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "기억과 도구와 마무리를 갖춘 완전한 생산 OS입니다",
+        "competitor": "ChatGPT와 Slack과 Teams 안의 지속형 에이전트"
+      },
+      {
+        "feature": "기억",
+        "gaia": "닿을 때마다 자라는 그래프 기반 기억입니다",
+        "competitor": "취향과 목표를 때와 함께 배우는 지속형 에이전트"
+      },
+      {
+        "feature": "연결",
+        "gaia": "이메일과 일정과 할 일과 대화를 아우르는 50개가 넘는 연결입니다",
+        "competitor": "4000개가 넘는 앱에 이어지며 ChatGPT와 Slack과 Teams로 닿습니다"
+      },
+      {
+        "feature": "선제",
+        "gaia": "도구를 지켜보며 묻기 전에 움직입니다",
+        "competitor": "스스로 목표를 좇고 결과를 가져와 함께 봅니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "공개 계획과 무료 딸림의 완전한 오픈소스입니다",
+        "competitor": "닫힌 제품이며 할 수 있는 일은 2026년에도 자라는 중입니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "도구를 한 번 연결하면 웹도 모바일도 대화 앱도 씁니다",
+        "competitor": "갖출 것이 없으며 대화 안에 삽니다"
+      }
+    ]
+  },
+  "dot-app": {
+    "name": "Dot",
+    "tagline": "동행은 사라졌습니다. 습관은 남길 수 있습니다.",
+    "metaTitle": "종료 이후 Dot 앱 대안 추천",
+    "metaDescription": "Dot은 2025년 10월에 종료되었습니다. GAIA는 기억이 이메일, 캘린더, 할 일에서 움직이는 오픈소스 Dot 대안입니다.",
+    "keywords": [
+      "dot app 대안",
+      "dot ai 대신",
+      "dot app 종료 대안",
+      "기존 dot 사용자",
+      "dot 동행 대안",
+      "dot app 대신 추천"
+    ],
+    "painPoints": [
+      "Dot은 2025년 10월에 종료되어 앱이 전혀 안 돕니다",
+      "닫힌 제품은 목소리도 내보내는 길도 주지 않았습니다",
+      "동행뿐. 말하지만 이메일에도 업무에도 안 닿습니다",
+      "아이폰뿐이며 웹도 책상도 연락길도 없습니다",
+      "기억은 전부 저쪽 저장소에 있어 함께 사라졌습니다"
+    ],
+    "whyPeopleLook": "Dot 사용자들은 앱 이상을 잃었습니다. 매일의 습관과 지난 대화의 기억입니다. 종료가 가르친 진짜 교훈은 뽑히지 않는 땅에서 다시 쌓는 일입니다. Dot 대안을 찾는 사람들은 동행의 부활에 더해 다시는 사라지지 않는다는 보장을 원하고 그것이 오픈소스가 내는 것입니다.",
+    "gaiaReplaces": [
+      "Dot과 나누던 매일의 확인 대화",
+      "대화를 아우르는 맥락의 기억",
+      "문득 흘린 내용의 이월",
+      "Dot이 기른 동행 습관"
+    ],
+    "gaiaAdvantages": [
+      "길이 공개된 개발 중인 살아 있는 제품",
+      "대화와 모든 연결 도구를 아우르는 기억",
+      "기억으로 움직임. 초안을 쓰고 일정을 잡고 할 일을 챙깁니다",
+      "오픈소스이며 셀프호스팅 가능. 만듦새부터 종료에 강합니다",
+      "다양한 연동을 갖춘 무료 티어"
+    ],
+    "migrationSteps": [
+      "Dot으로 가장 쓴 것을 적습니다. 대화, 기억, 습관",
+      "GAIA에 무료로 가입하고 한 문장으로 나를 전합니다",
+      "Gmail과 캘린더를 연결해 기억에 도구를 쥐여 줍니다",
+      "매일의 Dot 확인을 GAIA 사전 자료로 다시 만듭니다"
+    ],
+    "faqs": [
+      {
+        "answer": "Dot은 2025년 10월에 종료되어 앱이 멈췄습니다. 기존 사용자에게는 살아 있는 제품, 되도록 빼앗기지 않는 것이 필요합니다.",
+        "question": "왜 Dot 대안이 필요한가요."
+      },
+      {
+        "answer": "GAIA는 완전한 오픈소스이며 Docker로 셀프호스팅할 수 있습니다. 회사 결정으로 빼앗기지 않습니다.",
+        "question": "GAIA도 Dot처럼 종료될 수 있나요."
+      },
+      {
+        "answer": "그렇습니다. GAIA는 대화와 도구를 아우르는 취향과 기록을 기억하고 말하는 데서 끝나지 않고 그 기억으로 움직입니다.",
+        "question": "GAIA가 Dot처럼 기억하나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "상태",
+        "gaia": "계속 만드는 오픈소스 조수이며 무료가 딸립니다",
+        "competitor": "닫힌 iOS 동행 앱으로 2025년 10월에 닫혔습니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "그래프 기반 기억으로 도구를 넘나드는 진짜 움직임을 냅니다",
+        "competitor": "지난 대화를 기억했지만 말만 할 수 있었습니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "이메일을 쓰고 일정을 잡고 할 일을 챙기며 흐름을 돌립니다",
+        "competitor": "대화뿐이며 도구 연결이 없습니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹과 데스크톱과 모바일에 WhatsApp과 Telegram까지 씁니다",
+        "competitor": "iPhone뿐입니다"
+      },
+      {
+        "feature": "데이터",
+        "gaia": "Docker로 셀프호스팅하며 데이터는 당신의 것으로 남습니다",
+        "competitor": "한 회사의 서버라 그쪽이 정하면 사라집니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "무료로 가입하고 Gmail과 캘린더를 연결해 맡기기 시작합니다",
+        "competitor": "아무것도 없습니다. 더는 움직이지 않습니다"
+      }
+    ]
+  },
+  "friend-pendant": {
+    "name": "Friend",
+    "tagline": "동행은 남깁니다. 능력을 더합니다.",
+    "metaTitle": "Friend 대안 추천. 움직이는 조수",
+    "metaDescription": "249달러(v2)의 동행 이상을 원하시나요. GAIA는 받은함, 캘린더, 업무를 치우는 오픈소스 Friend 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
+    "keywords": [
+      "friend 펜던트 대안",
+      "friend ai 대신",
+      "friend 몸에 차는 대안",
+      "friend ai 대용",
+      "friend 펜던트 대신 추천",
+      "friend 동행 대안"
+    ],
+    "painPoints": [
+      "249달러(v2)로 살 수 있는 것은 동행이지 능력이 아닙니다. 아무것도 안 치워집니다",
+      "이메일도 캘린더도 업무 연결 없음",
+      "닫힌 기계와 도구로 직접 쥐는 길 없음",
+      "남의 저장소에 있는 온종일 열린 귀",
+      "맥락은 문자에 남아 끝난 업무가 안 됩니다"
+    ],
+    "whyPeopleLook": "Friend는 정직합니다. 동행입니다. 실망은 세째 주쯤 옵니다. 펜던트가 바쁜 하루를 알면서 아무것도 안 한다는 걸 알게 되기 때문입니다. Friend 대안을 찾는 사람들은 같은 늘 곁의 느낌에 진짜 후속 조치를 곁들이고 싶어 합니다. 치과 약속을 듣고 잡는 조수를.",
+    "gaiaReplaces": [
+      "Friend가 말한 뒤를 전부 직접 기억하기",
+      "문자의 약속을 손으로 옮겨 적어 넣기",
+      "Friend가 닿지 않는 받은함과 업무",
+      "되지도 않는 동행에 249달러(v2) 내기"
+    ],
+    "gaiaAdvantages": [
+      "그날을 말하는 대신 받은함을 비웁니다",
+      "캘린더도 업무도 후속 조치도 끝까지 챙깁니다",
+      "익숙한 도구와 다양한 연동",
+      "오픈소스에 무료 포함. 살 기계 없음",
+      "기다리지 않고 먼저 움직입니다"
+    ],
+    "migrationSteps": [
+      "좋으면 동행은 Friend에 남깁니다. 업무는 GAIA로 바꿉니다",
+      "Gmail과 캘린더를 연결해 Friend가 듣기만 하는 것을 보여줍니다",
+      "주간 흐름을 한 번 전하고 돌리게 합니다",
+      "첫 아침 자료를 보고 뒤는 맡깁니다"
+    ],
+    "faqs": [
+      {
+        "answer": "아닙니다. Friend는 듣고 문자로 대화할 뿐 이메일에도 캘린더에도 할 일에도 연결되지 않습니다. GAIA는 50개가 넘는 도구로 업무를 합니다.",
+        "question": "Friend가 진짜 업무를 하나요."
+      },
+      {
+        "answer": "Friend 펜던트는 249달러(v2)에 전부 직접 하는 시간까지 듭니다. GAIA에는 무료가 있고 Pro는 월 ${{PRO_MONTHLY_PRICE}} 정액입니다.",
+        "question": "Friend에서 옮기면 무엇이 남나요."
+      },
+      {
+        "answer": "GAIA는 이메일을 읽고 캘린더를 챙기며 할 일을 만듭니다. Friend가 말만 하는 맥락을 끝난 업무로 바꿉니다.",
+        "question": "GAIA로 옮기면 무엇이 느나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "전자 생활 전체에 움직이는 완전한 생산 OS입니다",
+        "competitor": "듣고 문자로 답하는 249달러(v2) 펜던트입니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "받은함 가르기와 일정 챙김과 할 일과 흐름입니다",
+        "competitor": "문자로 나누는 동행과 대화입니다"
+      },
+      {
+        "feature": "맥락",
+        "gaia": "이메일과 일정과 할 일과 대화를 아우르는 그래프 기반 기억입니다",
+        "competitor": "들었기에 당신의 하루를 압니다"
+      },
+      {
+        "feature": "연결",
+        "gaia": "Gmail과 Slack과 Notion과 Linear를 포함한 50개가 넘는 연결입니다",
+        "competitor": "도구 연결이 없어 하는 이는 당신입니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스로 셀프호스팅되며 무료가 딸립니다",
+        "competitor": "닫힌 기기와 닫힌 프로그램입니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "무료로 가입하고 도구를 연결해 맡깁니다",
+        "competitor": "펜던트를 사고 차고 문자를 보냅니다"
+      }
+    ]
+  },
+  "omi": {
+    "name": "OMI",
+    "tagline": "열린 기록은 업무의 절반입니다. 나머지는 GAIA가 합니다.",
+    "metaTitle": "OMI 대안 추천. 움직이는 열린 AI",
+    "metaDescription": "OMI의 열린 자세는 좋지만 행동이 필요하신가요. GAIA는 기억한 맥락을 끝난 업무로 바꾸는 오픈소스 OMI 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
+    "keywords": [
+      "omi 대안",
+      "omi ai 대신",
+      "omi 펜던트 대안",
+      "열린 펜던트 대안",
+      "omi 몸에 차는 대신",
+      "omi 대안 추천"
+    ],
+    "painPoints": [
+      "기억뿐 행동 없음. OMI는 기억하고 나는 전부 합니다",
+      "이메일도 일정 자동화도 전혀 없습니다",
+      "매일 몸에 차는 전용 기계가 필요합니다",
+      "주워 담는 질은 귀의 닿음과 시끄러움에 좌우됩니다",
+      "열린 도구가 그래도 기계 장만에 묶입니다"
+    ],
+    "whyPeopleLook": "OMI는 꼭 맞는 층을 끌어당깁니다. 살펴볼 수 있는 열린 기술을 원하는 사람들입니다. 모자란 것은 기억한 뒤입니다. 화요일 대화의 찾아볼 수 있는 기록은 수요일 후속 조치를 쓰지 않습니다. OMI 대안을 찾는 사람들은 열린 가치를 공유하고 모자란 절반을 원합니다. 이메일도 일정도 업무도 아우르는 행동을.",
+    "gaiaReplaces": [
+      "OMI가 기억하는 대화에 손으로 움직이기",
+      "회의 맺음을 손으로 할 일에 옮겨 적기",
+      "기억한 맥락을 좇아 도구를 바꾸기",
+      "도구로 되는 일에 몸에 차는 기계를 달기"
+    ],
+    "gaiaAdvantages": [
+      "기억한 맥락을 쓴 이메일과 만든 할 일로 바꿉니다",
+      "OMI가 시도 안 하는 깊은 Gmail과 일정 자동화",
+      "익숙한 도구와 다양한 연동",
+      "묻기를 기다리지 않고 알리는 먼저 움직임",
+      "무료 포함에 기계 장만 없음"
+    ],
+    "migrationSteps": [
+      "펜던트가 좋으면 주워 담는 역할은 OMI에 남깁니다",
+      "Gmail도 일정도 업무 도구도 GAIA에 연결합니다",
+      "OMI가 기록하는 같은 회의를 GAIA에 향하게 합니다",
+      "그 맥락에서 후속 조치와 할 일을 쓰게 합니다"
+    ],
+    "faqs": [
+      {
+        "answer": "OMI는 말한 내용을 기억합니다. GAIA는 기억하고 움직입니다. 그 맥락에서 이메일을 쓰고 할 일을 만들며 일정을 잡습니다.",
+        "question": "GAIA는 OMI와 어떻게 다른가요."
+      },
+      {
+        "answer": "둘 다 완전한 오픈소스입니다. GAIA는 무료 딸림으로 Docker 셀프호스팅할 수 있고 OMI는 살펴보라고 코드를 공개합니다.",
+        "question": "둘 다 정말 오픈소스인가요."
+      },
+      {
+        "answer": "기계는 필요 없습니다. GAIA는 손에 있는 전화와 책상으로 돕니다. 웹, 책상, 들고 다님, 연락길입니다.",
+        "question": "GAIA에 기계를 사야 하나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "기억하고 움직이는 오픈소스 생산 OS입니다",
+        "competitor": "소리를 모아 기억하는 오픈소스 펜던트입니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "할 일과 이메일과 일정에 잇는 그래프 기반 기억입니다",
+        "competitor": "말한 내용의 찾을 수 있는 기록입니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "쓰고 잡고 만들고 여러 단계 흐름을 돌립니다",
+        "competitor": "떠올리기뿐이며 이메일도 일정도 할 일 움직임도 없습니다"
+      },
+      {
+        "feature": "기기",
+        "gaia": "기기 없이 웹과 데스크톱과 모바일과 대화 앱에서 씁니다",
+        "competitor": "펜던트를 몸에 차야 합니다"
+      },
+      {
+        "feature": "개방성과 값",
+        "gaia": "오픈소스이며 셀프호스팅되고 무료가 딸립니다",
+        "competitor": "오픈소스에 부담 적은 열린 기기입니다"
+      },
+      {
+        "feature": "들이기",
+        "gaia": "무료로 가입하고 도구를 연결해 어디서든 맡깁니다",
+        "competitor": "기기를 사고 매일 차고 나중에 찾습니다"
+      }
+    ]
+  },
+  "gemini-assistant": {
+    "name": "Gemini Assistant",
+    "tagline": "전화 조수는 남깁니다. 업무에 도움이 붙습니다.",
+    "metaTitle": "Gemini Assistant 대안 추천. 전체 AI",
+    "metaDescription": "전화 음성의 한계를 넘으셨나요. GAIA는 받은함, 일정, 업무, 사전 자료를 위한 오픈소스 Gemini Assistant 대안입니다.",
+    "keywords": [
+      "gemini assistant 대안",
+      "gemini 안드로이드 바꾸기",
+      "gemini 전화 대안",
+      "gemini assistant 대신",
+      "gemini 음성 조수 대안",
+      "gemini assistant 대신 추천"
+    ],
+    "painPoints": [
+      "기기 업무가 먼저. Gmail 안은 요약하지만 Slack, Notion, 비구글 도구에서는 일하지 않음",
+      "도구를 넘나드는 안건 맥락이 없습니다",
+      "Slack도 Notion도 Linear도 업무 도구에도 안 닿습니다",
+      "닫혀 있고 안드로이드와 iOS이며 구글에 묶입니다",
+      "단 있는 부탁은 첫 단에서 무너집니다"
+    ],
+    "whyPeopleLook": "전화 조수를 그만두는 사람은 없습니다. 자랍니다. 모양은 늘 같습니다. 타이머도 통화도 순조롭다가 다음에 회의 준비나 받은함 치우기를 부탁하면 하얗게 되받아봅니다. Gemini Assistant 대안을 찾는 사람들은 업무를 위한 두 겹을 원합니다. 음성 리모컨에 만들어지지 않은 기억과 도구와 좇기를.",
+    "gaiaReplaces": [
+      "Gemini가 안 읽는 이메일을 직접 전부 읽기",
+      "자료 없이 회의에 들어가기",
+      "도구 사이에서 업무를 손으로 좇기",
+      "도움을 구할 때마다 맥락을 다시 말하기"
+    ],
+    "gaiaAdvantages": [
+      "Gmail을 가르고 내 말투로 답 초안을 씁니다",
+      "회의 전에 전체 맥락으로 사전 자료를 냅니다",
+      "전 도구에서 업무를 만들고 좇습니다",
+      "한 마디가 아닌 주 단위의 기억",
+      "오픈소스에 무료 포함. 어떤 환경에서도"
+    ],
+    "migrationSteps": [
+      "통화도 타이머도 기계 다룸도 Gemini Assistant에 남깁니다",
+      "Gmail과 일정을 GAIA에 연결해 업무의 층을 만듭니다",
+      "내일 아침 첫 아침 자료를 GAIA에 부탁합니다",
+      "회의 준비 같은 되풀이 흐름을 GAIA로 옮깁니다"
+    ],
+    "faqs": [
+      {
+        "answer": "아닙니다. 음성으로 기기 업무를 합니다. 받은함 가르기도 회의 준비도 도구를 넘나드는 업무도, GAIA 같은 연결된 조수가 필요합니다.",
+        "question": "Gemini Assistant가 진짜 업무를 할 수 있나요."
+      },
+      {
+        "answer": "GAIA에는 무료가 있고 Pro는 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 안드로이드뿐 아니라 어떤 기계에서도 씁니다.",
+        "question": "GAIA는 얼마인가요."
+      },
+      {
+        "answer": "통화와 타이머는 Gemini Assistant에 남깁니다. Gmail과 일정을 GAIA에 연결해 업무의 층을 만들고 이기는 자리에서 나눠 씁니다.",
+        "question": "Gemini Assistant를 버리나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "하루 전체를 위한 완전한 생산 OS입니다",
+        "competitor": "Android와 iOS의 내장 조수로 Google 앱에 가장 깊습니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "받은함 가르기와 사전 자료와 할 일과 일정 잡기와 흐름입니다",
+        "competitor": "전화와 타이머와 음악과 기기 설정과 짧은 답에 Workspace 안 Gmail 요약과 쓰기까지입니다"
+      },
+      {
+        "feature": "업무 맥락",
+        "gaia": "Gmail과 캘린더를 읽어 둘 다 매 할 일에 잇습니다",
+        "competitor": "Gmail과 Workspace 안은 읽고 요약하지만 Slack도 Notion도 Google 밖 도구도 움직이지 못합니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "주와 도구를 넘나들며 이어지는 그래프 기반 기억입니다",
+        "competitor": "Google 앱 안은 기억하지만 Slack과 Notion과 이메일 줄기를 가로지르는 일 맥락은 없습니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹과 데스크톱과 모바일에 WhatsApp과 Telegram과 Slack과 Discord입니다",
+        "competitor": "Android와 iOS이며 Google 앱 안에서 가장 좋습니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "완전한 오픈소스로 셀프호스팅되며 무료가 딸립니다",
+        "competitor": "닫혀 있어 Google 계정에 묶입니다"
+      }
+    ]
+  },
+  "siri": {
+    "name": "Siri",
+    "tagline": "Siri는 기계를 챙깁니다. GAIA는 하루를 챙깁니다.",
+    "metaTitle": "Siri 대안 추천. 업무를 하는 AI",
+    "metaDescription": "음성 명령 이상이 필요하신가요. GAIA는 받은함, 일정, 업무를 대신 챙기는 오픈소스 Siri 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
+    "keywords": [
+      "siri 대안",
+      "siri 대안 추천",
+      "siri 대신",
+      "siri 바꾸기",
+      "siri 아이폰 대안",
+      "siri 대신 앱"
+    ],
+    "painPoints": [
+      "한 번의 명령뿐. 단 있는 일은 무너집니다",
+      "대화를 넘기는 기억은 결코 없습니다",
+      "이메일에도 업무 도구에도 못 들어갑니다",
+      "애플뿐이며 길은 안 보이고 빚을 수 없습니다",
+      "타이머는 훌륭하고 화요일은 쓸모없습니다"
+    ],
+    "whyPeopleLook": "Siri는 첫 달은 사랑받고 다음 백 번은 용서받습니다. 천장은 안 움직입니다. 기억도 도구도 좇기도 없습니다. Siri 대안을 찾는 사람들은 애플을 화내지 않습니다. Siri가 못 닿는 업무를 가졌을 뿐입니다. 보통으로 말하는 같은 느낌에 제대로 끝내는 조수를 곁들이고 싶습니다.",
+    "gaiaReplaces": [
+      "Siri가 못 읽는 이메일을 손으로 한 통씩 가르기",
+      "준비 없이 회의에 들어가기",
+      "도구 사이에서 업무를 머리로 좇기",
+      "기억 없는 조수에게 다시 말하기"
+    ],
+    "gaiaAdvantages": [
+      "묻기 전에 받은함을 가르고 답을 씁니다",
+      "회의 전에 전체 맥락으로 사전 자료를 냅니다",
+      "50개가 넘는 도구에서 업무와 후속 조치를 챙깁니다",
+      "그래프 기반 메모리로 버릇을 기억합니다",
+      "오픈소스에 무료 포함. 모든 환경에서"
+    ],
+    "migrationSteps": [
+      "타이머도 통화도 기계 명령도 Siri에 남깁니다",
+      "Gmail과 일정을 GAIA에 연결해 업무의 층을 만듭니다",
+      "다음 회의 전에 사전 자료를 GAIA에 부탁합니다",
+      "받은함 가르기를 GAIA로 옮기고 아침을 되찾습니다"
+    ],
+    "faqs": [
+      {
+        "answer": "아닙니다. Siri는 기계 명령과 짧은 질문을 합니다. 받은함도 일정 관리도 도구를 넘나드는 업무도 GAIA가 필요합니다.",
+        "question": "Siri가 하루를 챙길 수 있나요."
+      },
+      {
+        "answer": "GAIA에는 무료가 있고 Pro는 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 애플 기계에도 그 밖에도 씁니다.",
+        "question": "GAIA는 얼마인가요."
+      },
+      {
+        "answer": "타이머와 통화는 Siri에 남깁니다. Gmail과 일정을 GAIA에 연결하고 아침 자료를 부탁해 하루 만에 차이를 느낍니다.",
+        "question": "Siri와 나란히 GAIA를 어떻게 시작하나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "모든 도구에 걸친 선제 생산 OS입니다",
+        "competitor": "iPhone과 iPad와 Mac의 내장 음성 명령입니다"
+      },
+      {
+        "feature": "하는 일",
+        "gaia": "받은함 가르기와 사전 자료와 일정 잡기와 할 일과 흐름입니다",
+        "competitor": "타이머와 전화와 전언과 짧은 물음입니다"
+      },
+      {
+        "feature": "여러 단계 업무",
+        "gaia": "도구를 넘나드는 여러 단계 일을 짜고 움직입니다",
+        "competitor": "한 번 명령뿐이며 마무리가 없습니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "때와 함께 버릇을 배우는 그래프 기반 기억입니다",
+        "competitor": "대화 사이 기억이 없습니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹과 데스크톱과 모바일에 WhatsApp과 Telegram과 Slack과 Discord입니다",
+        "competitor": "Apple 기기뿐입니다"
+      },
+      {
+        "feature": "개방성",
+        "gaia": "Docker로 셀프호스팅되는 완전한 오픈소스입니다",
+        "competitor": "닫혀 있어 길을 Apple이 정합니다"
+      }
+    ]
+  },
+  "openclaw": {
+    "name": "OpenClaw",
+    "tagline": "숙제 없는 힘.",
+    "metaTitle": "OpenClaw 대안 추천. 조립 없는 AI 도움",
+    "metaDescription": "조립 없는 OpenClaw의 힘이 좋으신가요. GAIA는 첫날부터 돕는 오픈소스 OpenClaw 대안으로 무료 포함입니다. 어울리는 사람과 시작 방법도 비교합니다.",
+    "keywords": [
+      "openclaw 대안",
+      "openclaw 대신",
+      "openclaw 대신 앱",
+      "openclaw 부호 없는 대안",
+      "openclaw 대안 추천",
+      "moltbot 대안",
+      "clawdbot 대안"
+    ],
+    "painPoints": [
+      "제품이 아닌 터. 먼저 짜는 일이 필요합니다",
+      "기술 조립과 이어지는 지킴이 필요합니다",
+      "직접 짜기까지 먼저 움직이는 도움 없음",
+      "도구를 연결할 때마다 또 직접 만드는 업무",
+      "받은함을 쥔 사람이 아닌 만드는 사람용"
+    ],
+    "whyPeopleLook": "OpenClaw는 정말 볼 만하고 정말 두 번째 업무입니다. 생각은 사랑받고 지킴은 싫증납니다. 연동마다 업무, 흐름마다 손보기, 부호를 지키는 사이에 받은함은 쌓입니다. OpenClaw 대안을 찾는 사람들은 숙제 없는 같은 열린 자동화 힘을 원합니다. 도구를 연결하고 맺음을 전하고 끝입니다.",
+    "gaiaReplaces": [
+      "손으로 지키는 직접 만든 OpenClaw 흐름",
+      "OpenClaw가 덮지 않는 도구를 잇는 이음새 부호",
+      "흐름이 깨졌을 때 부호 손보기",
+      "설정을 팀의 다른 사람에게 전하기"
+    ],
+    "gaiaAdvantages": [
+      "부호도 설정도 없이 바로 돕니다",
+      "이메일도 일정도 알림도 먼저 움직입니다",
+      "직접 짜는 이음매가 아닌 바로 쓰는 연동이 다양함",
+      "설정 없이 배우는 그래프 기반 메모리",
+      "평탄한 말로 흐름을 짜는 무료 포함"
+    ],
+    "migrationSteps": [
+      "매일 의지하는 OpenClaw 흐름을 나열합니다",
+      "50개가 넘는 연동으로 같은 도구를 GAIA에 연결합니다",
+      "흐름마다 평탄한 말로 전하고 GAIA가 짜게 합니다",
+      "지키지 않게 된 부호를 지웁니다"
+    ],
+    "faqs": [
+      {
+        "answer": "OpenClaw는 짜는 터이고 GAIA는 쓰는 조수입니다. 부호로 흐름을 짜고 싶으면 OpenClaw가 맞습니다. 오늘의 도움이 좋으면 GAIA가 합니다.",
+        "question": "GAIA는 OpenClaw와 어떻게 다른가요."
+      },
+      {
+        "answer": "GAIA에는 무료가 있고 Pro는 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 셀프호스팅 GAIA에는 돌릴 때마다 과금이 없습니다.",
+        "question": "GAIA는 얼마인가요."
+      },
+      {
+        "answer": "의지하는 OpenClaw 흐름을 세고 같은 도구를 GAIA에 연결해 흐름마다 평탄한 말로 전합니다. GAIA가 부호 없이 다시 만듭니다.",
+        "question": "OpenClaw 설정을 GAIA로 어떻게 옮기나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "바로 쓰는 선제 AI 조수를 갖춘 완전한 생산 OS입니다",
+        "competitor": "다듬기와 만들기가 필요한 AI 자동화 틀입니다"
+      },
+      {
+        "feature": "선제 움직임",
+        "gaia": "이메일과 일정과 알림을 지켜보며 묻기 전에 움직입니다",
+        "competitor": "다듬어 둔 방아쇠가 당겨지면 자동화가 돕니다"
+      },
+      {
+        "feature": "연결",
+        "gaia": "Gmail과 Slack과 Notion과 GitHub과 Linear를 포함한 바로 쓰는 50개가 넘는 연결입니다",
+        "competitor": "연결 힘에 만드는 이의 다듬기가 필요합니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "버릇을 배우고 할 일을 일에 이어 맥락을 때와 함께 기르는 그래프 기반 기억입니다",
+        "competitor": "자동화가 도는 동안의 그 자리 맥락입니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹과 데스크톱(macOS와 Windows와 Linux)과 모바일 앱입니다",
+        "competitor": "주로 만드는 이를 향한 화면입니다"
+      },
+      {
+        "feature": "오픈소스",
+        "gaia": "Docker로 셀프호스팅되는 완전한 오픈소스입니다",
+        "competitor": "여럿이 보태 기르는 오픈소스입니다"
+      },
+      {
+        "feature": "들이는 시간",
+        "gaia": "가입하고 바로 쓰며 만들기가 필요 없습니다",
+        "competitor": "기술 다듬기와 설정이 필요합니다"
+      }
+    ]
+  },
+  "poke": {
+    "name": "Poke",
+    "tagline": "같은 문자 습관, 깊은 조수.",
+    "metaTitle": "Poke 대안 추천. 오픈소스 SMS AI",
+    "metaDescription": "닿는 범위가 깊은 Poke 대안이 필요하신가요. GAIA는 WhatsApp과 Telegram으로 문자를 나누고 열린 이메일과 일정의 힘을 더합니다.",
+    "keywords": [
+      "poke 대안",
+      "poke ai 대신",
+      "poke 앱 대신",
+      "poke 조수 대안",
+      "poke 대안 추천",
+      "poke 오픈소스 대신"
+    ],
+    "painPoints": [
+      "좁은 통로용이라 도구 깊이에 한계 있음",
+      "진짜 기억이 아닌 초보 대화 기록",
+      "Cognition 인수 이후의 닫힌 곳",
+      "속을 중시하는 팀을 위한 직접 쥐는 길 없음",
+      "이메일과 일정은 닿는 범위 밖"
+    ],
+    "whyPeopleLook": "Poke는 접점을 똑바로 잡았습니다. 이미 대화하는 자리에서 조수와 말하기. Interaction Company는 사랑받는 것을 만들고 2026년 7월 Cognition 인수는 앞으로의 분명한 물음을 세웠습니다. Poke 대안을 찾는 사람들은 열린 땅에서의 문자 습관을 원합니다. 같은 WhatsApp의 가벼움에 이메일 깊이와 진짜 기억과 살펴볼 수 있는 부호를 곁들여서.",
+    "gaiaReplaces": [
+      "돌아가려면 받은함 맥락이 필요한 Poke 흐름",
+      "Poke 답을 이메일과 업무에 손으로 이어 붙이는 일",
+      "Poke가 못 쥐는 맥락의 다시 말하기",
+      "Poke가 안 닿는 도구를 아우르는 흐름"
+    ],
+    "gaiaAdvantages": [
+      "같은 문자 습관에 더해 웹과 책상의 도구",
+      "부탁에 움직이기 전에 이메일과 일정을 읽습니다",
+      "주를 넘어 쌓이는 그래프 기반 메모리",
+      "좁은 통로가 아닌 다양한 연동",
+      "오픈소스이며 Docker로 셀프호스팅 가능"
+    ],
+    "migrationSteps": [
+      "주에 가장 쓰는 Poke 흐름을 나열합니다",
+      "Gmail도 일정도 업무 도구도 GAIA에 연결합니다",
+      "이메일에 기대는 흐름을 먼저 옮깁니다",
+      "이후는 WhatsApp이나 Telegram으로 GAIA에 문자를 보냅니다"
+    ],
+    "faqs": [
+      {
+        "answer": "Poke는 연락길로 돕고 GAIA도 같습니다. WhatsApp과 Telegram에 더해 웹, 책상, 들고 다님입니다. 습관은 남고 도구는 늡니다.",
+        "question": "조수에게 문자로 계속 맡길 수 있나요."
+      },
+      {
+        "answer": "GAIA에는 무료가 있고 Pro는 월 ${{PRO_MONTHLY_PRICE}} 정액입니다. 셀프호스팅 GAIA에는 쓰는 양의 과금이 전혀 없습니다.",
+        "question": "GAIA는 얼마인가요."
+      },
+      {
+        "answer": "먼저 Gmail도 일정도 업무 도구도 연결합니다. 다음에 Poke 흐름을 하나씩 옮기고 이메일에 닿는 것부터 시작합니다.",
+        "question": "Poke에서 GAIA로 어떻게 바꾸나요."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "핵심 방식",
+        "gaia": "이메일과 일정과 할 일과 흐름을 챙기는 선제 AI의 오픈소스 생산 OS입니다",
+        "competitor": "겨냥한 기능의 AI 생산 조수입니다"
+      },
+      {
+        "feature": "선제 자동화",
+        "gaia": "전자 생활을 24시간 지켜보며 묻기 전에 움직입니다",
+        "competitor": "당신의 부탁과 손길에 답합니다"
+      },
+      {
+        "feature": "연결",
+        "gaia": "Gmail과 Slack과 Notion과 GitHub과 Todoist와 Asana와 Linear를 포함한 50개가 넘는 연결입니다",
+        "competitor": "연결 세상이 좁습니다"
+      },
+      {
+        "feature": "기억",
+        "gaia": "할 일과 회의와 문서와 취향을 잇는 그래프 기반 기억입니다",
+        "competitor": "평범한 대화 기록입니다"
+      },
+      {
+        "feature": "오픈소스",
+        "gaia": "Docker 셀프호스팅 딸린 완전한 오픈소스입니다",
+        "competitor": "닫힌 바탕입니다"
+      },
+      {
+        "feature": "흐름 자동화",
+        "gaia": "영리한 방아쇠와 도구 넘나듦으로 여러 단계 흐름을 냅니다",
+        "competitor": "평범한 일 거듦과 권하기입니다"
+      },
+      {
+        "feature": "쓰는 곳",
+        "gaia": "웹 앱과 데스크톱(macOS와 Windows와 Linux)과 모바일에 Discord와 Slack과 Telegram 봇입니다",
+        "competitor": "웹과 모바일 화면입니다"
+      }
+    ]
+  },
+  "chatgpt-atlas": {
+    "name": "ChatGPT Atlas",
+    "tagline": "종료에 남겨졌다면 열린 터에서 다시 쌓습니다.",
+    "metaTitle": "종료 이후 ChatGPT Atlas 대안 추천",
+    "metaDescription": "Atlas는 2026년 8월에 종료되었습니다. GAIA는 종료에 강한 오픈소스 Atlas 대안으로 이메일과 캘린더 자동화를 갖췄습니다.",
+    "keywords": [
+      "chatgpt atlas 대안",
+      "atlas ai 대신",
+      "chatgpt atlas 종료 대안",
+      "기존 atlas 사용자",
+      "atlas ai 대안 추천",
+      "atlas 종료 어쩌지"
+    ],
+    "painPoints": [
+      "2026년 8월에 종료. 제품은 이제 없습니다",
+      "닫힌 길은 움직일 수 있는 경고를 내지 않았습니다",
+      "Atlas 안에 쌓은 습관과 맥락이 사라졌습니다",
+      "고운 출구를 위한 내보내는 길이 없습니다",
+      "한 회사의 AI 계획에 둔 신뢰가 무너졌습니다"
+    ],
+    "whyPeopleLook": "Atlas 사용자들은 잘못이 없고 설정을 잃었습니다. 2026년 8월 이야기는 그것뿐입니다. ChatGPT Atlas 대안을 찾는 사람들은 견주는 것이 아닙니다. 일어서는 것입니다. 원하는 것은 둘, 도움의 층을 빨리 되찾는 일과 다시는 빼앗기지 않는다는 보장입니다. 오픈소스가 그 보장입니다.",
+    "gaiaReplaces": [
+      "Atlas가 맡던 매일의 도움 흐름",
+      "Atlas 안에 쌓은 맥락과 습관",
+      "종료와 함께 죽은 흐름",
+      "닫힌 제품의 길에 둔 신뢰"
+    ],
+    "gaiaAdvantages": [
+      "개발이 이어지는 살아 있는 제품에 무료 티어",
+      "오픈소스이며 셀프호스팅 가능. 종료에 강합니다",
+      "이메일, 캘린더, 할 일 자동화가 한곳에",
+      "맥락을 빨리 다시 쌓는 그래프 기반 메모리",
+      "Atlas가 닿던 범위를 덮는 다양한 연동"
+    ],
+    "migrationSteps": [
+      "Atlas에서 아직 꺼낼 수 있는 것을 내보냅니다",
+      "GAIA에 무료로 가입하고 Gmail과 캘린더를 연결합니다",
+      "Atlas가 맡던 흐름을 말로 전합니다",
+      "전체를 쥐고 싶으면 나중에 Docker로 셀프호스팅합니다"
+    ],
+    "faqs": [
+      {
+        "answer": "ChatGPT Atlas는 2026년 8월에 종료되었습니다. 손에 닿는 것을 내보내고 살아 있는 제품으로 옮겨야 합니다.",
+        "question": "ChatGPT Atlas는 어떻게 되었나요."
+      },
+      {
+        "answer": "GAIA는 완전한 오픈소스이며 셀프호스팅할 수 있어 종료로 빼앗기지 않습니다. 50개가 넘는 도구에서 이메일, 캘린더, 할 일, 기억을 다룹니다.",
+        "question": "ChatGPT Atlas 대신 무엇이 있나요."
+      },
+      {
+        "question": "GAIA에서 설정을 얼마나 빨리 다시 쌓을 수 있나요.",
+        "answer": "먼저 Gmail과 일정을 연결하고 다음에 업무 도구를 더합니다. GAIA는 실제 손 안에서 도움의 층을 하루 만에 다시 쌓습니다."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "상태",
+        "gaia": "계속 만들며 무료 딸린 살아 있는 제품입니다",
+        "competitor": "2026년 8월에 닫혀 제품 자체가 사라졌습니다"
+      },
+      {
+        "feature": "종료 위험",
+        "gaia": "오픈소스이며 셀프호스팅되어 닫힘에 강한 구조입니다",
+        "competitor": "닫힌 계획 탓에 움직일 만한 알림이 없었습니다"
+      },
+      {
+        "feature": "맥락",
+        "gaia": "그래프 기반 메모리로 당신의 맥락을 빨리 되살립니다",
+        "competitor": "Atlas에서 기른 버릇도 맥락도 사라졌습니다"
+      },
+      {
+        "feature": "나가기",
+        "gaia": "오픈소스에 무료 딸림과 셀프호스팅 길이 있습니다",
+        "competitor": "매끄럽게 나갈 내보내기가 없었습니다"
+      },
+      {
+        "feature": "범위",
+        "gaia": "이메일과 일정과 할 일 자동화가 한곳에 있습니다",
+        "competitor": "브라우저에 묶인 업무라 브라우저와 함께 죽었습니다"
+      },
+      {
+        "feature": "도구 범위",
+        "gaia": "Atlas가 닿던 도구를 덮는 50개가 넘는 연결이 있습니다",
+        "competitor": "한 회사의 AI 계획에 대한 믿음이 깨졌습니다"
       }
     ]
   }
