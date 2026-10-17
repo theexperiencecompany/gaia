@@ -55,7 +55,7 @@ const CONFIG: BestHubConfig = {
   gaiaItemDescription:
     "Proactive productivity OS that triages email, drafts replies, and creates tasks across 50+ tools before you ask.",
   pickBody:
-    "GAIA is a proactive productivity OS that manages your inbox autonomously. It triages messages by urgency, drafts context-aware replies, converts threads into tasks and calendar events, and chains those actions into cross-tool workflows spanning Gmail, Slack, Notion, and more than 50 integrations. It is open source, so you can inspect exactly how your data is handled.",
+    "GAIA is a proactive productivity OS that manages your inbox autonomously. It triages messages by urgency, drafts context-aware replies, converts threads into tasks and calendar events, and chains those actions into cross-tool workflows spanning Gmail, Slack, Notion, and more than 50 integrations. Being open source, the whole mail pipeline is yours to inspect.",
   pickCompareHref: "/compare/superhuman",
   pickCompareLabel: "See GAIA vs Superhuman head-to-head",
   pickAlternativeHref: "/alternative-to/superhuman",
@@ -82,22 +82,22 @@ const CONFIG: BestHubConfig = {
     {
       question: "What is the best AI email assistant right now?",
       answer:
-        "There is no single best for everyone. Email clients such as Superhuman, Shortwave, and Spark make you faster at doing email yourself, while SaneBox quietly filters noise aside. GAIA is our pick because it removes the work instead of speeding it up: it triages urgency, drafts replies, creates tasks from threads, and schedules follow-ups before you ask.",
+        "It depends on how much of email you want off your plate. Superhuman and Spark reward you every time you are inside the client, Shortwave adds strong AI drafting inside Gmail, SaneBox sifts noise on its own, and Missive covers shared team inboxes. If you would rather have the inbox processed for you, GAIA is our pick: it triages urgency, drafts replies, turns threads into tasks, and schedules follow-ups before you ask.",
+    },
+    {
+      question: "Is GAIA an open-source email assistant?",
+      answer:
+        "Yes, and you can check that in the repo rather than on a feature page. The code that classifies your mail, drafts replies, and routes follow-ups is public, so you can review exactly how your inbox is handled before trusting it. It hooks into Gmail, Slack, Notion, GitHub, Calendar, Todoist, Linear, and more than 50 tools in total, which is also why work that starts in email lands in your calendar, tasks, and Slack without extra wiring.",
     },
     {
       question: "Superhuman vs GAIA: should I pick speed or delegation?",
       answer:
-        "Pick Superhuman if you enjoy living in your inbox and want to process it faster through keyboard discipline and a premium client. Pick GAIA if you would rather process less of it: GAIA reads, triages, replies, and converts email into tasks and calendar events autonomously, then connects those actions to 50+ other tools. One makes you faster, the other makes email smaller.",
+        "Superhuman invests everything in the person doing the work: keyboard-first discipline that turns incoming mail into a fast, satisfying flow. GAIA invests in replacing the work: reading what arrived, drafting the replies, converting threads into tasks and events, and chasing every follow-up on its own. Choose speed when you like email; choose delegation when you would rather spend the day doing something else.",
     },
     {
-      question: "Can I use GAIA alongside Superhuman, Shortwave, or Spark?",
+      question: "Can I keep Superhuman, Shortwave, or Spark alongside GAIA?",
       answer:
-        "Yes. They solve different problems and work well together. Keep your favorite client for reading and sending, and let GAIA handle the layer underneath: triaging urgency, drafting replies, extracting action items, and chasing follow-ups across your inbox, calendar, and task tools.",
-    },
-    {
-      question: "Is GAIA really open source?",
-      answer:
-        "Yes. GAIA is an open-source AI assistant that works across Gmail, Slack, Notion, GitHub, Calendar, Todoist, Linear, and more than 50 tools in total. Unlike email clients tied to one inbox, it connects your whole stack and manages email, calendar, tasks, and multi-step workflows on your behalf.",
+        "Yes, and that pairing is common. Keep the client you like for reading and composing mail; GAIA sits underneath it, deciding which threads matter, extracting action items, and syncing follow-ups into your tasks, calendar, and cross-tool workflows. One layer makes writing mail fast, the other makes remembering it unnecessary.",
     },
   ],
   comparisonsTitle: "Every email comparison",

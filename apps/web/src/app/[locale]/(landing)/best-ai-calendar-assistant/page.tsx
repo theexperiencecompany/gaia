@@ -64,7 +64,7 @@ const CONFIG: BestHubConfig = {
   gaiaItemDescription:
     "Proactive productivity OS that schedules, buffers, and preps your calendar across 50+ tools before you ask.",
   pickBody:
-    "GAIA is a proactive productivity OS that runs your calendar end to end. It schedules meetings around your preferences, enforces buffer time between back-to-backs, briefs you before important calls, and turns outcomes into tasks and follow-ups across Gmail, Slack, Notion, and more than 50 integrations. It is open source, so you can inspect exactly how your data is handled.",
+    "GAIA is a proactive productivity OS that runs your calendar end to end. It schedules meetings around your preferences, enforces buffer time between back-to-backs, briefs you before important calls, and turns outcomes into tasks and follow-ups across Gmail, Slack, Notion, and more than 50 integrations. As an open-source project, everything touching the calendar is auditable in code.",
   pickCompareHref: "/compare/motion",
   pickCompareLabel: "See GAIA vs Motion head-to-head",
   pickAlternativeHref: "/alternative-to/motion",
@@ -91,22 +91,23 @@ const CONFIG: BestHubConfig = {
     {
       question: "What is the best AI calendar assistant right now?",
       answer:
-        "There is no single best for everyone. Motion auto-schedules tasks, Reclaim and Clockwise defend team focus time, Sunsama guides a mindful planning ritual, and Akiflow unifies tasks for power users. GAIA is our pick because it covers the whole loop: scheduling meetings, enforcing buffers, prepping you beforehand, and connecting every event to your email and tasks.",
+        "Motion earns its spot when tasks keep failing to fit the grid, Reclaim and Clockwise protect focus time for teams that book a lot of meetings, Sunsama runs a deliberately calm daily ritual, and Akiflow funnels tasks from everywhere into one keyboard-driven view. They all arrange the day; none of them work the loop around a meeting. GAIA takes number one because it does both: it books the event, guards the buffer before it, briefs you beforehand, and follows up afterward.",
     },
     {
       question: "Motion vs Reclaim vs GAIA: which should I pick?",
       answer:
-        "Pick Motion if your main problem is fitting tasks into your calendar, or Reclaim if your team needs focus time defended automatically. Pick GAIA if scheduling is only half the pain: GAIA schedules meetings, protects buffers, prepares briefs, and then handles the email and tasks around every event across 50+ tools.",
+        "Motion if what you want is a calendar that automatically makes room for your tasks. Reclaim if the problem lives with people: shared calendars where everyone's focus time gets eaten. GAIA if scheduling is only the entry point and you want the rest handled too: meetings booked off email, buffers kept honest, a brief before each call, and follow-up work routed back into your task tools.",
     },
     {
-      question: "Can I use GAIA alongside Motion, Sunsama, or Akiflow?",
+      question: "Is GAIA an open-source calendar assistant?",
       answer:
-        "Yes. They solve different problems and work well together. Keep your planner for the daily ritual or the unified task view, and let GAIA handle the upstream layer: creating events from email, enforcing buffer time, prepping meetings, and running cross-tool workflows so there is less to plan.",
+        "Yes. Because the code is public, you can verify what it writes onto your schedule, what it reads from your email, and how meeting details travel between tools, all before giving it access. It connects Gmail, Slack, Notion, and more than 50 other tools in total, so the calendar is audited in the same place as everything else it runs.",
     },
     {
-      question: "Is GAIA really open source?",
+      question:
+        "Will GAIA work next to Sunsama, Akiflow, or my current planner?",
       answer:
-        "Yes. GAIA is an open-source AI assistant that works across Gmail, Slack, Notion, GitHub, Calendar, Todoist, Linear, and more than 50 tools in total. Unlike calendar apps tied to one schedule, it connects your whole stack and manages email, calendar, tasks, and multi-step workflows on your behalf.",
+        "Yes, and most users actually prefer that setup. Your planner keeps the morning ritual and the flat task list you enjoy; GAIA operates above it, creating events from email, keeping buffers intact between back-to-backs, prepping each meeting, and pushing outcomes back into whatever system holds your work. The ritual stays yours; the machinery becomes automatic.",
     },
   ],
   comparisonsTitle: "Every calendar comparison",
