@@ -266,6 +266,24 @@ const nextConfig = {
       // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
       // Next content-hashes chunk filenames in prod, so its default immutable
       // headers are correct; in dev, Turbopack reuses filenames across rebuilds, so a custom long-cache header would pin a stale bundle and break hot reloads.
+      // Non-production hosts must never be indexed. PR preview aliases
+      // (pr-<N>-gaia.heygaia.workers.dev) and the cf.heygaia.io preview domain
+      // both serve this same worker build, so host-conditional headers here
+      // cover every URL the preview deploys actually serve. Positive `has`
+      // matches on purpose: if host matching ever stopped applying, the rule
+      // silently stops covering previews (today's status quo) instead of
+      // noindexing production. The post-deploy smoke asserts prod carries no
+      // X-Robots-Tag, so a leak to prod would still fail loudly.
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: ".*workers\\.dev.*" }],
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: ".*cf\\.heygaia\\.io.*" }],
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
       {
         source: "/images/(.*)",
         headers: [

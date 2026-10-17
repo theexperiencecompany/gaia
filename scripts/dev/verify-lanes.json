@@ -122,6 +122,15 @@
       "command": "pnpm run quality:publint && pnpm run quality:attw"
     },
     {
+      "name": "content-dupes",
+      "ci_job": "content-dupes",
+      "scope": "^apps/web/public/data/.*\\.json$|^scripts/checks/content_dupes",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": [],
+      "command": "python3 scripts/checks/content_dupes.py"
+    },
+    {
       "name": "go-connect",
       "scope": "^tools/gaia-connect/",
       "heavy": false,
