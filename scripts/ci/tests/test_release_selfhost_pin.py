@@ -52,7 +52,7 @@ set -euo pipefail
 [[ "$1" == "api" && "$3" == "--jq" ]] || { echo "gh stub: unexpected $*" >&2; exit 1; }
 echo "$2" >> "$GH_CALLS"
 case "$2" in
-  */actions/workflows/main.yml/runs\\?*) file="$GH_FIXTURES/runs.json" ;;
+  */actions/workflows/main.yml/runs\\?*) file="$GH_FIXTURES/runs-${2##*event=}.json" ;;
   */actions/runs/*/jobs*) id="${2#*/actions/runs/}"; file="$GH_FIXTURES/jobs-${id%%/*}.json" ;;
   *) echo "gh stub: unexpected path $2" >&2; exit 1 ;;
 esac
@@ -63,12 +63,16 @@ JobState = tuple[str, str | None]
 GATE_PASSED: dict[str, JobState] = {"quality-gate": ("completed", "success")}
 
 
-def _write_main_runs(workspace: Path, runs: dict[int, dict[str, JobState]]) -> None:
+MainRuns = dict[int, dict[str, JobState]]
+
+
+def _write_main_runs(workspace: Path, runs_by_event: dict[str, MainRuns]) -> None:
     fixtures = workspace / "gh"
-    (fixtures / "runs.json").write_text(
-        json.dumps({"workflow_runs": [{"id": run_id} for run_id in runs]})
-    )
-    for run_id, jobs in runs.items():
+    for event, runs in runs_by_event.items():
+        (fixtures / f"runs-{event}.json").write_text(
+            json.dumps({"workflow_runs": [{"id": run_id} for run_id in runs]})
+        )
+    for run_id, jobs in (item for runs in runs_by_event.values() for item in runs.items()):
         (fixtures / f"jobs-{run_id}.json").write_text(
             json.dumps(
                 {
@@ -125,10 +129,17 @@ def _run(
     *,
     present: list[str] | None = None,
     late: dict[str, int] | None = None,
-    main_runs: dict[int, dict[str, JobState]] | None = None,
+    main_runs: MainRuns | None = None,
+    pr_runs: MainRuns | None = None,
     env_extra: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    _write_main_runs(workspace, {1: GATE_PASSED} if main_runs is None else main_runs)
+    _write_main_runs(
+        workspace,
+        {
+            "push": {1: GATE_PASSED} if main_runs is None else main_runs,
+            "pull_request": pr_runs or {},
+        },
+    )
     (workspace / "present.txt").write_text("".join(f"{r}\n" for r in present or []))
     (workspace / "late.txt").write_text("".join(f"{r} {n}\n" for r, n in (late or {}).items()))
     env = dict(os.environ)
@@ -161,16 +172,19 @@ def _pin(
     *,
     present: list[str],
     late: dict[str, int] | None = None,
-    main_runs: dict[int, dict[str, JobState]] | None = None,
+    main_runs: MainRuns | None = None,
+    pr_runs: MainRuns | None = None,
+    version: str = "0.6.0",
     env_extra: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    env = {"VERSION": "0.6.0", "SHA": _head(workspace), **(env_extra or {})}
+    env = {"VERSION": version, "SHA": _head(workspace), **(env_extra or {})}
     return _run(
         workspace,
         "pin-selfhost-release",
         present=present,
         late=late,
         main_runs=main_runs,
+        pr_runs=pr_runs,
         env_extra=env,
     )
 
@@ -326,6 +340,70 @@ def test_a_passed_gate_releases_even_when_a_non_gating_job_failed(workspace: Pat
     assert len(_created(workspace)) == len(RELEASE_REPOS)
 
 
+def test_a_beta_cut_from_a_pr_head_is_judged_by_that_prs_gate(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=_release_images(sha),
+        main_runs={},
+        pr_runs={8: GATE_PASSED},
+        version="0.7.0-beta.1",
+        env_extra={"PIN_WAIT_SECONDS": "0"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _created(workspace) == [
+        f"{NAMESPACE}/{repo}:v0.7.0-beta.1 {NAMESPACE}/{repo}:{sha}" for repo in RELEASE_REPOS
+    ]
+    assert f"head_sha={sha}&event=pull_request" in (workspace / "gh-calls.txt").read_text()
+
+
+def test_a_beta_whose_pr_gate_failed_is_refused_and_tags_nothing(workspace: Path) -> None:
+    result = _pin(
+        workspace,
+        present=_release_images(_head(workspace)),
+        main_runs={},
+        pr_runs={8: {"quality-gate": ("completed", "failure")}},
+        version="0.7.0-beta.1",
+        env_extra={"PIN_WAIT_SECONDS": "0"},
+    )
+
+    assert result.returncode != 0
+    assert "quality gate failed" in result.stderr
+    assert _created(workspace) == []
+
+
+def test_a_beta_whose_pr_gate_is_still_running_times_out_and_tags_nothing(
+    workspace: Path,
+) -> None:
+    result = _pin(
+        workspace,
+        present=_release_images(_head(workspace)),
+        main_runs={},
+        pr_runs={8: {"quality-gate": ("in_progress", None)}},
+        version="0.7.0-beta.1",
+        env_extra={"PIN_WAIT_SECONDS": "0"},
+    )
+
+    assert result.returncode != 0
+    assert _created(workspace) == []
+
+
+def test_a_stable_release_never_accepts_a_pr_gate(workspace: Path) -> None:
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        present=_release_images(sha),
+        main_runs={},
+        pr_runs={8: GATE_PASSED},
+        env_extra={"PIN_WAIT_SECONDS": "0"},
+    )
+
+    assert result.returncode != 0
+    assert _created(workspace) == []
+    assert "event=pull_request" not in (workspace / "gh-calls.txt").read_text()
+
+
 def test_an_unreadable_actions_api_fails_the_pin_loud(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(
@@ -363,6 +441,13 @@ def test_a_commit_that_bumps_the_cli_version_requires_its_images(
     )
 
     assert _cli_release_images(workspace) == "required=true"
+
+
+def test_a_release_images_dispatch_requires_them_for_any_commit(workspace: Path) -> None:
+    result = _run(workspace, "cli-release-images", env_extra={"RELEASE_IMAGES": "true"})
+
+    assert result.returncode == 0, result.stderr
+    assert (workspace / "github-output.txt").read_text().strip() == "required=true"
 
 
 def test_any_other_commit_leaves_the_image_build_to_affected(workspace: Path) -> None:

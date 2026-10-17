@@ -18,6 +18,9 @@
 #                        self-host bot :<sha> images and main.yml's quality
 #                        gate on it, then tag them v<CLI version>, the set that
 #                        CLI release's `gaia update` pins.
+#   cli-beta-release     Create the cli-v<beta> GitHub Release as a
+#                        prerelease, or mark an existing one; release-please
+#                        owns every stable release, so a stable tag is refused.
 #   selfhost-bots-arm64  Build the self-host bot images for linux/arm64 and
 #                        push them by digest, untagged. Writes digests to
 #                        $GITHUB_OUTPUT.
@@ -41,7 +44,10 @@
 #                         pushed by this run's build phase; empty means that
 #                         image wasn't built this run. Needs a GHCR login.
 #   dispatch-cli-publish  GH_TOKEN (actions:write), TAG, VERSION, SHA (required).
-#   cli-release-images    GITHUB_OUTPUT; full history (HEAD^ must exist).
+#   cli-release-images    GITHUB_OUTPUT; full history (HEAD^ must exist);
+#                         RELEASE_IMAGES=true (optional) requires the images
+#                         for any commit (build.yml's release_images input).
+#   cli-beta-release      GH_TOKEN (contents:write), RELEASE_TAG (required).
 #   selfhost-bots-arm64   GIT_COMMIT_SHA (required); GITHUB_OUTPUT. Needs a
 #                         GHCR login and an arm64 buildx builder.
 #   selfhost-bots-manifest BOTS_TAG, COMMIT_SHA, ARM64_DIGESTS (required; the
@@ -269,6 +275,12 @@ cmd_dispatch_cli_publish() {
   ci_die "Timed out after ${TIMEOUT_SECONDS}s waiting for ${PACKAGE}@${VERSION} on npm. See ${runs_url}"
 }
 
+# Whether a CLI version is a beta (X.Y.Z-beta.N): npm dist-tag beta, a
+# prerelease GitHub Release, and a quality gate that may come from its PR.
+is_cli_beta() {
+  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
+}
+
 # Best-effort probe/disable for Cloudflare Workers Builds. If a Git-connected
 # Build is found, this tells you to disconnect it in the dashboard (the
 # underlying API is dashboard-only for many accounts and may 404 — expected).
@@ -415,11 +427,15 @@ cmd_cli_release_images() {
 
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 
-  local manifest="packages/cli/package.json" before after
-  before=$(git show "HEAD^:$manifest" | jq -r .version)
-  after=$(git show "HEAD:$manifest" | jq -r .version)
   local required=false
-  [[ "$before" != "$after" ]] && required=true
+  if [[ "${RELEASE_IMAGES:-false}" == "true" ]]; then
+    required=true
+  else
+    local manifest="packages/cli/package.json" before after
+    before=$(git show "HEAD^:$manifest" | jq -r .version)
+    after=$(git show "HEAD:$manifest" | jq -r .version)
+    [[ "$before" != "$after" ]] && required=true
+  fi
   echo "required=$required" >> "$GITHUB_OUTPUT"
   ci_ok "cli-release-images: required=$required"
 }
@@ -433,16 +449,20 @@ cmd_cli_release_images() {
 # timeout fails loud instead of falling back to whatever :latest is. Nothing is
 # tagged until all exist, so a timeout never leaves a partial set. Idempotent:
 # an existing v<version> tag is kept, because an install may already run it.
-# main.yml's quality-gate verdict across the push runs on <sha>: passed when
-# any run's gate succeeded, failed when every run's gate finished otherwise,
-# pending while one is still running or no run exists yet.
+# main.yml's quality-gate verdict across the runs on <sha> of the given events:
+# passed when any run's gate succeeded, failed when every run's gate finished
+# otherwise, pending while one is still running or no run exists yet.
 main_quality_gate() {
   local sha="$1"
+  shift
   local api="repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}/actions"
-  local run_ids run_id state verdict=pending finished=0 running=0
+  local event event_runs run_ids="" run_id state verdict=pending finished=0 running=0
   # Called inside $(...), where errexit does not reach: every gh call returns
   # its own failure so the caller can die on it.
-  run_ids=$(gh api "$api/workflows/main.yml/runs?head_sha=$sha&event=push" --jq '.workflow_runs[].id') || return 1
+  for event in "$@"; do
+    event_runs=$(gh api "$api/workflows/main.yml/runs?head_sha=$sha&event=$event" --jq '.workflow_runs[].id') || return 1
+    run_ids+=" $event_runs"
+  done
   for run_id in $run_ids; do
     state=$(gh api "$api/runs/$run_id/jobs?filter=latest&per_page=100" \
       --jq '.jobs[] | select(.name == "quality-gate") | "\(.status) \(.conclusion)"') || return 1
@@ -471,6 +491,10 @@ cmd_pin_selfhost_release() {
   [[ "$head" == "$SHA" ]] || ci_die "checked-out commit $head is not the release commit $SHA"
 
   local tag="v${VERSION}"
+  # A stable release is a master commit, judged by its push run. A beta may be
+  # cut from a PR head, whose only gate is that PR's run on the same sha.
+  local gate_events=(push)
+  is_cli_beta "$VERSION" && gate_events+=(pull_request)
   local repo pending=()
   for repo in gaia "$WEB_IMAGE_REPO" "${SELFHOST_BOT_IMAGE_REPOS[@]}"; do
     if docker buildx imagetools inspect "$GHCR_NAMESPACE/$repo:$tag" >/dev/null 2>&1; then
@@ -491,7 +515,7 @@ cmd_pin_selfhost_release() {
         missing+=("$GHCR_NAMESPACE/$repo:$SHA")
       fi
     done
-    gate=$(main_quality_gate "$SHA") ||
+    gate=$(main_quality_gate "$SHA" "${gate_events[@]}") ||
       ci_die "could not read main.yml's runs for $SHA from the Actions API (GH_TOKEN needs actions:read)."
     if [[ "$gate" == failed ]]; then
       ci_die "main.yml's quality gate failed on $SHA; a release commit must pass it. Fix master and cut the release from a green commit."
@@ -510,6 +534,34 @@ cmd_pin_selfhost_release() {
     docker buildx imagetools create -t "$GHCR_NAMESPACE/$repo:$tag" "$GHCR_NAMESPACE/$repo:$SHA"
   done
   echo "### Self-host release pinned: \`GAIA_VERSION=$tag\` (images of \`$SHA\`)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+}
+
+# A beta has no release-please release, so its publish creates one, marked
+# prerelease so neither GitHub's "latest release" nor connect.sh's newest
+# stable cli-v* lookup ever lands on it. Idempotent across re-dispatches.
+cmd_cli_beta_release() {
+
+  : "${GH_TOKEN:?GH_TOKEN is required}"
+  : "${RELEASE_TAG:?RELEASE_TAG is required (e.g. cli-v0.7.0-beta.1)}"
+
+  local version="${RELEASE_TAG#cli-v}"
+  [[ "$RELEASE_TAG" == cli-v* ]] && is_cli_beta "$version" ||
+    ci_die "RELEASE_TAG '$RELEASE_TAG' is not a CLI beta (cli-vX.Y.Z-beta.N); release-please creates stable releases"
+
+  local prerelease
+  if prerelease=$(gh release view "$RELEASE_TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null); then
+    if [[ "$prerelease" == "true" ]]; then
+      ci_ok "$RELEASE_TAG is already a prerelease."
+      return 0
+    fi
+    gh release edit "$RELEASE_TAG" --prerelease --latest=false
+    ci_ok "$RELEASE_TAG marked prerelease."
+    return 0
+  fi
+  gh release create "$RELEASE_TAG" --verify-tag --prerelease --latest=false \
+    --title "GAIA CLI $version (beta)" \
+    --notes "Beta of the GAIA CLI. Install it with: curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh"
+  ci_ok "$RELEASE_TAG created as a prerelease."
 }
 
 # Self-hosters run the bots on arm64 too, while production's bot images stay
@@ -578,6 +630,7 @@ main() {
     dispatch-cli-publish) cmd_dispatch_cli_publish "$@" ;;
     cli-release-images)   cmd_cli_release_images "$@" ;;
     pin-selfhost-release) cmd_pin_selfhost_release "$@" ;;
+    cli-beta-release)     cmd_cli_beta_release "$@" ;;
     selfhost-bots-arm64)  cmd_selfhost_bots_arm64 "$@" ;;
     selfhost-bots-manifest) cmd_selfhost_bots_manifest "$@" ;;
     connect-cross-check) cmd_connect_cross_check "$@" ;;

@@ -22,6 +22,15 @@ on:
           - auto
           - deploy
           - none
+      # Build the full self-host image set a CLI release pins (gaia, gaia-web
+      # and the bots, arm64 halves and multi-arch :<sha> indexes included) for
+      # the dispatched commit on any branch, so a beta can be cut from a PR
+      # head. Publishes images only: deploys stay master-only in deploy.sh plan.
+      release_images:
+        description: "Build the self-host image set a CLI release pins for this commit"
+        required: false
+        default: false
+        type: boolean
   # Reusable workflow entrypoint used by main quality workflow.
   workflow_call:
     inputs:
@@ -158,7 +167,9 @@ jobs:
 
       - name: Does this commit release the CLI?
         id: cli-release
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' || inputs.release_images
+        env:
+          RELEASE_IMAGES: ${{ inputs.release_images }}
         run: bash scripts/ci/release.sh cli-release-images
 
       # Map affected project list to the image scopes: api (api + voice-agent),
