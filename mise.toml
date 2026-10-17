@@ -71,6 +71,12 @@ _.python.venv = { path = ".venv", create = true }
 # Per-worktree port allocation written by `mise run wt:env`. Optional: mise silently
 # skips it when absent, so the main worktree keeps today's defaults (ports 8000/3000).
 _.file = ".env.worktree"
+# The dev auth bypass user every dev/e2e tool defaults to — the one source of
+# truth (mise seed, mise dev --agent/--sim, web e2e, playbook drive, agent bench).
+# Dev shares the production Resend account, so it must be a Resend test address
+# that accepts mail: a fake domain hard-bounces and costs sender reputation.
+# Override per shell with DEV_USER=<email>.
+DEV_USER = "{{ get_env(name='DEV_USER', default='delivered+dev@resend.dev') }}"
 
 [settings]
 experimental = true
@@ -215,7 +221,6 @@ echo "wt:env → $root/.env.worktree (offset $offset): API_PORT=$api_port WEB_PO
 description = "Mint + seed the dev bypass user against a running API (override with DEV_USER=email, SEED_TODOS, SEED_CONVERSATIONS, SEED_POSTMARKS)"
 run = '''
 set -eu
-: "${DEV_USER:=dev@gaia.local}"
 : "${SEED_TODOS:=5}"
 : "${SEED_CONVERSATIONS:=2}"
 : "${SEED_POSTMARKS:=12}"
@@ -239,7 +244,7 @@ run = "pnpm nx run web:e2e"
 [tasks.dev]
 description = "Run API + web natively + infra in Docker. API runs on host (hot reload, port 8000). Default is the REAL WorkOS login flow. Add --agent for zero-login agent driving (dev auth bypass, real LLM) or --sim (bypass + scripted LLM stub, no OpenRouter cost). Both fail loudly under ENV=production. JuiceFS-dependent paths (workspace v2, sandbox file ops, artifact streaming) raise JuiceFSUnavailable on this native path — use `mise dev:vm` for those."
 usage = '''
-flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (default dev@gaia.local), no WorkOS login. Real LLM."
+flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (mise.toml [env]), no WorkOS login. Real LLM."
 flag "--sim" help="Dev auth bypass ON + scripted LLM stub (tools/llm-stub) — deterministic, no OpenRouter credentials or cost. Replies come from [[tool:...]]/[[say:...]] directives."
 '''
 run = '''
@@ -268,7 +273,7 @@ nx run docker:docker:up
 
 # Auth: bypass as DEV_USER, or the real WorkOS login when no flag is set.
 if [ -n "$bypass" ]; then
-  export DEV_AUTH_BYPASS_EMAIL="${DEV_USER:-dev@gaia.local}"
+  export DEV_AUTH_BYPASS_EMAIL="$DEV_USER"
 fi
 
 # LLM: scripted stub for --sim (native API reaches it on localhost), else real.
@@ -296,7 +301,7 @@ run = "nx run docker:docker:up && nx dev api"
 description = "Run the API in a container (hot reload via the mounted apps/api/app dir + JuiceFS FUSE mount) + web natively. Use this when working on workspace v2, file uploads, artifact streaming, or sandbox file ops. The container is required because JuiceFS mounts via FUSE, which a native macOS/Windows process cannot provide. Default is the REAL WorkOS login flow; add --agent (dev auth bypass, real LLM) or --sim (bypass + scripted LLM stub) for zero-login agent driving. Both fail loudly under ENV=production. Also starts voice-agent-worker as a side effect of the `backend` profile."
 env = { COMPOSE_PROFILES = "backend" }
 usage = '''
-flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (default dev@gaia.local), no WorkOS login. Real LLM."
+flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (mise.toml [env]), no WorkOS login. Real LLM."
 flag "--sim" help="Dev auth bypass ON + scripted LLM stub (tools/llm-stub) reached from the container via host.docker.internal. Deterministic, no OpenRouter cost."
 '''
 run = '''
@@ -312,7 +317,7 @@ if [ -n "$bypass" ]; then
   bash scripts/dev/assert-not-prod.sh "the dev auth bypass / sim mode"
   # Bypass reaches the dockered API via compose interpolation of this var (see
   # infra/docker/docker-compose.yml gaia-backend env) — apps/api/.env has it off.
-  export DEV_AUTH_BYPASS_EMAIL="${DEV_USER:-dev@gaia.local}"
+  export DEV_AUTH_BYPASS_EMAIL="$DEV_USER"
 fi
 
 if [ "${usage_sim:-}" = "true" ]; then
@@ -401,7 +406,7 @@ nx run docker:docker:up
 # Every process started here sends to gaia-test, whatever project the environment names.
 export POSTHOG_PROJECT_TOKEN="$POSTHOG_E2E_PROJECT_TOKEN"
 export POSTHOG_HOST="https://us.i.posthog.com"
-export DEV_AUTH_BYPASS_EMAIL="analytics-e2e@gaia.local"
+export DEV_AUTH_BYPASS_EMAIL="delivered+analytics-e2e@resend.dev"
 export GAIA_SIM_MODE=1
 export OPENROUTER_BASE_URL="http://localhost:$LLM_STUB_PORT/api/v1"
 export ANALYTICS_MONGO_URI="${ANALYTICS_MONGO_URI:-mongodb://localhost:27017}"
