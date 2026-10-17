@@ -213,9 +213,19 @@ const UpSummaryStep: React.FC<{ state: CLIState }> = ({ state }) => {
 export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
   const state = useCLIState(store);
   const idle = !state.inputRequest;
+  const ready =
+    state.step === "Finished" &&
+    state.data.finished === true &&
+    state.data.upNoStart !== true &&
+    state.data.upStillStarting !== true;
 
   return (
-    <Shell status={state.status} step={state.step} steps={UP_STEPS}>
+    <Shell
+      status={state.status}
+      step={state.step}
+      steps={UP_STEPS}
+      header={{ size: "large", showStatus: ready }}
+    >
       {state.step === "Prerequisites" && state.data.checks && (
         <SystemChecksStep checks={state.data.checks} />
       )}

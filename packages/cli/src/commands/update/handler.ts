@@ -15,6 +15,7 @@ import { findInstallRoot } from "../../lib/service-starter.js";
 import { isNewerRelease, releaseVersion } from "../../lib/update-check.js";
 import { CLI_VERSION, GAIA_RELEASE_IMAGE_TAG } from "../../lib/version.js";
 import { MARK } from "../../ui/constants.js";
+import { printHeader } from "../../ui/header/header-lines.js";
 import {
   applyGitUpdate,
   applyReleaseUpdate,
@@ -156,6 +157,7 @@ async function runGitUpdate(
 }
 
 export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
+  await printHeader({ showUpdate: false });
   const repoPath = findInstallRoot();
   if (!repoPath) {
     err("Error: No GAIA installation found.");

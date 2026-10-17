@@ -25,13 +25,6 @@ import {
   requireInteractive,
 } from "./non-tty.js";
 
-/**
- * Give Ink a tick to initialize and measure the terminal before the flow runs.
- * Without it, ink-big-text occasionally falls back to plain rendering because
- * dimensions aren't available yet.
- */
-const INK_INIT_DELAY_MS = 50;
-
 /** Exit code POSIX shells report for a process terminated by SIGINT. */
 const SIGINT_EXIT_CODE = 130;
 
@@ -107,8 +100,6 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   };
   process.once("SIGINT", handleExit);
   process.once("SIGTERM", handleExit);
-
-  await new Promise((resolve) => setTimeout(resolve, INK_INIT_DELAY_MS));
 
   try {
     await runtime.runFlow(store);

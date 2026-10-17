@@ -5,6 +5,7 @@ import { Argument, Command } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../../../libs/shared/ts/src/cli/command-manifest.js";
 import { SELFHOST_BOTS, type SelfhostBot } from "../../lib/bots.js";
 import { runAction } from "../../lib/command-action.js";
+import { printHeader } from "../../ui/header/header-lines.js";
 import {
   type BotCredentials,
   runBotsAdd,
@@ -18,6 +19,7 @@ function platformArgument(): Argument {
 
 export const botsCommand = new Command("bots")
   .description(CLI_COMMAND_DESCRIPTIONS.bots)
+  .hook("preAction", () => printHeader())
   .addHelpText(
     "after",
     `

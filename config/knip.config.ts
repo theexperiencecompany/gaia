@@ -409,7 +409,12 @@ const config: KnipConfig = {
 
     // ── CLI Package ──────────────────────────────────────────────────
     "packages/cli": {
-      entry: ["src/index.{ts,tsx}", "src/commands/**/*.{ts,tsx}"],
+      // scripts/: generators run from package.json (bake:logo), not imported.
+      entry: [
+        "src/index.{ts,tsx}",
+        "src/commands/**/*.{ts,tsx}",
+        "scripts/*.mjs",
+      ],
       // Tests are not live references — see apps/bots note.
       project: [
         "src/**/*.{ts,tsx}",

@@ -18,9 +18,11 @@ import { runLogs } from "./commands/stream-logs/handler.js";
 import { runUp } from "./commands/up/handler.js";
 import { runUpdate, type UpdateOptions } from "./commands/update/handler.js";
 import { LLM_PROVIDERS, type LlmProvider } from "./lib/llm-flags.js";
-import { CLI_VERSION } from "./lib/version.js";
+import { printVersion } from "./ui/header/header-lines.js";
 
 const program = new Command();
+
+const VERSION_FLAGS = new Set(["-V", "--version"]);
 
 /** Raw parsed options for `gaia up` (commander negates --no-start to `start`). */
 interface UpCliOptions {
@@ -43,7 +45,7 @@ interface UpCliOptions {
 program
   .name("gaia")
   .description("CLI tool for setting up and managing GAIA")
-  .version(CLI_VERSION)
+  .option("-V, --version", "output the version number")
   // Root options only before the subcommand, so `gaia update --version <tag>`
   // reaches update instead of printing the CLI version.
   .enablePositionalOptions();
@@ -243,6 +245,13 @@ program
   .action(async (options: UpdateOptions) => {
     await runUpdate(options);
   });
+
+// Before commander: printing the header waits on the instance probe, and
+// enablePositionalOptions means --version is only ever the first argument.
+if (VERSION_FLAGS.has(process.argv[2] ?? "")) {
+  await printVersion();
+  process.exit(0);
+}
 
 // Show help when no command is given instead of silently running init
 if (!process.argv.slice(2).length) {

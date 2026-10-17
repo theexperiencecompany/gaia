@@ -9,6 +9,7 @@
  * @module commands/doctor/handler
  */
 
+import { printHeader } from "../../ui/header/header-lines.js";
 import {
   type DoctorReport,
   hasBlockingFailure,
@@ -44,7 +45,7 @@ function printCheck(result: CheckResult): void {
 }
 
 export function printDoctorReport(report: DoctorReport): void {
-  out("\ngaia doctor");
+  out("gaia doctor");
   out(`  Installation: ${report.install}`);
   for (const result of report.results) {
     printCheck(result);
@@ -66,6 +67,7 @@ export function printDoctorReport(report: DoctorReport): void {
 }
 
 export async function runDoctor(): Promise<void> {
+  await printHeader();
   const report = await runDoctorChecks();
   printDoctorReport(report);
 
