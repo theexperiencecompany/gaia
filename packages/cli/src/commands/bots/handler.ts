@@ -122,19 +122,28 @@ const BOT_NAMES: Record<SelfhostBot, string> = {
 /** Tries a person gets at pasting credentials the platform accepts. */
 const CREDENTIAL_ATTEMPTS = 3;
 
-/** Fill each credential not passed as a flag by prompting, or name the flag when there is no terminal. */
+/**
+ * Fill each credential not passed as a flag by prompting, or name the flag
+ * when there is no terminal. Where to find each one is said on the first try only.
+ */
 async function resolveCredentials(
   bot: SelfhostBot,
   given: BotCredentials,
+  firstTry: boolean,
 ): Promise<BotCredentials> {
   const resolved: BotCredentials = { ...given };
+  let asked = 0;
   for (const prompt of CREDENTIAL_PROMPTS[bot]) {
     if (resolved[prompt.key]) continue;
     if (!isInteractive()) {
       throw new Error(`Missing ${prompt.flag}. ${prompt.hint}`);
     }
-    out();
-    out(wrapForTerminal(prompt.hint));
+    if (firstTry) {
+      // The header already ends with a blank line; later prompts get their own.
+      if (asked > 0) out();
+      out(wrapForTerminal(prompt.hint));
+    }
+    asked++;
     const value = await askSecret(prompt.label);
     if (!value) throw new Error(`No ${prompt.label} entered. Nothing changed.`);
     resolved[prompt.key] = value;
@@ -152,16 +161,18 @@ async function verifiedCredentials(
   given: BotCredentials,
 ): Promise<VerifiedBot> {
   for (let attempt = 1; ; attempt++) {
-    const resolved = await resolveCredentials(bot, given);
+    const resolved = await resolveCredentials(bot, given, attempt === 1);
     out(`Checking your ${BOT_NAMES[bot]} credentials…`);
     try {
       return await verifyCredentials(bot, resolved);
     } catch (error) {
-      const prompted = CREDENTIAL_PROMPTS[bot].some((p) => !given[p.key]);
+      const pasted = CREDENTIAL_PROMPTS[bot].filter((p) => !given[p.key]);
       const triesLeft = CREDENTIAL_ATTEMPTS - attempt;
-      if (!prompted || !isInteractive() || triesLeft === 0) throw error;
+      if (pasted.length === 0 || !isInteractive() || triesLeft === 0) {
+        throw error;
+      }
       out(
-        `${MARK.fail} ${(error as Error).message} Paste ${triesLeft === 1 ? "it" : "them"} again (${triesLeft} ${triesLeft === 1 ? "try" : "tries"} left), or press Esc to stop.`,
+        `${MARK.fail} ${(error as Error).message} Paste ${pasted.length === 1 ? "it" : "them"} again (${triesLeft} ${triesLeft === 1 ? "try" : "tries"} left), or press Esc to stop.`,
       );
     }
   }

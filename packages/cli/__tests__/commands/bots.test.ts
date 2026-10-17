@@ -246,6 +246,31 @@ describe("gaia bots add with a pasted token the platform rejects", () => {
     expect(config.current?.bots).toEqual(["telegram"]);
   });
 
+  it("asks for the one token as 'it' and gives the BotFather hint once", async () => {
+    let text = "";
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      text += String(chunk);
+      return true;
+    });
+    askSecret.mockResolvedValueOnce("bad-token").mockResolvedValueOnce(TOKEN);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        Response.json(
+          url.includes("bad-token")
+            ? { ok: false, description: "Unauthorized" }
+            : { ok: true, result: { username: "my_gaia_bot" } },
+        ),
+      ),
+    );
+    botContainerStatuses("running|Up 30 seconds (healthy)");
+
+    await runBotsAdd("telegram", {});
+
+    expect(text).toContain("Paste it again (2 tries left)");
+    expect(text.match(/@BotFather, send \/newbot/g)).toHaveLength(1);
+  });
+
   it("stops after three rejected tries", async () => {
     askSecret.mockResolvedValue("bad-token");
     platformAnswers({ ok: false, description: "Unauthorized" });
