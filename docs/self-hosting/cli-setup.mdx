@@ -25,6 +25,17 @@ curl -fsSL https://heygaia.io/install.sh | sh
   <img src="/images/self-hosting/terminal-install.webp" width="579" alt="Terminal output of the GAIA install script: it detects Linux, installs Node.js through nvm, installs the GAIA CLI and lists the gaia up, gaia status and gaia --help commands" />
 </Frame>
 
+### Installing a beta
+
+Before a release becomes stable, we sometimes publish a beta of it so people can try it early. Betas are numbered like `0.7.0-beta.1`. To install the latest beta, add `GAIA_CHANNEL=beta` to the install command, then run `gaia up` as usual:
+
+```bash
+curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh
+gaia up
+```
+
+A beta CLI installs the GAIA release built with that beta, so its images and compose files match it. Expect rough edges, and back up first (`gaia backup`) if you put a beta on an install you rely on. When `gaia update` says you are already on a beta's release, it shows the command for the next beta and the command for going back to stable. Go back to stable only once a stable release newer than your beta is out.
+
 ## Quick Start
 
 ```bash
