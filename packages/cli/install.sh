@@ -3,6 +3,7 @@ set -e
 
 # GAIA CLI Installer
 # Usage: curl -fsSL https://heygaia.io/install.sh | sh
+# Beta:  curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh
 #
 # NOTE: Do not rename this file. The web app serves it at heygaia.io/install.sh
 # by fetching it from GitHub using this exact path: packages/cli/install.sh
@@ -87,6 +88,13 @@ main() {
     error "Unsupported operating system"
   fi
 
+  # The npm dist-tag to install: latest (default) or beta.
+  CHANNEL="${GAIA_CHANNEL:-latest}"
+  case "$CHANNEL" in
+    latest|beta) ;;
+    *) error "GAIA_CHANNEL must be 'latest' or 'beta', got '$CHANNEL'" ;;
+  esac
+
   # Determine package manager: prefer npm, then pnpm, then bun
   PKG_MGR=""
 
@@ -106,11 +114,12 @@ main() {
   fi
 
   # Install GAIA CLI globally
-  info "Installing @heygaia/cli via $PKG_MGR..."
+  PACKAGE="@heygaia/cli@$CHANNEL"
+  info "Installing $PACKAGE ($CHANNEL channel) via $PKG_MGR..."
   case "$PKG_MGR" in
-    npm)  npm install -g --ignore-scripts @heygaia/cli ;;
-    pnpm) pnpm add -g @heygaia/cli ;;
-    bun)  bun install -g --ignore-scripts @heygaia/cli ;;
+    npm)  npm install -g --ignore-scripts "$PACKAGE" ;;
+    pnpm) pnpm add -g "$PACKAGE" ;;
+    bun)  bun install -g --ignore-scripts "$PACKAGE" ;;
   esac
 
   if check_command gaia; then
