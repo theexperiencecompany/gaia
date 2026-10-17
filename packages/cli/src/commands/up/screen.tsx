@@ -7,6 +7,7 @@
 import { Box, Static, Text } from "ink";
 import type React from "react";
 import { resumedStep } from "../../lib/docker-group.js";
+import { homeRelative } from "../../lib/paths.js";
 import { MISSING_PREREQUISITES_KEY } from "../../lib/prerequisite-install.js";
 import type { RunStep } from "../../lib/run-steps.js";
 import { wrapToWidth } from "../../lib/terminal-text.js";
@@ -188,7 +189,7 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
       <UpPrompt state={state} store={store} />
       {logPath && !finished && (
         <Box marginTop={1} marginLeft={2}>
-          <Text color="gray">Full log: {logPath}</Text>
+          <Text color="gray">Full log: {homeRelative(logPath)}</Text>
         </Box>
       )}
       {finished && <SummaryCard outcome={outcome} />}

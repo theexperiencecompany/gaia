@@ -255,7 +255,7 @@ export function describeComposeProgress(
     const size =
       downloaded > 0 ? `${formatBytes(downloaded)} so far` : "starting";
     return {
-      label: `Downloading GAIA: ${size} (${ready} of ${images.length} images ready)`,
+      label: `Downloading GAIA's images: ${size} (${ready} of ${images.length} ready)`,
       percent: state.downloadPercent,
     };
   }

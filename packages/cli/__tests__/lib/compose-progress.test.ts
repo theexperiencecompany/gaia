@@ -52,7 +52,7 @@ describe("describeComposeProgress while pulling", () => {
     const { phases, state } = run(PULL);
 
     expect(phases.at(-1)).toEqual({
-      label: "Downloading GAIA: 7 MB so far (1 of 2 images ready)",
+      label: "Downloading GAIA's images: 7 MB so far (1 of 2 ready)",
       percent: 52,
     });
     expect(phases.every((p) => !p?.label.includes("805f301826ef"))).toBe(true);
